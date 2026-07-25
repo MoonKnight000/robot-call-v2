@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Uysot Voice — Test Paneli</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --border:#2b3441;
+    --txt:#e6edf3; --muted:#8b98a5; --accent:#3b82f6; --accent2:#2563eb;
+    --green:#2ea043; --red:#da3633; --amber:#d29922; --purple:#8957e5;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  a{color:var(--accent)}
+  header{padding:16px 24px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:16px;position:sticky;top:0;background:var(--bg);z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .tag{font-size:11px;color:var(--muted);border:1px solid var(--border);
+    padding:2px 8px;border-radius:20px}
+  .conn{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.bad{background:var(--red)}
+  .base-input{background:var(--panel2);border:1px solid var(--border);color:var(--txt);
+    border-radius:6px;padding:4px 8px;font-size:12px;width:190px;font-family:var(--mono)}
+
+  nav{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--border);
+    overflow-x:auto;background:var(--bg);position:sticky;top:57px;z-index:19}
+  nav button{background:none;border:none;color:var(--muted);padding:12px 16px;
+    cursor:pointer;font-size:13px;border-bottom:2px solid transparent;white-space:nowrap}
+  nav button:hover{color:var(--txt)}
+  nav button.active{color:var(--txt);border-bottom-color:var(--accent)}
+
+  main{padding:24px;max-width:1200px;margin:0 auto}
+  .view{display:none} .view.active{display:block}
+  .grid{display:grid;gap:16px}
+  @media(min-width:820px){.grid.cols2{grid-template-columns:1fr 1fr}}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px;margin-bottom:16px}
+  .card h2{font-size:14px;margin:0 0 4px;font-weight:600}
+  .card h2 .num{display:inline-flex;width:22px;height:22px;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:12px;align-items:center;
+    justify-content:center;margin-right:8px}
+  .card .hint{color:var(--muted);font-size:12px;margin:0 0 14px}
+
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--border);
+    color:var(--txt);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit}
+  textarea{font-family:var(--mono);resize:vertical;min-height:70px}
+  input:focus,select,textarea:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:120px}
+
+  button.btn{background:var(--accent);color:#fff;border:none;border-radius:6px;
+    padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;margin-top:14px}
+  button.btn:hover{background:var(--accent2)}
+  button.btn.sec{background:var(--panel2);border:1px solid var(--border);color:var(--txt)}
+  button.btn.sec:hover{border-color:var(--accent)}
+  button.btn.danger{background:var(--red)}
+  button.btn.green{background:var(--green)}
+  button.btn.sm{padding:5px 10px;font-size:12px;margin-top:0}
+  button:disabled{opacity:.5;cursor:not-allowed}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  tr:hover td{background:var(--panel2)}
+  td.mono,.mono{font-family:var(--mono);font-size:12px}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+  .pill.DRAFT{background:#30363d;color:var(--muted)}
+  .pill.ACTIVE{background:rgba(46,160,67,.18);color:#3fb950}
+  .pill.PAUSED{background:rgba(210,153,34,.18);color:#d29922}
+  .pill.PENDING{background:#30363d;color:var(--muted)}
+  .pill.IN_PROGRESS{background:rgba(59,130,246,.18);color:#58a6ff}
+  .pill.DONE{background:rgba(46,160,67,.18);color:#3fb950}
+  .pill.FAILED,.pill.EXHAUSTED{background:rgba(218,54,51,.18);color:#f85149}
+
+  /* response viewer */
+  .resp{margin-top:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .resp .rhead{padding:6px 12px;font-size:11px;font-family:var(--mono);
+    display:flex;align-items:center;gap:8px;background:var(--panel2)}
+  .resp pre{margin:0;padding:12px;font-family:var(--mono);font-size:12px;
+    white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;color:#cdd9e5}
+  .code{font-weight:700}.code.ok{color:#3fb950}.code.bad{color:#f85149}
+
+  /* FSM diagram */
+  .fsm{display:flex;flex-direction:column;align-items:center;gap:0;padding:10px 0}
+  .fnode{border:1.5px solid var(--border);background:var(--panel2);border-radius:8px;
+    padding:10px 18px;font-size:13px;font-weight:600;min-width:210px;text-align:center;
+    transition:.25s}
+  .fnode .d{font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+  .fnode.active{border-color:var(--accent);background:rgba(59,130,246,.14);
+    box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+  .farrow{color:var(--muted);font-size:16px;line-height:1;padding:4px 0}
+  .fside{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center}
+  .fnode.esc{border-color:var(--purple)} .fnode.esc.active{background:rgba(137,87,229,.16);box-shadow:0 0 0 3px rgba(137,87,229,.18)}
+  .fnode.end{border-color:var(--red)} .fnode.end.active{background:rgba(218,54,51,.16);box-shadow:0 0 0 3px rgba(218,54,51,.18)}
+
+  /* transcript / chat */
+  .chat{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;padding:4px}
+  .msg{max-width:78%;padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap}
+  .msg.AGENT{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);border-bottom-left-radius:3px}
+  .msg.CLIENT{align-self:flex-end;background:var(--accent2);border-bottom-right-radius:3px}
+  .msg .who{font-size:10px;color:var(--muted);margin-bottom:2px}
+  .msg.CLIENT .who{color:#cfe0ff}
+
+  /* event log */
+  .log{font-family:var(--mono);font-size:12px;background:#0a0e14;border:1px solid var(--border);
+    border-radius:8px;padding:12px;max-height:300px;overflow:auto}
+  .log .l{padding:2px 0;border-bottom:1px solid rgba(43,52,65,.4);display:flex;gap:10px}
+  .log .t{color:var(--muted);flex-shrink:0}
+  .log .m.ok{color:#3fb950}.log .m.bad{color:#f85149}.log .m.info{color:#58a6ff}
+
+  .flow-strip{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+  .flow-strip .step{flex:1;min-width:130px;background:var(--panel);border:1px solid var(--border);
+    border-radius:8px;padding:10px 12px;font-size:12px}
+  .flow-strip .step b{display:block;color:var(--accent);font-size:11px;margin-bottom:2px}
+  .kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .kv span:first-child{color:var(--muted)}
+  .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center}
+  .inline{display:flex;gap:8px;align-items:flex-end}
+  .inline>div{flex:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎙️ Uysot Voice</h1>
+  <span class="tag">Test Paneli</span>
+  <div class="conn">
+    <span>API:</span>
+    <input id="baseUrl" class="base-input" value="" placeholder="(same-origin)">
+    <span class="dot" id="connDot"></span>
+    <span id="connText">tekshirilmoqda…</span>
+  </div>
+</header>
+
+<nav id="nav"></nav>
+
+<main>
+  <!-- ===================== OVERVIEW ===================== -->
+  <section class="view active" data-view="flow">
+    <div class="flow-strip">
+      <div class="step"><b>1 · KAMPANIYA</b>Kampaniya yaratiladi, maqsad va skript beriladi</div>
+      <div class="step"><b>2 · NISHONLAR</b>Mijozlar (qarz konteksti bilan) qo'shiladi</div>
+      <div class="step"><b>3 · START</b>Dialer navbatdagi mijozga qo'ng'iroq qiladi</div>
+      <div class="step"><b>4 · SUHBAT</b>STT → LLM (FSM) → TTS, barge-in bilan</div>
+      <div class="step"><b>5 · OPERATOR</b>Kerak bo'lsa jonli operatorga o'tkaziladi</div>
+      <div class="step"><b>6 · NATIJA</b>Xulosa CRM ga note bo'lib yoziladi</div>
+    </div>
+
+    <div class="card">
+      <h2>Suhbat holatlari (FSM)</h2>
+      <p class="hint">PROJECT.md §4.1 — qarzdorlik suhbatining bosqichlari. Operator ekranidagi
+        joriy holat shu yerda yoritiladi.</p>
+      <div class="fsm" id="fsm">
+        <div class="fnode" data-s="GREETING">GREETING<div class="d">Salomlashish · tizim ekani · yozib olish haqida</div></div>
+        <div class="farrow">↓</div>
+        <div class="fnode" data-s="IDENTITY_CHECK">IDENTITY_CHECK<div class="d">"Siz falonchimisiz?" · noto'g'ri odam → END</div></div>
+        <div class="farrow">↓</div>
+        <div class="fnode" data-s="DEBT_NOTICE">DEBT_NOTICE<div class="d">Qarz miqdori va muddati (fakt)</div></div>
+        <div class="farrow">↓</div>
+        <div class="fnode" data-s="REASON_INQUIRY">REASON_INQUIRY<div class="d">"Nima uchun to'lanmayapti?"</div></div>
+        <div class="farrow">↓</div>
+        <div class="fnode" data-s="PAYMENT_DATE">PAYMENT_DATE<div class="d">"Qachon to'lay olasiz?"</div></div>
+        <div class="farrow">↓</div>
+        <div class="fnode" data-s="CONFIRMATION">CONFIRMATION<div class="d">Kelishuvni tasdiqlash</div></div>
+        <div class="farrow">↓</div>
+        <div class="fnode" data-s="CLOSING">CLOSING<div class="d">Xayrlashuv</div></div>
+        <div class="fside">
+          <div class="fnode esc" data-s="ESCALATE_TO_HUMAN">ESCALATE_TO_HUMAN<div class="d">Operator so'ralsa / janjal</div></div>
+          <div class="fnode end" data-s="END_CALL">END_CALL<div class="d">Go'shak qo'yildi / rad</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CAMPAIGN ===================== -->
+  <section class="view" data-view="campaign">
+    <div class="grid cols2">
+      <div class="card">
+        <h2><span class="num">1</span>Kampaniya yaratish</h2>
+        <p class="hint">POST /api/campaigns</p>
+        <label>Nomi</label><input id="c_name" value="Iyul qarzdorlik — test">
+        <div class="row">
+          <div><label>Turi</label>
+            <select id="c_type"><option>DEBT_COLLECTION</option><option>SURVEY</option></select></div>
+          <div><label>Til (default)</label>
+            <select id="c_lang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
+        </div>
+        <label>Maqsad / skript (goalPrompt)</label>
+        <textarea id="c_goal">Mijozdan qarzni to'lash sanasini aniqlang. Muloyim va professional bo'ling.</textarea>
+        <div class="row">
+          <div><label>Oyna boshi</label><input id="c_ws" type="time" value="09:00"></div>
+          <div><label>Oyna oxiri</label><input id="c_we" type="time" value="20:00"></div>
+        </div>
+        <div class="row">
+          <div><label>Max urinish</label><input id="c_max" type="number" value="3"></div>
+          <div><label>Retry (soat)</label><input id="c_retry" type="number" value="24"></div>
+          <div><label>Parallel</label><input id="c_conc" type="number" value="20"></div>
+        </div>
+        <button class="btn" onclick="createCampaign()">Yaratish</button>
+        <div id="c_resp"></div>
+      </div>
+
+      <div class="card">
+        <h2>Kampaniyalar</h2>
+        <p class="hint">GET /api/campaigns · boshqarish uchun qatordagi tugmalar</p>
+        <button class="btn sec sm" onclick="loadCampaigns()">🔄 Yangilash</button>
+        <div id="campList"><div class="empty">Hali yuklanmagan</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TARGETS ===================== -->
+  <section class="view" data-view="targets">
+    <div class="card">
+      <h2><span class="num">2</span>Nishon (mijoz) qo'shish</h2>
+      <p class="hint">POST /api/campaigns/{id}/targets — qarz konteksti contextData ichida boradi va promptga qo'yiladi</p>
+      <div class="row">
+        <div><label>Kampaniya ID</label><input id="t_camp" type="number" placeholder="masalan 1"></div>
+        <div><label>Client ID (CRM)</label><input id="t_client" type="number" value="1001"></div>
+        <div><label>Telefon</label><input id="t_phone" value="600"></div>
+        <div><label>Til</label>
+          <select id="t_lang"><option value="">(campaign default)</option><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
+      </div>
+      <label>contextData (JSON — qarz fakti)</label>
+      <textarea id="t_ctx">{
+  "clientName": "Alisher Karimov",
+  "debtAmount": 4500000,
+  "currency": "so'm",
+  "dueDate": "2026-07-10",
+  "contractNumber": "UY-2024-8891"
+}</textarea>
+      <button class="btn" onclick="addTarget()">Qo'shish</button>
+      <div id="t_resp"></div>
+    </div>
+
+    <div class="card">
+      <h2>Nishonlar ro'yxati</h2>
+      <p class="hint">GET /api/campaigns/{id}/targets</p>
+      <div class="inline">
+        <div><label>Kampaniya ID</label><input id="t_listId" type="number" placeholder="1"></div>
+        <button class="btn sec" onclick="loadTargets()">Ko'rsatish</button>
+      </div>
+      <div id="targetList"><div class="empty">Kampaniya ID kiriting</div></div>
+    </div>
+  </section>
+
+  <!-- ===================== CALL ===================== -->
+  <section class="view" data-view="call">
+    <div class="grid cols2">
+      <div class="card">
+        <h2><span class="num">3</span>Qo'ng'iroq (originate)</h2>
+        <p class="hint">POST /api/calls?number= — Asterisk orqali qo'ng'iroq. Trunk-siz test uchun softphone raqami <b>600</b>.</p>
+        <label>Raqam</label><input id="ca_num" value="600">
+        <button class="btn green" onclick="originate()">📞 Qo'ng'iroq qilish</button>
+        <div id="ca_resp"></div>
+        <div id="ca_channel" style="display:none;margin-top:14px">
+          <div class="kv"><span>Faol channelId</span><span class="mono" id="ca_chid"></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Audio yuborish</h2>
+        <p class="hint">Faol qo'ng'iroqqa WAV ijro etish yoki matnni TTS bilan aytish</p>
+        <label>channelId</label><input id="ca_chinput" placeholder="originate javobidan avtomatik to'ladi">
+
+        <label style="margin-top:16px">WAV fayl yo'li (server tomonda)</label>
+        <div class="inline">
+          <div><input id="ca_wav" placeholder="/app/audio/greeting.wav"></div>
+          <button class="btn sec" onclick="playWav()">▶ Play</button>
+        </div>
+
+        <label style="margin-top:16px">Matn (TTS bilan aytish)</label>
+        <textarea id="ca_text">Assalomu alaykum. Bu Uysot kompaniyasining avtomatik tizimi.</textarea>
+        <div class="inline">
+          <div><select id="ca_saylang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
+          <button class="btn" onclick="sayText()">🗣 Say</button>
+        </div>
+        <div id="ca_resp2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== OPERATOR ===================== -->
+  <section class="view" data-view="operator">
+    <div class="card">
+      <h2><span class="num">5</span>Operator ekrani</h2>
+      <p class="hint">GET /api/operator/calls/{channelId} — o'tkazilgan qo'ng'iroqning jonli konteksti. Avtomatik poll qilinadi.</p>
+      <div class="inline">
+        <div><label>channelId</label><input id="op_chid" placeholder="faol qo'ng'iroq channelId"></div>
+        <button class="btn" onclick="opFetch()">Yuklash</button>
+        <button class="btn sec" id="op_pollBtn" onclick="opTogglePoll()">⏱ Auto-poll: OFF</button>
+      </div>
+    </div>
+
+    <div class="grid cols2" id="op_body" style="display:none">
+      <div class="card">
+        <h2>Mijoz konteksti</h2>
+        <div id="op_facts"></div>
+        <div style="margin-top:14px">
+          <span class="muted" style="font-size:12px">Joriy holat:</span>
+          <span class="pill IN_PROGRESS" id="op_state">—</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Suhbat (transkript)</h2>
+        <div class="chat" id="op_chat"><div class="empty">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LOG ===================== -->
+  <section class="view" data-view="log">
+    <div class="card">
+      <h2>Event log</h2>
+      <p class="hint">Barcha API chaqiruvlari shu yerda qayd etiladi</p>
+      <button class="btn sec sm" onclick="document.getElementById('log').innerHTML=''">Tozalash</button>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const base = () => $('baseUrl').value.replace(/\/$/,'');
+
+/* ---------- tabs ---------- */
+const TABS = [
+  ['flow','Umumiy oqim'],['campaign','1 · Kampaniya'],['targets','2 · Nishonlar'],
+  ['call','3 · Qo\'ng\'iroq'],['operator','5 · Operator'],['log','Log']
+];
+const nav = $('nav');
+TABS.forEach(([v,label],i)=>{
+  const b=document.createElement('button');
+  b.textContent=label; b.className=i===0?'active':'';
+  b.onclick=()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.querySelector(`.view[data-view="${v}"]`).classList.add('active');
+  };
+  nav.appendChild(b);
+});
+
+/* ---------- logging ---------- */
+function log(msg,kind='info'){
+  const el=$('log'); const d=document.createElement('div'); d.className='l';
+  const t=new Date().toLocaleTimeString();
+  d.innerHTML=`<span class="t">${t}</span><span class="m ${kind}">${esc(msg)}</span>`;
+  el.prepend(d);
+}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+/* ---------- fetch wrapper + response viewer ---------- */
+async function api(method,path,{body,query}={}){
+  let url=base()+path;
+  if(query){const q=new URLSearchParams(query).toString(); url+=(url.includes('?')?'&':'?')+q;}
+  const opts={method,headers:{}};
+  if(body!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+  log(`${method} ${path}`,'info');
+  const res=await fetch(url,opts);
+  let data; const txt=await res.text();
+  try{data=txt?JSON.parse(txt):null;}catch{data=txt;}
+  log(`← ${res.status} ${path}`, res.ok?'ok':'bad');
+  return {ok:res.ok,status:res.status,data};
+}
+function showResp(elId,r){
+  const el=$(elId);
+  const body=typeof r.data==='string'?r.data:JSON.stringify(r.data,null,2);
+  el.innerHTML=`<div class="resp"><div class="rhead">
+    <span class="code ${r.ok?'ok':'bad'}">${r.status}</span> javob</div>
+    <pre>${esc(body||'(bo\'sh)')}</pre></div>`;
+}
+function errResp(elId,e){
+  $(elId).innerHTML=`<div class="resp"><div class="rhead"><span class="code bad">ERR</span></div>
+    <pre>${esc(e.message)}\n\nAPI ishga tushganmi? Base URL to'g'rimi?</pre></div>`;
+  log('Xato: '+e.message,'bad');
+}
+
+/* ---------- connection check ---------- */
+async function checkConn(){
+  try{
+    const res=await fetch(base()+'/api/campaigns');
+    setConn(res.ok);
+  }catch{ setConn(false); }
+}
+function setConn(ok){
+  $('connDot').className='dot '+(ok?'ok':'bad');
+  $('connText').textContent=ok?'ulangan':'ulanmagan';
+}
+$('baseUrl').addEventListener('change',checkConn);
+
+/* ================= CAMPAIGN ================= */
+async function createCampaign(){
+  const body={
+    name:$('c_name').value, type:$('c_type').value, goalPrompt:$('c_goal').value,
+    defaultLanguage:$('c_lang').value, dialWindowStart:$('c_ws').value+':00',
+    dialWindowEnd:$('c_we').value+':00', maxAttempts:+$('c_max').value,
+    retryIntervalHours:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value
+  };
+  try{
+    const r=await api('POST','/api/campaigns',{body}); showResp('c_resp',r);
+    if(r.ok&&r.data?.id){ $('t_camp').value=r.data.id; $('t_listId').value=r.data.id; loadCampaigns(); }
+  }catch(e){errResp('c_resp',e);}
+}
+async function loadCampaigns(){
+  try{
+    const r=await api('GET','/api/campaigns');
+    const list=$('campList');
+    if(!r.ok){list.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    if(!r.data||!r.data.length){list.innerHTML='<div class="empty">Kampaniya yo\'q</div>';return;}
+    list.innerHTML=`<table><thead><tr><th>ID</th><th>Nomi</th><th>Til</th><th>Holat</th><th>Amal</th></tr></thead><tbody>${
+      r.data.map(c=>`<tr>
+        <td class="mono">${c.id}</td><td>${esc(c.name)}</td><td class="mono">${c.defaultLanguage}</td>
+        <td><span class="pill ${c.status}">${c.status}</span></td>
+        <td>
+          <button class="btn green sm" onclick="campAction(${c.id},'start')">Start</button>
+          <button class="btn sec sm" onclick="campAction(${c.id},'pause')">Pause</button>
+        </td></tr>`).join('')}</tbody></table>`;
+  }catch(e){errResp('c_resp',e);}
+}
+async function campAction(id,act){
+  try{ await api('POST',`/api/campaigns/${id}/${act}`); loadCampaigns(); }
+  catch(e){log('Xato: '+e.message,'bad');}
+}
+
+/* ================= TARGETS ================= */
+async function addTarget(){
+  const camp=$('t_camp').value;
+  if(!camp){alert('Kampaniya ID kiriting');return;}
+  let ctx;
+  try{ctx=JSON.parse($('t_ctx').value);}catch{alert('contextData JSON xato');return;}
+  const body=[{clientId:+$('t_client').value, phone:$('t_phone').value,
+    language:$('t_lang').value||null, contextData:ctx}];
+  try{
+    const r=await api('POST',`/api/campaigns/${camp}/targets`,{body}); showResp('t_resp',r);
+    if(r.ok){$('t_listId').value=camp; loadTargets();}
+  }catch(e){errResp('t_resp',e);}
+}
+async function loadTargets(){
+  const id=$('t_listId').value; if(!id){alert('Kampaniya ID kiriting');return;}
+  try{
+    const r=await api('GET',`/api/campaigns/${id}/targets`);
+    const list=$('targetList');
+    if(!r.ok){list.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    if(!r.data||!r.data.length){list.innerHTML='<div class="empty">Nishon yo\'q</div>';return;}
+    list.innerHTML=`<table><thead><tr><th>ID</th><th>Telefon</th><th>Til</th><th>Holat</th><th>Urinish</th><th>DNC</th><th></th></tr></thead><tbody>${
+      r.data.map(t=>`<tr>
+        <td class="mono">${t.id}</td><td class="mono">${esc(t.phone)}</td>
+        <td class="mono">${t.language||'—'}</td>
+        <td><span class="pill ${t.status}">${t.status}</span></td>
+        <td class="mono">${t.attempts}</td>
+        <td>${t.doNotCall?'🚫':'—'}</td>
+        <td><button class="btn danger sm" onclick="dnc(${t.id})">Do-not-call</button></td>
+      </tr>`).join('')}</tbody></table>`;
+  }catch(e){log('Xato: '+e.message,'bad');}
+}
+async function dnc(id){
+  try{ await api('POST',`/api/targets/${id}/do-not-call`); loadTargets(); }
+  catch(e){log('Xato: '+e.message,'bad');}
+}
+
+/* ================= CALL ================= */
+async function originate(){
+  try{
+    const r=await api('POST','/api/calls',{query:{number:$('ca_num').value}});
+    showResp('ca_resp',r);
+    if(r.ok&&r.data?.channelId){
+      const ch=r.data.channelId;
+      $('ca_chid').textContent=ch; $('ca_channel').style.display='block';
+      $('ca_chinput').value=ch; $('op_chid').value=ch;
+    }
+  }catch(e){errResp('ca_resp',e);}
+}
+async function playWav(){
+  const ch=$('ca_chinput').value; if(!ch){alert('channelId kerak');return;}
+  try{const r=await api('POST',`/api/calls/${encodeURIComponent(ch)}/play`,{query:{file:$('ca_wav').value}});
+    showResp('ca_resp2',r);}catch(e){errResp('ca_resp2',e);}
+}
+async function sayText(){
+  const ch=$('ca_chinput').value; if(!ch){alert('channelId kerak');return;}
+  try{const r=await api('POST',`/api/calls/${encodeURIComponent(ch)}/say`,
+    {query:{text:$('ca_text').value,language:$('ca_saylang').value}});
+    showResp('ca_resp2',r);}catch(e){errResp('ca_resp2',e);}
+}
+
+/* ================= OPERATOR ================= */
+let opTimer=null;
+async function opFetch(){
+  const ch=$('op_chid').value; if(!ch){alert('channelId kerak');return;}
+  try{
+    const r=await api('GET',`/api/operator/calls/${encodeURIComponent(ch)}`);
+    if(r.status===404){$('op_body').style.display='none';log('Snapshot topilmadi (404)','bad');return;}
+    if(!r.ok)return;
+    const s=r.data; $('op_body').style.display='grid';
+    $('op_facts').innerHTML=`
+      <div class="kv"><span>Ism</span><span>${esc(s.clientName||'—')}</span></div>
+      <div class="kv"><span>Qarz</span><span class="mono">${esc(s.debtAmount||'—')} ${esc(s.currency||'')}</span></div>
+      <div class="kv"><span>Muddat</span><span class="mono">${esc(s.dueDate||'—')}</span></div>
+      <div class="kv"><span>Shartnoma</span><span class="mono">${esc(s.contractNumber||'—')}</span></div>
+      <div class="kv"><span>channelId</span><span class="mono">${esc(s.channelId||'—')}</span></div>`;
+    $('op_state').textContent=s.dialogState||'—';
+    highlightFsm(s.dialogState);
+    renderTranscript(s.transcript);
+  }catch(e){log('Xato: '+e.message,'bad');}
+}
+function renderTranscript(tr){
+  const chat=$('op_chat');
+  if(!tr){chat.innerHTML='<div class="empty">—</div>';return;}
+  const lines=tr.split('\n').filter(x=>x.trim());
+  chat.innerHTML=lines.map(l=>{
+    const m=l.match(/^\s*(AGENT|CLIENT)\s*:\s*(.*)$/i);
+    if(!m)return `<div class="msg AGENT"><div class="who">?</div>${esc(l)}</div>`;
+    const role=m[1].toUpperCase();
+    return `<div class="msg ${role}"><div class="who">${role==='AGENT'?'🤖 Bot':'👤 Mijoz'}</div>${esc(m[2])}</div>`;
+  }).join('');
+  chat.scrollTop=chat.scrollHeight;
+}
+function opTogglePoll(){
+  const btn=$('op_pollBtn');
+  if(opTimer){clearInterval(opTimer);opTimer=null;btn.textContent='⏱ Auto-poll: OFF';btn.classList.add('sec');}
+  else{opFetch();opTimer=setInterval(opFetch,2000);btn.textContent='⏱ Auto-poll: ON';btn.classList.remove('sec');}
+}
+function highlightFsm(state){
+  document.querySelectorAll('#fsm .fnode').forEach(n=>
+    n.classList.toggle('active', n.dataset.s===state));
+}
+
+/* ---------- init ---------- */
+checkConn();
+log('Test paneli yuklandi','ok');
+</script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+# Local infrastructure for the uysot-voice project (PROJECT.md §2, §10 Stage 0).
+# Credentials come from .env (see .env.example). Defaults are dev-only.
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: uysot-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-uysot_voice}
+      POSTGRES_USER: ${DB_USER:-uysot}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-uysot}
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18+ requires the mount at /var/lib/postgresql (not .../data) —
+      # the image stores data in a version-specific subdir (18/docker) so that
+      # `pg_upgrade --link` works. Mounting .../data makes the entrypoint abort.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-uysot} -d ${DB_NAME:-uysot_voice}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: uysot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: uysot-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-uysot}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-uysot}
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: uysot-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-uysot}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-uysot-secret}
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # Asterisk 20 LTS. Config lives in ./asterisk/etc/asterisk (mounted read-write).
+  # SIP (5060/udp) + RTP (10000-10200/udp) + ARI HTTP (8088/tcp).
+  #
+  # NOTE on networking: SIP/RTP work best with host networking (Linux). On
+  # Docker Desktop (Windows/Mac) `network_mode: host` is limited — for real
+  # call testing run Asterisk on a Linux host/VM or the target server. The
+  # explicit port mappings below let ARI (8088) and SIP work in bridge mode
+  # for local ARI development even where host mode is unavailable.
+  asterisk:
+    image: andrius/asterisk:20
+    container_name: uysot-asterisk
+    environment:
+      TZ: ${TZ:-Asia/Tashkent}   # so Asterisk log timestamps match the app's
+    volumes:
+      - ./asterisk/etc/asterisk:/etc/asterisk
+    ports:
+      - "5060:5060/udp"           # SIP
+      - "8088:8088/tcp"           # ARI / HTTP (WebSocket)
+      - "10000-10200:10000-10200/udp"  # RTP media
+    restart: unless-stopped
+    # For Linux hosts, prefer host networking instead of the port mappings above:
+    # network_mode: host
+
+  # The voice-agent app. Running it here (same Docker network as Asterisk) is what
+  # makes externalMedia RTP work on Docker Desktop (Windows/Mac): Asterisk sends
+  # media to RTP_LOCAL_IP=app (this service's DNS name), container-to-container —
+  # no host networking required. Provide credentials via .env / the mounts below.
+  app:
+    build: .
+    container_name: uysot-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      asterisk:
+        condition: service_started
+    environment:
+      # The dialer's dial window (campaign.dial_window_start/end) is compared
+      # against LocalTime.now() — without this the container runs in UTC and a
+      # 09:00–20:00 window silently means 14:00–01:00 Tashkent time.
+      TZ: ${TZ:-Asia/Tashkent}
+      # In-network service hostnames (override the localhost defaults).
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-uysot_voice}
+      DB_USER: ${DB_USER:-uysot}
+      DB_PASSWORD: ${DB_PASSWORD:-uysot}
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-uysot}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-uysot}
+      ARI_URL: http://asterisk:8088/
+      ARI_USER: ${ARI_USER:-uysot}
+      ARI_PASSWORD: ${ARI_PASSWORD:-CHANGE_ME_ARI_PASSWORD}
+      # Asterisk sends the caller's audio (externalMedia RTP) to this address.
+      RTP_LOCAL_IP: app
+      MINIO_ENDPOINT: http://minio:9000
+      STORAGE_ENABLED: ${STORAGE_ENABLED:-false}
+      # Credentials (see .env.example). Default provider is Yandex (no Google file
+      # needed). For Google STT/TTS, uncomment GOOGLE_APPLICATION_CREDENTIALS below
+      # AND the gcp.json mount.
+      # GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp.json
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_BASE_URL: ${GEMINI_API_BASE_URL:-}
+      # Model ids must match what the proxy exposes (GET {base-url}/v1/models).
+      LLM_DIALOG_MODEL: ${LLM_DIALOG_MODEL:-gemini/gemini-2.5-flash}
+      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemini/gemini-2.5-pro}
+      STT_PROVIDER: ${STT_PROVIDER:-yandex}
+      TTS_PROVIDER: ${TTS_PROVIDER:-yandex}
+      STT_YANDEX_API_KEY: ${STT_YANDEX_API_KEY:-}
+      STT_YANDEX_FOLDER_ID: ${STT_YANDEX_FOLDER_ID:-}
+      TTS_YANDEX_API_KEY: ${TTS_YANDEX_API_KEY:-}
+      TTS_YANDEX_FOLDER_ID: ${TTS_YANDEX_FOLDER_ID:-}
+      TTS_YANDEX_VOICE: ${TTS_YANDEX_VOICE:-alena}
+      TTS_YANDEX_VOICE_UZ: ${TTS_YANDEX_VOICE_UZ:-nigora}
+      # Dialer/dialog defaults can be overridden here too, e.g.:
+      # DIALOG_LANGUAGE: ru-RU
+      # STT_DEFAULT_LANGUAGE: ru-RU
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./recordings:/app/recordings
+      # For Google STT/TTS: uncomment and point GOOGLE_CREDS_PATH (.env) at your
+      # service-account JSON. (Leave commented when using Yandex.)
+      # - ${GOOGLE_CREDS_PATH:-./gcp.json}:/run/secrets/gcp.json:ro
+    restart: unless-stopped
+
+  # --- Observability (Stage 12) — commented out; not needed for local dev. ---
+  # Uncomment to scrape /actuator/prometheus and visualize in Grafana. The app
+  # runs on the host, so Prometheus scrapes host.docker.internal:8080.
+  #
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: uysot-prometheus
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #   ports:
+  #     - "9090:9090"
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: uysot-grafana
+  #   environment:
+  #     GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+  #     GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafanadata:/var/lib/grafana
+  #   depends_on:
+  #     - prometheus
+  #
+  # A starter monitoring/prometheus.yml:
+  #   global:
+  #     scrape_interval: 15s
+  #   scrape_configs:
+  #     - job_name: uysot-voice
+  #       metrics_path: /actuator/prometheus
+  #       static_configs:
+  #         - targets: ["host.docker.internal:8080"]
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitmqdata:
+  miniodata:
+  # grafanadata:

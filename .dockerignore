@@ -1,0 +1,8 @@
+.git
+.gitignore
+.idea
+*.iml
+build
+recordings
+docs
+.env

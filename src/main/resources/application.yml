@@ -1,0 +1,219 @@
+spring:
+  application:
+    name: uysot-voice
+
+  # Wait up to this long for @PreDestroy (call draining, §12) during shutdown.
+  lifecycle:
+    timeout-per-shutdown-phase: 90s
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/uysot_voice}
+    username: ${DB_USER:uysot}
+    password: ${DB_PASSWORD:uysot}
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:uysot}
+    password: ${RABBITMQ_PASSWORD:uysot}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  ai:
+    openai:
+      # Gemini via an OpenAI-compatible proxy (token tracking). Point base-url at
+      # the proxy; it forwards to Gemini's OpenAI-compatible endpoint.
+      api-key: ${GEMINI_API_KEY:}
+      base-url: ${GEMINI_API_BASE_URL:}
+      chat:
+        options:
+          # Fast model for the conversation (PROJECT.md §2.6). The Stage 9 summary
+          # calls a stronger model explicitly (voice-agent.summary.model).
+          # NOTE: the aigw proxy (LiteLLM) expects provider-prefixed ids —
+          # "gemini/gemini-2.5-flash", not "gemini-2.5-flash" (HTTP 400 otherwise).
+          # `GET {base-url}/v1/models` lists what your key may use.
+          model: ${LLM_DIALOG_MODEL:gemini/gemini-2.5-flash}
+          max-tokens: 512
+          temperature: 0.3
+
+voice-agent:
+  asterisk:
+    enabled: ${ASTERISK_ENABLED:true}
+    # ari4java needs the HTTP base URL (not ws://). It derives the WebSocket itself.
+    ari-url: ${ARI_URL:http://localhost:8088/}
+    ari-user: ${ARI_USER:uysot}
+    ari-password: ${ARI_PASSWORD:CHANGE_ME_ARI_PASSWORD}
+    app-name: ${ARI_APP:uysot-voice-agent}
+    trunk-endpoint: ${TRUNK_ENDPOINT:trunk-endpoint}
+    caller-id: ${CALLER_ID:}
+    answer-timeout-sec: 30
+  rtp:
+    # Address Asterisk sends RTP to. Must be reachable FROM Asterisk:
+    #  - all local (Asterisk on host): 127.0.0.1
+    #  - Asterisk in Docker, app on host: host.docker.internal (or the host LAN IP)
+    local-ip: ${RTP_LOCAL_IP:127.0.0.1}
+    port-range-start: 20000
+    port-range-end: 20500
+    recording-dir: ${RTP_RECORDING_DIR:recordings}
+    # Optional: 8 kHz mono 16-bit WAV auto-played to the caller on answer (Stage 4 test).
+    test-playback-file: ${RTP_TEST_PLAYBACK_FILE:}
+  stt:
+    enabled: ${STT_ENABLED:true}
+    # Active STT provider: yandex (default) or google. SpeechKit v3 recognises both
+    # uz-UZ (Latin script) and ru-RU.
+    provider: ${STT_PROVIDER:yandex}
+    default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
+    google:
+      # Leave model blank for uz-UZ (phone_call is English/Russian-centric and may
+      # not support Uzbek). Set to phone_call for ru-RU if desired.
+      model: ${STT_MODEL:}
+      sample-rate: 8000
+      enable-punctuation: true
+      endpointing-silence-ms: 600
+    yandex:
+      # v3 streaming (gRPC bidirectional). Supports uz-UZ and ru-RU. Needs an API key
+      # (folder id optional with an API key).
+      api-key: ${STT_YANDEX_API_KEY:}
+      folder-id: ${STT_YANDEX_FOLDER_ID:}
+      host: ${STT_YANDEX_HOST:stt.api.cloud.yandex.net}
+      port: ${STT_YANDEX_PORT:443}
+      sample-rate: 8000
+      # Recognition model; blank = server default. "general" works for uz-UZ/ru-RU.
+      model: ${STT_YANDEX_MODEL:general}
+      interim-results: ${STT_YANDEX_INTERIM:true}
+  tts:
+    enabled: ${TTS_ENABLED:true}
+    # Preferred provider: yandex (default) or google. Used first when it supports the
+    # language; falls back by support (a language with no Yandex voice → Google).
+    provider: ${TTS_PROVIDER:yandex}
+    default-language: ${TTS_DEFAULT_LANGUAGE:uz-UZ}
+    google:
+      enabled: ${TTS_GOOGLE_ENABLED:true}
+      sample-rate: 8000
+      speaking-rate: ${TTS_GOOGLE_RATE:1.0}
+      pitch: ${TTS_GOOGLE_PITCH:0.0}
+      # Optional per-language voice names; blank -> Google's default voice for the
+      # language. ⚠️ Listen to the uz-UZ voice before MVP (§2.5).
+      # An empty key here would bind as "" and fail; use {} (or list entries below).
+      voices: {}
+#         uz-UZ: uz-UZ  -Standard-A
+#         ru-RU: ru-RU-Standard-A
+    yandex:
+      # Natural ru-RU voice. On by default (preferred provider); needs an API key.
+      enabled: ${TTS_YANDEX_ENABLED:true}
+      api-key: ${TTS_YANDEX_API_KEY:}
+      folder-id: ${TTS_YANDEX_FOLDER_ID:}
+      voice: ${TTS_YANDEX_VOICE:alena}
+      # Per-language voices. Each language needs its own voice — a ru-RU voice cannot
+      # speak Uzbek text. Uzbek: nigora. A language with no entry (and not ru-*) is
+      # reported unsupported, so the router falls back to Google.
+      voices:
+        uz-UZ: ${TTS_YANDEX_VOICE_UZ:nigora}
+      emotion: ${TTS_YANDEX_EMOTION:neutral}
+      api-url: ${TTS_YANDEX_API_URL:https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize}
+      sample-rate: 8000
+  dialog:
+    enabled: ${DIALOG_ENABLED:true}
+    # When true, the bot greets and drives the conversation on answer (Stage 7
+    # verification without a campaign/DB). Turn off once the dialer supplies calls.
+    auto-start: ${DIALOG_AUTO_START:true}
+    language: ${DIALOG_LANGUAGE:uz-UZ}
+    max-turns: ${DIALOG_MAX_TURNS:25}
+    max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
+    # Placeholder debtor facts until campaign targets exist (Stage 10). FACTS —
+    # never generated by the LLM (§4.4).
+    test-context:
+      client-name: ${DIALOG_CLIENT_NAME:Aziz Karimov}
+      debt-amount: ${DIALOG_DEBT_AMOUNT:1500000}
+      currency: ${DIALOG_CURRENCY:so'm}
+      due-date: ${DIALOG_DUE_DATE:2026-07-01}
+      contract-number: ${DIALOG_CONTRACT:UY-2026-00123}
+      goal: ${DIALOG_GOAL:To'lanmagan qarz bo'yicha to'lov sanasini kelishish.}
+  vad:
+    # Barge-in via Silero VAD (§7.2). Needs silero_vad.onnx; without it, VAD is
+    # off and the bot cannot be interrupted (rest of the pipeline still works).
+    enabled: ${VAD_ENABLED:true}
+    model-path: ${VAD_MODEL_PATH:}
+    sample-rate: 8000
+    window-samples: 256
+    threshold: ${VAD_THRESHOLD:0.5}
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:200}
+    silence-reset-ms: ${VAD_SILENCE_RESET_MS:400}
+  summary:
+    # Post-call structured summary (§4.3). Uses a stronger model than the dialog.
+    enabled: ${SUMMARY_ENABLED:true}
+    model: ${SUMMARY_MODEL:gemini/gemini-2.5-pro}
+  storage:
+    # Upload call recordings to MinIO/S3. Off by default (recordings stay local).
+    enabled: ${STORAGE_ENABLED:false}
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_USER:uysot}
+    secret-key: ${MINIO_PASSWORD:uysot-secret}
+    bucket: ${MINIO_BUCKET:recordings}
+  crm:
+    # Write the summary back to Uysot CRM as a note. Off until configured.
+    enabled: ${CRM_ENABLED:false}
+    base-url: ${CRM_BASE_URL:}
+    api-token: ${CRM_API_TOKEN:}
+    note-path: ${CRM_NOTE_PATH:api/notes}
+  dialer:
+    # Scheduled outbound dialer (Stage 10). Scans ACTIVE campaigns and dispatches
+    # due targets via RabbitMQ, bounded by dispatch-batch (rate) and concurrency.
+    enabled: ${DIALER_ENABLED:true}
+    tick-seconds: ${DIALER_TICK_SECONDS:5}
+    dispatch-batch: ${DIALER_DISPATCH_BATCH:3}
+    max-concurrent-calls: ${DIALER_MAX_CONCURRENT:5}
+    reclaim-after-sec: ${DIALER_RECLAIM_AFTER_SEC:60}
+  operator:
+    # Human-operator transfer (§11.6). endpoint is a direct agent (PJSIP/operator)
+    # or the queue via a Local channel (Local/support@operators — see queues.conf).
+    enabled: ${OPERATOR_ENABLED:true}
+    endpoint: ${OPERATOR_ENDPOINT:Local/support@operators}
+    answer-timeout-sec: ${OPERATOR_ANSWER_TIMEOUT:30}
+  routing:
+    # Sticky routing (§5.1): call_id -> instance_id in Redis. Blank id -> hostname.
+    instance-id: ${INSTANCE_ID:}
+    ttl-minutes: ${ROUTING_TTL_MINUTES:30}
+  shutdown:
+    # Seconds to let active calls finish before the app stops (§12).
+    drain-timeout-sec: ${SHUTDOWN_DRAIN_TIMEOUT:60}
+  alerting:
+    # Alert when the recent call success rate (promise-to-pay) drops below threshold.
+    enabled: ${ALERTING_ENABLED:true}
+    window-minutes: ${ALERTING_WINDOW_MINUTES:30}
+    min-sample: ${ALERTING_MIN_SAMPLE:20}
+    success-threshold: ${ALERTING_SUCCESS_THRESHOLD:0.3}
+    check-minutes: ${ALERTING_CHECK_MINUTES:5}
+
+server:
+  port: 8080
+  # Let in-flight HTTP requests finish; the drain manager handles active calls (§12).
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: uysot-voice
