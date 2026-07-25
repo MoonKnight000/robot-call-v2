@@ -12,6 +12,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param ariPassword      ARI password (ari.conf)
  * @param appName          Stasis application name registered with Asterisk
  * @param trunkEndpoint    PJSIP endpoint used for outbound calls (pjsip.conf)
+ * @param localEndpoint    PJSIP endpoint used for numbers matching {@code localNumberPattern} —
+ *                         a registered test softphone. Lets the same originate path be
+ *                         exercised for free (dial 600) without burning trunk minutes.
+ *                         Blank disables local routing: everything goes to the trunk.
+ * @param localNumberPattern regex; a number matching it is dialled via {@code localEndpoint}
+ *                         instead of the trunk. Default {@code \d{3,4}} — internal
+ *                         extensions are short, real subscriber numbers are not.
  * @param callerId         caller id presented to the callee; blank to leave unset
  * @param answerTimeoutSec seconds to wait for the callee to answer
  */
@@ -23,6 +30,8 @@ public record AsteriskProperties(
         String ariPassword,
         String appName,
         String trunkEndpoint,
+        String localEndpoint,
+        String localNumberPattern,
         String callerId,
         int answerTimeoutSec
 ) {

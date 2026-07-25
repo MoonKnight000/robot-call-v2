@@ -61,6 +61,16 @@ voice-agent:
     ari-password: ${ARI_PASSWORD:CHANGE_ME_ARI_PASSWORD}
     app-name: ${ARI_APP:uysot-voice-agent}
     trunk-endpoint: ${TRUNK_ENDPOINT:trunk-endpoint}
+    # Number-based endpoint routing. A number matching local-number-pattern is
+    # dialled through local-endpoint (the registered test softphone) instead of the
+    # trunk — so POST /api/calls?number=600 rings your softphone and exercises the
+    # exact same outbound path as a real call, for free. Real subscriber numbers
+    # (998...) do not match and go out over the trunk as usual.
+    # Set local-endpoint to empty to disable and always use the trunk.
+    local-endpoint: ${LOCAL_ENDPOINT:softphone}
+    # 3-4 digits = internal extension. Written without {n,m} on purpose: a closing
+    # brace inside a ${...:default} would terminate the placeholder early.
+    local-number-pattern: ${LOCAL_NUMBER_PATTERN:\d\d\d\d?}
     caller-id: ${CALLER_ID:}
     answer-timeout-sec: 30
   rtp:

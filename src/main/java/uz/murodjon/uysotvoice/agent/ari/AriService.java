@@ -171,17 +171,21 @@ public class AriService {
     }
 
     /**
-     * Places an outbound call to {@code number} through the configured trunk and
-     * routes it into the Stasis app.
+     * Places an outbound call to {@code number} and routes it into the Stasis app.
+     *
+     * <p>The number decides which PJSIP endpoint carries the call: short internal
+     * numbers go to the local test softphone, everything else to the trunk. See
+     * {@link #endpointFor(String)}.
      *
      * @return the created channel id
      */
     public String originate(String number) {
         ARI current = requireConnection();
         String callId = "call-" + System.currentTimeMillis();
+        String endpoint = endpointFor(number);
         try {
             var request = current.channels()
-                    .originate("PJSIP/" + number + "@" + props.trunkEndpoint())
+                    .originate("PJSIP/" + number + "@" + endpoint)
                     .setApp(props.appName())
                     .setAppArgs(callId)
                     .setTimeout(props.answerTimeoutSec());
@@ -189,11 +193,28 @@ public class AriService {
                 request.setCallerId(props.callerId());
             }
             Channel channel = request.execute();
-            log.info("Originated call {} to {} -> channel {}", callId, number, channel.getId());
+            log.info("Originated call {} to {} via {} -> channel {}", callId, number, endpoint, channel.getId());
             return channel.getId();
         } catch (Exception e) {
-            throw new IllegalStateException("Originate to " + number + " failed: " + e.getMessage(), e);
+            throw new IllegalStateException("Originate to " + number + " via " + endpoint
+                    + " failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Chooses the PJSIP endpoint for {@code number}: the local test softphone when the
+     * number looks internal (matches {@code localNumberPattern}), otherwise the trunk.
+     * Local routing is skipped entirely when either property is left blank.
+     */
+    private String endpointFor(String number) {
+        String local = props.localEndpoint();
+        String pattern = props.localNumberPattern();
+        if (local != null && !local.isBlank()
+                && pattern != null && !pattern.isBlank()
+                && number != null && number.matches(pattern)) {
+            return local;
+        }
+        return props.trunkEndpoint();
     }
 
     /**

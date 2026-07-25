@@ -85,9 +85,10 @@ services:
     volumes:
       - ./asterisk/etc/asterisk:/etc/asterisk
     ports:
-      - "5060:5060/udp"           # SIP
+      - "5060:5060/udp"           # SIP - trunk side  (transport-trunk)
+      - "5062:5062/udp"           # SIP - LAN side    (transport-lan, softphone)
       - "8088:8088/tcp"           # ARI / HTTP (WebSocket)
-      - "10000-10200:10000-10200/udp"  # RTP media
+      - "10000-10200:10000-10200/udp"  # RTP media (shared by both transports)
     restart: unless-stopped
     # For Linux hosts, prefer host networking instead of the port mappings above:
     # network_mode: host
