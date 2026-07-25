@@ -382,6 +382,9 @@ public class AriService {
                     .setEncapsulation("rtp")
                     .setTransport("udp")
                     .execute();
+            // Learn where to send our TTS without waiting for the caller's audio
+            // (a silent inbound leg would otherwise leave us with no peer).
+            pointPlaybackAt(current, extMedia.getId(), endpoint);
 
             Bridge bridge = current.bridges().create().setType("mixing").execute();
             current.bridges().addChannel(bridge.getId(), channelId + "," + extMedia.getId()).execute();
@@ -415,6 +418,30 @@ public class AriService {
             }
             portAllocator.release(port);
             hangup(channelId);
+        }
+    }
+
+    /**
+     * Tell {@code endpoint} which socket Asterisk opened for the externalMedia
+     * channel, so playback works even before (or without) inbound audio.
+     * Asterisk exposes it on the UnicastRTP channel as UNICASTRTP_LOCAL_ADDRESS /
+     * UNICASTRTP_LOCAL_PORT. Best-effort: symmetric-RTP discovery remains the
+     * fallback if the variables are missing (older Asterisk).
+     */
+    private void pointPlaybackAt(ARI current, String extMediaChannelId, RtpEndpoint endpoint) {
+        try {
+            String host = current.channels().getChannelVar(extMediaChannelId, "UNICASTRTP_LOCAL_ADDRESS")
+                    .execute().getValue();
+            String port = current.channels().getChannelVar(extMediaChannelId, "UNICASTRTP_LOCAL_PORT")
+                    .execute().getValue();
+            if (host == null || host.isBlank() || port == null || port.isBlank()) {
+                log.warn("externalMedia {} did not report UNICASTRTP_LOCAL_ADDRESS/PORT; "
+                        + "playback will wait for inbound RTP", extMediaChannelId);
+                return;
+            }
+            endpoint.setRemote(new java.net.InetSocketAddress(host.trim(), Integer.parseInt(port.trim())));
+        } catch (Exception e) {
+            log.warn("Could not read UNICASTRTP_LOCAL_ADDRESS/PORT for {}: {}", extMediaChannelId, e.getMessage());
         }
     }
 

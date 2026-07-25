@@ -41,7 +41,10 @@ public class DialogTools {
             @ToolParam(description = "qo'shimcha izoh", required = false) String note) {
         // Guardrail: never accept a promise in the past (§4.4).
         if (promisedDate != null && promisedDate.isBefore(LocalDate.now())) {
-            return "XATO: sana o'tmishda bo'lishi mumkin emas. Mijozdan kelajakdagi aniq sanani so'rang.";
+            // Name today's date: the usual cause is a wrong year, and without it the
+            // model has nothing to correct against and re-sends the same date.
+            return "XATO: " + promisedDate + " o'tmishda. Bugun " + LocalDate.now()
+                    + ". Sanani shundan hisoblab qaytadan yuboring yoki mijozdan aniq sanani so'rang.";
         }
         session.setPromisedDate(promisedDate);
         session.setPromisedAmount(amount);

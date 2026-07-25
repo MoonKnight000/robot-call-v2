@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
 
+import java.time.LocalDate;
+
 /**
  * Produces the structured {@link CallSummary} from a finished call's transcript
  * (PROJECT.md §4.3). A single LLM call with a stronger model (Sonnet — quality
@@ -29,6 +31,8 @@ public class SummaryService {
             - summary: 2-3 jumlada CRM uchun qisqacha xulosa (o'zbekcha).
             - reasonCode: to'lanmaslik sababi (ma'lum bo'lmasa null).
             - promisedDate: va'da qilingan to'lov sanasi yyyy-MM-dd (bo'lmasa null).
+              Transkriptda nisbiy sana bo'lsa ("ertaga", "kelasi oyning 5-sanasi"),
+              uni BUGUNGI SANAdan hisoblang — yilni o'zingizdan to'qimang.
             - promisedAmount: va'da qilingan summa (bo'lmasa null).
             - sentiment: mijoz kayfiyati.
             - needsFollowUp: qayta qo'ng'iroq kerakmi.
@@ -39,15 +43,21 @@ public class SummaryService {
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final boolean enabled;
     private final String model;
+    private final String reasoningEffort;
+    private final int maxTokens;
 
     private volatile ChatClient chatClient;
 
     public SummaryService(ObjectProvider<ChatModel> chatModelProvider,
                           @Value("${voice-agent.summary.enabled:true}") boolean enabled,
-                          @Value("${voice-agent.summary.model:gemini-2.5-pro}") String model) {
+                          @Value("${voice-agent.summary.model:gemini-2.5-flash}") String model,
+                          @Value("${voice-agent.summary.reasoning-effort:low}") String reasoningEffort,
+                          @Value("${voice-agent.summary.max-tokens:2048}") int maxTokens) {
         this.chatModelProvider = chatModelProvider;
         this.enabled = enabled;
         this.model = model;
+        this.reasoningEffort = reasoningEffort;
+        this.maxTokens = maxTokens;
     }
 
     @PostConstruct
@@ -61,7 +71,7 @@ public class SummaryService {
             chatClient = ChatClient.create(cm);
             log.info("Summary service ready (model={})", model);
         } else {
-            log.warn("Summary service has no LLM ChatModel (set GEMINI_API_KEY + GEMINI_API_BASE_URL); summaries disabled");
+            log.warn("Summary service has no LLM ChatModel (set GEMINI_API_KEY); summaries disabled");
         }
     }
 
@@ -71,9 +81,18 @@ public class SummaryService {
             return null;
         }
         try {
+            // Every field left unset here falls back to spring.ai.openai.chat.options
+            // (Spring AI merges runtime over defaults), and those defaults are tuned for
+            // the live phone turn: 512 tokens, thinking off. A structured summary wants
+            // the opposite — room for the JSON and some reasoning — so state both.
             return chatClient.prompt()
-                    .options(OpenAiChatOptions.builder().model(model).build())
-                    .system(SYSTEM_PROMPT)
+                    .options(OpenAiChatOptions.builder()
+                            .model(model)
+                            .maxTokens(maxTokens)
+                            .reasoningEffort(reasoningEffort)
+                            .build())
+                    // The transcript carries no year, so the date has to come from us.
+                    .system(SYSTEM_PROMPT + "\nBUGUNGI SANA: " + LocalDate.now() + ".")
                     .user(transcript)
                     .call()
                     .entity(CallSummary.class);

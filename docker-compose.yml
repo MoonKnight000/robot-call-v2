@@ -134,10 +134,13 @@ services:
       # AND the gcp.json mount.
       # GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp.json
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_API_BASE_URL: ${GEMINI_API_BASE_URL:-}
-      # Model ids must match what the proxy exposes (GET {base-url}/v1/models).
-      LLM_DIALOG_MODEL: ${LLM_DIALOG_MODEL:-gemini/gemini-2.5-flash}
-      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemini/gemini-2.5-pro}
+      # Gemini direct (no gateway). The fallbacks must spell out the real URL:
+      # an env var present-but-empty wins over the application.yml default.
+      GEMINI_API_BASE_URL: ${GEMINI_API_BASE_URL:-https://generativelanguage.googleapis.com}
+      GEMINI_COMPLETIONS_PATH: ${GEMINI_COMPLETIONS_PATH:-/v1beta/openai/chat/completions}
+      # Plain Gemini model ids — no provider prefix. gemini-2.5-pro needs a billed key.
+      LLM_DIALOG_MODEL: ${LLM_DIALOG_MODEL:-gemini-2.5-flash}
+      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemini-2.5-flash}
       STT_PROVIDER: ${STT_PROVIDER:-yandex}
       TTS_PROVIDER: ${TTS_PROVIDER:-yandex}
       STT_YANDEX_API_KEY: ${STT_YANDEX_API_KEY:-}

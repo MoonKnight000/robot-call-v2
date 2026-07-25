@@ -37,20 +37,33 @@ spring:
 
   ai:
     openai:
-      # Gemini via an OpenAI-compatible proxy (token tracking). Point base-url at
-      # the proxy; it forwards to Gemini's OpenAI-compatible endpoint.
+      # Gemini direct — Google's own OpenAI-compatible endpoint, no gateway in
+      # between (the old aigw proxy only resolved on the office wifi). The Spring AI
+      # OpenAI client stays as-is; only the URL and the model ids change.
+      # Auth is the plain Gemini API key sent as `Authorization: Bearer <key>`.
       api-key: ${GEMINI_API_KEY:}
-      base-url: ${GEMINI_API_BASE_URL:}
+      base-url: ${GEMINI_API_BASE_URL:https://generativelanguage.googleapis.com}
       chat:
+        # Google serves the compat layer under /v1beta/openai, so the default
+        # OpenAI path (/v1/chat/completions) would 404.
+        completions-path: ${GEMINI_COMPLETIONS_PATH:/v1beta/openai/chat/completions}
         options:
           # Fast model for the conversation (PROJECT.md §2.6). The Stage 9 summary
           # calls a stronger model explicitly (voice-agent.summary.model).
-          # NOTE: the aigw proxy (LiteLLM) expects provider-prefixed ids —
-          # "gemini/gemini-2.5-flash", not "gemini-2.5-flash" (HTTP 400 otherwise).
-          # `GET {base-url}/v1/models` lists what your key may use.
-          model: ${LLM_DIALOG_MODEL:gemini/gemini-2.5-flash}
+          # NOTE: plain Gemini ids here — no "gemini/" provider prefix (that was a
+          # LiteLLM gateway requirement). To list what the key may use:
+          #   curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"
+          model: ${LLM_DIALOG_MODEL:gemini-2.5-flash}
           max-tokens: 512
           temperature: 0.3
+          # Gemini 2.5 Flash thinks by default and those tokens are billed against
+          # max-tokens above, so thinking can eat the reply budget and hand the caller
+          # silence (see the "empty LLM reply" fallback in DialogEngine). Measured
+          # against this endpoint for a one-line greeting: default ≈220 thinking
+          # tokens, "low" ≈490 (!), "none" = 0. A live phone turn cannot afford that
+          # latency, and tool calling still picks the right tool with thinking off.
+          # Raise to "low"/"medium"/"high" only if reply quality actually suffers.
+          reasoning-effort: ${LLM_REASONING_EFFORT:none}
 
 voice-agent:
   asterisk:
@@ -166,9 +179,16 @@ voice-agent:
     min-speech-ms: ${VAD_MIN_SPEECH_MS:200}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:400}
   summary:
-    # Post-call structured summary (§4.3). Uses a stronger model than the dialog.
+    # Post-call structured summary (§4.3). §2.6 wants a stronger model here than the
+    # dialog uses, but gemini-2.5-pro is quota 0 on a free Gemini key (verified: every
+    # call 429s, and SummaryService swallows that into a null summary). Flash produces
+    # valid CallSummary JSON; switch back to gemini-2.5-pro once the key is on billing.
     enabled: ${SUMMARY_ENABLED:true}
-    model: ${SUMMARY_MODEL:gemini/gemini-2.5-pro}
+    model: ${SUMMARY_MODEL:gemini-2.5-flash}
+    # Set explicitly so the summary does not inherit the dialog's latency tuning
+    # (512 tokens / thinking off) — here quality matters and latency does not.
+    reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
+    max-tokens: ${SUMMARY_MAX_TOKENS:2048}
   storage:
     # Upload call recordings to MinIO/S3. Off by default (recordings stay local).
     enabled: ${STORAGE_ENABLED:false}

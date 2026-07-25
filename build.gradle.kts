@@ -71,9 +71,10 @@ dependencies {
     // HttpClient, so it needs no extra dependency. Abstracted behind TtsProvider.
     implementation("com.google.cloud:google-cloud-texttospeech:2.44.0")
 
-    // LLM dialog — Spring AI OpenAI starter pointed at a Gemini OpenAI-compatible
-    // endpoint (via proxy). Fast model for the conversation FSM, stronger model for
-    // the summary (Stage 9). Uses GEMINI_API_KEY + GEMINI_API_BASE_URL.
+    // LLM dialog — Spring AI OpenAI starter pointed straight at Gemini's own
+    // OpenAI-compatible endpoint (generativelanguage.googleapis.com/v1beta/openai),
+    // no gateway in between. Fast model for the conversation FSM, stronger model for
+    // the summary (Stage 9). Needs only GEMINI_API_KEY.
     implementation("org.springframework.ai:spring-ai-starter-model-openai")
 
     // VAD — Silero voice-activity model (ONNX) for barge-in (PROJECT.md §2.3, §7.2).

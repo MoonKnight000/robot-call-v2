@@ -52,6 +52,8 @@ public class RtpEndpoint implements Closeable {
 
     private volatile boolean running = true;
     private volatile InetSocketAddress remoteAddress;
+    /** True once {@link #remoteAddress} came from an actual inbound packet (symmetric RTP wins). */
+    private volatile boolean remoteLatched;
     private io.netty.channel.Channel channel;
     private Thread consumer;
 
@@ -73,8 +75,15 @@ public class RtpEndpoint implements Closeable {
                 .handler(new SimpleChannelInboundHandler<DatagramPacket>() {
                     @Override
                     protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket packet) {
-                        if (remoteAddress == null) {
-                            remoteAddress = packet.sender();
+                        if (!remoteLatched) {
+                            // Symmetric RTP: the address packets really come from beats
+                            // whatever Asterisk advertised (setRemote), so latch on it.
+                            InetSocketAddress sender = packet.sender();
+                            if (!sender.equals(remoteAddress)) {
+                                log.info("RTP peer on port {} latched to {}", port, sender);
+                            }
+                            remoteAddress = sender;
+                            remoteLatched = true;
                         }
                         ByteBuf content = packet.content();
                         byte[] data = new byte[content.readableBytes()];
@@ -91,6 +100,29 @@ public class RtpEndpoint implements Closeable {
 
     public int port() {
         return port;
+    }
+
+    /**
+     * Point outgoing RTP at {@code remote} before any packet has arrived from it.
+     *
+     * <p>Without this we can only discover the peer from its own traffic (symmetric
+     * RTP), which fails whenever the caller's audio never reaches Asterisk — e.g. a
+     * trunk behind CGNAT: the 2-party bridge has nothing to forward, the
+     * externalMedia channel stays silent, and the bot's TTS is dropped with
+     * "No RTP peer yet". Asterisk publishes the externalMedia socket it listens on
+     * as UNICASTRTP_LOCAL_ADDRESS/PORT, so we can send regardless of the inbound
+     * direction. An inbound packet from a different source still wins (see the
+     * read handler).
+     */
+    public void setRemote(InetSocketAddress remote) {
+        if (remote == null || remote.getAddress() == null || remote.getPort() <= 0) {
+            return;
+        }
+        if (remoteLatched) {
+            return; // real traffic already told us where the peer is
+        }
+        remoteAddress = remote;
+        log.info("RTP peer for port {} set to {} (from Asterisk)", port, remote);
     }
 
     /**

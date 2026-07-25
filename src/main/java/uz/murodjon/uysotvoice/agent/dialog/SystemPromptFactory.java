@@ -3,6 +3,9 @@ package uz.murodjon.uysotvoice.agent.dialog;
 import org.springframework.stereotype.Component;
 import uz.murodjon.uysotvoice.shared.dialog.DialogState;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+
 /**
  * Builds the per-turn system prompt from a session's facts and FSM state
  * (PROJECT.md §4.1, §4.4). Rebuilt every turn because the current state, its
@@ -18,6 +21,12 @@ public class SystemPromptFactory {
         sb.append("Siz \"Uysot\" kompaniyasining avtomatik qarz undirish ovozli agentisiz. ")
                 .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
                 .append(" tilida tabiiy suhbatlashasiz.\n\n");
+
+        // Without today's date the model invents a year for "kelasi oyning 5-sanasi",
+        // and recordPaymentPromise then rejects it as a past date (§4.4 guardrail).
+        LocalDate today = LocalDate.now();
+        sb.append("BUGUNGI SANA: ").append(today).append(" (").append(weekdayUz(today.getDayOfWeek()))
+                .append(").\n\n");
 
         sb.append("MIJOZ MA'LUMOTLARI (FAKTLAR — faqat shu raqamlarni ayting, o'zgartirmang):\n");
         sb.append("- Ism: ").append(orDash(c.clientName())).append('\n');
@@ -37,6 +46,9 @@ public class SystemPromptFactory {
         sb.append("- Qarz summasini HECH QACHON o'zgartirma. Faqat berilgan raqamni ayt.\n");
         sb.append("- Chegirma, imtiyoz yoki qarz kechirishni HECH QACHON taklif qilma.\n");
         sb.append("- To'lov muddatini o'zing uzaytirma — faqat mijoz aytgan sanani yozib ol.\n");
+        sb.append("- Mijoz nisbiy sana aytsa (\"ertaga\", \"dushanba\", \"kelasi oyning 5-sanasi\") — uni ")
+                .append("BUGUNGI SANAdan hisoblab yyyy-MM-dd ko'rinishida recordPaymentPromise'ga ber. ")
+                .append("Yilni o'zingdan to'qima.\n");
         sb.append("- Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma.\n");
         sb.append("- Mijozning shaxsiy ma'lumotlarini begona odamga (qarzdor bo'lmagan kishiga) aytma.\n");
         sb.append("- Savolga javobni bilmasang — requestHumanTransfer bilan operatorga o'tkaz, o'ylab topma.\n");
@@ -76,6 +88,19 @@ public class SystemPromptFactory {
             case CONFIRMATION -> "CLOSING, PAYMENT_DATE, ESCALATE_TO_HUMAN";
             case CLOSING -> "END_CALL";
             case ESCALATE_TO_HUMAN, END_CALL -> "(yakuniy holat)";
+        };
+    }
+
+    /** Weekday in Uzbek — the JVM has no reliable uz locale, and "dushanba" is what a caller says. */
+    private static String weekdayUz(DayOfWeek day) {
+        return switch (day) {
+            case MONDAY -> "dushanba";
+            case TUESDAY -> "seshanba";
+            case WEDNESDAY -> "chorshanba";
+            case THURSDAY -> "payshanba";
+            case FRIDAY -> "juma";
+            case SATURDAY -> "shanba";
+            case SUNDAY -> "yakshanba";
         };
     }
 

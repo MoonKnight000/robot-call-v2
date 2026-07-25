@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 
 /**
  * The FSM + LLM dialog engine (PROJECT.md §4, §7.1, Stage 7). Owns one LLM
- * ChatClient (Spring AI OpenAI starter → Gemini via proxy) and a per-call
+ * ChatClient (Spring AI OpenAI starter → Gemini's OpenAI-compatible API) and a per-call
  * {@link DialogSession} registry. Each
  * client final transcript triggers a turn: build the state-specific system prompt,
  * call the LLM with the running history and per-session tools (which may advance the
@@ -41,7 +41,7 @@ import java.util.concurrent.Executors;
  * streaming, and DB/CRM persistence come in later stages (§7.2, Stage 9).
  *
  * <p>Non-fatal without credentials: if no LLM ChatModel is available (no
- * {@code GEMINI_API_KEY}/{@code GEMINI_API_BASE_URL}), the app still runs and dialog is disabled.
+ * {@code GEMINI_API_KEY}), the app still runs and dialog is disabled.
  */
 @Service
 public class DialogEngine {
@@ -88,7 +88,7 @@ public class DialogEngine {
             chatClient = ChatClient.create(model);
             log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
         } else {
-            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY + GEMINI_API_BASE_URL); dialog disabled");
+            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY); dialog disabled");
         }
     }
 
