@@ -25,6 +25,13 @@ repositories {
 // flyway-core and flyway-database-postgresql stay aligned.
 extra["flyway.version"] = "11.20.2"
 
+// ari4java 0.18.0 requires the Netty 4.2 API (MultiThreadIoEventLoopGroup), so the
+// whole graph moves off the BOM's 4.1 line together — netty.version is the Boot BOM
+// property, so every io.netty artifact follows it. Watch reactor-netty (WebClient)
+// and any non-shaded grpc-netty on the first run: those are pinned against 4.1 and
+// are where a NoSuchMethodError would show up. Revert this + ari4java to 0.17.0 if so.
+extra["netty.version"] = "4.2.0.Final"
+
 // Spring AI BOM aligns the OpenAI starter and its transitive versions
 // (PROJECT.md §2.3). If the Spring Boot 3.5 line needs a newer Spring AI, bump
 // this version (Spring AI 1.0.x targets Boot 3.4.x).
@@ -45,13 +52,12 @@ dependencies {
     // Asterisk ARI (bundles its own Netty-based HTTP/WebSocket client)
 //    implementation("ch.loway.oss.ari4java:ari4java:0.9.0")
 // Source: https://mvnrepository.com/artifact/io.github.ari4java/ari4java
-    // NOTE: stay on 0.17.0. ari4java 0.18.0 is built against Netty 4.2
-    // (NettyHttpClient needs io.netty.channel.MultiThreadIoEventLoopGroup), while the
-    // Boot 3.5 BOM pins Netty to the 4.1 line — which grpc-netty (Google/Yandex STT)
-    // and reactor-netty also expect. Result: NoClassDefFoundError at ARI.build().
-    // 0.17.0 targets Netty 4.1.72 and covers ARI up to 9.0.0 (Asterisk 22); we run
-    // Asterisk 20 / ARI 7.0.0 with AriVersion.IM_FEELING_LUCKY.
-    implementation("io.github.ari4java:ari4java:0.17.0")
+    // 0.18.0 is built against Netty 4.2 (NettyHttpClient needs
+    // io.netty.channel.MultiThreadIoEventLoopGroup), which the Boot 3.5 BOM does not
+    // ship — it pins the 4.1 line. Hence the netty.version override above; without it
+    // ARI.build() dies with NoClassDefFoundError, which is what sent us back to 0.17.0
+    // the first time. We run Asterisk 20 / ARI 8.0.0 with AriVersion.IM_FEELING_LUCKY.
+    implementation("io.github.ari4java:ari4java:0.18.0")
     // RTP audio transport over UDP. Only netty-transport is needed (NIO datagram
     // channel + handler); version is managed by the Spring Boot BOM. We avoid the
     // fat netty-all artifact so the vulnerable HTTP/HTTP2/SMTP codecs are not pulled in.

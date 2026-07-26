@@ -136,8 +136,10 @@ public class YandexSttProvider implements SttProvider {
             } else if (response.hasFinal()) {
                 emit(response.getFinal(), true);
             } else if (response.hasFinalRefinement()) {
-                // Normalized final (punctuation/numbers) — supersedes the raw final.
-                emit(response.getFinalRefinement().getNormalizedText(), true);
+                // Normalized rewrite (punctuation/numbers) of the final we already
+                // emitted — NOT a new utterance. Forwarding it too made every client
+                // turn reach the dialog twice and wrote duplicate transcript rows.
+                log.debug("Yandex STT final refinement ignored ({})", language);
             }
         }
 
