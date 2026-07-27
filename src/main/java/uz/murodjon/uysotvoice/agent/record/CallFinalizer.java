@@ -10,6 +10,7 @@ import uz.murodjon.uysotvoice.agent.storage.AudioStorageService;
 import uz.murodjon.uysotvoice.agent.summary.SummaryService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,8 +52,20 @@ public class CallFinalizer {
             metrics.recordCallDuration(durationSec);
             metrics.disposition(disposition);
 
-            String recordingUrl = storage.upload(wav, wav.getFileName().toString());
+            String uploadedUrl = storage.upload(wav, wav.getFileName().toString());
+            // Record where the audio actually is. With storage off, upload returns null and
+            // the column used to stay empty — which meant the recording existed on disk but
+            // nothing could find it, and §11.3 evidence needed shell access to retrieve.
+            // A "file:" URL keeps the two cases distinguishable for the reporting API.
+            String recordingUrl = uploadedUrl != null
+                    ? uploadedUrl
+                    : (Files.isReadable(wav) ? "file:" + wav.toAbsolutePath() : null);
             records.finishAttempt(callAttemptId, disposition, recordingUrl, durationSec);
+            // Only once the upload is confirmed: deleting on a failed upload would
+            // destroy the only copy of a recording that may be needed as evidence (§11.3).
+            if (uploadedUrl != null) {
+                storage.deleteLocalCopy(wav);
+            }
 
             String transcript = records.transcriptText(callAttemptId);
             CallSummary summary = summaryService.summarize(transcript);

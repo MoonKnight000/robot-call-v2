@@ -34,12 +34,64 @@ public class CrmClient {
         this.props = props;
     }
 
+    /** Whether the CRM is configured well enough to talk to at all. */
+    public boolean enabled() {
+        return props.enabled() && props.baseUrl() != null && !props.baseUrl().isBlank();
+    }
+
+    /**
+     * Read one client's facts from the CRM (PROJECT.md §9 step 4, §3.1).
+     *
+     * <p>The debtor facts and the language were previously whatever was imported into
+     * {@code context_data} — a snapshot that may be weeks old by the time the call goes
+     * out, which for a debt amount means stating a figure the client has already paid down.
+     * The CRM is the authoritative source, so it is asked at dial time.
+     *
+     * <p>Returns {@code null} when the CRM is off, unconfigured, or unreachable: the call
+     * then goes ahead with the imported facts, which is strictly better than not calling.
+     */
+    public CrmClientSnapshot fetchClient(Long clientId) {
+        if (!enabled() || clientId == null || clientId == 0
+                || props.clientPath() == null || props.clientPath().isBlank()) {
+            return null;
+        }
+        try {
+            String path = props.clientPath().replace("{id}", String.valueOf(clientId));
+            HttpRequest.Builder req = HttpRequest.newBuilder()
+                    .uri(URI.create(resolve(path)))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Accept", "application/json")
+                    .GET();
+            if (props.apiToken() != null && !props.apiToken().isBlank()) {
+                req.header("Authorization", "Bearer " + props.apiToken());
+            }
+            HttpResponse<String> resp = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() / 100 != 2) {
+                log.warn("CRM client lookup HTTP {} for client {}", resp.statusCode(), clientId);
+                return null;
+            }
+            CrmClientSnapshot snapshot = CrmClientSnapshot.fromJson(mapper.readTree(resp.body()));
+            log.debug("CRM client {} resolved: lang={} debt={}",
+                    clientId, snapshot.preferredLanguage(), snapshot.debtAmount());
+            return snapshot;
+        } catch (Exception e) {
+            log.warn("CRM client lookup failed for {}: {}", clientId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** Join {@code path} onto the configured base URL without doubling the slash. */
+    private String resolve(String path) {
+        String base = props.baseUrl().endsWith("/") ? props.baseUrl() : props.baseUrl() + "/";
+        return base + (path.startsWith("/") ? path.substring(1) : path);
+    }
+
     /**
      * Create a CRM note for {@code clientId} from {@code summary}; returns the note
      * id or {@code null} if the CRM is disabled/unconfigured or the call fails.
      */
     public Long postNote(long clientId, CallSummary summary) {
-        if (!props.enabled() || props.baseUrl() == null || props.baseUrl().isBlank() || summary == null) {
+        if (!enabled() || summary == null) {
             return null;
         }
         try {
@@ -57,10 +109,9 @@ public class CrmClient {
                 body.put("promisedAmount", summary.promisedAmount());
             }
 
-            String base = props.baseUrl().endsWith("/") ? props.baseUrl() : props.baseUrl() + "/";
             String path = props.notePath() != null ? props.notePath() : "api/notes";
             HttpRequest.Builder req = HttpRequest.newBuilder()
-                    .uri(URI.create(base + (path.startsWith("/") ? path.substring(1) : path)))
+                    .uri(URI.create(resolve(path)))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));

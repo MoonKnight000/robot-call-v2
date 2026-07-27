@@ -30,7 +30,8 @@ public class ExecutorConfig {
     @Bean
     public TaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(2); // dialer dispatch + stale sweeper + alerting
+        // dialer dispatch (5s) + stale sweeper (30s) + alerting (5min) + retention (nightly)
+        scheduler.setPoolSize(3);
         scheduler.setThreadNamePrefix("sched-");
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
         scheduler.setAwaitTerminationSeconds(10);

@@ -48,6 +48,11 @@ public class GoogleSttProvider implements SttProvider {
     }
 
     @Override
+    public int sampleRate() {
+        return props.google().sampleRate();
+    }
+
+    @Override
     public SttSession startStream(String languageCode, TranscriptListener listener) {
         SpeechClient current = client;
         if (current == null) {

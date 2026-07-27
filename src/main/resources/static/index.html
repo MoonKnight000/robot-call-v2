@@ -135,6 +135,8 @@
   <div class="conn">
     <span>API:</span>
     <input id="baseUrl" class="base-input" value="" placeholder="(same-origin)">
+    <span>Key:</span>
+    <input id="apiKey" class="base-input" type="password" value="" placeholder="X-Api-Key">
     <span class="dot" id="connDot"></span>
     <span id="connText">tekshirilmoqda…</span>
   </div>
@@ -193,6 +195,9 @@
           <div><label>Til (default)</label>
             <select id="c_lang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
         </div>
+        <label>TTS ovozi</label>
+        <select id="c_voice"><option value="">(standart sozlama)</option></select>
+        <p class="hint">GET /api/tts/voices — tanlangan til uchun mavjud ovozlar</p>
         <label>Maqsad / skript (goalPrompt)</label>
         <textarea id="c_goal">Mijozdan qarzni to'lash sanasini aniqlang. Muloyim va professional bo'ling.</textarea>
         <div class="row">
@@ -203,6 +208,7 @@
           <div><label>Max urinish</label><input id="c_max" type="number" value="3"></div>
           <div><label>Retry (soat)</label><input id="c_retry" type="number" value="24"></div>
           <div><label>Parallel</label><input id="c_conc" type="number" value="20"></div>
+          <div><label>Kunlik limit (0=cheksiz)</label><input id="c_cap" type="number" value="0"></div>
         </div>
         <button class="btn" onclick="createCampaign()">Yaratish</button>
         <div id="c_resp"></div>
@@ -239,6 +245,21 @@
 }</textarea>
       <button class="btn" onclick="addTarget()">Qo'shish</button>
       <div id="t_resp"></div>
+    </div>
+
+    <div class="card">
+      <h2>CSV dan ommaviy yuklash</h2>
+      <p class="hint">POST /api/campaigns/{id}/targets/csv — CRM eksportini shu yerga qo'ying.
+        Ustunlar nom bo'yicha topiladi (tartib muhim emas); xato satrlar alohida qaytariladi,
+        qolganlari yuklanadi.</p>
+      <div class="inline">
+        <div><label>Kampaniya ID</label><input id="csv_camp" type="number" placeholder="1"></div>
+      </div>
+      <label>CSV</label>
+      <textarea id="csv_body" rows="6">clientId,phone,language,clientName,debtAmount,currency,dueDate,contractNumber
+1001,600,uz-UZ,Alisher Karimov,4500000,so'm,2026-07-10,UY-2024-8891</textarea>
+      <button class="btn" onclick="importCsv()">Yuklash</button>
+      <div id="csv_resp"></div>
     </div>
 
     <div class="card">
@@ -281,6 +302,7 @@
         <textarea id="ca_text">Assalomu alaykum. Bu Uysot kompaniyasining avtomatik tizimi.</textarea>
         <div class="inline">
           <div><select id="ca_saylang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
+          <div><select id="ca_sayvoice"><option value="">(standart ovoz)</option></select></div>
           <button class="btn" onclick="sayText()">🗣 Say</button>
         </div>
         <div id="ca_resp2"></div>
@@ -316,6 +338,50 @@
     </div>
   </section>
 
+  <!-- ===================== REPORTS ===================== -->
+  <section class="view" data-view="reports">
+    <div class="card">
+      <h2><span class="num">6</span>Kampaniya natijasi</h2>
+      <p class="hint">GET /api/reports/campaigns/{id} — disposition taqsimoti, va'da foizi,
+        o'rtacha davomiylik. Faqat o'qish uchun kalit (READ_API_KEY) ham yetadi.</p>
+      <div class="inline">
+        <div><label>Kampaniya ID</label><input id="r_camp" type="number" placeholder="1"></div>
+        <button class="btn sec" onclick="loadStats()">Ko'rsatish</button>
+      </div>
+      <div id="r_stats"><div class="empty">Kampaniya ID kiriting</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Qo'ng'iroqlar</h2>
+      <p class="hint">GET /api/reports/calls — bo'sh ID barcha kampaniyalarni ko'rsatadi.
+        Transkriptni ko'rish uchun satrni bosing.</p>
+      <div class="inline">
+        <div><label>Kampaniya ID (ixtiyoriy)</label><input id="r_callsCamp" type="number" placeholder="hammasi"></div>
+        <button class="btn sec" onclick="loadCalls()">Yuklash</button>
+      </div>
+      <div id="r_calls"><div class="empty">Hali yuklanmagan</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Suhbat tafsiloti</h2>
+      <div class="inline">
+        <div><label>Call ID</label><input id="r_callId" type="number" placeholder="12"></div>
+        <button class="btn sec" onclick="loadCallDetail()">Ko'rsatish</button>
+        <button class="btn sec" onclick="openRecording()">🎧 Yozuvni yuklab olish</button>
+      </div>
+      <div id="r_detail"><div class="empty">Call ID kiriting</div></div>
+      <div class="chat" id="r_chat" style="margin-top:14px"><div class="empty">—</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Audit log</h2>
+      <p class="hint">GET /api/reports/audit — kim kampaniyani boshladi, kim raqamni
+        do-not-call ro'yxatiga qo'ydi (§11)</p>
+      <button class="btn sec" onclick="loadAudit()">Yuklash</button>
+      <div id="r_audit"><div class="empty">Hali yuklanmagan</div></div>
+    </div>
+  </section>
+
   <!-- ===================== LOG ===================== -->
   <section class="view" data-view="log">
     <div class="card">
@@ -331,10 +397,26 @@
 const $ = id => document.getElementById(id);
 const base = () => $('baseUrl').value.replace(/\/$/,'');
 
+/* ---------- api key (X-Api-Key on every request) ---------- */
+const KEY_STORE = 'uysot.apiKey';
+$('apiKey').value = localStorage.getItem(KEY_STORE) || '';
+$('apiKey').addEventListener('change', () => {
+  localStorage.setItem(KEY_STORE, $('apiKey').value.trim());
+  checkConn();
+  // Ovozlar ro'yxati ham kalit talab qiladi: kalitsiz yuklanganda u bo'sh qolgan.
+  loadVoices('c_voice',$('c_lang').value,true);
+  loadVoices('ca_sayvoice',$('ca_saylang').value,true);
+});
+function authHeaders(){
+  const k = $('apiKey').value.trim();
+  return k ? {'X-Api-Key': k} : {};
+}
+
 /* ---------- tabs ---------- */
 const TABS = [
   ['flow','Umumiy oqim'],['campaign','1 · Kampaniya'],['targets','2 · Nishonlar'],
-  ['call','3 · Qo\'ng\'iroq'],['operator','5 · Operator'],['log','Log']
+  ['call','3 · Qo\'ng\'iroq'],['operator','5 · Operator'],['reports','6 · Natijalar'],
+  ['log','Log']
 ];
 const nav = $('nav');
 TABS.forEach(([v,label],i)=>{
@@ -362,13 +444,14 @@ function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
 async function api(method,path,{body,query}={}){
   let url=base()+path;
   if(query){const q=new URLSearchParams(query).toString(); url+=(url.includes('?')?'&':'?')+q;}
-  const opts={method,headers:{}};
+  const opts={method,headers:authHeaders()};
   if(body!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
   log(`${method} ${path}`,'info');
   const res=await fetch(url,opts);
   let data; const txt=await res.text();
   try{data=txt?JSON.parse(txt):null;}catch{data=txt;}
   log(`← ${res.status} ${path}`, res.ok?'ok':'bad');
+  if(res.status===401){ log('401 — API kalit yo\'q yoki noto\'g\'ri (yuqoridagi "Key" maydoni)','bad'); }
   return {ok:res.ok,status:res.status,data};
 }
 function showResp(elId,r){
@@ -387,15 +470,32 @@ function errResp(elId,e){
 /* ---------- connection check ---------- */
 async function checkConn(){
   try{
-    const res=await fetch(base()+'/api/campaigns');
-    setConn(res.ok);
+    // A read endpoint, so a read-only key (READ_API_KEY) also shows as connected —
+    // /api/campaigns needs the admin role and would report a valid viewer key as broken.
+    const res=await fetch(base()+'/api/reports/audit?limit=1',{headers:authHeaders()});
+    setConn(res.ok, res.status);
   }catch{ setConn(false); }
 }
-function setConn(ok){
+function setConn(ok, status){
   $('connDot').className='dot '+(ok?'ok':'bad');
-  $('connText').textContent=ok?'ulangan':'ulanmagan';
+  $('connText').textContent = ok ? 'ulangan' : (status===401 ? 'kalit kerak' : 'ulanmagan');
 }
 $('baseUrl').addEventListener('change',checkConn);
+
+/* ================= TTS VOICES ================= */
+/* Ovozlar ro'yxati serverdagi katalogdan keladi, shuning uchun tanlovda faqat
+   POST /api/campaigns qabul qiladigan id lar bo'ladi (noto'g'ri id 400 qaytaradi). */
+async function loadVoices(selectId, language, keepValue){
+  const sel=$(selectId); if(!sel) return;
+  const previous = keepValue ? sel.value : '';
+  try{
+    const r=await api('GET','/api/tts/voices',{query:language?{language}:undefined});
+    const voices = (r.ok && Array.isArray(r.data)) ? r.data : [];
+    sel.innerHTML='<option value="">(standart sozlama)</option>'+
+      voices.map(v=>`<option value="${esc(v.id)}">${esc(v.label||v.id)}</option>`).join('');
+    if(previous && voices.some(v=>v.id===previous)) sel.value=previous;
+  }catch(e){ log('Ovozlarni yuklab bo\'lmadi: '+e.message,'bad'); }
+}
 
 /* ================= CAMPAIGN ================= */
 async function createCampaign(){
@@ -403,7 +503,8 @@ async function createCampaign(){
     name:$('c_name').value, type:$('c_type').value, goalPrompt:$('c_goal').value,
     defaultLanguage:$('c_lang').value, dialWindowStart:$('c_ws').value+':00',
     dialWindowEnd:$('c_we').value+':00', maxAttempts:+$('c_max').value,
-    retryIntervalHours:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value
+    retryIntervalHours:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value,
+    ttsVoice:$('c_voice').value||null, dailyCallCap:+$('c_cap').value
   };
   try{
     const r=await api('POST','/api/campaigns',{body}); showResp('c_resp',r);
@@ -416,9 +517,10 @@ async function loadCampaigns(){
     const list=$('campList');
     if(!r.ok){list.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
     if(!r.data||!r.data.length){list.innerHTML='<div class="empty">Kampaniya yo\'q</div>';return;}
-    list.innerHTML=`<table><thead><tr><th>ID</th><th>Nomi</th><th>Til</th><th>Holat</th><th>Amal</th></tr></thead><tbody>${
+    list.innerHTML=`<table><thead><tr><th>ID</th><th>Nomi</th><th>Til</th><th>Ovoz</th><th>Holat</th><th>Amal</th></tr></thead><tbody>${
       r.data.map(c=>`<tr>
         <td class="mono">${c.id}</td><td>${esc(c.name)}</td><td class="mono">${c.defaultLanguage}</td>
+        <td class="mono">${esc(c.ttsVoice||'—')}</td>
         <td><span class="pill ${c.status}">${c.status}</span></td>
         <td>
           <button class="btn green sm" onclick="campAction(${c.id},'start')">Start</button>
@@ -467,6 +569,124 @@ async function dnc(id){
   catch(e){log('Xato: '+e.message,'bad');}
 }
 
+/* The CSV endpoint takes the file body as-is, so it cannot go through api(), which
+   JSON-encodes everything it sends. */
+async function importCsv(){
+  const camp=$('csv_camp').value; if(!camp){alert('Kampaniya ID kiriting');return;}
+  const csv=$('csv_body').value;
+  try{
+    log(`POST /api/campaigns/${camp}/targets/csv`,'info');
+    const res=await fetch(`${base()}/api/campaigns/${camp}/targets/csv`,{
+      method:'POST', headers:{...authHeaders(),'Content-Type':'text/csv'}, body:csv});
+    const txt=await res.text(); let data; try{data=txt?JSON.parse(txt):null;}catch{data=txt;}
+    log(`← ${res.status} CSV import`, res.ok?'ok':'bad');
+    showResp('csv_resp',{ok:res.ok,status:res.status,data});
+    if(res.ok){ $('t_listId').value=camp; loadTargets(); }
+  }catch(e){errResp('csv_resp',e);}
+}
+
+/* ================= REPORTS ================= */
+async function loadStats(){
+  const id=$('r_camp').value; if(!id){alert('Kampaniya ID kiriting');return;}
+  const box=$('r_stats');
+  try{
+    const r=await api('GET',`/api/reports/campaigns/${id}`);
+    if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    const d=r.data;
+    const rows=o=>Object.entries(o||{}).map(([k,v])=>
+      `<tr><td class="mono">${esc(k)}</td><td class="mono">${v}</td></tr>`).join('')
+      || '<tr><td colspan="2" class="mono">—</td></tr>';
+    box.innerHTML=`
+      <div class="kv"><span>Kampaniya</span><span>${esc(d.name)} (${esc(d.status)})</span></div>
+      <div class="kv"><span>Tugagan qo'ng'iroqlar</span><span class="mono">${d.answeredCalls}</span></div>
+      <div class="kv"><span>To'lash va'dasi</span><span class="mono">${(d.promiseRate*100).toFixed(1)}%</span></div>
+      <div class="kv"><span>O'rtacha davomiylik</span><span class="mono">${
+        d.avgDurationSec==null?'—':d.avgDurationSec.toFixed(0)+' s'}</span></div>
+      <div class="kv"><span>Operatorga o'tkazilgan</span><span class="mono">${d.escalatedCalls}</span></div>
+      <div class="grid cols2" style="margin-top:12px">
+        <div><label>Nishonlar holati</label><table><tbody>${rows(d.targetsByStatus)}</tbody></table></div>
+        <div><label>Natijalar (disposition)</label><table><tbody>${rows(d.dispositions)}</tbody></table></div>
+      </div>`;
+  }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
+}
+
+async function loadCalls(){
+  const camp=$('r_callsCamp').value;
+  const path=camp?`/api/reports/campaigns/${camp}/calls`:'/api/reports/calls';
+  const box=$('r_calls');
+  try{
+    const r=await api('GET',path,{query:{limit:50}});
+    if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    if(!r.data||!r.data.length){box.innerHTML='<div class="empty">Qo\'ng\'iroq yo\'q</div>';return;}
+    box.innerHTML=`<table><thead><tr><th>ID</th><th>Telefon</th><th>Boshlandi</th><th>Davom.</th>
+      <th>Natija</th><th>Uzilish sababi</th><th>Xulosa</th><th>🎧</th></tr></thead><tbody>${
+      r.data.map(c=>`<tr style="cursor:pointer" onclick="showCall(${c.callId})">
+        <td class="mono">${c.callId}</td><td class="mono">${esc(c.phone)}</td>
+        <td class="mono">${c.startedAt?esc(c.startedAt.replace('T',' ').slice(0,19)):'—'}</td>
+        <td class="mono">${c.durationSec==null?'—':c.durationSec+'s'}</td>
+        <td><span class="pill ${c.disposition||'IN_PROGRESS'}">${esc(c.disposition||'—')}</span></td>
+        <td class="mono">${esc(c.hangupCause||'—')}</td>
+        <td>${esc((c.summary||'—').slice(0,80))}</td>
+        <td>${c.hasRecording?'🎧':'—'}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
+}
+
+function showCall(id){ $('r_callId').value=id; loadCallDetail(); }
+
+async function loadCallDetail(){
+  const id=$('r_callId').value; if(!id){alert('Call ID kiriting');return;}
+  const box=$('r_detail');
+  try{
+    const r=await api('GET',`/api/reports/calls/${id}`);
+    if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    const d=r.data, c=d.call;
+    box.innerHTML=`
+      <div class="kv"><span>Telefon</span><span class="mono">${esc(c.phone)} (${esc(c.language||'—')})</span></div>
+      <div class="kv"><span>Natija</span><span class="mono">${esc(c.disposition||'—')} / ${esc(c.hangupCause||'—')}</span></div>
+      <div class="kv"><span>Va'da</span><span class="mono">${esc(c.promisedDate||'—')} ${esc(c.promisedAmount||'')}</span></div>
+      <div class="kv"><span>Sabab / kayfiyat</span><span class="mono">${esc(d.reasonCode||'—')} / ${esc(d.sentiment||'—')}</span></div>
+      <div class="kv"><span>CRM note</span><span class="mono">${c.crmNoteId??'yozilmagan (outbox kutmoqda)'}</span></div>
+      ${d.errorMessage?`<div class="kv"><span>Xato</span><span class="mono">${esc(d.errorMessage)}</span></div>`:''}
+      <p style="margin-top:10px">${esc(c.summary||'Xulosa yo\'q')}</p>`;
+    const chat=$('r_chat');
+    chat.innerHTML=(d.transcript||[]).length
+      ? d.transcript.map(l=>`<div class="msg ${l.role}"><div class="who">${
+          l.role==='AGENT'?'🤖 Bot':'👤 Mijoz'}</div>${esc(l.text)}</div>`).join('')
+      : '<div class="empty">Transkript yo\'q</div>';
+  }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
+}
+
+/* The browser cannot send X-Api-Key on a plain link, so the audio is fetched and handed
+   to the page as a blob. */
+async function openRecording(){
+  const id=$('r_callId').value; if(!id){alert('Call ID kiriting');return;}
+  try{
+    log(`GET /api/reports/calls/${id}/recording`,'info');
+    const res=await fetch(`${base()}/api/reports/calls/${id}/recording`,{headers:authHeaders()});
+    if(!res.ok){log(`← ${res.status} yozuv topilmadi`,'bad');return;}
+    const url=URL.createObjectURL(await res.blob());
+    const a=document.createElement('a'); a.href=url; a.download=`call-${id}.wav`; a.click();
+    URL.revokeObjectURL(url);
+    log(`← 200 yozuv yuklandi`,'ok');
+  }catch(e){log('Xato: '+e.message,'bad');}
+}
+
+async function loadAudit(){
+  const box=$('r_audit');
+  try{
+    const r=await api('GET','/api/reports/audit',{query:{limit:50}});
+    if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    if(!r.data||!r.data.length){box.innerHTML='<div class="empty">Yozuv yo\'q</div>';return;}
+    box.innerHTML=`<table><thead><tr><th>Vaqt</th><th>Kim</th><th>Amal</th><th>Nima</th><th>Izoh</th></tr></thead><tbody>${
+      r.data.map(a=>`<tr>
+        <td class="mono">${esc((a.createdAt||'').replace('T',' ').slice(0,19))}</td>
+        <td class="mono">${esc(a.actor)}</td><td class="mono">${esc(a.action)}</td>
+        <td class="mono">${esc(a.entity||'')} ${esc(a.entityId||'')}</td>
+        <td>${esc(a.detail||'—')}</td></tr>`).join('')}</tbody></table>`;
+  }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
+}
+
 /* ================= CALL ================= */
 async function originate(){
   try{
@@ -486,8 +706,9 @@ async function playWav(){
 }
 async function sayText(){
   const ch=$('ca_chinput').value; if(!ch){alert('channelId kerak');return;}
-  try{const r=await api('POST',`/api/calls/${encodeURIComponent(ch)}/say`,
-    {query:{text:$('ca_text').value,language:$('ca_saylang').value}});
+  const query={text:$('ca_text').value,language:$('ca_saylang').value};
+  const voice=$('ca_sayvoice').value; if(voice) query.voice=voice;
+  try{const r=await api('POST',`/api/calls/${encodeURIComponent(ch)}/say`,{query});
     showResp('ca_resp2',r);}catch(e){errResp('ca_resp2',e);}
 }
 
@@ -534,6 +755,11 @@ function highlightFsm(state){
 }
 
 /* ---------- init ---------- */
+// Ovoz tilga bog'liq: til o'zgarsa, ro'yxat ham qayta yuklanadi.
+$('c_lang').addEventListener('change',()=>loadVoices('c_voice',$('c_lang').value,true));
+$('ca_saylang').addEventListener('change',()=>loadVoices('ca_sayvoice',$('ca_saylang').value,true));
+loadVoices('c_voice',$('c_lang').value);
+loadVoices('ca_sayvoice',$('ca_saylang').value);
 checkConn();
 log('Test paneli yuklandi','ok');
 </script>

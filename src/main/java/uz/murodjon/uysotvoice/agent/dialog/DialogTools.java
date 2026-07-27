@@ -78,6 +78,16 @@ public class DialogTools {
         return "Noto'g'ri odam belgilandi. Uzr so'rab xayrlashing.";
     }
 
+    @Tool(description = "Mijoz boshqa qo'ng'iroq qilinmasligini so'raganda chaqiriladi")
+    public String recordDoNotCall(@ToolParam(description = "mijozning so'rovi/sababi") String reason) {
+        // §11.4: the opt-out is a legal obligation, so it is recorded against the
+        // phone number at teardown, not just against this campaign's target row.
+        session.setDoNotCallReason(reason);
+        session.end(Disposition.DO_NOT_CALL);
+        log.info("[{}] do-not-call requested: {}", session.channelId(), reason);
+        return "So'rov qabul qilindi, raqam ro'yxatdan chiqariladi. Uzr so'rab xayrlashing.";
+    }
+
     @Tool(description = "Suhbat tugadi — qo'ng'iroqni yakunlaydi (avval xayrlashing)")
     public String endCall(@ToolParam(description = "qo'ng'iroq natijasi") Disposition disposition) {
         session.end(disposition);

@@ -15,21 +15,30 @@ import uz.murodjon.uysotvoice.agent.codec.G711Codec;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * One RTP UDP listener + sender for a single call, sharing a single NIO datagram
  * socket. Incoming: the Netty handler copies each datagram and enqueues it; a
- * dedicated virtual thread parses RTP, decodes G.711 and records WAV. Outgoing:
- * {@link #playPcm} paces one 20ms G.711 frame every 20ms back to the peer
- * (symmetric RTP — we reply to the address Asterisk sends from).
- * No blocking I/O runs on the event loop (PROJECT.md §7.1, §7.3, Stages 3–4).
+ * dedicated virtual thread parses RTP, decodes G.711 and records WAV. Outgoing: a
+ * single pacer emits one 20ms G.711 frame every 20ms to the peer (symmetric RTP — we
+ * reply to the address Asterisk sends from). No blocking I/O runs on the event loop
+ * (PROJECT.md §7.1, §7.3, Stages 3–4).
+ *
+ * <p>Playback is a <em>queue</em>, not a single buffer: sentence-level TTS streaming
+ * (§7.2) hands over one sentence at a time while the previous one is still on the
+ * wire, and the pacer draws frames across the boundary without a gap. {@link #playPcm}
+ * keeps the older "replace whatever is playing" semantics for one-shot playback;
+ * {@link #enqueuePcm} appends. {@link #flushPlayback} drops everything — barge-in must
+ * silence the whole reply, not just the sentence currently sounding.
  */
 public class RtpEndpoint implements Closeable {
 
@@ -48,7 +57,19 @@ public class RtpEndpoint implements Closeable {
     private final List<AudioListener> listeners;
     private final BlockingQueue<byte[]> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
     private final long ssrc = Integer.toUnsignedLong(new Random().nextInt());
-    private final AtomicReference<ScheduledFuture<?>> playback = new AtomicReference<>();
+
+    /** Pending playback audio, oldest first. Guarded by {@link #playLock}. */
+    private final Deque<short[]> playQueue = new ArrayDeque<>();
+    private final Object playLock = new Object();
+    private short[] currentChunk;   // guarded by playLock
+    private int currentOffset;      // guarded by playLock
+
+    /**
+     * Whether a pacer is (or is about to be) running. Owns the start/stop decision so
+     * two threads cannot schedule two pacers for the same socket.
+     */
+    private final AtomicBoolean pacerRunning = new AtomicBoolean(false);
+    private volatile ScheduledFuture<?> pacer;
 
     private volatile boolean running = true;
     private volatile InetSocketAddress remoteAddress;
@@ -126,58 +147,53 @@ public class RtpEndpoint implements Closeable {
     }
 
     /**
-     * Stream {@code pcm} (8 kHz mono 16-bit) to the peer as µ-law RTP, one 20ms
-     * frame every 20ms. Cancels any playback already in progress. Returns once
-     * scheduling has started (playback continues asynchronously).
+     * Replace whatever is playing with {@code pcm} (8 kHz mono 16-bit). Used for
+     * one-shot playback (a prepared WAV, the manual {@code /say} endpoint) where the
+     * new audio is meant to supersede the old.
      */
     public void playPcm(short[] pcm) {
-        InetSocketAddress remote = awaitRemote();
-        if (remote == null) {
-            log.warn("No RTP peer on port {} yet; cannot play {} samples", port, pcm.length);
-            return;
-        }
-        stopPlayback();
-
-        int totalFrames = (pcm.length + SAMPLES_PER_FRAME - 1) / SAMPLES_PER_FRAME;
-        int[] frameIndex = {0};
-        ScheduledFuture<?> future = channel.eventLoop().scheduleAtFixedRate(() -> {
-            int i = frameIndex[0];
-            if (!running || i >= totalFrames) {
-                stopPlayback();
-                return;
-            }
-            try {
-                int start = i * SAMPLES_PER_FRAME;
-                int len = Math.min(SAMPLES_PER_FRAME, pcm.length - start);
-                byte[] ulaw = new byte[SAMPLES_PER_FRAME];
-                for (int s = 0; s < SAMPLES_PER_FRAME; s++) {
-                    ulaw[s] = (s < len) ? G711Codec.pcmToUlaw(pcm[start + s]) : ULAW_SILENCE;
-                }
-                byte[] rtp = RtpPacket.toBytes(PT_PCMU, sendSeq & 0xFFFF, sendTimestamp, ssrc, i == 0, ulaw);
-                channel.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(rtp), remote));
-                sendSeq++;
-                sendTimestamp += SAMPLES_PER_FRAME;
-                frameIndex[0]++;
-            } catch (Exception e) {
-                log.warn("RTP send error on port {}: {}", port, e.getMessage());
-                stopPlayback();
-            }
-        }, 0, FRAME_MS, TimeUnit.MILLISECONDS);
-        playback.set(future);
-        log.info("Playing {} frames ({} ms) to {} on port {}", totalFrames, totalFrames * FRAME_MS, remote, port);
+        flushPlayback();
+        enqueuePcm(pcm);
     }
 
     /**
-     * Immediately stop any playback in progress and drop its remaining frames
-     * (barge-in — PROJECT.md §7.2). Safe to call when nothing is playing.
+     * Append {@code pcm} (8 kHz mono 16-bit) after whatever is already queued, and
+     * start the pacer if it is idle. This is what sentence-level TTS streaming uses:
+     * each sentence is handed over as it is synthesized and plays back-to-back with
+     * the previous one.
+     *
+     * <p>Returns as soon as the audio is queued; playback continues asynchronously.
      */
-    public void flushPlayback() {
-        stopPlayback();
+    public void enqueuePcm(short[] pcm) {
+        if (pcm == null || pcm.length == 0) {
+            return;
+        }
+        if (awaitRemote() == null) {
+            log.warn("No RTP peer on port {} yet; dropping {} samples", port, pcm.length);
+            return;
+        }
+        synchronized (playLock) {
+            playQueue.addLast(pcm);
+        }
+        startPacer();
     }
 
-    /** Whether a TTS playback is currently streaming to the peer. */
+    /**
+     * Immediately stop playback and drop everything still queued (barge-in —
+     * PROJECT.md §7.2). Safe to call when nothing is playing.
+     */
+    public void flushPlayback() {
+        synchronized (playLock) {
+            playQueue.clear();
+            currentChunk = null;
+            currentOffset = 0;
+        }
+        stopPacer();
+    }
+
+    /** Whether audio is currently being streamed to the peer. */
     public boolean isPlaying() {
-        return playback.get() != null;
+        return pacerRunning.get();
     }
 
     private InetSocketAddress awaitRemote() {
@@ -193,10 +209,82 @@ public class RtpEndpoint implements Closeable {
         return remoteAddress;
     }
 
-    private void stopPlayback() {
-        ScheduledFuture<?> future = playback.getAndSet(null);
-        if (future != null) {
-            future.cancel(false);
+    /**
+     * Start the 20ms pacer if it is not already running.
+     *
+     * <p>The schedule call itself is posted to the event loop rather than made from
+     * the calling thread. The event loop runs its tasks one at a time, so the {@link
+     * #pacer} field is assigned before {@link #sendFrame} can first run — scheduling
+     * from here would race, and a first frame that finished the queue immediately
+     * would leave a cancelled-but-recorded future behind, pinning {@code isPlaying()}
+     * to true for the rest of the call.
+     */
+    private void startPacer() {
+        if (!running || channel == null || !pacerRunning.compareAndSet(false, true)) {
+            return;
+        }
+        channel.eventLoop().execute(() ->
+                pacer = channel.eventLoop().scheduleAtFixedRate(
+                        this::sendFrame, 0, FRAME_MS, TimeUnit.MILLISECONDS));
+    }
+
+    private void stopPacer() {
+        pacerRunning.set(false);
+        ScheduledFuture<?> current = pacer;
+        if (current != null) {
+            current.cancel(false);
+            pacer = null;
+        }
+    }
+
+    /**
+     * Emit one 20ms frame, drawing samples across queued chunk boundaries so a
+     * sentence break costs no audible gap. Stops the pacer once the queue runs dry.
+     * Runs on the event loop.
+     */
+    private void sendFrame() {
+        InetSocketAddress remote = remoteAddress;
+        if (!running || remote == null) {
+            stopPacer();
+            return;
+        }
+        byte[] ulaw = new byte[SAMPLES_PER_FRAME];
+        int filled = 0;
+        boolean first;
+        synchronized (playLock) {
+            while (filled < SAMPLES_PER_FRAME) {
+                if (currentChunk == null || currentOffset >= currentChunk.length) {
+                    currentChunk = playQueue.pollFirst();
+                    currentOffset = 0;
+                    if (currentChunk == null) {
+                        break; // nothing more queued
+                    }
+                }
+                int n = Math.min(SAMPLES_PER_FRAME - filled, currentChunk.length - currentOffset);
+                for (int i = 0; i < n; i++) {
+                    ulaw[filled + i] = G711Codec.pcmToUlaw(currentChunk[currentOffset + i]);
+                }
+                filled += n;
+                currentOffset += n;
+            }
+        }
+        if (filled == 0) {
+            stopPacer();
+            return;
+        }
+        // A short tail is padded to a whole frame; Asterisk expects fixed-size frames.
+        for (int i = filled; i < SAMPLES_PER_FRAME; i++) {
+            ulaw[i] = ULAW_SILENCE;
+        }
+        first = sendSeq == 0;
+        try {
+            byte[] rtp = RtpPacket.toBytes(PT_PCMU, sendSeq & 0xFFFF, sendTimestamp, ssrc, first, ulaw);
+            channel.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(rtp), remote));
+            sendSeq++;
+            sendTimestamp += SAMPLES_PER_FRAME;
+        } catch (Exception e) {
+            log.warn("RTP send error on port {}: {}", port, e.getMessage());
+            flushPlayback();
         }
     }
 
@@ -240,7 +328,7 @@ public class RtpEndpoint implements Closeable {
     @Override
     public void close() {
         running = false;
-        stopPlayback();
+        flushPlayback();
         if (consumer != null) {
             try {
                 consumer.join(TimeUnit.SECONDS.toMillis(2));

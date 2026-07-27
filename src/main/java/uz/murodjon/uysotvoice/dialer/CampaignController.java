@@ -1,6 +1,7 @@
 package uz.murodjon.uysotvoice.dialer;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,10 +27,20 @@ public class CampaignController {
         this.service = service;
     }
 
+    /**
+     * @param dialDays comma-separated weekday names ({@code MONDAY,...}); omit for
+     *                 Monday-Friday (§11.2)
+     * @param ttsVoice id of a voice from {@code GET /api/tts/voices} (§2.5); omit to
+     *                 speak with the configured default. An unknown id is rejected
+     * @param dailyCallCap most calls this campaign may place in one day; 0 or omitted for
+     *                 unlimited. A spend ceiling — every call costs STT, LLM, TTS and trunk
+     *                 minutes, and a campaign with 50 000 targets will spend them all
+     */
     public record CreateCampaignRequest(
             String name, String type, String goalPrompt, String defaultLanguage,
-            LocalTime dialWindowStart, LocalTime dialWindowEnd,
-            int maxAttempts, int retryIntervalHours, int maxConcurrentCalls) {
+            LocalTime dialWindowStart, LocalTime dialWindowEnd, String dialDays,
+            int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
+            String ttsVoice, int dailyCallCap) {
     }
 
     public record AddTargetRequest(long clientId, String phone, String language, JsonNode contextData) {
@@ -38,7 +49,9 @@ public class CampaignController {
     @PostMapping("/campaigns")
     public Map<String, Object> create(@RequestBody CreateCampaignRequest r) {
         long id = service.createCampaign(r.name(), r.type(), r.goalPrompt(), r.defaultLanguage(),
-                r.dialWindowStart(), r.dialWindowEnd(), r.maxAttempts(), r.retryIntervalHours(), r.maxConcurrentCalls());
+                r.dialWindowStart(), r.dialWindowEnd(), r.dialDays(),
+                r.maxAttempts(), r.retryIntervalHours(), r.maxConcurrentCalls(), r.ttsVoice(),
+                r.dailyCallCap());
         return Map.of("id", id, "status", "DRAFT");
     }
 
@@ -58,6 +71,24 @@ public class CampaignController {
                 .map(t -> service.addTarget(id, t.clientId(), t.phone(), t.language(), t.contextData()))
                 .toList();
         return Map.of("campaignId", id, "added", ids.size(), "targetIds", ids);
+    }
+
+    /**
+     * Bulk-load targets from a CSV export (§10). Send the file body as {@code text/csv}:
+     *
+     * <pre>
+     * clientId,phone,language,clientName,debtAmount,currency,dueDate,contractNumber
+     * 1001,998901234567,uz-UZ,Aziz Karimov,1500000,so'm,2026-07-01,UY-2026-00123
+     * </pre>
+     *
+     * <p>Columns are matched by header name, so the order does not matter and extra columns
+     * are reported as ignored. Bad rows are rejected individually — the response lists their
+     * line numbers, and everything else is loaded.
+     */
+    @PostMapping(value = "/campaigns/{id}/targets/csv",
+            consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
+    public CampaignService.CsvImportResult addTargetsCsv(@PathVariable long id, @RequestBody String csv) {
+        return service.importTargetsCsv(id, csv);
     }
 
     @GetMapping("/campaigns/{id}/targets")

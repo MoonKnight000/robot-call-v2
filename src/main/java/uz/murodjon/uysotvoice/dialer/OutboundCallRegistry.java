@@ -54,6 +54,23 @@ public class OutboundCallRegistry {
         return h != null ? h.call : null;
     }
 
+    /**
+     * Remove and return the call only if it never answered; {@code null} otherwise.
+     *
+     * <p>Used by the {@code ChannelDestroyed} handler, which fires for every call — answered
+     * or not. A plain {@link #remove} there would race the answered call's own teardown: one
+     * of the two would win the entry, and if the destroy handler won, a conversation that
+     * ended in a promise to pay would be recorded as NO_ANSWER and its target rescheduled.
+     * The check and the removal are one atomic step for the same reason.
+     */
+    public OutboundCall removeIfUnanswered(String channelId) {
+        Holder h = byChannel.get(channelId);
+        if (h == null || h.answered) {
+            return null;
+        }
+        return byChannel.remove(channelId, h) ? h.call : null;
+    }
+
     /** Channel ids dispatched but never answered within {@code olderThan} (to reclaim). */
     public List<String> staleUnanswered(Duration olderThan) {
         Instant cutoff = Instant.now().minus(olderThan);

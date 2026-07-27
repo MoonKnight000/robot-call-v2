@@ -3,6 +3,12 @@ HELP.md
 recordings/
 # SIP trunk credentials (secret) — included by pjsip.conf
 asterisk/etc/asterisk/pjsip_auth.conf
+# Cloud credentials — Google STT/TTS read them via GOOGLE_APPLICATION_CREDENTIALS
+# (a path outside the repo), so a key file must never live here.
+**/credential/
+**/credentials/
+*-service-account*.json
+gcp*.json
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar

@@ -1,8 +1,11 @@
 .git
 .gitignore
 .idea
+.claude
 *.iml
+.gradle
 build
 recordings
 docs
 .env
+stt_example.java

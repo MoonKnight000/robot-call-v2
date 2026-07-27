@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.agent.tts;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -12,6 +13,11 @@ import java.util.Map;
  *                        first when it supports the language, else the router falls
  *                        back by language support
  * @param defaultLanguage BCP-47 language used when a call/turn does not specify one
+ * @param cache           synthesized-audio cache settings; a hit removes both a
+ *                        synthesis round trip from a live turn and a per-character
+ *                        charge from the bill
+ * @param catalog         voices a campaign may be created with; empty means the
+ *                        configured routing above is the only option
  * @param google          Google TTS settings (uz-UZ and ru-RU)
  * @param yandex          Yandex SpeechKit settings (uz-UZ via the Nigora voice, ru-RU)
  */
@@ -20,9 +26,58 @@ public record TtsProperties(
         boolean enabled,
         String provider,
         String defaultLanguage,
+        Cache cache,
+        List<Voice> catalog,
         Google google,
         Yandex yandex
 ) {
+
+    /**
+     * One selectable voice (PROJECT.md §2.5). A campaign stores {@link #id()}; the
+     * catalog is what turns it back into a provider plus a provider-side voice name,
+     * so the choice pins both — a voice is only ever spoken by the engine that owns it.
+     *
+     * @param id       stable id stored on the campaign (e.g. {@code nigora})
+     * @param provider provider that owns the voice ({@code yandex}/{@code google})
+     * @param language BCP-47 language the voice speaks; a call in another language
+     *                 ignores it and falls back to normal routing, because a Russian
+     *                 voice reading Uzbek text is worse than the default voice
+     * @param name     provider-side voice name sent with the synthesis request
+     * @param label    human-readable name shown in the campaign UI
+     */
+    public record Voice(
+            String id,
+            String provider,
+            String language,
+            String name,
+            String label
+    ) {
+    }
+
+    /**
+     * @param size     how many lines to keep in the per-process LRU; {@code 0} disables it
+     * @param maxChars longest line worth caching — above this a line is unlikely to
+     *                 repeat, so an entry would be spent on a single use
+     * @param redis    also store entries in Redis, so a line paid for on one instance is
+     *                 free on the others and survives a restart
+     * @param ttlDays  how long a Redis entry lives
+     * @param prewarm  synthesize the fixed lines (disclosure, farewell, "say that
+     *                 again") at startup, so the first call of a deploy does not pay
+     *                 for them — nor wait for them mid-turn
+     */
+    public record Cache(
+            int size,
+            int maxChars,
+            boolean redis,
+            int ttlDays,
+            boolean prewarm
+    ) {
+
+        /** Used when the {@code cache} block is absent from the configuration. */
+        public static Cache disabled() {
+            return new Cache(0, 0, false, 1, false);
+        }
+    }
 
     /**
      * @param enabled      whether the Google provider bean is created

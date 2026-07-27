@@ -59,6 +59,11 @@ public class YandexSttProvider implements SttProvider {
     }
 
     @Override
+    public int sampleRate() {
+        return props.yandex().sampleRate();
+    }
+
+    @Override
     public SttSession startStream(String languageCode, TranscriptListener listener) {
         ManagedChannel current = channel;
         if (current == null) {

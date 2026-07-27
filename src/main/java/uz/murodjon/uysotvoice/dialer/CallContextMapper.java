@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import uz.murodjon.uysotvoice.agent.crm.CrmClientSnapshot;
 import uz.murodjon.uysotvoice.agent.dialog.CallContext;
 
 import java.math.BigDecimal;
@@ -53,6 +54,35 @@ public final class CallContextMapper {
             }
         }
         return new CallContext(clientName, debtAmount, currency, dueDate, contractNumber, goal);
+    }
+
+    /**
+     * Overlay what the CRM says over the imported facts (§9 step 4).
+     *
+     * <p>The CRM wins field by field, because it is the authoritative source and
+     * {@code context_data} is a snapshot taken when the campaign was built — a debt amount
+     * imported last month may already be paid. A field the CRM does not return keeps the
+     * imported value rather than becoming null: partial data is not a reason to drop facts
+     * the agent needs.
+     *
+     * @param crm the CRM snapshot, or null when the lookup was off or failed
+     */
+    public static CallContext merge(CallContext imported, CrmClientSnapshot crm) {
+        if (crm == null) {
+            return imported;
+        }
+        return new CallContext(
+                firstNonNull(crm.name(), imported.clientName()),
+                firstNonNull(crm.debtAmount(), imported.debtAmount()),
+                firstNonNull(crm.currency(), imported.currency()),
+                firstNonNull(crm.dueDate(), imported.dueDate()),
+                firstNonNull(crm.contractNumber(), imported.contractNumber()),
+                // The goal is the campaign's, not the client's — the CRM has no opinion.
+                imported.goal());
+    }
+
+    private static <T> T firstNonNull(T preferred, T fallback) {
+        return preferred != null ? preferred : fallback;
     }
 
     private static String text(JsonNode n, String field) {

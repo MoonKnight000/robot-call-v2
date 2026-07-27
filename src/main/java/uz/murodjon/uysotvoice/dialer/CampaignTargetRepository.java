@@ -63,18 +63,29 @@ public class CampaignTargetRepository {
         return jdbc.query("SELECT * FROM campaign_target WHERE campaign_id = ? ORDER BY id", MAPPER, campaignId);
     }
 
-    /** Targets ready to dial now: PENDING, not opted-out, and past their retry time. */
-    public List<TargetRow> findDue(long campaignId, int limit) {
+    /**
+     * Atomically claim up to {@code limit} targets that are ready to dial: PENDING,
+     * not opted out (the per-target flag <em>and</em> the phone-level list from
+     * §11.4), and past their retry time. Claimed rows come back already marked
+     * IN_PROGRESS with the attempt counted.
+     *
+     * <p>Select-then-update in two statements would let a second dialer instance — or
+     * a tick that overruns its interval — pick the same target and call the client
+     * twice. {@code FOR UPDATE SKIP LOCKED} hands each row to exactly one claimer and
+     * lets the others move on instead of blocking.
+     */
+    public List<TargetRow> claimDue(long campaignId, int limit) {
         return jdbc.query(
-                "SELECT * FROM campaign_target WHERE campaign_id = ? AND status = 'PENDING' AND do_not_call = false "
-                        + "AND (next_attempt_at IS NULL OR next_attempt_at <= now()) "
-                        + "ORDER BY next_attempt_at NULLS FIRST, id LIMIT ?",
+                "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1 "
+                        + "WHERE id IN ("
+                        + "  SELECT t.id FROM campaign_target t"
+                        + "  WHERE t.campaign_id = ? AND t.status = 'PENDING' AND t.do_not_call = false"
+                        + "    AND NOT EXISTS (SELECT 1 FROM do_not_call_list d WHERE d.phone = t.phone)"
+                        + "    AND (t.next_attempt_at IS NULL OR t.next_attempt_at <= now())"
+                        + "  ORDER BY t.next_attempt_at NULLS FIRST, t.id"
+                        + "  LIMIT ? FOR UPDATE SKIP LOCKED"
+                        + ") RETURNING *",
                 MAPPER, campaignId, limit);
-    }
-
-    /** Mark a target as being dialed and count the attempt. */
-    public void markInProgress(long id) {
-        jdbc.update("UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1 WHERE id = ?", id);
     }
 
     public void updateStatus(long id, String status, Instant nextAttemptAt) {

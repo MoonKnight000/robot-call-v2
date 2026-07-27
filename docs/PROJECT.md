@@ -141,11 +141,11 @@ dependencies {
 
 ### 2.4 STT tanlovi
 
-| Provayder | Ruscha | O'zbekcha | Streaming | Java SDK |
-|---|---|---|---|---|
-| **Google Cloud STT** | Yaxshi | ✅ `uz-UZ` | gRPC bidirectional | ✅ rasmiy |
-| Yandex SpeechKit | Juda yaxshi | ❌ | gRPC | stub generatsiya |
-| Deepgram | Yaxshi | ❌ | WebSocket | ✅ rasmiy |
+| Provayder            | Ruscha      | O'zbekcha  | Streaming          | Java SDK         |
+|----------------------|-------------|------------|--------------------|------------------|
+| **Google Cloud STT** | Yaxshi      | ✅ `uz-UZ` | gRPC bidirectional | ✅ rasmiy        |
+| Yandex SpeechKit     | Juda yaxshi | ✅ `uz-UZ` | gRPC               | stub generatsiya |
+| Deepgram             | Yaxshi      | ❌         | WebSocket          | ✅ rasmiy        |
 
 **MVP qarori: Google Cloud STT** — ikkala tilni bitta provayderda beradi, integratsiya bitta.
 
@@ -155,10 +155,10 @@ Keyingi bosqichda ruscha oqimni Yandexga ko'chirish mumkin (aniqroq), shuning uc
 
 ### 2.5 TTS tanlovi
 
-| Provayder | Ruscha | O'zbekcha |
-|---|---|---|
-| Yandex SpeechKit | ✅ Ajoyib, tabiiy | ❌ |
-| **Google TTS** | Yaxshi | ✅ `uz-UZ` Standard/WaveNet |
+| Provayder        | Ruscha            | O'zbekcha                   |
+|------------------|-------------------|-----------------------------|
+| Yandex SpeechKit | ✅ Ajoyib, tabiiy | ❌                          |
+| **Google TTS**   | Yaxshi            | ✅ `uz-UZ` Standard/WaveNet |
 
 **Qaror:** interfeys orqali router.
 - `uz-UZ` → Google TTS
@@ -401,6 +401,7 @@ CREATE TABLE campaign (
     max_attempts    INT          NOT NULL DEFAULT 3,
     retry_interval_hours INT     NOT NULL DEFAULT 24,
     max_concurrent_calls INT     NOT NULL DEFAULT 20,
+    tts_voice       VARCHAR(64),             -- tanlangan ovoz (voice-agent.tts.catalog id); null -> sozlamadagi yo'naltirish
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     created_by      BIGINT
 );

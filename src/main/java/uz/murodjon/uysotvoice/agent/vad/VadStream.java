@@ -2,13 +2,22 @@ package uz.murodjon.uysotvoice.agent.vad;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import uz.murodjon.uysotvoice.agent.audio.AnsweringMachineDetector;
 import uz.murodjon.uysotvoice.agent.audio.AudioListener;
+import uz.murodjon.uysotvoice.agent.audio.SpeechGate;
 
 /**
  * Per-call barge-in detector (PROJECT.md §7.2). Buffers a call's decoded 8 kHz PCM
  * into fixed windows, scores each with {@link SileroVad}, and fires the barge-in
  * callback once continuous speech exceeds {@code minSpeechMs} — so short "aha"/"ha"
  * back-channels are ignored. Re-arms after a silence gap for the next utterance.
+ *
+ * <p>The same scores also drive an optional {@link SpeechGate}, which is what keeps
+ * silence off the (per-second billed) STT stream. Barge-in and gating read the windows
+ * differently on purpose: barge-in waits for {@code minSpeechMs} of continuous speech
+ * so a cough does not silence the bot, while the gate opens on the first speech window
+ * because its pre-roll buffer means an early open costs nothing and a late one loses
+ * the start of a word.
  *
  * <p>Runs on the RTP consumer thread; Silero inference on a 32ms window is cheap.
  */
@@ -22,6 +31,10 @@ public class VadStream implements AudioListener {
     private final int minSpeechWindows;
     private final int silenceResetWindows;
     private final Runnable onBargeIn;
+    /** Fed every scored window; null when STT gating is off. */
+    private final SpeechGate gate;
+    /** Fed every scored window; null when answering-machine detection is off. */
+    private final AnsweringMachineDetector amd;
 
     private final float[] window;
     private final float[][][] state;
@@ -31,11 +44,19 @@ public class VadStream implements AudioListener {
     private boolean armed = true;
     private boolean disabled;
 
-    public VadStream(SileroVad model, VadProperties props, String channelId, Runnable onBargeIn) {
+    /**
+     * @param gate optional STT gate fed the same window scores; null to stream all audio
+     * @param amd  optional answering-machine detector fed the same scores; null to skip
+     *             detection (§8.6)
+     */
+    public VadStream(SileroVad model, VadProperties props, String channelId, Runnable onBargeIn,
+                     SpeechGate gate, AnsweringMachineDetector amd) {
         this.model = model;
         this.channelId = channelId;
         this.threshold = props.threshold();
         this.onBargeIn = onBargeIn;
+        this.gate = gate;
+        this.amd = amd;
         this.window = new float[props.windowSamples()];
         this.state = model.newState();
         int frameMs = Math.max(1, props.windowSamples() * 1000 / props.sampleRate());
@@ -62,10 +83,22 @@ public class VadStream implements AudioListener {
         if (prob < 0f) {
             // Inference error — stop scoring this stream (barge-in off, call continues).
             disabled = true;
+            if (gate != null) {
+                // Without scores the gate cannot tell speech from silence, and a stuck
+                // gate would cost transcripts. Cost saving yields to recognition.
+                gate.bypass();
+            }
             log.warn("[{}] VAD disabled after inference error", channelId);
             return;
         }
-        if (prob >= threshold) {
+        boolean speech = prob >= threshold;
+        if (gate != null) {
+            gate.onVadWindow(speech, window.length);
+        }
+        if (amd != null && !amd.isFinished()) {
+            amd.onVadWindow(speech, window.length);
+        }
+        if (speech) {
             speechWindows++;
             silenceWindows = 0;
             if (armed && speechWindows >= minSpeechWindows) {

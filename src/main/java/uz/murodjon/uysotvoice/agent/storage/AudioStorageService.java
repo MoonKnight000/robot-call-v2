@@ -1,15 +1,23 @@
 package uz.murodjon.uysotvoice.agent.storage;
 
 import io.minio.BucketExistsArgs;
+import io.minio.ListObjectsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
+import io.minio.RemoveObjectArgs;
+import io.minio.Result;
 import io.minio.UploadObjectArgs;
+import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Uploads finished call recordings to MinIO/S3 and returns their URL (Stage 9).
@@ -78,5 +86,57 @@ public class AudioStorageService {
             log.warn("Recording upload failed for {}: {}", file, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Delete the local WAV now that object storage holds it. Call only after a
+     * successful {@link #upload} — otherwise this throws away the only copy.
+     * No-op when {@code delete-local-after-upload} is off.
+     */
+    public void deleteLocalCopy(Path file) {
+        if (!props.deleteLocalAfterUpload() || file == null) {
+            return;
+        }
+        try {
+            if (Files.deleteIfExists(file)) {
+                log.debug("Deleted local copy of {}", file);
+            }
+        } catch (Exception e) {
+            log.warn("Could not delete local recording {}: {}", file, e.getMessage());
+        }
+    }
+
+    /**
+     * Remove stored recordings older than {@code retentionDays} (§11.3). Returns the
+     * object names removed so the caller can purge the matching transcripts.
+     */
+    public List<String> deleteOlderThan(int retentionDays) {
+        MinioClient current = client;
+        if (current == null || retentionDays <= 0) {
+            return List.of();
+        }
+        ZonedDateTime cutoff = ZonedDateTime.now().minusDays(retentionDays);
+        List<String> removed = new ArrayList<>();
+        try {
+            Iterable<Result<Item>> items = current.listObjects(
+                    ListObjectsArgs.builder().bucket(props.bucket()).recursive(true).build());
+            for (Result<Item> result : items) {
+                Item item = result.get();
+                if (item.lastModified() == null || item.lastModified().isAfter(cutoff)) {
+                    continue;
+                }
+                current.removeObject(RemoveObjectArgs.builder()
+                        .bucket(props.bucket())
+                        .object(item.objectName())
+                        .build());
+                removed.add(item.objectName());
+            }
+        } catch (Exception e) {
+            log.warn("Retention sweep failed: {}", e.getMessage());
+        }
+        if (!removed.isEmpty()) {
+            log.info("Retention: removed {} recording(s) older than {} days", removed.size(), retentionDays);
+        }
+        return removed;
     }
 }

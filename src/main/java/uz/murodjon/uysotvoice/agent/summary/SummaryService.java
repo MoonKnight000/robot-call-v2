@@ -5,7 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -81,15 +82,15 @@ public class SummaryService {
             return null;
         }
         try {
-            // Every field left unset here falls back to spring.ai.openai.chat.options
+            // Every field left unset here falls back to spring.ai.google.genai.chat.options
             // (Spring AI merges runtime over defaults), and those defaults are tuned for
-            // the live phone turn: 512 tokens, thinking off. A structured summary wants
+            // the live phone turn: 512 tokens, thinking MINIMAL. A structured summary wants
             // the opposite — room for the JSON and some reasoning — so state both.
             return chatClient.prompt()
-                    .options(OpenAiChatOptions.builder()
+                    .options(GoogleGenAiChatOptions.builder()
                             .model(model)
-                            .maxTokens(maxTokens)
-                            .reasoningEffort(reasoningEffort)
+                            .maxOutputTokens(maxTokens)
+                            .thinkingLevel(thinkingLevel())
                             .build())
                     // The transcript carries no year, so the date has to come from us.
                     .system(SYSTEM_PROMPT + "\nBUGUNGI SANA: " + LocalDate.now() + ".")
@@ -99,6 +100,23 @@ public class SummaryService {
         } catch (Exception e) {
             log.warn("Summary generation failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * {@code voice-agent.summary.reasoning-effort} as a Gemini thinking level. The
+     * property keeps its name (and {@code SUMMARY_REASONING_EFFORT} its meaning) across
+     * the move off the OpenAI-compatible endpoint, where the same idea was spelled
+     * "reasoning effort" — the values MINIMAL/LOW/MEDIUM/HIGH line up. An unknown value
+     * falls back to LOW rather than failing the summary: this runs after the call is
+     * over, and losing the CRM note over a typo in an env var is the worse outcome.
+     */
+    private GoogleGenAiThinkingLevel thinkingLevel() {
+        try {
+            return GoogleGenAiThinkingLevel.valueOf(reasoningEffort.trim().toUpperCase());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            log.warn("Unknown summary reasoning-effort '{}', using LOW", reasoningEffort);
+            return GoogleGenAiThinkingLevel.LOW;
         }
     }
 }

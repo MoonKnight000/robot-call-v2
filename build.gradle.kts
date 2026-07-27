@@ -1,5 +1,3 @@
-// uysot-voice — single-module Spring Boot application.
-// All code lives under the uz.murodjon.uysotvoice base package.
 plugins {
     java
     id("org.springframework.boot") version "3.5.14"
@@ -20,24 +18,14 @@ repositories {
     mavenCentral()
 }
 
-// Boot 3.5.14 manages Flyway 11.7.2, which predates PostgreSQL 18 and rejects it
-// ("Unsupported Database: PostgreSQL 18.4"). Override the BOM's managed version so
-// flyway-core and flyway-database-postgresql stay aligned.
 extra["flyway.version"] = "11.20.2"
 
-// ari4java 0.18.0 requires the Netty 4.2 API (MultiThreadIoEventLoopGroup), so the
-// whole graph moves off the BOM's 4.1 line together — netty.version is the Boot BOM
-// property, so every io.netty artifact follows it. Watch reactor-netty (WebClient)
-// and any non-shaded grpc-netty on the first run: those are pinned against 4.1 and
-// are where a NoSuchMethodError would show up. Revert this + ari4java to 0.17.0 if so.
 extra["netty.version"] = "4.2.0.Final"
 
-// Spring AI BOM aligns the OpenAI starter and its transitive versions
-// (PROJECT.md §2.3). If the Spring Boot 3.5 line needs a newer Spring AI, bump
-// this version (Spring AI 1.0.x targets Boot 3.4.x).
 dependencyManagement {
     imports {
-        mavenBom("org.springframework.ai:spring-ai-bom:1.0.0")
+        mavenBom("org.springframework.ai:spring-ai-bom:1.1.8")
+        mavenBom("io.grpc:grpc-bom:1.62.2")
     }
 }
 
@@ -48,14 +36,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-security")
 
     // Asterisk ARI (bundles its own Netty-based HTTP/WebSocket client)
-//    implementation("ch.loway.oss.ari4java:ari4java:0.9.0")
-// Source: https://mvnrepository.com/artifact/io.github.ari4java/ari4java
     // 0.18.0 is built against Netty 4.2 (NettyHttpClient needs
-    // io.netty.channel.MultiThreadIoEventLoopGroup), which the Boot 3.5 BOM does not
-    // ship — it pins the 4.1 line. Hence the netty.version override above; without it
-    // ARI.build() dies with NoClassDefFoundError, which is what sent us back to 0.17.0
     // the first time. We run Asterisk 20 / ARI 8.0.0 with AriVersion.IM_FEELING_LUCKY.
     implementation("io.github.ari4java:ari4java:0.18.0")
     // RTP audio transport over UDP. Only netty-transport is needed (NIO datagram
@@ -77,11 +61,8 @@ dependencies {
     // HttpClient, so it needs no extra dependency. Abstracted behind TtsProvider.
     implementation("com.google.cloud:google-cloud-texttospeech:2.44.0")
 
-    // LLM dialog — Spring AI OpenAI starter pointed straight at Gemini's own
-    // OpenAI-compatible endpoint (generativelanguage.googleapis.com/v1beta/openai),
-    // no gateway in between. Fast model for the conversation FSM, stronger model for
-    // the summary (Stage 9). Needs only GEMINI_API_KEY.
-    implementation("org.springframework.ai:spring-ai-starter-model-openai")
+    // LLM dialog — Spring AI's native Google GenAI starter, talking to the Gemini
+    implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
 
     // VAD — Silero voice-activity model (ONNX) for barge-in (PROJECT.md §2.3, §7.2).
     // The silero_vad.onnx model file is supplied at runtime (voice-agent.vad.model-path).
@@ -105,11 +86,6 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok")
 
     //Doc
-    // NOTE: stay on the springdoc 2.8.x line — it targets Spring Boot 3.5 (2.8.17 is
-    // built against 3.5.13). springdoc 3.x targets Boot 4 and drags in the modular
-    // spring-boot-webmvc/-servlet/-jackson 4.x artifacts, whose auto-configurations
-    // collide with Boot 3.5's spring-boot-autoconfigure (duplicate
-    // 'conventionErrorViewResolver' bean → APPLICATION FAILED TO START).
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
 
     // Test

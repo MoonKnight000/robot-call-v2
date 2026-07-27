@@ -61,7 +61,7 @@ public class GoogleTtsProvider implements TtsProvider {
     }
 
     @Override
-    public short[] synthesize(String text, String language) {
+    public short[] synthesize(String text, String language, String requestedVoice) {
         TextToSpeechClient current = client;
         if (current == null) {
             throw new IllegalStateException("Google TTS client is not available");
@@ -70,7 +70,10 @@ public class GoogleTtsProvider implements TtsProvider {
         SynthesisInput input = SynthesisInput.newBuilder().setText(text).build();
 
         VoiceSelectionParams.Builder voice = VoiceSelectionParams.newBuilder().setLanguageCode(language);
-        String voiceName = voices().get(language);
+        // A campaign's chosen voice wins over the per-language default (§2.5).
+        String voiceName = (requestedVoice != null && !requestedVoice.isBlank())
+                ? requestedVoice
+                : voices().get(language);
         if (voiceName != null && !voiceName.isBlank()) {
             voice.setName(voiceName);
         }

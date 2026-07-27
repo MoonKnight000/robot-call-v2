@@ -23,9 +23,12 @@ public class CampaignRepository {
             rs.getString("default_language"),
             rs.getObject("dial_window_start", LocalTime.class),
             rs.getObject("dial_window_end", LocalTime.class),
+            rs.getString("dial_days"),
             rs.getInt("max_attempts"),
             rs.getInt("retry_interval_hours"),
-            rs.getInt("max_concurrent_calls"));
+            rs.getInt("max_concurrent_calls"),
+            rs.getString("tts_voice"),
+            rs.getInt("daily_call_cap"));
 
     private final JdbcTemplate jdbc;
 
@@ -35,13 +38,15 @@ public class CampaignRepository {
 
     public long create(String name, String type, String goalPrompt, String scriptConfigJson,
                        String defaultLanguage, LocalTime windowStart, LocalTime windowEnd,
-                       int maxAttempts, int retryIntervalHours, int maxConcurrentCalls) {
+                       String dialDays, int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
+                       String ttsVoice, int dailyCallCap) {
         KeyHolder key = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
                     "INSERT INTO campaign(name, type, status, goal_prompt, script_config, default_language, "
-                            + "dial_window_start, dial_window_end, max_attempts, retry_interval_hours, max_concurrent_calls) "
-                            + "VALUES (?, ?, 'DRAFT', ?, ?::jsonb, ?, ?, ?, ?, ?, ?)", new String[]{"id"});
+                            + "dial_window_start, dial_window_end, dial_days, max_attempts, retry_interval_hours, "
+                            + "max_concurrent_calls, tts_voice, daily_call_cap) "
+                            + "VALUES (?, ?, 'DRAFT', ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)", new String[]{"id"});
             ps.setString(1, name);
             ps.setString(2, type);
             ps.setString(3, goalPrompt);
@@ -49,9 +54,12 @@ public class CampaignRepository {
             ps.setString(5, defaultLanguage);
             ps.setObject(6, windowStart);
             ps.setObject(7, windowEnd);
-            ps.setInt(8, maxAttempts);
-            ps.setInt(9, retryIntervalHours);
-            ps.setInt(10, maxConcurrentCalls);
+            ps.setString(8, dialDays);
+            ps.setInt(9, maxAttempts);
+            ps.setInt(10, retryIntervalHours);
+            ps.setInt(11, maxConcurrentCalls);
+            ps.setString(12, ttsVoice);
+            ps.setInt(13, dailyCallCap);
             return ps;
         }, key);
         Number id = key.getKey();

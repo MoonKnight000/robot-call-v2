@@ -5,6 +5,8 @@ import ch.loway.oss.ari4java.AriVersion;
 import ch.loway.oss.ari4java.generated.AriWSHelper;
 import ch.loway.oss.ari4java.generated.models.Bridge;
 import ch.loway.oss.ari4java.generated.models.Channel;
+import ch.loway.oss.ari4java.generated.models.ChannelDestroyed;
+import ch.loway.oss.ari4java.generated.models.ChannelHangupRequest;
 import ch.loway.oss.ari4java.generated.models.StasisEnd;
 import ch.loway.oss.ari4java.generated.models.StasisStart;
 import io.netty.channel.EventLoopGroup;
@@ -16,7 +18,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import uz.murodjon.uysotvoice.agent.audio.AnsweringMachineDetector;
 import uz.murodjon.uysotvoice.agent.audio.AudioListener;
+import uz.murodjon.uysotvoice.agent.audio.SpeechGate;
 import uz.murodjon.uysotvoice.agent.rtp.*;
 import uz.murodjon.uysotvoice.agent.session.CallSession;
 import uz.murodjon.uysotvoice.agent.stt.SttProperties;
@@ -27,18 +31,21 @@ import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
 import uz.murodjon.uysotvoice.agent.dialog.CallContext;
 import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
+import uz.murodjon.uysotvoice.agent.dialog.DialogOutcome;
 import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
 import uz.murodjon.uysotvoice.agent.vad.SileroVad;
 import uz.murodjon.uysotvoice.agent.vad.VadProperties;
 import uz.murodjon.uysotvoice.agent.vad.VadStream;
 import uz.murodjon.uysotvoice.agent.record.CallFinalizer;
 import uz.murodjon.uysotvoice.agent.record.CallRecordService;
+import uz.murodjon.uysotvoice.shared.PhoneNumbers;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.agent.operator.OperatorProperties;
 import uz.murodjon.uysotvoice.agent.routing.CallRouteRegistry;
 import uz.murodjon.uysotvoice.dialer.CampaignService;
 import uz.murodjon.uysotvoice.dialer.DialerState;
+import uz.murodjon.uysotvoice.dialer.DoNotCallRepository;
 import uz.murodjon.uysotvoice.dialer.OutboundCall;
 import uz.murodjon.uysotvoice.dialer.OutboundCallRegistry;
 
@@ -93,8 +100,18 @@ public class AriService {
     private final OperatorProperties operatorProps;
     private final VoiceMetrics metrics;
     private final CallRouteRegistry routeRegistry;
+    private final DoNotCallRepository doNotCallRepository;
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * Q.850 hangup cause per channel, as Asterisk reports it (§8.6). Kept alongside the
+     * sessions rather than inside them because the channels that need it most never got a
+     * session: an originate that was never answered produces no StasisStart at all, and
+     * its cause code is the only thing that distinguishes "line was busy" from "number
+     * does not exist".
+     */
+    private final Map<String, Integer> hangupCauses = new ConcurrentHashMap<>();
 
     private volatile ARI ari;
 
@@ -118,7 +135,8 @@ public class AriService {
                       CampaignService campaignService,
                       OperatorProperties operatorProps,
                       VoiceMetrics metrics,
-                      CallRouteRegistry routeRegistry) {
+                      CallRouteRegistry routeRegistry,
+                      DoNotCallRepository doNotCallRepository) {
         this.props = props;
         this.rtpProps = rtpProps;
         this.portAllocator = portAllocator;
@@ -140,6 +158,7 @@ public class AriService {
         this.operatorProps = operatorProps;
         this.metrics = metrics;
         this.routeRegistry = routeRegistry;
+        this.doNotCallRepository = doNotCallRepository;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -162,6 +181,18 @@ public class AriService {
                 public void onStasisEnd(StasisEnd event) {
                     handleStasisEnd(event);
                 }
+
+                @Override
+                public void onChannelHangupRequest(ChannelHangupRequest event) {
+                    // Usually arrives before StasisEnd (the far end sent BYE), which is
+                    // what makes the cause available in time to shape the disposition.
+                    rememberCause(event.getChannel(), event.getCause());
+                }
+
+                @Override
+                public void onChannelDestroyed(ChannelDestroyed event) {
+                    handleChannelDestroyed(event);
+                }
             });
             log.info("Connected to Asterisk ARI at {} as app '{}'", props.ariUrl(), props.appName());
         } catch (Exception e) {
@@ -179,7 +210,11 @@ public class AriService {
      *
      * @return the created channel id
      */
-    public String originate(String number) {
+    public String originate(String rawNumber) {
+        // Both callers (the REST API and the dialer's campaign targets) supply
+        // untrusted text that lands inside the dial string, so validate here — one
+        // place covers every dial path (§A3).
+        String number = PhoneNumbers.require(rawNumber);
         ARI current = requireConnection();
         String callId = "call-" + System.currentTimeMillis();
         String endpoint = endpointFor(number);
@@ -247,6 +282,15 @@ public class AriService {
      * @throws IllegalStateException if the call is not active or TTS is disabled
      */
     public void speak(String channelId, String text, String language) {
+        speak(channelId, text, language, null);
+    }
+
+    /**
+     * As {@link #speak(String, String, String)}, with an explicit voice id from
+     * {@code voice-agent.tts.catalog} — how a voice is auditioned before a campaign is
+     * created with it.
+     */
+    public void speak(String channelId, String text, String language, String ttsVoice) {
         CallSession session = sessions.get(channelId);
         if (session == null) {
             throw new IllegalStateException("No active call for channel " + channelId);
@@ -255,8 +299,9 @@ public class AriService {
             throw new IllegalStateException("TTS is disabled (voice-agent.tts.enabled=false)");
         }
         String lang = (language == null || language.isBlank()) ? ttsProps.defaultLanguage() : language;
-        short[] pcm = ttsRouter.synthesize(text, lang);
-        log.info("TTS speak [{}] lang={} chars={} -> {} samples", channelId, lang, text.length(), pcm.length);
+        short[] pcm = ttsRouter.synthesize(text, lang, ttsVoice);
+        log.info("TTS speak [{}] lang={} voice={} chars={} -> {} samples",
+                channelId, lang, ttsVoice != null ? ttsVoice : "default", text.length(), pcm.length);
         session.endpoint().playPcm(pcm);
     }
 
@@ -345,6 +390,7 @@ public class AriService {
         ARI current = requireConnection();
         int port = portAllocator.allocate();
         RtpEndpoint endpoint = null;
+        long attemptId = 0;
         try {
             answer(channelId);
 
@@ -357,23 +403,29 @@ public class AriService {
             OutboundCall outbound = outboundRegistry.peek(channelId);
             long targetId;
             String language;
+            String ttsVoice;
             CallContext context;
             if (outbound != null) {
                 outboundRegistry.markAnswered(channelId);
                 targetId = outbound.targetId();
                 language = outbound.language() != null ? outbound.language() : dialogProps.language();
+                // A campaign that chose no voice keeps the configured routing rather
+                // than inheriting the manual-call voice (§2.5).
+                ttsVoice = outbound.ttsVoice();
                 context = outbound.context();
             } else {
                 targetId = callRecordService.manualTargetId();
                 language = dialogProps.language();
+                ttsVoice = dialogProps.ttsVoice();
                 context = buildTestContext();
             }
 
             // Stage 9: open a call_attempt so transcripts/result can be persisted.
             Instant startedAt = Instant.now();
-            long attemptId = callRecordService.startAttempt(targetId, channelId, language);
+            attemptId = callRecordService.startAttempt(targetId, channelId, language);
 
-            endpoint = new RtpEndpoint(port, recorder, buildAudioListeners(channelId, attemptId, startedAt));
+            endpoint = new RtpEndpoint(port, recorder,
+                    buildAudioListeners(channelId, attemptId, startedAt, language));
             endpoint.start(rtpEventLoopGroup);
 
             // externalMedia: Asterisk sends the caller's audio to our listener (PROJECT.md §8.4).
@@ -408,11 +460,14 @@ public class AriService {
             // Stage 7: start the LLM dialog (bot greets and drives the conversation).
             // Outbound campaign calls always run dialog; inbound/manual only if auto-start.
             if (dialogProps.enabled() && (dialogProps.autoStart() || outbound != null)) {
-                dialogEngine.startCall(channelId, endpoint, context, language,
+                dialogEngine.startCall(channelId, endpoint, context, language, ttsVoice,
                         () -> hangup(channelId), () -> transferToOperator(channelId), attemptId);
             }
         } catch (Exception e) {
             log.error("Failed to set up media for {}: {}", channelId, e.getMessage(), e);
+            // Keep the reason on the attempt row: a call that died in media setup
+            // otherwise looks identical to one the client never answered.
+            callRecordService.recordError(attemptId, e.toString());
             if (endpoint != null) {
                 endpoint.close();
             }
@@ -445,15 +500,27 @@ public class AriService {
         }
     }
 
-    private List<AudioListener> buildAudioListeners(String channelId, long callAttemptId, Instant startedAt) {
+    private List<AudioListener> buildAudioListeners(String channelId, long callAttemptId, Instant startedAt,
+                                                    String language) {
         List<AudioListener> listeners = new ArrayList<>();
 
         // Barge-in detector (Stage 8): silences the bot when the caller speaks over it.
+        // The same VAD scores also drive the STT gate below, which is why this listener
+        // must stay ahead of the STT bridge in the list — they run in order on the RTP
+        // consumer thread, and the gate has to see a frame before the bridge asks about it.
+        SpeechGate speechGate = null;
         if (vadProps.enabled()) {
             SileroVad vad = vadProvider.getIfAvailable();
             if (vad != null && vad.available()) {
+                SttProperties.VadGating gating = sttProps.vadGating();
+                if (gating != null && gating.enabled() && sttProps.enabled()) {
+                    speechGate = new SpeechGate(SAMPLE_RATE, gating.preRollMs(), gating.postRollMs());
+                }
                 listeners.add(new VadStream(vad, vadProps, channelId,
-                        () -> dialogEngine.notifyBargeIn(channelId)));
+                        () -> dialogEngine.notifyBargeIn(channelId), speechGate,
+                        buildAmd(channelId)));
+            } else if (sttProps.vadGating() != null && sttProps.vadGating().enabled()) {
+                log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }
         }
 
@@ -475,14 +542,46 @@ public class AriService {
                     }
                 };
                 try {
-                    listeners.add(new SttStreamBridge(stt, sttProps.google().sampleRate(),
-                            channelId, sttProps.defaultLanguage(), listener));
+                    // Rate comes from the provider that is actually running — the
+                    // Google/Yandex settings are independent (§C3).
+                    //
+                    // Recognize in the language THIS call speaks, not the global default:
+                    // a ru-RU campaign target was previously transcribed as Uzbek, which
+                    // yields plausible-looking nonsense the dialog then answers (§3.1).
+                    String sttLanguage = (language == null || language.isBlank())
+                            ? sttProps.defaultLanguage() : language;
+                    listeners.add(new SttStreamBridge(stt, stt.sampleRate(), SAMPLE_RATE,
+                            channelId, sttLanguage, listener, speechGate, metrics));
                 } catch (Exception e) {
                     log.warn("STT not started for {}: {}", channelId, e.getMessage());
                 }
             }
         }
         return listeners;
+    }
+
+    /**
+     * The answering-machine detector for this call, or {@code null} when detection is off
+     * (§8.6). On detection the dialog is closed as VOICEMAIL and the channel dropped —
+     * the rest of a recorded greeting is STT, LLM and TTS spent on nobody.
+     */
+    private AnsweringMachineDetector buildAmd(String channelId) {
+        VadProperties.Amd amd = vadProps.amd();
+        if (amd == null || !amd.enabled()) {
+            return null;
+        }
+        return new AnsweringMachineDetector(channelId, SAMPLE_RATE, amd.observeMs(),
+                amd.minContinuousSpeechMs(), amd.silenceToleranceMs(),
+                () -> handleVoicemail(channelId));
+    }
+
+    /** End a call an answering machine answered. Runs on the RTP thread — keep it short. */
+    private void handleVoicemail(String channelId) {
+        metrics.voicemailDetected();
+        // The disposition has to land on the dialog session: that is what teardown reads
+        // to write call_attempt.disposition and to schedule the target's retry.
+        dialogEngine.notifyVoicemail(channelId);
+        callExecutor.execute(() -> withMdc(channelId, () -> hangup(channelId)));
     }
 
     private CallContext buildTestContext() {
@@ -501,20 +600,95 @@ public class AriService {
         return new CallContext(t.clientName(), t.debtAmount(), t.currency(), due, t.contractNumber(), t.goal());
     }
 
+    /** Note the cause Asterisk reported for a channel, keeping the first one seen. */
+    private void rememberCause(Channel channel, Integer cause) {
+        if (channel == null || cause == null) {
+            return;
+        }
+        Integer previous = hangupCauses.putIfAbsent(channel.getId(), cause);
+        if (previous == null) {
+            log.debug("Hangup cause for {}: {}", channel.getId(), HangupCause.label(cause));
+        }
+    }
+
+    /**
+     * A channel is gone for good. This is the last chance to learn the cause, and the only
+     * event an unanswered originate produces at all — so it both persists the cause and
+     * settles the outcome of calls that never reached Stasis.
+     */
+    private void handleChannelDestroyed(ChannelDestroyed event) {
+        Channel channel = event.getChannel();
+        if (channel == null) {
+            return;
+        }
+        String channelId = channel.getId();
+        String name = channel.getName();
+        if (name != null && name.startsWith(EXTERNAL_MEDIA_PREFIX)) {
+            // Our own media leg. It has no attempt row and no target, so there is nothing
+            // to record — only two no-op UPDATEs per call if we let it through.
+            hangupCauses.remove(channelId);
+            return;
+        }
+        rememberCause(channel, event.getCause());
+        // Removed here and nowhere else: StasisEnd reads the cause synchronously on this
+        // same WebSocket thread, and ARI delivers a channel's events in order, so the read
+        // always happens before this removal.
+        Integer cause = hangupCauses.remove(channelId);
+
+        // Persist the cause even for a call that was already finalized — StasisEnd runs
+        // first, so finishAttempt has usually written its row by now, and the column is
+        // what a later report explains a NO_ANSWER with.
+        callRecordService.recordHangupCause(channelId, HangupCause.label(cause));
+
+        // Settle outbound calls that never answered, instead of leaving them to the
+        // 60-second sweeper which can only ever guess NO_ANSWER. Answered calls are left
+        // strictly alone: their own teardown owns the outcome, and stealing the registry
+        // entry here would record a promise to pay as an unanswered attempt.
+        OutboundCall outbound = outboundRegistry.removeIfUnanswered(channelId);
+        if (outbound == null) {
+            return;
+        }
+        Disposition disposition = HangupCause.toDisposition(cause);
+        if (disposition == null) {
+            disposition = Disposition.NO_ANSWER; // rang out, or a cause with no verdict
+        }
+        dialerState.release();
+        campaignService.applyOutcome(outbound.targetId(), disposition);
+        metrics.disposition(disposition);
+        log.info("Unanswered call {} to {} settled as {} (cause {})",
+                channelId, outbound.phone(), disposition, HangupCause.label(cause));
+    }
+
     private void handleStasisEnd(StasisEnd event) {
         String channelId = event.getChannel().getId();
         // Read the dialog outcome before dropping the session, then tear down.
-        Disposition disposition = dialogEngine.disposition(channelId);
+        DialogOutcome outcome = dialogEngine.outcome(channelId);
         dialogEngine.endCall(channelId);
         CallSession session = sessions.remove(channelId);
         if (session == null) {
             return; // externalMedia channel or already torn down
         }
-        log.info("StasisEnd: channel {} — tearing down media", channelId);
-        callExecutor.execute(() -> withMdc(channelId, () -> teardown(session, disposition)));
+        // Read here, on the event thread, rather than inside the asynchronous teardown:
+        // ChannelDestroyed arrives moments later and clears the entry, and teardown may
+        // not have been scheduled by then.
+        Integer cause = hangupCauses.get(channelId);
+        log.info("StasisEnd: channel {} — tearing down media (cause {})",
+                channelId, HangupCause.label(cause));
+        callExecutor.execute(() -> withMdc(channelId, () -> teardown(session, outcome, cause)));
     }
 
-    private void teardown(CallSession session, Disposition disposition) {
+    private void teardown(CallSession session, DialogOutcome outcome, Integer cause) {
+        // What the conversation concluded wins: cause 16 (normal clearing) covers both a
+        // promise to pay and an angry hangup, and only the dialog knows which. The cause
+        // code is the fallback for calls that produced no outcome of their own (§8.6).
+        Disposition disposition = outcome.disposition();
+        if (disposition == null) {
+            disposition = HangupCause.toDisposition(cause);
+            if (disposition != null) {
+                log.info("[{}] no dialog outcome; hangup cause {} -> {}",
+                        session.channelId(), HangupCause.label(cause), disposition);
+            }
+        }
         session.endpoint().close(); // finalizes the WAV file
         portAllocator.release(session.rtpPort());
         ARI current = ari;
@@ -543,6 +717,11 @@ public class AriService {
         if (outbound != null) {
             clientId = outbound.clientId() != null ? outbound.clientId() : 0L;
             dialerState.release();
+            // §11.4: an opt-out binds the phone number, not just this campaign's
+            // target row, so it is written before the target status is updated.
+            if (disposition == Disposition.DO_NOT_CALL) {
+                doNotCallRepository.add(outbound.phone(), outcome.doNotCallReason(), "CALL");
+            }
             campaignService.applyOutcome(outbound.targetId(), disposition);
         }
 
@@ -588,7 +767,8 @@ public class AriService {
     public void shutdown() {
         sessions.values().forEach(session -> {
             try {
-                teardown(session, dialogEngine.disposition(session.channelId()));
+                teardown(session, dialogEngine.outcome(session.channelId()),
+                        hangupCauses.get(session.channelId()));
             } catch (Exception e) {
                 log.warn("Teardown during shutdown failed for {}: {}", session.channelId(), e.getMessage());
             }

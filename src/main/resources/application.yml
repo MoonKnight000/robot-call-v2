@@ -2,6 +2,13 @@ spring:
   application:
     name: uysot-voice
 
+  autoconfigure:
+    # Authentication is the X-Api-Key header (ApiKeyFilter) — there are no user
+    # accounts. Without this exclusion Boot would create a default "user" and log a
+    # generated password that authenticates nothing, which only confuses operators.
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
   # Wait up to this long for @PreDestroy (call draining, §12) during shutdown.
   lifecycle:
     timeout-per-shutdown-phase: 90s
@@ -36,36 +43,57 @@ spring:
       port: ${REDIS_PORT:6379}
 
   ai:
-    openai:
-      # Gemini direct — Google's own OpenAI-compatible endpoint, no gateway in
-      # between (the old aigw proxy only resolved on the office wifi). The Spring AI
-      # OpenAI client stays as-is; only the URL and the model ids change.
-      # Auth is the plain Gemini API key sent as `Authorization: Bearer <key>`.
-      api-key: ${GEMINI_API_KEY:}
-      base-url: ${GEMINI_API_BASE_URL:https://generativelanguage.googleapis.com}
-      chat:
-        # Google serves the compat layer under /v1beta/openai, so the default
-        # OpenAI path (/v1/chat/completions) would 404.
-        completions-path: ${GEMINI_COMPLETIONS_PATH:/v1beta/openai/chat/completions}
-        options:
-          # Fast model for the conversation (PROJECT.md §2.6). The Stage 9 summary
-          # calls a stronger model explicitly (voice-agent.summary.model).
-          # NOTE: plain Gemini ids here — no "gemini/" provider prefix (that was a
-          # LiteLLM gateway requirement). To list what the key may use:
-          #   curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"
-          model: ${LLM_DIALOG_MODEL:gemini-2.5-flash}
-          max-tokens: 512
-          temperature: 0.3
-          # Gemini 2.5 Flash thinks by default and those tokens are billed against
-          # max-tokens above, so thinking can eat the reply budget and hand the caller
-          # silence (see the "empty LLM reply" fallback in DialogEngine). Measured
-          # against this endpoint for a one-line greeting: default ≈220 thinking
-          # tokens, "low" ≈490 (!), "none" = 0. A live phone turn cannot afford that
-          # latency, and tool calling still picks the right tool with thinking off.
-          # Raise to "low"/"medium"/"high" only if reply quality actually suffers.
-          reasoning-effort: ${LLM_REASONING_EFFORT:none}
+    # Qaysi chat provayderi yoqilishi. Google GenAI autoconfig'i "google-genai" qiymatiga
+    # (yoki umuman berilmasa) yoqiladi.
+    # DIQQAT: kalitsiz deploy uchun buni "none" ga qo'ying. google-genai tanlangan va
+    # GEMINI_API_KEY bo'sh bo'lsa, com.google.genai.Client qurilishida
+    # IllegalArgumentException tashlanadi va ilova UMUMAN ko'tarilmaydi ("API key must
+    # either be provided or set in the environment variable GOOGLE_API_KEY or
+    # GEMINI_API_KEY"). Eski OpenAI starteri bunday holatda jim ishga tushardi.
+    model:
+      chat: ${LLM_CHAT_PROVIDER:google-genai}
+
+    google:
+      genai:
+        # Gemini Developer API — oddiy API kalit (AI Studio). vertex-ai standart holda
+        # false, shuning uchun GCP loyihasi ham, service-account ham talab qilinmaydi.
+        api-key: ${GEMINI_API_KEY:}
+
+        chat:
+          options:
+            model: ${LLM_DIALOG_MODEL:gemini-3.6-flash}
+            max-output-tokens: 512
+            temperature: 0.3
+
+            # Gemini 3.x o'ylash darajasi (MINIMAL/LOW/MEDIUM/HIGH). Telefon suhbati
+            # uchun MINIMAL: o'ylash tokenlari max-output-tokens byudjetidan yeydi va
+            # javobni bo'sh qoldirishi mumkin (tekshirilgan: 50 token limitida
+            # completion_tokens=0, finish_reason="length"), ustiga har navbatga bir
+            # necha yuz ms qo'shadi.
+            # Qiymat enum'ga case-insensitive bog'lanadi, ya'ni eski "minimal" ham yaraydi.
+            thinking-level: ${LLM_REASONING_EFFORT:MINIMAL}
+
+            # DIQQAT: include-thoughts NI YOQMANG. Spring AI 1.1.8 javobdagi "thought"
+            # bo'laklarini oddiy matndan ajratmaydi — modelning ichki mulohazasi
+            # ChatResponse matniga tushadi va DialogEngine uni TTS orqali mijozga
+            # o'qib beradi. U Gemini 3 ning thought_signature'lari uchun kerak edi,
+            # lekin biz tool'larni o'zimiz bajaramiz (DialogEngine.manualToolOptions),
+            # shuning uchun signature umuman talab qilinmaydi.
 
 voice-agent:
+  security:
+    # Shared secret for every /api/** and /actuator/** request (header: X-Api-Key).
+    # Blank = fail-closed: nothing authenticates and the API answers 401. There is no
+    # sensible default here — POST /api/calls dials the real trunk.
+    api-key: ${API_KEY:}
+    # Optional second secret that may only READ: /api/reports/** and /actuator/**.
+    # Reporting, transcripts and recordings are what most people need day to day, and
+    # handing them the key that can dial 50 000 subscribers to get them is the wrong
+    # trade. Blank = no read-only role (everything needs the admin key, as before).
+    read-api-key: ${READ_API_KEY:}
+    # Serve the static test panel and swagger-ui without a key. The panel still sends
+    # the key with every API call it makes. Set false to hide them too.
+    public-ui: ${SECURITY_PUBLIC_UI:true}
   asterisk:
     enabled: ${ASTERISK_ENABLED:true}
     # ari4java needs the HTTP base URL (not ws://). It derives the WebSocket itself.
@@ -96,12 +124,32 @@ voice-agent:
     recording-dir: ${RTP_RECORDING_DIR:recordings}
     # Optional: 8 kHz mono 16-bit WAV auto-played to the caller on answer (Stage 4 test).
     test-playback-file: ${RTP_TEST_PLAYBACK_FILE:}
+    # Netty threads shared by every call's RTP socket. 0 = one per processor (min 2).
+    # A single thread carries both the inbound packets and the 20ms playback pacer of
+    # every concurrent call, which jitters at the ~20 calls the MVP targets.
+    event-loop-threads: ${RTP_EVENT_LOOP_THREADS:0}
   stt:
     enabled: ${STT_ENABLED:true}
     # Active STT provider: yandex (default) or google. SpeechKit v3 recognises both
     # uz-UZ (Latin script) and ru-RU.
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
+    # Yandex bills STT per streamed audio-second, and most of a call is not speech —
+    # the bot talks, the caller thinks, the line idles. The Silero VAD that already runs
+    # for barge-in decides what reaches the recognizer; the rest is counted
+    # (voice.stt.audio.seconds.skipped) and dropped. Needs VAD enabled with its model
+    # present, otherwise every frame is streamed exactly as before.
+    vad-gating:
+      enabled: ${STT_VAD_GATING:true}
+      # Audio kept before the first speech window and sent once the gate opens. Covers
+      # the VAD's own detection delay — too small and every utterance loses its first
+      # syllable.
+      pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:500}
+      # How long the stream stays open after speech stops. This is the silence the
+      # provider's end-of-utterance detector listens for: too short and the final
+      # transcript never arrives and the turn stalls. Lower it only while watching
+      # whether finals still come through.
+      post-roll-ms: ${STT_VAD_POST_ROLL_MS:1500}
     google:
       # Leave model blank for uz-UZ (phone_call is English/Russian-centric and may
       # not support Uzbek). Set to phone_call for ru-RU if desired.
@@ -126,6 +174,71 @@ voice-agent:
     # language; falls back by support (a language with no Yandex voice → Google).
     provider: ${TTS_PROVIDER:yandex}
     default-language: ${TTS_DEFAULT_LANGUAGE:uz-UZ}
+    # Synthesized-audio cache. Yandex bills per character and this agent repeats itself
+    # by design, so a hit saves both money and a synthesis round trip inside a live turn.
+    cache:
+      # Per-process LRU. 8 kHz 16-bit mono ≈ 16 KB per spoken second, so 200 entries is
+      # a few MB. 0 = off.
+      size: ${TTS_CACHE_SIZE:200}
+      # Longest line worth an entry — above this a line rarely repeats.
+      max-chars: ${TTS_CACHE_MAX_CHARS:200}
+      # Second level in Redis: a line paid for on one instance is free on the others and
+      # survives a restart. Best-effort — a Redis outage costs hits, never a call.
+      redis: ${TTS_CACHE_REDIS:true}
+      ttl-days: ${TTS_CACHE_TTL_DAYS:30}
+      # Synthesize the fixed lines (disclosure, farewell, "say that again") at startup,
+      # so the first call of a deploy neither pays for them nor waits for them.
+      prewarm: ${TTS_CACHE_PREWARM:true}
+    # Voices a campaign can be created with (GET /api/tts/voices fills the picker in
+    # the panel; POST /api/campaigns validates the id against this list). A campaign
+    # that picks one speaks with it and with the provider that owns it; one that picks
+    # nothing keeps the provider/voices routing configured below.
+    #
+    # A voice only applies to calls in its own language — an Uzbek voice reading a
+    # Russian target's text out is worse than the default Russian voice, so those
+    # calls fall back to normal routing.
+    catalog:
+      - id: nigora
+        provider: yandex
+        language: uz-UZ
+        name: nigora
+        label: Nigora — o'zbek, ayol
+      - id: alena
+        provider: yandex
+        language: ru-RU
+        name: alena
+        label: Alena — rus, ayol
+      - id: jane
+        provider: yandex
+        language: ru-RU
+        name: jane
+        label: Jane — rus, ayol
+      - id: omazh
+        provider: yandex
+        language: ru-RU
+        name: omazh
+        label: Omazh — rus, ayol
+      - id: filipp
+        provider: yandex
+        language: ru-RU
+        name: filipp
+        label: Filipp — rus, erkak
+      - id: ermil
+        provider: yandex
+        language: ru-RU
+        name: ermil
+        label: Ermil — rus, erkak
+      - id: zahar
+        provider: yandex
+        language: ru-RU
+        name: zahar
+        label: Zahar — rus, erkak
+    # Google voices belong here the same way once one has been listened to (§2.5):
+    #   - id: google-uz-a
+    #     provider: google
+    #     language: uz-UZ
+    #     name: uz-UZ-Standard-A
+    #     label: Google uz-UZ Standard A
     google:
       enabled: ${TTS_GOOGLE_ENABLED:true}
       sample-rate: 8000
@@ -157,8 +270,59 @@ voice-agent:
     # verification without a campaign/DB). Turn off once the dialer supplies calls.
     auto-start: ${DIALOG_AUTO_START:true}
     language: ${DIALOG_LANGUAGE:uz-UZ}
+    # Voice for manual/auto-started calls (an id from tts.catalog above) — campaign
+    # calls carry the voice chosen when the campaign was created. Blank = configured
+    # routing; this is how a voice is auditioned before a campaign uses it.
+    tts-voice: ${DIALOG_TTS_VOICE:}
+    # Kanal "javob berildi" bo'lgani bilan mijoz go'shakni hali qulog'iga olib
+    # bormagan bo'ladi (200 OK dan keyin telefon/GSM tomoni audio yo'lini ochishga
+    # ham vaqt oladi). Shu pauzasiz salomlashuvning boshi yo'qoladi: mijoz
+    # "assalom" ni eshitmay, faqat "...alaykum" ni ushlaydi.
+    # Juda uzaytirmang — jimlik ham "alo?" deyishga majbur qiladi.
+    greeting-delay-ms: ${DIALOG_GREETING_DELAY_MS:1200}
     max-turns: ${DIALOG_MAX_TURNS:25}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
+    # Stream the LLM reply and synthesize sentence by sentence (§7.2), so the caller
+    # hears the first sentence while the rest is still being generated. Blocking mode
+    # waits for the whole reply AND the whole synthesis before any audio goes out —
+    # that is roughly 1.5-2.5s per turn against the <1s target (§1.3).
+    # Set false if the provider misbehaves with streaming + tool calls.
+    streaming: ${DIALOG_STREAMING:true}
+    # §11.1: say "this is an automated system, the call is recorded" from code before
+    # the LLM's first turn. Leaving it to the system prompt means a model that skips
+    # or paraphrases it away breaks a legal requirement. The prompt is then told not
+    # to repeat the greeting.
+    mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}
+    # Send only the tools the current FSM state can legitimately use. Tool declarations
+    # are re-sent (and re-billed) on every turn, and a tool that cannot fire yet is
+    # mostly an opportunity to misfire — nothing can be promised before the debt has
+    # been named. Set false to send all of them if a transition starts getting missed.
+    state-scoped-tools: ${DIALOG_STATE_SCOPED_TOOLS:true}
+    # Hard cap on how many messages of the conversation are resent each turn; older ones
+    # are dropped in blocks (a block at a time, because each trim invalidates the
+    # provider's cached prefix). A normal call never reaches this — it bounds the cost of
+    # a pathological one. 0 = never trim.
+    history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
+    # Silence watchdog. A turn only happens on a final transcript, so a caller who says
+    # nothing — or a recognizer that stops emitting finals — used to leave the call mute
+    # until max-call-seconds. After this many quiet seconds the bot asks "alo, meni
+    # eshityapsizmi?"; after no-input-max-prompts unanswered asks it says goodbye and
+    # hangs up (disposition HUNG_UP, so the target is retried). 0 = no watchdog.
+    # Long enough to let someone think: interrupting a caller drawing breath is worse
+    # than waiting a beat too long.
+    no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
+    no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
+    # §4.4: check money figures in the model's reply against the injected facts before
+    # they are spoken. A hallucinated debt amount is the worst thing this system can do —
+    # the caller hears an official demand for money they do not owe, on a recorded line.
+    # A blocked reply is retried once with the mistake named, then escalated to a human.
+    # Watch voice.dialog.fact.guard.blocks; it should be zero.
+    fact-guard: ${DIALOG_FACT_GUARD:true}
+    # Cumulative LLM tokens one call may spend before it is closed politely (§C14). The
+    # turn and duration caps bound a call that behaves; this bounds one that loops, where
+    # each turn resends the whole context. ~25 turns of a normal call is well under this.
+    # 0 = no budget.
+    max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:200000}
     # Placeholder debtor facts until campaign targets exist (Stage 10). FACTS —
     # never generated by the LLM (§4.4).
     test-context:
@@ -178,13 +342,32 @@ voice-agent:
     threshold: ${VAD_THRESHOLD:0.5}
     min-speech-ms: ${VAD_MIN_SPEECH_MS:200}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:400}
+    # Answering-machine detection (§8.6), driven by the same VAD scores as barge-in.
+    # A person answers with something short ("alo?") and then waits; a machine plays an
+    # uninterrupted greeting. So one continuous run of speech longer than
+    # min-continuous-speech-ms, within the first observe-ms, means a recording: the call
+    # is marked VOICEMAIL, cut off, and retried later at a different hour.
+    #
+    # Without it the agent holds a full conversation with a voicemail beep — STT, LLM and
+    # TTS spent on nobody, and a disposition that describes nothing.
+    #
+    # The threshold is deliberately generous. Cutting off a talkative human
+    # ("Assalomu alaykum, eshitaman, kim gaplashadi?") is far worse than paying for one
+    # wasted voicemail, so tune it DOWN only against real recordings.
+    amd:
+      enabled: ${VAD_AMD_ENABLED:true}
+      observe-ms: ${VAD_AMD_OBSERVE_MS:6000}
+      min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:3500}
+      silence-tolerance-ms: ${VAD_AMD_SILENCE_TOLERANCE_MS:250}
   summary:
     # Post-call structured summary (§4.3). §2.6 wants a stronger model here than the
-    # dialog uses, but gemini-2.5-pro is quota 0 on a free Gemini key (verified: every
+    # dialog uses, but the pro models are quota 0 on a free Gemini key (verified: every
     # call 429s, and SummaryService swallows that into a null summary). Flash produces
-    # valid CallSummary JSON; switch back to gemini-2.5-pro once the key is on billing.
+    # valid CallSummary JSON; switch to a pro model once the key is on billing.
+    # NOTE: gemini-2.5-flash now 404s for keys that never used it ("no longer available
+    # to new users"), so the default is a 3.x flash like the dialog's.
     enabled: ${SUMMARY_ENABLED:true}
-    model: ${SUMMARY_MODEL:gemini-2.5-flash}
+    model: ${SUMMARY_MODEL:gemini-3.6-flash}
     # Set explicitly so the summary does not inherit the dialog's latency tuning
     # (512 tokens / thinking off) — here quality matters and latency does not.
     reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
@@ -196,12 +379,38 @@ voice-agent:
     access-key: ${MINIO_USER:uysot}
     secret-key: ${MINIO_PASSWORD:uysot-secret}
     bucket: ${MINIO_BUCKET:recordings}
+    # Drop the on-disk WAV once it is in object storage. Off while storage is off —
+    # deleting then would throw the only copy away.
+    delete-local-after-upload: ${STORAGE_DELETE_LOCAL:true}
+    # §11.3: recordings are evidence in a dispute, and the retention period has to be
+    # configurable. Recordings and their transcripts are purged after this many days;
+    # call_attempt/call_result metadata is kept for reporting. 0 = keep forever.
+    retention-days: ${STORAGE_RETENTION_DAYS:90}
+    # Nightly, outside the 09:00-20:00 dial window.
+    retention-cron: ${STORAGE_RETENTION_CRON:0 30 3 * * *}
   crm:
     # Write the summary back to Uysot CRM as a note. Off until configured.
     enabled: ${CRM_ENABLED:false}
     base-url: ${CRM_BASE_URL:}
     api-token: ${CRM_API_TOKEN:}
     note-path: ${CRM_NOTE_PATH:api/notes}
+    # Read one client before dialling ({id} = client id): refreshes the debtor facts and
+    # picks up preferred_language (§3.1 priority 1, §9 step 4). The imported context_data
+    # is a snapshot from when the campaign was built — for a debt amount that means
+    # stating a figure the client may already have paid down. Blank = no lookup, keep the
+    # imported values. A failed lookup never blocks the call.
+    client-path: ${CRM_CLIENT_PATH:api/clients/{id}}
+  outbox:
+    # Retries the post-call work that failed the first time (§4.3). A CRM outage or an LLM
+    # quota error used to mean a WARN log and a permanently lost note — for a call whose
+    # whole purpose is a CRM note, that loses the call. Two sweeps: ended attempts with a
+    # transcript but no call_result get summarized again; results with no crm_note_id get
+    # re-posted from the stored summary (no LLM call needed).
+    enabled: ${OUTBOX_ENABLED:true}
+    interval-minutes: ${OUTBOX_INTERVAL_MINUTES:5}
+    # Attempts per row before it is left alone, so a permanently broken row stops retrying.
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:5}
+    batch: ${OUTBOX_BATCH:20}
   dialer:
     # Scheduled outbound dialer (Stage 10). Scans ACTIVE campaigns and dispatches
     # due targets via RabbitMQ, bounded by dispatch-batch (rate) and concurrency.
@@ -210,6 +419,19 @@ voice-agent:
     dispatch-batch: ${DIALER_DISPATCH_BATCH:3}
     max-concurrent-calls: ${DIALER_MAX_CONCURRENT:5}
     reclaim-after-sec: ${DIALER_RECLAIM_AFTER_SEC:60}
+    # How long before a target is dialled again, by why the last attempt failed. One
+    # 24-hour interval for everything spent most of a campaign's three retries on the
+    # outcome least likely to change.
+    retry:
+      # Rang out or busy — the subscriber exists and may be free this afternoon.
+      no-answer-minutes: ${DIALER_RETRY_NO_ANSWER_MINUTES:180}
+      # Our fault or the carrier's; nothing about the subscriber changed.
+      failed-minutes: ${DIALER_RETRY_FAILED_MINUTES:15}
+      # A machine answers at every hour equally, so vary the hour: NOT a multiple of 24.
+      voicemail-minutes: ${DIALER_RETRY_VOICEMAIL_MINUTES:1200}
+      # Pull the computed time into the campaign's dial window and allowed weekdays
+      # (§11.2), so next_attempt_at never reads 03:00 on a Sunday.
+      respect-dial-window: ${DIALER_RETRY_RESPECT_WINDOW:true}
   operator:
     # Human-operator transfer (§11.6). endpoint is a direct agent (PJSIP/operator)
     # or the queue via a Local channel (Local/support@operators — see queues.conf).
@@ -243,7 +465,9 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      # /actuator/health stays reachable without a key (orchestrator probes), but the
+      # component breakdown — DB/Redis/Rabbit hosts and state — only for authenticated callers.
+      show-details: when-authorized
   metrics:
     tags:
       application: uysot-voice

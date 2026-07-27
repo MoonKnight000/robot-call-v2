@@ -18,7 +18,8 @@ import java.util.Map;
 /**
  * Yandex SpeechKit text-to-speech for {@code ru-RU} and {@code uz-UZ} (PROJECT.md §2.5).
  * The voice is per-language ({@code voice-agent.tts.yandex.voices}); Uzbek uses the
- * Nigora voice, Russian the default {@code voice}.
+ * Nigora voice, Russian the default {@code voice}. A campaign that picked a voice
+ * passes it in explicitly and overrides both (§2.5).
  *
  * <p>Uses the REST {@code v1 tts:synthesize} endpoint with {@code format=lpcm},
  * which returns headerless signed 16-bit little-endian PCM at the requested rate
@@ -63,12 +64,13 @@ public class YandexTtsProvider implements TtsProvider {
     }
 
     @Override
-    public short[] synthesize(String text, String language) {
+    public short[] synthesize(String text, String language, String voice) {
         TtsProperties.Yandex y = props.yandex();
+        String chosen = (voice != null && !voice.isBlank()) ? voice : voiceFor(language);
         StringBuilder form = new StringBuilder()
                 .append("text=").append(enc(text))
                 .append("&lang=").append(enc(language))
-                .append("&voice=").append(enc(voiceFor(language)))
+                .append("&voice=").append(enc(chosen))
                 .append("&emotion=").append(enc(y.emotion()))
                 .append("&format=lpcm")
                 .append("&sampleRateHertz=").append(y.sampleRate());

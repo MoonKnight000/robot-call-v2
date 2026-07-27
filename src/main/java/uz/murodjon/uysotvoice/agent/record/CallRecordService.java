@@ -123,6 +123,41 @@ public class CallRecordService {
         }
     }
 
+    /**
+     * Record why a call failed technically, on the attempt row. Without this the
+     * {@code error_message} column stays empty and a call that died during media
+     * setup is indistinguishable from one the client simply did not answer.
+     */
+    public void recordError(long callId, String message) {
+        if (callId == 0 || message == null || message.isBlank()) {
+            return;
+        }
+        try {
+            jdbc.update("UPDATE call_attempt SET error_message = ? WHERE id = ?", message, callId);
+        } catch (Exception e) {
+            log.warn("recordError failed for call {}: {}", callId, e.getMessage());
+        }
+    }
+
+    /**
+     * Store the Asterisk hangup cause for the attempt on {@code channelId} (§8.6).
+     *
+     * <p>Keyed by channel rather than by attempt id because the cause arrives on
+     * {@code ChannelDestroyed}, which fires after the attempt has already been closed out
+     * — and for a call that was never answered there is no attempt row in memory at all.
+     */
+    public void recordHangupCause(String channelId, String cause) {
+        if (channelId == null || cause == null) {
+            return;
+        }
+        try {
+            jdbc.update("UPDATE call_attempt SET hangup_cause = ? WHERE asterisk_channel = ?",
+                    cause, channelId);
+        } catch (Exception e) {
+            log.warn("recordHangupCause failed for channel {}: {}", channelId, e.getMessage());
+        }
+    }
+
     /** Full transcript as {@code ROLE: text} lines, in order (for the summary LLM). */
     public String transcriptText(long callId) {
         if (callId == 0) {
@@ -161,7 +196,14 @@ public class CallRecordService {
         }
     }
 
-    /** Insert the single call_result row (§4.3). */
+    /**
+     * Insert the single call_result row (§4.3).
+     *
+     * <p>Idempotent: the outbox re-runs the summary for calls that have no result yet, and
+     * two instances sweeping at once would otherwise have one of them fail on the unique
+     * {@code call_id}. Whichever writes first wins — they are summarizing the same
+     * transcript.
+     */
     public void writeResult(long callId, CallSummary s, boolean escalated, Long crmNoteId) {
         if (callId == 0 || s == null) {
             return;
@@ -169,7 +211,8 @@ public class CallRecordService {
         try {
             jdbc.update("INSERT INTO call_result(call_id, summary, reason_code, promised_date, promised_amount, "
                             + "sentiment, needs_follow_up, follow_up_note, escalated, crm_note_id) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                            + "ON CONFLICT (call_id) DO NOTHING",
                     callId,
                     s.summary() != null ? s.summary() : "",
                     s.reasonCode() != null ? s.reasonCode().name() : null,

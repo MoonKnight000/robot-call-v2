@@ -15,10 +15,22 @@ public interface TtsProvider {
     boolean supports(String language);
 
     /**
-     * Synthesize {@code text} into telephone-grade audio.
+     * Synthesize {@code text} into telephone-grade audio with the provider's
+     * configured voice for {@code language}.
      *
      * @return 8 kHz mono 16-bit PCM samples, ready for {@code RtpEndpoint.playPcm}
      * @throws RuntimeException if synthesis fails or the provider is unavailable
      */
-    short[] synthesize(String text, String language);
+    default short[] synthesize(String text, String language) {
+        return synthesize(text, language, null);
+    }
+
+    /**
+     * Synthesize {@code text} with an explicit provider-side voice name — what a
+     * campaign's chosen voice resolves to (§2.5).
+     *
+     * @param voice provider-side voice name; {@code null}/blank uses the configured
+     *              voice for {@code language}
+     */
+    short[] synthesize(String text, String language, String voice);
 }

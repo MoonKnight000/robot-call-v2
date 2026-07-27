@@ -8,6 +8,7 @@ public enum Disposition {
     REFUSED,          // refused
     NO_ANSWER,        // no answer
     WRONG_NUMBER,     // wrong number
+    DO_NOT_CALL,      // client asked not to be called again (§11.4)
     HUNG_UP,          // hung up
     TRANSFERRED,      // transferred to a human operator
     VOICEMAIL,        // answering machine

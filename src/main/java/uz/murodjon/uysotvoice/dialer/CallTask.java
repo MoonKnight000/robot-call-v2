@@ -9,6 +9,8 @@ package uz.murodjon.uysotvoice.dialer;
  * @param clientId    CRM client id (for the CRM note write-back)
  * @param phone       number to dial through the trunk
  * @param language    BCP-47 conversation language (null → campaign default)
+ * @param ttsVoice    catalog id of the campaign's chosen voice (§2.5); null → the
+ *                    configured routing
  * @param contextData raw {@code context_data} JSON with the debtor facts
  */
 public record CallTask(
@@ -17,6 +19,7 @@ public record CallTask(
         Long clientId,
         String phone,
         String language,
+        String ttsVoice,
         String contextData
 ) {
 }

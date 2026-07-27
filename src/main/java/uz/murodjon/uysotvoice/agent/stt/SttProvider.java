@@ -12,4 +12,12 @@ public interface SttProvider {
      * {@code listener}.
      */
     SttSession startStream(String languageCode, TranscriptListener listener);
+
+    /**
+     * Sample rate this provider expects audio in, in Hz. The call pipeline decodes
+     * telephone audio at 8 kHz and resamples only when the active provider asks for
+     * 16 kHz, so the rate has to come from the provider that is actually running —
+     * reading another provider's setting silently sends audio at the wrong rate.
+     */
+    int sampleRate();
 }
