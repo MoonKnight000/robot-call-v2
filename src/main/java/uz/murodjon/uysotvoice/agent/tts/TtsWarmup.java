@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
 import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
 
@@ -97,7 +98,7 @@ public class TtsWarmup {
         for (String language : languages) {
             targets.add(new Warm(language, null));
         }
-        for (TtsProperties.Voice voice : catalog.all()) {
+        for (TtsVoice voice : catalog.all()) {
             if (voice.language() != null && languages.contains(voice.language())) {
                 targets.add(new Warm(voice.language(), voice.id()));
             }

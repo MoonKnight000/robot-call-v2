@@ -1,6 +1,8 @@
-# CLAUDE.md — Ishchi yo'riqnoma
+# Bosqichlar tarixi
 
-Bu fayl Claude Code uchun. To'liq texnik topshiriq: `../PROJECT.md`.
+> **Diqqat:** arxitektura va kod qoidalari bu faylda EMAS — ular loyiha ildizidagi
+> `../../CLAUDE.md` da. Bu fayl faqat bosqichlar tarixini saqlaydi.
+> To'liq texnik topshiriq: `../PROJECT.md`.
 
 ---
 

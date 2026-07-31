@@ -6,6 +6,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
+
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -65,7 +67,7 @@ public class YandexTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String voice) {
-        TtsProperties.Yandex y = props.yandex();
+        YandexTtsProperties y = props.yandex();
         String chosen = (voice != null && !voice.isBlank()) ? voice : voiceFor(language);
         StringBuilder form = new StringBuilder()
                 .append("text=").append(enc(text))
@@ -89,14 +91,14 @@ public class YandexTtsProvider implements TtsProvider {
         try {
             HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
-                throw new IllegalStateException("Yandex TTS HTTP " + response.statusCode() + ": "
+                throw new ExternalServiceException("yandex-tts", "HTTP " + response.statusCode() + ": "
                         + new String(response.body(), StandardCharsets.UTF_8));
             }
             return toPcm16(response.body());
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Yandex TTS request failed: " + e.getMessage(), e);
+            throw new ExternalServiceException("yandex-tts", "request failed: " + e.getMessage(), e);
         }
     }
 

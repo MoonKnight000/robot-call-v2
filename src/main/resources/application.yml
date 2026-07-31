@@ -21,6 +21,11 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: false
+    # No migration in this project uses a real ${...} placeholder. Off because the
+    # scanner matches "${" as plain text anywhere in a script — including inside a
+    # dollar-quoted string tag glued to a JSON brace (e.g. "$def${") — and fails with
+    # "No value provided for placeholder" on a false positive.
+    placeholder-replacement: false
 
   jpa:
     hibernate:
@@ -43,43 +48,18 @@ spring:
       port: ${REDIS_PORT:6379}
 
   ai:
-    # Qaysi chat provayderi yoqilishi. Google GenAI autoconfig'i "google-genai" qiymatiga
-    # (yoki umuman berilmasa) yoqiladi.
-    # DIQQAT: kalitsiz deploy uchun buni "none" ga qo'ying. google-genai tanlangan va
-    # GEMINI_API_KEY bo'sh bo'lsa, com.google.genai.Client qurilishida
-    # IllegalArgumentException tashlanadi va ilova UMUMAN ko'tarilmaydi ("API key must
-    # either be provided or set in the environment variable GOOGLE_API_KEY or
-    # GEMINI_API_KEY"). Eski OpenAI starteri bunday holatda jim ishga tushardi.
     model:
       chat: ${LLM_CHAT_PROVIDER:google-genai}
 
     google:
       genai:
-        # Gemini Developer API — oddiy API kalit (AI Studio). vertex-ai standart holda
-        # false, shuning uchun GCP loyihasi ham, service-account ham talab qilinmaydi.
         api-key: ${GEMINI_API_KEY:}
-
         chat:
           options:
             model: ${LLM_DIALOG_MODEL:gemini-3.6-flash}
             max-output-tokens: 512
             temperature: 0.3
-
-            # Gemini 3.x o'ylash darajasi (MINIMAL/LOW/MEDIUM/HIGH). Telefon suhbati
-            # uchun MINIMAL: o'ylash tokenlari max-output-tokens byudjetidan yeydi va
-            # javobni bo'sh qoldirishi mumkin (tekshirilgan: 50 token limitida
-            # completion_tokens=0, finish_reason="length"), ustiga har navbatga bir
-            # necha yuz ms qo'shadi.
-            # Qiymat enum'ga case-insensitive bog'lanadi, ya'ni eski "minimal" ham yaraydi.
             thinking-level: ${LLM_REASONING_EFFORT:MINIMAL}
-
-            # DIQQAT: include-thoughts NI YOQMANG. Spring AI 1.1.8 javobdagi "thought"
-            # bo'laklarini oddiy matndan ajratmaydi — modelning ichki mulohazasi
-            # ChatResponse matniga tushadi va DialogEngine uni TTS orqali mijozga
-            # o'qib beradi. U Gemini 3 ning thought_signature'lari uchun kerak edi,
-            # lekin biz tool'larni o'zimiz bajaramiz (DialogEngine.manualToolOptions),
-            # shuning uchun signature umuman talab qilinmaydi.
-
 voice-agent:
   security:
     # Shared secret for every /api/** and /actuator/** request (header: X-Api-Key).
@@ -94,6 +74,10 @@ voice-agent:
     # Serve the static test panel and swagger-ui without a key. The panel still sends
     # the key with every API call it makes. Set false to hide them too.
     public-ui: ${SECURITY_PUBLIC_UI:true}
+    # Browser origins allowed to call the API cross-origin (comma-separated). The bundled
+    # static panel is same-origin and never needs this; a separately hosted frontend (e.g.
+    # a Vite dev server) does. Empty = no cross-origin browser calls allowed.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   asterisk:
     enabled: ${ASTERISK_ENABLED:true}
     # ari4java needs the HTTP base URL (not ws://). It derives the WebSocket itself.
@@ -452,6 +436,16 @@ voice-agent:
     min-sample: ${ALERTING_MIN_SAMPLE:20}
     success-threshold: ${ALERTING_SUCCESS_THRESHOLD:0.3}
     check-minutes: ${ALERTING_CHECK_MINUTES:5}
+  live:
+    # Live SSE channel (§0.7): KPI ticks, live-call list, transcript lines, notifications.
+    # Audio-level events are opt-in — they run on the RTP thread of every active call.
+    audio-level-enabled: ${LIVE_AUDIO_LEVEL_ENABLED:false}
+    kpi-poll-ms: ${LIVE_KPI_POLL_MS:2000}
+  company:
+    # ROADMAP Bosqich B: every request is scoped to this one company until real
+    # per-request resolution (api_key -> company_id) exists — see CurrentCompany.
+    # Matches the bootstrap row V12__company.sql seeds as id 1.
+    default-id: ${COMPANY_DEFAULT_ID:1}
 
 server:
   port: 8080

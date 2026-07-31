@@ -13,6 +13,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 /**
  * Locks down the HTTP surface (PROJECT.md §11). Everything under {@code /api/**} can
@@ -59,6 +64,7 @@ public class SecurityConfig {
         http
                 // Stateless header auth: no session to fix, no form to forge.
                 .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
@@ -67,6 +73,9 @@ public class SecurityConfig {
                 .addFilterBefore(new ApiKeyFilter(props.apiKey(), props.readApiKey()),
                         UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> {
+                    // Preflight carries no X-Api-Key by design (the browser sends it without
+                    // credentials); it must clear the filter chain before the real request.
+                    auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // Probes carry no data and must work without a secret.
                     auth.requestMatchers(EndpointRequest.to("health")).permitAll();
                     if (props.publicUi()) {
@@ -78,6 +87,10 @@ public class SecurityConfig {
                     // to the read-only key, everything else needs the key that can dial.
                     auth.requestMatchers(HttpMethod.GET, "/api/reports/**")
                             .hasRole(VIEWER);
+                    // Same read-only bar as reporting: this is a push feed of state
+                    // reporting already exposes, not an endpoint that changes anything.
+                    auth.requestMatchers(HttpMethod.GET, "/api/live/**")
+                            .hasRole(VIEWER);
                     auth.requestMatchers(EndpointRequest.toAnyEndpoint()).hasRole(VIEWER);
                     // Every remaining route either changes state or places a call. Note this
                     // covers GETs outside /api/reports too (e.g. listing campaigns), which is
@@ -85,5 +98,21 @@ public class SecurityConfig {
                     auth.anyRequest().hasRole(ADMIN);
                 });
         return http.build();
+    }
+
+    /**
+     * CORS applies to browsers only, not to server-to-server or curl calls, so an empty
+     * origin list (the default) simply means no browser origin other than this app's own
+     * is allowed — the static test panel keeps working either way.
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(props.allowedOrigins() == null ? List.of() : props.allowedOrigins());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of(ApiKeyFilter.HEADER, "Content-Type"));
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

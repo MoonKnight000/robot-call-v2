@@ -12,9 +12,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import yandex.cloud.api.ai.stt.v3.RecognizerGrpc;
 import yandex.cloud.api.ai.stt.v3.Stt;
+
+import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
+import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +50,7 @@ public class YandexSttProvider implements SttProvider {
 
     @PostConstruct
     public void init() {
-        SttProperties.Yandex y = props.yandex();
+        YandexSttProperties y = props.yandex();
         if (y == null || y.apiKey() == null || y.apiKey().isBlank()) {
             log.warn("Yandex STT (v3) selected but api-key is blank — recognition will fail");
             return;
@@ -67,9 +69,9 @@ public class YandexSttProvider implements SttProvider {
     public SttSession startStream(String languageCode, TranscriptListener listener) {
         ManagedChannel current = channel;
         if (current == null) {
-            throw new IllegalStateException("Yandex STT v3 channel is not available (check STT_YANDEX_API_KEY)");
+            throw new ExternalServiceException("yandex-stt", "channel is not available (check STT_YANDEX_API_KEY)");
         }
-        SttProperties.Yandex y = props.yandex();
+        YandexSttProperties y = props.yandex();
 
         // Per-call auth + request-id metadata, attached to a fresh stub.
         Metadata headers = new Metadata();
@@ -91,7 +93,7 @@ public class YandexSttProvider implements SttProvider {
         return new YandexSttSession(requestObserver);
     }
 
-    private static Stt.StreamingRequest sessionOptions(String languageCode, SttProperties.Yandex y) {
+    private static Stt.StreamingRequest sessionOptions(String languageCode, YandexSttProperties y) {
         Stt.RecognitionModelOptions.Builder model = Stt.RecognitionModelOptions.newBuilder()
                 .setAudioFormat(Stt.AudioFormatOptions.newBuilder()
                         .setRawAudio(Stt.RawAudio.newBuilder()

@@ -3,9 +3,13 @@ package uz.murodjon.uysotvoice.agent.alerting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
+import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptJpaRepository;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 /**
  * Periodically checks the recent call success rate and logs an alert when it drops
@@ -18,18 +22,18 @@ public class AlertingService {
 
     private static final Logger log = LoggerFactory.getLogger(AlertingService.class);
 
-    private final JdbcTemplate jdbc;
+    private final CallAttemptJpaRepository callAttempts;
     private final boolean enabled;
     private final int windowMinutes;
     private final int minSample;
     private final double threshold;
-
-    public AlertingService(JdbcTemplate jdbc,
+// todo buni propertyga olish kerak buncha yamlda oqildigan fieldlarni
+    public AlertingService(CallAttemptJpaRepository callAttempts,
                            @Value("${voice-agent.alerting.enabled:true}") boolean enabled,
                            @Value("${voice-agent.alerting.window-minutes:30}") int windowMinutes,
                            @Value("${voice-agent.alerting.min-sample:20}") int minSample,
                            @Value("${voice-agent.alerting.success-threshold:0.3}") double threshold) {
-        this.jdbc = jdbc;
+        this.callAttempts = callAttempts;
         this.enabled = enabled;
         this.windowMinutes = windowMinutes;
         this.minSample = minSample;
@@ -42,17 +46,13 @@ public class AlertingService {
             return;
         }
         try {
-            Long total = jdbc.queryForObject(
-                    "SELECT count(*) FROM call_attempt WHERE ended_at >= now() - (? * interval '1 minute')",
-                    Long.class, windowMinutes);
-            if (total == null || total < minSample) {
+            Instant since = Instant.now().minus(windowMinutes, ChronoUnit.MINUTES);
+            long total = callAttempts.countByEndedAtGreaterThanEqual(since);
+            if (total < minSample) {
                 return; // not enough data to judge
             }
-            Long success = jdbc.queryForObject(
-                    "SELECT count(*) FROM call_attempt WHERE ended_at >= now() - (? * interval '1 minute') "
-                            + "AND disposition = 'PROMISE_TO_PAY'",
-                    Long.class, windowMinutes);
-            double rate = (success != null ? success : 0) / (double) total;
+            long success = callAttempts.countByEndedAtGreaterThanEqualAndDisposition(since, "PROMISE_TO_PAY");
+            double rate = success / (double) total;
             if (rate < threshold) {
                 log.error("ALERT: call success rate {}% over last {}min ({}/{}) below threshold {}%",
                         Math.round(rate * 100), windowMinutes, success, total, Math.round(threshold * 100));

@@ -12,7 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
+import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 
 /**
  * Google Cloud Speech-to-Text streaming provider (PROJECT.md §2.4). Uses
@@ -56,7 +58,7 @@ public class GoogleSttProvider implements SttProvider {
     public SttSession startStream(String languageCode, TranscriptListener listener) {
         SpeechClient current = client;
         if (current == null) {
-            throw new IllegalStateException("Google STT client is not available");
+            throw new ExternalServiceException("google-stt", "client is not available");
         }
 
         RecognitionConfig.Builder recConfig = RecognitionConfig.newBuilder()

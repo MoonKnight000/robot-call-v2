@@ -18,43 +18,64 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+
 import uz.murodjon.uysotvoice.agent.audio.AnsweringMachineDetector;
+import uz.murodjon.uysotvoice.agent.audio.AudioLevelListener;
 import uz.murodjon.uysotvoice.agent.audio.AudioListener;
 import uz.murodjon.uysotvoice.agent.audio.SpeechGate;
-import uz.murodjon.uysotvoice.agent.rtp.*;
+import uz.murodjon.uysotvoice.agent.dialog.CallContext;
+import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
+import uz.murodjon.uysotvoice.agent.dialog.DialogOutcome;
+import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
+import uz.murodjon.uysotvoice.agent.dialog.LiveDialogSnapshot;
+import uz.murodjon.uysotvoice.agent.dialog.TestContextProperties;
+import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
+import uz.murodjon.uysotvoice.agent.routing.CallRouteRegistry;
+import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
+import uz.murodjon.uysotvoice.agent.rtp.RtpPortAllocator;
+import uz.murodjon.uysotvoice.agent.rtp.RtpProperties;
+import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
+import uz.murodjon.uysotvoice.agent.rtp.WavReader;
+import uz.murodjon.uysotvoice.agent.rtp.WavRecorder;
 import uz.murodjon.uysotvoice.agent.session.CallSession;
 import uz.murodjon.uysotvoice.agent.stt.SttProperties;
 import uz.murodjon.uysotvoice.agent.stt.SttProvider;
 import uz.murodjon.uysotvoice.agent.stt.SttStreamBridge;
 import uz.murodjon.uysotvoice.agent.stt.TranscriptListener;
+import uz.murodjon.uysotvoice.agent.stt.VadGatingProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
-import uz.murodjon.uysotvoice.agent.dialog.CallContext;
-import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
-import uz.murodjon.uysotvoice.agent.dialog.DialogOutcome;
-import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
+import uz.murodjon.uysotvoice.agent.vad.AmdProperties;
 import uz.murodjon.uysotvoice.agent.vad.SileroVad;
 import uz.murodjon.uysotvoice.agent.vad.VadProperties;
 import uz.murodjon.uysotvoice.agent.vad.VadStream;
-import uz.murodjon.uysotvoice.agent.record.CallFinalizer;
-import uz.murodjon.uysotvoice.agent.record.CallRecordService;
-import uz.murodjon.uysotvoice.shared.PhoneNumbers;
+import uz.murodjon.uysotvoice.audit.service.AuditService;
+import uz.murodjon.uysotvoice.call.dto.CallOriginateResponse;
+import uz.murodjon.uysotvoice.call.dto.LiveCallRow;
+import uz.murodjon.uysotvoice.call.dto.PlayResponse;
+import uz.murodjon.uysotvoice.call.dto.SayResponse;
+import uz.murodjon.uysotvoice.callrecord.service.CallFinalizer;
+import uz.murodjon.uysotvoice.callrecord.service.CallRecordService;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
+import uz.murodjon.uysotvoice.campaign.service.CampaignService;
+import uz.murodjon.uysotvoice.dialer.dto.OutboundCall;
+import uz.murodjon.uysotvoice.dialer.service.DialerState;
+import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
+import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
+import uz.murodjon.uysotvoice.live.config.LiveProperties;
+import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
+import uz.murodjon.uysotvoice.operator.config.OperatorProperties;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
-import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
-import uz.murodjon.uysotvoice.agent.operator.OperatorProperties;
-import uz.murodjon.uysotvoice.agent.routing.CallRouteRegistry;
-import uz.murodjon.uysotvoice.dialer.CampaignService;
-import uz.murodjon.uysotvoice.dialer.DialerState;
-import uz.murodjon.uysotvoice.dialer.DoNotCallRepository;
-import uz.murodjon.uysotvoice.dialer.OutboundCall;
-import uz.murodjon.uysotvoice.dialer.OutboundCallRegistry;
-
-import java.time.Instant;
-import java.time.LocalDate;
+import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
+import uz.murodjon.uysotvoice.shared.exception.ValidationException;
+import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +99,8 @@ public class AriService {
     private static final int SAMPLE_RATE = 8000;
     /** externalMedia channels appear in Stasis with this technology prefix. */
     private static final String EXTERNAL_MEDIA_PREFIX = "UnicastRTP";
+    /** Enough for any realistic prompt; stops one request from running up a TTS bill. */
+    private static final int MAX_SAY_CHARS = 1000;
 
     private final AsteriskProperties props;
     private final RtpProperties rtpProps;
@@ -101,6 +124,9 @@ public class AriService {
     private final VoiceMetrics metrics;
     private final CallRouteRegistry routeRegistry;
     private final DoNotCallRepository doNotCallRepository;
+    private final AuditService audit;
+    private final LiveBroadcastService broadcast;
+    private final LiveProperties liveProps;
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
 
@@ -136,7 +162,10 @@ public class AriService {
                       OperatorProperties operatorProps,
                       VoiceMetrics metrics,
                       CallRouteRegistry routeRegistry,
-                      DoNotCallRepository doNotCallRepository) {
+                      DoNotCallRepository doNotCallRepository,
+                      AuditService audit,
+                      LiveBroadcastService broadcast,
+                      LiveProperties liveProps) {
         this.props = props;
         this.rtpProps = rtpProps;
         this.portAllocator = portAllocator;
@@ -159,6 +188,9 @@ public class AriService {
         this.metrics = metrics;
         this.routeRegistry = routeRegistry;
         this.doNotCallRepository = doNotCallRepository;
+        this.audit = audit;
+        this.broadcast = broadcast;
+        this.liveProps = liveProps;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -231,9 +263,20 @@ public class AriService {
             log.info("Originated call {} to {} via {} -> channel {}", callId, number, endpoint, channel.getId());
             return channel.getId();
         } catch (Exception e) {
-            throw new IllegalStateException("Originate to " + number + " via " + endpoint
+            throw new ExternalServiceException("asterisk", "Originate to " + number + " via " + endpoint
                     + " failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * As {@link #originate(String)}, for a manual/test call placed through the REST API —
+     * also records the audit entry, since a manual call to a real subscriber is exactly the
+     * action someone will later need to account for (§11).
+     */
+    public CallOriginateResponse originateManualCall(String number) {
+        String channelId = originate(number);
+        audit.record("CALL_ORIGINATE_MANUAL", "call", channelId, number);
+        return new CallOriginateResponse(number, channelId);
     }
 
     /**
@@ -260,17 +303,53 @@ public class AriService {
     public void play(String channelId, Path file) {
         CallSession session = sessions.get(channelId);
         if (session == null) {
-            throw new IllegalStateException("No active call for channel " + channelId);
+            throw new ConflictException("No active call for channel " + channelId);
         }
         try {
-            WavReader.WavAudio audio = WavReader.read(file);
+            WavAudio audio = WavReader.read(file);
             if (audio.sampleRate() != SAMPLE_RATE) {
                 log.warn("Playback file {} is {} Hz, expected {} Hz — audio may sound wrong",
                         file, audio.sampleRate(), SAMPLE_RATE);
             }
             session.endpoint().playPcm(audio.samples());
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to play " + file + ": " + e.getMessage(), e);
+            throw new ExternalServiceException("asterisk", "Failed to play " + file + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * As {@link #play(String, Path)}, for the REST API: {@code file} is a name inside the
+     * recording directory rather than a full path.
+     */
+    public PlayResponse playRecording(String channelId, String file) {
+        Path resolved = resolveInRecordingDir(file);
+        play(channelId, resolved);
+        return new PlayResponse(channelId, resolved.toString(), "playing");
+    }
+
+    /**
+     * Resolve {@code file} inside the recording directory. Without this an API caller
+     * could hand any absolute path (or one containing {@code ../}) to the WAV reader
+     * and have the server read it aloud down the phone.
+     */
+    private Path resolveInRecordingDir(String file) {
+        if (file == null || file.isBlank()) {
+            throw new ValidationException("file must not be blank");
+        }
+        Path base = Path.of(rtpProps.recordingDir()).toAbsolutePath().normalize();
+        Path resolved = base.resolve(file).normalize();
+        if (!resolved.startsWith(base)) {
+            throw new ValidationException("file must be inside " + base);
+        }
+        try {
+            // Resolves symlinks too — a link inside the directory must not escape it.
+            Path real = resolved.toRealPath();
+            if (!real.startsWith(base.toRealPath())) {
+                throw new ValidationException("file must be inside " + base);
+            }
+            return real;
+        } catch (IOException e) {
+            throw new ValidationException("No such playback file: " + file);
         }
     }
 
@@ -293,16 +372,58 @@ public class AriService {
     public void speak(String channelId, String text, String language, String ttsVoice) {
         CallSession session = sessions.get(channelId);
         if (session == null) {
-            throw new IllegalStateException("No active call for channel " + channelId);
+            throw new ConflictException("No active call for channel " + channelId);
         }
         if (!ttsProps.enabled()) {
-            throw new IllegalStateException("TTS is disabled (voice-agent.tts.enabled=false)");
+            throw new ConflictException("TTS is disabled (voice-agent.tts.enabled=false)");
         }
         String lang = (language == null || language.isBlank()) ? ttsProps.defaultLanguage() : language;
         short[] pcm = ttsRouter.synthesize(text, lang, ttsVoice);
         log.info("TTS speak [{}] lang={} voice={} chars={} -> {} samples",
                 channelId, lang, ttsVoice != null ? ttsVoice : "default", text.length(), pcm.length);
         session.endpoint().playPcm(pcm);
+    }
+
+    /**
+     * As {@link #speak(String, String, String, String)}, for the REST API — validates
+     * {@code text} first, so an audition request never reaches the TTS provider with
+     * something that would either fail oddly or run up an unbounded bill.
+     */
+    public SayResponse say(String channelId, String text, String language, String voice) {
+        if (text.isBlank()) {
+            throw new ValidationException("text must not be blank");
+        }
+        if (text.length() > MAX_SAY_CHARS) {
+            throw new ValidationException("text is longer than " + MAX_SAY_CHARS + " characters");
+        }
+        speak(channelId, text, language, voice);
+        return new SayResponse(channelId, "speaking");
+    }
+
+    /**
+     * Every call still in conversation, for {@code GET /api/calls/live} (§10.2/§10.3
+     * UI-DESIGN.md "Jonli qo'ng'iroqlar"). Joins the dialog engine's live sessions with
+     * the outbound registry to add the campaign and phone number — a manual/test call
+     * has neither, since {@link OutboundCallRegistry#peek} only tracks calls the dialer
+     * or {@code POST /api/calls} originated.
+     */
+    public List<LiveCallRow> liveCalls() {
+        return dialogEngine.liveDialogs().stream()
+                .map(this::toLiveCallRow)
+                .toList();
+    }
+
+    private LiveCallRow toLiveCallRow(LiveDialogSnapshot s) {
+        OutboundCall outbound = outboundRegistry.peek(s.channelId());
+        Long campaignId = outbound != null ? outbound.campaignId() : null;
+        String phone = outbound != null ? outbound.phone() : null;
+        String campaignName = null;
+        if (campaignId != null) {
+            CampaignRow campaign = campaignService.getCampaign(campaignId);
+            campaignName = campaign != null ? campaign.name() : null;
+        }
+        return new LiveCallRow(s.channelId(), phone, s.clientName(), campaignId, campaignName,
+                s.language(), s.startedAt(), s.dialogState());
     }
 
     private void handleStasisStart(StasisStart event) {
@@ -504,6 +625,12 @@ public class AriService {
                                                     String language) {
         List<AudioListener> listeners = new ArrayList<>();
 
+        // Live waveform (§11.8): off by default, since it runs on the RTP consumer
+        // thread of every active call regardless of whether any UI is watching.
+        if (liveProps.audioLevelEnabled()) {
+            listeners.add(new AudioLevelListener(channelId, broadcast));
+        }
+
         // Barge-in detector (Stage 8): silences the bot when the caller speaks over it.
         // The same VAD scores also drive the STT gate below, which is why this listener
         // must stay ahead of the STT bridge in the list — they run in order on the RTP
@@ -512,7 +639,7 @@ public class AriService {
         if (vadProps.enabled()) {
             SileroVad vad = vadProvider.getIfAvailable();
             if (vad != null && vad.available()) {
-                SttProperties.VadGating gating = sttProps.vadGating();
+                VadGatingProperties gating = sttProps.vadGating();
                 if (gating != null && gating.enabled() && sttProps.enabled()) {
                     speechGate = new SpeechGate(SAMPLE_RATE, gating.preRollMs(), gating.postRollMs());
                 }
@@ -566,7 +693,7 @@ public class AriService {
      * the rest of a recorded greeting is STT, LLM and TTS spent on nobody.
      */
     private AnsweringMachineDetector buildAmd(String channelId) {
-        VadProperties.Amd amd = vadProps.amd();
+        AmdProperties amd = vadProps.amd();
         if (amd == null || !amd.enabled()) {
             return null;
         }
@@ -585,7 +712,7 @@ public class AriService {
     }
 
     private CallContext buildTestContext() {
-        DialogProperties.TestContext t = dialogProps.testContext();
+        TestContextProperties t = dialogProps.testContext();
         if (t == null) {
             return new CallContext(null, null, null, null, null, null);
         }
@@ -758,7 +885,7 @@ public class AriService {
     private ARI requireConnection() {
         ARI current = ari;
         if (current == null) {
-            throw new IllegalStateException("ARI is not connected");
+            throw new ExternalServiceException("asterisk", "ARI is not connected");
         }
         return current;
     }

@@ -23,12 +23,12 @@ public class TtsVoiceCatalog {
 
     private static final Logger log = LoggerFactory.getLogger(TtsVoiceCatalog.class);
 
-    private final Map<String, TtsProperties.Voice> byId = new LinkedHashMap<>();
+    private final Map<String, TtsVoice> byId = new LinkedHashMap<>();
 
     public TtsVoiceCatalog(TtsProperties props) {
-        List<TtsProperties.Voice> configured = props.catalog();
+        List<TtsVoice> configured = props.catalog();
         if (configured != null) {
-            for (TtsProperties.Voice voice : configured) {
+            for (TtsVoice voice : configured) {
                 if (voice == null || isBlank(voice.id()) || isBlank(voice.provider()) || isBlank(voice.name())) {
                     log.warn("Ignoring incomplete TTS catalog entry {} (id, provider and name are required)", voice);
                     continue;
@@ -40,18 +40,38 @@ public class TtsVoiceCatalog {
     }
 
     /** Every selectable voice, in configuration order. */
-    public List<TtsProperties.Voice> all() {
+    public List<TtsVoice> all() {
         return List.copyOf(byId.values());
     }
 
+    /**
+     * Voices that can speak {@code language} (matched by BCP-47 primary subtag), or every
+     * voice when {@code language} is blank — so a form that already knows the campaign
+     * language only offers voices that can speak it.
+     */
+    public List<TtsVoice> forLanguage(String language) {
+        if (isBlank(language)) {
+            return all();
+        }
+        String wanted = languagePrefix(language);
+        return byId.values().stream()
+                .filter(v -> v.language() != null && languagePrefix(v.language()).equals(wanted))
+                .toList();
+    }
+
+    private static String languagePrefix(String language) {
+        int dash = language.indexOf('-');
+        return (dash > 0 ? language.substring(0, dash) : language).toLowerCase(Locale.ROOT);
+    }
+
     /** The voice with this id, or {@code null} for a blank or unknown id. */
-    public TtsProperties.Voice find(String id) {
+    public TtsVoice find(String id) {
         return isBlank(id) ? null : byId.get(key(id));
     }
 
     /** Ids accepted by the campaign API — what an invalid choice is reported against. */
     public List<String> ids() {
-        return byId.values().stream().map(TtsProperties.Voice::id).toList();
+        return byId.values().stream().map(TtsVoice::id).toList();
     }
 
     private static String key(String id) {

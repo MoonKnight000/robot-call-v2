@@ -22,16 +22,6 @@ import java.time.Instant;
  */
 public class NoInputWatchdog {
 
-    /** What the engine should do about the current silence. */
-    public enum Action {
-        /** Line is not idle (or not idle long enough) — nothing to do. */
-        NONE,
-        /** Ask whether the caller is still there. */
-        PROMPT,
-        /** Prompts are exhausted; end the call. */
-        END
-    }
-
     private final Duration idleThreshold;
     private final int maxPrompts;
 
@@ -65,26 +55,26 @@ public class NoInputWatchdog {
      * @param turnInFlight whether a turn is being processed; the caller's input has
      *                     already landed and an answer is on its way
      */
-    public synchronized Action check(Instant now, boolean botSpeaking, boolean turnInFlight) {
+    public synchronized NoInputAction check(Instant now, boolean botSpeaking, boolean turnInFlight) {
         if (finished) {
-            return Action.NONE;
+            return NoInputAction.NONE;
         }
         if (botSpeaking || turnInFlight) {
             // Not silence — and the idle clock has to restart from here, or the call
             // would be judged idle the moment a long reply finishes playing.
             lastActivity = now;
-            return Action.NONE;
+            return NoInputAction.NONE;
         }
         if (Duration.between(lastActivity, now).compareTo(idleThreshold) < 0) {
-            return Action.NONE;
+            return NoInputAction.NONE;
         }
         if (prompts >= maxPrompts) {
             finished = true;
-            return Action.END;
+            return NoInputAction.END;
         }
         prompts++;
         lastActivity = now; // the prompt itself resets the clock
-        return Action.PROMPT;
+        return NoInputAction.PROMPT;
     }
 
     /** How many times the caller has been asked whether they are still there. */

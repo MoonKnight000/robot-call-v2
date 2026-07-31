@@ -4,7 +4,9 @@ import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
+import uz.murodjon.uysotvoice.shared.exception.ConflictException;
 
 import java.util.List;
 
@@ -61,7 +63,7 @@ public class TtsRouter {
     public short[] synthesize(String text, String language, String voiceId) {
         String lang = (language == null || language.isBlank()) ? props.defaultLanguage() : language;
 
-        TtsProperties.Voice chosen = resolve(voiceId, lang);
+        TtsVoice chosen = resolve(voiceId, lang);
         TtsProvider provider = null;
         String voiceName = null;
         if (chosen != null) {
@@ -77,7 +79,7 @@ public class TtsRouter {
             provider = select(lang);
         }
         if (provider == null) {
-            throw new IllegalStateException("No TTS provider available for language " + lang);
+            throw new ConflictException("No TTS provider available for language " + lang);
         }
         log.debug("TTS route: lang={} voice={} -> provider={}", lang, voiceName, provider.name());
 
@@ -112,11 +114,11 @@ public class TtsRouter {
      * Uzbek may still hold a target marked ru-RU, and having the Uzbek voice read
      * Russian text out is worse than the provider's own Russian voice.
      */
-    private TtsProperties.Voice resolve(String voiceId, String language) {
+    private TtsVoice resolve(String voiceId, String language) {
         if (voiceId == null || voiceId.isBlank()) {
             return null;
         }
-        TtsProperties.Voice voice = catalog.find(voiceId);
+        TtsVoice voice = catalog.find(voiceId);
         if (voice == null) {
             log.warn("Unknown TTS voice '{}' — using default routing", voiceId);
             return null;

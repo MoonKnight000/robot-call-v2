@@ -8,7 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+
+import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
+import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 
 import java.io.IOException;
 import java.util.Map;
@@ -64,7 +67,7 @@ public class GoogleTtsProvider implements TtsProvider {
     public short[] synthesize(String text, String language, String requestedVoice) {
         TextToSpeechClient current = client;
         if (current == null) {
-            throw new IllegalStateException("Google TTS client is not available");
+            throw new ExternalServiceException("google-tts", "client is not available");
         }
 
         SynthesisInput input = SynthesisInput.newBuilder().setText(text).build();
@@ -88,10 +91,10 @@ public class GoogleTtsProvider implements TtsProvider {
         SynthesizeSpeechResponse response = current.synthesizeSpeech(input, voice.build(), audioConfig);
         // LINEAR16 audio comes back wrapped in a WAV container; parse out the PCM.
         try {
-            WavReader.WavAudio audio = WavReader.read(response.getAudioContent().toByteArray());
+            WavAudio audio = WavReader.read(response.getAudioContent().toByteArray());
             return audio.samples();
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to parse Google TTS audio: " + e.getMessage(), e);
+            throw new ExternalServiceException("google-tts", "failed to parse audio: " + e.getMessage(), e);
         }
     }
 

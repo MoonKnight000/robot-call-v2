@@ -20,11 +20,15 @@ import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
-import uz.murodjon.uysotvoice.agent.record.CallRecordService;
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
 import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
+import uz.murodjon.uysotvoice.callrecord.service.CallRecordService;
+import uz.murodjon.uysotvoice.live.dto.LiveEventType;
+import uz.murodjon.uysotvoice.live.dto.LiveTranscriptEvent;
+import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
 import uz.murodjon.uysotvoice.shared.dialog.DialogState;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
@@ -112,6 +116,7 @@ public class DialogEngine {
     private final CallRecordService records;
     private final VoiceMetrics metrics;
     private final ObjectProvider<ChatModel> chatModelProvider;
+    private final LiveBroadcastService broadcast;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
     private final ExecutorService worker = Executors.newVirtualThreadPerTaskExecutor();
@@ -135,7 +140,8 @@ public class DialogEngine {
                         TtsRouter ttsRouter,
                         CallRecordService records,
                         VoiceMetrics metrics,
-                        ObjectProvider<ChatModel> chatModelProvider) {
+                        ObjectProvider<ChatModel> chatModelProvider,
+                        LiveBroadcastService broadcast) {
         this.props = props;
         this.promptFactory = promptFactory;
         this.ttsProps = ttsProps;
@@ -143,6 +149,7 @@ public class DialogEngine {
         this.records = records;
         this.metrics = metrics;
         this.chatModelProvider = chatModelProvider;
+        this.broadcast = broadcast;
     }
 
     @PostConstruct
@@ -241,7 +248,7 @@ public class DialogEngine {
             if (s.isEnded()) {
                 return;
             }
-            NoInputWatchdog.Action action = s.watchdog()
+            NoInputAction action = s.watchdog()
                     .check(Instant.now(), s.endpoint().isPlaying(), s.busy().get());
             switch (action) {
                 case NONE -> {
@@ -277,7 +284,7 @@ public class DialogEngine {
                 // transcript so the summary reflects a caller who went quiet.
                 s.history().add(new AssistantMessage(line));
                 s.setLastAgentText(line);
-                records.addTranscript(s.callAttemptId(), "AGENT", line, s.state().name(), offsetMs(s), null);
+                recordAgentLine(s, line);
             }
             metrics.noInputPrompt();
         } finally {
@@ -329,7 +336,7 @@ public class DialogEngine {
         String line = disclosureLine(s);
         speakChunk(s, line);
         s.setDisclosureSpoken(true);
-        records.addTranscript(s.callAttemptId(), "AGENT", line, s.state().name(), offsetMs(s), null);
+        recordAgentLine(s, line);
         log.info("[{}] disclosure: {}", s.channelId(), line);
     }
 
@@ -347,6 +354,8 @@ public class DialogEngine {
         if (session == null || session.isEnded()) {
             return;
         }
+        broadcast.publish(LiveEventType.TRANSCRIPT,
+                new LiveTranscriptEvent(channelId, "CLIENT", text, session.state().name()));
         // The client has stopped talking — the <1s turnaround budget starts here (§1.3).
         session.startTurnClock();
         session.touchActivity();
@@ -431,6 +440,18 @@ public class DialogEngine {
         }
     }
 
+    /**
+     * Persists one agent-spoken line and publishes it to any live-transcript
+     * subscribers (§11.8) in one place, since every call site needs both and
+     * {@link uz.murodjon.uysotvoice.callrecord.service.CallRecordService#addTranscript} has
+     * no {@code channelId} to key a live event on — only {@code s} does.
+     */
+    private void recordAgentLine(DialogSession s, String line) {
+        records.addTranscript(s.callAttemptId(), "AGENT", line, s.state().name(), offsetMs(s), null);
+        broadcast.publish(LiveEventType.TRANSCRIPT,
+                new LiveTranscriptEvent(s.channelId(), "AGENT", line, s.state().name()));
+    }
+
     private void advance(DialogSession s, String clientText) {
         if (s.isEnded()) {
             return;
@@ -503,7 +524,7 @@ public class DialogEngine {
                 s.history().add(new AssistantMessage(reply));
                 s.setLastAgentText(reply); // remembered so barge-in can tell the model where it stopped
                 log.info("[{}] AGENT ({}): {}", s.channelId(), s.state(), reply);
-                records.addTranscript(s.callAttemptId(), "AGENT", reply, s.state().name(), offsetMs(s), null);
+                recordAgentLine(s, reply);
             }
             if (result.toolNote() != null && result.toolNote().contains("XATO")) {
                 // The model spoke and called a tool in the same breath, and the tool
@@ -718,7 +739,7 @@ public class DialogEngine {
         if (second != null && !second.isBlank() && speak(s, second) == SpeechOutcome.SPOKEN) {
             s.history().add(new AssistantMessage(second));
             s.setLastAgentText(second);
-            records.addTranscript(s.callAttemptId(), "AGENT", second, s.state().name(), offsetMs(s), null);
+            recordAgentLine(s, second);
             log.info("[{}] AGENT ({}, fact-guard retry): {}", s.channelId(), s.state(), second);
             return;
         }
@@ -1008,6 +1029,23 @@ public class DialogEngine {
         if (action != null) {
             action.run();
         }
+    }
+
+    /**
+     * Every call still in conversation, for the "Jonli qo'ng'iroqlar" list
+     * (§10.2/§10.3 UI-DESIGN.md). Excludes a session already marked {@code ended} —
+     * such a session is draining its farewell audio and tearing down, not live.
+     */
+    public List<LiveDialogSnapshot> liveDialogs() {
+        return sessions.values().stream()
+                .filter(s -> !s.isEnded())
+                .map(s -> new LiveDialogSnapshot(
+                        s.channelId(),
+                        s.startedAt(),
+                        s.state().name(),
+                        s.language(),
+                        s.context() != null ? s.context().clientName() : null))
+                .toList();
     }
 
     /** Live context for the operator screen after a transfer (null if unknown). */

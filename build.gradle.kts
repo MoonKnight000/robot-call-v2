@@ -32,6 +32,7 @@ dependencyManagement {
 dependencies {
     // Spring
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
@@ -69,7 +70,7 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime:1.17.3")
 
     // Object storage — upload call recordings to MinIO/S3 (PROJECT.md §2.3, Stage 9).
-    implementation("io.minio:minio:8.5.10")
+    implementation("io.minio:minio:8.6.0")
 
     // Metrics — Micrometer Prometheus registry, exposed at /actuator/prometheus (Stage 12).
     implementation("io.micrometer:micrometer-registry-prometheus")

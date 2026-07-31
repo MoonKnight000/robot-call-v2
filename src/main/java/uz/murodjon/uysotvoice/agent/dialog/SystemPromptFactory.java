@@ -1,6 +1,7 @@
 package uz.murodjon.uysotvoice.agent.dialog;
 
 import org.springframework.stereotype.Component;
+
 import uz.murodjon.uysotvoice.shared.dialog.DialogState;
 
 import java.time.DayOfWeek;
@@ -30,7 +31,7 @@ public class SystemPromptFactory {
 
     /**
      * The unchanging half of the prompt: who the agent is, the facts it may state, and
-     * the rules it must not break. Cache this per call ({@link DialogSession#systemPrefix}) —
+     * the rules it must not break. Cache this per call ({@link DialogSession#systemPrefix()}) —
      * rebuilding it produces the same string and only risks breaking the cached prefix
      * (e.g. across midnight).
      */

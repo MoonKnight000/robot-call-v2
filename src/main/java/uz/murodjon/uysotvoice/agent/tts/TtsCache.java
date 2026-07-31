@@ -43,7 +43,7 @@ public class TtsCache {
     /** Used when {@code max-chars} is absent, so a half-filled cache block is not a dead cache. */
     private static final int DEFAULT_MAX_CHARS = 200;
 
-    private final TtsProperties.Cache props;
+    private final TtsCacheProperties props;
     private final int maxChars;
 
     /**
@@ -66,7 +66,7 @@ public class TtsCache {
     private volatile boolean redisFailureLogged;
 
     public TtsCache(TtsProperties ttsProps, ObjectProvider<RedisConnectionFactory> connectionFactory) {
-        this.props = ttsProps.cache() != null ? ttsProps.cache() : TtsProperties.Cache.disabled();
+        this.props = ttsProps.cache() != null ? ttsProps.cache() : TtsCacheProperties.disabled();
         int capacity = props.size();
         this.memory = capacity > 0
                 ? Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
@@ -163,13 +163,13 @@ public class TtsCache {
      */
     private static String fingerprint(TtsProperties props) {
         StringBuilder sb = new StringBuilder();
-        TtsProperties.Yandex yandex = props.yandex();
+        YandexTtsProperties yandex = props.yandex();
         if (yandex != null) {
             sb.append(yandex.voice()).append('|').append(sorted(yandex.voices()))
                     .append('|').append(yandex.emotion()).append('|').append(yandex.sampleRate());
         }
         sb.append("//");
-        TtsProperties.Google google = props.google();
+        GoogleTtsProperties google = props.google();
         if (google != null) {
             sb.append(sorted(google.voices())).append('|').append(google.speakingRate())
                     .append('|').append(google.pitch()).append('|').append(google.sampleRate());
