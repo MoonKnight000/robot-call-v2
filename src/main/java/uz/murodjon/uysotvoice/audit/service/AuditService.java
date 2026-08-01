@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
 import uz.murodjon.uysotvoice.audit.dto.AuditRow;
@@ -63,6 +66,7 @@ public class AuditService {
             e.setDetail(detail);
             e.setCreatedAt(Instant.now());
             e.setCompanyId(company.id());
+            e.setIpAddress(currentIp());
             jpa.save(e);
         } catch (Exception e) {
             log.warn("Audit write failed ({} {} {} by {}: {}): {}",
@@ -73,7 +77,9 @@ public class AuditService {
     /** Most recent entries first — what an incident review reads. Scoped to the current company. */
     public List<AuditRow> recent(AuditFilter filter) {
         try {
-            return jpa.findByCompanyId(company.id(), filter.pageable()).stream()
+            return jpa.findByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity(),
+                            filter.pageable())
+                    .stream()
                     .map(AuditService::toRow)
                     .toList();
         } catch (Exception e) {
@@ -82,9 +88,9 @@ public class AuditService {
         }
     }
 
-    public long count() {
+    public long count(AuditFilter filter) {
         try {
-            return jpa.countByCompanyId(company.id());
+            return jpa.countByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity());
         } catch (Exception e) {
             log.warn("Audit count failed: {}", e.getMessage());
             return 0;
@@ -108,8 +114,23 @@ public class AuditService {
         return roles.isBlank() ? auth.getName() : auth.getName() + ":" + roles;
     }
 
+    /**
+     * The caller's remote address, or {@code null} when there is no HTTP request on this
+     * thread (the dialer's own scheduled work runs outside a request). Every {@link
+     * #record} call happens synchronously inside the controller method it describes, so
+     * Spring's request-bound {@link RequestContextHolder} is populated whenever there is
+     * one to read — no separate filter needs to stash it.
+     */
+    private static String currentIp() {
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        if (!(attrs instanceof ServletRequestAttributes servletAttrs)) {
+            return null;
+        }
+        return servletAttrs.getRequest().getRemoteAddr();
+    }
+
     private static AuditRow toRow(AuditLog e) {
         return new AuditRow(e.getId(), e.getActor(), e.getAction(), e.getEntity(), e.getEntityId(),
-                e.getDetail(), e.getCreatedAt());
+                e.getDetail(), e.getCreatedAt(), e.getIpAddress());
     }
 }

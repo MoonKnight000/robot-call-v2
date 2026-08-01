@@ -1,4 +1,6 @@
 package uz.murodjon.uysotvoice.campaign.dto;
 
-public record CreateCampaignResponse(long id, String status) {
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+
+public record CreateCampaignResponse(long id, CampaignStatus status) {
 }

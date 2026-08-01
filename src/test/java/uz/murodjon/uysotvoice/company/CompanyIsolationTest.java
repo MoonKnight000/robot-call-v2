@@ -14,6 +14,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import uz.murodjon.uysotvoice.campaign.dto.CampaignFilter;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
@@ -73,10 +75,10 @@ class CompanyIsolationTest {
 
     @Test
     void anotherCompanysCampaignIsExcludedFromTheList() {
-        long ownId = campaigns.create("my-campaign", "DEBT_COLLECTION", "goal", "{}", "uz-UZ",
+        long ownId = campaigns.create("my-campaign", CampaignType.DEBT_COLLECTION, "goal", "{}", "uz-UZ",
                 LocalTime.of(9, 0), LocalTime.of(20, 0), "MONDAY", 3, 24, 5, null, 0);
 
-        var page = campaigns.findAll(new CampaignFilter(null, 500, null));
+        var page = campaigns.findAll(new CampaignFilter(null, 500, null, null));
 
         assertThat(page).extracting(CampaignRow::id).contains(ownId).doesNotContain(otherCompanyCampaignId);
     }
@@ -85,7 +87,7 @@ class CompanyIsolationTest {
     void countExcludesAnotherCompanysCampaigns() {
         long before = campaigns.count();
 
-        campaigns.create("counted-campaign", "DEBT_COLLECTION", "goal", "{}", "uz-UZ",
+        campaigns.create("counted-campaign", CampaignType.DEBT_COLLECTION, "goal", "{}", "uz-UZ",
                 LocalTime.of(9, 0), LocalTime.of(20, 0), "MONDAY", 3, 24, 5, null, 0);
 
         // +1 for the campaign just created in *this* company; otherCompanyCampaignId
@@ -95,7 +97,7 @@ class CompanyIsolationTest {
 
     @Test
     void updatingAnotherCompanysCampaignIsANoOp() {
-        campaigns.updateStatus(otherCompanyCampaignId, "PAUSED");
+        campaigns.updateStatus(otherCompanyCampaignId, CampaignStatus.PAUSED);
 
         String status = jdbc.queryForObject(
                 "SELECT status FROM campaign WHERE id = ?", String.class, otherCompanyCampaignId);

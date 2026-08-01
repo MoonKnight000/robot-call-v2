@@ -12,6 +12,8 @@ import java.time.Instant;
  * @param entityId  that entity's id as text
  * @param detail    free-text context
  * @param createdAt when it happened
+ * @param ipAddress the caller's remote address, or {@code null} when the action ran
+ *                  outside an HTTP request (the dialer's own scheduled work)
  */
 public record AuditRow(
         long id,
@@ -20,6 +22,7 @@ public record AuditRow(
         String entity,
         String entityId,
         String detail,
-        Instant createdAt
+        Instant createdAt,
+        String ipAddress
 ) {
 }

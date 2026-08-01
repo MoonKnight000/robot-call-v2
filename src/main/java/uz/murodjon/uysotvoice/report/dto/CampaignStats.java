@@ -1,5 +1,7 @@
 package uz.murodjon.uysotvoice.report.dto;
 
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+
 import java.util.Map;
 
 /**
@@ -12,7 +14,7 @@ import java.util.Map;
  *
  * @param campaignId      the campaign
  * @param name            its name, so a report is readable on its own
- * @param status          DRAFT / ACTIVE / PAUSED / COMPLETED
+ * @param status          the campaign's lifecycle status
  * @param targetsByStatus how many targets sit in each lifecycle status
  * @param dispositions    finished attempts by disposition — the §10 "disposition taqsimoti"
  * @param answeredCalls   attempts that reached a conversation
@@ -24,7 +26,7 @@ import java.util.Map;
 public record CampaignStats(
         long campaignId,
         String name,
-        String status,
+        CampaignStatus status,
         Map<String, Long> targetsByStatus,
         Map<String, Long> dispositions,
         long answeredCalls,

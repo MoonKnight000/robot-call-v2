@@ -39,13 +39,13 @@ public interface CallResultJpaRepository extends JpaRepository<CallResult, Long>
     /** The note landed — record its id so the row leaves the queue. */
     @Modifying @Transactional
     @Query("UPDATE CallResult r SET r.crmNoteId = :noteId, r.crmAttempts = r.crmAttempts + 1, "
-            + "r.crmLastError = NULL WHERE r.callId = :callId")
+            + "r.crmLastError = NULL WHERE r.call.id = :callId")
     void markCrmPosted(@Param("callId") long callId, @Param("noteId") Long noteId);
 
     /** The post failed — count the attempt so a permanently broken row stops retrying. */
     @Modifying @Transactional
     @Query("UPDATE CallResult r SET r.crmAttempts = r.crmAttempts + 1, r.crmLastError = :error "
-            + "WHERE r.callId = :callId")
+            + "WHERE r.call.id = :callId")
     void markCrmFailed(@Param("callId") long callId, @Param("error") String error);
 
     /**
@@ -53,8 +53,7 @@ public interface CallResultJpaRepository extends JpaRepository<CallResult, Long>
      * {@code [CallResult, clientId]} — the summary is rebuilt from the entity's stored
      * columns, so a retry costs an HTTP call and not another LLM call.
      */
-    @Query("SELECT r, t.clientId FROM CallResult r, CallAttempt a, CampaignTarget t "
-            + "WHERE a.id = r.callId AND t.id = a.targetId "
-            + "AND r.crmNoteId IS NULL AND r.crmAttempts < :maxAttempts ORDER BY r.id")
+    @Query("SELECT r, r.call.target.clientId FROM CallResult r "
+            + "WHERE r.crmNoteId IS NULL AND r.crmAttempts < :maxAttempts ORDER BY r.id")
     List<Object[]> notesAwaitingCrm(@Param("maxAttempts") int maxAttempts, Pageable limit);
 }

@@ -2,10 +2,12 @@
 
 `uz.murodjon.uysotvoice.voice` · rol: **ADMIN**
 
-Kampaniya qaysi ovoz bilan yaratilishi mumkinligining katalogi. Kampaniya
+Kampaniya qaysi ovoz bilan yaratilishi mumkinligining katalogi — `tts_voice`
+jadvalida saqlanadi (migration bilan seed qilinadi), config fayl emas. Kampaniya
 formasi ovoz tanlagichini shu yerdan to'ldiradi — shuning uchun operator
 ko'radigan variantlar aynan `POST /api/campaigns`ning `ttsVoice` maydoni qabul
-qiladigan id'larning o'zi.
+qiladigan id'larning o'zi. Hozircha faqat o'qish uchun (`GET`) — yaratish/
+o'chirish endpoint yo'q.
 
 Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 

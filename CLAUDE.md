@@ -45,8 +45,13 @@ uz.murodjon.uysotvoice.<feature>.service      — BUTUN biznes logika
 uz.murodjon.uysotvoice.<feature>.repository   — DB kirish (DAO + Spring Data)
 uz.murodjon.uysotvoice.<feature>.entity       — JPA entity
 uz.murodjon.uysotvoice.<feature>.dto          — request/response/row/filter record'lar
+uz.murodjon.uysotvoice.<feature>.enums        — shu feature'ga tegishli barcha enum'lar
 uz.murodjon.uysotvoice.<feature>.config       — @ConfigurationProperties, @Configuration
 ```
+
+**Enum'lar — har doim `<feature>.enums` da.** `dto` yoki `entity` ichiga enum
+qo'shilmaydi (masalan `CampaignStatus`, `CampaignTableField`) — o'z `enums`
+subpaketiga chiqariladi, xuddi boshqa qatlamlar kabi.
 
 Mavjud feature'lar:
 `campaign` · `contact` · `donotcall` · `scenario` · `report` · `audit` · `operator` ·

@@ -218,8 +218,9 @@ public class VoiceMetrics {
         return Timer.start(registry);
     }
 
-    public void stopLlmTurn(Timer.Sample sample) {
-        sample.stop(llmTurn);
+    /** @return elapsed nanoseconds, so callers can also accumulate this per-call (§10.5 "Texnik" tab). */
+    public long stopLlmTurn(Timer.Sample sample) {
+        return sample.stop(llmTurn);
     }
 
     public void stopTtsSynth(Timer.Sample sample) {

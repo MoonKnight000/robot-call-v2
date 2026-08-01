@@ -2,14 +2,20 @@ package uz.murodjon.uysotvoice.callrecord.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
+import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
+import uz.murodjon.uysotvoice.agent.stt.SttProperties;
 import uz.murodjon.uysotvoice.agent.summary.SummaryService;
+import uz.murodjon.uysotvoice.agent.vad.VadProperties;
 import uz.murodjon.uysotvoice.crm.service.CrmClient;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.storage.service.AudioStorageService;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,17 +39,28 @@ public class CallFinalizer {
     private final AudioStorageService storage;
     private final CrmClient crmClient;
     private final VoiceMetrics metrics;
+    private final SttProperties sttProps;
+    private final TtsVoiceService voices;
+    private final VadProperties vadProps;
+    private final String llmModel;
 
     public CallFinalizer(CallRecordService records, SummaryService summaryService,
-                         AudioStorageService storage, CrmClient crmClient, VoiceMetrics metrics) {
+                         AudioStorageService storage, CrmClient crmClient, VoiceMetrics metrics,
+                         SttProperties sttProps, TtsVoiceService voices, VadProperties vadProps,
+                         @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
         this.summaryService = summaryService;
         this.storage = storage;
         this.crmClient = crmClient;
         this.metrics = metrics;
+        this.sttProps = sttProps;
+        this.voices = voices;
+        this.vadProps = vadProps;
+        this.llmModel = llmModel;
     }
 
-    public void finalizeCall(long callAttemptId, long clientId, Path wav, Instant startedAt, Disposition disposition) {
+    public void finalizeCall(long callAttemptId, long clientId, Path wav, Instant startedAt, Disposition disposition,
+                             String channelName, String trunk, DialogTechnicalSnapshot technical) {
         if (callAttemptId == 0) {
             return;
         }
@@ -78,8 +95,45 @@ public class CallFinalizer {
             } else {
                 log.info("Finalized call {} without summary (LLM unavailable or empty transcript)", callAttemptId);
             }
+
+            writeTechnicalDetail(callAttemptId, disposition, channelName, trunk, technical);
         } catch (Exception e) {
             log.warn("Finalization failed for call {}: {}", callAttemptId, e.getMessage());
         }
+    }
+
+    /**
+     * Resolves the bits of the "Texnik" tab (§10.5) that do not need to be captured
+     * live — STT/TTS provider, LLM model, AMD result — and persists everything
+     * together with what {@link DialogTechnicalSnapshot} already accumulated.
+     */
+    private void writeTechnicalDetail(long callAttemptId, Disposition disposition, String channelName,
+                                      String trunk, DialogTechnicalSnapshot technical) {
+        String amdResult = amdResult(disposition);
+        String ttsProvider = null;
+        String ttsVoiceName = null;
+        if (technical != null && technical.ttsVoice() != null) {
+            TtsVoiceRow voice = voices.find(technical.ttsVoice());
+            if (voice != null) {
+                ttsProvider = voice.provider();
+                ttsVoiceName = voice.name();
+            }
+        }
+        records.writeTechnicalDetail(callAttemptId, channelName, trunk, amdResult,
+                sttProps.provider(), ttsProvider, ttsVoiceName,
+                llmModel == null || llmModel.isBlank() ? null : llmModel, technical);
+    }
+
+    /**
+     * AMD ran without persisting a result of its own (see {@code AnsweringMachineDetector}
+     * — it only fires a "detected" callback); both outcomes are reconstructed here instead:
+     * a voicemail disposition means it fired, otherwise it either cleared the call as human
+     * or never ran at all.
+     */
+    private String amdResult(Disposition disposition) {
+        if (disposition == Disposition.VOICEMAIL) {
+            return "MACHINE";
+        }
+        return vadProps.amd() != null && vadProps.amd().enabled() ? "HUMAN" : null;
     }
 }

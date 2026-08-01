@@ -22,7 +22,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "defaultLanguage": "uz-UZ",
   "dialWindowStart": "09:00:00",
   "dialWindowEnd": "18:00:00",
-  "dialDays": "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY",
+  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
   "retryIntervalHours": 24,
   "maxConcurrentCalls": 5,
@@ -38,7 +38,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `goalPrompt` | string | ❌ | agentga maqsad sifatida beriladi |
 | `defaultLanguage` | string | ❌ | BCP-47, masalan `uz-UZ`, `ru-RU` |
 | `dialWindowStart` / `dialWindowEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | qo'ng'iroq qilish mumkin bo'lgan soat oralig'i |
-| `dialDays` | string | ❌ | vergul bilan ajratilgan `DayOfWeek` nomlari (`MONDAY,...`); berilmasa Dush-Juma |
+| `dialDays` | `DayOfWeek[]` | ❌ | qo'ng'iroq qilish mumkin bo'lgan hafta kunlari (`["MONDAY", ...]`); berilmasa yoki bo'sh bo'lsa Dush-Juma |
 | `maxAttempts` | int | ❌ | bitta nishonga necha marta urinish |
 | `retryIntervalHours` | int | ❌ | urinishlar orasidagi soat |
 | `maxConcurrentCalls` | int | ❌ | bir vaqtda nechta qo'ng'iroq |
@@ -57,6 +57,9 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 Body — `CampaignFilter` (`page`/`size`/`orders`, [README §3](README.md#3-royxatfiltr-endpointlari-pagination)ga qarang).
 Saralanadigan ustunlar: `ID`, `NAME`, `TYPE`, `STATUS`. Standart: `ID ASC`.
+Ixtiyoriy `status` maydoni berilsa, faqat shu holatdagi kampaniyalar
+qaytariladi (masalan dashboard "faol kampaniyalar" bloki uchun `"status":
+"ACTIVE"`).
 
 **Javob qatori** (`CampaignRow`, `PageableData<CampaignRow>` ichida):
 
@@ -70,7 +73,7 @@ Saralanadigan ustunlar: `ID`, `NAME`, `TYPE`, `STATUS`. Standart: `ID ASC`.
   "defaultLanguage": "uz-UZ",
   "dialWindowStart": "09:00:00",
   "dialWindowEnd": "18:00:00",
-  "dialDays": "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY",
+  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
   "retryIntervalHours": 24,
   "maxConcurrentCalls": 5,
@@ -79,13 +82,57 @@ Saralanadigan ustunlar: `ID`, `NAME`, `TYPE`, `STATUS`. Standart: `ID ASC`.
 }
 ```
 
-`status` — `DRAFT` / `ACTIVE` / `PAUSED` / `COMPLETED`.
+`status` — `DRAFT` / `ACTIVE` / `PAUSED` / `COMPLETED` / `ARCHIVED`.
 
 ---
 
 ## `GET /api/campaigns/{id}` — bitta kampaniya
 
 Javob — bitta `CampaignRow` (yuqoridagi shakl). Topilmasa `404`.
+
+---
+
+## `PUT /api/campaigns/{id}` — tahrirlash
+
+**Request body** (`UpdateCampaignRequest`) — `POST /api/campaigns` bilan bir
+xil maydonlar, `type` va boshlang'ich `scriptConfig`dan tashqari (bular
+faqat yaratishda beriladi):
+
+```json
+{
+  "name": "Iyul qarzdorlik (yangilangan)",
+  "goalPrompt": "Qarzni undirish, to'lov va'dasini olish",
+  "defaultLanguage": "uz-UZ",
+  "dialWindowStart": "09:00:00",
+  "dialWindowEnd": "18:00:00",
+  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+  "maxAttempts": 3,
+  "retryIntervalHours": 24,
+  "maxConcurrentCalls": 5,
+  "ttsVoice": "nigora",
+  "dailyCallCap": 500
+}
+```
+
+`name` majburiy (`@NotBlank`), `ttsVoice` yana bir marta katalog bo'yicha
+tekshiriladi (noma'lum id — `400`). Javob — yangilangan `CampaignRow`.
+Topilmasa (yoki boshqa kompaniyaniki bo'lsa) — `404`.
+
+---
+
+## `DELETE /api/campaigns/{id}` — arxivlash
+
+Kartochkadagi `⋯` menyusi. Qatorni **o'chirmaydi** — loyihaning
+buzg'unchi-SQL'ga qarshilik konventsiyasiga mos ravishda holatni
+`ARCHIVED`ga o'zgartiradi, shunda kampaniyaning nishonlari/qo'ng'iroqlari/
+transkriptlari hisobotlarda saqlanib qoladi. Body yo'q. Javob
+(`CampaignStatusResponse`):
+
+```json
+{ "campaignId": 42, "status": "ARCHIVED" }
+```
+
+Topilmasa — `404`.
 
 ---
 

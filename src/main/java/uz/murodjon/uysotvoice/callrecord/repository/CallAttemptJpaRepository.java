@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.uysotvoice.callrecord.entity.CallAttempt;
+import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,7 +30,7 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttempt, Lon
     @Query("UPDATE CallAttempt a SET a.endedAt = :endedAt, a.durationSec = :durationSec, "
             + "a.disposition = :disposition, a.recordingUrl = :recordingUrl WHERE a.id = :id")
     void finishAttempt(@Param("id") long id, @Param("endedAt") Instant endedAt,
-                       @Param("durationSec") int durationSec, @Param("disposition") String disposition,
+                       @Param("durationSec") int durationSec, @Param("disposition") Disposition disposition,
                        @Param("recordingUrl") String recordingUrl);
 
     @Modifying @Transactional
@@ -38,7 +39,7 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttempt, Lon
 
     long countByEndedAtGreaterThanEqual(Instant since);
 
-    long countByEndedAtGreaterThanEqualAndDisposition(Instant since, String disposition);
+    long countByEndedAtGreaterThanEqualAndDisposition(Instant since, Disposition disposition);
 
     /** A URL pointing at a deleted object is worse than no URL. */
     @Modifying @Transactional
@@ -51,10 +52,10 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttempt, Lon
      * transcripts: a call nobody spoke on has nothing to summarize, and would otherwise be
      * retried until its attempt counter ran out. Each row is {@code [callId, clientId]}.
      */
-    @Query("SELECT a.id, t.clientId FROM CallAttempt a, CampaignTarget t "
-            + "WHERE t.id = a.targetId AND a.endedAt IS NOT NULL AND a.finalizeAttempts < :maxAttempts "
-            + "AND NOT EXISTS (SELECT 1 FROM CallResult r WHERE r.callId = a.id) "
-            + "AND EXISTS (SELECT 1 FROM CallTranscript c WHERE c.callId = a.id) "
+    @Query("SELECT a.id, a.target.clientId FROM CallAttempt a "
+            + "WHERE a.endedAt IS NOT NULL AND a.finalizeAttempts < :maxAttempts "
+            + "AND NOT EXISTS (SELECT 1 FROM CallResult r WHERE r.call = a) "
+            + "AND EXISTS (SELECT 1 FROM CallTranscript c WHERE c.call = a) "
             + "ORDER BY a.id")
     List<Object[]> attemptsAwaitingSummary(@Param("maxAttempts") int maxAttempts, Pageable limit);
 }

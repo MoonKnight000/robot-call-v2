@@ -1,5 +1,7 @@
 package uz.murodjon.uysotvoice.campaign.dto;
 
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
+
 /** A row of {@code campaign_target} (PROJECT.md §6). */
 public record TargetRow(
         long id,
@@ -8,7 +10,7 @@ public record TargetRow(
         String phone,
         String language,
         String contextData,
-        String status,
+        TargetStatus status,
         int attempts,
         boolean doNotCall
 ) {

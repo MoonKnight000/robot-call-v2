@@ -1,4 +1,4 @@
-package uz.murodjon.uysotvoice.donotcall.dto;
+package uz.murodjon.uysotvoice.donotcall.enums;
 
 import uz.murodjon.uysotvoice.shared.api.TableField;
 

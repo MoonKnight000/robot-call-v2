@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import uz.murodjon.uysotvoice.live.dto.LiveEventType;
+import uz.murodjon.uysotvoice.live.enums.LiveEventType;
 
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;

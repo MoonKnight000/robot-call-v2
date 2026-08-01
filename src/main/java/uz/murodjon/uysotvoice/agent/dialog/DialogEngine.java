@@ -26,7 +26,7 @@ import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
 import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
 import uz.murodjon.uysotvoice.callrecord.service.CallRecordService;
-import uz.murodjon.uysotvoice.live.dto.LiveEventType;
+import uz.murodjon.uysotvoice.live.enums.LiveEventType;
 import uz.murodjon.uysotvoice.live.dto.LiveTranscriptEvent;
 import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
@@ -399,6 +399,23 @@ public class DialogEngine {
     }
 
     /**
+     * What the dialog accumulated for {@code channelId}'s "Texnik" tab (§10.5). Read
+     * before {@link #endCall} drops the session, same as {@link #outcome}.
+     */
+    public DialogTechnicalSnapshot technicalSnapshot(String channelId) {
+        DialogSession session = sessions.get(channelId);
+        if (session == null) {
+            return DialogTechnicalSnapshot.NONE;
+        }
+        return new DialogTechnicalSnapshot(
+                session.turnCount(),
+                session.promptTokens(), session.completionTokens(), session.cachedTokens(),
+                session.avgTurnLatencyMs(), session.maxTurnLatencyMs(),
+                session.avgLlmLatencyMs(), session.maxLlmLatencyMs(),
+                session.ttsVoice(), session.language());
+    }
+
+    /**
      * Marks a call as an answering machine (PROJECT.md §8.6) and stops the conversation.
      *
      * <p>Called from the AMD detector while the bot is still on its opening line. The
@@ -515,7 +532,8 @@ public class DialogEngine {
                 // says anything at all.
                 result = TurnResult.NOTHING;
             } finally {
-                metrics.stopLlmTurn(llmSample);
+                long elapsedNanos = metrics.stopLlmTurn(llmSample);
+                s.recordLlmLatency(Duration.ofNanos(elapsedNanos).toMillis());
             }
 
             String reply = result.reply();
@@ -992,6 +1010,7 @@ public class DialogEngine {
             if (turnaround != null) {
                 // First audio of this turn — the number §1.3 budgets.
                 metrics.recordTurnaround(turnaround);
+                s.recordTurnLatency(turnaround.toMillis());
                 log.debug("[{}] turnaround {} ms", s.channelId(), turnaround.toMillis());
             }
             return SpeechOutcome.SPOKEN;

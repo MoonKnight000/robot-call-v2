@@ -14,6 +14,7 @@ import uz.murodjon.uysotvoice.contact.dto.ParsedContact;
 import uz.murodjon.uysotvoice.contact.dto.UpdateContactRequest;
 import uz.murodjon.uysotvoice.contact.repository.ContactRepository;
 import uz.murodjon.uysotvoice.donotcall.dto.ContactDncResponse;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
@@ -120,7 +121,7 @@ public class ContactService {
     /** "DNC ga qo'shish" (§10.8 drawer) — adds the contact's phone to the opt-out list. */
     public ContactDncResponse addToDoNotCall(long id) {
         ContactRow contact = requireContact(id);
-        doNotCall.add(contact.phone(), "opted out via contact", "MANUAL");
+        doNotCall.add(contact.phone(), "opted out via contact", DoNotCallSource.MANUAL);
         audit.record("CONTACT_DNC", "contact", String.valueOf(id), contact.phone());
         return new ContactDncResponse(id, true);
     }

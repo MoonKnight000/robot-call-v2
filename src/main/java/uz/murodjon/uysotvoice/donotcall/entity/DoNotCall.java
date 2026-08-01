@@ -2,10 +2,13 @@ package uz.murodjon.uysotvoice.donotcall.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 
 import java.time.Instant;
 
@@ -24,8 +27,9 @@ public class DoNotCall {
     @Column
     private String reason;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String source;
+    private DoNotCallSource source;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -59,11 +63,11 @@ public class DoNotCall {
         this.reason = reason;
     }
 
-    public String getSource() {
+    public DoNotCallSource getSource() {
         return source;
     }
 
-    public void setSource(String source) {
+    public void setSource(DoNotCallSource source) {
         this.source = source;
     }
 

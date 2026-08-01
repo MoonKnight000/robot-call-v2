@@ -16,6 +16,11 @@ import java.time.Instant;
  * @param callAttemptId     persisted call_attempt id (0 if not recorded)
  * @param startedAt         when media became ready (for duration)
  * @param wavPath           local path of the recording WAV
+ * @param channelName       the caller's Asterisk channel name (e.g. {@code PJSIP/trunk-00000012}),
+ *                          for the "Texnik" tab (§10.5) — distinct from {@link #channelId}, which
+ *                          is the opaque ARI id
+ * @param trunk             the PJSIP endpoint dialled, parsed from {@code channelName}; null if it
+ *                          does not match the expected {@code PJSIP/<endpoint>-<seq>} shape
  */
 public record CallSession(
         String channelId,
@@ -25,6 +30,8 @@ public record CallSession(
         RtpEndpoint endpoint,
         long callAttemptId,
         Instant startedAt,
-        String wavPath
+        String wavPath,
+        String channelName,
+        String trunk
 ) {
 }

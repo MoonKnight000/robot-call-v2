@@ -8,6 +8,9 @@ import uz.murodjon.uysotvoice.agent.ari.AriService;
 import uz.murodjon.uysotvoice.agent.lifecycle.GracefulShutdownManager;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
@@ -17,11 +20,13 @@ import uz.murodjon.uysotvoice.dialer.config.RetryProperties;
 import uz.murodjon.uysotvoice.dialer.dto.CallTask;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -69,9 +74,9 @@ class DialerServiceTest {
                 Clock.fixed(now.toInstant(), ZONE));
     }
 
-    private void givenActiveCampaign(int dailyCallCap, String dialDays) {
+    private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
         when(campaigns.findActive()).thenReturn(List.of(new CampaignRow(
-                CAMPAIGN_ID, "c", "DEBT_COLLECTION", "ACTIVE", "goal", "uz-UZ",
+                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "goal", "uz-UZ",
                 LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, null, dailyCallCap)));
     }
 
@@ -80,14 +85,14 @@ class DialerServiceTest {
             int limit = call.getArgument(1);
             return java.util.stream.IntStream.range(0, Math.min(count, limit))
                     .mapToObj(i -> new TargetRow(100L + i, CAMPAIGN_ID, 1L, "99890111223" + i,
-                            "uz-UZ", "{}", "PENDING", 0, false))
+                            "uz-UZ", "{}", TargetStatus.PENDING, 0, false))
                     .toList();
         });
     }
 
     @Test
     void dispatchesInsideTheWindow() {
-        givenActiveCampaign(0, "WEDNESDAY");
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(2);
 
         dialerAt(10).dispatch();
@@ -97,7 +102,7 @@ class DialerServiceTest {
 
     @Test
     void dispatchesNothingBeforeTheWindowOpens() {
-        givenActiveCampaign(0, "WEDNESDAY");
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(2);
 
         dialerAt(7).dispatch();
@@ -109,7 +114,7 @@ class DialerServiceTest {
     @Test
     void dispatchesNothingOnADayTheCampaignMayNotDial() {
         // §11.2: the time window alone would happily call debtors on a Sunday.
-        givenActiveCampaign(0, "MONDAY,TUESDAY");
+        givenActiveCampaign(0, Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY));
         givenDueTargets(2);
 
         dialerAt(10).dispatch();
@@ -119,7 +124,7 @@ class DialerServiceTest {
 
     @Test
     void dailyCapLimitsTheBatch() {
-        givenActiveCampaign(5, "WEDNESDAY");
+        givenActiveCampaign(5, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(10);
         when(state.dispatchedToday(eq(CAMPAIGN_ID), any(LocalDate.class))).thenReturn(3);
 
@@ -134,7 +139,7 @@ class DialerServiceTest {
     void anExhaustedDailyCapStopsTheCampaignWithoutClaimingTargets() {
         // Claiming would mark targets IN_PROGRESS and count an attempt against them, so a
         // capped campaign must stop before touching the queue at all.
-        givenActiveCampaign(5, "WEDNESDAY");
+        givenActiveCampaign(5, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(10);
         when(state.dispatchedToday(eq(CAMPAIGN_ID), any(LocalDate.class))).thenReturn(5);
 
@@ -146,7 +151,7 @@ class DialerServiceTest {
 
     @Test
     void noCapMeansTheBatchIsBoundedOnlyByRateAndConcurrency() {
-        givenActiveCampaign(0, "WEDNESDAY");
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(10);
 
         dialerAt(10).dispatch();
@@ -157,7 +162,7 @@ class DialerServiceTest {
 
     @Test
     void everyDispatchIsCountedAgainstTheDailyCap() {
-        givenActiveCampaign(5, "WEDNESDAY");
+        givenActiveCampaign(5, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(2);
 
         dialerAt(10).dispatch();
@@ -168,7 +173,7 @@ class DialerServiceTest {
 
     @Test
     void drainingStopsDispatchEntirely() {
-        givenActiveCampaign(0, "WEDNESDAY");
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(2);
         GracefulShutdownManager shutdown = mock(GracefulShutdownManager.class);
         when(shutdown.isDraining()).thenReturn(true);

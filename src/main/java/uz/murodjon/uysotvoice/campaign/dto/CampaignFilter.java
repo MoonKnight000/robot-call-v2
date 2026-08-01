@@ -4,6 +4,8 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Sort;
 
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignTableField;
 import uz.murodjon.uysotvoice.shared.api.FilterInterface;
 
 import java.util.LinkedHashMap;
@@ -13,11 +15,14 @@ import java.util.LinkedHashMap;
  * omitted (defaulted by {@link FilterInterface}), but a value that is present and out of
  * range is rejected rather than silently clamped — that is more likely a client bug than a
  * deliberate choice.
+ *
+ * @param status restrict to one campaign status (e.g. {@code ACTIVE}), or omit for all
  */
 public record CampaignFilter(
         @Min(0) Integer page,
         @Min(1) @Max(FilterInterface.MAX_SIZE) Integer size,
-        LinkedHashMap<CampaignTableField, Sort.Direction> orders)
+        LinkedHashMap<CampaignTableField, Sort.Direction> orders,
+        CampaignStatus status)
         implements FilterInterface<CampaignTableField> {
 
     public CampaignFilter {

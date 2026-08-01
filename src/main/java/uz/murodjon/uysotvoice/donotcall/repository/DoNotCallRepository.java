@@ -8,6 +8,7 @@ import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallFilter;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallRow;
 import uz.murodjon.uysotvoice.donotcall.entity.DoNotCall;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 
 import java.time.Instant;
 import java.util.List;
@@ -40,14 +41,14 @@ public class DoNotCallRepository {
      * Record an opt-out for {@code phone}. Best-effort: a DB failure is logged, never
      * thrown — this runs during call teardown and must not break it.
      *
-     * @param source where the opt-out came from: {@code CALL}, {@code MANUAL}, {@code IMPORT}
+     * @param source where the opt-out came from
      */
-    public void add(String phone, String reason, String source) {
+    public void add(String phone, String reason, DoNotCallSource source) {
         if (phone == null || phone.isBlank()) {
             return;
         }
         try {
-            jpa.upsert(phone, reason, source != null ? source : "CALL", Instant.now(), company.id());
+            jpa.upsert(phone, reason, (source != null ? source : DoNotCallSource.CALL).name(), Instant.now(), company.id());
             log.info("Do-not-call recorded for {} ({}): {}", phone, source, reason);
         } catch (Exception e) {
             log.warn("Do-not-call write failed for {}: {}", phone, e.getMessage());

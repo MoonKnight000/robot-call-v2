@@ -24,8 +24,11 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `/api/reports/campaigns/{id}` | GET | VIEWER |
 | `/api/reports/campaigns/{id}/calls/list` | POST | **ADMIN** |
 | `/api/reports/calls/list` | POST | **ADMIN** |
+| `/api/reports/calls/export` | POST | **ADMIN** |
+| `/api/reports/calls/bulk` | POST | **ADMIN** |
 | `/api/reports/calls/{callId}` | GET | VIEWER |
 | `/api/reports/calls/{callId}/recording` | GET | VIEWER |
+| `/api/reports/calls/{callId}/transcript.txt` | GET | VIEWER |
 | `/api/reports/audit/list` | POST | **ADMIN** |
 | `/api/reports/dashboard/kpi` | GET | VIEWER |
 | `/api/reports/dashboard/timeseries` | GET | VIEWER |
@@ -76,6 +79,18 @@ qarang.
 **Rol: ADMIN.** Xuddi yuqoridagi kabi, faqat kampaniya bilan cheklanmagan —
 "nima bo'ldi" umumiy jadvali uchun.
 
+`CallFilter` `page`/`size`/`orders`dan tashqari quyidagi ixtiyoriy filtr
+maydonlarini ham qabul qiladi — hammasi berilmasa oddiy ro'yxat:
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `q` | string | telefon raqami bo'yicha qidiruv (qisman moslik) |
+| `campaignId` | long | faqat shu kampaniya qo'ng'iroqlari |
+| `disposition` | string | faqat shu natija (masalan `PROMISE_TO_PAY`) |
+| `dateFrom` / `dateTo` | ISO-8601 instant | `startedAt` shu oraliqda (`dateFrom` kiritilgan, `dateTo` kiritilmagan) |
+| `durationMinSec` / `durationMaxSec` | int | `durationSec` shu oraliqda |
+| `ids` | `long[]` | berilsa, boshqa hamma filtr maydoni e'tiborsiz qoldirilib faqat shu `call_attempt` id'lari qaytariladi — asosan `POST /api/reports/calls/export`da tanlangan qatorlarni eksport qilish uchun (pastga qarang), lekin shu ro'yxat endpointida ham bir xil ishlaydi |
+
 **Javob qatori** (`CallRow`, `PageableData<CallRow>` ichida):
 
 ```json
@@ -108,6 +123,52 @@ qarang.
 
 ---
 
+## `POST /api/reports/calls/export` — CSV eksport {#calls-export}
+
+**Rol: ADMIN.** Body — xuddi `POST /api/reports/calls/list`dagi kabi
+`CallFilter` (yuqoridagi filtr maydonlari); `page`/`size` shart emas, natija
+har doim eng ko'p `500` qatorgacha (`FilterInterface.MAX_SIZE`) — undan ko'p
+qatorni eksport qilish hozircha qo'llab-quvvatlanmaydi. `ids` berilsa, faqat
+o'sha tanlangan qatorlar eksport qilinadi (§ yuqoridagi jadval).
+
+**`ResponseData`ga o'ralmagan** — `Content-Type: text/csv`,
+`Content-Disposition: attachment; filename="calls.csv"`. Ustunlar: `call_id,
+target_id, phone, language, started_at, ended_at, duration_sec, disposition,
+hangup_cause, has_recording, summary, promised_date, promised_amount,
+crm_note_id` (`CallRow`ning har bir maydoni, birma-bir).
+
+---
+
+## `POST /api/reports/calls/bulk` — ommaviy amal {#calls-bulk}
+
+**Rol: ADMIN.** Body (`BulkCallActionRequest`):
+
+```json
+{ "action": "retry", "ids": [501, 502, 503] }
+```
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `action` | string, `@NotBlank` | `retry` yoki `dnc` (tanlangan qatorlarni eksport qilish uchun `ids` bilan `POST /api/reports/calls/export`ga qarang — u fayl qaytaradi, shuning uchun shu endpointga sig'maydi) |
+| `ids` | `long[]`, `@NotEmpty` | `call_attempt` id'lari |
+
+- `retry` — har bir qo'ng'iroqning nishonini darhol qayta navbatga qo'yadi
+  (`nextAttemptAt = hozir`, holat `PENDING`) — dialer keyingi tikida oladi.
+- `dnc` — har bir qo'ng'iroqning telefon raqamini "qo'ng'iroq qilinmasin"
+  ro'yxatiga qo'shadi (kompaniya darajasida, [do-not-call.md](do-not-call.md)
+  bilan bir xil ro'yxat).
+
+Boshqa kompaniyaga tegishli yoki mavjud bo'lmagan `id` butun so'rovni
+to'xtatmaydi — `failed` ro'yxatiga tushadi.
+
+**Response** (`BulkCallActionResult`):
+
+```json
+{ "processed": 2, "failed": [503] }
+```
+
+---
+
 ## `GET /api/reports/calls/{callId}` — bitta qo'ng'iroq + to'liq transkript
 
 **Response** (`CallDetail`):
@@ -124,7 +185,24 @@ qarang.
   "needsFollowUp": false,
   "followUpNote": null,
   "escalated": false,
-  "errorMessage": null
+  "errorMessage": null,
+  "technical": {
+    "channelName": "PJSIP/trunk-endpoint-00000012",
+    "trunk": "trunk-endpoint",
+    "amdResult": "HUMAN",
+    "sttProvider": "yandex",
+    "ttsProvider": "yandex",
+    "ttsVoice": "alena",
+    "llmModel": "gemini-3.6-flash",
+    "promptTokens": 1840,
+    "completionTokens": 320,
+    "cachedTokens": 1200,
+    "turnCount": 6,
+    "avgTurnLatencyMs": 780,
+    "maxTurnLatencyMs": 1120,
+    "avgLlmLatencyMs": 410,
+    "maxLlmLatencyMs": 650
+  }
 }
 ```
 
@@ -138,6 +216,12 @@ qarang.
 | `needsFollowUp`/`followUpNote` | xulosa follow-up belgilaganmi va nima haqida |
 | `escalated` | qo'ng'iroq odamga uzatilganmi |
 | `errorMessage` | urinishda qayd etilgan texnik xato, bo'lsa |
+| `technical` | "Texnik" tab (§10.5) — `call_technical`da qatori bo'lmagan (bu jadval qo'shilishidan oldingi) qo'ng'iroqlar uchun butunlay `null` |
+| `technical.amdResult` | `MACHINE`/`HUMAN`, yoki AMD shu qo'ng'iroq uchun o'chirilgan bo'lsa `null` |
+| `technical.ttsProvider`/`ttsVoice` | kampaniyaning sozlangan ovozidan hisoblab olinadi — qo'ng'iroq davomida bir nechta jumla boshqa provayderga fallback qilishi mumkin (til mos kelmasa); bu maydon shu **asosiy** tanlovni ko'rsatadi, jumla darajasidagi fallbackni emas |
+| `technical.promptTokens`/`completionTokens`/`cachedTokens` | butun qo'ng'iroq bo'yicha yig'indi (Gemini "thinking" tokenlari `completionTokens`ga qo'shilgan) |
+| `technical.avgTurnLatencyMs`/`maxTurnLatencyMs` | mijoz gapirishni to'xtatgandan botning birinchi audiosi navbatga qo'yilgunigacha (§1.3 byudjeti) |
+| `technical.avgLlmLatencyMs`/`maxLlmLatencyMs` | faqat LLM chaqiruvining o'zi (TTS/tarmoq vaqtisiz) |
 
 ---
 
@@ -153,11 +237,30 @@ Yozuv yo'q bo'lsa (`hasRecording: false` bo'lgan qo'ng'iroq) — `404`.
 
 ---
 
+## `GET /api/reports/calls/{callId}/transcript.txt` — transkriptni TXT sifatida yuklab olish
+
+**`ResponseData`ga o'ralmagan** — `Content-Type: text/plain`,
+`Content-Disposition: attachment; filename="call-{id}-transcript.txt"`. Har
+bir qator: `[HH:MM:SS] ROLE: matn` (`tsOffsetMs` — qo'ng'iroq boshidan
+o'tgan vaqt).
+
+---
+
 ## `POST /api/reports/audit/list` — audit jurnali {#audit-log}
 
 **Rol: ADMIN** (yuqoridagi eslatmaga qarang). Body — `AuditFilter`. Saralanadigan
 ustunlar: `ID`, `CREATED_AT`, `ACTION`, `ENTITY`. Standart: `ID DESC` (eng
 so'nggisi birinchi).
+
+`page`/`size`/`orders`dan tashqari quyidagi ixtiyoriy filtr maydonlarini ham
+qabul qiladi (chapdagi filtr paneli uchun) — har biri **aniq moslik**
+(`LIKE` emas):
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `actor` | string | masalan `admin-key:ADMIN` — rol qo'shimchasi bilan birga to'liq yozing |
+| `action` | string | masalan `CAMPAIGN_START` |
+| `entity` | string | masalan `campaign` |
 
 **Javob qatori** (`AuditRow`, `PageableData<AuditRow>` ichida):
 
@@ -169,7 +272,8 @@ so'nggisi birinchi).
   "entity": "campaign",
   "entityId": "42",
   "detail": "maxConcurrentCalls=5",
-  "createdAt": "2026-07-31T09:00:00Z"
+  "createdAt": "2026-07-31T09:00:00Z",
+  "ipAddress": "10.0.0.5"
 }
 ```
 
@@ -179,6 +283,7 @@ so'nggisi birinchi).
 | `action` | qisqa kod, masalan `CAMPAIGN_START`, `DNC_REMOVE` |
 | `entity`/`entityId` | nima ustida amal bajarilgani (`campaign`, `target`, `call`) va uning id'si (matn sifatida) |
 | `detail` | erkin matnli qo'shimcha kontekst |
+| `ipAddress` | so'rov qaysi manzildan kelgani; HTTP so'rov tashqarisida (dilerning fon ishi) sodir bo'lgan amallar uchun `null` |
 
 ---
 

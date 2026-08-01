@@ -1,16 +1,27 @@
 package uz.murodjon.uysotvoice.campaign.entity;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.util.EnumSet;
+import java.util.Set;
 
 /** JPA entity for {@code campaign} (PROJECT.md §6). */
 @Entity
@@ -24,11 +35,13 @@ public class Campaign {
     @Column(nullable = false)
     private String name;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String type;
+    private CampaignType type;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status;
+    private CampaignStatus status;
 
     @Column(name = "goal_prompt", nullable = false)
     private String goalPrompt;
@@ -61,8 +74,11 @@ public class Campaign {
     @Column(name = "created_by")
     private Long createdBy;
 
-    @Column(name = "dial_days", nullable = false)
-    private String dialDays;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "campaign_dial_day", joinColumns = @JoinColumn(name = "campaign_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day", nullable = false)
+    private Set<DayOfWeek> dialDays = EnumSet.noneOf(DayOfWeek.class);
 
     @Column(name = "tts_voice")
     private String ttsVoice;
@@ -85,19 +101,19 @@ public class Campaign {
         this.name = name;
     }
 
-    public String getType() {
+    public CampaignType getType() {
         return type;
     }
 
-    public void setType(String type) {
+    public void setType(CampaignType type) {
         this.type = type;
     }
 
-    public String getStatus() {
+    public CampaignStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(CampaignStatus status) {
         this.status = status;
     }
 
@@ -181,12 +197,16 @@ public class Campaign {
         this.createdBy = createdBy;
     }
 
-    public String getDialDays() {
+    public Set<DayOfWeek> getDialDays() {
         return dialDays;
     }
 
-    public void setDialDays(String dialDays) {
-        this.dialDays = dialDays;
+    public void setDialDays(Set<DayOfWeek> dialDays) {
+        // EnumSet.copyOf throws on an empty non-EnumSet collection (it can't infer the
+        // enum type from zero elements), so the empty case needs its own branch.
+        this.dialDays = (dialDays == null || dialDays.isEmpty())
+                ? EnumSet.noneOf(DayOfWeek.class)
+                : EnumSet.copyOf(dialDays);
     }
 
     public String getTtsVoice() {

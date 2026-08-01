@@ -1,4 +1,4 @@
-package uz.murodjon.uysotvoice.live.dto;
+package uz.murodjon.uysotvoice.live.enums;
 
 /**
  * SSE {@code event:} names published on {@code GET /api/live/stream}

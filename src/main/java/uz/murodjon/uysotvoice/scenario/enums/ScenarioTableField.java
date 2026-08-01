@@ -1,4 +1,4 @@
-package uz.murodjon.uysotvoice.scenario.dto;
+package uz.murodjon.uysotvoice.scenario.enums;
 
 import uz.murodjon.uysotvoice.shared.api.TableField;
 

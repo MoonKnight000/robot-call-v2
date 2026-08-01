@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Sort;
 
+import uz.murodjon.uysotvoice.scenario.enums.ScenarioTableField;
 import uz.murodjon.uysotvoice.shared.api.FilterInterface;
 
 import java.util.LinkedHashMap;

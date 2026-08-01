@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
 import uz.murodjon.uysotvoice.audit.dto.AuditRow;
+import uz.murodjon.uysotvoice.report.dto.BulkCallActionRequest;
+import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
@@ -24,10 +26,15 @@ public class ReportControllerImpl implements ReportController {
 
     private final ReportService service;
     private final RecordingResponseFactory recordings;
+    private final CsvResponseFactory csv;
+    private final TranscriptResponseFactory transcripts;
 
-    public ReportControllerImpl(ReportService service, RecordingResponseFactory recordings) {
+    public ReportControllerImpl(ReportService service, RecordingResponseFactory recordings,
+                                CsvResponseFactory csv, TranscriptResponseFactory transcripts) {
         this.service = service;
         this.recordings = recordings;
+        this.csv = csv;
+        this.transcripts = transcripts;
     }
 
     @Override
@@ -53,6 +60,21 @@ public class ReportControllerImpl implements ReportController {
     @Override
     public ResponseEntity<Resource> recording(long callId) {
         return recordings.toResponse(service.resolveRecording(callId));
+    }
+
+    @Override
+    public ResponseEntity<byte[]> exportCalls(CallFilter filter) {
+        return csv.toCsv("calls.csv", service.exportCalls(filter));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<BulkCallActionResult>> bulkAction(BulkCallActionRequest r) {
+        return ResponseEntity.ok(ResponseData.ok(service.bulkAction(r)));
+    }
+
+    @Override
+    public ResponseEntity<Resource> transcript(long callId) {
+        return transcripts.toResponse(callId, service.call(callId));
     }
 
     @Override

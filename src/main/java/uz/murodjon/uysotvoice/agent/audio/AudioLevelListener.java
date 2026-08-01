@@ -1,7 +1,7 @@
 package uz.murodjon.uysotvoice.agent.audio;
 
 import uz.murodjon.uysotvoice.live.dto.AudioLevelEvent;
-import uz.murodjon.uysotvoice.live.dto.LiveEventType;
+import uz.murodjon.uysotvoice.live.enums.LiveEventType;
 import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
 
 /**

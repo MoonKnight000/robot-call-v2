@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param autoStart      when true, the bot greets and drives the conversation as soon
  *                       as media is up (Stage 7 verification without a DB/campaign)
  * @param language       BCP-47 conversation language (also used to route STT/TTS)
- * @param ttsVoice       voice id from {@code voice-agent.tts.catalog} for manual and
+ * @param ttsVoice       voice id from the {@code tts_voice} table for manual and
  *                       auto-started calls — campaign calls carry their own choice
  *                       (§2.5). Blank uses the configured provider/voice routing
  * @param greetingDelayMs quiet time between the channel being answered and the first

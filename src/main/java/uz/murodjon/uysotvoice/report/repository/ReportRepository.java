@@ -4,18 +4,23 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.springframework.stereotype.Repository;
 
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.contact.dto.ContactCallHistoryRow;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
+import uz.murodjon.uysotvoice.report.dto.CallTechnicalDetail;
 import uz.murodjon.uysotvoice.report.dto.CampaignStats;
 import uz.murodjon.uysotvoice.report.dto.DashboardBucket;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
 import uz.murodjon.uysotvoice.report.dto.DashboardRange;
 import uz.murodjon.uysotvoice.report.dto.DashboardTotals;
 import uz.murodjon.uysotvoice.report.dto.TranscriptLine;
+import uz.murodjon.uysotvoice.shared.api.FilterInterface;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.shared.dialog.ReasonCode;
+import uz.murodjon.uysotvoice.shared.dialog.Sentiment;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -113,7 +118,7 @@ public class ReportRepository {
         return new CampaignStats(
                 campaignId,
                 (String) campaignRow[0],
-                (String) campaignRow[1],
+                asEnumOrNull(CampaignStatus.class, campaignRow[1]),
                 targets,
                 dispositions,
                 finished,
@@ -144,21 +149,113 @@ public class ReportRepository {
         return asLong(result);
     }
 
-    /** Most recent calls across every campaign, scoped to the current company. */
+    /**
+     * Most recent calls across every campaign, scoped to the current company, narrowed by
+     * whichever optional fields {@code filter} sets (text search, campaign, disposition,
+     * date range, duration range) — see {@link #appendCallFilterWhere}.
+     */
     public List<CallRow> recentCalls(CallFilter filter) {
-        List<Object[]> result = rows(em.createNativeQuery(CALL_SELECT + " WHERE a.company_id = :companyId"
-                        + filter.orderByClause() + " LIMIT :limit OFFSET :offset")
+        StringBuilder sql = new StringBuilder(CALL_SELECT).append(" WHERE a.company_id = :companyId");
+        appendCallFilterWhere(sql, filter);
+        sql.append(filter.orderByClause()).append(" LIMIT :limit OFFSET :offset");
+        Query query = em.createNativeQuery(sql.toString())
                 .setParameter("companyId", company.id())
                 .setParameter("limit", filter.sizeOrDefault())
-                .setParameter("offset", filter.offset()));
-        return result.stream().map(ReportRepository::toCallRow).toList();
+                .setParameter("offset", filter.offset());
+        bindCallFilterParams(query, filter);
+        return rows(query).stream().map(ReportRepository::toCallRow).toList();
     }
 
-    public long countRecentCalls() {
-        Object result = em.createNativeQuery("SELECT count(*) FROM call_attempt WHERE company_id = :companyId")
+    /** Same scoping/filtering as {@link #recentCalls}, unpaged, for the CSV export. */
+    public List<CallRow> exportCalls(CallFilter filter) {
+        StringBuilder sql = new StringBuilder(CALL_SELECT).append(" WHERE a.company_id = :companyId");
+        appendCallFilterWhere(sql, filter);
+        sql.append(filter.orderByClause()).append(" LIMIT :limit");
+        Query query = em.createNativeQuery(sql.toString())
                 .setParameter("companyId", company.id())
-                .getSingleResult();
-        return asLong(result);
+                .setParameter("limit", FilterInterface.MAX_SIZE);
+        bindCallFilterParams(query, filter);
+        return rows(query).stream().map(ReportRepository::toCallRow).toList();
+    }
+
+    public long countRecentCalls(CallFilter filter) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT count(*) FROM call_attempt a JOIN campaign_target t ON t.id = a.target_id "
+                        + "WHERE a.company_id = :companyId");
+        appendCallFilterWhere(sql, filter);
+        Query query = em.createNativeQuery(sql.toString()).setParameter("companyId", company.id());
+        bindCallFilterParams(query, filter);
+        return asLong(query.getSingleResult());
+    }
+
+    /**
+     * Appends the optional {@code CallFilter} fields as {@code AND} clauses, in bind order.
+     * {@link CallFilter#ids()}, when set, wins over every other field (a user-selected
+     * subset of rows) rather than narrowing an already-filtered view.
+     */
+    private static void appendCallFilterWhere(StringBuilder sql, CallFilter filter) {
+        if (filter.ids() != null && !filter.ids().isEmpty()) {
+            sql.append(" AND a.id IN (:ids)");
+            return;
+        }
+        if (filter.q() != null && !filter.q().isBlank()) {
+            sql.append(" AND t.phone LIKE :q");
+        }
+        if (filter.campaignId() != null) {
+            sql.append(" AND t.campaign_id = :campaignId");
+        }
+        if (filter.disposition() != null) {
+            sql.append(" AND a.disposition = :disposition");
+        }
+        if (filter.dateFrom() != null) {
+            sql.append(" AND a.started_at >= :dateFrom");
+        }
+        if (filter.dateTo() != null) {
+            sql.append(" AND a.started_at < :dateTo");
+        }
+        if (filter.durationMinSec() != null) {
+            sql.append(" AND a.duration_sec >= :durationMinSec");
+        }
+        if (filter.durationMaxSec() != null) {
+            sql.append(" AND a.duration_sec <= :durationMaxSec");
+        }
+    }
+
+    private static void bindCallFilterParams(Query query, CallFilter filter) {
+        if (filter.ids() != null && !filter.ids().isEmpty()) {
+            query.setParameter("ids", filter.ids());
+            return;
+        }
+        if (filter.q() != null && !filter.q().isBlank()) {
+            query.setParameter("q", "%" + filter.q().trim() + "%");
+        }
+        if (filter.campaignId() != null) {
+            query.setParameter("campaignId", filter.campaignId());
+        }
+        if (filter.disposition() != null) {
+            query.setParameter("disposition", filter.disposition().name());
+        }
+        if (filter.dateFrom() != null) {
+            query.setParameter("dateFrom", filter.dateFrom());
+        }
+        if (filter.dateTo() != null) {
+            query.setParameter("dateTo", filter.dateTo());
+        }
+        if (filter.durationMinSec() != null) {
+            query.setParameter("durationMinSec", filter.durationMinSec());
+        }
+        if (filter.durationMaxSec() != null) {
+            query.setParameter("durationMaxSec", filter.durationMaxSec());
+        }
+    }
+
+    /** One call's report line, or {@code null} if it does not exist (or belongs to another company). */
+    public CallRow findCall(long callId) {
+        List<Object[]> result = rows(em.createNativeQuery(
+                        CALL_SELECT + " WHERE a.id = :callId AND a.company_id = :companyId")
+                .setParameter("callId", callId)
+                .setParameter("companyId", company.id()));
+        return result.isEmpty() ? null : toCallRow(result.get(0));
     }
 
     /**
@@ -168,14 +265,10 @@ public class ReportRepository {
      * company_id column or filter.
      */
     public CallDetail callDetail(long callId) {
-        List<Object[]> result = rows(em.createNativeQuery(
-                        CALL_SELECT + " WHERE a.id = :callId AND a.company_id = :companyId")
-                .setParameter("callId", callId)
-                .setParameter("companyId", company.id()));
-        if (result.isEmpty()) {
+        CallRow callRow = findCall(callId);
+        if (callRow == null) {
             return null;
         }
-        CallRow callRow = toCallRow(result.get(0));
 
         List<Object[]> transcriptRows = rows(em.createNativeQuery(
                         "SELECT seq, role, text, dialog_state, ts_offset_ms, stt_confidence "
@@ -195,12 +288,38 @@ public class ReportRepository {
         return new CallDetail(
                 callRow,
                 transcript,
-                (String) e[0],
-                (String) e[1],
+                asEnumOrNull(ReasonCode.class, e[0]),
+                asEnumOrNull(Sentiment.class, e[1]),
                 Boolean.TRUE.equals(e[2]),
                 (String) e[3],
                 Boolean.TRUE.equals(e[4]),
-                (String) e[5]);
+                (String) e[5],
+                technicalDetail(callId));
+    }
+
+    /** {@code null} for calls that predate {@code call_technical} (§10.5 "Texnik" tab). */
+    private CallTechnicalDetail technicalDetail(long callId) {
+        List<Object[]> rows = rows(em.createNativeQuery(
+                        "SELECT channel_name, trunk, amd_result, stt_provider, tts_provider, tts_voice, "
+                                + "llm_model, prompt_tokens, completion_tokens, cached_tokens, turn_count, "
+                                + "avg_turn_latency_ms, max_turn_latency_ms, avg_llm_latency_ms, max_llm_latency_ms "
+                                + "FROM call_technical WHERE call_id = :callId")
+                .setParameter("callId", callId));
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Object[] t = rows.get(0);
+        return new CallTechnicalDetail(
+                (String) t[0], (String) t[1], (String) t[2], (String) t[3], (String) t[4], (String) t[5],
+                (String) t[6],
+                t[7] == null ? null : asInt(t[7]),
+                t[8] == null ? null : asInt(t[8]),
+                t[9] == null ? null : asInt(t[9]),
+                t[10] == null ? null : asInt(t[10]),
+                t[11] == null ? null : asInt(t[11]),
+                t[12] == null ? null : asInt(t[12]),
+                t[13] == null ? null : asInt(t[13]),
+                t[14] == null ? null : asInt(t[14]));
     }
 
     /**
@@ -354,6 +473,22 @@ public class ReportRepository {
         return o == null ? null : ((Number) o).doubleValue();
     }
 
+    /**
+     * A raw column value that does not match any constant of {@code type} (e.g. written by
+     * an older build of the enum) reads back as {@code null} rather than failing the whole
+     * report row.
+     */
+    private static <E extends Enum<E>> E asEnumOrNull(Class<E> type, Object o) {
+        if (o == null) {
+            return null;
+        }
+        try {
+            return Enum.valueOf(type, (String) o);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     private static Instant asInstant(Object o) {
         if (o instanceof Instant i) {
             return i;
@@ -393,7 +528,7 @@ public class ReportRepository {
                 asInstantOrNull(r[4]),
                 asInstantOrNull(r[5]),
                 r[6] == null ? null : asInt(r[6]),
-                (String) r[7],
+                asEnumOrNull(Disposition.class, r[7]),
                 (String) r[8],
                 r[9] != null,
                 (String) r[10],

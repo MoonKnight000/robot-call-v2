@@ -5,10 +5,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
+import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.callrecord.entity.CallAttempt;
+import uz.murodjon.uysotvoice.callrecord.entity.CallTechnical;
 import uz.murodjon.uysotvoice.callrecord.entity.CallTranscript;
 import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptJpaRepository;
 import uz.murodjon.uysotvoice.callrecord.repository.CallResultJpaRepository;
+import uz.murodjon.uysotvoice.callrecord.repository.CallTechnicalJpaRepository;
 import uz.murodjon.uysotvoice.callrecord.repository.CallTranscriptJpaRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetJpaRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
@@ -38,17 +41,19 @@ public class CallRecordService {
     private final CallAttemptJpaRepository callAttempts;
     private final CallTranscriptJpaRepository transcripts;
     private final CallResultJpaRepository results;
+    private final CallTechnicalJpaRepository technicalDetails;
     private final CampaignTargetJpaRepository targets;
     private final CurrentCompany company;
     private final AtomicLong manualTargetId = new AtomicLong(0);
     private final Map<Long, AtomicInteger> seqCounters = new ConcurrentHashMap<>();
 
     public CallRecordService(CallAttemptJpaRepository callAttempts, CallTranscriptJpaRepository transcripts,
-                             CallResultJpaRepository results, CampaignTargetJpaRepository targets,
-                             CurrentCompany company) {
+                             CallResultJpaRepository results, CallTechnicalJpaRepository technicalDetails,
+                             CampaignTargetJpaRepository targets, CurrentCompany company) {
         this.callAttempts = callAttempts;
         this.transcripts = transcripts;
         this.results = results;
+        this.technicalDetails = technicalDetails;
         this.targets = targets;
         this.company = company;
     }
@@ -80,7 +85,7 @@ public class CallRecordService {
         try {
             Instant now = Instant.now();
             CallAttempt entity = new CallAttempt();
-            entity.setTargetId(targetId);
+            entity.setTarget(targets.getReferenceById(targetId));
             entity.setAsteriskChannel(channelId);
             entity.setLanguage(language);
             entity.setStartedAt(now);
@@ -103,7 +108,7 @@ public class CallRecordService {
         int seq = seqCounters.computeIfAbsent(callId, k -> new AtomicInteger()).incrementAndGet();
         try {
             CallTranscript entity = new CallTranscript();
-            entity.setCallId(callId);
+            entity.setCall(callAttempts.getReferenceById(callId));
             entity.setSeq(seq);
             entity.setRole(role);
             entity.setText(text);
@@ -156,7 +161,7 @@ public class CallRecordService {
             return "";
         }
         try {
-            List<CallTranscript> rows = transcripts.findByCallIdOrderBySeq(callId);
+            List<CallTranscript> rows = transcripts.findByCall_IdOrderBySeq(callId);
             StringBuilder sb = new StringBuilder();
             for (CallTranscript row : rows) {
                 sb.append(row.getRole()).append(": ").append(row.getText()).append('\n');
@@ -175,8 +180,7 @@ public class CallRecordService {
             return;
         }
         try {
-            callAttempts.finishAttempt(callId, Instant.now(), durationSec,
-                    disposition != null ? disposition.name() : null, recordingUrl);
+            callAttempts.finishAttempt(callId, Instant.now(), durationSec, disposition, recordingUrl);
         } catch (Exception e) {
             log.warn("finishAttempt failed for call {}: {}", callId, e.getMessage());
         }
@@ -209,6 +213,44 @@ public class CallRecordService {
             log.info("call_result written for call {} (disposition-escalated={})", callId, escalated);
         } catch (Exception e) {
             log.warn("writeResult failed for call {}: {}", callId, e.getMessage());
+        }
+    }
+
+    /**
+     * Insert the single call_technical row (§10.5 "Texnik" tab). Written once, from
+     * {@code CallFinalizer} at teardown — unlike {@link #writeResult}, nothing re-runs
+     * this later, so a plain insert is enough.
+     */
+    public void writeTechnicalDetail(long callId, String channelName, String trunk, String amdResult,
+                                     String sttProvider, String ttsProvider, String ttsVoice,
+                                     String llmModel, DialogTechnicalSnapshot technical) {
+        if (callId == 0) {
+            return;
+        }
+        try {
+            CallTechnical entity = new CallTechnical();
+            entity.setCall(callAttempts.getReferenceById(callId));
+            entity.setChannelName(channelName);
+            entity.setTrunk(trunk);
+            entity.setAmdResult(amdResult);
+            entity.setSttProvider(sttProvider);
+            entity.setTtsProvider(ttsProvider);
+            entity.setTtsVoice(ttsVoice);
+            entity.setLlmModel(llmModel);
+            if (technical != null) {
+                entity.setPromptTokens((int) technical.promptTokens());
+                entity.setCompletionTokens((int) technical.completionTokens());
+                entity.setCachedTokens((int) technical.cachedTokens());
+                entity.setTurnCount(technical.turnCount());
+                entity.setAvgTurnLatencyMs(technical.avgTurnLatencyMs());
+                entity.setMaxTurnLatencyMs(technical.maxTurnLatencyMs());
+                entity.setAvgLlmLatencyMs(technical.avgLlmLatencyMs());
+                entity.setMaxLlmLatencyMs(technical.maxLlmLatencyMs());
+            }
+            entity.setCreatedAt(Instant.now());
+            technicalDetails.save(entity);
+        } catch (Exception e) {
+            log.warn("writeTechnicalDetail failed for call {}: {}", callId, e.getMessage());
         }
     }
 }

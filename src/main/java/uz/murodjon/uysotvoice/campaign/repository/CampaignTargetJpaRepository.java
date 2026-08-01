@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.uysotvoice.campaign.entity.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 
 import java.time.Instant;
 import java.util.List;
@@ -23,9 +24,9 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     /** The placeholder target seeded by {@code V2} (phone = 'MANUAL'); see {@code CallRecordService.manualTargetId}. */
     Optional<CampaignTarget> findFirstByPhoneOrderById(String phone);
 
-    List<CampaignTarget> findByCampaignIdAndCompanyId(long campaignId, long companyId, Pageable pageable);
+    List<CampaignTarget> findByCampaign_IdAndCompanyId(long campaignId, long companyId, Pageable pageable);
 
-    long countByCampaignIdAndCompanyId(long campaignId, long companyId);
+    long countByCampaign_IdAndCompanyId(long campaignId, long companyId);
 
     /**
      * Atomically claim up to {@code limit} targets that are ready to dial: PENDING,
@@ -66,13 +67,13 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     /** Internal (dialer outcome application) — not scoped, see {@link #claimDue}. */
     @Modifying @Transactional
     @Query("UPDATE CampaignTarget t SET t.status = :status, t.nextAttemptAt = :nextAttemptAt WHERE t.id = :id")
-    void updateStatus(@Param("id") long id, @Param("status") String status,
+    void updateStatus(@Param("id") long id, @Param("status") TargetStatus status,
                       @Param("nextAttemptAt") Instant nextAttemptAt);
 
     /** Scoped to the current company — reached by a bare target id, see {@link #findByIdAndCompanyId}. */
     @Modifying
     @Transactional
-    @Query("UPDATE CampaignTarget t SET t.doNotCall = true, t.status = 'DONE' "
+    @Query("UPDATE CampaignTarget t SET t.doNotCall = true, t.status = uz.murodjon.uysotvoice.campaign.enums.TargetStatus.DONE "
             + "WHERE t.id = :id AND t.companyId = :companyId")
     void setDoNotCall(@Param("id") long id, @Param("companyId") long companyId);
 }

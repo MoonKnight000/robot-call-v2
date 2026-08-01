@@ -6,20 +6,24 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 
-import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
-import uz.murodjon.uysotvoice.agent.tts.TtsVoice;
-import uz.murodjon.uysotvoice.agent.tts.TtsVoiceCatalog;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
 import uz.murodjon.uysotvoice.dialer.config.DialerProperties;
 import uz.murodjon.uysotvoice.dialer.config.RetryProperties;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,6 +31,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -57,6 +62,7 @@ class CampaignServiceTest {
     private CampaignRepository campaigns;
     private CampaignTargetRepository targets;
     private DoNotCallRepository doNotCall;
+    private TtsVoiceService voices;
     private CampaignService service;
 
     @BeforeEach
@@ -64,8 +70,9 @@ class CampaignServiceTest {
         campaigns = mock(CampaignRepository.class);
         targets = mock(CampaignTargetRepository.class);
         doNotCall = mock(DoNotCallRepository.class);
-        TtsVoiceCatalog voices = new TtsVoiceCatalog(ttsProps(
-                new TtsVoice("nigora", "yandex", "uz-UZ", "nigora", "Nigora")));
+        voices = mock(TtsVoiceService.class);
+        when(voices.find("nigora")).thenReturn(new TtsVoiceRow("nigora", "yandex", "uz-UZ", "nigora", "Nigora"));
+        when(voices.ids()).thenReturn(List.of("nigora"));
         service = new CampaignService(campaigns, targets, doNotCall, voices, dialerProps(),
                 mock(AuditService.class), Clock.fixed(NOW, ZoneId.systemDefault()));
     }
@@ -77,17 +84,13 @@ class CampaignServiceTest {
 
     private void givenTarget(int attempts) {
         when(targets.find(TARGET_ID)).thenReturn(new TargetRow(
-                TARGET_ID, CAMPAIGN_ID, 100L, "998901112233", "uz-UZ", "{}", "IN_PROGRESS", attempts, false));
+                TARGET_ID, CAMPAIGN_ID, 100L, "998901112233", "uz-UZ", "{}", TargetStatus.IN_PROGRESS, attempts, false));
         when(campaigns.find(CAMPAIGN_ID)).thenReturn(campaign(3, 24));
     }
 
     private static CampaignRow campaign(int maxAttempts, int retryHours) {
-        return new CampaignRow(CAMPAIGN_ID, "test", "DEBT_COLLECTION", "ACTIVE", "goal", "uz-UZ",
-                null, null, "MONDAY,TUESDAY", maxAttempts, retryHours, 5, null, 0);
-    }
-
-    private static TtsProperties ttsProps(TtsVoice... catalog) {
-        return new TtsProperties(true, "yandex", "uz-UZ", null, List.of(catalog), null, null);
+        return new CampaignRow(CAMPAIGN_ID, "test", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "goal", "uz-UZ",
+                null, null, Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY), maxAttempts, retryHours, 5, null, 0);
     }
 
     @ParameterizedTest
@@ -98,7 +101,7 @@ class CampaignServiceTest {
 
         service.applyOutcome(TARGET_ID, disposition);
 
-        verify(targets).updateStatus(TARGET_ID, "DONE", null);
+        verify(targets).updateStatus(TARGET_ID, TargetStatus.DONE, null);
     }
 
     @Test
@@ -108,8 +111,8 @@ class CampaignServiceTest {
 
         service.applyOutcome(TARGET_ID, Disposition.DO_NOT_CALL);
 
-        verify(targets).updateStatus(TARGET_ID, "DONE", null);
-        verify(targets, never()).updateStatus(eq(TARGET_ID), eq("PENDING"), any());
+        verify(targets).updateStatus(TARGET_ID, TargetStatus.DONE, null);
+        verify(targets, never()).updateStatus(eq(TARGET_ID), eq(TargetStatus.PENDING), any());
     }
 
     @Test
@@ -118,7 +121,7 @@ class CampaignServiceTest {
 
         service.applyOutcome(TARGET_ID, Disposition.NO_ANSWER);
 
-        verify(targets).updateStatus(eq(TARGET_ID), eq("PENDING"), any(Instant.class));
+        verify(targets).updateStatus(eq(TARGET_ID), eq(TargetStatus.PENDING), any(Instant.class));
     }
 
     @Test
@@ -127,7 +130,7 @@ class CampaignServiceTest {
 
         service.applyOutcome(TARGET_ID, Disposition.NO_ANSWER);
 
-        verify(targets).updateStatus(TARGET_ID, "EXHAUSTED", null);
+        verify(targets).updateStatus(TARGET_ID, TargetStatus.EXHAUSTED, null);
     }
 
     @Test
@@ -146,7 +149,7 @@ class CampaignServiceTest {
 
         service.doNotCall(TARGET_ID);
 
-        verify(doNotCall).add(eq("998901112233"), any(), eq("MANUAL"));
+        verify(doNotCall).add(eq("998901112233"), any(), eq(DoNotCallSource.MANUAL));
         verify(targets).setDoNotCall(TARGET_ID);
     }
 
@@ -163,8 +166,9 @@ class CampaignServiceTest {
     void createUsesWeekdaysWhenDialDaysOmitted() {
         service.createCampaign("c", null, null, null, null, null, null, 0, 0, 0, null, 0);
 
-        verify(campaigns).create(eq("c"), eq("DEBT_COLLECTION"), eq(""), eq("{}"), eq("uz-UZ"),
-                any(), any(), eq("MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY"), eq(3), eq(24), eq(20),
+        verify(campaigns).create(eq("c"), eq(CampaignType.DEBT_COLLECTION), eq(""), eq("{}"), eq("uz-UZ"),
+                any(), any(), eq(Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+                        DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)), eq(3), eq(24), eq(20),
                 isNull(), eq(0));
     }
 
@@ -196,10 +200,10 @@ class CampaignServiceTest {
     void retryDelayDependsOnWhyTheCallFailed() {
         // One 24-hour interval for every outcome spent most of a campaign's three retries
         // on the case least likely to change. NO_ANSWER should come back the same day.
-        when(campaigns.find(CAMPAIGN_ID)).thenReturn(new CampaignRow(CAMPAIGN_ID, "c", "T",
-                "ACTIVE", "", "uz-UZ", null, null, "", 3, 24, 5, null, 0));
+        when(campaigns.find(CAMPAIGN_ID)).thenReturn(new CampaignRow(CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION,
+                CampaignStatus.ACTIVE, "", "uz-UZ", null, null, Set.of(), 3, 24, 5, null, 0));
         when(targets.find(TARGET_ID)).thenReturn(new TargetRow(
-                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", "IN_PROGRESS", 1, false));
+                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 1, false));
 
         assertThat(rescheduledTo(Disposition.NO_ANSWER)).isEqualTo(NOW.plus(Duration.ofMinutes(180)));
         assertThat(rescheduledTo(Disposition.FAILED)).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
@@ -214,11 +218,12 @@ class CampaignServiceTest {
         // A raw "now + 3h" from a 10:00 Wednesday with a window closing at 11:00 would land
         // at 13:00 — outside it. §11.2 says the window is binding, so the retry moves to the
         // next allowed day's opening time rather than sitting in an illegal slot.
-        when(campaigns.find(CAMPAIGN_ID)).thenReturn(new CampaignRow(CAMPAIGN_ID, "c", "T",
-                "ACTIVE", "", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(11, 0),
-                "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY", 3, 24, 5, null, 0));
+        when(campaigns.find(CAMPAIGN_ID)).thenReturn(new CampaignRow(CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION,
+                CampaignStatus.ACTIVE, "", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(11, 0),
+                Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
+                3, 24, 5, null, 0));
         when(targets.find(TARGET_ID)).thenReturn(new TargetRow(
-                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", "IN_PROGRESS", 1, false));
+                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 1, false));
 
         Instant next = rescheduledTo(Disposition.NO_ANSWER);
 
@@ -232,13 +237,13 @@ class CampaignServiceTest {
         CampaignTargetRepository fresh = mock(CampaignTargetRepository.class);
         when(fresh.find(TARGET_ID)).thenReturn(targets.find(TARGET_ID));
         CampaignService scoped = new CampaignService(campaigns, fresh, doNotCall,
-                new TtsVoiceCatalog(ttsProps()), dialerProps(), mock(AuditService.class),
+                voices, dialerProps(), mock(AuditService.class),
                 Clock.fixed(NOW, ZoneId.systemDefault()));
 
         scoped.applyOutcome(TARGET_ID, disposition);
 
         ArgumentCaptor<Instant> at = ArgumentCaptor.forClass(Instant.class);
-        verify(fresh).updateStatus(eq(TARGET_ID), eq("PENDING"), at.capture());
+        verify(fresh).updateStatus(eq(TARGET_ID), eq(TargetStatus.PENDING), at.capture());
         return at.getValue();
     }
 
@@ -249,36 +254,32 @@ class CampaignServiceTest {
 
         service.applyOutcome(TARGET_ID, null);
 
-        verify(targets).updateStatus(eq(TARGET_ID), eq("PENDING"), any(Instant.class));
+        verify(targets).updateStatus(eq(TARGET_ID), eq(TargetStatus.PENDING), any(Instant.class));
     }
 
     @Test
-    void dialDaysParseIntoWeekdays() {
+    void dialDaysAreExposedAsWeekdays() {
         assertThat(campaign(3, 24).allowedDays())
-                .containsExactlyInAnyOrder(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.TUESDAY);
+                .containsExactlyInAnyOrder(DayOfWeek.MONDAY, DayOfWeek.TUESDAY);
     }
 
     @Test
-    void unparsableDialDaysAllowEveryDay() {
-        // A typo must not silently stop a campaign; the time window still applies.
-        CampaignRow broken = new CampaignRow(CAMPAIGN_ID, "c", "T", "ACTIVE", "", "uz-UZ",
-                null, null, "MON,TUE", 3, 24, 5, null, 0);
-        assertThat(broken.allowedDays()).hasSize(7);
-
-        CampaignRow blank = new CampaignRow(CAMPAIGN_ID, "c", "T", "ACTIVE", "", "uz-UZ",
-                null, null, "", 3, 24, 5, null, 0);
+    void emptyDialDaysAllowEveryDay() {
+        // A campaign created without one must not silently stop dialing.
+        CampaignRow blank = new CampaignRow(CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "", "uz-UZ",
+                null, null, Set.of(), 3, 24, 5, null, 0);
         assertThat(blank.allowedDays()).hasSize(7);
     }
 
     @Test
     void isNullSafeAboutMissingCampaign() {
         when(targets.find(TARGET_ID)).thenReturn(new TargetRow(
-                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", "IN_PROGRESS", 5, false));
+                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 5, false));
         when(campaigns.find(CAMPAIGN_ID)).thenReturn(null);
 
         service.applyOutcome(TARGET_ID, Disposition.NO_ANSWER);
 
         // Falls back to maxAttempts=3, and 5 attempts is already past it.
-        verify(targets).updateStatus(eq(TARGET_ID), eq("EXHAUSTED"), isNull());
+        verify(targets).updateStatus(eq(TARGET_ID), eq(TargetStatus.EXHAUSTED), isNull());
     }
 }

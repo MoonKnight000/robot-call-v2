@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.uysotvoice.agent.tts.TtsVoiceCatalog;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.campaign.dto.AddTargetRequest;
 import uz.murodjon.uysotvoice.campaign.dto.AddTargetsResponse;
@@ -20,12 +19,17 @@ import uz.murodjon.uysotvoice.campaign.dto.TargetCsvParseResult;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
 import uz.murodjon.uysotvoice.dialer.config.DialerProperties;
 import uz.murodjon.uysotvoice.dialer.config.RetryProperties;
 import uz.murodjon.uysotvoice.dialer.service.RetrySchedule;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.csv.CsvRowError;
@@ -33,14 +37,18 @@ import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
+import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Campaign/target lifecycle and outcome handling (PROJECT.md §5.2, §10). Owns the
@@ -55,13 +63,13 @@ public class CampaignService {
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
     private final DoNotCallRepository doNotCallList;
-    private final TtsVoiceCatalog voices;
+    private final TtsVoiceService voices;
     private final DialerProperties dialerProps;
     private final AuditService audit;
     private final Clock clock;
 
     public CampaignService(CampaignRepository campaigns, CampaignTargetRepository targets,
-                           DoNotCallRepository doNotCallList, TtsVoiceCatalog voices,
+                           DoNotCallRepository doNotCallList, TtsVoiceService voices,
                            DialerProperties dialerProps, AuditService audit, Clock clock
     ) {
         this.campaigns = campaigns;
@@ -73,22 +81,23 @@ public class CampaignService {
         this.clock = clock;
     }
 
-    /** Weekdays only, matching the V5 column default (§11.2). */
-    private static final String DEFAULT_DIAL_DAYS = "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY";
+    /** Weekdays only, matching the old column default (§11.2). */
+    private static final Set<DayOfWeek> DEFAULT_DIAL_DAYS = EnumSet.of(
+            DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
 //todo createCampaign bitta bolishi kerak, oshanda CreateCampaignRequest ni ozi kirib kelayversin
-    public long createCampaign(String name, String type, String goalPrompt, String defaultLanguage,
-                               LocalTime windowStart, LocalTime windowEnd, String dialDays,
+    public long createCampaign(String name, CampaignType type, String goalPrompt, String defaultLanguage,
+                               LocalTime windowStart, LocalTime windowEnd, Set<DayOfWeek> dialDays,
                                int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
                                String ttsVoice, int dailyCallCap) {
         long id = campaigns.create(
                 name,
-                type != null ? type : "DEBT_COLLECTION",
+                type != null ? type : CampaignType.DEBT_COLLECTION,
                 goalPrompt != null ? goalPrompt : "",
                 "{}",
                 defaultLanguage != null ? defaultLanguage : "uz-UZ",
                 windowStart != null ? windowStart : LocalTime.of(9, 0),
                 windowEnd != null ? windowEnd : LocalTime.of(20, 0),
-                dialDays != null && !dialDays.isBlank() ? dialDays : DEFAULT_DIAL_DAYS,
+                dialDays != null && !dialDays.isEmpty() ? dialDays : DEFAULT_DIAL_DAYS,
                 maxAttempts > 0 ? maxAttempts : 3,
                 retryIntervalHours > 0 ? retryIntervalHours : 24,
                 maxConcurrentCalls > 0 ? maxConcurrentCalls : 20,
@@ -104,7 +113,18 @@ public class CampaignService {
                 r.dialWindowStart(), r.dialWindowEnd(), r.dialDays(),
                 r.maxAttempts(), r.retryIntervalHours(), r.maxConcurrentCalls(), r.ttsVoice(),
                 r.dailyCallCap());
-        return new CreateCampaignResponse(id, "DRAFT");
+        return new CreateCampaignResponse(id, CampaignStatus.DRAFT);
+    }
+
+    /** Full edit of a campaign's configuration ("Tahrirlash", §10.6). */
+    public CampaignRow updateCampaign(long id, UpdateCampaignRequest r) {
+        requireCampaign(id);
+        campaigns.update(id, r.name(), r.goalPrompt(), r.defaultLanguage(),
+                r.dialWindowStart(), r.dialWindowEnd(), r.dialDays(),
+                r.maxAttempts(), r.retryIntervalHours(), r.maxConcurrentCalls(),
+                requireKnownVoice(r.ttsVoice()), Math.max(0, r.dailyCallCap()));
+        audit.record("CAMPAIGN_UPDATE", "campaign", String.valueOf(id), r.name());
+        return requireCampaign(id);
     }
 
     /**
@@ -170,7 +190,7 @@ public class CampaignService {
 
     public PageableData<CampaignRow> listCampaigns(CampaignFilter filter) {
         List<CampaignRow> rows = campaigns.findAll(filter);
-        long total = campaigns.count();
+        long total = campaigns.count(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
@@ -194,19 +214,31 @@ public class CampaignService {
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
-    public void setStatus(long campaignId, String status) {
+    public void setStatus(long campaignId, CampaignStatus status) {
         campaigns.updateStatus(campaignId, status);
-        audit.record("CAMPAIGN_" + status, "campaign", String.valueOf(campaignId), null);
+        audit.record("CAMPAIGN_" + status.name(), "campaign", String.valueOf(campaignId), null);
     }
 
     public CampaignStatusResponse start(long campaignId) {
-        setStatus(campaignId, "ACTIVE");
-        return new CampaignStatusResponse(campaignId, "ACTIVE");
+        setStatus(campaignId, CampaignStatus.ACTIVE);
+        return new CampaignStatusResponse(campaignId, CampaignStatus.ACTIVE);
     }
 
     public CampaignStatusResponse pause(long campaignId) {
-        setStatus(campaignId, "PAUSED");
-        return new CampaignStatusResponse(campaignId, "PAUSED");
+        setStatus(campaignId, CampaignStatus.PAUSED);
+        return new CampaignStatusResponse(campaignId, CampaignStatus.PAUSED);
+    }
+
+    /**
+     * "Arxivlash" (§10.6 kartochka {@code ⋯} menyusi) — {@code DELETE /api/campaigns/{id}}
+     * maps here rather than to a real row deletion, matching the codebase's soft-delete
+     * precedent ({@code DoNotCall.removedAt}): a campaign's targets/calls/transcripts must
+     * stay in the reports, so the row itself is never dropped, only marked terminal.
+     */
+    public CampaignStatusResponse archive(long campaignId) {
+        requireCampaign(campaignId);
+        setStatus(campaignId, CampaignStatus.ARCHIVED);
+        return new CampaignStatusResponse(campaignId, CampaignStatus.ARCHIVED);
     }
 
     /**
@@ -219,7 +251,7 @@ public class CampaignService {
     public void doNotCall(long targetId) {
         TargetRow t = targets.find(targetId);
         if (t != null) {
-            doNotCallList.add(t.phone(), "opted out via API", "MANUAL");
+            doNotCallList.add(t.phone(), "opted out via API", DoNotCallSource.MANUAL);
         }
         targets.setDoNotCall(targetId);
         audit.record("TARGET_DO_NOT_CALL", "target", String.valueOf(targetId),
@@ -244,19 +276,19 @@ public class CampaignService {
             return;
         }
         if (isTerminal(disposition)) {
-            targets.updateStatus(targetId, "DONE", null);
+            targets.updateStatus(targetId, TargetStatus.DONE, null);
             log.info("Target {} DONE ({})", targetId, disposition);
             return;
         }
         CampaignRow c = campaigns.find(t.campaignId());
         int maxAttempts = c != null ? c.maxAttempts() : 3;
         if (t.attempts() >= maxAttempts) {
-            targets.updateStatus(targetId, "EXHAUSTED", null);
+            targets.updateStatus(targetId, TargetStatus.EXHAUSTED, null);
             log.info("Target {} EXHAUSTED after {} attempts", targetId, t.attempts());
             return;
         }
         Instant next = nextAttemptAt(disposition, c);
-        targets.updateStatus(targetId, "PENDING", next);
+        targets.updateStatus(targetId, TargetStatus.PENDING, next);
         log.info("Target {} rescheduled ({}, attempt {}/{}) -> {}",
                 targetId, disposition, t.attempts(), maxAttempts, next);
     }

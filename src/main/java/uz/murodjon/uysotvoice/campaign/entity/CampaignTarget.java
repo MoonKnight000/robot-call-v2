@@ -2,12 +2,18 @@ package uz.murodjon.uysotvoice.campaign.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 
 import java.time.Instant;
 
@@ -20,8 +26,9 @@ public class CampaignTarget {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "campaign_id", nullable = false)
-    private long campaignId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "campaign_id", nullable = false)
+    private Campaign campaign;
 
     @Column(name = "client_id", nullable = false)
     private long clientId;
@@ -36,8 +43,9 @@ public class CampaignTarget {
     @JdbcTypeCode(SqlTypes.JSON)
     private String contextData;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status;
+    private TargetStatus status;
 
     @Column(nullable = false)
     private int attempts;
@@ -58,12 +66,12 @@ public class CampaignTarget {
         return id;
     }
 
-    public long getCampaignId() {
-        return campaignId;
+    public Campaign getCampaign() {
+        return campaign;
     }
 
-    public void setCampaignId(long campaignId) {
-        this.campaignId = campaignId;
+    public void setCampaign(Campaign campaign) {
+        this.campaign = campaign;
     }
 
     public long getClientId() {
@@ -98,11 +106,11 @@ public class CampaignTarget {
         this.contextData = contextData;
     }
 
-    public String getStatus() {
+    public TargetStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(TargetStatus status) {
         this.status = status;
     }
 

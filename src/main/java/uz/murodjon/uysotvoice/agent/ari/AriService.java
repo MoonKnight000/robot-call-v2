@@ -27,6 +27,7 @@ import uz.murodjon.uysotvoice.agent.dialog.CallContext;
 import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
 import uz.murodjon.uysotvoice.agent.dialog.DialogOutcome;
 import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
+import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.agent.dialog.LiveDialogSnapshot;
 import uz.murodjon.uysotvoice.agent.dialog.TestContextProperties;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
@@ -61,6 +62,7 @@ import uz.murodjon.uysotvoice.campaign.service.CampaignService;
 import uz.murodjon.uysotvoice.dialer.dto.OutboundCall;
 import uz.murodjon.uysotvoice.dialer.service.DialerState;
 import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 import uz.murodjon.uysotvoice.live.config.LiveProperties;
 import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
@@ -81,6 +83,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Owns the ARI WebSocket connection and call control (PROJECT.md §8).
@@ -101,6 +105,8 @@ public class AriService {
     private static final String EXTERNAL_MEDIA_PREFIX = "UnicastRTP";
     /** Enough for any realistic prompt; stops one request from running up a TTS bill. */
     private static final int MAX_SAY_CHARS = 1000;
+    /** {@code PJSIP/<endpoint>-<seq>} -> group 1 is the endpoint (§10.5 "Texnik" tab trunk). */
+    private static final Pattern TRUNK_FROM_CHANNEL_NAME = Pattern.compile("PJSIP/(.+)-[0-9a-fA-F]+");
 
     private final AsteriskProperties props;
     private final RtpProperties rtpProps;
@@ -295,6 +301,15 @@ public class AriService {
         return props.trunkEndpoint();
     }
 
+    /** {@code PJSIP/<endpoint>-<seq>} channel name -> {@code <endpoint>}, for the "Texnik" tab (§10.5). */
+    private static String trunkOf(String channelName) {
+        if (channelName == null) {
+            return null;
+        }
+        Matcher m = TRUNK_FROM_CHANNEL_NAME.matcher(channelName);
+        return m.matches() ? m.group(1) : null;
+    }
+
     /**
      * Plays an 8 kHz mono WAV file to the caller over RTP (Stage 4).
      *
@@ -365,8 +380,8 @@ public class AriService {
     }
 
     /**
-     * As {@link #speak(String, String, String)}, with an explicit voice id from
-     * {@code voice-agent.tts.catalog} — how a voice is auditioned before a campaign is
+     * As {@link #speak(String, String, String)}, with an explicit voice id from the
+     * {@code tts_voice} table — how a voice is auditioned before a campaign is
      * created with it.
      */
     public void speak(String channelId, String text, String language, String ttsVoice) {
@@ -443,7 +458,7 @@ public class AriService {
             return;
         }
         log.info("StasisStart: channel {} ({}) args {}", channelId, name, args);
-        callExecutor.execute(() -> withMdc(channelId, () -> setupMedia(channelId)));
+        callExecutor.execute(() -> withMdc(channelId, () -> setupMedia(channelId, name)));
     }
 
     /** Run {@code body} with the call id in the logging context (structured logging §12). */
@@ -507,7 +522,7 @@ public class AriService {
         }
     }
 
-    private void setupMedia(String channelId) {
+    private void setupMedia(String channelId, String channelName) {
         ARI current = requireConnection();
         int port = portAllocator.allocate();
         RtpEndpoint endpoint = null;
@@ -563,7 +578,7 @@ public class AriService {
             current.bridges().addChannel(bridge.getId(), channelId + "," + extMedia.getId()).execute();
 
             sessions.put(channelId, new CallSession(channelId, extMedia.getId(), bridge.getId(),
-                    port, endpoint, attemptId, startedAt, wav.toString()));
+                    port, endpoint, attemptId, startedAt, wav.toString(), channelName, trunkOf(channelName)));
             log.info("Media ready for {}: rtpPort={}, extMedia={}, bridge={}, wav={}, attempt={}",
                     channelId, port, extMedia.getId(), bridge.getId(), wav, attemptId);
 
@@ -788,8 +803,10 @@ public class AriService {
 
     private void handleStasisEnd(StasisEnd event) {
         String channelId = event.getChannel().getId();
-        // Read the dialog outcome before dropping the session, then tear down.
+        // Read the dialog outcome and technical snapshot before dropping the session,
+        // then tear down — endCall() below makes both unrecoverable.
         DialogOutcome outcome = dialogEngine.outcome(channelId);
+        DialogTechnicalSnapshot technical = dialogEngine.technicalSnapshot(channelId);
         dialogEngine.endCall(channelId);
         CallSession session = sessions.remove(channelId);
         if (session == null) {
@@ -801,10 +818,10 @@ public class AriService {
         Integer cause = hangupCauses.get(channelId);
         log.info("StasisEnd: channel {} — tearing down media (cause {})",
                 channelId, HangupCause.label(cause));
-        callExecutor.execute(() -> withMdc(channelId, () -> teardown(session, outcome, cause)));
+        callExecutor.execute(() -> withMdc(channelId, () -> teardown(session, outcome, cause, technical)));
     }
 
-    private void teardown(CallSession session, DialogOutcome outcome, Integer cause) {
+    private void teardown(CallSession session, DialogOutcome outcome, Integer cause, DialogTechnicalSnapshot technical) {
         // What the conversation concluded wins: cause 16 (normal clearing) covers both a
         // promise to pay and an angry hangup, and only the dialog knows which. The cause
         // code is the fallback for calls that produced no outcome of their own (§8.6).
@@ -847,7 +864,7 @@ public class AriService {
             // §11.4: an opt-out binds the phone number, not just this campaign's
             // target row, so it is written before the target status is updated.
             if (disposition == Disposition.DO_NOT_CALL) {
-                doNotCallRepository.add(outbound.phone(), outcome.doNotCallReason(), "CALL");
+                doNotCallRepository.add(outbound.phone(), outcome.doNotCallReason(), DoNotCallSource.CALL);
             }
             campaignService.applyOutcome(outbound.targetId(), disposition);
         }
@@ -855,7 +872,8 @@ public class AriService {
         // Stage 9: upload recording, summarize, write result + CRM note (WAV now finalized).
         if (session.callAttemptId() != 0) {
             callFinalizer.finalizeCall(session.callAttemptId(), clientId,
-                    Path.of(session.wavPath()), session.startedAt(), disposition);
+                    Path.of(session.wavPath()), session.startedAt(), disposition,
+                    session.channelName(), session.trunk(), technical);
         }
     }
 
@@ -895,7 +913,8 @@ public class AriService {
         sessions.values().forEach(session -> {
             try {
                 teardown(session, dialogEngine.outcome(session.channelId()),
-                        hangupCauses.get(session.channelId()));
+                        hangupCauses.get(session.channelId()),
+                        dialogEngine.technicalSnapshot(session.channelId()));
             } catch (Exception e) {
                 log.warn("Teardown during shutdown failed for {}: {}", session.channelId(), e.getMessage());
             }

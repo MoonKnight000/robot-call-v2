@@ -174,55 +174,11 @@ voice-agent:
       # so the first call of a deploy neither pays for them nor waits for them.
       prewarm: ${TTS_CACHE_PREWARM:true}
     # Voices a campaign can be created with (GET /api/tts/voices fills the picker in
-    # the panel; POST /api/campaigns validates the id against this list). A campaign
+    # the panel; POST /api/campaigns validates the id against this list) now live in
+    # the `tts_voice` table (PROJECT.md §2.5, migration V3), not here — a campaign
     # that picks one speaks with it and with the provider that owns it; one that picks
-    # nothing keeps the provider/voices routing configured below.
-    #
-    # A voice only applies to calls in its own language — an Uzbek voice reading a
-    # Russian target's text out is worse than the default Russian voice, so those
-    # calls fall back to normal routing.
-    catalog:
-      - id: nigora
-        provider: yandex
-        language: uz-UZ
-        name: nigora
-        label: Nigora — o'zbek, ayol
-      - id: alena
-        provider: yandex
-        language: ru-RU
-        name: alena
-        label: Alena — rus, ayol
-      - id: jane
-        provider: yandex
-        language: ru-RU
-        name: jane
-        label: Jane — rus, ayol
-      - id: omazh
-        provider: yandex
-        language: ru-RU
-        name: omazh
-        label: Omazh — rus, ayol
-      - id: filipp
-        provider: yandex
-        language: ru-RU
-        name: filipp
-        label: Filipp — rus, erkak
-      - id: ermil
-        provider: yandex
-        language: ru-RU
-        name: ermil
-        label: Ermil — rus, erkak
-      - id: zahar
-        provider: yandex
-        language: ru-RU
-        name: zahar
-        label: Zahar — rus, erkak
-    # Google voices belong here the same way once one has been listened to (§2.5):
-    #   - id: google-uz-a
-    #     provider: google
-    #     language: uz-UZ
-    #     name: uz-UZ-Standard-A
-    #     label: Google uz-UZ Standard A
+    # nothing keeps the provider/voices routing configured below. Add a Google voice
+    # the same way once one has been listened to: INSERT INTO tts_voice.
     google:
       enabled: ${TTS_GOOGLE_ENABLED:true}
       sample-rate: 8000
@@ -254,7 +210,7 @@ voice-agent:
     # verification without a campaign/DB). Turn off once the dialer supplies calls.
     auto-start: ${DIALOG_AUTO_START:true}
     language: ${DIALOG_LANGUAGE:uz-UZ}
-    # Voice for manual/auto-started calls (an id from tts.catalog above) — campaign
+    # Voice for manual/auto-started calls (an id from the tts_voice table) — campaign
     # calls carry the voice chosen when the campaign was created. Blank = configured
     # routing; this is how a voice is auditioned before a campaign uses it.
     tts-voice: ${DIALOG_TTS_VOICE:}

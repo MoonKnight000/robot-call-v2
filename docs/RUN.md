@@ -130,7 +130,7 @@ curl.exe -X POST -H "X-Api-Key: $key" "http://localhost:8080/api/calls?number=99
 
 Kampaniya yaratilayotganda bot qaysi ovozda gapirishi tanlanadi. Tanlov paneldagi
 "TTS ovozi" ro'yxatidan (yoki `ttsVoice` maydonidan) keladi, ro'yxat esa serverdagi
-katalogdan — `voice-agent.tts.catalog` (`application.yml`). Ovoz o'zi bilan birga
+`tts_voice` jadvalidan (migration V3 bilan seed qilingan). Ovoz o'zi bilan birga
 provayderni ham belgilaydi; hech narsa tanlanmasa, eski sozlama bo'yicha
 (`tts.provider` + `tts.<provider>.voices`) ishlaydi.
 

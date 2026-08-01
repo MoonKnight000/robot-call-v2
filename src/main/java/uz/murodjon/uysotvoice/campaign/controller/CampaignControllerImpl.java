@@ -13,6 +13,7 @@ import uz.murodjon.uysotvoice.campaign.dto.CreateCampaignResponse;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
@@ -42,6 +43,16 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<CampaignRow>> get(long id) {
         return ResponseEntity.ok(ResponseData.ok(service.requireCampaign(id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CampaignRow>> update(long id, UpdateCampaignRequest r) {
+        return ResponseEntity.ok(ResponseData.ok(service.updateCampaign(id, r)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CampaignStatusResponse>> archive(long id) {
+        return ResponseEntity.ok(ResponseData.ok(service.archive(id)));
     }
 
     @Override

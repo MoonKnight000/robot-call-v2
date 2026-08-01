@@ -66,6 +66,7 @@ class TokenUsage {
             return;
         }
         metrics.recordLlmUsage(prompt, completion, cached);
+        s.addTokenBreakdown(prompt, completion, cached);
         log.debug("[{}] tokens: prompt={} (cached {}), completion={}",
                 s.channelId(), prompt, cached, completion);
     }

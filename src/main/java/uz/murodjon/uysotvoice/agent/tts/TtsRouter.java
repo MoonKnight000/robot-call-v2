@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.util.List;
 
@@ -18,8 +20,8 @@ import java.util.List;
  * language is used as a fallback.
  *
  * <p>A call may also carry a voice chosen when its campaign was created. That choice
- * comes from {@link TtsVoiceCatalog} and pins the provider too, so language routing
- * only decides calls that did not choose one.
+ * comes from {@link TtsVoiceService} (the {@code tts_voice} table) and pins the
+ * provider too, so language routing only decides calls that did not choose one.
  *
  * <p>Every request goes through {@link TtsCache} first: providers bill per character,
  * and the lines this agent repeats most are the short fixed ones.
@@ -33,10 +35,10 @@ public class TtsRouter {
     private final TtsProperties props;
     private final VoiceMetrics metrics;
     private final TtsCache cache;
-    private final TtsVoiceCatalog catalog;
+    private final TtsVoiceService catalog;
 
     public TtsRouter(List<TtsProvider> providers, TtsProperties props, VoiceMetrics metrics,
-                     TtsCache cache, TtsVoiceCatalog catalog) {
+                     TtsCache cache, TtsVoiceService catalog) {
         this.providers = providers;
         this.props = props;
         this.metrics = metrics;
@@ -63,7 +65,7 @@ public class TtsRouter {
     public short[] synthesize(String text, String language, String voiceId) {
         String lang = (language == null || language.isBlank()) ? props.defaultLanguage() : language;
 
-        TtsVoice chosen = resolve(voiceId, lang);
+        TtsVoiceRow chosen = resolve(voiceId, lang);
         TtsProvider provider = null;
         String voiceName = null;
         if (chosen != null) {
@@ -114,11 +116,11 @@ public class TtsRouter {
      * Uzbek may still hold a target marked ru-RU, and having the Uzbek voice read
      * Russian text out is worse than the provider's own Russian voice.
      */
-    private TtsVoice resolve(String voiceId, String language) {
+    private TtsVoiceRow resolve(String voiceId, String language) {
         if (voiceId == null || voiceId.isBlank()) {
             return null;
         }
-        TtsVoice voice = catalog.find(voiceId);
+        TtsVoiceRow voice = catalog.find(voiceId);
         if (voice == null) {
             log.warn("Unknown TTS voice '{}' — using default routing", voiceId);
             return null;

@@ -10,8 +10,6 @@ import uz.murodjon.uysotvoice.callrecord.dto.PendingNote;
 import uz.murodjon.uysotvoice.callrecord.dto.PendingSummary;
 import uz.murodjon.uysotvoice.callrecord.entity.CallResult;
 import uz.murodjon.uysotvoice.callrecord.service.CallOutboxService;
-import uz.murodjon.uysotvoice.shared.dialog.ReasonCode;
-import uz.murodjon.uysotvoice.shared.dialog.Sentiment;
 
 import java.util.List;
 
@@ -47,12 +45,12 @@ public class CallOutboxRepository {
                     .map(row -> {
                         CallResult r = (CallResult) row[0];
                         long clientId = (Long) row[1];
-                        return new PendingNote(r.getCallId(), clientId, new CallSummary(
+                        return new PendingNote(r.getCall().getId(), clientId, new CallSummary(
                                 r.getSummary(),
-                                parseEnum(ReasonCode.class, r.getReasonCode()),
+                                r.getReasonCode(),
                                 r.getPromisedDate(),
                                 r.getPromisedAmount(),
-                                parseEnum(Sentiment.class, r.getSentiment()),
+                                r.getSentiment(),
                                 r.isNeedsFollowUp(),
                                 r.getFollowUpNote()));
                     })
@@ -103,20 +101,6 @@ public class CallOutboxRepository {
             callAttempts.countSummaryAttempt(callId);
         } catch (Exception e) {
             log.warn("countSummaryAttempt failed for call {}: {}", callId, e.getMessage());
-        }
-    }
-
-    private static <E extends Enum<E>> E parseEnum(Class<E> type, String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return Enum.valueOf(type, value);
-        } catch (IllegalArgumentException e) {
-            // A value written by an older build of the enum. Losing one field is better
-            // than losing the note it belongs to.
-            log.debug("Unknown {} value '{}' in call_result", type.getSimpleName(), value);
-            return null;
         }
     }
 }

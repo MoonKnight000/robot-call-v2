@@ -5,11 +5,15 @@ import org.springframework.stereotype.Repository;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignFilter;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
 import uz.murodjon.uysotvoice.campaign.entity.Campaign;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
 
 /** JPA-backed DAO for {@code campaign} (PROJECT.md §6). */
 @Repository
@@ -23,14 +27,14 @@ public class CampaignRepository {
         this.company = company;
     }
 
-    public long create(String name, String type, String goalPrompt, String scriptConfigJson,
+    public long create(String name, CampaignType type, String goalPrompt, String scriptConfigJson,
                        String defaultLanguage, LocalTime windowStart, LocalTime windowEnd,
-                       String dialDays, int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
+                       Set<DayOfWeek> dialDays, int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
                        String ttsVoice, int dailyCallCap) {
         Campaign entity = new Campaign();
         entity.setName(name);
         entity.setType(type);
-        entity.setStatus("DRAFT");
+        entity.setStatus(CampaignStatus.DRAFT);
         entity.setGoalPrompt(goalPrompt);
         entity.setScriptConfig(scriptConfigJson != null ? scriptConfigJson : "{}");
         entity.setDefaultLanguage(defaultLanguage);
@@ -53,13 +57,17 @@ public class CampaignRepository {
     }
 
     public List<CampaignRow> findAll(CampaignFilter filter) {
-        return jpa.findByCompanyId(company.id(), filter.pageable()).stream()
+        return jpa.findByCompanyId(company.id(), filter.status(), filter.pageable()).stream()
                 .map(CampaignRepository::toRow)
                 .toList();
     }
 
     public long count() {
-        return jpa.countByCompanyId(company.id());
+        return jpa.countByCompanyId(company.id(), null);
+    }
+
+    public long count(CampaignFilter filter) {
+        return jpa.countByCompanyId(company.id(), filter.status());
     }
 
     /**
@@ -68,11 +76,32 @@ public class CampaignRepository {
      * request happens to be scoped to. Deliberately unfiltered by {@link CurrentCompany}.
      */
     public List<CampaignRow> findActive() {
-        return jpa.findByStatusOrderById("ACTIVE").stream().map(CampaignRepository::toRow).toList();
+        return jpa.findByStatusOrderById(CampaignStatus.ACTIVE).stream().map(CampaignRepository::toRow).toList();
     }
 
-    public void updateStatus(long id, String status) {
+    public void updateStatus(long id, CampaignStatus status) {
         jpa.updateStatus(id, status, company.id());
+    }
+
+    /** No-op if {@code id} does not belong to the current company. */
+    public void update(long id, String name, String goalPrompt, String defaultLanguage,
+                       LocalTime windowStart, LocalTime windowEnd, Set<DayOfWeek> dialDays,
+                       int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
+                       String ttsVoice, int dailyCallCap) {
+        jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
+            entity.setName(name);
+            entity.setGoalPrompt(goalPrompt);
+            entity.setDefaultLanguage(defaultLanguage);
+            entity.setDialWindowStart(windowStart);
+            entity.setDialWindowEnd(windowEnd);
+            entity.setDialDays(dialDays);
+            entity.setMaxAttempts(maxAttempts);
+            entity.setRetryIntervalHours(retryIntervalHours);
+            entity.setMaxConcurrentCalls(maxConcurrentCalls);
+            entity.setTtsVoice(ttsVoice);
+            entity.setDailyCallCap(dailyCallCap);
+            jpa.save(entity);
+        });
     }
 
     private static CampaignRow toRow(Campaign e) {
@@ -85,7 +114,7 @@ public class CampaignRepository {
                 e.getDefaultLanguage(),
                 e.getDialWindowStart(),
                 e.getDialWindowEnd(),
-                e.getDialDays(),
+                Set.copyOf(e.getDialDays()),
                 e.getMaxAttempts(),
                 e.getRetryIntervalHours(),
                 e.getMaxConcurrentCalls(),

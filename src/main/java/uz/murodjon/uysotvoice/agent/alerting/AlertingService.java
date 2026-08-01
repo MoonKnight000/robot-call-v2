@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptJpaRepository;
+import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -51,7 +52,7 @@ public class AlertingService {
             if (total < minSample) {
                 return; // not enough data to judge
             }
-            long success = callAttempts.countByEndedAtGreaterThanEqualAndDisposition(since, "PROMISE_TO_PAY");
+            long success = callAttempts.countByEndedAtGreaterThanEqualAndDisposition(since, Disposition.PROMISE_TO_PAY);
             double rate = success / (double) total;
             if (rate < threshold) {
                 log.error("ALERT: call success rate {}% over last {}min ({}/{}) below threshold {}%",

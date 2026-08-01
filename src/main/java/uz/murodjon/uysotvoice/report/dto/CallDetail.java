@@ -1,5 +1,8 @@
 package uz.murodjon.uysotvoice.report.dto;
 
+import uz.murodjon.uysotvoice.shared.dialog.ReasonCode;
+import uz.murodjon.uysotvoice.shared.dialog.Sentiment;
+
 import java.util.List;
 
 /**
@@ -17,15 +20,17 @@ import java.util.List;
  * @param followUpNote  note for that follow-up
  * @param escalated  whether the call went to a human
  * @param errorMessage technical failure recorded on the attempt, if any
+ * @param technical  "Texnik" tab (§10.5) — null for calls that predate {@code call_technical}
  */
 public record CallDetail(
         CallRow call,
         List<TranscriptLine> transcript,
-        String reasonCode,
-        String sentiment,
+        ReasonCode reasonCode,
+        Sentiment sentiment,
         boolean needsFollowUp,
         String followUpNote,
         boolean escalated,
-        String errorMessage
+        String errorMessage,
+        CallTechnicalDetail technical
 ) {
 }

@@ -13,6 +13,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 
 import java.time.LocalTime;
@@ -62,7 +65,7 @@ class CampaignTargetRepositoryTest {
     @BeforeEach
     void setUp() {
         jdbc.update("DELETE FROM do_not_call_list");
-        campaignId = campaigns.create("claim-test", "DEBT_COLLECTION", "goal", "{}", "uz-UZ",
+        campaignId = campaigns.create("claim-test", CampaignType.DEBT_COLLECTION, "goal", "{}", "uz-UZ",
                 LocalTime.of(9, 0), LocalTime.of(20, 0), "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY",
                 3, 24, 5, null, 0);
     }
@@ -78,7 +81,7 @@ class CampaignTargetRepositoryTest {
         List<TargetRow> claimed = targets.claimDue(campaignId, 10);
 
         assertThat(claimed).hasSize(1);
-        assertThat(claimed.get(0).status()).isEqualTo("IN_PROGRESS");
+        assertThat(claimed.get(0).status()).isEqualTo(TargetStatus.IN_PROGRESS);
         assertThat(claimed.get(0).attempts()).isEqualTo(1);
     }
 
@@ -112,7 +115,7 @@ class CampaignTargetRepositoryTest {
         // so it is matched on the phone number, not on the target row.
         addTarget("998900000001");
         long allowed = addTarget("998900000002");
-        doNotCall.add("998900000001", "asked not to be called", "CALL");
+        doNotCall.add("998900000001", "asked not to be called", DoNotCallSource.CALL);
 
         List<TargetRow> claimed = targets.claimDue(campaignId, 10);
 
@@ -145,15 +148,15 @@ class CampaignTargetRepositoryTest {
     @Test
     void claimsNothingWhenEveryTargetIsDone() {
         long id = addTarget("998900000001");
-        targets.updateStatus(id, "DONE", null);
+        targets.updateStatus(id, TargetStatus.DONE, null);
 
         assertThat(targets.claimDue(campaignId, 10)).isEmpty();
     }
 
     @Test
     void optOutListIgnoresDuplicates() {
-        doNotCall.add("998900000001", "first", "CALL");
-        doNotCall.add("998900000001", "again", "CALL");
+        doNotCall.add("998900000001", "first", DoNotCallSource.CALL);
+        doNotCall.add("998900000001", "again", DoNotCallSource.CALL);
 
         assertThat(doNotCall.contains("998900000001")).isTrue();
         Long rows = jdbc.queryForObject(

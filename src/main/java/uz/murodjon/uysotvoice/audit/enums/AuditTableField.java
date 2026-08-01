@@ -1,4 +1,4 @@
-package uz.murodjon.uysotvoice.audit.dto;
+package uz.murodjon.uysotvoice.audit.enums;
 
 import uz.murodjon.uysotvoice.shared.api.TableField;
 

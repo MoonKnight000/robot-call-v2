@@ -97,6 +97,20 @@ public class DialogSession {
     /** Money figures the fact guard refused to speak (§4.4); for the log and metrics. */
     private final AtomicInteger factViolations = new AtomicInteger();
 
+    // Token/latency breakdown for the "Texnik" tab (§10.5) — Micrometer's
+    // voice_llm_tokens_*/voice_llm_turn_latency metrics are global counters with no
+    // per-call correlation (see ROADMAP), so this call's numbers have to be accumulated
+    // here and read once at teardown, before the session is dropped.
+    private final AtomicLong promptTokens = new AtomicLong();
+    private final AtomicLong completionTokens = new AtomicLong();
+    private final AtomicLong cachedTokens = new AtomicLong();
+    private final AtomicLong turnLatencySumMs = new AtomicLong();
+    private final AtomicInteger turnLatencyCount = new AtomicInteger();
+    private final AtomicLong turnLatencyMaxMs = new AtomicLong();
+    private final AtomicLong llmLatencySumMs = new AtomicLong();
+    private final AtomicInteger llmLatencyCount = new AtomicInteger();
+    private final AtomicLong llmLatencyMaxMs = new AtomicLong();
+
     /** Cancels the silence watchdog when the call ends; null when it is disabled. */
     private volatile ScheduledFuture<?> watchdogTask;
 
@@ -141,6 +155,63 @@ public class DialogSession {
 
     public long tokensUsed() {
         return tokensUsed.get();
+    }
+
+    /** Add one turn's token breakdown to the call's running totals (§10.5 "Texnik" tab). */
+    public void addTokenBreakdown(long prompt, long completion, long cached) {
+        if (prompt > 0) {
+            promptTokens.addAndGet(prompt);
+        }
+        if (completion > 0) {
+            completionTokens.addAndGet(completion);
+        }
+        if (cached > 0) {
+            cachedTokens.addAndGet(cached);
+        }
+    }
+
+    public long promptTokens() {
+        return promptTokens.get();
+    }
+
+    public long completionTokens() {
+        return completionTokens.get();
+    }
+
+    public long cachedTokens() {
+        return cachedTokens.get();
+    }
+
+    /** Record one turn's client-stopped-talking -> first-audio-queued latency. */
+    public void recordTurnLatency(long ms) {
+        turnLatencySumMs.addAndGet(ms);
+        turnLatencyCount.incrementAndGet();
+        turnLatencyMaxMs.accumulateAndGet(ms, Math::max);
+    }
+
+    public Integer avgTurnLatencyMs() {
+        int count = turnLatencyCount.get();
+        return count == 0 ? null : (int) (turnLatencySumMs.get() / count);
+    }
+
+    public Integer maxTurnLatencyMs() {
+        return turnLatencyCount.get() == 0 ? null : (int) turnLatencyMaxMs.get();
+    }
+
+    /** Record one turn's LLM-only wall time. */
+    public void recordLlmLatency(long ms) {
+        llmLatencySumMs.addAndGet(ms);
+        llmLatencyCount.incrementAndGet();
+        llmLatencyMaxMs.accumulateAndGet(ms, Math::max);
+    }
+
+    public Integer avgLlmLatencyMs() {
+        int count = llmLatencyCount.get();
+        return count == 0 ? null : (int) (llmLatencySumMs.get() / count);
+    }
+
+    public Integer maxLlmLatencyMs() {
+        return llmLatencyCount.get() == 0 ? null : (int) llmLatencyMaxMs.get();
     }
 
     public int recordFactViolation() {

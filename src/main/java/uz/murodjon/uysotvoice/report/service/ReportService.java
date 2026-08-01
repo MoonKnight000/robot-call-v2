@@ -7,6 +7,13 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
 import uz.murodjon.uysotvoice.audit.dto.AuditRow;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
+import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
+import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
+import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
+import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
+import uz.murodjon.uysotvoice.report.dto.BulkCallActionRequest;
+import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
@@ -23,9 +30,12 @@ import uz.murodjon.uysotvoice.report.dto.RecordingRedirect;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
+import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,10 +53,15 @@ public class ReportService {
 
     private final ReportRepository reports;
     private final AuditService audit;
+    private final CampaignTargetRepository targets;
+    private final DoNotCallRepository doNotCall;
 
-    public ReportService(ReportRepository reports, AuditService audit) {
+    public ReportService(ReportRepository reports, AuditService audit,
+                         CampaignTargetRepository targets, DoNotCallRepository doNotCall) {
         this.reports = reports;
         this.audit = audit;
+        this.targets = targets;
+        this.doNotCall = doNotCall;
     }
 
     /** Aggregate outcome of one campaign: statuses, dispositions, promise rate. */
@@ -68,8 +83,65 @@ public class ReportService {
     /** Calls across every campaign, newest first — the "what just happened" view. */
     public PageableData<CallRow> calls(CallFilter filter) {
         List<CallRow> rows = reports.recentCalls(filter);
-        long total = reports.countRecentCalls();
+        long total = reports.countRecentCalls(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
+    }
+
+    /**
+     * Calls matching {@code filter} for {@code POST /api/reports/calls/export} — unpaged
+     * (up to {@link uz.murodjon.uysotvoice.shared.api.FilterInterface#MAX_SIZE}), and if
+     * {@link CallFilter#ids()} is set, that selection wins over every other field (a
+     * user-picked subset of rows, per §10.4 bulk export).
+     */
+    public List<CallRow> exportCalls(CallFilter filter) {
+        return reports.exportCalls(filter);
+    }
+
+    /**
+     * "Ommaviy amal paneli" (§10.4): re-queue each call's target for another attempt, or
+     * opt each call's phone out. A bad id (wrong company, or the target/result it needs
+     * no longer exists) is collected into {@code failed} rather than aborting the whole
+     * request — the same "one bad row does not fail the batch" convention CSV import uses.
+     */
+    public BulkCallActionResult bulkAction(BulkCallActionRequest r) {
+        List<Long> failed = new ArrayList<>();
+        int processed = 0;
+        for (long callId : r.ids()) {
+            CallRow call = reports.findCall(callId);
+            if (call == null) {
+                failed.add(callId);
+                continue;
+            }
+            if (applyBulkAction(r.action(), call)) {
+                processed++;
+            } else {
+                failed.add(callId);
+            }
+        }
+        audit.record("CALLS_BULK_" + r.action().toUpperCase(), "call", null,
+                processed + " processed, " + failed.size() + " failed");
+        return new BulkCallActionResult(processed, failed);
+    }
+
+    private boolean applyBulkAction(String action, CallRow call) {
+        return switch (action) {
+            case "retry" -> {
+                TargetRow target = targets.find(call.targetId());
+                if (target == null) {
+                    yield false;
+                }
+                targets.updateStatus(target.id(), TargetStatus.PENDING, Instant.now());
+                yield true;
+            }
+            case "dnc" -> {
+                if (call.phone() == null || call.phone().isBlank()) {
+                    yield false;
+                }
+                doNotCall.add(call.phone(), "opted out via bulk action", DoNotCallSource.MANUAL);
+                yield true;
+            }
+            default -> throw new ValidationException("Unknown bulk action '" + action + "'");
+        };
     }
 
     /** One call with its full transcript. */
@@ -110,7 +182,7 @@ public class ReportService {
     /** Who changed what through the API (§11). */
     public PageableData<AuditRow> auditLog(AuditFilter filter) {
         List<AuditRow> rows = audit.recent(filter);
-        long total = audit.count();
+        long total = audit.count(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 

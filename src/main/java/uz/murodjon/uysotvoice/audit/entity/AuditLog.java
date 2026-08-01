@@ -39,6 +39,9 @@ public class AuditLog {
     @Column(name = "company_id", nullable = false)
     private long companyId;
 
+    @Column(name = "ip_address")
+    private String ipAddress;
+
     public Long getId() {
         return id;
     }
@@ -97,5 +100,13 @@ public class AuditLog {
 
     public void setCompanyId(long companyId) {
         this.companyId = companyId;
+    }
+
+    public String getIpAddress() {
+        return ipAddress;
+    }
+
+    public void setIpAddress(String ipAddress) {
+        this.ipAddress = ipAddress;
     }
 }

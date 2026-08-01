@@ -5,6 +5,7 @@ import org.springframework.stereotype.Repository;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
 import uz.murodjon.uysotvoice.campaign.entity.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
 import java.time.Instant;
@@ -15,21 +16,24 @@ import java.util.List;
 public class CampaignTargetRepository {
 
     private final CampaignTargetJpaRepository jpa;
+    private final CampaignJpaRepository campaigns;
     private final CurrentCompany company;
 
-    public CampaignTargetRepository(CampaignTargetJpaRepository jpa, CurrentCompany company) {
+    public CampaignTargetRepository(CampaignTargetJpaRepository jpa, CampaignJpaRepository campaigns,
+                                    CurrentCompany company) {
         this.jpa = jpa;
+        this.campaigns = campaigns;
         this.company = company;
     }
 
     public long add(long campaignId, long clientId, String phone, String language, String contextDataJson) {
         CampaignTarget entity = new CampaignTarget();
-        entity.setCampaignId(campaignId);
+        entity.setCampaign(campaigns.getReferenceById(campaignId));
         entity.setClientId(clientId);
         entity.setPhone(phone);
         entity.setLanguage(language);
         entity.setContextData(contextDataJson != null ? contextDataJson : "{}");
-        entity.setStatus("PENDING");
+        entity.setStatus(TargetStatus.PENDING);
         entity.setAttempts(0);
         entity.setDoNotCall(false);
         entity.setCreatedAt(Instant.now());
@@ -47,13 +51,13 @@ public class CampaignTargetRepository {
     }
 
     public List<TargetRow> findByCampaign(long campaignId, TargetFilter filter) {
-        return jpa.findByCampaignIdAndCompanyId(campaignId, company.id(), filter.pageable()).stream()
+        return jpa.findByCampaign_IdAndCompanyId(campaignId, company.id(), filter.pageable()).stream()
                 .map(CampaignTargetRepository::toRow)
                 .toList();
     }
 
     public long countByCampaign(long campaignId) {
-        return jpa.countByCampaignIdAndCompanyId(campaignId, company.id());
+        return jpa.countByCampaign_IdAndCompanyId(campaignId, company.id());
     }
 
     /**
@@ -73,7 +77,7 @@ public class CampaignTargetRepository {
     }
 
     /** Internal (dialer outcome application) — not scoped, see {@link #claimDue}. */
-    public void updateStatus(long id, String status, Instant nextAttemptAt) {
+    public void updateStatus(long id, TargetStatus status, Instant nextAttemptAt) {
         jpa.updateStatus(id, status, nextAttemptAt);
     }
 
@@ -85,7 +89,7 @@ public class CampaignTargetRepository {
     private static TargetRow toRow(CampaignTarget e) {
         return new TargetRow(
                 e.getId(),
-                e.getCampaignId(),
+                e.getCampaign().getId(),
                 e.getClientId(),
                 e.getPhone(),
                 e.getLanguage(),

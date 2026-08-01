@@ -3,9 +3,11 @@ package uz.murodjon.uysotvoice.campaign.controller;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -19,6 +21,7 @@ import uz.murodjon.uysotvoice.campaign.dto.CreateCampaignResponse;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
 import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
@@ -40,6 +43,17 @@ public interface CampaignController {
 
     @GetMapping("/campaigns/{id}")
     ResponseEntity<ResponseData<CampaignRow>> get(@PathVariable long id);
+
+    /** "Tahrirlash" (§10.6) — full edit of a campaign's configuration. */
+    @PutMapping("/campaigns/{id}")
+    ResponseEntity<ResponseData<CampaignRow>> update(@PathVariable long id, @Valid @RequestBody UpdateCampaignRequest r);
+
+    /**
+     * "Arxivlash" (§10.6 kartochka {@code ⋯} menyusi) — soft-archives the campaign
+     * (status becomes {@code ARCHIVED}); its targets/calls/transcripts are kept.
+     */
+    @DeleteMapping("/campaigns/{id}")
+    ResponseEntity<ResponseData<CampaignStatusResponse>> archive(@PathVariable long id);
 
     @PostMapping("/campaigns/{id}/targets")
     ResponseEntity<ResponseData<AddTargetsResponse>> addTargets(@PathVariable long id, @Valid @RequestBody List<AddTargetRequest> targets);

@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import uz.murodjon.uysotvoice.live.dto.LiveEventType;
+import uz.murodjon.uysotvoice.live.enums.LiveEventType;
 
 /**
  * Live server-push channel (docs/API-REQUIREMENTS.md §0.7): KPI ticks, the live-call

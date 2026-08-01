@@ -1,7 +1,7 @@
 # API talablari — Nido paneli uchun
 
 > **Bu hujjat nima?** `UI-DESIGN.md` dagi har bir ekranni ishga tushirish uchun kerak
-> bo'ladigan backend API'larning ro'yxati. Hozirgi kodga (2026-07-31 holati) qarab
+> bo'ladigan backend API'larning ro'yxati. Hozirgi kodga (2026-08-01 holati) qarab
 > har biri belgilangan: ✅ **mavjud**, ⚠️ **qisman mavjud** (kengaytirish kerak), ❌ **yo'q**
 > (yangidan yozish kerak). Barcha yangi/o'zgargan endpoint proyekt standarti bo'yicha
 > `ResponseData<T>` / paginatsiyada `PageableData<T>` qaytarishi shart (§ ilgari
@@ -99,7 +99,7 @@ Faqat 0.1/0.3/0.4 kerak. Boshqa hech narsa yo'q (statik dizayn sahifasi).
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
 | `GET /api/campaigns` (status=ACTIVE filtri) | ✅ | Faol kampaniyalar bloki uchun ishlatsa bo'ladi — filtr parametri qo'shish kifoya (⚠️: hozir status bo'yicha filtr yo'q, faqat sort/paginatsiya bor). |
-| `GET /api/reports/calls` | ✅ | "Oxirgi qo'ng'iroqlar" jadvali. |
+| `POST /api/reports/calls/list` | ✅ | "Oxirgi qo'ng'iroqlar" jadvali. |
 | `GET /api/reports/dashboard/kpi?from=&to=&campaignId=` | ✅ | 4 ta KPI kartochkasi (jami qo'ng'iroq, javob %, o'rtacha davomiylik, va'da soni), har biri oldingi teng uzunlikdagi davrga nisbatan `changePct` va bucket'langan `sparkline` bilan (`DashboardKpi`/`DashboardMetric`, `ReportRepository.dashboardTotals`+`dashboardBuckets`). `from`/`to` — ISO-8601 instant, ikkalasi ham ixtiyoriy (standart: oxirgi 7 kun). |
 | `GET /api/reports/dashboard/timeseries?from=&to=&campaignId=` | ✅ | "Qo'ng'iroqlar dinamikasi" stacked-area grafik — `DashboardBucket` ro'yxati (`answered`/`noAnswer`/`error`), granularity avtomatik: ≤2 kun → soat, ≤62 kun → kun, undan katta → hafta (`DashboardRange.granularity()`). |
 | `GET /api/reports/dashboard/outcomes?from=&to=&campaignId=` | ✅ | "Natijalar taqsimoti" — davr bo'yicha (bucket'siz) `disposition → son` ro'yxati, ko'p sonidan kamiga saralangan. |
@@ -126,9 +126,9 @@ Faqat 0.1/0.3/0.4 kerak. Boshqa hech narsa yo'q (statik dizayn sahifasi).
 
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
-| `GET /api/reports/calls` | ✅ | Asosiy jadval — sahifalash/saralash bor. **Kengaytirish kerak:** matn bo'yicha qidiruv (`q=`), kampaniya/natija/sana/davomiylik filtri hozir yo'q (⚠️ faqat `CallFilter`da sort bor, `where` filtri yo'q). |
-| `GET /api/reports/calls/export?format=csv` | ❌ | "⇩ Eksport" tugmasi. |
-| `POST /api/reports/calls/bulk` (`retry` \| `dnc` \| `export`, ids[]) | ❌ | Ommaviy amal paneli: "Qayta qo'ng'iroq", "DNC ro'yxatiga", tanlangan qatorlar uchun eksport. |
+| `POST /api/reports/calls/list` | ✅ | Asosiy jadval — sahifalash/saralash + `CallFilter` orqali matn qidiruv (`q`), kampaniya, natija (`disposition`), sana oralig'i, davomiylik oralig'i filtri (`ReportRepository.appendCallFilterWhere`). |
+| `POST /api/reports/calls/export` | ✅ | "⇩ Eksport" tugmasi — CSV, `CallFilter` bilan bir xil filtrlanadi (`ids` berilsa faqat tanlangan qatorlar). |
+| `POST /api/reports/calls/bulk` (`retry` \| `dnc`, ids[]) | ✅ | Ommaviy amal paneli: "Qayta qo'ng'iroq", "DNC ro'yxatiga". Tanlangan qatorlar uchun eksport — yuqoridagi `export`ga `ids` berib qilinadi, alohida `bulk` action emas. |
 | Ustunlar sozlamasi (foydalanuvchi profilida saqlash) | ❌ | "Ustunlar ⚙" — client-side'da ham bo'lishi mumkin, lekin foydalanuvchilar orasida saqlanishi uchun profil API'siga bog'liq (§0.3). |
 
 ---
@@ -139,8 +139,8 @@ Faqat 0.1/0.3/0.4 kerak. Boshqa hech narsa yo'q (statik dizayn sahifasi).
 |----------|-------|------|
 | `GET /api/reports/calls/{callId}` | ✅ | Transkript + natija maydonlari (`CallDetail`) — "Transkript" va "Natija" tab'lari uchun yetarli. |
 | `GET /api/reports/calls/{callId}/recording` | ✅ | To'lqin pleyer audio manbai. |
-| **"Texnik" tab** uchun qo'shimcha maydonlar | ⚠️ | Kerakli: kanal, trunk, AMD natijasi, STT/TTS provayder, LLM modeli, token sarfi, latency, xatolar jurnali. Hozirgi `CallDetail` faqat `errorMessage` beradi — qolganlarini `call_attempt`/metrikalardan qo'shish kerak (yangi `CallTechnicalDetail` record + repository so'rovi). |
-| `GET /api/reports/calls/{callId}/transcript.txt` | ❌ | "TXT yuklab olish" tugmasi. |
+| **"Texnik" tab** uchun qo'shimcha maydonlar | ✅ | `CallDetail.technical()` (`CallTechnicalDetail`): kanal, trunk, AMD natijasi, STT/TTS provayder, LLM modeli, token sarfi, turn/LLM latency (`call_technical` jadvali, V2 migratsiya). Jadval qo'shilishidan oldingi qo'ng'iroqlar uchun `null`. |
+| `GET /api/reports/calls/{callId}/transcript.txt` | ✅ | "TXT yuklab olish" tugmasi — `TranscriptResponseFactory`. |
 
 ---
 
@@ -151,8 +151,8 @@ Faqat 0.1/0.3/0.4 kerak. Boshqa hech narsa yo'q (statik dizayn sahifasi).
 | `POST /api/campaigns` | ✅ | — |
 | `GET /api/campaigns` | ✅ | Ro'yxat — kartochka grid uchun yetarli, lekin status bo'yicha filtr yo'q (⚠️). |
 | `GET /api/campaigns/{id}` | ✅ | — |
-| `PUT /api/campaigns/{id}` | ❌ | "Tahrirlash" tugmasi — hozir faqat status o'zgartirish (`start`/`pause`) bor, boshqa maydonlarni yangilash yo'q. |
-| `DELETE /api/campaigns/{id}` (yoki arxivlash) | ❌ | Kartochkadagi `⋯` menyusi uchun ehtimoliy amal. |
+| `PUT /api/campaigns/{id}` | ✅ | "Tahrirlash" tugmasi — to'liq konfiguratsiya yangilanadi (`UpdateCampaignRequest`). |
+| `DELETE /api/campaigns/{id}` (arxivlash) | ✅ | Kartochkadagi `⋯` menyusi — soft-archive (status `ARCHIVED`), nishonlar/qo'ng'iroqlar/transkriptlar saqlanadi. |
 | `POST /api/campaigns/{id}/start` \| `/pause` | ✅ | — |
 | `POST /api/campaigns/{id}/targets` \| `/targets/csv` | ✅ | Sehrgar 3-qadami ("Nishonlar"). |
 | `GET /api/campaigns/{id}/targets` | ✅ | "Nishonlar" tab'i, tafsilot sahifasida. |
@@ -257,8 +257,8 @@ pretsedentiga mos).
 
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
-| `GET /api/reports/audit` | ✅ | Paginatsiya + sort bor. **Kengaytirish kerak:** aktor/amal-turi/obyekt-turi bo'yicha filtr (⚠️ hozir `AuditFilter`da faqat sort, `where` yo'q) — chapdagi filtr paneli uchun zarur. |
-| IP manzil ustuni | ❌ | Dizaynda "IP (mono, Small)" bor, `AuditRow`da IP maydoni yo'q — `audit_log` jadvaliga ustun qo'shish kerak. |
+| `POST /api/reports/audit/list` | ✅ | Paginatsiya + sort + aktor/amal-turi/obyekt-turi bo'yicha filtr (`AuditFilter.actor/action/entity`) — chapdagi filtr paneli uchun yetarli. |
+| IP manzil ustuni | ✅ | `AuditRow.ipAddress`, `audit_log.ip_address` ustuni (V2 migratsiya) — HTTP so'rovdan tashqarida (dialer'ning o'z ishi) yozilgan amallar uchun `null`. |
 
 ---
 
@@ -296,13 +296,20 @@ Dizaynning "1-to'plam" (§18.1, birinchi chiziladigan ekranlar) bilan taqqoslasa
    `dashboardBuckets`/`dashboardOutcomes`, yangi jadval kerak bo'lmadi) va
    `GET /api/calls/live` (`DialogEngine.liveDialogs()` + `OutboundCallRegistry` +
    `CampaignService`, `AriService.liveCalls()`da birlashtiriladi).
-3. **Qo'ng'iroqlar jadvali + tafsilot (§10.4–10.5)** — 80% tayyor; asosiy tirnov:
-   filtrlash (matn/kampaniya/natija/sana) va "Texnik" tab uchun qo'shimcha maydonlar.
-4. **Jonli qo'ng'iroqlar (§10.3)** — real-vaqt push kanali ✅ qo'shildi
+3. **Qo'ng'iroqlar jadvali + tafsilot (§10.4–10.5)** — ✅ qo'shildi: matn/kampaniya/
+   natija/sana/davomiylik filtri, CSV eksport, ommaviy amal (`retry`/`dnc`), "Texnik"
+   tab (`CallTechnicalDetail`), TXT transkript yuklab olish. Qolgan yagona band —
+   ustunlar sozlamasini profilda saqlash, bu profil API'siga bog'liq (§0.3/§15).
+4. **Kampaniyalar (§10.6)** — `PUT`/`DELETE /api/campaigns/{id}` ✅ qo'shildi (to'liq
+   tahrirlash, soft-archive). Qolgan bandlar: CSV ustun moslashtirish oldindan ko'rish
+   (⚠️, ikki bosqichli oqim emas) va `campaign.scenario_id` bog'lanishi (A.3).
+5. **Jonli qo'ng'iroqlar (§10.3)** — real-vaqt push kanali ✅ qo'shildi
    (`GET /api/live/stream`, SSE — §0.7).
-5. **Ssenariy (§10.7)** — CRUD + validatsiya ✅ qo'shildi (ROADMAP A.4); `DialogEngine`ni
+6. **Ssenariy (§10.7)** — CRUD + validatsiya ✅ qo'shildi (ROADMAP A.4); `DialogEngine`ni
    ssenariy ta'rifi bilan ishga tushirish (A.3) hali qolgan.
-6. **Kompaniya izolyatsiyasi (ROADMAP B)** — DB darajasida ✅ qo'shildi: `company` jadvali,
+7. **Audit jurnali (§10.13)** — ✅ qo'shildi: aktor/amal-turi/obyekt-turi filtri va IP
+   manzil ustuni (`audit_log.ip_address`, V2 migratsiya).
+8. **Kompaniya izolyatsiyasi (ROADMAP B)** — DB darajasida ✅ qo'shildi: `company` jadvali,
    `company_id` — `campaign`, `campaign_target`, `call_attempt`, `scenario` (nullable —
    builtin shablonlar global), `do_not_call_list`, `audit_log`da; barcha tegishli
    repository so'rovlari shu ustun bilan filtrlanadi. **Company-resolution hozircha
@@ -310,10 +317,10 @@ Dizaynning "1-to'plam" (§18.1, birinchi chiziladigan ekranlar) bilan taqqoslasa
    interfeysi orqali) — haqiqiy per-request aniqlash (auth/api_key → company_id)
    Bosqich E.1 bilan keladi. Kompaniya sozlash API'si (§11 `GET/PUT /api/settings/company`)
    hali ❌ — bu safar faqat izolyatsiya infratuzilmasi qo'shildi, panel emas.
-7. **Kontaktlar (§10.8)** — CRUD + CSV import + DNC tab (ro'yxat va soft-delete
+9. **Kontaktlar (§10.8)** — CRUD + CSV import + DNC tab (ro'yxat va soft-delete
    o'chirish) ✅ qo'shildi — ROADMAP'da rejalashtirilmagan, panel uchun yangidan
    loyihalandi.
-8. **Kiruvchi marshrut, Foydalanuvchi, Billing (§10.9, 10.12, 10.14)** — bularning har
+10. **Kiruvchi marshrut, Foydalanuvchi, Billing (§10.9, 10.12, 10.14)** — bularning har
    biri ROADMAP'da alohida bosqich (C, E) sifatida rejalashtirilgan va hali
    boshlanmagan; dizayn ularni chizishi mumkin, lekin orqasidagi API'lar shu bosqichlar
    amalga oshgach paydo bo'ladi.

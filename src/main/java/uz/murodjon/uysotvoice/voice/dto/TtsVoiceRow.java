@@ -1,9 +1,7 @@
-package uz.murodjon.uysotvoice.agent.tts;
+package uz.murodjon.uysotvoice.voice.dto;
 
 /**
- * One selectable voice (PROJECT.md §2.5). A campaign stores {@link #id()}; the
- * catalog is what turns it back into a provider plus a provider-side voice name,
- * so the choice pins both — a voice is only ever spoken by the engine that owns it.
+ * A row of {@code tts_voice} (PROJECT.md §2.5) — one selectable voice.
  *
  * @param id       stable id stored on the campaign (e.g. {@code nigora})
  * @param provider provider that owns the voice ({@code yandex}/{@code google})
@@ -13,7 +11,7 @@ package uz.murodjon.uysotvoice.agent.tts;
  * @param name     provider-side voice name sent with the synthesis request
  * @param label    human-readable name shown in the campaign UI
  */
-public record TtsVoice(
+public record TtsVoiceRow(
         String id,
         String provider,
         String language,

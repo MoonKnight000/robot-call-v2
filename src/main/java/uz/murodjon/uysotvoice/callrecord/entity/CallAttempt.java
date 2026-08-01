@@ -2,10 +2,18 @@ package uz.murodjon.uysotvoice.callrecord.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+
+import uz.murodjon.uysotvoice.campaign.entity.CampaignTarget;
+import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 import java.time.Instant;
 
@@ -18,8 +26,9 @@ public class CallAttempt {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "target_id", nullable = false)
-    private long targetId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "target_id", nullable = false)
+    private CampaignTarget target;
 
     @Column(name = "sip_call_id")
     private String sipCallId;
@@ -42,8 +51,9 @@ public class CallAttempt {
     @Column(name = "duration_sec")
     private Integer durationSec;
 
+    @Enumerated(EnumType.STRING)
     @Column
-    private String disposition;
+    private Disposition disposition;
 
     @Column(name = "hangup_cause")
     private String hangupCause;
@@ -67,12 +77,12 @@ public class CallAttempt {
         return id;
     }
 
-    public long getTargetId() {
-        return targetId;
+    public CampaignTarget getTarget() {
+        return target;
     }
 
-    public void setTargetId(long targetId) {
-        this.targetId = targetId;
+    public void setTarget(CampaignTarget target) {
+        this.target = target;
     }
 
     public String getSipCallId() {
@@ -131,11 +141,11 @@ public class CallAttempt {
         this.durationSec = durationSec;
     }
 
-    public String getDisposition() {
+    public Disposition getDisposition() {
         return disposition;
     }
 
-    public void setDisposition(String disposition) {
+    public void setDisposition(Disposition disposition) {
         this.disposition = disposition;
     }
 

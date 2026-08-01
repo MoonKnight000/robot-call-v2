@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
 import uz.murodjon.uysotvoice.audit.dto.AuditRow;
+import uz.murodjon.uysotvoice.report.dto.BulkCallActionRequest;
+import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
@@ -49,6 +51,24 @@ public interface ReportController {
     /** One call with its full transcript. */
     @GetMapping("/calls/{callId}")
     ResponseEntity<ResponseData<CallDetail>> call(@PathVariable long callId);
+
+    /**
+     * "⇩ Eksport" (§10.4). Filtered the same way as {@code POST /calls/list} (a plain
+     * {@code GET} would need more than the 3 query parameters the project's filter-endpoint
+     * convention allows), capped at {@link uz.murodjon.uysotvoice.shared.api.FilterInterface#MAX_SIZE}
+     * rows. When {@link CallFilter#ids()} is set, exports exactly those calls instead — how
+     * a user-selected subset gets exported.
+     */
+    @PostMapping("/calls/export")
+    ResponseEntity<byte[]> exportCalls(@Valid @RequestBody CallFilter filter);
+
+    /** Bulk "Qayta qo'ng'iroq" / "DNC ro'yxatiga" over selected rows (§10.4). */
+    @PostMapping("/calls/bulk")
+    ResponseEntity<ResponseData<BulkCallActionResult>> bulkAction(@Valid @RequestBody BulkCallActionRequest r);
+
+    /** "TXT yuklab olish" (§10.5) — the transcript as plain text. */
+    @GetMapping("/calls/{callId}/transcript.txt")
+    ResponseEntity<Resource> transcript(@PathVariable long callId);
 
     /**
      * The call recording (§11.3 — a recording is evidence in a dispute, so it has to be

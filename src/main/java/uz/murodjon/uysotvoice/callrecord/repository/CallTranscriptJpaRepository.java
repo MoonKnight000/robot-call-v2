@@ -16,11 +16,11 @@ import java.util.List;
 @Repository
 public interface CallTranscriptJpaRepository extends JpaRepository<CallTranscript, Long> {
 
-    List<CallTranscript> findByCallIdOrderBySeq(long callId);
+    List<CallTranscript> findByCall_IdOrderBySeq(long callId);
 
     /** Verbatim speech goes with the audio; the summary in call_result stays. */
     @Modifying @Transactional
-    @Query("DELETE FROM CallTranscript c WHERE c.callId IN "
+    @Query("DELETE FROM CallTranscript c WHERE c.call.id IN "
             + "(SELECT a.id FROM CallAttempt a WHERE a.endedAt IS NOT NULL AND a.endedAt < :cutoff)")
     int purgeForAttemptsEndedBefore(@Param("cutoff") Instant cutoff);
 }

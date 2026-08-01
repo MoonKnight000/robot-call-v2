@@ -1,5 +1,7 @@
 package uz.murodjon.uysotvoice.report.dto;
 
+import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -31,7 +33,7 @@ public record CallRow(
         Instant startedAt,
         Instant endedAt,
         Integer durationSec,
-        String disposition,
+        Disposition disposition,
         String hangupCause,
         boolean hasRecording,
         String summary,
