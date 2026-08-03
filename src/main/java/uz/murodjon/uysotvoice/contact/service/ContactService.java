@@ -8,7 +8,7 @@ import uz.murodjon.uysotvoice.contact.dto.ContactCsvParseResult;
 import uz.murodjon.uysotvoice.contact.dto.ContactDetail;
 import uz.murodjon.uysotvoice.contact.dto.ContactFilter;
 import uz.murodjon.uysotvoice.contact.dto.ContactImportResult;
-import uz.murodjon.uysotvoice.contact.dto.ContactRow;
+import uz.murodjon.uysotvoice.contact.dto.Contact;
 import uz.murodjon.uysotvoice.contact.dto.CreateContactRequest;
 import uz.murodjon.uysotvoice.contact.dto.ParsedContact;
 import uz.murodjon.uysotvoice.contact.dto.UpdateContactRequest;
@@ -24,7 +24,9 @@ import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Contact CRUD, CSV import, and the DNC hand-off (§10.8). Not in ROADMAP — designed
@@ -52,7 +54,7 @@ public class ContactService {
         this.audit = audit;
     }
 
-    public ContactRow create(CreateContactRequest r) {
+    public Contact create(CreateContactRequest r) {
         String phone = PhoneNumbers.require(r.phone());
         if (contacts.existsByPhone(phone)) {
             throw new ConflictException("Contact with phone " + phone + " already exists");
@@ -62,31 +64,39 @@ public class ContactService {
         return contacts.find(id);
     }
 
-    public ContactRow update(long id, UpdateContactRequest r) {
+    public Contact update(long id, UpdateContactRequest r) {
         requireContact(id);
         contacts.update(id, r.name(), r.address(), r.tags(), r.notes());
         audit.record("CONTACT_UPDATE", "contact", String.valueOf(id), null);
         return requireContact(id);
     }
 
-    public PageableData<ContactRow> list(ContactFilter filter) {
-        List<ContactRow> rows = contacts.findAll(filter);
+    public PageableData<Contact> list(ContactFilter filter) {
+        List<Contact> rows = contacts.findAll(filter);
         long total = contacts.count(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     /** As {@link ContactRepository#find}, for the REST API — a missing contact is a 404, not a null. */
-    public ContactRow requireContact(long id) {
-        ContactRow row = contacts.find(id);
+    public Contact requireContact(long id) {
+        Contact row = contacts.find(id);
         if (row == null) {
             throw new NotFoundException("contact", id);
         }
         return row;
     }
 
+    /**
+     * Cheap phone→name lookup for other features to enrich rows with a contact name
+     * (e.g. {@code DoNotCallRow}, backend-uchun-talablar.md §15).
+     */
+    public Map<String, String> namesByPhones(Collection<String> phones) {
+        return contacts.namesByPhones(phones);
+    }
+
     /** Profile + call-history timeline (§10.8 drawer). */
     public ContactDetail detail(long id) {
-        ContactRow contact = requireContact(id);
+        Contact contact = requireContact(id);
         List<ContactCallHistoryRow> history = reports.callsForPhone(contact.phone(), CALL_HISTORY_LIMIT);
         return new ContactDetail(contact, history);
     }
@@ -120,7 +130,7 @@ public class ContactService {
 
     /** "DNC ga qo'shish" (§10.8 drawer) — adds the contact's phone to the opt-out list. */
     public ContactDncResponse addToDoNotCall(long id) {
-        ContactRow contact = requireContact(id);
+        Contact contact = requireContact(id);
         doNotCall.add(contact.phone(), "opted out via contact", DoNotCallSource.MANUAL);
         audit.record("CONTACT_DNC", "contact", String.valueOf(id), contact.phone());
         return new ContactDncResponse(id, true);

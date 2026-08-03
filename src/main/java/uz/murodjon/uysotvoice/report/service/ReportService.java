@@ -5,9 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditRow;
+import uz.murodjon.uysotvoice.audit.dto.AuditLog;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
 import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
@@ -17,6 +17,7 @@ import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
+import uz.murodjon.uysotvoice.report.dto.CampaignComparisonRow;
 import uz.murodjon.uysotvoice.report.dto.CampaignStats;
 import uz.murodjon.uysotvoice.report.dto.DashboardBucket;
 import uz.murodjon.uysotvoice.report.dto.DashboardKpi;
@@ -24,9 +25,13 @@ import uz.murodjon.uysotvoice.report.dto.DashboardMetric;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
 import uz.murodjon.uysotvoice.report.dto.DashboardRange;
 import uz.murodjon.uysotvoice.report.dto.DashboardTotals;
+import uz.murodjon.uysotvoice.report.dto.DurationHistogramBucket;
+import uz.murodjon.uysotvoice.report.dto.FunnelStage;
+import uz.murodjon.uysotvoice.report.dto.HourlyHeatmapCell;
 import uz.murodjon.uysotvoice.report.dto.RecordingFile;
 import uz.murodjon.uysotvoice.report.dto.RecordingLocation;
 import uz.murodjon.uysotvoice.report.dto.RecordingRedirect;
+import uz.murodjon.uysotvoice.report.dto.ReportSummary;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
@@ -126,7 +131,7 @@ public class ReportService {
     private boolean applyBulkAction(String action, CallRow call) {
         return switch (action) {
             case "retry" -> {
-                TargetRow target = targets.find(call.targetId());
+                CampaignTarget target = targets.find(call.targetId());
                 if (target == null) {
                     yield false;
                 }
@@ -180,8 +185,8 @@ public class ReportService {
     }
 
     /** Who changed what through the API (§11). */
-    public PageableData<AuditRow> auditLog(AuditFilter filter) {
-        List<AuditRow> rows = audit.recent(filter);
+    public PageableData<AuditLog> auditLog(AuditFilter filter) {
+        List<AuditLog> rows = audit.recent(filter);
         long total = audit.count(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
@@ -223,10 +228,63 @@ public class ReportService {
         return reports.dashboardBuckets(range.from(), range.to(), campaignId, range.granularity());
     }
 
+    /**
+     * "Qo'ng'iroqlar dinamikasi" for the Reports page (§10.10 Grafik 1) — the general
+     * filter panel's version of {@link #dashboardTimeseries}, with the extra
+     * scenario/operator narrowing that panel offers (see {@link
+     * ReportRepository#dynamicsBuckets} for what "operator" maps to).
+     */
+    public List<DashboardBucket> dynamics(String from, String to, Long campaignId, Long scenarioId,
+                                          Boolean escalated) {
+        DashboardRange range = DashboardRange.of(from, to);
+        return reports.dynamicsBuckets(range.from(), range.to(), campaignId, scenarioId, escalated, range.granularity());
+    }
+
     /** "Natijalar taqsimoti" — disposition distribution over the window, not bucketed. */
     public List<DashboardOutcome> dashboardOutcomes(String from, String to, Long campaignId) {
         DashboardRange range = DashboardRange.of(from, to);
         return reports.dashboardOutcomes(range.from(), range.to(), campaignId);
+    }
+
+    /** "Kun × soat javob foizi" heatmap (§10.10 Grafik 3). */
+    public List<HourlyHeatmapCell> hourlyHeatmap(String from, String to, Long campaignId) {
+        DashboardRange range = DashboardRange.of(from, to);
+        return reports.hourlyHeatmap(range.from(), range.to(), campaignId);
+    }
+
+    /** Side-by-side campaign KPI comparison (§10.10 Grafik 4). */
+    public List<CampaignComparisonRow> campaignComparison(String from, String to, List<Long> campaignIds) {
+        DashboardRange range = DashboardRange.of(from, to);
+        return reports.campaignComparison(range.from(), range.to(), campaignIds);
+    }
+
+    /** Answered-call duration distribution (§10.10 Grafik 5). */
+    public List<DurationHistogramBucket> durationHistogram(String from, String to, Long campaignId) {
+        DashboardRange range = DashboardRange.of(from, to);
+        return reports.durationHistogram(range.from(), range.to(), campaignId);
+    }
+
+    /** "Qo'ng'iroq → Javob → Shaxs tasdiqlandi → Suhbat → Natija" funnel (§10.10 Grafik 6). */
+    public List<FunnelStage> funnel(String from, String to, Long campaignId) {
+        DashboardRange range = DashboardRange.of(from, to);
+        return reports.funnel(range.from(), range.to(), campaignId);
+    }
+
+    /**
+     * The whole Reports page, bundled for {@code GET /api/reports/export} and the
+     * scheduled email (§10.10). Campaign comparison is skipped once {@code campaignId}
+     * already narrows the report to one campaign — comparing a campaign against itself
+     * is not a report section, it is an empty one.
+     */
+    public ReportSummary summary(String from, String to, Long campaignId) {
+        DashboardRange range = DashboardRange.of(from, to);
+        DashboardTotals totals = reports.dashboardTotals(range.from(), range.to(), campaignId);
+        List<DashboardOutcome> outcomes = reports.dashboardOutcomes(range.from(), range.to(), campaignId);
+        List<FunnelStage> funnel = reports.funnel(range.from(), range.to(), campaignId);
+        List<CampaignComparisonRow> campaigns = campaignId == null
+                ? reports.campaignComparison(range.from(), range.to(), null)
+                : List.of();
+        return new ReportSummary(range.from(), range.to(), campaignId, totals, outcomes, funnel, campaigns);
     }
 
     private static double rate(long numerator, long denominator) {

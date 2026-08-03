@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
 import java.io.IOException;
 import java.util.Map;
@@ -65,6 +66,11 @@ public class GoogleTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String requestedVoice) {
+        return synthesize(text, language, requestedVoice, EffectiveVoiceSettings.NONE);
+    }
+
+    @Override
+    public short[] synthesize(String text, String language, String requestedVoice, EffectiveVoiceSettings style) {
         TextToSpeechClient current = client;
         if (current == null) {
             throw new ExternalServiceException("google-tts", "client is not available");
@@ -81,11 +87,14 @@ public class GoogleTtsProvider implements TtsProvider {
             voice.setName(voiceName);
         }
 
+        // A company's §11 settings/voice override wins over the process default.
+        double speakingRate = style != null && style.speed() != null ? style.speed() : props.google().speakingRate();
+        double pitch = style != null && style.pitch() != null ? style.pitch() : props.google().pitch();
         AudioConfig audioConfig = AudioConfig.newBuilder()
                 .setAudioEncoding(AudioEncoding.LINEAR16)
                 .setSampleRateHertz(props.google().sampleRate())
-                .setSpeakingRate(props.google().speakingRate())
-                .setPitch(props.google().pitch())
+                .setSpeakingRate(speakingRate)
+                .setPitch(pitch)
                 .build();
 
         SynthesizeSpeechResponse response = current.synthesizeSpeech(input, voice.build(), audioConfig);

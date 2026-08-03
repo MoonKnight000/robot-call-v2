@@ -12,6 +12,7 @@ import uz.murodjon.uysotvoice.callrecord.dto.PendingNote;
 import uz.murodjon.uysotvoice.callrecord.dto.PendingSummary;
 import uz.murodjon.uysotvoice.callrecord.repository.CallOutboxRepository;
 import uz.murodjon.uysotvoice.crm.service.CrmClient;
+import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 
 import java.util.List;
 
@@ -42,6 +43,7 @@ public class CallOutboxService {
     private final CallRecordService records;
     private final SummaryService summaryService;
     private final CrmClient crmClient;
+    private final ScenarioService scenarioService;
     private final boolean enabled;
     private final int maxAttempts;
     private final int batch;
@@ -50,6 +52,7 @@ public class CallOutboxService {
                              CallRecordService records,
                              SummaryService summaryService,
                              CrmClient crmClient,
+                             ScenarioService scenarioService,
                              @Value("${voice-agent.outbox.enabled:true}") boolean enabled,
                              @Value("${voice-agent.outbox.max-attempts:5}") int maxAttempts,
                              @Value("${voice-agent.outbox.batch:20}") int batch) {
@@ -57,6 +60,7 @@ public class CallOutboxService {
         this.records = records;
         this.summaryService = summaryService;
         this.crmClient = crmClient;
+        this.scenarioService = scenarioService;
         this.enabled = enabled;
         this.maxAttempts = maxAttempts;
         this.batch = batch;
@@ -90,12 +94,13 @@ public class CallOutboxService {
             outbox.countSummaryAttempt(p.callId());
             try {
                 String transcript = records.transcriptText(p.callId());
-                CallSummary summary = summaryService.summarize(transcript);
+                var scenario = scenarioService.requireScenario(p.scenarioId()).definition();
+                CallSummary summary = summaryService.summarize(transcript, scenario);
                 if (summary == null) {
                     log.debug("Outbox: summary still unavailable for call {}", p.callId());
                     continue;
                 }
-                Long noteId = crmClient.postNote(p.clientId(), summary);
+                Long noteId = crmClient.postNote(records.companyIdOf(p.callId()), p.clientId(), summary);
                 records.writeResult(p.callId(), summary, false, noteId);
                 log.info("Outbox: summarized call {} on retry (crmNoteId={})", p.callId(), noteId);
             } catch (Exception e) {
@@ -116,7 +121,7 @@ public class CallOutboxService {
         log.info("Outbox: {} CRM note(s) to re-post", pending.size());
         for (PendingNote p : pending) {
             try {
-                Long noteId = crmClient.postNote(p.clientId(), p.summary());
+                Long noteId = crmClient.postNote(records.companyIdOf(p.callId()), p.clientId(), p.summary());
                 if (noteId != null) {
                     outbox.markCrmPosted(p.callId(), noteId);
                     log.info("Outbox: CRM note posted for call {} (noteId={})", p.callId(), noteId);

@@ -15,6 +15,8 @@ import java.util.Set;
  * @param ttsVoice     id of a voice from {@code GET /api/tts/voices} (§2.5); an unknown id
  *                     is rejected
  * @param dailyCallCap most calls this campaign may place in one day; 0 for unlimited
+ * @param disclosureEnabled whether calls open with the §11.1 disclosure ("Assalomu
+ *                     alaykum! Bu Uysot kompaniyasining avtomatik ovozli xizmati...")
  */
 public record UpdateCampaignRequest(
         @NotBlank String name,
@@ -24,5 +26,6 @@ public record UpdateCampaignRequest(
         LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
         int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
-        String ttsVoice, int dailyCallCap) {
+        String ttsVoice, int dailyCallCap,
+        boolean disclosureEnabled) {
 }

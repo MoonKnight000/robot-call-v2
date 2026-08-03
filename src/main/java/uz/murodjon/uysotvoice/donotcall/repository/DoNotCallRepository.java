@@ -6,8 +6,8 @@ import org.springframework.stereotype.Repository;
 
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallFilter;
-import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallRow;
-import uz.murodjon.uysotvoice.donotcall.entity.DoNotCall;
+import uz.murodjon.uysotvoice.donotcall.dto.DoNotCall;
+import uz.murodjon.uysotvoice.donotcall.entity.DoNotCallEntity;
 import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 
 import java.time.Instant;
@@ -68,7 +68,7 @@ public class DoNotCallRepository {
     }
 
     /** Active opt-outs only — a removed one no longer belongs on this list (§10.8). */
-    public List<DoNotCallRow> findAll(DoNotCallFilter filter) {
+    public List<DoNotCall> findAll(DoNotCallFilter filter) {
         return jpa.findByCompanyIdAndRemovedAtIsNull(company.id(), filter.pageable()).stream()
                 .map(DoNotCallRepository::toRow)
                 .toList();
@@ -88,7 +88,7 @@ public class DoNotCallRepository {
         return updated > 0;
     }
 
-    private static DoNotCallRow toRow(DoNotCall e) {
-        return new DoNotCallRow(e.getId(), e.getPhone(), e.getReason(), e.getSource(), e.getCreatedAt());
+    private static DoNotCall toRow(DoNotCallEntity e) {
+        return new DoNotCall(e.getId(), e.getPhone(), e.getReason(), e.getSource(), e.getCreatedAt());
     }
 }

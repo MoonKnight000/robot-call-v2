@@ -5,12 +5,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
-import uz.murodjon.uysotvoice.shared.dialog.DialogState;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
-import uz.murodjon.uysotvoice.shared.dialog.ReasonCode;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Set;
 
 /**
  * Tools the LLM can call to drive the FSM and record outcomes (PROJECT.md §4.2). A
@@ -22,6 +21,16 @@ public class DialogTools {
 
     private static final Logger log = LoggerFactory.getLogger(DialogTools.class);
 
+    /**
+     * The two tools here that are scenario-specific rather than universal (ROADMAP
+     * A.3) — only registered for a call when its scenario declares a {@link
+     * uz.murodjon.uysotvoice.scenario.dto.ToolDef} with a matching name (see {@link
+     * DialogEngine#toolsFor}). They stay hardcoded Java methods, unlike every other
+     * scenario tool, because they carry real code-level guardrails (e.g. rejecting a
+     * past promised date) that a purely declarative {@code ToolDef} cannot express.
+     */
+    static final Set<String> HARDCODED_TOOL_NAMES = Set.of("recordPaymentPromise", "recordRefusalReason");
+
     private final DialogSession session;
 
     public DialogTools(DialogSession session) {
@@ -29,10 +38,10 @@ public class DialogTools {
     }
 
     @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
-    public String transitionTo(@ToolParam(description = "keyingi dialog holati") DialogState nextState) {
-        session.setState(nextState);
-        log.info("[{}] dialog state -> {}", session.channelId(), nextState);
-        return "Holat " + nextState + " ga o'tkazildi";
+    public String transitionTo(@ToolParam(description = "keyingi bosqich id'si") String nextStage) {
+        session.setState(nextStage);
+        log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
+        return "Holat " + nextStage + " ga o'tkazildi";
     }
 
     @Tool(description = "Mijoz aniq to'lov sanasini va'da qilganda chaqiriladi")
@@ -47,8 +56,8 @@ public class DialogTools {
             return "XATO: " + promisedDate + " o'tmishda. Bugun " + LocalDate.now()
                     + ". Sanani shundan hisoblab qaytadan yuboring yoki mijozdan aniq sanani so'rang.";
         }
-        session.setPromisedDate(promisedDate);
-        session.setPromisedAmount(amount);
+        session.recordOutcome("promisedDate", promisedDate);
+        session.recordOutcome("promisedAmount", amount);
         session.setDisposition(Disposition.PROMISE_TO_PAY);
         log.info("[{}] payment promise: date={}, amount={}, note={}",
                 session.channelId(), promisedDate, amount, note);
@@ -57,12 +66,12 @@ public class DialogTools {
 
     @Tool(description = "Mijoz to'lay olmasligini aytganda sababni yozib qo'yadi")
     public String recordRefusalReason(
-            @ToolParam(description = "to'lamaslik sababi kodi") ReasonCode code,
+            @ToolParam(description = "to'lamaslik sababi") String reason,
             @ToolParam(description = "sabab tafsiloti", required = false) String detail) {
-        session.setReasonCode(code);
+        session.recordOutcome("reasonCode", reason);
         session.setDisposition(Disposition.REFUSED);
-        log.info("[{}] refusal reason: {} ({})", session.channelId(), code, detail);
-        return "Sabab yozib olindi: " + code;
+        log.info("[{}] refusal reason: {} ({})", session.channelId(), reason, detail);
+        return "Sabab yozib olindi: " + reason;
     }
 
     @Tool(description = "Mijoz operator bilan gaplashishni so'raganda yoki janjal qilganda operatorga o'tkazadi")
@@ -90,7 +99,9 @@ public class DialogTools {
     }
 
     @Tool(description = "Suhbat tugadi — qo'ng'iroqni yakunlaydi (avval xayrlashing)")
-    public String endCall(@ToolParam(description = "qo'ng'iroq natijasi") Disposition disposition) {
+    public String endCall(@ToolParam(description = "qo'ng'iroq natijasi. Qarz undirishga oid "
+            + "bo'lmagan ssenariylarda (so'rovnoma, xabar va h.k.) odatda COMPLETED ishlatiladi")
+            Disposition disposition) {
         session.end(disposition);
         log.info("[{}] end call requested: disposition={}", session.channelId(), disposition);
         return "Qo'ng'iroq yakunlanadi. Mijoz bilan qisqa xayrlashing.";

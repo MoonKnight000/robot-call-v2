@@ -8,19 +8,19 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.uysotvoice.donotcall.entity.DoNotCall;
+import uz.murodjon.uysotvoice.donotcall.entity.DoNotCallEntity;
 
 import java.time.Instant;
 import java.util.List;
 
-/** Spring Data repository for {@link DoNotCall}. */
+/** Spring Data repository for {@link DoNotCallEntity}. */
 @Repository
-public interface DoNotCallJpaRepository extends JpaRepository<DoNotCall, Long> {
+public interface DoNotCallJpaRepository extends JpaRepository<DoNotCallEntity, Long> {
 
     /** Only an active (not removed) opt-out actually blocks dialling. */
     boolean existsByCompanyIdAndPhoneAndRemovedAtIsNull(long companyId, String phone);
 
-    List<DoNotCall> findByCompanyIdAndRemovedAtIsNull(long companyId, Pageable pageable);
+    List<DoNotCallEntity> findByCompanyIdAndRemovedAtIsNull(long companyId, Pageable pageable);
 
     long countByCompanyIdAndRemovedAtIsNull(long companyId);
 
@@ -46,7 +46,7 @@ public interface DoNotCallJpaRepository extends JpaRepository<DoNotCall, Long> {
 
     /** "Ro'yxatdan chiqarish" (§10.8) — soft-delete; a no-op if already removed or never listed. */
     @Modifying @Transactional
-    @Query("UPDATE DoNotCall d SET d.removedAt = :removedAt, d.removedBy = :removedBy "
+    @Query("UPDATE DoNotCallEntity d SET d.removedAt = :removedAt, d.removedBy = :removedBy "
             + "WHERE d.companyId = :companyId AND d.phone = :phone AND d.removedAt IS NULL")
     int remove(@Param("companyId") long companyId, @Param("phone") String phone,
               @Param("removedAt") Instant removedAt, @Param("removedBy") String removedBy);

@@ -7,7 +7,7 @@ package uz.murodjon.uysotvoice.live.enums;
 public enum LiveEventType {
     /** Payload: {@link LiveKpiSnapshot}. */
     KPI,
-    /** Payload: {@code List<uz.murodjon.uysotvoice.call.dto.LiveCallRow>}. */
+    /** Payload: {@code List<uz.murodjon.uysotvoice.callrecord.dto.LiveCallRow>}. */
     LIVE_CALLS,
     /** Payload: {@link LiveTranscriptEvent}. */
     TRANSCRIPT,

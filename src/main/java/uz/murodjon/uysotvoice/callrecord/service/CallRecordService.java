@@ -1,14 +1,15 @@
 package uz.murodjon.uysotvoice.callrecord.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
 import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.uysotvoice.callrecord.entity.CallAttempt;
-import uz.murodjon.uysotvoice.callrecord.entity.CallTechnical;
-import uz.murodjon.uysotvoice.callrecord.entity.CallTranscript;
+import uz.murodjon.uysotvoice.callrecord.entity.CallAttemptEntity;
+import uz.murodjon.uysotvoice.callrecord.entity.CallTechnicalEntity;
+import uz.murodjon.uysotvoice.callrecord.entity.CallTranscriptEntity;
 import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptJpaRepository;
 import uz.murodjon.uysotvoice.callrecord.repository.CallResultJpaRepository;
 import uz.murodjon.uysotvoice.callrecord.repository.CallTechnicalJpaRepository;
@@ -17,7 +18,9 @@ import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetJpaRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class CallRecordService {
 
     private static final Logger log = LoggerFactory.getLogger(CallRecordService.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final CallAttemptJpaRepository callAttempts;
     private final CallTranscriptJpaRepository transcripts;
@@ -45,6 +49,7 @@ public class CallRecordService {
     private final CampaignTargetJpaRepository targets;
     private final CurrentCompany company;
     private final AtomicLong manualTargetId = new AtomicLong(0);
+    private final AtomicLong inboundTargetId = new AtomicLong(0);
     private final Map<Long, AtomicInteger> seqCounters = new ConcurrentHashMap<>();
 
     public CallRecordService(CallAttemptJpaRepository callAttempts, CallTranscriptJpaRepository transcripts,
@@ -58,7 +63,21 @@ public class CallRecordService {
         this.company = company;
     }
 
-    /** Id of the placeholder target seeded by {@code V2} (phone = 'MANUAL'); cached. */
+    /**
+     * The company {@code callAttemptId} was recorded under (§11 ai-model settings) —
+     * {@code DialogEngine} resolves this once per call to look up its overrides. Falls
+     * back to {@link CurrentCompany} for {@code 0} (no persisted attempt, e.g. a manual
+     * test call whose insert failed) or an attempt somehow missing from the table.
+     */
+    public long companyIdOf(long callAttemptId) {
+        if (callAttemptId == 0) {
+            return company.id();
+        }
+        Long companyId = callAttempts.findCompanyIdById(callAttemptId);
+        return companyId != null ? companyId : company.id();
+    }
+
+    /** Id of the placeholder target seeded by {@code V1} (phone = 'MANUAL'); cached. */
     public long manualTargetId() {
         long cached = manualTargetId.get();
         if (cached != 0) {
@@ -77,14 +96,48 @@ public class CallRecordService {
         }
     }
 
-    /** Insert a call_attempt (answered now); returns its id, or 0 on failure. */
+    /**
+     * Id of the placeholder target seeded by {@code V5} (phone = 'INBOUND'); cached.
+     * Gives inbound calls their own {@code call_attempt} parent, distinct from manual
+     * REST test calls (which use {@link #manualTargetId()}), so reports can tell them
+     * apart (ROADMAP C.1).
+     */
+    public long inboundTargetId() {
+        long cached = inboundTargetId.get();
+        if (cached != 0) {
+            return cached;
+        }
+        try {
+            return targets.findFirstByPhoneOrderById("INBOUND")
+                    .map(t -> {
+                        inboundTargetId.set(t.getId());
+                        return t.getId();
+                    })
+                    .orElse(0L);
+        } catch (Exception e) {
+            log.warn("Inbound target lookup failed: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /** As {@link #startAttempt(long, String, String, Long)}, for calls with no inbound route (outbound/manual). */
     public long startAttempt(long targetId, String channelId, String language) {
+        return startAttempt(targetId, channelId, language, null);
+    }
+
+    /**
+     * Insert a call_attempt (answered now); returns its id, or 0 on failure.
+     *
+     * @param inboundRouteId the route this call matched (ROADMAP C.1, §10.9 stats
+     *                       drawer), or null for an outbound/manual call
+     */
+    public long startAttempt(long targetId, String channelId, String language, Long inboundRouteId) {
         if (targetId == 0) {
             return 0;
         }
         try {
             Instant now = Instant.now();
-            CallAttempt entity = new CallAttempt();
+            CallAttemptEntity entity = new CallAttemptEntity();
             entity.setTarget(targets.getReferenceById(targetId));
             entity.setAsteriskChannel(channelId);
             entity.setLanguage(language);
@@ -92,6 +145,7 @@ public class CallRecordService {
             entity.setAnsweredAt(now);
             entity.setCreatedAt(now);
             entity.setCompanyId(company.id());
+            entity.setInboundRouteId(inboundRouteId);
             return callAttempts.save(entity).getId();
         } catch (Exception e) {
             log.warn("startAttempt failed for {}: {}", channelId, e.getMessage());
@@ -107,7 +161,7 @@ public class CallRecordService {
         }
         int seq = seqCounters.computeIfAbsent(callId, k -> new AtomicInteger()).incrementAndGet();
         try {
-            CallTranscript entity = new CallTranscript();
+            CallTranscriptEntity entity = new CallTranscriptEntity();
             entity.setCall(callAttempts.getReferenceById(callId));
             entity.setSeq(seq);
             entity.setRole(role);
@@ -161,15 +215,30 @@ public class CallRecordService {
             return "";
         }
         try {
-            List<CallTranscript> rows = transcripts.findByCall_IdOrderBySeq(callId);
+            List<CallTranscriptEntity> rows = transcripts.findByCall_IdOrderBySeq(callId);
             StringBuilder sb = new StringBuilder();
-            for (CallTranscript row : rows) {
+            for (CallTranscriptEntity row : rows) {
                 sb.append(row.getRole()).append(": ").append(row.getText()).append('\n');
             }
             return sb.toString();
         } catch (Exception e) {
             log.warn("transcriptText failed for call {}: {}", callId, e.getMessage());
             return "";
+        }
+    }
+
+    /**
+     * §15 "Bugun" mini-statistika — record which panel user answered a transferred call
+     * ({@code AriService.handleOperatorJoin}). Best-effort like every other write here.
+     */
+    public void assignOperator(long callId, long userId) {
+        if (callId == 0) {
+            return;
+        }
+        try {
+            callAttempts.assignOperator(callId, userId);
+        } catch (Exception e) {
+            log.warn("assignOperator failed for call {}: {}", callId, e.getMessage());
         }
     }
 
@@ -199,20 +268,63 @@ public class CallRecordService {
             return;
         }
         try {
+            // Dual-write (ROADMAP A.3): the fixed reason_code/promised_date/promised_amount
+            // columns stay populated whenever the scenario's outcome happens to use those
+            // exact names (debt-collection does), so CrmClient/CSV export keep working
+            // unmodified; every scenario's outcome — including these — also lands in the
+            // generic outcome JSONB column below.
             results.insertIgnoringConflict(
                     callId,
                     s.summary() != null ? s.summary() : "",
-                    s.reasonCode() != null ? s.reasonCode().name() : null,
-                    s.promisedDate(),
-                    s.promisedAmount(),
+                    asString(s.outcome().get("reasonCode")),
+                    asDate(s.outcome().get("promisedDate")),
+                    asAmount(s.outcome().get("promisedAmount")),
                     s.sentiment() != null ? s.sentiment().name() : null,
                     s.needsFollowUp(),
                     s.followUpNote(),
                     escalated,
-                    crmNoteId);
+                    crmNoteId,
+                    toJson(s.outcome()));
             log.info("call_result written for call {} (disposition-escalated={})", callId, escalated);
         } catch (Exception e) {
             log.warn("writeResult failed for call {}: {}", callId, e.getMessage());
+        }
+    }
+
+    private static String asString(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private static LocalDate asDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.toString());
+        } catch (Exception e) {
+            log.warn("outcome.promisedDate '{}' is not a valid date: {}", value, e.getMessage());
+            return null;
+        }
+    }
+
+    private static BigDecimal asAmount(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return new BigDecimal(value.toString());
+        } catch (Exception e) {
+            log.warn("outcome.promisedAmount '{}' is not a valid number: {}", value, e.getMessage());
+            return null;
+        }
+    }
+
+    private static String toJson(Map<String, Object> outcome) {
+        try {
+            return JSON.writeValueAsString(outcome);
+        } catch (Exception e) {
+            log.warn("Could not serialize call outcome: {}", e.getMessage());
+            return "{}";
         }
     }
 
@@ -228,7 +340,7 @@ public class CallRecordService {
             return;
         }
         try {
-            CallTechnical entity = new CallTechnical();
+            CallTechnicalEntity entity = new CallTechnicalEntity();
             entity.setCall(callAttempts.getReferenceById(callId));
             entity.setChannelName(channelName);
             entity.setTrunk(trunk);

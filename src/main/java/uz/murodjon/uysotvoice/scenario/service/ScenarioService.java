@@ -8,7 +8,7 @@ import uz.murodjon.uysotvoice.scenario.dto.CloneScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.dto.CreateScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioFilter;
-import uz.murodjon.uysotvoice.scenario.dto.ScenarioRow;
+import uz.murodjon.uysotvoice.scenario.dto.Scenario;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioValidationResult;
 import uz.murodjon.uysotvoice.scenario.dto.UpdateScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.repository.ScenarioRepository;
@@ -18,8 +18,10 @@ import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Scenario CRUD, versioning and validation (ROADMAP A.4). Storage only in this
@@ -36,7 +38,7 @@ public class ScenarioService {
         this.audit = audit;
     }
 
-    public ScenarioRow create(CreateScenarioRequest r) {
+    public Scenario create(CreateScenarioRequest r) {
         requireValid(r.definition());
         String key = keyOf(r.scenarioKey(), r.name());
         if (repo.existsByKey(key)) {
@@ -53,8 +55,8 @@ public class ScenarioService {
      * together, or a failed insert would leave {@code scenarioKey} with no active version.
      */
     @Transactional
-    public ScenarioRow update(long id, UpdateScenarioRequest r) {
-        ScenarioRow current = requireScenario(id);
+    public Scenario update(long id, UpdateScenarioRequest r) {
+        Scenario current = requireScenario(id);
         if (current.builtin()) {
             throw new ForbiddenException(
                     "Built-in scenario '" + current.scenarioKey() + "' cannot be edited — clone it first");
@@ -70,8 +72,8 @@ public class ScenarioService {
     }
 
     /** Copies {@code id} (built-in or custom) into a brand new, editable scenario key. */
-    public ScenarioRow clone(long id, CloneScenarioRequest r) {
-        ScenarioRow source = requireScenario(id);
+    public Scenario clone(long id, CloneScenarioRequest r) {
+        Scenario source = requireScenario(id);
         String key = keyOf(r.scenarioKey(), r.name());
         if (repo.existsByKey(key)) {
             throw new ConflictException("Scenario key '" + key + "' already exists");
@@ -87,19 +89,37 @@ public class ScenarioService {
         return new ScenarioValidationResult(errors.isEmpty(), errors);
     }
 
-    public PageableData<ScenarioRow> list(ScenarioFilter filter) {
-        List<ScenarioRow> rows = repo.findAll(filter);
+    public PageableData<Scenario> list(ScenarioFilter filter) {
+        List<Scenario> rows = repo.findAll(filter);
         long total = repo.count(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     /** As {@link ScenarioRepository#find}, for the REST API — a missing scenario is a 404, not a null. */
-    public ScenarioRow requireScenario(long id) {
-        ScenarioRow row = repo.find(id);
+    public Scenario requireScenario(long id) {
+        Scenario row = repo.find(id);
         if (row == null) {
             throw new NotFoundException("scenario", id);
         }
         return row;
+    }
+
+    /** The active row for {@code scenarioKey} (e.g. a manual test call's default, ROADMAP A.3). */
+    public Scenario requireScenarioByKey(String scenarioKey) {
+        Scenario row = repo.findActiveByKey(scenarioKey);
+        if (row == null) {
+            throw new NotFoundException("scenario", scenarioKey);
+        }
+        return row;
+    }
+
+    /**
+     * Cheap id→name lookup for other features to enrich their own rows with a
+     * {@code scenarioName} (e.g. {@code CampaignRow}, {@code InboundRoute}) — see
+     * {@link ScenarioRepository#namesByIds}.
+     */
+    public Map<Long, String> scenarioNamesByIds(Collection<Long> ids) {
+        return repo.namesByIds(ids);
     }
 
     private static void requireValid(ScenarioDefinition definition) {

@@ -12,6 +12,9 @@ import java.math.BigDecimal;
  * @param dueDate        original due date, ISO {@code yyyy-MM-dd} (blank to omit)
  * @param contractNumber contract reference
  * @param goal           campaign goal appended to the system prompt
+ * @param scenarioKey    scenario a manual/inbound test call without a {@code scenarioId}
+ *                       runs (ROADMAP A.3); defaults to {@code debt-collection} so
+ *                       today's manual-call behavior is unchanged when nothing is chosen
  */
 public record TestContextProperties(
         String clientName,
@@ -19,6 +22,13 @@ public record TestContextProperties(
         String currency,
         String dueDate,
         String contractNumber,
-        String goal
+        String goal,
+        String scenarioKey
 ) {
+
+    public TestContextProperties {
+        if (scenarioKey == null || scenarioKey.isBlank()) {
+            scenarioKey = "debt-collection";
+        }
+    }
 }

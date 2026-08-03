@@ -10,9 +10,9 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditRow;
-import uz.murodjon.uysotvoice.audit.entity.AuditLog;
-import uz.murodjon.uysotvoice.audit.repository.AuditJpaRepository;
+import uz.murodjon.uysotvoice.audit.dto.AuditLog;
+import uz.murodjon.uysotvoice.audit.entity.AuditLogEntity;
+import uz.murodjon.uysotvoice.audit.repository.AuditRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
 import java.time.Instant;
@@ -39,11 +39,11 @@ public class AuditService {
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
-    private final AuditJpaRepository jpa;
+    private final AuditRepository auditRepository;
     private final CurrentCompany company;
 
-    public AuditService(AuditJpaRepository jpa, CurrentCompany company) {
-        this.jpa = jpa;
+    public AuditService(AuditRepository auditRepository, CurrentCompany company) {
+        this.auditRepository = auditRepository;
         this.company = company;
     }
 
@@ -58,7 +58,7 @@ public class AuditService {
     public void record(String action, String entity, String entityId, String detail) {
         String actor = currentActor();
         try {
-            AuditLog e = new AuditLog();
+            AuditLogEntity e = new AuditLogEntity();
             e.setActor(actor);
             e.setAction(action);
             e.setEntity(entity);
@@ -67,7 +67,7 @@ public class AuditService {
             e.setCreatedAt(Instant.now());
             e.setCompanyId(company.id());
             e.setIpAddress(currentIp());
-            jpa.save(e);
+            auditRepository.save(e);
         } catch (Exception e) {
             log.warn("Audit write failed ({} {} {} by {}: {}): {}",
                     action, entity, entityId, actor, detail, e.getMessage());
@@ -75,9 +75,9 @@ public class AuditService {
     }
 
     /** Most recent entries first — what an incident review reads. Scoped to the current company. */
-    public List<AuditRow> recent(AuditFilter filter) {
+    public List<AuditLog> recent(AuditFilter filter) {
         try {
-            return jpa.findByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity(),
+            return auditRepository.findByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity(),
                             filter.pageable())
                     .stream()
                     .map(AuditService::toRow)
@@ -90,7 +90,7 @@ public class AuditService {
 
     public long count(AuditFilter filter) {
         try {
-            return jpa.countByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity());
+            return auditRepository.countByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity());
         } catch (Exception e) {
             log.warn("Audit count failed: {}", e.getMessage());
             return 0;
@@ -129,8 +129,8 @@ public class AuditService {
         return servletAttrs.getRequest().getRemoteAddr();
     }
 
-    private static AuditRow toRow(AuditLog e) {
-        return new AuditRow(e.getId(), e.getActor(), e.getAction(), e.getEntity(), e.getEntityId(),
+    private static AuditLog toRow(AuditLogEntity e) {
+        return new AuditLog(e.getId(), e.getActor(), e.getAction(), e.getEntity(), e.getEntityId(),
                 e.getDetail(), e.getCreatedAt(), e.getIpAddress());
     }
 }

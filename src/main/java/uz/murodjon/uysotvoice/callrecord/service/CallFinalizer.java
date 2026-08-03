@@ -12,9 +12,11 @@ import uz.murodjon.uysotvoice.agent.stt.SttProperties;
 import uz.murodjon.uysotvoice.agent.summary.SummaryService;
 import uz.murodjon.uysotvoice.agent.vad.VadProperties;
 import uz.murodjon.uysotvoice.crm.service.CrmClient;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
+import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.storage.service.AudioStorageService;
-import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.nio.file.Files;
@@ -38,6 +40,7 @@ public class CallFinalizer {
     private final SummaryService summaryService;
     private final AudioStorageService storage;
     private final CrmClient crmClient;
+    private final ScenarioService scenarioService;
     private final VoiceMetrics metrics;
     private final SttProperties sttProps;
     private final TtsVoiceService voices;
@@ -45,13 +48,15 @@ public class CallFinalizer {
     private final String llmModel;
 
     public CallFinalizer(CallRecordService records, SummaryService summaryService,
-                         AudioStorageService storage, CrmClient crmClient, VoiceMetrics metrics,
-                         SttProperties sttProps, TtsVoiceService voices, VadProperties vadProps,
+                         AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
+                         VoiceMetrics metrics, SttProperties sttProps, TtsVoiceService voices,
+                         VadProperties vadProps,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
         this.summaryService = summaryService;
         this.storage = storage;
         this.crmClient = crmClient;
+        this.scenarioService = scenarioService;
         this.metrics = metrics;
         this.sttProps = sttProps;
         this.voices = voices;
@@ -59,8 +64,9 @@ public class CallFinalizer {
         this.llmModel = llmModel;
     }
 
-    public void finalizeCall(long callAttemptId, long clientId, Path wav, Instant startedAt, Disposition disposition,
-                             String channelName, String trunk, DialogTechnicalSnapshot technical) {
+    public void finalizeCall(long callAttemptId, long clientId, long scenarioId, Path wav, Instant startedAt,
+                             Disposition disposition, String channelName, String trunk,
+                             DialogTechnicalSnapshot technical) {
         if (callAttemptId == 0) {
             return;
         }
@@ -86,9 +92,10 @@ public class CallFinalizer {
             }
 
             String transcript = records.transcriptText(callAttemptId);
-            CallSummary summary = summaryService.summarize(transcript);
+            ScenarioDefinition scenario = scenarioService.requireScenario(scenarioId).definition();
+            CallSummary summary = summaryService.summarize(transcript, scenario);
             if (summary != null) {
-                Long crmNoteId = crmClient.postNote(clientId, summary);
+                Long crmNoteId = crmClient.postNote(records.companyIdOf(callAttemptId), clientId, summary);
                 records.writeResult(callAttemptId, summary, escalated, crmNoteId);
                 log.info("Finalized call {} (dur={}s, disposition={}, sentiment={})",
                         callAttemptId, durationSec, disposition, summary.sentiment());
@@ -113,7 +120,7 @@ public class CallFinalizer {
         String ttsProvider = null;
         String ttsVoiceName = null;
         if (technical != null && technical.ttsVoice() != null) {
-            TtsVoiceRow voice = voices.find(technical.ttsVoice());
+            TtsVoice voice = voices.find(technical.ttsVoice());
             if (voice != null) {
                 ttsProvider = voice.provider();
                 ttsVoiceName = voice.name();

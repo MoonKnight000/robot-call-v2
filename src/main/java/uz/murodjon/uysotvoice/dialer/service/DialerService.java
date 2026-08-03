@@ -8,11 +8,13 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.agent.ari.AriService;
 import uz.murodjon.uysotvoice.agent.lifecycle.GracefulShutdownManager;
-import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.Campaign;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
+import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
+import uz.murodjon.uysotvoice.company.service.CompanyConfigService;
 import uz.murodjon.uysotvoice.dialer.config.DialerProperties;
 import uz.murodjon.uysotvoice.dialer.config.RabbitConfig;
 import uz.murodjon.uysotvoice.dialer.dto.CallTask;
@@ -41,6 +43,7 @@ public class DialerService {
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
     private final CampaignService campaignService;
+    private final CompanyConfigService companyConfig;
     private final RabbitTemplate rabbit;
     private final DialerState state;
     private final OutboundCallRegistry registry;
@@ -50,6 +53,7 @@ public class DialerService {
 
     public DialerService(DialerProperties props, CampaignRepository campaigns,
                          CampaignTargetRepository targets, CampaignService campaignService,
+                         CompanyConfigService companyConfig,
                          RabbitTemplate rabbit, DialerState state,
                          OutboundCallRegistry registry, AriService ariService,
                          GracefulShutdownManager shutdown, Clock clock) {
@@ -57,6 +61,7 @@ public class DialerService {
         this.campaigns = campaigns;
         this.targets = targets;
         this.campaignService = campaignService;
+        this.companyConfig = companyConfig;
         this.rabbit = rabbit;
         this.state = state;
         this.registry = registry;
@@ -70,7 +75,7 @@ public class DialerService {
         if (!props.enabled() || shutdown.isDraining()) {
             return; // no new calls while shutting down
         }
-        List<CampaignRow> active = campaigns.findActive();
+        List<Campaign> active = campaigns.findActive();
         if (active.isEmpty()) {
             return;
         }
@@ -80,7 +85,7 @@ public class DialerService {
         int perCampaign = Math.max(1, props.dispatchBatch() / active.size());
 
         LocalDate today = LocalDate.now(clock);
-        for (CampaignRow campaign : active) {
+        for (Campaign campaign : active) {
             if (!withinWindow(campaign)) {
                 continue;
             }
@@ -95,14 +100,15 @@ public class DialerService {
             }
             // Claimed and marked IN_PROGRESS in one statement — see claimDue: two
             // statements would let another instance dial the same client.
-            List<TargetRow> due = targets.claimDue(campaign.id(), batch);
-            for (TargetRow t : due) {
+            List<CampaignTarget> due = targets.claimDue(campaign.id(), batch);
+            for (CampaignTarget t : due) {
                 state.reserve();
                 state.countDispatch(campaign.id(), today);
                 String language = t.language() != null ? t.language() : campaign.defaultLanguage();
                 rabbit.convertAndSend(RabbitConfig.CALL_TASK_QUEUE,
                         new CallTask(campaign.id(), t.id(), t.clientId(), t.phone(), language,
-                                campaign.ttsVoice(), t.contextData()));
+                                campaign.ttsVoice(), t.contextData(), campaign.scenarioId(), campaign.companyId(),
+                                campaign.disclosureEnabled()));
                 log.info("Dispatched target {} ({}) of campaign {}", t.id(), t.phone(), campaign.id());
             }
         }
@@ -112,7 +118,7 @@ public class DialerService {
      * How many more calls this campaign may dial today (§C14). {@link Integer#MAX_VALUE}
      * when it has no cap, so the caller's {@code Math.min} leaves the batch untouched.
      */
-    private int remainingToday(CampaignRow campaign, LocalDate today) {
+    private int remainingToday(Campaign campaign, LocalDate today) {
         int cap = campaign.dailyCallCap();
         if (cap <= 0) {
             return Integer.MAX_VALUE;
@@ -143,18 +149,29 @@ public class DialerService {
     /**
      * Whether the campaign may dial right now: inside its time-of-day window and on a
      * weekday it is allowed to call (§11.2 — weekends are configured separately, so a
-     * time-only check would have the bot calling debtors on a Sunday morning).
+     * time-only check would have the bot calling debtors on a Sunday morning), AND
+     * inside its company's own dial window — a STRICT ceiling on top of the campaign's
+     * own (ROADMAP B.3): a campaign can never dial outside hours its company allows,
+     * even if the campaign row itself says otherwise.
      */
-    private boolean withinWindow(CampaignRow campaign) {
+    private boolean withinWindow(Campaign campaign) {
         if (!campaign.allowedDays().contains(LocalDate.now(clock).getDayOfWeek())) {
             return false;
         }
-        LocalTime start = campaign.dialWindowStart();
-        LocalTime end = campaign.dialWindowEnd();
+        LocalTime now = LocalTime.now(clock);
+        if (!withinRange(now, campaign.dialWindowStart(), campaign.dialWindowEnd())) {
+            return false;
+        }
+        // A company with no config row yet (shouldn't happen post-migration, but the
+        // dialer must never hard-fail on it) imposes no additional ceiling.
+        CompanyConfig config = companyConfig.find(campaign.companyId());
+        return config == null || withinRange(now, config.dialWindowStart(), config.dialWindowEnd());
+    }
+
+    private static boolean withinRange(LocalTime now, LocalTime start, LocalTime end) {
         if (start == null || end == null) {
             return true;
         }
-        LocalTime now = LocalTime.now(clock);
         return !now.isBefore(start) && now.isBefore(end);
     }
 }

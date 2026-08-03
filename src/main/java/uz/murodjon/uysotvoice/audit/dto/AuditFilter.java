@@ -25,10 +25,12 @@ public record AuditFilter(
         LinkedHashMap<AuditTableField, Sort.Direction> orders,
         String actor,
         String action,
-        String entity)
-        implements FilterInterface<AuditTableField> {
+        String entity
+) implements FilterInterface<AuditTableField> {
 
-    /** Most recent entries first by default — what an incident review reads. */
+    /**
+     * Most recent entries first by default — what an incident review reads.
+     */
     public AuditFilter {
         if (orders == null || orders.isEmpty()) {
             orders = new LinkedHashMap<>();

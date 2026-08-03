@@ -16,6 +16,9 @@ import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
  * @param ttsVoice   catalog id of the voice this call speaks with (§2.5); null → the
  *                   configured routing
  * @param context    debtor facts for the system prompt
+ * @param scenarioId the campaign's bound scenario row (ROADMAP A.3)
+ * @param disclosureEnabled whether this campaign's calls open with the §11.1
+ *                   disclosure
  */
 public record OutboundCall(
         Long campaignId,
@@ -24,6 +27,8 @@ public record OutboundCall(
         String phone,
         String language,
         String ttsVoice,
-        CallContext context
+        CallContext context,
+        Long scenarioId,
+        boolean disclosureEnabled
 ) {
 }

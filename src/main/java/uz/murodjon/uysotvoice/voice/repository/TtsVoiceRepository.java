@@ -2,8 +2,8 @@ package uz.murodjon.uysotvoice.voice.repository;
 
 import org.springframework.stereotype.Repository;
 
-import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
-import uz.murodjon.uysotvoice.voice.entity.TtsVoice;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
+import uz.murodjon.uysotvoice.voice.entity.TtsVoiceEntity;
 
 import java.util.List;
 import java.util.Locale;
@@ -19,7 +19,7 @@ public class TtsVoiceRepository {
     }
 
     /** Every selectable voice, in id order. */
-    public List<TtsVoiceRow> all() {
+    public List<TtsVoice> all() {
         return jpa.findAllByOrderByIdAsc().stream().map(TtsVoiceRepository::toRow).toList();
     }
 
@@ -28,7 +28,7 @@ public class TtsVoiceRepository {
      * voice when {@code language} is blank — so a form that already knows the campaign
      * language only offers voices that can speak it.
      */
-    public List<TtsVoiceRow> forLanguage(String language) {
+    public List<TtsVoice> forLanguage(String language) {
         if (isBlank(language)) {
             return all();
         }
@@ -40,7 +40,7 @@ public class TtsVoiceRepository {
     }
 
     /** The voice with this id, or {@code null} for a blank or unknown id. */
-    public TtsVoiceRow find(String id) {
+    public TtsVoice find(String id) {
         if (isBlank(id)) {
             return null;
         }
@@ -49,7 +49,7 @@ public class TtsVoiceRepository {
 
     /** Ids accepted by the campaign API — what an invalid choice is reported against. */
     public List<String> ids() {
-        return jpa.findAllByOrderByIdAsc().stream().map(TtsVoice::getId).toList();
+        return jpa.findAllByOrderByIdAsc().stream().map(TtsVoiceEntity::getId).toList();
     }
 
     private static String languagePrefix(String language) {
@@ -61,7 +61,7 @@ public class TtsVoiceRepository {
         return s == null || s.isBlank();
     }
 
-    private static TtsVoiceRow toRow(TtsVoice e) {
-        return new TtsVoiceRow(e.getId(), e.getProvider(), e.getLanguage(), e.getName(), e.getLabel());
+    private static TtsVoice toRow(TtsVoiceEntity e) {
+        return new TtsVoice(e.getId(), e.getProvider(), e.getLanguage(), e.getName(), e.getLabel());
     }
 }

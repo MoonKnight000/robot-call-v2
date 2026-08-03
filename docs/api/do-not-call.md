@@ -1,6 +1,6 @@
 # "Qo'ng'iroq qilinmasin" (DNC) API
 
-`uz.murodjon.uysotvoice.donotcall` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.uysotvoice.donotcall` · rol: **OPERATOR** (barcha endpoint — ADMIN ham kiradi, rol ierarxiyasi bo'yicha)
 
 Kompaniya darajasidagi opt-out ro'yxati — kampaniyaga bog'liq emas, shuning
 uchun alohida API. Kontakt yoki nishondan qo'shish uchun
@@ -31,6 +31,7 @@ yozuvlarni qaytaradi.
 {
   "id": 3,
   "phone": "998901234567",
+  "contactName": "Aziz Karimov",
   "reason": "Mijoz so'rovi",
   "source": "contact",
   "createdAt": "2026-07-10T08:00:00Z"
@@ -38,6 +39,9 @@ yozuvlarni qaytaradi.
 ```
 
 `source` — qaysi joydan qo'shilgani (masalan `contact`, `target`, `manual`).
+`contactName` — shu telefon raqami bo'yicha `contact` jadvalidan hal qilingan
+(backend-uchun-talablar.md §15); shu raqamli kontakt umuman mavjud bo'lmasa `null`
+(opt-out hech qachon kontakt sifatida qo'shilmagan raqam uchun ham yozilishi mumkin).
 
 ---
 

@@ -3,16 +3,17 @@ package uz.murodjon.uysotvoice.agent.dialog;
 import org.springframework.ai.chat.messages.Message;
 
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
-import uz.murodjon.uysotvoice.shared.dialog.DialogState;
+import uz.murodjon.uysotvoice.aimodel.dto.EffectiveAiModelConfig;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
-import uz.murodjon.uysotvoice.shared.dialog.ReasonCode;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,15 +35,25 @@ public class DialogSession {
     /** Silence watchdog for this call; null when the watchdog is disabled. */
     private final NoInputWatchdog watchdog;
     private final CallContext context;
+    /** The scenario this call runs (ROADMAP A.3) — resolved once at {@code startCall} and reused for the whole call. */
+    private final ScenarioDefinition scenario;
     private final RtpEndpoint endpoint;
     private final Runnable hangup;
     private final Runnable transfer;
     private final long callAttemptId;
+    /** This call's company's AI-model overrides merged over the process defaults (§11 settings), resolved once. */
+    private final EffectiveAiModelConfig aiModel;
+    /** This call's company's TTS overrides (§11 settings/voice), resolved once. */
+    private final EffectiveVoiceSettings voiceSettings;
+    /** Campaign's own choice on the §11.1 opening disclosure (§10.6); the engine also
+     * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
+    private final boolean disclosureEnabled;
     private final List<Message> history = new ArrayList<>();
     private final Instant startedAt = Instant.now();
     private final AtomicBoolean busy = new AtomicBoolean(false);
 
-    private volatile DialogState state = DialogState.GREETING;
+    /** Current stage id — a scenario StageDef.id(), not an enum (ROADMAP A.3). */
+    private volatile String state;
     private volatile boolean ended = false;
     private volatile boolean interrupted = false;
     private volatile String lastAgentText;
@@ -79,11 +90,12 @@ public class DialogSession {
      */
     private final AtomicReference<String> pendingInput = new AtomicReference<>();
 
-    // Recorded by tool calls; consumed by the Stage 9 summary/CRM step.
+    // Recorded by tool calls. disposition is read at teardown (CampaignService.applyOutcome,
+    // CallFinalizer). outcome is a live-monitoring convenience only (operatorSnapshot) — the
+    // persisted call_result.outcome comes from SummaryService's independent post-call pass
+    // over the transcript, not from what fired live (ROADMAP A.3).
     private Disposition disposition;
-    private ReasonCode reasonCode;
-    private LocalDate promisedDate;
-    private BigDecimal promisedAmount;
+    private final Map<String, Object> outcome = new ConcurrentHashMap<>();
     /** Why the client asked not to be called again (§11.4); null unless they did. */
     private volatile String doNotCallReason;
 
@@ -115,17 +127,33 @@ public class DialogSession {
     private volatile ScheduledFuture<?> watchdogTask;
 
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         RtpEndpoint endpoint, Runnable hangup, Runnable transfer, long callAttemptId,
-                         NoInputWatchdog watchdog) {
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         EffectiveAiModelConfig aiModel, EffectiveVoiceSettings voiceSettings) {
         this.channelId = channelId;
         this.language = language;
         this.ttsVoice = ttsVoice;
         this.context = context;
+        this.scenario = scenario;
+        // The scenario's first declared stage is its entry point, by convention
+        // (ROADMAP A.3 — every builtin template already lists its opening stage first).
+        this.state = scenario.stages().get(0).id();
         this.endpoint = endpoint;
         this.hangup = hangup;
         this.transfer = transfer;
         this.callAttemptId = callAttemptId;
         this.watchdog = watchdog;
+        this.disclosureEnabled = disclosureEnabled;
+        this.aiModel = aiModel;
+        this.voiceSettings = voiceSettings;
+    }
+
+    public EffectiveAiModelConfig aiModel() {
+        return aiModel;
+    }
+
+    public EffectiveVoiceSettings voiceSettings() {
+        return voiceSettings;
     }
 
     /** The silence watchdog, or {@code null} when it is disabled. */
@@ -242,8 +270,16 @@ public class DialogSession {
         return ttsVoice;
     }
 
+    public boolean disclosureEnabled() {
+        return disclosureEnabled;
+    }
+
     public CallContext context() {
         return context;
+    }
+
+    public ScenarioDefinition scenario() {
+        return scenario;
     }
 
     public RtpEndpoint endpoint() {
@@ -294,11 +330,11 @@ public class DialogSession {
         return busy;
     }
 
-    public DialogState state() {
+    public String state() {
         return state;
     }
 
-    public void setState(DialogState state) {
+    public void setState(String state) {
         this.state = state;
     }
 
@@ -391,24 +427,16 @@ public class DialogSession {
         this.disposition = disposition;
     }
 
-    public ReasonCode reasonCode() {
-        return reasonCode;
+    /** Record one outcome field a tool call produced (e.g. {@code "promisedDate"}). */
+    public void recordOutcome(String key, Object value) {
+        if (value != null) {
+            outcome.put(key, value);
+        }
     }
 
-    public void setReasonCode(ReasonCode reasonCode) {
-        this.reasonCode = reasonCode;
-    }
-
-    public LocalDate promisedDate() {
-        return promisedDate;
-    }
-
-    public void setPromisedDate(LocalDate promisedDate) {
-        this.promisedDate = promisedDate;
-    }
-
-    public BigDecimal promisedAmount() {
-        return promisedAmount;
+    /** Everything tools have recorded so far this call — for the live operator/monitoring view. */
+    public Map<String, Object> outcome() {
+        return Map.copyOf(outcome);
     }
 
     public String doNotCallReason() {
@@ -417,9 +445,5 @@ public class DialogSession {
 
     public void setDoNotCallReason(String doNotCallReason) {
         this.doNotCallReason = doNotCallReason;
-    }
-
-    public void setPromisedAmount(BigDecimal promisedAmount) {
-        this.promisedAmount = promisedAmount;
     }
 }

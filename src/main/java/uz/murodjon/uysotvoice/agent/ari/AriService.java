@@ -9,6 +9,7 @@ import ch.loway.oss.ari4java.generated.models.ChannelDestroyed;
 import ch.loway.oss.ari4java.generated.models.ChannelHangupRequest;
 import ch.loway.oss.ari4java.generated.models.StasisEnd;
 import ch.loway.oss.ari4java.generated.models.StasisStart;
+import ch.loway.oss.ari4java.tools.BaseAriAction;
 import io.netty.channel.EventLoopGroup;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -18,10 +19,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import uz.murodjon.uysotvoice.agent.audio.AnsweringMachineDetector;
 import uz.murodjon.uysotvoice.agent.audio.AudioLevelListener;
 import uz.murodjon.uysotvoice.agent.audio.AudioListener;
+import uz.murodjon.uysotvoice.agent.audio.LiveAudioMonitor;
 import uz.murodjon.uysotvoice.agent.audio.SpeechGate;
 import uz.murodjon.uysotvoice.agent.dialog.CallContext;
 import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
@@ -36,6 +39,7 @@ import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
 import uz.murodjon.uysotvoice.agent.rtp.RtpPortAllocator;
 import uz.murodjon.uysotvoice.agent.rtp.RtpProperties;
 import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
+import uz.murodjon.uysotvoice.agent.rtp.WavHeader;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
 import uz.murodjon.uysotvoice.agent.rtp.WavRecorder;
 import uz.murodjon.uysotvoice.agent.session.CallSession;
@@ -51,38 +55,56 @@ import uz.murodjon.uysotvoice.agent.vad.SileroVad;
 import uz.murodjon.uysotvoice.agent.vad.VadProperties;
 import uz.murodjon.uysotvoice.agent.vad.VadStream;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
-import uz.murodjon.uysotvoice.call.dto.CallOriginateResponse;
-import uz.murodjon.uysotvoice.call.dto.LiveCallRow;
-import uz.murodjon.uysotvoice.call.dto.PlayResponse;
-import uz.murodjon.uysotvoice.call.dto.SayResponse;
+import uz.murodjon.uysotvoice.callrecord.dto.CallOriginateResponse;
+import uz.murodjon.uysotvoice.callrecord.dto.LiveCallRow;
+import uz.murodjon.uysotvoice.callrecord.dto.PlayResponse;
+import uz.murodjon.uysotvoice.callrecord.dto.SayResponse;
 import uz.murodjon.uysotvoice.callrecord.service.CallFinalizer;
 import uz.murodjon.uysotvoice.callrecord.service.CallRecordService;
-import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
+import uz.murodjon.uysotvoice.campaign.dto.Campaign;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
+import uz.murodjon.uysotvoice.company.service.CurrentCompany;
+import uz.murodjon.uysotvoice.crm.dto.CrmClientSnapshot;
+import uz.murodjon.uysotvoice.crm.service.CrmClient;
 import uz.murodjon.uysotvoice.dialer.dto.OutboundCall;
+import uz.murodjon.uysotvoice.dialer.service.CallContextMapper;
 import uz.murodjon.uysotvoice.dialer.service.DialerState;
 import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
 import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
+import uz.murodjon.uysotvoice.inbound.dto.InboundRoute;
+import uz.murodjon.uysotvoice.inbound.service.InboundRouteService;
 import uz.murodjon.uysotvoice.live.config.LiveProperties;
 import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
+import uz.murodjon.uysotvoice.notification.enums.NotificationType;
+import uz.murodjon.uysotvoice.notification.service.NotificationService;
 import uz.murodjon.uysotvoice.operator.config.OperatorProperties;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
+import uz.murodjon.uysotvoice.scenario.dto.Scenario;
+import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
+import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
+import uz.murodjon.uysotvoice.siptrunk.service.SipTrunkService;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -107,6 +129,8 @@ public class AriService {
     private static final int MAX_SAY_CHARS = 1000;
     /** {@code PJSIP/<endpoint>-<seq>} -> group 1 is the endpoint (§10.5 "Texnik" tab trunk). */
     private static final Pattern TRUNK_FROM_CHANNEL_NAME = Pattern.compile("PJSIP/(.+)-[0-9a-fA-F]+");
+    /** {@link #pendingManualScenarios} sentinel: a manual call with no explicit {@code scenarioId}. */
+    private static final long NO_EXPLICIT_SCENARIO = 0L;
 
     private final AsteriskProperties props;
     private final RtpProperties rtpProps;
@@ -126,6 +150,11 @@ public class AriService {
     private final OutboundCallRegistry outboundRegistry;
     private final DialerState dialerState;
     private final CampaignService campaignService;
+    private final ScenarioService scenarioService;
+    private final InboundRouteService inboundRouteService;
+    private final SipTrunkService sipTrunkService;
+    private final CurrentCompany currentCompany;
+    private final CrmClient crmClient;
     private final OperatorProperties operatorProps;
     private final VoiceMetrics metrics;
     private final CallRouteRegistry routeRegistry;
@@ -133,8 +162,26 @@ public class AriService {
     private final AuditService audit;
     private final LiveBroadcastService broadcast;
     private final LiveProperties liveProps;
+    private final Clock clock;
+    private final NotificationService notificationService;
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * A manual test call's chosen scenario (ROADMAP A.3, {@code POST /api/calls?
+     * scenarioId=}), correlated by channel id between {@link #originateManualCall} and
+     * the {@code StasisStart} that follows it — mirrors how {@link OutboundCallRegistry}
+     * correlates an outbound call to its context.
+     */
+    private final Map<String, Long> pendingManualScenarios = new ConcurrentHashMap<>();
+
+    /**
+     * An ad-hoc (unsaved) scenario draft to test-drive (backend-uchun-talablar.md §4,
+     * {@code POST /api/calls/test}), correlated by channel id the same way {@link
+     * #pendingManualScenarios} is. Checked first in {@link #resolveManualScenario} — a
+     * channel here never also has a real {@code pendingManualScenarios} entry.
+     */
+    private final Map<String, ScenarioDefinition> pendingManualDefinitions = new ConcurrentHashMap<>();
 
     /**
      * Q.850 hangup cause per channel, as Asterisk reports it (§8.6). Kept alongside the
@@ -165,13 +212,20 @@ public class AriService {
                       OutboundCallRegistry outboundRegistry,
                       DialerState dialerState,
                       CampaignService campaignService,
+                      ScenarioService scenarioService,
+                      InboundRouteService inboundRouteService,
+                      SipTrunkService sipTrunkService,
+                      CurrentCompany currentCompany,
+                      CrmClient crmClient,
                       OperatorProperties operatorProps,
                       VoiceMetrics metrics,
                       CallRouteRegistry routeRegistry,
                       DoNotCallRepository doNotCallRepository,
                       AuditService audit,
                       LiveBroadcastService broadcast,
-                      LiveProperties liveProps) {
+                      LiveProperties liveProps,
+                      Clock clock,
+                      NotificationService notificationService) {
         this.props = props;
         this.rtpProps = rtpProps;
         this.portAllocator = portAllocator;
@@ -190,6 +244,11 @@ public class AriService {
         this.outboundRegistry = outboundRegistry;
         this.dialerState = dialerState;
         this.campaignService = campaignService;
+        this.scenarioService = scenarioService;
+        this.inboundRouteService = inboundRouteService;
+        this.sipTrunkService = sipTrunkService;
+        this.currentCompany = currentCompany;
+        this.crmClient = crmClient;
         this.operatorProps = operatorProps;
         this.metrics = metrics;
         this.routeRegistry = routeRegistry;
@@ -197,6 +256,8 @@ public class AriService {
         this.audit = audit;
         this.broadcast = broadcast;
         this.liveProps = liveProps;
+        this.clock = clock;
+        this.notificationService = notificationService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -206,6 +267,11 @@ public class AriService {
             return;
         }
         try {
+            // Asterisk 20 sends event fields (e.g. ChannelDestroyed.tech_cause) that this
+            // pinned ari4java version's generated ARI 8.0.0 models don't declare — without
+            // this, Jackson's default FAIL_ON_UNKNOWN_PROPERTIES throws on every such event
+            // and the websocket callback never runs.
+            BaseAriAction.setObjectMapperLessStrict();
             // IM_FEELING_LUCKY negotiates the ARI version with Asterisk automatically.
             ari = ARI.build(props.ariUrl(), props.appName(), props.ariUser(), props.ariPassword(),
                     AriVersion.IM_FEELING_LUCKY);
@@ -240,30 +306,45 @@ public class AriService {
     }
 
     /**
-     * Places an outbound call to {@code number} and routes it into the Stasis app.
-     *
-     * <p>The number decides which PJSIP endpoint carries the call: short internal
-     * numbers go to the local test softphone, everything else to the trunk. See
-     * {@link #endpointFor(String)}.
+     * As {@link #originate(String, long)}, for a caller with no campaign in hand (the
+     * manual/test call API) — uses {@link CurrentCompany}, the same company every
+     * other unscoped request in this process resolves to today.
      *
      * @return the created channel id
      */
     public String originate(String rawNumber) {
+        return originate(rawNumber, currentCompany.id());
+    }
+
+    /**
+     * Places an outbound call to {@code number} and routes it into the Stasis app.
+     *
+     * <p>The number decides which PJSIP endpoint carries the call: short internal
+     * numbers go to the local test softphone, everything else to {@code companyId}'s
+     * default SIP trunk (ROADMAP B.3). See {@link #endpointFor(String, SipTrunk)}.
+     *
+     * @param companyId whose trunk carries the call — the dialer passes the dialled
+     *                  campaign's own company, not necessarily the caller's
+     * @return the created channel id
+     */
+    public String originate(String rawNumber, long companyId) {
         // Both callers (the REST API and the dialer's campaign targets) supply
         // untrusted text that lands inside the dial string, so validate here — one
         // place covers every dial path (§A3).
         String number = PhoneNumbers.require(rawNumber);
         ARI current = requireConnection();
         String callId = "call-" + System.currentTimeMillis();
-        String endpoint = endpointFor(number);
+        SipTrunk trunk = isLocalNumber(number) ? null : sipTrunkService.findDefaultForCall(companyId);
+        String endpoint = endpointFor(number, trunk);
+        String callerId = callerIdFor(trunk);
         try {
             var request = current.channels()
                     .originate("PJSIP/" + number + "@" + endpoint)
                     .setApp(props.appName())
                     .setAppArgs(callId)
                     .setTimeout(props.answerTimeoutSec());
-            if (props.callerId() != null && !props.callerId().isBlank()) {
-                request.setCallerId(props.callerId());
+            if (callerId != null && !callerId.isBlank()) {
+                request.setCallerId(callerId);
             }
             Channel channel = request.execute();
             log.info("Originated call {} to {} via {} -> channel {}", callId, number, endpoint, channel.getId());
@@ -278,27 +359,80 @@ public class AriService {
      * As {@link #originate(String)}, for a manual/test call placed through the REST API —
      * also records the audit entry, since a manual call to a real subscriber is exactly the
      * action someone will later need to account for (§11).
+     *
+     * @param scenarioId scenario to test-drive this call with (ROADMAP A.3/A.4 "sinov
+     *                   rejimi"), or {@code null} for the configured default
      */
-    public CallOriginateResponse originateManualCall(String number) {
+    public CallOriginateResponse originateManualCall(String number, Long scenarioId) {
+        if (scenarioId != null) {
+            // Validated up front (404 if unknown) so a bad id fails the request instead
+            // of surfacing later as a StasisStart that silently falls back to the default.
+            scenarioService.requireScenario(scenarioId);
+        }
         String channelId = originate(number);
+        // Always registered — 0 is the "no explicit scenario, use the configured
+        // default" sentinel. This also marks the channel as ours: setupMedia (ROADMAP
+        // C.1) tells a genuine inbound call apart from a manual one precisely by
+        // whether this map has an entry for it, so every manual origination must
+        // register here regardless of whether a scenarioId was given.
+        pendingManualScenarios.put(channelId, scenarioId != null ? scenarioId : NO_EXPLICIT_SCENARIO);
         audit.record("CALL_ORIGINATE_MANUAL", "call", channelId, number);
         return new CallOriginateResponse(number, channelId);
     }
 
     /**
-     * Chooses the PJSIP endpoint for {@code number}: the local test softphone when the
-     * number looks internal (matches {@code localNumberPattern}), otherwise the trunk.
-     * Local routing is skipped entirely when either property is left blank.
+     * As {@link #originateManualCall}, but test-drives an ad-hoc, unsaved scenario draft
+     * (backend-uchun-talablar.md §4) instead of a saved {@code scenarioId} — lets a
+     * scenario editor try a call against the form's current, possibly-dirty state
+     * without saving first. {@code definition} is the caller's responsibility to have
+     * validated ({@code CallService.originateTestCall} does, via {@code
+     * ScenarioService#validate}); nothing here persists it.
      */
-    private String endpointFor(String number) {
+    public CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition) {
+        String channelId = originate(number);
+        pendingManualDefinitions.put(channelId, definition);
+        audit.record("CALL_ORIGINATE_TEST", "call", channelId, number);
+        return new CallOriginateResponse(number, channelId);
+    }
+
+    /**
+     * Whether {@code number} looks internal (matches {@code localNumberPattern}) and
+     * should go to the local test softphone rather than any company's trunk — a dev/test
+     * convenience that stays global, independent of ROADMAP B.3's per-company trunks.
+     * Skipped entirely when either property is left blank.
+     */
+    private boolean isLocalNumber(String number) {
         String local = props.localEndpoint();
         String pattern = props.localNumberPattern();
-        if (local != null && !local.isBlank()
+        return local != null && !local.isBlank()
                 && pattern != null && !pattern.isBlank()
-                && number != null && number.matches(pattern)) {
-            return local;
+                && number != null && number.matches(pattern);
+    }
+
+    /**
+     * The PJSIP endpoint for {@code number} (ROADMAP B.3): the local test softphone for
+     * an internal-looking number, otherwise {@code trunk}'s endpoint, falling back to
+     * the globally configured {@code voice-agent.asterisk.trunk-endpoint} when the
+     * company has no enabled default trunk (e.g. not yet migrated to the {@code
+     * sip_trunk} table, or newly created and not configured yet).
+     */
+    private String endpointFor(String number, SipTrunk trunk) {
+        if (isLocalNumber(number)) {
+            return props.localEndpoint();
         }
-        return props.trunkEndpoint();
+        return trunk != null ? trunk.pjsipEndpoint() : props.trunkEndpoint();
+    }
+
+    /**
+     * Caller id to present, in priority order (ROADMAP B.3): the trunk's own override,
+     * then the global {@code voice-agent.asterisk.caller-id}. {@code trunk} is {@code
+     * null} for a local test call, which never needs a caller id override.
+     */
+    private String callerIdFor(SipTrunk trunk) {
+        if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
+            return trunk.callerId();
+        }
+        return props.callerId();
     }
 
     /** {@code PJSIP/<endpoint>-<seq>} channel name -> {@code <endpoint>}, for the "Texnik" tab (§10.5). */
@@ -416,6 +550,53 @@ public class AriService {
     }
 
     /**
+     * "Tinglash" (§10.3) — a live WAV stream of {@code channelId}'s mixed caller+bot
+     * audio, for an operator joining an in-progress call. Several operators may call
+     * this for the same channel at once; each gets an independent subscription torn
+     * down when its own HTTP connection closes, not when another operator's does.
+     *
+     * <p>The stream has no known end, so the WAV header declares a placeholder size
+     * rather than a real one — browsers and players tolerate this for progressive
+     * playback. It ends only when the operator disconnects or the call itself tears
+     * down ({@link LiveAudioMonitor#EOF}).
+     *
+     * @throws ConflictException if the channel is not an active call
+     */
+    public StreamingResponseBody listen(String channelId) {
+        CallSession session = sessions.get(channelId);
+        if (session == null) {
+            throw new ConflictException("No active call for channel " + channelId);
+        }
+        LiveAudioMonitor monitor = session.audioMonitor();
+        return output -> {
+            BlockingQueue<byte[]> queue = monitor.subscribe();
+            try {
+                output.write(WavHeader.bytes(SAMPLE_RATE, Integer.MAX_VALUE - WavHeader.SIZE));
+                output.flush();
+                while (true) {
+                    byte[] chunk;
+                    try {
+                        chunk = queue.poll(1, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    if (chunk == null) {
+                        continue; // nothing new this second; keep the connection open
+                    }
+                    if (chunk == LiveAudioMonitor.EOF) {
+                        break;
+                    }
+                    output.write(chunk);
+                    output.flush();
+                }
+            } finally {
+                monitor.unsubscribe(queue);
+            }
+        };
+    }
+
+    /**
      * Every call still in conversation, for {@code GET /api/calls/live} (§10.2/§10.3
      * UI-DESIGN.md "Jonli qo'ng'iroqlar"). Joins the dialog engine's live sessions with
      * the outbound registry to add the campaign and phone number — a manual/test call
@@ -434,7 +615,7 @@ public class AriService {
         String phone = outbound != null ? outbound.phone() : null;
         String campaignName = null;
         if (campaignId != null) {
-            CampaignRow campaign = campaignService.getCampaign(campaignId);
+            Campaign campaign = campaignService.getCampaign(campaignId);
             campaignName = campaign != null ? campaign.name() : null;
         }
         return new LiveCallRow(s.channelId(), phone, s.clientName(), campaignId, campaignName,
@@ -458,7 +639,7 @@ public class AriService {
             return;
         }
         log.info("StasisStart: channel {} ({}) args {}", channelId, name, args);
-        callExecutor.execute(() -> withMdc(channelId, () -> setupMedia(channelId, name)));
+        callExecutor.execute(() -> withMdc(channelId, () -> setupMedia(channelId, name, channel)));
     }
 
     /** Run {@code body} with the call id in the logging context (structured logging §12). */
@@ -493,6 +674,8 @@ public class AriService {
                     .execute();
             log.info("Transferring {} to operator {} (bridge {})",
                     channelId, operatorProps.endpoint(), session.bridgeId());
+            notificationService.notify(currentCompany.id(), NotificationType.OPERATOR_REQUEST,
+                    "Operatorga so'rov", "Qo'ng'iroq " + channelId + " operatorga uzatildi", null);
         } catch (Exception e) {
             log.error("Operator transfer failed for {}: {}", channelId, e.getMessage());
             hangup(channelId);
@@ -522,7 +705,32 @@ public class AriService {
         }
     }
 
-    private void setupMedia(String channelId, String channelName) {
+    private void setupMedia(String channelId, String channelName, Channel channel) {
+        // ROADMAP C.1: classify the call before touching any RTP resources, so an
+        // inbound call to an unmatched/disabled DID costs nothing (no port, no WAV file).
+        OutboundCall outbound = outboundRegistry.peek(channelId);
+        boolean manual = pendingManualScenarios.containsKey(channelId) || pendingManualDefinitions.containsKey(channelId);
+        InboundRoute inboundRoute = null;
+        if (outbound == null && !manual) {
+            String did = extractDid(channel);
+            inboundRoute = inboundRouteService.resolveByDid(did);
+            if (inboundRoute == null || !withinBusinessHours(inboundRoute)) {
+                // A matched-but-closed route gets to say why before the line drops
+                // (fallbackMessage); an unmatched DID has nothing to say it with.
+                if (inboundRoute != null && inboundRoute.fallbackMessage() != null
+                        && !inboundRoute.fallbackMessage().isBlank()) {
+                    log.info("Inbound call {} to {} outside business hours; playing fallback message",
+                            channelId, did);
+                    playFallbackAndHangup(channelId, inboundRoute);
+                } else {
+                    log.info("Inbound call {} to {} not answered by AI: {}", channelId, did,
+                            inboundRoute == null ? "no matching route" : "outside business hours");
+                    hangup(channelId);
+                }
+                return;
+            }
+        }
+
         ARI current = requireConnection();
         int port = portAllocator.allocate();
         RtpEndpoint endpoint = null;
@@ -534,13 +742,16 @@ public class AriService {
             Path wav = Path.of(rtpProps.recordingDir(), channelId.replace('/', '_') + ".wav");
             WavRecorder recorder = new WavRecorder(wav, SAMPLE_RATE);
 
-            // Stage 10: outbound campaign call carries its target + real facts; otherwise
-            // this is a manual/test call and uses the placeholder target + test context.
-            OutboundCall outbound = outboundRegistry.peek(channelId);
+            // Stage 10: outbound campaign call carries its target + real facts; manual
+            // test calls use the placeholder target + test context; inbound calls (ROADMAP
+            // C.1/C.2) use their own placeholder target + the matched route's scenario,
+            // with the caller's number resolved against the CRM (best-effort) for facts.
             long targetId;
             String language;
             String ttsVoice;
             CallContext context;
+            Scenario scenarioRow;
+            boolean disclosureEnabled;
             if (outbound != null) {
                 outboundRegistry.markAnswered(channelId);
                 targetId = outbound.targetId();
@@ -549,19 +760,41 @@ public class AriService {
                 // than inheriting the manual-call voice (§2.5).
                 ttsVoice = outbound.ttsVoice();
                 context = outbound.context();
-            } else {
+                scenarioRow = scenarioService.requireScenario(outbound.scenarioId());
+                disclosureEnabled = outbound.disclosureEnabled();
+            } else if (manual) {
                 targetId = callRecordService.manualTargetId();
                 language = dialogProps.language();
                 ttsVoice = dialogProps.ttsVoice();
-                context = buildTestContext();
+                scenarioRow = resolveManualScenario(channelId);
+                context = buildTestContext(scenarioRow.definition());
+                disclosureEnabled = true;
+            } else {
+                targetId = callRecordService.inboundTargetId();
+                language = inboundRoute.language();
+                ttsVoice = null;
+                scenarioRow = scenarioService.requireScenario(inboundRoute.scenarioId());
+                disclosureEnabled = true;
+                // Do-not-call is deliberately not consulted here (ROADMAP C.2): it
+                // applies to outbound dialling, not to answering someone who calls in.
+                String callerNumber = extractCallerNumber(channel);
+                CrmClientSnapshot crm = callerNumber != null
+                        ? crmClient.findByPhone(currentCompany.id(), callerNumber) : null;
+                context = CallContextMapper.merge(new CallContext(Map.of(), null), crm);
             }
 
             // Stage 9: open a call_attempt so transcripts/result can be persisted.
             Instant startedAt = Instant.now();
-            attemptId = callRecordService.startAttempt(targetId, channelId, language);
+            attemptId = callRecordService.startAttempt(targetId, channelId, language,
+                    inboundRoute != null ? inboundRoute.id() : null);
 
-            endpoint = new RtpEndpoint(port, recorder,
-                    buildAudioListeners(channelId, attemptId, startedAt, language));
+            // Mixes caller+bot audio for operator "listen in" (§10.3) — registered as one
+            // more caller-side AudioListener below, and tapped separately for the bot's
+            // outgoing frames since those never pass through the inbound fan-out.
+            LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
+            List<AudioListener> audioListeners = buildAudioListeners(channelId, attemptId, startedAt, language);
+            audioListeners.add(audioMonitor);
+            endpoint = new RtpEndpoint(port, recorder, audioListeners, audioMonitor::onBotAudio);
             endpoint.start(rtpEventLoopGroup);
 
             // externalMedia: Asterisk sends the caller's audio to our listener (PROJECT.md §8.4).
@@ -578,7 +811,8 @@ public class AriService {
             current.bridges().addChannel(bridge.getId(), channelId + "," + extMedia.getId()).execute();
 
             sessions.put(channelId, new CallSession(channelId, extMedia.getId(), bridge.getId(),
-                    port, endpoint, attemptId, startedAt, wav.toString(), channelName, trunkOf(channelName)));
+                    port, endpoint, attemptId, startedAt, wav.toString(), channelName, trunkOf(channelName),
+                    scenarioRow.id(), audioMonitor));
             log.info("Media ready for {}: rtpPort={}, extMedia={}, bridge={}, wav={}, attempt={}",
                     channelId, port, extMedia.getId(), bridge.getId(), wav, attemptId);
 
@@ -594,10 +828,13 @@ public class AriService {
             }
 
             // Stage 7: start the LLM dialog (bot greets and drives the conversation).
-            // Outbound campaign calls always run dialog; inbound/manual only if auto-start.
-            if (dialogProps.enabled() && (dialogProps.autoStart() || outbound != null)) {
-                dialogEngine.startCall(channelId, endpoint, context, language, ttsVoice,
-                        () -> hangup(channelId), () -> transferToOperator(channelId), attemptId);
+            // Outbound campaign calls and routed inbound calls (ROADMAP C.1 — reaching
+            // here means a route matched) always run dialog; manual test calls only if
+            // voice-agent.dialog.auto-start is on.
+            boolean startDialog = !manual || dialogProps.autoStart();
+            if (dialogProps.enabled() && startDialog) {
+                dialogEngine.startCall(channelId, endpoint, context, scenarioRow.definition(), language, ttsVoice,
+                        disclosureEnabled, () -> hangup(channelId), () -> transferToOperator(channelId), attemptId);
             }
         } catch (Exception e) {
             log.error("Failed to set up media for {}: {}", channelId, e.getMessage(), e);
@@ -726,20 +963,168 @@ public class AriService {
         callExecutor.execute(() -> withMdc(channelId, () -> hangup(channelId)));
     }
 
-    private CallContext buildTestContext() {
+    /**
+     * The scenario a manual test call (no {@link OutboundCall}) runs, in priority order:
+     * (1) an ad-hoc unsaved draft from {@link #originateTestCall}, wrapped in a synthetic,
+     * never-persisted {@link Scenario} row (id 0 — nothing downstream writes it back);
+     * (2) whatever {@code POST /api/calls?scenarioId=} asked for, correlated by channel id
+     * (see {@link #originateManualCall(String, Long)}); (3) otherwise the configured
+     * default test scenario key, preserving today's manual-call behavior when nothing is
+     * chosen.
+     */
+    private Scenario resolveManualScenario(String channelId) {
+        ScenarioDefinition adHoc = pendingManualDefinitions.remove(channelId);
+        if (adHoc != null) {
+            return new Scenario(0, "adhoc-test-call", 0, "Ad-hoc test call", null, false, false, adHoc,
+                    Instant.now(), null);
+        }
+        Long requested = pendingManualScenarios.remove(channelId);
+        return requested != null && requested != NO_EXPLICIT_SCENARIO
+                ? scenarioService.requireScenario(requested)
+                : scenarioService.requireScenarioByKey(defaultTestScenarioKey());
+    }
+
+    private String defaultTestScenarioKey() {
+        TestContextProperties t = dialogProps.testContext();
+        return t != null ? t.scenarioKey() : "debt-collection";
+    }
+
+    /**
+     * The dialled number for an inbound call (ROADMAP C.1) — the dialplan extension the
+     * channel was executing when it entered Stasis, which is the DID under the
+     * conventional Asterisk dialplan shape {@code exten => <DID>,1,Stasis(app)}. Falls
+     * back to the PJSIP trunk name if the dialplan info is unavailable, so a route can
+     * still be configured per-trunk even when a dialplan doesn't preserve the DID.
+     */
+    private String extractDid(Channel channel) {
+        if (channel != null && channel.getDialplan() != null && channel.getDialplan().getExten() != null
+                && !channel.getDialplan().getExten().isBlank()) {
+            return channel.getDialplan().getExten();
+        }
+        return channel != null ? trunkOf(channel.getName()) : null;
+    }
+
+    /** The caller's phone number (ROADMAP C.2), or {@code null} if Asterisk didn't report one. */
+    private static String extractCallerNumber(Channel channel) {
+        if (channel == null || channel.getCaller() == null) {
+            return null;
+        }
+        String number = channel.getCaller().getNumber();
+        return number != null && !number.isBlank() ? number : null;
+    }
+
+    /**
+     * Answers a call outside {@code route}'s business hours just long enough to speak
+     * {@code route.fallbackMessage()} (§10.9/§3.3), then hangs up. No dialog, no
+     * {@code call_attempt} row, no live-session entry — this is a courtesy message to
+     * someone the AI is not going to talk to, not an answered conversation.
+     */
+    private void playFallbackAndHangup(String channelId, InboundRoute route) {
+        if (!ttsProps.enabled()) {
+            log.warn("TTS disabled; cannot play fallback message for {}", channelId);
+            hangup(channelId);
+            return;
+        }
+        ARI current = requireConnection();
+        int port = portAllocator.allocate();
+        RtpEndpoint endpoint = null;
+        try {
+            answer(channelId);
+
+            Files.createDirectories(Path.of(rtpProps.recordingDir()));
+            Path wav = Path.of(rtpProps.recordingDir(), channelId.replace('/', '_') + "-fallback.wav");
+            endpoint = new RtpEndpoint(port, new WavRecorder(wav, SAMPLE_RATE), List.of());
+            endpoint.start(rtpEventLoopGroup);
+
+            Channel extMedia = current.channels()
+                    .externalMedia(props.appName(), rtpProps.localIp() + ":" + port, "ulaw")
+                    .setEncapsulation("rtp")
+                    .setTransport("udp")
+                    .execute();
+            pointPlaybackAt(current, extMedia.getId(), endpoint);
+
+            Bridge bridge = current.bridges().create().setType("mixing").execute();
+            current.bridges().addChannel(bridge.getId(), channelId + "," + extMedia.getId()).execute();
+
+            String language = route.language() != null && !route.language().isBlank()
+                    ? route.language() : ttsProps.defaultLanguage();
+            short[] pcm = ttsRouter.synthesize(route.fallbackMessage(), language, null);
+            endpoint.playPcm(pcm);
+            awaitPlaybackDone(endpoint, pcm.length);
+
+            current.channels().hangup(extMedia.getId()).execute();
+            current.bridges().destroy(bridge.getId()).execute();
+        } catch (Exception e) {
+            log.warn("Failed to play fallback message for {}: {}", channelId, e.getMessage());
+        } finally {
+            if (endpoint != null) {
+                endpoint.close();
+            }
+            portAllocator.release(port);
+            hangup(channelId);
+        }
+    }
+
+    /**
+     * Blocks the calling (virtual) thread until {@code endpoint} finishes playing
+     * {@code sampleCount} samples, or a safety timeout elapses — {@link RtpEndpoint#playPcm}
+     * only queues the audio, it does not wait for the pacer to drain it.
+     */
+    private void awaitPlaybackDone(RtpEndpoint endpoint, int sampleCount) {
+        long budgetMs = sampleCount * 1000L / SAMPLE_RATE + 2000;
+        long deadline = System.currentTimeMillis() + budgetMs;
+        while (endpoint.isPlaying() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    /** Whether {@code route} may answer right now; null start/end on either side means "always". */
+    private boolean withinBusinessHours(InboundRoute route) {
+        LocalTime start = route.businessHoursStart();
+        LocalTime end = route.businessHoursEnd();
+        if (start == null || end == null) {
+            return true;
+        }
+        LocalTime now = LocalTime.now(clock);
+        return !now.isBefore(start) && now.isBefore(end);
+    }
+
+    /** Builds the test facts a manual call states, matched against {@code scenario}'s factSchema. */
+    private CallContext buildTestContext(ScenarioDefinition scenario) {
         TestContextProperties t = dialogProps.testContext();
         if (t == null) {
-            return new CallContext(null, null, null, null, null, null);
+            return new CallContext(Map.of(), null);
         }
-        LocalDate due = null;
+        Map<String, Object> facts = new HashMap<>();
+        putIfDeclared(facts, scenario, "clientName", t.clientName());
+        putIfDeclared(facts, scenario, "debtAmount", t.debtAmount());
+        putIfDeclared(facts, scenario, "currency", t.currency());
+        putIfDeclared(facts, scenario, "contractNumber", t.contractNumber());
         if (t.dueDate() != null && !t.dueDate().isBlank()) {
             try {
-                due = LocalDate.parse(t.dueDate());
+                putIfDeclared(facts, scenario, "dueDate", LocalDate.parse(t.dueDate()));
             } catch (Exception e) {
                 log.warn("Invalid voice-agent.dialog.test-context.due-date '{}': {}", t.dueDate(), e.getMessage());
             }
         }
-        return new CallContext(t.clientName(), t.debtAmount(), t.currency(), due, t.contractNumber(), t.goal());
+        return new CallContext(facts, t.goal());
+    }
+
+    /** Only sets {@code value} if {@code scenario}'s factSchema actually declares {@code factName}. */
+    private static void putIfDeclared(Map<String, Object> facts, ScenarioDefinition scenario,
+                                      String factName, Object value) {
+        if (value == null || scenario.factSchema() == null) {
+            return;
+        }
+        boolean declared = scenario.factSchema().stream().anyMatch(f -> f.name().equals(factName));
+        if (declared) {
+            facts.put(factName, value);
+        }
     }
 
     /** Note the cause Asterisk reported for a channel, keeping the first one seen. */
@@ -871,7 +1256,7 @@ public class AriService {
 
         // Stage 9: upload recording, summarize, write result + CRM note (WAV now finalized).
         if (session.callAttemptId() != 0) {
-            callFinalizer.finalizeCall(session.callAttemptId(), clientId,
+            callFinalizer.finalizeCall(session.callAttemptId(), clientId, session.scenarioId(),
                     Path.of(session.wavPath()), session.startedAt(), disposition,
                     session.channelName(), session.trunk(), technical);
         }

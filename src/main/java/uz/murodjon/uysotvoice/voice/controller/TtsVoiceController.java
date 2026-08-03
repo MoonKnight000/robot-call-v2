@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
-import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 
 import java.util.List;
 
@@ -23,5 +23,5 @@ public interface TtsVoiceController {
      *                 language only offers voices that can speak it
      */
     @GetMapping("/voices")
-    ResponseEntity<ResponseData<List<TtsVoiceRow>>> voices(@RequestParam(required = false) String language);
+    ResponseEntity<ResponseData<List<TtsVoice>>> voices(@RequestParam(required = false) String language);
 }

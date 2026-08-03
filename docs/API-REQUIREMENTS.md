@@ -1,16 +1,18 @@
 # API talablari — Nido paneli uchun
 
 > **Bu hujjat nima?** `UI-DESIGN.md` dagi har bir ekranni ishga tushirish uchun kerak
-> bo'ladigan backend API'larning ro'yxati. Hozirgi kodga (2026-08-01 holati) qarab
+> bo'ladigan backend API'larning ro'yxati. Hozirgi kodga (2026-08-02 holati) qarab
 > har biri belgilangan: ✅ **mavjud**, ⚠️ **qisman mavjud** (kengaytirish kerak), ❌ **yo'q**
 > (yangidan yozish kerak). Barcha yangi/o'zgargan endpoint proyekt standarti bo'yicha
 > `ResponseData<T>` / paginatsiyada `PageableData<T>` qaytarishi shart (§ ilgari
-> qo'shilgan `shared.api` paketi).
+> qo'shilgan `shared.api` paketi). **To'liq ✅ bo'lgan bo'limlar bu yerda bir qatorga
+> qisqartirilgan** — endpoint darajasidagi to'liq tafsilot uchun `docs/api/*.md`ga
+> qarang; bu hujjat faqat qolgan (⚠️/❌) ishni ko'rsatadi.
 
-**Qisqacha holat:** hozirgi API kampaniya/qo'ng'iroq/hisobot MVP'sini yopadi (0–12
-bosqich, ROADMAP.md). Panel dizayni esa foydalanuvchi/kompaniya/ssenariy/kontakt/
-kiruvchi-marshrut/billing kabi ROADMAP'dagi **hali qo'lga olinmagan bosqichlar**ni
-ham chizadi — shuning uchun ro'yxatning katta qismi ❌.
+**Qisqacha holat:** UI-DESIGN'dagi deyarli barcha ekran uchun API tayyor (0–15 bo'lim,
+ROADMAP Bosqich A/B/C/E.1). Ochiq qolgan yagona katta blok — **Bosqich D (Uysot OAuth)**
+va **Bosqich E.3/E.4 (billing, to'liq boshqaruv paneli)** — ular hali boshlanmagan.
+Qolgani mayda ⚠️ kengaytirishlar (pastga qarang).
 
 ---
 
@@ -75,16 +77,14 @@ belgilangan va controller interfeysida `@Valid` orqali ulangan (`spring-boot-sta
 
 ## 0. Kesib o'tuvchi (cross-cutting) — hamma ekranga kerak
 
+✅ Bajarilgan: **0.1** login, **0.2** logout, **0.3** joriy foydalanuvchi, **0.5** kompaniya
+tanlagich, **0.6** qidiruv, **0.7** jonli SSE oqimi — [auth.md](api/auth.md),
+[companies.md](api/companies.md), [search.md](api/search.md), [live.md](api/live.md).
+
 | # | Endpoint | Holat | Izoh |
 |---|----------|-------|------|
-| 0.1 | `POST /api/auth/login` | ❌ | Login sahifasi (§10.1). Hozir faqat `X-Api-Key` bor, sessiya/JWT yo'q — ROADMAP E.1. |
-| 0.2 | `POST /api/auth/logout` | ❌ | Xodim kartochkasi "Chiqish" (§8.2). |
-| 0.3 | `GET /api/auth/me` | ❌ | Joriy foydalanuvchi: ism, rol, avatar, kompaniya(lar) — sidebar, xodim kartochkasi, topbar uchun asos. |
-| 0.4 | `POST /api/auth/uysot/callback` | ❌ | "Uysot bilan kirish" (§10.1, ROADMAP D.2, OAuth). |
-| 0.5 | `GET /api/companies` | ❌ | Kompaniya tanlagich (§7.3) — ROADMAP Bosqich B (`company` jadvali) qilinmaguncha bitta "default" kompaniya bilan stub qilinadi. |
-| 0.6 | `GET /api/search?q=` | ❌ | Command palette (§11.9) — sahifa/kampaniya/qo'ng'iroq bo'yicha qidiruv. |
-| 0.7 | `GET /api/live/stream` (SSE) | ✅ | Jonli KPI (`KPI`), jonli qo'ng'iroqlar ro'yxati (`LIVE_CALLS`), transkript qatorlari (`TRANSCRIPT`), audio-daraja (`AUDIO_LEVEL`, ⚙ o'chirilgan holatda), bildirishnoma (`NOTIFICATION`) — barchasi `live.LiveEventType` bo'yicha bitta oqimda. `ResponseData` bilan o'ralmaydi (event-stream formati talabi). "Ulanish uzildi" holati serverdan push qilinmaydi — standart `EventSource` `onerror`/qayta-ulanish + 15s heartbeat orqali klient aniqlaydi. |
-| 0.8 | `GET /api/notifications`, `POST /api/notifications/{id}/read` | ❌ | Topbar qo'ng'iroq ikonkasi (§9), popover'dagi bildirishnoma toggle'lari (§8.2). |
+| 0.4 | `POST /api/auth/uysot/callback` | ⚠️ | "Uysot bilan kirish" (§10.1, ROADMAP D.2, OAuth) — endpoint bor, lekin stub (`502`): Uysot OAuth kredensiallari hali yo'q. |
+| 0.8 | `GET /api/notifications`, `POST /api/notifications/{id}/read` | ⚠️ | Topbar qo'ng'iroq ikonkasi (§9), popover'dagi bildirishnoma toggle'lari (§8.2) — [notifications.md](api/notifications.md). Ikki turi ulangan (`OPERATOR_REQUEST`, `ERROR_OCCURRED`); `CAMPAIGN_FINISHED`/`DAILY_REPORT` uchun producer hali yo'q. |
 
 ---
 
@@ -96,135 +96,77 @@ Faqat 0.1/0.3/0.4 kerak. Boshqa hech narsa yo'q (statik dizayn sahifasi).
 
 ## 2. Boshqaruv paneli (Dashboard) — §10.2
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `GET /api/campaigns` (status=ACTIVE filtri) | ✅ | Faol kampaniyalar bloki uchun ishlatsa bo'ladi — filtr parametri qo'shish kifoya (⚠️: hozir status bo'yicha filtr yo'q, faqat sort/paginatsiya bor). |
-| `POST /api/reports/calls/list` | ✅ | "Oxirgi qo'ng'iroqlar" jadvali. |
-| `GET /api/reports/dashboard/kpi?from=&to=&campaignId=` | ✅ | 4 ta KPI kartochkasi (jami qo'ng'iroq, javob %, o'rtacha davomiylik, va'da soni), har biri oldingi teng uzunlikdagi davrga nisbatan `changePct` va bucket'langan `sparkline` bilan (`DashboardKpi`/`DashboardMetric`, `ReportRepository.dashboardTotals`+`dashboardBuckets`). `from`/`to` — ISO-8601 instant, ikkalasi ham ixtiyoriy (standart: oxirgi 7 kun). |
-| `GET /api/reports/dashboard/timeseries?from=&to=&campaignId=` | ✅ | "Qo'ng'iroqlar dinamikasi" stacked-area grafik — `DashboardBucket` ro'yxati (`answered`/`noAnswer`/`error`), granularity avtomatik: ≤2 kun → soat, ≤62 kun → kun, undan katta → hafta (`DashboardRange.granularity()`). |
-| `GET /api/reports/dashboard/outcomes?from=&to=&campaignId=` | ✅ | "Natijalar taqsimoti" — davr bo'yicha (bucket'siz) `disposition → son` ro'yxati, ko'p sonidan kamiga saralangan. |
-| `GET /api/calls/live` | ✅ | "Jonli qo'ng'iroqlar" paneli (o'ng ustun) — §3 bilan bir xil ma'lumot, qisqartirilgan shakli. |
+✅ To'liq bajarilgan — 4 ta KPI kartochka (`changePct` + sparkline), dinamika grafik,
+natijalar taqsimoti, jonli qo'ng'iroqlar paneli. Yagona ochiq mayda band: faol
+kampaniyalar bloki uchun `GET /api/campaigns`da status filtri yo'q, faqat sort/paginatsiya
+bor. Batafsil: [reports.md](api/reports.md), [live.md](api/live.md).
 
 ---
 
 ## 3. Jonli qo'ng'iroqlar (monitoring) — §10.3
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `GET /api/calls/live` | ✅ | Har bir jonli qo'ng'iroq: channelId, telefon, mijoz ismi, kampaniya (id+nom), til, boshlanish vaqti, bosqich (dialogState). `DialogEngine.liveDialogs()` (in-memory sessiyalar) `OutboundCallRegistry`/`CampaignService` bilan `AriService.liveCalls()`da birlashtiriladi. Oxirgi transkript qatori hali yo'q (⚠️ — buning uchun jonli transkript oqimi kerak, pastga qarang). |
-| Live audio-daraja / to'lqin oqimi | ✅ | `GET /api/live/stream` dagi `AUDIO_LEVEL` event'i (§0.7) — channelId bo'yicha RMS daraja, ~5/sek throttling. `voice-agent.live.audio-level-enabled` bilan yoqiladi (standart holatda o'chiq). |
-| Live transkript oqimi | ✅ | `GET /api/live/stream` dagi `TRANSCRIPT` event'i (§0.7) — har bir CLIENT/AGENT qatori gapirilgan/tanilgan zahoti push qilinadi. |
-| `POST /api/calls` | ✅ | Qo'lda qo'ng'iroq boshlash (test/tekshiruv uchun ishlatilgan, kampaniyaga bog'liq emas). |
-| `POST /api/calls/{channelId}/say` | ✅ | — |
-| `POST /api/calls/{channelId}/transfer` | ❌ | "Operatorga uzatish" tugmasi. `AriService`da hozircha transfer yo'q. |
-| `POST /api/calls/{channelId}/hangup` | ❌ | "Tugatish" (danger, tasdiq bilan). Hozir dastur qo'ng'iroqni faqat o'zi tugatadi, tashqaridan majburiy tugatish endpointi yo'q. |
-| `GET /api/tts/voices` yoki audio proxy | ✅/❌ | "Tinglash" tugmasi (jonli qo'ng'iroqqa join qilib eshitish) — bu **live audio monitor** funksiyasi, hozir yo'q (faqat post-call recording bor, §10.5). |
+✅ To'liq bajarilgan — jonli ro'yxat, audio-daraja va transkript SSE oqimi, tinglash/
+uzatish/tugatish amallari. Batafsil: [live.md](api/live.md), [calls.md](api/calls.md).
 
 ---
 
 ## 4. Qo'ng'iroqlar (tarix) — §10.4
 
+✅ Asosiy jadval, eksport va ommaviy amal bajarilgan — [reports.md](api/reports.md).
+
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
-| `POST /api/reports/calls/list` | ✅ | Asosiy jadval — sahifalash/saralash + `CallFilter` orqali matn qidiruv (`q`), kampaniya, natija (`disposition`), sana oralig'i, davomiylik oralig'i filtri (`ReportRepository.appendCallFilterWhere`). |
-| `POST /api/reports/calls/export` | ✅ | "⇩ Eksport" tugmasi — CSV, `CallFilter` bilan bir xil filtrlanadi (`ids` berilsa faqat tanlangan qatorlar). |
-| `POST /api/reports/calls/bulk` (`retry` \| `dnc`, ids[]) | ✅ | Ommaviy amal paneli: "Qayta qo'ng'iroq", "DNC ro'yxatiga". Tanlangan qatorlar uchun eksport — yuqoridagi `export`ga `ids` berib qilinadi, alohida `bulk` action emas. |
-| Ustunlar sozlamasi (foydalanuvchi profilida saqlash) | ❌ | "Ustunlar ⚙" — client-side'da ham bo'lishi mumkin, lekin foydalanuvchilar orasida saqlanishi uchun profil API'siga bog'liq (§0.3). |
+| Ustunlar sozlamasi (foydalanuvchi profilida saqlash) | ⚠️ | "Ustunlar ⚙" — bloklovchi sabab (profil API yo'qligi) endi yo'q ([profile.md](api/profile.md), §15 ✅), lekin ustun-tanlovini saqlash uchun maxsus maydon/endpoint hali qo'shilmagan. Client-side (localStorage) bilan ham vaqtincha yopilishi mumkin. |
 
 ---
 
 ## 5. Qo'ng'iroq tafsiloti (drawer) — §10.5
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `GET /api/reports/calls/{callId}` | ✅ | Transkript + natija maydonlari (`CallDetail`) — "Transkript" va "Natija" tab'lari uchun yetarli. |
-| `GET /api/reports/calls/{callId}/recording` | ✅ | To'lqin pleyer audio manbai. |
-| **"Texnik" tab** uchun qo'shimcha maydonlar | ✅ | `CallDetail.technical()` (`CallTechnicalDetail`): kanal, trunk, AMD natijasi, STT/TTS provayder, LLM modeli, token sarfi, turn/LLM latency (`call_technical` jadvali, V2 migratsiya). Jadval qo'shilishidan oldingi qo'ng'iroqlar uchun `null`. |
-| `GET /api/reports/calls/{callId}/transcript.txt` | ✅ | "TXT yuklab olish" tugmasi — `TranscriptResponseFactory`. |
+✅ To'liq bajarilgan — transkript, natija, "Texnik" tab (`CallTechnicalDetail`), TXT
+yuklab olish. Batafsil: [reports.md](api/reports.md).
 
 ---
 
 ## 6. Kampaniyalar — §10.6
 
+✅ CRUD, arxivlash, start/pause, nishonlar (targets), CSV import, ssenariy bog'lash
+(`campaign.scenario_id`, ROADMAP A.3) bajarilgan — [campaigns.md](api/campaigns.md).
+
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
-| `POST /api/campaigns` | ✅ | — |
-| `GET /api/campaigns` | ✅ | Ro'yxat — kartochka grid uchun yetarli, lekin status bo'yicha filtr yo'q (⚠️). |
-| `GET /api/campaigns/{id}` | ✅ | — |
-| `PUT /api/campaigns/{id}` | ✅ | "Tahrirlash" tugmasi — to'liq konfiguratsiya yangilanadi (`UpdateCampaignRequest`). |
-| `DELETE /api/campaigns/{id}` (arxivlash) | ✅ | Kartochkadagi `⋯` menyusi — soft-archive (status `ARCHIVED`), nishonlar/qo'ng'iroqlar/transkriptlar saqlanadi. |
-| `POST /api/campaigns/{id}/start` \| `/pause` | ✅ | — |
-| `POST /api/campaigns/{id}/targets` \| `/targets/csv` | ✅ | Sehrgar 3-qadami ("Nishonlar"). |
-| `GET /api/campaigns/{id}/targets` | ✅ | "Nishonlar" tab'i, tafsilot sahifasida. |
 | CSV ustun moslashtirish oldindan ko'rish | ⚠️ | Hozirgi `addTargetsCsv` faylni to'g'ridan-to'g'ri import qiladi va xatolarni qaytaradi (`CsvImportResult`) — lekin dizayndagi "ustunni moslashtirib, keyin tasdiqlash" ikki bosqichli oqim emas, bitta so'rov. Kerak bo'lsa `POST /api/campaigns/{id}/targets/csv/preview` qo'shiladi. |
-| `POST /api/scenarios/list` | ✅ | Sehrgar 2-qadami ("Ssenariy tanlash") — §7 bilan bir xil, ROADMAP Bosqich A. Kampaniya hali `scenario_id`ga bog'lanmagan (⚠️ — A.3 keyingi bosqich). |
-| `GET /api/campaigns/{id}/calls` | ✅ | Tafsilot sahifasi "Qo'ng'iroqlar" tab'i. |
 
 ---
 
 ## 7. Ssenariylar — §10.7 (ROADMAP Bosqich A)
 
-**Saqlash + CRUD + validatsiya ✅ qo'shildi** (`scenario` paketi, V10/V11 migratsiya, 5 ta
-tayyor shablon seed qilingan: `debt-collection`, `lead-qualification`, `notification`,
-`survey`, `appointment-reminder`). **Qat'iy qamrov chegarasi:** `DialogEngine`/`DialogState`/
-`CallContext` hali tegilmagan — jonli qo'ng'iroqlar bugungidek qattiq qarzdorlik FSM'i bilan
-ishlaydi; ssenariy ta'rifini haqiqiy qo'ng'iroqni boshqarishga ulash keyingi, alohida bosqich.
-
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `POST /api/scenarios/list` | ✅ | Ro'yxat (built-in shablonlar + kompaniya custom'lari), `builtinOnly` filtri bilan ikkala tab uchun. Faqat har bir `scenario_key`ning faol versiyasini qaytaradi. |
-| `GET /api/scenarios/{id}` | ✅ | Tahrirlagich uchun to'liq `ScenarioDefinition` (bosqichlar, faktlar, tool'lar, outcome, rolePrompt, guardrails). |
-| `POST /api/scenarios` | ✅ | Yangi custom ssenariy yaratish — saqlashdan oldin avtomatik validatsiya qilinadi. |
-| `PUT /api/scenarios/{id}` | ✅ | Yangi versiya yaratadi (versiyalash — ROADMAP A.4); builtin ssenariyni tahrirlash 409 bilan rad etiladi (avval clone kerak). |
-| `POST /api/scenarios/{id}/clone` | ✅ | "Tayyor shablon"ni (yoki istalgan ssenariyni) nusxalash. |
-| `POST /api/scenarios/validate` | ✅ | Saqlashdan oldin: deadlock yo'qligi (BFS), tool/outcome/fakt nomi to'qnashuvi tekshiruvi (`ScenarioValidator`). |
-| `POST /api/calls` ga `scenarioId` parametri | ⚠️ | "Sinov qo'ng'irog'i" — hali qo'shilmagan, chunki `DialogEngine` ssenariy ta'rifini bajarmaydi (Scenario Engine ishga tushirilgach qo'shiladi). |
+✅ To'liq bajarilgan — CRUD, validatsiya (deadlock/nom to'qnashuvi), klonlash,
+versiyalash, va `DialogEngine` endi har qanday ssenariyni bajaradi (ROADMAP A.3);
+`POST /api/calls?scenarioId=` orqali kampaniyasiz sinov qo'ng'irog'i ham ishlaydi.
+Batafsil: [scenarios.md](api/scenarios.md), [calls.md](api/calls.md).
 
 ---
 
 ## 8. Kontaktlar — §10.8
 
-ROADMAP'da alohida bosqich sifatida rejalashtirilmagan — panel uchun yangidan
-loyihalandi: `contact` jadvali `campaign_target`dan mustaqil (kampaniyaga bog'liq
-emas), `company_id` bilan (Bosqich B). Qo'ng'iroqlar tarixi `contact_id` FK orqali
-emas, telefon raqami bo'yicha moslashtiriladi (`do_not_call_list`ning mavjud
-pretsedentiga mos).
-
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `POST /api/contacts/list` | ✅ | Ro'yxat — `search` (ism/telefon) filtri bilan. |
-| `GET /api/contacts/{id}` | ✅ | Drawer: profil + qo'ng'iroqlar tarixi taymlayni (`ReportRepository.callsForPhone`, oxirgi 50 ta). |
-| `POST /api/contacts` | ✅ | "+ Kontakt" — telefon bo'yicha dublikat rad etiladi. |
-| `PUT /api/contacts/{id}` | ✅ | Telefon o'zgartirilmaydi (barqaror identifikator sifatida). |
-| `POST /api/contacts/csv` | ✅ | "⇧ CSV import" — `name,phone,address,tags,notes` ustunlari, xato qatorlar hisobot qilinadi. |
-| `POST /api/contacts/{id}/dnc` | ✅ | "DNC ga qo'shish" — kontaktning telefonini opt-out ro'yxatiga qo'shadi. |
-| `POST /api/do-not-call/list` | ✅ | "Qo'ng'iroq qilinmasin (DNC)" tab'i — faqat faol (o'chirilmagan) yozuvlar. |
-| `POST /api/do-not-call/{phone}/remove` | ✅ | "Ro'yxatdan chiqarish" — soft-delete (`removed_at`/`removed_by`), `AuditService.record("DNC_REMOVE", ...)` bilan birga. Hech qachon opt-out bo'lmagan yoki allaqachon olib tashlangan raqam — 404. |
+✅ To'liq bajarilgan — CRUD, CSV import, DNC ro'yxati (ro'yxat + soft-delete o'chirish).
+ROADMAP'da alohida bosqich sifatida rejalashtirilmagan edi, panel uchun yangidan
+loyihalandi. Batafsil: [contacts.md](api/contacts.md), [do-not-call.md](api/do-not-call.md).
 
 ---
 
-## 9. Kiruvchi marshrutlar — §10.9 (ROADMAP Bosqich C.1 — hali boshlanmagan)
+## 9. Kiruvchi marshrutlar — §10.9 (ROADMAP Bosqich C.1 — bajarildi, 2026-08-01)
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `GET /api/inbound-routes` | ❌ | `inbound_route` jadvali ROADMAP'da rejalashtirilgan, hali yo'q. |
-| `POST /api/inbound-routes` \| `PUT` \| status toggle | ❌ | DID → ssenariy/til/ish-vaqti bog'lash. |
-| `GET /api/inbound-routes/{id}/stats` | ❌ | Drawer'dagi "shu raqamga tushgan qo'ng'iroqlar statistikasi". |
+✅ To'liq bajarilgan — DID → ssenariy/til/ish-vaqti CRUD + statistika. Batafsil:
+[inbound-routes.md](api/inbound-routes.md).
 
 ---
 
 ## 10. Hisobotlar — §10.10
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `GET /api/reports/dynamics?range=&campaignId=&scenarioId=&operator=` | ❌ | Grafik 1 — umumiy filtr paneliga mos parametrlar bilan (§2 dagi dashboard versiyasidan farqi — bu yerda scenario/operator filtri ham bor). |
-| `GET /api/reports/outcomes-distribution` | ❌ | Grafik 2. |
-| `GET /api/reports/hourly-heatmap` | ❌ | Grafik 3 (kun × soat javob foizi) — operator uchun eng qimmatli, alohida SQL agregatsiya kerak. |
-| `GET /api/reports/campaign-comparison` | ❌ | Grafik 4. |
-| `GET /api/reports/duration-histogram` | ❌ | Grafik 5. |
-| `GET /api/reports/funnel` | ❌ | Grafik 6 (Qo'ng'iroq → Javob → Shaxs tasdiqlandi → Suhbat → Natija). |
-| `GET /api/reports/export?format=pdf|csv|xlsx` | ❌ | "⇩ Hisobotni yuklab olish". |
-| `POST /api/reports/schedule` (email, davriylik) | ❌ | "📅 Jadval bo'yicha yuborish". |
+✅ To'liq bajarilgan — 6 ta grafik (dinamika, natijalar taqsimoti, soat×kun heatmap,
+kampaniya taqqoslash, davomiylik histogram, voronka), CSV/PDF/XLSX eksport, email
+jadval. Batafsil: [reports.md](api/reports.md).
 
 ---
 
@@ -232,33 +174,27 @@ pretsedentiga mos).
 
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
-| `GET/PUT /api/settings/company` | ❌ | Nom, logotip, timezone, til, manzil — ROADMAP Bosqich B (`company` jadvali) bilan bog'liq. |
-| `GET/PUT /api/settings/telephony` | ❌ | SIP trunk ro'yxati + holat + "Sinash", caller ID/DID, parallel limit. Hozir trunk sozlamalari `application.yml`/`pjsip.conf` da statik. |
+| `GET/PUT /api/companies/{id}` va `/{id}/config` | ⚠️ | Nom/holat (`Company`) va timezone/til/dial-window (`CompanyConfig`) allaqachon bor — faqat logotip/manzil yo'q. Alohida `/api/settings/company` yo'q, chunki bu platform-admin resursi (`{id}` bilan), foydalanuvchining o'z kompaniyasiga emas. |
+| `GET/POST/PUT/DELETE /api/sip-trunks` | ✅ | Trunk CRUD + "default qilish" + holat — [sip-trunks.md](api/sip-trunks.md). |
 | `GET/PUT /api/settings/voice` | ⚠️ | `GET /api/tts/voices` katalogni beradi, lekin provayder/tezlik/tembr **sozlash** endpointi yo'q (hozir `application.yml` orqali). |
-| `GET/PUT /api/settings/ai-model` | ❌ | Model, harorat, token, davomiylik/navbat limitlari — hozir config-fayl orqali. |
-| `GET/PUT /api/settings/integrations` | ⚠️ | ROADMAP D (`CrmConnector`) rejalashtirilgan; hozir bitta `CrmClient` bor, panel orqali tanlash/sinash yo'q. |
-| `GET/POST/DELETE /api/settings/api-keys` | ❌ | Hozir API kalitlar `SecurityProperties`/config orqali statik — panel orqali yaratish/bekor qilish uchun DB'ga ko'chirish va CRUD kerak. |
-| `GET/PUT /api/settings/notifications` | ❌ | Kanal × hodisa matritsasi (kompaniya darajasida). |
+| `GET/PUT /api/settings/ai-model` | ✅ | Model/harorat/token/davomiylik limitlari kompaniya darajasida DB'da (`aimodel` feature). Navbat (parallel qo'ng'iroq) limiti hamon jarayon darajasida. |
+| `GET/PUT /api/settings/integrations` | ⚠️ | Uysot CRM OAuth (authorization-code) kompaniya darajasida qo'shildi (`integration` feature) — client_id/secret panel orqali. Uysot'ning haqiqiy OAuth URL'lari hali noma'lum, sozlanmaguncha inert. Boshqa CRM connectorlari (ROADMAP D `CrmConnector`) hali yo'q. |
+| `GET/POST/DELETE /api/settings/api-keys` | ✅ | DB'ga ko'chirilgan (`apikey` feature), kompaniyaga scoped. |
+| `GET/PUT /api/settings/notifications` | ✅ | Kompaniya darajasidagi kanal × hodisa matritsasi — [settings.md](api/settings.md). Shaxsiy (per-user) varianti — §15/[profile.md](api/profile.md). |
 
 ---
 
-## 12. Foydalanuvchilar — §10.12 (ROADMAP Bosqich E.1 — hali boshlanmagan)
+## 12. Foydalanuvchilar — §10.12 (ROADMAP Bosqich E.1 — ✅ asosiy qism bajarildi)
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `GET /api/users` | ❌ | `app_user` jadvali yo'q. |
-| `POST /api/users/invite` | ❌ | Email + rol bilan taklif. |
-| `PUT /api/users/{id}/role` | ❌ | Inline rol o'zgartirish. |
-| `POST /api/users/{id}/block` \| `unblock` | ❌ | Holat ustuni. |
+✅ To'liq bajarilgan — invite/rol/block-unblock, ADMIN/OPERATOR/VIEWER. Batafsil:
+[users.md](api/users.md).
 
 ---
 
 ## 13. Audit jurnali — §10.13
 
-| Endpoint | Holat | Izoh |
-|----------|-------|------|
-| `POST /api/reports/audit/list` | ✅ | Paginatsiya + sort + aktor/amal-turi/obyekt-turi bo'yicha filtr (`AuditFilter.actor/action/entity`) — chapdagi filtr paneli uchun yetarli. |
-| IP manzil ustuni | ✅ | `AuditRow.ipAddress`, `audit_log.ip_address` ustuni (V2 migratsiya) — HTTP so'rovdan tashqarida (dialer'ning o'z ishi) yozilgan amallar uchun `null`. |
+✅ To'liq bajarilgan — filtr (aktor/amal-turi/obyekt-turi), IP manzil ustuni. Batafsil:
+[reports.md](api/reports.md).
 
 ---
 
@@ -274,53 +210,24 @@ pretsedentiga mos).
 
 ## 15. Profil sahifasi — §8.3
 
+✅ Umumiy ma'lumot, parol, faol sessiyalar, shaxsiy bildirishnoma matritsasi, ish
+jadvali bajarilgan (`profile` feature, V11–V14 migratsiya). Batafsil: [profile.md](api/profile.md).
+
 | Endpoint | Holat | Izoh |
 |----------|-------|------|
-| `GET/PUT /api/profile` | ❌ | Umumiy: avatar, ism, telefon, email, lavozim. |
-| `PUT /api/profile/password` | ❌ | Xavfsizlik tab'i. |
-| `GET /api/profile/sessions`, `DELETE /api/profile/sessions/{id}` | ❌ | Faol sessiyalar ro'yxati. |
-| `GET/PUT /api/profile/notifications` | ❌ | Kanal × hodisa matritsasi (shaxsiy daraja, §11 dagi kompaniya darajasidan farqli). |
-| `GET/PUT /api/profile/schedule` | ❌ | Operator ish jadvali (inbound transfer uchun, ROADMAP C.4 bilan bog'liq). |
-| Popover'dagi "Bugun" mini-statistika (24/18m/92%) | ❌ | `GET /api/profile/today-stats` yoki `GET /api/reports/dashboard/kpi`ning operator-scoped varianti. |
+| Popover'dagi "Bugun" mini-statistika (24/18m/92%) | ✅ | `GET /api/profile/today-stats` — haqiqiy operator-scoped (`call_attempt.operator_user_id` orqali). Batafsil: [profile.md](api/profile.md#get-apiprofiletoday-stats--popover-mini-statistika). |
 
 ---
 
-## Xulosa — ustuvorlik bo'yicha guruhlash
+## Qolgan ish — ustuvorlik bo'yicha
 
-Dizaynning "1-to'plam" (§18.1, birinchi chiziladigan ekranlar) bilan taqqoslasak:
-
-1. **App Shell + xodim kartochkasi (§7–9)** — asosan `0.3 GET /api/auth/me` ga bog'liq;
-   auth tizimi bo'lmasa ham panel statik/mock foydalanuvchi bilan chizilishi mumkin.
-2. **Boshqaruv paneli (§10.2)** — barcha rejalashtirilgan endpoint ✅ **qo'shildi**: 3 ta
-   agregatsiya (KPI, timeseries, outcomes — `ReportRepository.dashboardTotals`/
-   `dashboardBuckets`/`dashboardOutcomes`, yangi jadval kerak bo'lmadi) va
-   `GET /api/calls/live` (`DialogEngine.liveDialogs()` + `OutboundCallRegistry` +
-   `CampaignService`, `AriService.liveCalls()`da birlashtiriladi).
-3. **Qo'ng'iroqlar jadvali + tafsilot (§10.4–10.5)** — ✅ qo'shildi: matn/kampaniya/
-   natija/sana/davomiylik filtri, CSV eksport, ommaviy amal (`retry`/`dnc`), "Texnik"
-   tab (`CallTechnicalDetail`), TXT transkript yuklab olish. Qolgan yagona band —
-   ustunlar sozlamasini profilda saqlash, bu profil API'siga bog'liq (§0.3/§15).
-4. **Kampaniyalar (§10.6)** — `PUT`/`DELETE /api/campaigns/{id}` ✅ qo'shildi (to'liq
-   tahrirlash, soft-archive). Qolgan bandlar: CSV ustun moslashtirish oldindan ko'rish
-   (⚠️, ikki bosqichli oqim emas) va `campaign.scenario_id` bog'lanishi (A.3).
-5. **Jonli qo'ng'iroqlar (§10.3)** — real-vaqt push kanali ✅ qo'shildi
-   (`GET /api/live/stream`, SSE — §0.7).
-6. **Ssenariy (§10.7)** — CRUD + validatsiya ✅ qo'shildi (ROADMAP A.4); `DialogEngine`ni
-   ssenariy ta'rifi bilan ishga tushirish (A.3) hali qolgan.
-7. **Audit jurnali (§10.13)** — ✅ qo'shildi: aktor/amal-turi/obyekt-turi filtri va IP
-   manzil ustuni (`audit_log.ip_address`, V2 migratsiya).
-8. **Kompaniya izolyatsiyasi (ROADMAP B)** — DB darajasida ✅ qo'shildi: `company` jadvali,
-   `company_id` — `campaign`, `campaign_target`, `call_attempt`, `scenario` (nullable —
-   builtin shablonlar global), `do_not_call_list`, `audit_log`da; barcha tegishli
-   repository so'rovlari shu ustun bilan filtrlanadi. **Company-resolution hozircha
-   vaqtincha bitta konstantali** (`voice-agent.company.default-id`, `CurrentCompany`
-   interfeysi orqali) — haqiqiy per-request aniqlash (auth/api_key → company_id)
-   Bosqich E.1 bilan keladi. Kompaniya sozlash API'si (§11 `GET/PUT /api/settings/company`)
-   hali ❌ — bu safar faqat izolyatsiya infratuzilmasi qo'shildi, panel emas.
-9. **Kontaktlar (§10.8)** — CRUD + CSV import + DNC tab (ro'yxat va soft-delete
-   o'chirish) ✅ qo'shildi — ROADMAP'da rejalashtirilmagan, panel uchun yangidan
-   loyihalandi.
-10. **Kiruvchi marshrut, Foydalanuvchi, Billing (§10.9, 10.12, 10.14)** — bularning har
-   biri ROADMAP'da alohida bosqich (C, E) sifatida rejalashtirilgan va hali
-   boshlanmagan; dizayn ularni chizishi mumkin, lekin orqasidagi API'lar shu bosqichlar
-   amalga oshgach paydo bo'ladi.
+1. **Bosqich D — Uysot OAuth** (`0.4`, `11`'dagi integratsiya URL'lari) — Uysot'dan
+   kredensial/hujjat kelmaguncha bloklangan.
+2. **Bosqich E.3 — Billing** (`14`) — hali boshlanmagan, `usage_record` jadvali kerak.
+3. **Bosqich E.4 — To'liq boshqaruv paneli** — hozirgi test-panel o'rniga React/Vue,
+   shu jumladan ssenariy vizual tahrirlagichi.
+4. **ROADMAP C.4 — Operator navbati** — `user_schedule_slot` (§15) ma'lumoti hozircha
+   faqat saqlanadi, kiruvchi marshrutlash uni hali o'qimaydi.
+5. Mayda ⚠️ bandlar: `0.8` bildirishnoma producerlari (2 tasi qoldi), CSV ustun
+   moslashtirish oldindan ko'rish (`6`), qo'ng'iroqlar jadvali ustun sozlamasi (`4`),
+   `settings/voice` sozlash endpointi va kompaniya logotip/manzil (`11`).

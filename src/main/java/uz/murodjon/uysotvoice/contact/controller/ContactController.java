@@ -13,10 +13,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import uz.murodjon.uysotvoice.contact.dto.ContactDetail;
 import uz.murodjon.uysotvoice.contact.dto.ContactFilter;
 import uz.murodjon.uysotvoice.contact.dto.ContactImportResult;
-import uz.murodjon.uysotvoice.contact.dto.ContactRow;
+import uz.murodjon.uysotvoice.contact.dto.Contact;
 import uz.murodjon.uysotvoice.contact.dto.CreateContactRequest;
 import uz.murodjon.uysotvoice.contact.dto.UpdateContactRequest;
-import uz.murodjon.uysotvoice.contact.entity.Contact;
 import uz.murodjon.uysotvoice.donotcall.dto.ContactDncResponse;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
@@ -26,17 +25,17 @@ import uz.murodjon.uysotvoice.shared.api.ResponseData;
 public interface ContactController {
 
     @PostMapping("/contacts")
-    ResponseEntity<ResponseData<ContactRow>> create(@Valid @RequestBody CreateContactRequest r);
+    ResponseEntity<ResponseData<Contact>> create(@Valid @RequestBody CreateContactRequest r);
 
     @PostMapping("/contacts/list")
-    ResponseEntity<ResponseData<PageableData<ContactRow>>> list(@Valid @RequestBody ContactFilter filter);
+    ResponseEntity<ResponseData<PageableData<Contact>>> list(@Valid @RequestBody ContactFilter filter);
 
     /** Profile + call-history timeline (§10.8 drawer). */
     @GetMapping("/contacts/{id}")
     ResponseEntity<ResponseData<ContactDetail>> get(@PathVariable long id);
 
     @PutMapping("/contacts/{id}")
-    ResponseEntity<ResponseData<ContactRow>> update(@PathVariable long id, @Valid @RequestBody UpdateContactRequest r);
+    ResponseEntity<ResponseData<Contact>> update(@PathVariable long id, @Valid @RequestBody UpdateContactRequest r);
 
     /**
      * Bulk-load contacts from a CSV export (§10.8). Send the file body as {@code text/csv}:

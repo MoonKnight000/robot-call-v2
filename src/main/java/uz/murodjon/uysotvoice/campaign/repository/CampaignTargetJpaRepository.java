@@ -8,25 +8,28 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.uysotvoice.campaign.entity.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.entity.CampaignTargetEntity;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-/** Spring Data repository for {@link CampaignTarget}. */
+/** Spring Data repository for {@link CampaignTargetEntity}. */
 @Repository
-public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarget, Long> {
+public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTargetEntity, Long> {
 
-    Optional<CampaignTarget> findByIdAndCompanyId(long id, long companyId);
+    Optional<CampaignTargetEntity> findByIdAndCompanyId(long id, long companyId);
 
     /** The placeholder target seeded by {@code V2} (phone = 'MANUAL'); see {@code CallRecordService.manualTargetId}. */
-    Optional<CampaignTarget> findFirstByPhoneOrderById(String phone);
+    Optional<CampaignTargetEntity> findFirstByPhoneOrderById(String phone);
 
-    List<CampaignTarget> findByCampaign_IdAndCompanyId(long campaignId, long companyId, Pageable pageable);
+    List<CampaignTargetEntity> findByCampaign_IdAndCompanyId(long campaignId, long companyId, Pageable pageable);
 
     long countByCampaign_IdAndCompanyId(long campaignId, long companyId);
+
+    /** Targets still in the dial loop (not yet DONE/FAILED/EXHAUSTED) — used to detect campaign completion. */
+    long countByCampaign_IdAndStatusIn(long campaignId, List<TargetStatus> statuses);
 
     /**
      * Atomically claim up to {@code limit} targets that are ready to dial: PENDING,
@@ -62,18 +65,18 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
             + "  ORDER BY t.next_attempt_at NULLS FIRST, t.id"
             + "  LIMIT :limit FOR UPDATE SKIP LOCKED"
             + ") RETURNING *", nativeQuery = true)
-    List<CampaignTarget> claimDue(@Param("campaignId") long campaignId, @Param("limit") int limit);
+    List<CampaignTargetEntity> claimDue(@Param("campaignId") long campaignId, @Param("limit") int limit);
 
     /** Internal (dialer outcome application) — not scoped, see {@link #claimDue}. */
     @Modifying @Transactional
-    @Query("UPDATE CampaignTarget t SET t.status = :status, t.nextAttemptAt = :nextAttemptAt WHERE t.id = :id")
+    @Query("UPDATE CampaignTargetEntity t SET t.status = :status, t.nextAttemptAt = :nextAttemptAt WHERE t.id = :id")
     void updateStatus(@Param("id") long id, @Param("status") TargetStatus status,
                       @Param("nextAttemptAt") Instant nextAttemptAt);
 
     /** Scoped to the current company — reached by a bare target id, see {@link #findByIdAndCompanyId}. */
     @Modifying
     @Transactional
-    @Query("UPDATE CampaignTarget t SET t.doNotCall = true, t.status = uz.murodjon.uysotvoice.campaign.enums.TargetStatus.DONE "
+    @Query("UPDATE CampaignTargetEntity t SET t.doNotCall = true, t.status = uz.murodjon.uysotvoice.campaign.enums.TargetStatus.DONE "
             + "WHERE t.id = :id AND t.companyId = :companyId")
     void setDoNotCall(@Param("id") long id, @Param("companyId") long companyId);
 }

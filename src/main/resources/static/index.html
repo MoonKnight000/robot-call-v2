@@ -198,6 +198,9 @@
         <label>TTS ovozi</label>
         <select id="c_voice"><option value="">(standart sozlama)</option></select>
         <p class="hint">GET /api/tts/voices — tanlangan til uchun mavjud ovozlar</p>
+        <label>Ssenariy (scenarioId)</label>
+        <input id="c_scenario" type="number" placeholder="masalan: 1">
+        <p class="hint">POST /api/scenarios/list — kampaniya ishlaydigan ssenariy ID'si (majburiy, ROADMAP A.3)</p>
         <label>Maqsad / skript (goalPrompt)</label>
         <textarea id="c_goal">Mijozdan qarzni to'lash sanasini aniqlang. Muloyim va professional bo'ling.</textarea>
         <div class="row">
@@ -504,7 +507,8 @@ async function createCampaign(){
     defaultLanguage:$('c_lang').value, dialWindowStart:$('c_ws').value+':00',
     dialWindowEnd:$('c_we').value+':00', maxAttempts:+$('c_max').value,
     retryIntervalHours:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value,
-    ttsVoice:$('c_voice').value||null, dailyCallCap:+$('c_cap').value
+    ttsVoice:$('c_voice').value||null, dailyCallCap:+$('c_cap').value,
+    scenarioId:+$('c_scenario').value||null
   };
   try{
     const r=await api('POST','/api/campaigns',{body}); showResp('c_resp',r);

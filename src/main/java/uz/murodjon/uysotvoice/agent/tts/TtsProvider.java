@@ -1,5 +1,7 @@
 package uz.murodjon.uysotvoice.agent.tts;
 
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
+
 /**
  * Text-to-speech provider (PROJECT.md §2.5). TTS is stateless — text in, audio
  * out — so a single blocking call is enough; the paced 20ms streaming to the
@@ -33,4 +35,14 @@ public interface TtsProvider {
      *              voice for {@code language}
      */
     short[] synthesize(String text, String language, String voice);
+
+    /**
+     * As {@link #synthesize(String, String, String)}, with a company's TTS overrides
+     * (§11 settings/voice) layered over the provider's own configured defaults. The
+     * default implementation ignores {@code style} — only providers that support
+     * dynamic speed/pitch need to override it.
+     */
+    default short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
+        return synthesize(text, language, voice);
+    }
 }

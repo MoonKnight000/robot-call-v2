@@ -38,6 +38,14 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    // Scheduled report delivery (§10.10 "Jadval bo'yicha yuborish") — SMTP config read
+    // from voice-agent.report-schedule.* (env-var placeholders, like every other
+    // external credential in this project).
+    implementation("org.springframework.boot:spring-boot-starter-mail")
+    // JWT for user login (ROADMAP E.1) — X-Api-Key stays for machine-to-machine callers.
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
     // Asterisk ARI (bundles its own Netty-based HTTP/WebSocket client)
     // 0.18.0 is built against Netty 4.2 (NettyHttpClient needs
@@ -74,6 +82,11 @@ dependencies {
 
     // Metrics — Micrometer Prometheus registry, exposed at /actuator/prometheus (Stage 12).
     implementation("io.micrometer:micrometer-registry-prometheus")
+
+    // Report export (§10.10 "Hisobotni yuklab olish") — PDF and XLSX, alongside the
+    // existing plain-CSV path.
+    implementation("com.github.librepdf:openpdf:1.3.30")
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
 
     // Database
     implementation("org.flywaydb:flyway-core")

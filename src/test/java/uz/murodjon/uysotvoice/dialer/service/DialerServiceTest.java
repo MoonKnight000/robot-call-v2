@@ -6,14 +6,15 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import uz.murodjon.uysotvoice.agent.ari.AriService;
 import uz.murodjon.uysotvoice.agent.lifecycle.GracefulShutdownManager;
-import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.Campaign;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
+import uz.murodjon.uysotvoice.company.service.CompanyConfigService;
 import uz.murodjon.uysotvoice.dialer.config.DialerProperties;
 import uz.murodjon.uysotvoice.dialer.config.RabbitConfig;
 import uz.murodjon.uysotvoice.dialer.config.RetryProperties;
@@ -68,23 +69,25 @@ class DialerServiceTest {
         return new DialerService(
                 new DialerProperties(true, 5, 10, 5, 60,
                         new RetryProperties(180, 15, 1200, true)),
-                campaigns, targets, mock(CampaignService.class), rabbit, state,
+                // A mock with no stubbed find() returns null, i.e. "no company config yet" —
+                // withinWindow() treats that as no additional ceiling, matching pre-B.3 behaviour.
+                campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class), rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class),
                 mock(GracefulShutdownManager.class),
                 Clock.fixed(now.toInstant(), ZONE));
     }
 
     private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
-        when(campaigns.findActive()).thenReturn(List.of(new CampaignRow(
+        when(campaigns.findActive()).thenReturn(List.of(new Campaign(
                 CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "goal", "uz-UZ",
-                LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, null, dailyCallCap)));
+                LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, null, dailyCallCap, 1L, 1L, true, null)));
     }
 
     private void givenDueTargets(int count) {
         when(targets.claimDue(anyLong(), anyInt())).thenAnswer(call -> {
             int limit = call.getArgument(1);
             return java.util.stream.IntStream.range(0, Math.min(count, limit))
-                    .mapToObj(i -> new TargetRow(100L + i, CAMPAIGN_ID, 1L, "99890111223" + i,
+                    .mapToObj(i -> new CampaignTarget(100L + i, CAMPAIGN_ID, 1L, "99890111223" + i,
                             "uz-UZ", "{}", TargetStatus.PENDING, 0, false))
                     .toList();
         });
@@ -180,7 +183,7 @@ class DialerServiceTest {
         DialerService dialer = new DialerService(
                 new DialerProperties(true, 5, 10, 5, 60,
                         new RetryProperties(180, 15, 1200, true)),
-                campaigns, targets, mock(CampaignService.class), rabbit, state,
+                campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class), rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class), shutdown,
                 Clock.systemDefaultZone());
 

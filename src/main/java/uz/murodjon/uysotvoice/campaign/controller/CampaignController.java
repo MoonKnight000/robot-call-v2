@@ -18,9 +18,10 @@ import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignStatusResponse;
 import uz.murodjon.uysotvoice.campaign.dto.CreateCampaignRequest;
 import uz.murodjon.uysotvoice.campaign.dto.CreateCampaignResponse;
+import uz.murodjon.uysotvoice.campaign.dto.TargetCsvPreview;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
 import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
@@ -55,6 +56,14 @@ public interface CampaignController {
     @DeleteMapping("/campaigns/{id}")
     ResponseEntity<ResponseData<CampaignStatusResponse>> archive(@PathVariable long id);
 
+    /**
+     * "Nusxalash" (backend-uchun-talablar.md §3) — copies {@code id}'s configuration
+     * (scenario, dial window, language, etc.) into a brand new {@code DRAFT} campaign;
+     * targets are never copied. Body-less, mirroring {@link #start}/{@link #pause}.
+     */
+    @PostMapping("/campaigns/{id}/clone")
+    ResponseEntity<ResponseData<CampaignRow>> clone(@PathVariable long id);
+
     @PostMapping("/campaigns/{id}/targets")
     ResponseEntity<ResponseData<AddTargetsResponse>> addTargets(@PathVariable long id, @Valid @RequestBody List<AddTargetRequest> targets);
 
@@ -73,8 +82,17 @@ public interface CampaignController {
     @PostMapping(value = "/campaigns/{id}/targets/csv", consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
     ResponseEntity<ResponseData<TargetImportResult>> addTargetsCsv(@PathVariable long id, @RequestBody String csv);
 
+    /**
+     * "Ustunni moslashtirib, keyin tasdiqlash" oldindan ko'rish (§10.6) — bir xil faylni
+     * qabul qiladi, lekin hech narsani saqlamaydi: ustun moslashtirish jadvali, dastlabki
+     * qatorlar namunasi va xatolarni qaytaradi. Operator tasdiqlagach xuddi shu fayl
+     * {@link #addTargetsCsv} ga yuboriladi.
+     */
+    @PostMapping(value = "/campaigns/{id}/targets/csv/preview", consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
+    ResponseEntity<ResponseData<TargetCsvPreview>> previewTargetsCsv(@PathVariable long id, @RequestBody String csv);
+
     @PostMapping("/campaigns/{id}/targets/list")
-    ResponseEntity<ResponseData<PageableData<TargetRow>>> targets(@PathVariable long id, @Valid @RequestBody TargetFilter filter);
+    ResponseEntity<ResponseData<PageableData<CampaignTarget>>> targets(@PathVariable long id, @Valid @RequestBody TargetFilter filter);
 
     @PostMapping("/campaigns/{id}/start")
     ResponseEntity<ResponseData<CampaignStatusResponse>> start(@PathVariable long id);

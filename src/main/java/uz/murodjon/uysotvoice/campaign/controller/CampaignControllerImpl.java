@@ -10,9 +10,10 @@ import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignStatusResponse;
 import uz.murodjon.uysotvoice.campaign.dto.CreateCampaignRequest;
 import uz.murodjon.uysotvoice.campaign.dto.CreateCampaignResponse;
+import uz.murodjon.uysotvoice.campaign.dto.TargetCsvPreview;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
 import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
@@ -42,7 +43,7 @@ public class CampaignControllerImpl implements CampaignController {
 
     @Override
     public ResponseEntity<ResponseData<CampaignRow>> get(long id) {
-        return ResponseEntity.ok(ResponseData.ok(service.requireCampaign(id)));
+        return ResponseEntity.ok(ResponseData.ok(service.campaignRow(id)));
     }
 
     @Override
@@ -56,6 +57,11 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<CampaignRow>> clone(long id) {
+        return ResponseEntity.ok(ResponseData.ok(service.clone(id)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<AddTargetsResponse>> addTargets(long id, List<AddTargetRequest> targets) {
         return ResponseEntity.ok(ResponseData.ok(service.addTargets(id, targets)));
     }
@@ -66,7 +72,12 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<TargetRow>>> targets(long id, TargetFilter filter) {
+    public ResponseEntity<ResponseData<TargetCsvPreview>> previewTargetsCsv(long id, String csv) {
+        return ResponseEntity.ok(ResponseData.ok(service.previewTargetsCsv(id, csv)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<PageableData<CampaignTarget>>> targets(long id, TargetFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(service.listTargets(id, filter)));
     }
 

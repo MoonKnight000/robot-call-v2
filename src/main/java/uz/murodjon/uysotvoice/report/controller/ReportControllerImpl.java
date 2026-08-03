@@ -5,16 +5,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditRow;
+import uz.murodjon.uysotvoice.audit.dto.AuditLog;
 import uz.murodjon.uysotvoice.report.dto.BulkCallActionRequest;
 import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
+import uz.murodjon.uysotvoice.report.dto.CampaignComparisonRow;
 import uz.murodjon.uysotvoice.report.dto.CampaignStats;
 import uz.murodjon.uysotvoice.report.dto.DashboardBucket;
 import uz.murodjon.uysotvoice.report.dto.DashboardKpi;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
+import uz.murodjon.uysotvoice.report.dto.DurationHistogramBucket;
+import uz.murodjon.uysotvoice.report.dto.FunnelStage;
+import uz.murodjon.uysotvoice.report.dto.HourlyHeatmapCell;
 import uz.murodjon.uysotvoice.report.service.ReportService;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
@@ -28,13 +32,16 @@ public class ReportControllerImpl implements ReportController {
     private final RecordingResponseFactory recordings;
     private final CsvResponseFactory csv;
     private final TranscriptResponseFactory transcripts;
+    private final ReportExportFactory export;
 
     public ReportControllerImpl(ReportService service, RecordingResponseFactory recordings,
-                                CsvResponseFactory csv, TranscriptResponseFactory transcripts) {
+                                CsvResponseFactory csv, TranscriptResponseFactory transcripts,
+                                ReportExportFactory export) {
         this.service = service;
         this.recordings = recordings;
         this.csv = csv;
         this.transcripts = transcripts;
+        this.export = export;
     }
 
     @Override
@@ -78,7 +85,7 @@ public class ReportControllerImpl implements ReportController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<AuditRow>>> auditLog(AuditFilter filter) {
+    public ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(AuditFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(service.auditLog(filter)));
     }
 
@@ -95,5 +102,41 @@ public class ReportControllerImpl implements ReportController {
     @Override
     public ResponseEntity<ResponseData<List<DashboardOutcome>>> dashboardOutcomes(String from, String to, Long campaignId) {
         return ResponseEntity.ok(ResponseData.ok(service.dashboardOutcomes(from, to, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<DashboardOutcome>>> outcomesDistribution(String from, String to, Long campaignId) {
+        return ResponseEntity.ok(ResponseData.ok(service.dashboardOutcomes(from, to, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<HourlyHeatmapCell>>> hourlyHeatmap(String from, String to, Long campaignId) {
+        return ResponseEntity.ok(ResponseData.ok(service.hourlyHeatmap(from, to, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<CampaignComparisonRow>>> campaignComparison(String from, String to, List<Long> campaignIds) {
+        return ResponseEntity.ok(ResponseData.ok(service.campaignComparison(from, to, campaignIds)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<DurationHistogramBucket>>> durationHistogram(String from, String to, Long campaignId) {
+        return ResponseEntity.ok(ResponseData.ok(service.durationHistogram(from, to, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<DashboardBucket>>> dynamics(
+            String from, String to, Long campaignId, Long scenarioId, Boolean operator) {
+        return ResponseEntity.ok(ResponseData.ok(service.dynamics(from, to, campaignId, scenarioId, operator)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<FunnelStage>>> funnel(String from, String to, Long campaignId) {
+        return ResponseEntity.ok(ResponseData.ok(service.funnel(from, to, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<byte[]> export(String format, String from, String to, Long campaignId) {
+        return export.toResponse(format, service.summary(from, to, campaignId));
     }
 }

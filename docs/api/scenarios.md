@@ -3,11 +3,10 @@
 `uz.murodjon.uysotvoice.scenario` · rol: **ADMIN** (barcha endpoint)
 
 Ssenariy — bosqichlar (FSM), kerakli faktlar, tool'lar, natija (outcome) shakli
-va rol-prompt'ni bitta JSON hujjatda saqlaydigan CRUD. **Muhim chegara:** bu
-API faqat saqlaydi va validatsiya qiladi — jonli qo'ng'iroq hali qattiq
-qarzdorlik FSM'i (`DialogEngine`) bilan ishlaydi, ssenariy ta'rifini haqiqiy
-qo'ng'iroqqa ulash keyingi bosqich. Ya'ni bu ekranni chizish mumkin, lekin
-hozircha yaratilgan ssenariy real qo'ng'iroqni boshqarmaydi.
+va rol-prompt'ni bitta JSON hujjatda saqlaydigan CRUD. **`DialogEngine` har bir
+qo'ng'iroqni aynan shu ta'rifga qarab olib boradi** (ROADMAP A.3): kampaniya
+yaratilganda `scenarioId` tanlanadi ([campaigns.md](campaigns.md)ga qarang) va
+har bir qo'ng'iroq shu ssenariyning bosqichlari/tool'lari/promptidan foydalanadi.
 
 Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 [README.md](README.md)ga qarang.
@@ -22,8 +21,8 @@ validatsiya so'rovlarida ham, o'qishda ham):
 ```json
 {
   "stages": [
-    { "id": "GREETING", "purpose": "Salomlashish va shaxsni tasdiqlash", "allowedTransitions": ["DEBT_NOTICE"] },
-    { "id": "DEBT_NOTICE", "purpose": "Qarz haqida xabar berish", "allowedTransitions": ["CLOSING"] },
+    { "id": "GREETING", "purpose": "Salomlashish va shaxsni tasdiqlash", "allowedTransitions": ["DEBT_NOTICE"], "allowedTools": [] },
+    { "id": "DEBT_NOTICE", "purpose": "Qarz haqida xabar berish", "allowedTransitions": ["CLOSING"], "allowedTools": ["recordPaymentPromise"] },
     { "id": "CLOSING", "purpose": "Yakunlash", "allowedTransitions": [] }
   ],
   "factSchema": [
@@ -56,6 +55,7 @@ validatsiya so'rovlarida ham, o'qishda ham):
 | `stages[].id` | string | barqaror holat id (masalan `GREETING`) |
 | `stages[].purpose` | string | promptga qo'shiladigan maqsad tavsifi |
 | `stages[].allowedTransitions` | string[] | `transitionTo`ga ruxsat berilgan keyingi holat id'lari; bo'sh/`null` — bu holat terminal (qo'ng'iroq shu yerda tugashi mumkin) |
+| `stages[].allowedTools` | string[] \| `null` | shu bosqichda, umumiy tool'lardan tashqari, qaysi `tools[]` chaqirilishi mumkin. `null` (odatiy holat) — ssenariyning **barcha** tool'lari shu bosqichda mavjud; aniq ro'yxat (bo'sh ro'yxat ham) — faqat shular, boshqa hech narsa. Faqat bosqichlar kesimida haqiqatan farqlanadigan tool'lari bor ssenariylarga kerak |
 | `factSchema[].name` | string | fakt kaliti, `campaign_target.context_data` bilan mos keladi |
 | `factSchema[].type` | `"string"` \| `"number"` \| `"date"` | — |
 | `factSchema[].required` | bool | shu fakt bo'lmasa qo'ng'iroq boshlanmaydi |
@@ -68,7 +68,9 @@ validatsiya so'rovlarida ham, o'qishda ham):
 
 Fixed universal tool'lar (`transitionTo`, `endCall`, `requestHumanTransfer`,
 `recordWrongPerson`, `recordDoNotCall`) `tools` ro'yxatida **e'lon qilinmaydi**
-— har bir ssenariyga avtomatik beriladi.
+— har bir ssenariyga, har bir bosqichda avtomatik beriladi. Shu 5 ta nomdan
+birortasi bilan `tools[].name` deklaratsiya qilinsa — saqlash/validatsiya
+`400` bilan rad etadi (nom to'qnashuvi).
 
 ---
 
@@ -87,7 +89,7 @@ Fixed universal tool'lar (`transitionTo`, `endCall`, `requestHumanTransfer`,
 Saqlashdan oldin avtomatik validatsiya qilinadi (deadlock, tool/outcome/fakt
 nom to'qnashuvi) — muvaffaqiyatsiz bo'lsa `400`.
 
-**Response** — yaratilgan `ScenarioRow` (pastga qarang).
+**Response** — yaratilgan `Scenario` (pastga qarang).
 
 ---
 
@@ -107,7 +109,7 @@ Saralanadigan ustunlar: `ID`, `SCENARIO_KEY`, `NAME`, `VERSION`,
 `CREATED_AT`. Standart: `ID ASC`. Ro'yxat har doim har bir `scenarioKey`ning
 faqat **faol** versiyasini qaytaradi.
 
-**Javob qatori** (`ScenarioRow`, `definition`siz emas — to'liq keladi):
+**Javob qatori** (`Scenario`, `definition`siz emas — to'liq keladi):
 
 ```json
 {
@@ -124,9 +126,11 @@ faqat **faol** versiyasini qaytaradi.
 }
 ```
 
-- `builtin: true` — 5 ta seed shablondan biri: `debt-collection`,
-  `lead-qualification`, `notification`, `survey`, `appointment-reminder`.
-  **Read-only** — to'g'ridan-to'g'ri tahrirlanmaydi, avval klonlash kerak.
+- `builtin: true` — 8 ta seed shablondan biri: `debt-collection`,
+  `lead-qualification`, `notification`, `survey`, `appointment-reminder`
+  (outbound), `reception`, `inbound-lead`, `callback-request` (kiruvchi
+  qo'ng'iroqlar uchun, ROADMAP C.3 — [inbound-routes.md](inbound-routes.md)ga
+  qarang). **Read-only** — to'g'ridan-to'g'ri tahrirlanmaydi, avval klonlash kerak.
 - `active` — bu versiya yangi kampaniyaga bog'lanadigan versiyami; eski
   versiyaga bog'langan ishlab turgan kampaniyaga ta'sir qilmaydi.
 
@@ -134,7 +138,7 @@ faqat **faol** versiyasini qaytaradi.
 
 ## `GET /api/scenarios/{id}` — tahrirlagich uchun to'liq ma'lumot
 
-Javob — bitta `ScenarioRow` (yuqoridagi shakl, to'liq `definition` bilan).
+Javob — bitta `Scenario` (yuqoridagi shakl, to'liq `definition` bilan).
 
 ---
 
@@ -149,7 +153,7 @@ Javob — bitta `ScenarioRow` (yuqoridagi shakl, to'liq `definition` bilan).
 tahrirlashga urinish **`409 Conflict`** bilan rad etiladi — avval
 `POST /api/scenarios/{id}/clone` qiling.
 
-Javob — yangi versiyaning `ScenarioRow`i.
+Javob — yangi versiyaning `Scenario`i.
 
 ---
 
@@ -163,7 +167,7 @@ Javob — yangi versiyaning `ScenarioRow`i.
 shablonni ("Tayyor shablon") tahrirlash uchun asosiy yo'l — avval klonlang,
 keyin klonni `PUT` bilan tahrirlang.
 
-Javob — yangi (klonlangan) ssenariyning `ScenarioRow`i.
+Javob — yangi (klonlangan) ssenariyning `Scenario`i.
 
 ---
 

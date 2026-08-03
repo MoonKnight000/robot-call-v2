@@ -8,6 +8,7 @@ import uz.murodjon.uysotvoice.crm.dto.CrmClientSnapshot;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,9 +21,13 @@ class CallContextMapperTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private static final CallContext IMPORTED = new CallContext(
-            "Aziz Karimov", new BigDecimal("1500000"), "so'm",
-            LocalDate.of(2026, 7, 1), "UY-2026-00123", "kampaniya maqsadi");
+    private static final CallContext IMPORTED = new CallContext(Map.of(
+            "clientName", "Aziz Karimov",
+            "debtAmount", new BigDecimal("1500000"),
+            "currency", "so'm",
+            "dueDate", LocalDate.of(2026, 7, 1),
+            "contractNumber", "UY-2026-00123"
+    ), "kampaniya maqsadi");
 
     @Test
     void crmValuesWinOverTheImportedSnapshot() {
@@ -33,9 +38,9 @@ class CallContextMapperTest {
 
         CallContext merged = CallContextMapper.merge(IMPORTED, crm);
 
-        assertThat(merged.debtAmount()).isEqualByComparingTo("900000");
-        assertThat(merged.clientName()).isEqualTo("Aziz K.");
-        assertThat(merged.dueDate()).isEqualTo(LocalDate.of(2026, 8, 1));
+        assertThat((BigDecimal) merged.fact("debtAmount")).isEqualByComparingTo("900000");
+        assertThat(merged.fact("clientName")).isEqualTo("Aziz K.");
+        assertThat(merged.fact("dueDate")).isEqualTo(LocalDate.of(2026, 8, 1));
     }
 
     @Test
@@ -46,9 +51,9 @@ class CallContextMapperTest {
 
         CallContext merged = CallContextMapper.merge(IMPORTED, sparse);
 
-        assertThat(merged.clientName()).isEqualTo("Aziz Karimov");
-        assertThat(merged.debtAmount()).isEqualByComparingTo("1500000");
-        assertThat(merged.contractNumber()).isEqualTo("UY-2026-00123");
+        assertThat(merged.fact("clientName")).isEqualTo("Aziz Karimov");
+        assertThat((BigDecimal) merged.fact("debtAmount")).isEqualByComparingTo("1500000");
+        assertThat(merged.fact("contractNumber")).isEqualTo("UY-2026-00123");
     }
 
     @Test

@@ -15,6 +15,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                   authoritative source, and imported {@code context_data} is a snapshot
  *                   that may be stale by the time the call goes out. Blank disables the
  *                   lookup and keeps the imported values
+ * @param clientByPhonePath path appended to baseUrl to read one client by phone number,
+ *                   with {@code {phone}} where the number goes (ROADMAP C.2 — inbound
+ *                   caller identification, no internal client id known yet). Blank
+ *                   disables the lookup; an inbound call then runs with no known facts
  */
 @ConfigurationProperties(prefix = "voice-agent.crm")
 public record CrmProperties(
@@ -22,6 +26,7 @@ public record CrmProperties(
         String baseUrl,
         String apiToken,
         String notePath,
-        String clientPath
+        String clientPath,
+        String clientByPhonePath
 ) {
 }

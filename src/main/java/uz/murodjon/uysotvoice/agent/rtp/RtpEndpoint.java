@@ -56,6 +56,8 @@ public class RtpEndpoint implements Closeable {
     private final int port;
     private final WavRecorder recorder;
     private final List<AudioListener> listeners;
+    /** Tap for the bot's own outgoing frames (live "listen in", §10.3); null if nobody taps it. */
+    private final AudioListener outboundTap;
     private final BlockingQueue<byte[]> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
     private final long ssrc = Integer.toUnsignedLong(new Random().nextInt());
 
@@ -84,9 +86,14 @@ public class RtpEndpoint implements Closeable {
     private long sendTimestamp;
 
     public RtpEndpoint(int port, WavRecorder recorder, List<AudioListener> listeners) {
+        this(port, recorder, listeners, null);
+    }
+
+    public RtpEndpoint(int port, WavRecorder recorder, List<AudioListener> listeners, AudioListener outboundTap) {
         this.port = port;
         this.recorder = recorder;
         this.listeners = List.copyOf(listeners);
+        this.outboundTap = outboundTap;
     }
 
     /** Bind the UDP socket and start the consumer. Blocks until bound. */
@@ -250,6 +257,9 @@ public class RtpEndpoint implements Closeable {
             return;
         }
         byte[] ulaw = new byte[SAMPLES_PER_FRAME];
+        // Only built when someone is listening — the live "listen in" tap (§10.3), not
+        // needed for the RTP send itself, which only needs the ulaw encoding above.
+        short[] pcmFrame = outboundTap != null ? new short[SAMPLES_PER_FRAME] : null;
         int filled = 0;
         boolean first;
         synchronized (playLock) {
@@ -263,7 +273,11 @@ public class RtpEndpoint implements Closeable {
                 }
                 int n = Math.min(SAMPLES_PER_FRAME - filled, currentChunk.length - currentOffset);
                 for (int i = 0; i < n; i++) {
-                    ulaw[filled + i] = G711Codec.pcmToUlaw(currentChunk[currentOffset + i]);
+                    short sample = currentChunk[currentOffset + i];
+                    ulaw[filled + i] = G711Codec.pcmToUlaw(sample);
+                    if (pcmFrame != null) {
+                        pcmFrame[filled + i] = sample;
+                    }
                 }
                 filled += n;
                 currentOffset += n;
@@ -274,8 +288,12 @@ public class RtpEndpoint implements Closeable {
             return;
         }
         // A short tail is padded to a whole frame; Asterisk expects fixed-size frames.
+        // pcmFrame's tail stays 0 (silence), which is exactly what the listen tap wants.
         for (int i = filled; i < SAMPLES_PER_FRAME; i++) {
             ulaw[i] = ULAW_SILENCE;
+        }
+        if (pcmFrame != null) {
+            outboundTap.onAudio(pcmFrame, SAMPLES_PER_FRAME);
         }
         first = sendSeq == 0;
         try {

@@ -13,13 +13,15 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import uz.murodjon.uysotvoice.campaign.dto.CampaignFilter;
-import uz.murodjon.uysotvoice.campaign.dto.CampaignRow;
+import uz.murodjon.uysotvoice.campaign.dto.Campaign;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
+import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.EnumSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,15 +59,18 @@ class CompanyIsolationTest {
     JdbcTemplate jdbc;
 
     private long otherCompanyCampaignId;
+    private long scenarioId;
 
     @BeforeEach
     void setUp() {
         jdbc.update("INSERT INTO company(id, name) VALUES (2, 'Other') ON CONFLICT (id) DO NOTHING");
+        scenarioId = jdbc.queryForObject(
+                "SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active", Long.class);
         otherCompanyCampaignId = jdbc.queryForObject(
-                "INSERT INTO campaign(name, type, status, goal_prompt, script_config, company_id) "
-                        + "VALUES ('other-company-campaign', 'DEBT_COLLECTION', 'ACTIVE', '', '{}'::jsonb, 2) "
+                "INSERT INTO campaign(name, type, status, goal_prompt, script_config, company_id, scenario_id) "
+                        + "VALUES ('other-company-campaign', 'DEBT_COLLECTION', 'ACTIVE', '', '{}'::jsonb, 2, ?) "
                         + "RETURNING id",
-                Long.class);
+                Long.class, scenarioId);
     }
 
     @Test
@@ -75,20 +80,22 @@ class CompanyIsolationTest {
 
     @Test
     void anotherCompanysCampaignIsExcludedFromTheList() {
-        long ownId = campaigns.create("my-campaign", CampaignType.DEBT_COLLECTION, "goal", "{}", "uz-UZ",
-                LocalTime.of(9, 0), LocalTime.of(20, 0), "MONDAY", 3, 24, 5, null, 0);
+        long ownId = campaigns.create(new Campaign(0, "my-campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
+                "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
+                3, 24, 5, null, 0, scenarioId, 0, true));
 
         var page = campaigns.findAll(new CampaignFilter(null, 500, null, null));
 
-        assertThat(page).extracting(CampaignRow::id).contains(ownId).doesNotContain(otherCompanyCampaignId);
+        assertThat(page).extracting(Campaign::id).contains(ownId).doesNotContain(otherCompanyCampaignId);
     }
 
     @Test
     void countExcludesAnotherCompanysCampaigns() {
         long before = campaigns.count();
 
-        campaigns.create("counted-campaign", CampaignType.DEBT_COLLECTION, "goal", "{}", "uz-UZ",
-                LocalTime.of(9, 0), LocalTime.of(20, 0), "MONDAY", 3, 24, 5, null, 0);
+        campaigns.create(new Campaign(0, "counted-campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
+                "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
+                3, 24, 5, null, 0, scenarioId, 0, true));
 
         // +1 for the campaign just created in *this* company; otherCompanyCampaignId
         // (seeded in setUp under company 2) must not also be reflected here.

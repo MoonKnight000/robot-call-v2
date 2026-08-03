@@ -3,8 +3,8 @@ package uz.murodjon.uysotvoice.campaign.repository;
 import org.springframework.stereotype.Repository;
 
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
-import uz.murodjon.uysotvoice.campaign.entity.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.entity.CampaignTargetEntity;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
@@ -27,7 +27,7 @@ public class CampaignTargetRepository {
     }
 
     public long add(long campaignId, long clientId, String phone, String language, String contextDataJson) {
-        CampaignTarget entity = new CampaignTarget();
+        CampaignTargetEntity entity = new CampaignTargetEntity();
         entity.setCampaign(campaigns.getReferenceById(campaignId));
         entity.setClientId(clientId);
         entity.setPhone(phone);
@@ -46,11 +46,11 @@ public class CampaignTargetRepository {
      * target id with no campaign in the URL ({@code POST /api/targets/{id}/do-not-call}),
      * so without this check another company's target id would be a valid opt-out target.
      */
-    public TargetRow find(long id) {
+    public CampaignTarget find(long id) {
         return jpa.findByIdAndCompanyId(id, company.id()).map(CampaignTargetRepository::toRow).orElse(null);
     }
 
-    public List<TargetRow> findByCampaign(long campaignId, TargetFilter filter) {
+    public List<CampaignTarget> findByCampaign(long campaignId, TargetFilter filter) {
         return jpa.findByCampaign_IdAndCompanyId(campaignId, company.id(), filter.pageable()).stream()
                 .map(CampaignTargetRepository::toRow)
                 .toList();
@@ -58,6 +58,15 @@ public class CampaignTargetRepository {
 
     public long countByCampaign(long campaignId) {
         return jpa.countByCampaign_IdAndCompanyId(campaignId, company.id());
+    }
+
+    /**
+     * Not scoped by {@link CurrentCompany} — same reasoning as {@link #claimDue}: the
+     * completion check runs from outcome application, which is reached by the dialer's
+     * own background threads, not a company-scoped request.
+     */
+    public long countActive(long campaignId) {
+        return jpa.countByCampaign_IdAndStatusIn(campaignId, List.of(TargetStatus.PENDING, TargetStatus.IN_PROGRESS));
     }
 
     /**
@@ -72,7 +81,7 @@ public class CampaignTargetRepository {
      * See {@link CampaignTargetJpaRepository#claimDue} for how the atomicity and
      * opt-out check are enforced.
      */
-    public List<TargetRow> claimDue(long campaignId, int limit) {
+    public List<CampaignTarget> claimDue(long campaignId, int limit) {
         return jpa.claimDue(campaignId, limit).stream().map(CampaignTargetRepository::toRow).toList();
     }
 
@@ -86,8 +95,8 @@ public class CampaignTargetRepository {
         jpa.setDoNotCall(id, company.id());
     }
 
-    private static TargetRow toRow(CampaignTarget e) {
-        return new TargetRow(
+    private static CampaignTarget toRow(CampaignTargetEntity e) {
+        return new CampaignTarget(
                 e.getId(),
                 e.getCampaign().getId(),
                 e.getClientId(),

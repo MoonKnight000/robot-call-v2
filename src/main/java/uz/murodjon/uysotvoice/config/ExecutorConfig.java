@@ -31,7 +31,8 @@ public class ExecutorConfig {
     public TaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         // dialer dispatch (5s) + stale sweeper (30s) + alerting (5min) + retention (nightly)
-        scheduler.setPoolSize(3);
+        // + report-schedule dispatch (hourly, §10.10)
+        scheduler.setPoolSize(4);
         scheduler.setThreadNamePrefix("sched-");
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
         scheduler.setAwaitTerminationSeconds(10);

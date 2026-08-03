@@ -4,8 +4,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,9 +20,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class FactGuardTest {
 
-    private static final CallContext CONTEXT = new CallContext(
-            "Aziz Karimov", new BigDecimal("1500000"), "so'm",
-            LocalDate.of(2026, 7, 1), "UY-2026-00123", "goal");
+    private static final ScenarioDefinition SCENARIO = ScenarioFixtures.debtCollection();
+
+    private static final CallContext CONTEXT = new CallContext(Map.of(
+            "clientName", "Aziz Karimov",
+            "debtAmount", new BigDecimal("1500000"),
+            "currency", "so'm",
+            "dueDate", LocalDate.of(2026, 7, 1),
+            "contractNumber", "UY-2026-00123"
+    ), "goal");
 
     @ParameterizedTest
     @ValueSource(strings = {
@@ -29,12 +38,12 @@ class FactGuardTest {
             "Qarzingiz 1,500,000 so'm.",       // English grouping
     })
     void acceptsTheDebtAmountHoweverItIsWritten(String text) {
-        assertThat(FactGuard.violations(text, CONTEXT)).isEmpty();
+        assertThat(FactGuard.violations(text, SCENARIO, CONTEXT)).isEmpty();
     }
 
     @Test
     void blocksAnAmountThatIsNotInTheFacts() {
-        assertThat(FactGuard.violations("Qarzingiz 15000000 so'm.", CONTEXT))
+        assertThat(FactGuard.violations("Qarzingiz 15000000 so'm.", SCENARIO, CONTEXT))
                 .containsExactly("15000000");
     }
 
@@ -43,7 +52,7 @@ class FactGuardTest {
         // The prompt forbids offering a discount; this is the check that the caller never
         // hears one anyway.
         assertThat(FactGuard.violations(
-                "Qarzingiz 1500000 so'm, lekin 1200000 to'lasangiz ham bo'ladi.", CONTEXT))
+                "Qarzingiz 1500000 so'm, lekin 1200000 to'lasangiz ham bo'ladi.", SCENARIO, CONTEXT))
                 .containsExactly("1200000");
     }
 
@@ -56,28 +65,28 @@ class FactGuardTest {
             "Soat 14:30 da qo'ng'iroq qilaman.",
     })
     void leavesOrdinarySpeechAlone(String text) {
-        assertThat(FactGuard.violations(text, CONTEXT)).isEmpty();
+        assertThat(FactGuard.violations(text, SCENARIO, CONTEXT)).isEmpty();
     }
 
     @Test
     void withoutFactsThereIsNothingToStateSoAnySumIsBlocked() {
         // A call with no context has no figure the agent is entitled to name.
-        CallContext empty = new CallContext(null, null, null, null, null, null);
-        assertThat(FactGuard.violations("Qarzingiz 900000 so'm.", empty))
+        CallContext empty = new CallContext(Map.of(), null);
+        assertThat(FactGuard.violations("Qarzingiz 900000 so'm.", SCENARIO, empty))
                 .containsExactly("900000");
-        assertThat(FactGuard.violations("Ertaga to'laysizmi?", empty)).isEmpty();
+        assertThat(FactGuard.violations("Ertaga to'laysizmi?", SCENARIO, empty)).isEmpty();
     }
 
     @Test
     void handlesBlankAndNullText() {
-        assertThat(FactGuard.violations(null, CONTEXT)).isEmpty();
-        assertThat(FactGuard.violations("   ", CONTEXT)).isEmpty();
+        assertThat(FactGuard.violations(null, SCENARIO, CONTEXT)).isEmpty();
+        assertThat(FactGuard.violations("   ", SCENARIO, CONTEXT)).isEmpty();
     }
 
     @Test
     void acceptsTheAmountWithADecimalTail() {
-        CallContext withTiyin = new CallContext("A", new BigDecimal("1500000.50"), "so'm",
-                null, null, null);
-        assertThat(FactGuard.violations("Qarzingiz 1500000.50 so'm.", withTiyin)).isEmpty();
+        CallContext withTiyin = new CallContext(Map.of(
+                "clientName", "A", "debtAmount", new BigDecimal("1500000.50")), null);
+        assertThat(FactGuard.violations("Qarzingiz 1500000.50 so'm.", SCENARIO, withTiyin)).isEmpty();
     }
 }

@@ -2,7 +2,7 @@ package uz.murodjon.uysotvoice.voice.service;
 
 import org.springframework.stereotype.Service;
 
-import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.repository.TtsVoiceRepository;
 
 import java.util.List;
@@ -25,17 +25,17 @@ public class TtsVoiceService {
      * @param language optional BCP-47 filter; blank or null returns the whole catalog
      * @return the voices {@code POST /api/campaigns} will accept
      */
-    public List<TtsVoiceRow> voices(String language) {
+    public List<TtsVoice> voices(String language) {
         return repository.forLanguage(language);
     }
 
     /** Every selectable voice. */
-    public List<TtsVoiceRow> all() {
+    public List<TtsVoice> all() {
         return repository.all();
     }
 
     /** The voice with this id, or {@code null} for a blank or unknown id. */
-    public TtsVoiceRow find(String id) {
+    public TtsVoice find(String id) {
         return repository.find(id);
     }
 

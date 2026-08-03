@@ -24,6 +24,14 @@ import java.time.LocalDate;
  * @param promisedAmount amount promised, if any
  * @param crmNoteId    id the CRM gave the note; null means it has not been accepted yet —
  *                     the outbox is still retrying, or the CRM is off
+ * @param clientName   from the target's {@code context_data.clientName} (backend-uchun-
+ *                     talablar.md §2), set at CSV/API import time; {@code null} if that
+ *                     field was never supplied for this target
+ * @param campaignName the campaign this call's target belongs to
+ * @param operatorName {@code app_user} who handled this call, if it was transferred to a
+ *                     human and the answering endpoint matched a registered SIP
+ *                     extension ({@code CallAttemptEntity#operatorUserId}); {@code null}
+ *                     for every bot-only call
  */
 public record CallRow(
         long callId,
@@ -39,6 +47,9 @@ public record CallRow(
         String summary,
         LocalDate promisedDate,
         BigDecimal promisedAmount,
-        Long crmNoteId
+        Long crmNoteId,
+        String clientName,
+        String campaignName,
+        String operatorName
 ) {
 }

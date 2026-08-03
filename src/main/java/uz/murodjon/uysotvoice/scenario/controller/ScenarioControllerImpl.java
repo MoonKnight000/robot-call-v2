@@ -7,7 +7,7 @@ import uz.murodjon.uysotvoice.scenario.dto.CloneScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.dto.CreateScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioFilter;
-import uz.murodjon.uysotvoice.scenario.dto.ScenarioRow;
+import uz.murodjon.uysotvoice.scenario.dto.Scenario;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioValidationResult;
 import uz.murodjon.uysotvoice.scenario.dto.UpdateScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
@@ -24,27 +24,27 @@ public class ScenarioControllerImpl implements ScenarioController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<ScenarioRow>> create(CreateScenarioRequest r) {
+    public ResponseEntity<ResponseData<Scenario>> create(CreateScenarioRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.create(r)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<ScenarioRow>>> list(ScenarioFilter filter) {
+    public ResponseEntity<ResponseData<PageableData<Scenario>>> list(ScenarioFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(service.list(filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ScenarioRow>> get(long id) {
+    public ResponseEntity<ResponseData<Scenario>> get(long id) {
         return ResponseEntity.ok(ResponseData.ok(service.requireScenario(id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ScenarioRow>> update(long id, UpdateScenarioRequest r) {
+    public ResponseEntity<ResponseData<Scenario>> update(long id, UpdateScenarioRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.update(id, r)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ScenarioRow>> clone(long id, CloneScenarioRequest r) {
+    public ResponseEntity<ResponseData<Scenario>> clone(long id, CloneScenarioRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.clone(id, r)));
     }
 

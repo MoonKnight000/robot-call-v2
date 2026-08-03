@@ -11,16 +11,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditRow;
+import uz.murodjon.uysotvoice.audit.dto.AuditLog;
 import uz.murodjon.uysotvoice.report.dto.BulkCallActionRequest;
 import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;
 import uz.murodjon.uysotvoice.report.dto.CallFilter;
 import uz.murodjon.uysotvoice.report.dto.CallRow;
+import uz.murodjon.uysotvoice.report.dto.CampaignComparisonRow;
 import uz.murodjon.uysotvoice.report.dto.CampaignStats;
 import uz.murodjon.uysotvoice.report.dto.DashboardBucket;
 import uz.murodjon.uysotvoice.report.dto.DashboardKpi;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
+import uz.murodjon.uysotvoice.report.dto.DurationHistogramBucket;
+import uz.murodjon.uysotvoice.report.dto.FunnelStage;
+import uz.murodjon.uysotvoice.report.dto.HourlyHeatmapCell;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 
@@ -30,7 +34,7 @@ import java.util.List;
  * Reporting API (PROJECT.md §10 Bosqich 12): what the campaigns did, call by call.
  *
  * <p>Read-only, so a viewer-scoped API key is enough (see
- * {@code uz.murodjon.uysotvoice.config.SecurityConfig}) — reading results does not need the
+ * {@code uz.murodjon.uysotvoice.security.SecurityConfig}) — reading results does not need the
  * key that can dial subscribers.
  */
 @RequestMapping("/api/reports")
@@ -81,7 +85,7 @@ public interface ReportController {
 
     /** Who changed what through the API (§11). */
     @PostMapping("/audit/list")
-    ResponseEntity<ResponseData<PageableData<AuditRow>>> auditLog(@Valid @RequestBody AuditFilter filter);
+    ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(@Valid @RequestBody AuditFilter filter);
 
     /**
      * The 4 KPI cards on the dashboard (§10.2 UI-DESIGN.md): total calls, answered rate,
@@ -107,6 +111,72 @@ public interface ReportController {
     /** "Natijalar taqsimoti" — disposition distribution over the window, not bucketed. */
     @GetMapping("/dashboard/outcomes")
     ResponseEntity<ResponseData<List<DashboardOutcome>>> dashboardOutcomes(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId);
+
+    /**
+     * "Natijalar taqsimoti" hisobotlar sahifasi uchun (§10.10 Grafik 2) — {@code
+     * /dashboard/outcomes} bilan bir xil ma'lumot, alohida yo'l ostida.
+     */
+    @GetMapping("/outcomes-distribution")
+    ResponseEntity<ResponseData<List<DashboardOutcome>>> outcomesDistribution(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId);
+
+    /** "Kun × soat javob foizi" issiqlik xaritasi (§10.10 Grafik 3). */
+    @GetMapping("/hourly-heatmap")
+    ResponseEntity<ResponseData<List<HourlyHeatmapCell>>> hourlyHeatmap(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId);
+
+    /**
+     * Bir nechta kampaniyani yonma-yon solishtirish (§10.10 Grafik 4). {@code campaignIds}
+     * berilmasa — davr ichida qo'ng'irog'i bo'lgan barcha kampaniyalar.
+     */
+    @GetMapping("/campaign-comparison")
+    ResponseEntity<ResponseData<List<CampaignComparisonRow>>> campaignComparison(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) List<Long> campaignIds);
+
+    /** Ulangan qo'ng'iroqlar davomiyligi taqsimoti (§10.10 Grafik 5). */
+    @GetMapping("/duration-histogram")
+    ResponseEntity<ResponseData<List<DurationHistogramBucket>>> durationHistogram(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId);
+
+    /**
+     * "Qo'ng'iroqlar dinamikasi" (§10.10 Grafik 1) — the reports page's own version of
+     * {@code /dashboard/timeseries}, with the general filter panel's extra scenario and
+     * operator (escalated-to-human) narrowing.
+     */
+    @GetMapping("/dynamics")
+    ResponseEntity<ResponseData<List<DashboardBucket>>> dynamics(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId,
+            @RequestParam(required = false) Long scenarioId,
+            @RequestParam(required = false) Boolean operator);
+
+    /** "Qo'ng'iroq → Javob → Shaxs tasdiqlandi → Suhbat → Natija" voronkasi (§10.10 Grafik 6). */
+    @GetMapping("/funnel")
+    ResponseEntity<ResponseData<List<FunnelStage>>> funnel(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId);
+
+    /**
+     * "⇩ Hisobotni yuklab olish" (§10.10) — the whole Reports page (KPI totals, outcome
+     * distribution, funnel, campaign comparison) as one file. Not wrapped in {@code
+     * ResponseData} (raw file body), like {@code /calls/export}.
+     */
+    @GetMapping("/export")
+    ResponseEntity<byte[]> export(
+            @RequestParam(defaultValue = "csv") String format,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
             @RequestParam(required = false) Long campaignId);

@@ -12,5 +12,6 @@ public enum Disposition {
     HUNG_UP,          // hung up
     TRANSFERRED,      // transferred to a human operator
     VOICEMAIL,        // answering machine
-    FAILED            // technical failure
+    FAILED,           // technical failure
+    COMPLETED         // scenario finished normally with no debt-specific outcome (ROADMAP A.3)
 }

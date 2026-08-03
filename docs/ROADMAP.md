@@ -17,26 +17,36 @@ PROJECT.md dagi 0–12 bosqichlarning deyarli hammasi ishlaydi:
 | Audio      | ✅ RTP (Netty), G.711, jitter buffer, Silero VAD, barge-in, SpeechGate                                                                     |
 | STT/TTS    | ✅ Provayder-abstraksiya: Yandex (default) / Google; TTS katalog, kesh, warm-up                                                            |
 | LLM        | ✅ Gemini (OpenAI-compat endpoint), streaming, tool calling, token budjeti, FactGuard                                                      |
-| Dialog     | ✅ FSM (qarzdorlik skripti), guardrails, NoInputWatchdog, CallSummary                                                                      |
+| Dialog     | ✅ Scenario Engine orqali (ROADMAP A.1–A.4, 2026-08-01) — `DialogEngine` kampaniyaga bog'langan `ScenarioDefinition`ni ishga tushiradi, qattiq qarzdorlik FSM'i emas; guardrails, NoInputWatchdog, outcome-schema asosidagi CallSummary; 5 ta built-in shablon, custom ssenariy CRUD/validatsiya/versiyalash ham tayyor |
 | Dialer     | ✅ Kampaniya CRUD, CSV import, retry, dial window/days, daily cap, do-not-call                                                             |
 | Natijalar  | ✅ Transkript, yozuv (MinIO/disk), hisobotlar, audit, retention                                                                            |
-| Xavfsizlik | ✅ API kalit (full/read-only), audit log                                                                                                   |
-| CRM        | ⚠️ Oddiy REST client (Bearer token) — Uysot OAuth **yo'q**                                                                                 |
-| Inbound    | ⚠️ Texnik ishlaydi (softphone 600 → AI javob beradi), lekin **inbound ssenariy tushunchasi yo'q** — o'sha qarzdorlik dialogi ishga tushadi |
+| Xavfsizlik | ✅ API kalit (full/read-only) + JWT foydalanuvchi login (ADMIN/OPERATOR/VIEWER, ROADMAP E.1, 2026-08-02), audit log                        |
+| CRM        | ⚠️ REST client, endi per-company OAuth token bilan; Uysot authorization-code oqimi kod darajasida tayyor, faqat Uysot'ning haqiqiy OAuth URL'lari kutilmoqda (D.2) |
+| Inbound    | ✅ C.1/C.2/C.3 (ROADMAP, 2026-08-01) — DID → ssenariy/til marshrutlash, chaqiruvchi CRM orqali tanilishi, 3 ta inbound shablon. Operator navbati (C.4) hali yo'q |
 
-### Asosiy cheklov: qarzdorlik kodga "qotirilgan"
+### Asosiy cheklov: qarzdorlik kodga "qotirilgan" — ✅ HAL QILINDI (ROADMAP A.3, 2026-08-01)
 
-Suhbat mantig'i to'liq qarzdorlikka bog'langan — boshqa suhbat turini qo'shish uchun
-shu sinflarni o'zgartirish kerak bo'ladi:
+Suhbat mantig'i to'liq qarzdorlikka bog'langan edi — boshqa suhbat turini qo'shish
+uchun quyidagi sinflarni o'zgartirish kerak bo'lardi:
 
-- `DialogState` — GREETING → IDENTITY_CHECK → DEBT_NOTICE → ... (qattiq enum)
-- `CallContext` — clientName, debtAmount, dueDate, contractNumber (qarz maydonlari)
-- `DialogTools` — recordPaymentPromise, recordRefusalReason (qarz tool'lari)
-- `SystemPromptFactory` — "Siz Uysot kompaniyasining qarz undirish agentisiz..."
-- `CallSummary` / `ReasonCode` / `call_result` jadvali — qarz natijalari
+- ~~`DialogState` — GREETING → IDENTITY_CHECK → DEBT_NOTICE → ... (qattiq enum)~~ →
+  o'chirildi, bosqich id'lari endi ssenariyning `stages[]`idan olingan `String`
+- ~~`CallContext` — clientName, debtAmount, dueDate, contractNumber (qarz maydonlari)~~ →
+  `Map<String,Object> facts`, `factSchema` bo'yicha to'ldiriladi
+- `DialogTools` — `recordPaymentPromise`/`recordRefusalReason` real kod-guardraili
+  (o'tmish sanani rad etish) tufayli qoldi, lekin faqat ssenariy shu nomlarni e'lon
+  qilsagina ro'yxatga olinadi; boshqa har qanday ssenariy tool'i generik
+  `ScenarioToolCallbackFactory` orqali runtime'da quriladi
+- `SystemPromptFactory` — rolePrompt/faktlar/guardrails/bosqich matni endi
+  `ScenarioDefinition`dan quriladi (stablePrefix/turnAnnex bo'linishi saqlangan holda)
+- `CallSummary` — endi `Map<String,Object> outcome` (ssenariyning `outcomeSchema`siga
+  mos); `call_result.outcome` JSONB ustuni + eski `reason_code`/`promised_date`/
+  `promised_amount` ustunlari dual-write bilan saqlanadi (CRM/CSV eksport uchun)
 
-Bu **texnik qarz emas** — MVP uchun to'g'ri qaror edi. Endi keyingi bosqich: shu
-skeletni konfiguratsiyaga chiqarish.
+Kampaniya endi `scenario_id` orqali ssenariyga bog'lanadi (majburiy, yaratishda
+tanlanadi, keyin o'zgartirilmaydi). `POST /api/calls?scenarioId=` — ssenariyni
+kampaniyasiz sinash uchun. Batafsil: `docs/api/scenarios.md`, `docs/api/campaigns.md`,
+`docs/api/calls.md`; migratsiya — `V4__scenario_binding.sql`.
 
 ---
 
@@ -86,7 +96,7 @@ yaratadi (A.4).
 Qarzdorlik mantig'ini koddan **ssenariy ta'rifi**ga chiqarish. `campaign.script_config`
 (JSONB) ustuni allaqachon bor — endi u haqiqatan ishlatiladi.
 
-**A.1 — ScenarioDefinition modeli**
+**A.1 — ScenarioDefinition modeli — ✅ BAJARILDI**
 
 ```java
 public record ScenarioDefinition(
@@ -112,7 +122,9 @@ public record ScenarioDefinition(
   saqlanadi** (Gemini kesh ishlashi uchun, RUN.md dagi ogohlantirish).
 - FactGuard umumlashtiriladi: faktlar ro'yxati sxemadan olinadi.
 
-**A.2 — Tayyor shablonlar (seed)**
+**A.2 — Tayyor shablonlar (seed) — ✅ BAJARILDI**
+
+Barcha 5 shablon `V1__baseline.sql`da `scenario` jadvaliga seed qilingan (`is_builtin=true`):
 
 | Shablon                | Maqsad                                                      | Asosiy natija               |
 |------------------------|-------------------------------------------------------------|-----------------------------|
@@ -122,39 +134,52 @@ public record ScenarioDefinition(
 | `survey`               | 3–5 savollik so'rovnoma / NPS                               | answers[], score            |
 | `appointment-reminder` | uchrashuvni eslatish/tasdiqlash/ko'chirish                  | confirmed, newTime          |
 
-**A.3 — Kampaniya ssenariyga bog'lanadi**
+**A.3 — Kampaniya ssenariyga bog'lanadi — ✅ BAJARILDI (2026-08-01)**
 
-- `campaign.type` → `scenario_id`; kampaniya yaratishda ssenariy tanlanadi.
-- Panel: ssenariy tanlash + faktlar sxemasiga mos CSV ustunlari ko'rsatiladi.
-- Migratsiya: mavjud kampaniyalar `debt-collection` ga bog'lanadi. Xatti-harakat
-  o'zgarmasligi regressiya testi bilan tekshiriladi (bir xil prompt chiqishi).
+- `campaign.scenario_id` qo'shildi (majburiy, FK `scenario.id`ga, yaratilgandan keyin
+  o'zgarmaydi); `CreateCampaignRequest.scenarioId` orqali tanlanadi.
+- Migratsiya (`V4__scenario_binding.sql`): mavjud kampaniyalar `debt-collection`ga
+  bog'landi; shu seedning JSON ta'rifi eski hardcoded prompt/guardrails/bosqich
+  matniga aynan mos keladigan qilib to'g'rilandi (rolePrompt, 5 ta qarz-xos guardrail,
+  9 ta bosqichning purpose/allowedTransitions/allowedTools) — xatti-harakat
+  o'zgarmasligi shu orqali ta'minlandi. Platforma-darajasidagi 5 ta guardrail
+  (§11.1 disclosure, PII, noaniq javob/haqorat → eskalatsiya, noto'g'ri odam,
+  opt-out) endi `SystemPromptFactory`da kod darajasida, har qanday ssenariyga
+  qo'llanadi.
+- `DialogEngine`/`SystemPromptFactory`/`DialogSession`/`DialogTools`/`FactGuard`/
+  `CallContextMapper` to'liq generic — `DialogState` enum o'chirildi.
+- **Qoldiq:** panelda CSV ustunlarini faktlar sxemasiga moslab ko'rsatish (UI ishi,
+  E.4 bilan birga qilinishi mumkin).
 
-**Tekshiruv:** `lead-qualification` ssenariyli kampaniya ochiladi, bot qarz haqida
-emas, mahsulotga qiziqish haqida suhbat quradi, natija outcome JSONB da.
-
-**A.4 — Custom ssenariylar (foydalanuvchi o'zi yaratadi)**
+**A.4 — Custom ssenariylar (foydalanuvchi o'zi yaratadi) — ✅ BAJARILDI (CRUD/validatsiya/versiyalash); qoldiq: vizual tahrirlagich (E.4)**
 
 Tayyor shablonlar bilan cheklanmaslik — foydalanuvchi o'z ssenariysini yarata olishi kerak:
 
 - Ssenariylar DB da saqlanadi (`scenario` jadvali, ta'rif JSONB). Built-in shablonlar
   **read-only** seed sifatida yuklanadi; foydalanuvchi ularni **nusxalab** (clone)
-  o'zgartiradi yoki noldan yaratadi.
-- CRUD API: `GET/POST/PUT /api/scenarios`, clone endpoint. Panel: avval JSON tahrirlash
-  + validatsiya, keyin (E.4 da) vizual tahrirlagich.
-- **Validatsiya majburiy:** har bosqichdan yakuniy holatga yo'l borligi (deadlock yo'q),
-  tool'lar outcome sxemasiga mosligi, fakt nomlari to'qnashmasligi — xato ssenariy
-  saqlanmaydi, aktivlashtirilmaydi.
-- **Versiyalash:** kampaniya ssenariyning muayyan **versiyasiga** bog'lanadi — aktiv
-  kampaniya o'rtasida ssenariy tahrirlansa, ketayotgan qo'ng'iroqlar eski versiyada
-  davom etadi; hisobotda qaysi versiya ishlagani ko'rinadi.
-- **Guardrails tegilmaydi:** umumiy taqiqlar (§5.1) va disclosure kod darajasida —
-  custom ssenariy ularni o'chira yoki yumshata olmaydi. Ssenariy faqat *qo'shimcha*
-  qoida kirita oladi.
-- Sinov rejimi: ssenariyni kampaniyasiz bitta test raqamga qo'ng'iroq bilan sinash
-  (hozirgi `POST /api/calls` ga `scenarioId` parametri).
+  o'zgartiradi yoki noldan yaratadi. — `ScenarioService.create`/`clone`.
+- CRUD API: `GET/POST/PUT /api/scenarios`, clone endpoint. — `ScenarioController`
+  (`POST /api/scenarios`, `POST /api/scenarios/list`, `GET/PUT /api/scenarios/{id}`,
+  `POST /api/scenarios/{id}/clone`, `POST /api/scenarios/validate`). Panel: hozircha
+  JSON tahrirlash + validatsiya; vizual tahrirlagich E.4 ga qoldirilgan.
+- **Validatsiya majburiy:** har bosqichdan yakuniy holatga yo'l borligi (deadlock yo'q,
+  BFS bilan tekshiriladi), tool'lar/outcome/fakt nomlari to'qnashmasligi, noma'lum
+  stage/tool'ga ishora qilinmasligi, reserved tool nomlari band qilinmasligi — xato
+  ssenariy saqlanmaydi. — `ScenarioValidator`.
+- **Versiyalash:** kampaniya ssenariyning muayyan **versiyasiga** (aniq qatorga, FK
+  orqali) bog'lanadi — `ScenarioService.update` eski qatorni o'zgartirmaydi, yangi
+  versiya qo'shib eskisini deaktivlaydi (`@Transactional`); aktiv kampaniya o'rtasida
+  ssenariy tahrirlansa, ketayotgan qo'ng'iroqlar eski versiyada davom etadi.
+- **Guardrails tegilmaydi:** umumiy taqiqlar (§5.1) va disclosure `SystemPromptFactory`da
+  kod darajasida — custom ssenariy ularni o'chira yoki yumshata olmaydi. Ssenariy faqat
+  *qo'shimcha* qoida kirita oladi.
+- Sinov rejimi: ssenariyni kampaniyasiz bitta test raqamga qo'ng'iroq bilan sinash —
+  `POST /api/calls?scenarioId=`.
 
-**Tekshiruv:** panel orqali yangi ssenariy yaratiladi (masalan, "yetkazib berishni
-tasdiqlash"), test qo'ng'iroqda ishlaydi, noto'g'ri ta'rif 400 bilan rad etiladi.
+**Umumiy qoldiq (Bosqich A):** kod va birlik-darajasidagi validatsiya (deadlock,
+nom to'qnashuvi) tayyor, lekin `lead-qualification`dan tashqari qolgan 4 shablon
+va custom-ssenariy oqimining o'zi hali real qo'ng'iroq bilan sinalmagan (§5 xavf 6);
+vizual tahrirlagich E.4 ga qoldirilgan.
 
 ---
 
@@ -166,74 +191,166 @@ ssenariylari boshqasinikidan **qat'iy ajratilgan** bo'lishi shart. Bu bosqich at
 oldinga qo'yilgan: jadvallar va funksiyalar ko'payganidan keyin `company_id` qo'shish
 ancha qimmatga tushadi.
 
-**B.1 — Ma'lumot modeli**
+**B.1 — Ma'lumot modeli — ✅ sxema + CRUD bajarildi (2026-08-01); qoldiq: E.1 (real foydalanuvchi)**
 
-- `company` jadvali: nom, status, sozlamalar (default til, timezone, caller ID,
-  dial-window defaultlari).
+- `company` jadvali — **identifikatsiya, shu**: nom, status. Sozlamalar (default til,
+  timezone, dial-window) 2026-08-01'da alohida `company_config` jadvaliga chiqarildi
+  (`V8__company_config.sql`) — `Company`da vaqtincha turgan bu maydonlar hech qayerda
+  o'qilmasdan "o'lik" qolgani aniqlangandan keyin ("kompaniyada faqat kompaniya haqida
+  ma'lumot bo'lsin" printsipi). — `V1__baseline.sql` (`company`), `V8` (`company_config`).
+- `company_config` — har kompaniyaga bitta qator: `dialWindowStart`/`dialWindowEnd`
+  (**qat'iy chegara** — `DialerService` har kampaniyani o'z oynasi BILAN BIRGA shu
+  oraliqqa ham tekshiradi), `timezone`, `supportedLanguages` (tartiblangan ro'yxat,
+  birinchisi — default til; kampaniya yaratish/tahrirlashda tanlangan til shu
+  ro'yxatda bo'lishi shart, aks holda `400` — `CompanyConfigService.resolveLanguage`,
+  `CampaignService` orqali ishlatiladi). Har yangi kompaniya avtomatik default config
+  bilan yaratiladi (`uz-UZ`, 09:00–20:00, `Asia/Tashkent`).
 - Barcha ma'lumot jadvallariga `company_id`: `campaign`, `campaign_target`,
-  `call_attempt`, `call_transcript`, `call_result`, `scenario`, `do_not_call`,
-  `audit_log`, keyinchalik `inbound_route` va `usage_record`.
-- Flyway migratsiya: mavjud ma'lumotlar avtomatik "default" kompaniyaga bog'lanadi —
-  tarix yo'qolmaydi.
+  `call_attempt`, `scenario` (nullable — built-in uchun), `do_not_call_list`,
+  `audit_log`, `contact`, `inbound_route`, `sip_trunk`. `call_transcript`/`call_result`
+  to'g'ridan-to'g'ri emas, `call_attempt`ga FK orqali izolyatsiya qilinadi (join bilan
+  yetarli, ustun takrorlanmaydi). `usage_record` hali yo'q (E.3 bilan birga keladi).
+- Flyway migratsiya: mavjud ma'lumotlar avtomatik "default" (id=1) kompaniyaga
+  bog'langan — tarix yo'qolmagan; `company_config` migratsiyasi ham eski
+  `company.default_language`/`timezone`/`dial_window_*` qiymatlarini ko'chirib
+  o'tkazadi, xatti-harakat o'zgarmaydi.
+- **Company CRUD** (`uz.murodjon.uysotvoice.company`): `POST /api/companies`,
+  `POST /api/companies/list`, `GET/PUT /api/companies/{id}` (identifikatsiya) +
+  `GET/PUT /api/companies/{id}/config` (sozlamalar) — yangi kompaniya yaratish va
+  sozlamalarini tahrirlash endi API orqali mumkin (ilgari faqat SQL bilan seed
+  qilingan edi). Batafsil: `docs/api/companies.md`. **Diqqat:** yangi kompaniya
+  yaratish hali amaliy ma'no bermaydi — pastdagi B.2'dagi "API kalit → company_id"
+  bog'lanmaguncha barcha so'rov baribir default (id=1) kompaniyaga ishlaydi.
 
-**B.2 — Izolyatsiyani majburlash**
+**B.2 — Izolyatsiyani majburlash — ✅ BAJARILDI (repository-filtr + real API kalit → company_id, backend-uchun-talablar.md §8)**
 
-- Repository darajasida **majburiy** `company_id` filtri — filtrsiz so'rov arxitektura
-  jihatdan mumkin bo'lmasin (umumiy company-scoped repository bazasi). Qo'shimcha
-  qatlam sifatida Postgres RLS baholanadi.
-- API kalitlari kompaniyaga bog'lanadi: `kalit → company_id`; hisobotlar, kampaniyalar,
-  yozuvlar, audit — faqat o'z kompaniyasiniki. MinIO/diskdagi yozuvlar ham kompaniya
-  prefiksi bilan saqlanadi.
-- Ssenariylar: built-in shablonlar global (read-only), custom ssenariylar (A.4)
-  `company_id` bilan — bir kompaniya boshqasining ssenariyini ko'rmaydi ham,
-  ishlata olmaydi ham.
+- Repository darajasida **majburiy** `company_id` filtri — `CurrentCompany`
+  interfeysi `CampaignRepository`, `CampaignTargetRepository`, `ContactRepository`,
+  `DoNotCallRepository`, `InboundRouteRepository`, `ScenarioRepository`,
+  `ReportRepository`, `AuditService`, `CallRecordService` — barchasida ishlatiladi.
+  Qo'shimcha qatlam sifatida Postgres RLS hamon baholanmagan (ixtiyoriy).
+- **`X-Api-Key` → `company_id`: ✅ hal qilindi.** `api_key` jadvali (`V7__api_key.sql`,
+  `uz.murodjon.uysotvoice.apikey`) har kalitni bitta kompaniyaga bog'laydi; panel
+  orqali yaratiladi/bekor qilinadi (`POST/DELETE /api/settings/api-keys`, [settings.md](api/settings.md)).
+  `security.ApiKeyFilter` uchta manbani navbat bilan tekshiradi: global admin kalit,
+  global read-only kalit, keyin DB'dagi kompaniyaga-scoped kalit — oxirgisi
+  `AuthenticatedUser` (xuddi JWT login qanday principal beradigan bo'lsa, shunday)
+  ni o'z `companyId`si bilan o'rnatadi, shu sababli `JwtCurrentCompanyResolver`
+  o'zgarishsiz ikkalasini ham to'g'ri scoped qiladi. Ikkita global konstantali kalit
+  hamon ishlaydi — fallback/bootstrap kirish sifatida, `DefaultCompanyResolver`ga
+  scoped bo'lib qoladi (ataylab, ular kompaniyaga xos emas).
+- **JWT bilan kirgan foydalanuvchi uchun bu ✅ hal qilindi** (ROADMAP E.1, 2026-08-02)
+  — `JwtCurrentCompanyResolver` har so'rovni foydalanuvchining haqiqiy kompaniyasiga
+  scoped qiladi.
+- **Qoldiq:** bitta foydalanuvchi bir nechta kompaniyaga a'zo bo'lishi (E.2) — hozir
+  `app_user.company_id` bitta ustun, `user_company` ko'p-ko'pga jadvali yo'q;
+  `GET /api/companies` shu sababli hamon har doim bitta elementli ro'yxat qaytaradi.
+- Ssenariylar: built-in shablonlar global (`company_id IS NULL`, read-only),
+  custom ssenariylar (A.4) `company_id` bilan — bir kompaniya boshqasining
+  ssenariyini ko'rmaydi ham, ishlata olmaydi ham.
 - Do-not-call ro'yxati kompaniya kesimida (mijoz bitta kompaniyaga taqiq qo'ygani
   boshqasiga tegmaydi).
-- **Izolyatsiya regressiya testlari:** A kompaniya kaliti bilan B kompaniya resursiga
-  har turdagi so'rov → 403/404. Bu test to'plami doimiy CI da qoladi.
+- MinIO/diskdagi yozuvlar kompaniya prefiksi bilan saqlanishi — **hali
+  tekshirilmagan/qilinmagan**.
+- **Izolyatsiya regressiya testlari:** `CompanyIsolationTest` (`campaign` uchun:
+  boshqa kompaniya campaign'i ID bo'yicha ko'rinmaydi, ro'yxatda chiqmaydi, count'ga
+  kirmaydi, update no-op). Hozircha faqat `campaign` uchun — qolgan repository'lar
+  (`contact`, `scenario`, `do_not_call`, `audit`, `inbound_route`, `report`) uchun
+  xuddi shunday test hali yozilmagan.
 
-**B.3 — Kompaniyaga xos telefoniya (minimal)**
+**B.3 — Kompaniyaga xos telefoniya (minimal) — ✅ SIP trunk CRUD + wiring bajarildi (2026-08-01)**
 
-- Har kompaniyaga caller ID / DID raqam biriktiriladi; kunlik cap va parallel limitlar
-  kompaniya darajasida ham. To'liq "har kompaniyaga o'z trunki" — E bosqichida.
+- **`sip_trunk` jadvali** (`V6__sip_trunk.sql`): har kompaniya bir nechta PJSIP trunkga
+  ega bo'lishi mumkin, ulardan bittasi **default** (`idx_sip_trunk_default` — company
+  bo'yicha bitta default, `scenario`ning `idx_scenario_active_key`siga o'xshash
+  qisman unique indeks). Bu API `pjsip.conf`ni o'zi boshqarmaydi — faqat Asterisk
+  tomonda allaqachon sozlangan endpoint nomini kompaniyaga bog'laydi.
+- **CRUD** (`uz.murodjon.uysotvoice.siptrunk`): `POST /api/sip-trunks`,
+  `POST /api/sip-trunks/list`, `GET/PUT /api/sip-trunks/{id}`,
+  `POST /api/sip-trunks/{id}/default` (default trunkni almashtirish),
+  `DELETE /api/sip-trunks/{id}` (default trunk o'chirilmaydi — avval boshqasini
+  default qiling). Batafsil: `docs/api/sip-trunks.md`.
+- **Asterisk bilan ulanish**: `AriService.originate(number, companyId)` endi
+  qo'ng'iroq kimning kampaniyasiga tegishli ekanini biladi (`Campaign.companyId` →
+  `CallTask.companyId` → `CallTaskConsumer`) va o'sha kompaniyaning yoqilgan default
+  trunkidan (`SipTrunkService.findDefaultForCall`) PJSIP endpoint va caller ID'ni
+  oladi. Mahalliy test-softphone marshrutlash (`localNumberPattern`) o'zgarishsiz
+  global qoladi — bu kompaniya tushunchasiga aloqasiz dev/test qulayligi. Trunk
+  topilmasa (masalan yangi kompaniyada hali sozlanmagan) — global
+  `voice-agent.asterisk.trunk-endpoint`/`caller-id`ga qaytadi, qo'ng'iroq baribir
+  ketaveradi.
+- **Default kompaniya (id=1) migratsiyasi**: `SipTrunkBootstrap` ilova birinchi marta
+  ishga tushganda, agar default kompaniyada hali default trunk bo'lmasa, hozirgi
+  `voice-agent.asterisk.trunk-endpoint`/`caller-id` konfiguratsiyasidan avtomatik
+  bitta default trunk yaratadi — foydalanuvchi Asterisk'ga allaqachon sozlab qo'ygan
+  trunk API orqali qayta kiritilmasdan o'z-o'zidan default bo'lib qoladi.
+- **Qat'iy dial-window** (B.1 dagi asl "kompaniya darajasida cap" niyatining bir qismi)
+  `company_config.dialWindowStart/End` orqali amalga oshirilgan — B.1'ga qarang.
+  **Qoldiq:** kunlik qo'ng'iroq soni/parallel limit hamon faqat campaign darajasida,
+  kompaniya darajasida yo'q (E.3 billing bilan birga kelishi mumkin). Trunk holatini
+  (registered/unregistered) Asterisk'dan real-time tekshirish yo'q — CRUD faqat
+  qaysi endpoint ishlatilishini biladi, uning tirikligini bilmaydi.
 
-**Tekshiruv:** ikkita kompaniya yaratiladi, har birida kampaniya ishga tushadi; hech
-bir API chaqiruv (hisobot, transkript, yozuv, ssenariy) boshqa kompaniya ma'lumotini
-qaytarmaydi.
+**Tekshiruv qoldi:** ikkinchi kompaniyaga ikkinchi PJSIP trunk ulab, o'sha
+kompaniyaning qo'ng'irog'i haqiqatan shu trunk orqali ketishini real Asterisk'da
+tasdiqlash — kod darajasida tayyor, hali sinalmagan.
 
 ---
 
-### Bosqich C — Inbound qo'ng'iroqlar
+### Bosqich C — Inbound qo'ng'iroqlar — C.1/C.2/C.3 ✅ BAJARILDI (2026-08-01)
 
-Texnik poydevor bor (Stasis + externalMedia inbound'da ham ishlaydi). Yetishmayotgani —
-"qaysi raqamga kim qo'ng'iroq qildi va qaysi ssenariy ishlasin" mantig'i.
+Texnik poydevor bor edi (Stasis + externalMedia inbound'da ham ishlagan). Yetishmayotgan
+"qaysi raqamga kim qo'ng'iroq qildi va qaysi ssenariy ishlasin" mantig'i endi qo'shildi.
 
-**C.1 — Routing**
+**C.1 — Routing ✅**
 
-- `inbound_route` jadvali: `did_number → company_id, scenario_id, language,
-  business_hours, fallback` (ish vaqtidan tashqari nima bo'ladi: xabar / voicemail /
-  operator).
-- `AriService` StasisStart'da yo'nalishni aniqlaydi (hozirgi "auto-start" flag o'rniga).
+- `inbound_route` jadvali (`V5__inbound_route.sql`): `did_number → company_id,
+  scenario_id, language, business_hours_start/end, fallback_message, enabled`.
+  CRUD — `docs/api/inbound-routes.md`.
+- `AriService.setupMedia` endi genuine inbound qo'ng'iroqni manual test
+  qo'ng'iroqdan aniq ajratadi (ikkalasi ham avval bir xil "OutboundCall yo'q"
+  yo'liga tushardi) va StasisStart'da DID'ni (`channel.getDialplan().getExten()`,
+  ari4java orqali) marshrut jadvalidan qidiradi — eski global "auto-start" flag
+  o'rniga. Marshrut topilmasa yoki ish vaqtidan tashqari bo'lsa — qo'ng'iroq
+  javobsiz tugatiladi (**pastga qarang — ovozli xabar hali ulanmagan**).
 
-**C.2 — Qo'ng'iroq qiluvchini aniqlash**
+**C.2 — Qo'ng'iroq qiluvchini aniqlash ✅**
 
-- Caller ID → CRM lookup (`CrmConnector.findByPhone`): tanish mijoz bo'lsa faktlar
-  promptga tushadi ("Assalomu alaykum, Aziz aka!"), notanish bo'lsa lead-capture oqimi.
-- Do-not-call ro'yxati inbound'da teskari ishlaydi: mijoz o'zi qo'ng'iroq qilsa gaplashish mumkin.
+- `CrmClient.findByPhone` (yangi, `CrmProperties.clientByPhonePath`) — chaqiruvchi
+  raqami CRM orqali tanilsa, faktlar (`CallContextMapper.merge` qayta ishlatilgan
+  holda) promptga tushadi.
+- Do-not-call ro'yxati inbound yo'lida umuman tekshirilmaydi — mijoz o'zi
+  qo'ng'iroq qilsa, DNC'da bo'lsa ham javob oladi.
 
-**C.3 — Inbound ssenariy shablonlari**
+**C.3 — Inbound ssenariy shablonlari ✅**
 
-- `reception` — qabulxona: savolga javob (FAQ faktlar bazasidan), kerak bo'lsa operatorga.
-- `inbound-lead` — reklamadan kelgan qo'ng'iriq: ma'lumot berish + kontakt olish + uchrashuvga yozish.
-- `callback-request` — band bo'lsa: raqam olib, outbound navbatga qo'yish (dialer bilan bog'lanadi).
+3 ta yangi builtin ssenariy (`V5__inbound_route.sql`, kod o'zgarishisiz — Scenario
+Engine A.3'dan buyon har qanday ssenariyni bajara oladi): `reception` (qabulxona,
+savolga javob, kerak bo'lsa operatorga), `inbound-lead` (reklama qo'ng'irog'i:
+qiziqish + kontakt + uchrashuv), `callback-request` (band bo'lganda vaqtni
+so'rab **natija sifatida yozib oladi** — avtomatik outbound navbatga
+**qo'yilmaydi**, chunki "qaysi kampaniyaga qo'shilsin" degan tanlov mexanizmi
+hali yo'q; bu keyingi aniq belgilangan vazifa).
 
-**C.4 — Operator navbati**
+**Qoldiq / bilinigan soddalashtirishlar:**
+- `fallback_message` ustuni saqlanadi, lekin hali RTP orqali aytilmaydi — marshrut
+  topilmasa yoki ish vaqtidan tashqari bo'lsa qo'ng'iroq shunchaki javobsiz
+  tugatiladi (real Asterisk'da sinalmagan RTP-bootstrap kodini ushbu bosqichda
+  ikki marta yozishdan saqlanish uchun ataylab qoldirilgan).
+- DID'ni aniqlash `channel.getDialplan().getExten()`ga tayanadi — bu haqiqiy
+  Asterisk dialplan'ning `exten => <DID>,1,Stasis(app)` shaklida yozilganini
+  talab qiladi; foydalanuvchi o'z dialplan'iga qarab tekshirishi kerak.
+- `CurrentCompany` hamon bitta hardcoded default (B.2 hali qilinmagan) —
+  `inbound_route.company_id` kelajak uchun saqlanadi, amalda hozircha bitta
+  kompaniyaga tegishli.
+
+**C.4 — Operator navbati — hali qilinmagan**
 
 PROJECT.md Bosqich 11 (hali qilinmagan) inbound bilan birga zarur bo'ladi:
 Asterisk queue, transfer'da kontekstni ko'rsatish, ish vaqti tekshiruvi.
 
-**Tekshiruv:** tashqi raqamdan trunk raqamiga qo'ng'iroq → route bo'yicha ssenariy
-ishlaydi, tanish mijozni ismi bilan kutib oladi, natija hisobotda ko'rinadi.
+**Tekshiruv qoldi:** tashqi raqamdan trunk raqamiga real qo'ng'iroq bilan C.1-C.3
+oqimini sinash — kod darajasida tayyor, hali sinalmagan.
 
 ---
 
@@ -250,7 +367,7 @@ Hozirgi `CrmClient` umumiy interfeysga ajratiladi:
 public interface CrmConnector {
     CrmClientSnapshot fetchClient(String externalId);
     CrmClientSnapshot findByPhone(String phone);          // inbound uchun
-    List<TargetRow> fetchSegment(SegmentQuery query);     // kampaniya nishonlari
+    List<CampaignTarget> fetchSegment(SegmentQuery query); // kampaniya nishonlari
     Long postOutcome(String externalId, CallOutcome outcome); // natija/note
 }
 ```
@@ -258,14 +375,26 @@ public interface CrmConnector {
 Implementatsiyalar: `UysotConnector`, `GenericRestConnector` (hozirgi CrmClient),
 `NoopConnector` (faqat CSV rejimi). Tanlov konfiguratsiyada: `crm.provider=uysot|rest|none`.
 
-**D.2 — Uysot OAuth2**
+**D.2 — Uysot OAuth2 — ⚠️ kod darajasida tayyor, Uysot'ning haqiqiy URL'lari kutilmoqda**
 
-- `spring-security-oauth2-client`: authorization code flow — foydalanuvchi panelda
-  "Uysot bilan kirish" tugmasini bosadi, token server tomonda saqlanadi/yangilanadi.
-- Server-to-server chaqiruvlar (dialer, outbox) uchun refresh token yoki client
-  credentials — Uysot API qaysi birini berishiga qarab.
-- Token yangilash, muddati o'tganda qayta login talab qilish, xatolarda graceful
-  degradatsiya (hozirgi "CRM yiqilsa qo'ng'iroq baribir ketadi" printsipi saqlanadi).
+- Authorization-code oqimi qo'shildi (`uz.murodjon.uysotvoice.integration`,
+  `spring-security-oauth2-client` o'rniga qo'lda HTTP client bilan): har kompaniya
+  o'z Uysot OAuth ilovasini (`client_id`/`client_secret`, shifrlangan saqlanadi)
+  panel orqali ulaydi, `PUT/GET /api/settings/integrations/uysot*`,
+  `GET .../authorize-url`, `GET .../callback` (imzolangan `state` orqali
+  kompaniyani identifikatsiya qiladi — hech qanday auth header'siz keladigan
+  yagona endpoint).
+- Token yangilash (`CrmIntegrationService#refresh`, muddatdan 2 daqiqa oldin
+  avtomatik) va xatoda graceful degradatsiya (`CrmClient` shifrlangan tokeni
+  topolmasa/yangilay olmasa statik konfiguratsiya tokeniga qaytadi — "CRM
+  yiqilsa qo'ng'iroq baribir ketadi" printsipi saqlanadi) — ishlaydi.
+- **Yagona to'siq:** `voice-agent.integration.uysot.authorize-url`/`token-url`/
+  `redirect-uri` hali bo'sh (`UysotOAuthProperties#configured()` — Uysot'ning
+  haqiqiy qiymatlarini kutmoqda). Shu qiymatlar kelgach, D.2 boshqa kod
+  o'zgarishisiz ishga tushadi.
+- **Qoldiq:** D.1'dagi `CrmConnector` abstraksiyasi (Uysot/Generic/Noop) qurilmagan
+  — hozirgi `CrmClient` bitta implementatsiya, faqat per-company token bilan
+  ishlaydigan qilib kengaytirilgan.
 
 **D.3 — Uysot ma'lumotlari bilan ishlash**
 
@@ -289,12 +418,33 @@ Implementatsiyalar: `UysotConnector`, `GenericRestConnector` (hozirgi CrmClient)
 Kompaniya entity va izolyatsiya B da tayyor bo'lgani uchun bu bosqich "faqat"
 foydalanuvchi qatlami va biznes qismini qo'shadi.
 
-**E.1 — Foydalanuvchi modeli**
+**E.1 — Foydalanuvchi modeli — ✅ asosiy qism bajarildi (2026-08-02)**
 
-- `app_user` + rollar (ADMIN, OPERATOR, VIEWER), har foydalanuvchi bitta (yoki bir
-  nechta) kompaniyaga a'zo.
-- Login: Uysot OAuth **yoki** lokal email/parol (standalone mijozlar uchun).
-- Hozirgi API-kalit rejimi saqlanadi (machine-to-machine, B.2 dagi kompaniya bog'i bilan).
+- `app_user` + rollar (`ADMIN`, `OPERATOR`, `VIEWER`), har foydalanuvchi bitta
+  kompaniyaga a'zo (ko'p-kompaniyaga a'zolik — qoldiq, pastga qarang).
+- Login: lokal email/parol, JWT (`Authorization: Bearer`) — `POST /api/auth/login`,
+  `POST /api/auth/activate` (invite → parol, SMTP yo'qligi uchun bir martalik token),
+  `GET /api/auth/me`. `POST /api/auth/uysot/callback` — stub, D bosqichi
+  kredensiallarini kutmoqda.
+- Hozirgi API-kalit rejimi saqlanadi (machine-to-machine) — endi uchta rol
+  ierarxiyasiga moslashtirildi (`ADMIN` → `OPERATOR` → `VIEWER`,
+  `config.SecurityConfig`). JWT bilan kirgan foydalanuvchi uchun
+  `CurrentCompany` haqiqiy per-request aniqlanadi (`JwtCurrentCompanyResolver`)
+  — B.2'dagi "auth bilan keladi" izohi shu. `X-Api-Key → company_id` xaritalash
+  o'zi hamon qilinmagan (B.2'ning qolgan yarmi).
+- Foydalanuvchi boshqaruvi (`GET/invite/role/block/unblock /api/users`),
+  komanda-palitra qidiruvi (`GET /api/search`) va bildirishnomalar
+  (`GET/PUT /api/notifications`) ham shu bilan birga qo'shildi — batafsil
+  `docs/api/auth.md`, `docs/api/users.md`, `docs/api/search.md`,
+  `docs/api/notifications.md`.
+- **Server-side sessiya boshqaruvi — ✅ bajarildi (2026-08-02).** `user_session`
+  jadvali (profil bosqichi bilan birga) `app_user`dagi eski bitta-ustunli
+  refresh-token modelini almashtirdi — bir nechta qurilmadan bir vaqtda login
+  qilish, `GET/DELETE /api/profile/sessions` bilan ularni ko'rish/tugatish endi
+  ishlaydi (`docs/api/profile.md`).
+- **Qoldiqlar:** ko'p-kompaniyaga a'zolik (hozir `app_user.company_id` — bitta
+  ustun, jadval emas), real email yuborish (SMTP — hozir aktivatsiya tokeni
+  admin tomonidan qo'lda yetkaziladi), `X-Api-Key → company_id` xaritalash.
 
 **E.2 — Kompaniyaga xos resurslar (to'liq)**
 
@@ -344,13 +494,13 @@ A (Scenario Engine + custom ssenariylar)  ──►  hammasi shunga quriladi
                      └──► F (Scale)     real yuk paydo bo'lganda
 ```
 
-| # | Bosqich                          | Taxminiy hajm                | Natija                                                  |
-|---|----------------------------------|------------------------------|---------------------------------------------------------|
-| 1 | **A** — Scenario Engine + custom | katta (yadro refaktoring)    | 5 shablon + custom ssenariy CRUD, versiyalash           |
-| 2 | **B** — Kompaniya va izolyatsiya | o'rta (migratsiya og'ir)     | `company` entity, to'liq ma'lumot ajratish, kalit bog'i |
-| 3 | **C** — Inbound                  | o'rta                        | DID routing, mijozni tanish, 3 inbound shablon          |
-| 4 | **D** — Uysot OAuth              | o'rta (Uysot API ga bog'liq) | "Uysot bilan kirish", segment import, natija eksport    |
-| 5 | **E** — Standalone/SaaS          | katta                        | foydalanuvchi/rollar, billing o'lchovi, yangi panel     |
+| # | Bosqich | Taxminiy hajm | Natija |
+|---|---|---|---|
+| 1 | **A** — Scenario Engine + custom | katta — ✅ A.1-A.4 bajarildi (2026-08-01), qoldi: real-qo'ng'iroq testlari + vizual tahrirlagich (E.4) | 5 shablon + custom ssenariy CRUD, versiyalash |
+| 2 | **B** — Kompaniya va izolyatsiya | o'rta — ✅ B.1/B.3 to'liq, B.2 repo-filtr qismi bajarildi (2026-08-01), qoldi: API kalit → company_id | `company` entity, to'liq ma'lumot ajratish, kalit bog'i |
+| 3 | **C** — Inbound | o'rta — ✅ C.1-C.3 bajarildi (2026-08-01), C.4 qoldi | DID routing, mijozni tanish, 3 inbound shablon |
+| 4 | **D** — Uysot OAuth              | o'rta — ⚠️ D.2 oqimi kod darajasida tayyor, Uysot API/URL kutilmoqda | "Uysot bilan kirish", segment import, natija eksport    |
+| 5 | **E** — Standalone/SaaS          | katta — ✅ E.1 asosiy qism bajarildi (2026-08-02), qoldi: E.2/E.3/E.4 | foydalanuvchi/rollar ✅, billing o'lchovi va yangi panel hali qolgan |
 | 6 | **F** — Scale                    | doimiy                       | HA, load test, alerting                                 |
 
 **Nega A birinchi:** "potensial mijozlar bilan ishlash" so'rovi B–E siz ham A
@@ -397,10 +547,11 @@ qilishga to'g'ri keladi. C–E bosqichlarining hammasi kompaniya tushunchasiga t
 
 ## 6. Keyingi konkret qadamlar
 
-1. [ ] A.1 sxemasini detallashtirish: `ScenarioDefinition` JSON formati + Flyway migratsiya loyihasi
-2. [ ] Hozirgi qarzdorlik xatti-harakatini `debt-collection.json` ga ko'chirish (xatti-harakat o'zgarmasligi sharti bilan)
-3. [ ] `lead-qualification` shablonini yozish va test kampaniyada sinash
-4. [ ] `scenario` jadvali + CRUD API + validatsiya (A.4 ning birinchi qismi — vizual tahrirlagichsiz)
-5. [ ] `company` jadvali va `company_id` migratsiya rejasini chizish (qaysi jadvalga qaysi tartibda)
-6. [ ] Uysot'dan OAuth/API hujjatlarini so'rash (D bosqichi bloklanmasligi uchun hoziroq)
-7. [ ] Inbound uchun `inbound_route` jadvali va StasisStart routing eskizi
+1. [x] A.1 sxemasini detallashtirish: `ScenarioDefinition` JSON formati + Flyway migratsiya loyihasi
+2. [x] Hozirgi qarzdorlik xatti-harakatini `debt-collection.json` ga ko'chirish (xatti-harakat o'zgarmasligi sharti bilan) — 2026-08-01: shu bilan birga `DialogEngine`ga to'liq ulandi (A.3), shunchaki faylga ko'chirish emas
+3. [ ] `lead-qualification` shablonini yozish va test kampaniyada sinash — shablon yozilgan va generic engine uni ishga tushira oladi (2026-08-01), lekin real qo'ng'iroq bilan hali sinalmagan
+4. [x] `scenario` jadvali + CRUD API + validatsiya (A.4 ning birinchi qismi — vizual tahrirlagichsiz)
+5. [x] `company` jadvali va `company_id` migratsiya rejasini chizish (qaysi jadvalga qaysi tartibda) — jadval ustunlari joyida; B.2 dagi to'liq izolyatsiya regressiya testlari va real per-request `CurrentCompany` (hozir bitta hardcoded default) hali qolgan
+6. [ ] Uysot'dan OAuth/API hujjatlarini so'rash (D bosqichi bloklanmasligi uchun hoziroq) — OAuth kod oqimi (D.2) allaqachon yozilgan va kompaniya darajasida ishlaydi, faqat haqiqiy `authorizeUrl`/`tokenUrl` kutilmoqda
+7. [x] Inbound uchun `inbound_route` jadvali va StasisStart routing (Bosqich C.1-C.3 — 2026-08-01 bajarildi)
+8. [ ] Operator navbati (C.4) — Asterisk queue, transfer konteksti, ish vaqti tekshiruvi (profil ish jadvali, §15, allaqachon saqlanadi — bu navbat mantig'i uni hali o'qimaydi)

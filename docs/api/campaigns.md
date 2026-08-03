@@ -1,6 +1,6 @@
 # Kampaniyalar API
 
-`uz.murodjon.uysotvoice.campaign` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.uysotvoice.campaign` · rol: **OPERATOR** (barcha endpoint — ADMIN ham kiradi, rol ierarxiyasi bo'yicha)
 
 Kampaniya yaratish → nishonlarni (targets) yuklash → `start` qilish oqimi.
 Dialer navbatdagi tikida o'zi qo'ng'iroq qila boshlaydi.
@@ -27,23 +27,27 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "retryIntervalHours": 24,
   "maxConcurrentCalls": 5,
   "ttsVoice": "nigora",
-  "dailyCallCap": 500
+  "dailyCallCap": 500,
+  "scenarioId": 1,
+  "disclosureEnabled": true
 }
 ```
 
 | Maydon | Turi | Majburiymi | Izoh |
 |---|---|---|---|
 | `name` | string | ✅ (`@NotBlank`) | — |
-| `type` | string | ❌ | erkin matn, masalan `debt_collection` |
+| `type` | `"DEBT_COLLECTION"` \| `"SURVEY"` | ✅ (`@NotNull`) | qat'iy enum, faqat shu ikki qiymat. Ilgari bo'sh/berilmagan bo'lsa `DEBT_COLLECTION`ga sukut bo'yicha almashtirilar edi (backend-uchun-talablar.md §9a) — bu xatti-harakat olib tashlandi, endi bo'sh qiymat `400` qaytaradi |
 | `goalPrompt` | string | ❌ | agentga maqsad sifatida beriladi |
-| `defaultLanguage` | string | ❌ | BCP-47, masalan `uz-UZ`, `ru-RU` |
-| `dialWindowStart` / `dialWindowEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | qo'ng'iroq qilish mumkin bo'lgan soat oralig'i |
+| `defaultLanguage` | string | ❌ | BCP-47, masalan `uz-UZ`, `ru-RU`. Kompaniyaning `CompanyConfig.supportedLanguages` ro'yxatida bo'lishi shart — bo'lmasa `400`; berilmasa shu ro'yxatning birinchisi (default til) ishlatiladi. Batafsil: [companies.md](companies.md). |
+| `dialWindowStart` / `dialWindowEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | qo'ng'iroq qilish mumkin bo'lgan soat oralig'i. Kompaniyaning `CompanyConfig.dialWindowStart/End` oralig'idan tashqariga chiqmasligi kerak (§B.3 — kompaniya darajasidagi qat'iy shift) — chiqsa `400`. Batafsil: [companies.md](companies.md). |
 | `dialDays` | `DayOfWeek[]` | ❌ | qo'ng'iroq qilish mumkin bo'lgan hafta kunlari (`["MONDAY", ...]`); berilmasa yoki bo'sh bo'lsa Dush-Juma |
 | `maxAttempts` | int | ❌ | bitta nishonga necha marta urinish |
 | `retryIntervalHours` | int | ❌ | urinishlar orasidagi soat |
 | `maxConcurrentCalls` | int | ❌ | bir vaqtda nechta qo'ng'iroq |
 | `ttsVoice` | string | ❌ | `GET /api/tts/voices`dagi `id`; noma'lum id rad etiladi; bo'sh bo'lsa standart provayder ishlaydi |
 | `dailyCallCap` | int | ❌ | kunlik qo'ng'iroq chegarasi (xarajat nazorati); `0` = cheksiz |
+| `scenarioId` | long | ✅ (`@NotNull`) | `GET/POST /api/scenarios/list`dagi ssenariy `id`si (ROADMAP A.3) — kampaniyaning butun umri davomida o'zgarmaydi; noma'lum yoki boshqa kompaniyaniki bo'lsa `404`. `contextData`dagi maydonlar shu ssenariyning `factSchema`siga mos kelishi kerak — batafsil [scenarios.md](scenarios.md)da |
+| `disclosureEnabled` | boolean | ❌ | qo'ng'iroq boshida "Assalomu alaykum! Bu Uysot kompaniyasining avtomatik ovozli xizmati..." xabari aytilsinmi (§11.1); berilmasa `true` (yoqilgan) |
 
 **Response** (`CreateCampaignResponse`):
 
@@ -67,7 +71,7 @@ qaytariladi (masalan dashboard "faol kampaniyalar" bloki uchun `"status":
 {
   "id": 42,
   "name": "Iyul qarzdorlik",
-  "type": "debt_collection",
+  "type": "DEBT_COLLECTION",
   "status": "ACTIVE",
   "goalPrompt": "...",
   "defaultLanguage": "uz-UZ",
@@ -78,11 +82,21 @@ qaytariladi (masalan dashboard "faol kampaniyalar" bloki uchun `"status":
   "retryIntervalHours": 24,
   "maxConcurrentCalls": 5,
   "ttsVoice": "nigora",
-  "dailyCallCap": 500
+  "dailyCallCap": 500,
+  "scenarioId": 1,
+  "scenarioName": "Qarz undirish (standart)",
+  "companyId": 1,
+  "disclosureEnabled": true,
+  "createdBy": 7,
+  "createdByName": "Aziz Karimov"
 }
 ```
 
-`status` — `DRAFT` / `ACTIVE` / `PAUSED` / `COMPLETED` / `ARCHIVED`.
+`status` — `DRAFT` / `ACTIVE` / `PAUSED` / `COMPLETED` / `ARCHIVED`. `scenarioName` —
+`scenarioId`dan hal qilingan (backend-uchun-talablar.md §16), ssenariy o'chirilgan
+bo'lsa `null`. `createdBy`/`createdByName` — kampaniyani yaratgan `app_user`; ikkalasi
+ham `null` bo'lishi mumkin: `X-Api-Key` orqali (shaxssiz) yaratilgan yoki bu ustun
+ishga tushirilishidan oldin yaratilgan kampaniyalar uchun.
 
 ---
 
@@ -95,8 +109,9 @@ Javob — bitta `CampaignRow` (yuqoridagi shakl). Topilmasa `404`.
 ## `PUT /api/campaigns/{id}` — tahrirlash
 
 **Request body** (`UpdateCampaignRequest`) — `POST /api/campaigns` bilan bir
-xil maydonlar, `type` va boshlang'ich `scriptConfig`dan tashqari (bular
-faqat yaratishda beriladi):
+xil maydonlar, `type`, boshlang'ich `scriptConfig` va `scenarioId`dan tashqari
+(bular faqat yaratishda beriladi — ssenariyni keyinroq almashtirib bo'lmaydi,
+boshqa ssenariy uchun yangi kampaniya yarating, ROADMAP A.3):
 
 ```json
 {
@@ -110,13 +125,16 @@ faqat yaratishda beriladi):
   "retryIntervalHours": 24,
   "maxConcurrentCalls": 5,
   "ttsVoice": "nigora",
-  "dailyCallCap": 500
+  "dailyCallCap": 500,
+  "disclosureEnabled": true
 }
 ```
 
 `name` majburiy (`@NotBlank`), `ttsVoice` yana bir marta katalog bo'yicha
-tekshiriladi (noma'lum id — `400`). Javob — yangilangan `CampaignRow`.
-Topilmasa (yoki boshqa kompaniyaniki bo'lsa) — `404`.
+tekshiriladi (noma'lum id — `400`). To'liq tahrirlash bo'lgani uchun
+`disclosureEnabled` har safar aniq yuborilishi kerak (yaratishdan farqli
+o'laroq, bu yerda `omit` qilib bo'lmaydi). Javob — yangilangan `CampaignRow`
+(yuqoridagi shakl). Topilmasa (yoki boshqa kompaniyaniki bo'lsa) — `404`.
 
 ---
 
@@ -133,6 +151,18 @@ transkriptlari hisobotlarda saqlanib qoladi. Body yo'q. Javob
 ```
 
 Topilmasa — `404`.
+
+---
+
+## `POST /api/campaigns/{id}/clone` — nusxalash
+
+Body yo'q. Manba kampaniyaning konfiguratsiyasini (ssenariy, ish oynasi,
+til, urinishlar, ovoz va h.k.) yangi kampaniyaga nusxalaydi — **nishonlar
+(targets) ko'chirilmaydi**. Yangi kampaniya har doim `status: "DRAFT"`,
+nomi manba nomi + `" (nusxa)"`, `createdBy` esa manba yaratuvchisi emas —
+nusxalashni bajargan joriy foydalanuvchi. Javob — yangi `CampaignRow`
+(yuqoridagi `GET /api/campaigns/{id}` shakli). Manba topilmasa (yoki boshqa
+kompaniyaniki bo'lsa) — `404`.
 
 ---
 
@@ -196,12 +226,51 @@ yoki hech narsa" emas.
 
 ---
 
+## `POST /api/campaigns/{id}/targets/csv/preview` — CSV oldindan ko'rish {#csv-preview}
+
+"Faylni yukla → ustunlarni moslashtir → tasdiqla" ustasining birinchi qadami
+(backend-uchun-talablar.md §2, §10.6) — [yuqoridagi](#csv-import) bilan **bir
+xil** so'rov shakli (`Content-Type: text/csv`, body — CSV faylning o'zi), lekin
+**hech narsani saqlamaydi**: faqat ustun moslashtirish, dastlabki qatorlar va
+xatolarni qaytaradi. Operator tasdiqlagach xuddi shu fayl yuqoridagi
+`POST /api/campaigns/{id}/targets/csv` ga (haqiqiy import uchun) yuboriladi —
+alohida `mapping` parametri kerak emas, ustun moslashtirish ikkalasida ham bir
+xil qat'iy qoidalar bilan avtomatik ishlaydi.
+
+**Response** (`TargetCsvPreview`):
+
+```json
+{
+  "columns": [
+    { "header": "clientId", "mappedField": "clientId" },
+    { "header": "phone", "mappedField": "phone" },
+    { "header": "extraColumn", "mappedField": null }
+  ],
+  "sampleRows": [
+    { "line": 2, "clientId": 1001, "phone": "998901234567", "language": "uz-UZ",
+      "contextJson": "{\"clientName\":\"Aziz Karimov\"}" }
+  ],
+  "totalRows": 98,
+  "errors": [ { "line": 15, "message": "phone: must not be blank" } ],
+  "unknownColumns": ["extraColumn"]
+}
+```
+
+`columns` — har bir CSV sarlavhasi qaysi maydonga moslashtirilgani
+(`clientId`/`phone`/`language`, yoki `context_data` ichidagi erkin kalit),
+moslashtirilmagan bo'lsa `mappedField: null`. `sampleRows` — birinchi 10 ta
+muvaffaqiyatli o'qilgan qator (`totalRows` esa hammasi, ko'rsatilganidan
+ko'p bo'lishi mumkin). Kampaniya topilmasa (yoki boshqa kompaniyaniki
+bo'lsa) — `404`.
+
+---
+
 ## `POST /api/campaigns/{id}/targets/list` — nishonlar ro'yxati
 
 Body — `TargetFilter`. Saralanadigan ustunlar: `ID`, `PHONE`, `STATUS`,
 `ATTEMPTS`. Standart: `ID ASC`.
 
-**Javob qatori** (`TargetRow`):
+**Javob qatori** (`CampaignTarget`):
 
 ```json
 {

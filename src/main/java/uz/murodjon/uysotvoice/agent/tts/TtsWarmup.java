@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
-import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.util.LinkedHashSet;
@@ -100,7 +100,7 @@ public class TtsWarmup {
         for (String language : languages) {
             targets.add(new Warm(language, null));
         }
-        for (TtsVoiceRow voice : catalog.all()) {
+        for (TtsVoice voice : catalog.all()) {
             if (voice.language() != null && languages.contains(voice.language())) {
                 targets.add(new Warm(voice.language(), voice.id()));
             }

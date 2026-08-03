@@ -7,6 +7,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -67,6 +68,11 @@ public class YandexTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String voice) {
+        return synthesize(text, language, voice, EffectiveVoiceSettings.NONE);
+    }
+
+    @Override
+    public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
         YandexTtsProperties y = props.yandex();
         String chosen = (voice != null && !voice.isBlank()) ? voice : voiceFor(language);
         StringBuilder form = new StringBuilder()
@@ -78,6 +84,11 @@ public class YandexTtsProvider implements TtsProvider {
                 .append("&sampleRateHertz=").append(y.sampleRate());
         if (y.folderId() != null && !y.folderId().isBlank()) {
             form.append("&folderId=").append(enc(y.folderId()));
+        }
+        // A company's §11 settings/voice override — SpeechKit's own valid range is
+        // 0.1-3.0. Pitch has no equivalent in this API and is silently not applied.
+        if (style != null && style.speed() != null) {
+            form.append("&speed=").append(style.speed());
         }
 
         HttpRequest request = HttpRequest.newBuilder()

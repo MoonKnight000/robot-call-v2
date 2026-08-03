@@ -3,6 +3,7 @@ package uz.murodjon.uysotvoice.campaign.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import uz.murodjon.uysotvoice.campaign.dto.CsvColumnMapping;
 import uz.murodjon.uysotvoice.campaign.dto.ParsedTarget;
 import uz.murodjon.uysotvoice.campaign.dto.TargetCsvParseResult;
 import uz.murodjon.uysotvoice.dialer.service.CallContextMapper;
@@ -54,7 +55,39 @@ public final class TargetCsvImporter {
             "contractnumber", "contractNumber",
             "goal", "goal");
 
+    /** Every recognized normalized header, mapped to the field name shown in a mapping preview. */
+    private static final Map<String, String> FIELD_NAMES;
+
+    static {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put(COL_CLIENT_ID, "clientId");
+        m.put(COL_PHONE, "phone");
+        m.put(COL_LANGUAGE, "language");
+        m.putAll(CONTEXT_COLUMNS);
+        FIELD_NAMES = Map.copyOf(m);
+    }
+
     private TargetCsvImporter() {
+    }
+
+    /**
+     * Match each CSV header against a known field without parsing any data rows (§10.6
+     * "ustunni moslashtirish" wizard step, {@code POST .../targets/csv/preview}).
+     *
+     * @throws ValidationException if the file is empty
+     */
+    public static List<CsvColumnMapping> mapColumns(String csv) {
+        List<String> lines = splitLines(csv);
+        if (lines.isEmpty()) {
+            throw new ValidationException("CSV is empty");
+        }
+        char delimiter = detectDelimiter(lines.get(0));
+        List<String> header = splitRow(lines.get(0), delimiter);
+        List<CsvColumnMapping> mapping = new ArrayList<>();
+        for (String h : header) {
+            mapping.add(new CsvColumnMapping(h.trim(), FIELD_NAMES.get(normalize(h))));
+        }
+        return mapping;
     }
 
     /**

@@ -1,0 +1,47 @@
+package uz.murodjon.uysotvoice.report.service;
+
+import jakarta.mail.internet.MimeMessage;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.stereotype.Component;
+
+/**
+ * Sends the scheduled report email (§10.10 "Jadval bo'yicha yuborish") over the
+ * {@code spring.mail.*}-configured SMTP connection (env-var placeholders in {@code
+ * application.yml}, like every other external credential in this project).
+ */
+@Component
+public class ReportEmailSender {
+
+    private final JavaMailSender mailSender;
+    private final String fromAddress;
+
+    public ReportEmailSender(JavaMailSender mailSender,
+                             @Value("${voice-agent.report-schedule.from:no-reply@uysot.uz}") String fromAddress) {
+        this.mailSender = mailSender;
+        this.fromAddress = fromAddress;
+    }
+
+    /**
+     * @param to          recipient
+     * @param subject     email subject
+     * @param body        plain-text body
+     * @param attachment  the rendered report file
+     * @param filename    attachment filename (its extension tells the client the format)
+     * @param contentType attachment MIME type
+     */
+    public void send(String to, String subject, String body, byte[] attachment, String filename,
+                     String contentType) throws Exception {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        helper.setFrom(fromAddress);
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(body);
+        helper.addAttachment(filename, new ByteArrayResource(attachment), contentType);
+        mailSender.send(message);
+    }
+}

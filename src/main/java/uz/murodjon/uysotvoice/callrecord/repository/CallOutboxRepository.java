@@ -1,5 +1,6 @@
 package uz.murodjon.uysotvoice.callrecord.repository;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -8,10 +9,12 @@ import org.springframework.stereotype.Repository;
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
 import uz.murodjon.uysotvoice.callrecord.dto.PendingNote;
 import uz.murodjon.uysotvoice.callrecord.dto.PendingSummary;
-import uz.murodjon.uysotvoice.callrecord.entity.CallResult;
+import uz.murodjon.uysotvoice.callrecord.entity.CallResultEntity;
 import uz.murodjon.uysotvoice.callrecord.service.CallOutboxService;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Finds post-call work that did not complete the first time (see {@link CallOutboxService}).
@@ -26,6 +29,7 @@ import java.util.List;
 public class CallOutboxRepository {
 
     private static final Logger log = LoggerFactory.getLogger(CallOutboxRepository.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final CallResultJpaRepository results;
     private final CallAttemptJpaRepository callAttempts;
@@ -43,13 +47,11 @@ public class CallOutboxRepository {
         try {
             return results.notesAwaitingCrm(maxAttempts, PageRequest.of(0, limit)).stream()
                     .map(row -> {
-                        CallResult r = (CallResult) row[0];
+                        CallResultEntity r = (CallResultEntity) row[0];
                         long clientId = (Long) row[1];
                         return new PendingNote(r.getCall().getId(), clientId, new CallSummary(
                                 r.getSummary(),
-                                r.getReasonCode(),
-                                r.getPromisedDate(),
-                                r.getPromisedAmount(),
+                                readOutcome(r.getOutcome()),
                                 r.getSentiment(),
                                 r.isNeedsFollowUp(),
                                 r.getFollowUpNote()));
@@ -69,11 +71,25 @@ public class CallOutboxRepository {
     public List<PendingSummary> attemptsAwaitingSummary(int maxAttempts, int limit) {
         try {
             return callAttempts.attemptsAwaitingSummary(maxAttempts, PageRequest.of(0, limit)).stream()
-                    .map(row -> new PendingSummary((Long) row[0], (Long) row[1]))
+                    .map(row -> new PendingSummary((Long) row[0], (Long) row[1], (Long) row[2]))
                     .toList();
         } catch (Exception e) {
             log.warn("Outbox scan for summaries failed: {}", e.getMessage());
             return List.of();
+        }
+    }
+
+    /** {@code call_result.outcome} JSON back into a map — empty (not null) if absent/corrupt. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> readOutcome(String outcomeJson) {
+        if (outcomeJson == null || outcomeJson.isBlank()) {
+            return Collections.emptyMap();
+        }
+        try {
+            return JSON.readValue(outcomeJson, Map.class);
+        } catch (Exception e) {
+            log.warn("Corrupt call_result.outcome JSON: {}", e.getMessage());
+            return Collections.emptyMap();
         }
     }
 

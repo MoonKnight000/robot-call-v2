@@ -14,7 +14,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
@@ -25,18 +25,23 @@ import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
 import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
+import uz.murodjon.uysotvoice.aimodel.dto.EffectiveAiModelConfig;
+import uz.murodjon.uysotvoice.aimodel.service.AiModelConfigService;
 import uz.murodjon.uysotvoice.callrecord.service.CallRecordService;
 import uz.murodjon.uysotvoice.live.enums.LiveEventType;
 import uz.murodjon.uysotvoice.live.dto.LiveTranscriptEvent;
 import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
+import uz.murodjon.uysotvoice.scenario.dto.StageDef;
+import uz.murodjon.uysotvoice.scenario.dto.ToolDef;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
-import uz.murodjon.uysotvoice.shared.dialog.DialogState;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
+import uz.murodjon.uysotvoice.voice.service.VoiceSettingsService;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -96,11 +101,13 @@ public class DialogEngine {
     private static final int HISTORY_TRIM_BLOCK = 6;
 
     /**
-     * Tools every state needs: the FSM has to be able to move, escalate, honour an
-     * opt-out and hang up from anywhere in the call.
+     * Tools every stage needs regardless of scenario (ROADMAP A.1/A.3 — the fixed
+     * universal set every {@code ScenarioDefinition} gets on top of its own declared
+     * tools): the FSM has to be able to move, escalate, flag the wrong person, honour
+     * an opt-out, and hang up from anywhere in the call.
      */
     private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
-            Set.of("transitionTo", "requestHumanTransfer", "recordDoNotCall", "endCall");
+            Set.of("transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall");
 
     /**
      * How often the silence watchdog looks at a call. Finer than the idle threshold it
@@ -117,6 +124,8 @@ public class DialogEngine {
     private final VoiceMetrics metrics;
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final LiveBroadcastService broadcast;
+    private final AiModelConfigService aiModelConfigService;
+    private final VoiceSettingsService voiceSettingsService;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
     private final ExecutorService worker = Executors.newVirtualThreadPerTaskExecutor();
@@ -141,7 +150,9 @@ public class DialogEngine {
                         CallRecordService records,
                         VoiceMetrics metrics,
                         ObjectProvider<ChatModel> chatModelProvider,
-                        LiveBroadcastService broadcast) {
+                        LiveBroadcastService broadcast,
+                        AiModelConfigService aiModelConfigService,
+                        VoiceSettingsService voiceSettingsService) {
         this.props = props;
         this.promptFactory = promptFactory;
         this.ttsProps = ttsProps;
@@ -150,6 +161,8 @@ public class DialogEngine {
         this.metrics = metrics;
         this.chatModelProvider = chatModelProvider;
         this.broadcast = broadcast;
+        this.aiModelConfigService = aiModelConfigService;
+        this.voiceSettingsService = voiceSettingsService;
     }
 
     @PostConstruct
@@ -173,17 +186,29 @@ public class DialogEngine {
      *
      * @param ttsVoice catalog id of the voice this call speaks with (§2.5), or null for
      *                 the configured routing
+     * @param scenario the scenario this call runs (ROADMAP A.3), resolved once by the
+     *                 caller and reused for the whole call — never re-fetched mid-call,
+     *                 so an edit to the scenario never changes a call already in flight
+     * @param disclosureEnabled whether this call's campaign wants the §11.1 disclosure
+     *                 spoken; still gated by {@code voice-agent.dialog.mandatory-
+     *                 disclosure} as a hard kill-switch (see {@link #speakDisclosure})
      * @param hangup invoked once the conversation ends, to hang up the channel
      */
     public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
-                          String language, String ttsVoice, Runnable hangup, Runnable transfer,
-                          long callAttemptId) {
+                          ScenarioDefinition scenario, String language, String ttsVoice, boolean disclosureEnabled,
+                          Runnable hangup, Runnable transfer, long callAttemptId) {
         if (!available()) {
             log.debug("Dialog not started for {} (engine unavailable)", channelId);
             return;
         }
-        DialogSession session = new DialogSession(channelId, language, ttsVoice, context, endpoint,
-                hangup, transfer, callAttemptId, newWatchdog());
+        // Resolved once per call, not per turn: a company's overrides never change
+        // mid-call, and this is a DB round trip on the ARI thread we do not want to
+        // repeat on every one of a call's turns.
+        long companyId = records.companyIdOf(callAttemptId);
+        EffectiveAiModelConfig aiModel = aiModelConfigService.effective(companyId);
+        EffectiveVoiceSettings voiceSettings = voiceSettingsService.effective(companyId);
+        DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
+                hangup, transfer, callAttemptId, newWatchdog(), disclosureEnabled, aiModel, voiceSettings);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
@@ -328,9 +353,14 @@ public class DialogEngine {
      * to say it; a model that skips or paraphrases it away puts the call on the wrong
      * side of §11. Saying it from code makes it unconditional, and the prompt then
      * tells the model not to repeat it.
+     *
+     * <p>Gated by two independent switches: the global {@code mandatory-disclosure}
+     * config is an ops-level kill-switch across every call, and {@code
+     * DialogSession.disclosureEnabled()} is the calling campaign's own choice (§10.6).
+     * Both must allow it.
      */
     private void speakDisclosure(DialogSession s) {
-        if (!props.mandatoryDisclosure()) {
+        if (!props.mandatoryDisclosure() || !s.disclosureEnabled()) {
             return;
         }
         String line = disclosureLine(s);
@@ -355,7 +385,7 @@ public class DialogEngine {
             return;
         }
         broadcast.publish(LiveEventType.TRANSCRIPT,
-                new LiveTranscriptEvent(channelId, "CLIENT", text, session.state().name()));
+                new LiveTranscriptEvent(channelId, "CLIENT", text, session.state()));
         // The client has stopped talking — the <1s turnaround budget starts here (§1.3).
         session.startTurnClock();
         session.touchActivity();
@@ -464,9 +494,9 @@ public class DialogEngine {
      * no {@code channelId} to key a live event on — only {@code s} does.
      */
     private void recordAgentLine(DialogSession s, String line) {
-        records.addTranscript(s.callAttemptId(), "AGENT", line, s.state().name(), offsetMs(s), null);
+        records.addTranscript(s.callAttemptId(), "AGENT", line, s.state(), offsetMs(s), null);
         broadcast.publish(LiveEventType.TRANSCRIPT,
-                new LiveTranscriptEvent(s.channelId(), "AGENT", line, s.state().name()));
+                new LiveTranscriptEvent(s.channelId(), "AGENT", line, s.state()));
     }
 
     private void advance(DialogSession s, String clientText) {
@@ -483,7 +513,7 @@ public class DialogEngine {
         }
         try {
             MDC.put("channelId", s.channelId());
-            if (Duration.between(s.startedAt(), Instant.now()).getSeconds() > props.maxCallSeconds()) {
+            if (Duration.between(s.startedAt(), Instant.now()).getSeconds() > s.aiModel().maxCallSeconds()) {
                 closeOnLimit(s, "maksimal davomiylik");
                 return;
             }
@@ -495,7 +525,7 @@ public class DialogEngine {
             // this one bounds a call that does not — a model stuck in a loop resends the
             // whole context every turn, and the bill grows even while the turn count
             // looks reasonable.
-            if (props.maxTokensPerCall() > 0 && s.tokensUsed() >= props.maxTokensPerCall()) {
+            if (s.aiModel().maxTokensPerCall() > 0 && s.tokensUsed() >= s.aiModel().maxTokensPerCall()) {
                 closeOnLimit(s, "token budjeti (" + s.tokensUsed() + " token)");
                 return;
             }
@@ -596,7 +626,7 @@ public class DialogEngine {
         StreamedReply reply = consume(s, chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(manualToolOptions(tools))
+                .options(manualToolOptions(s, tools))
                 .stream()
                 .chatResponse(), turnUsage, toolCalls);
         publishUsage(s, turnUsage);
@@ -675,7 +705,7 @@ public class DialogEngine {
         ChatResponse response = chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(manualToolOptions(tools))
+                .options(manualToolOptions(s, tools))
                 .call()
                 .chatResponse();
         TokenUsage turnUsage = new TokenUsage();
@@ -784,48 +814,79 @@ public class DialogEngine {
     }
 
     /**
-     * The tools this state may use. Every tool declaration is re-sent (and re-billed)
-     * on every turn, and the ones that cannot legitimately fire yet are also the ones a
-     * model is most likely to misfire: nothing can be promised before the debt has been
-     * named, and nobody is the wrong person once they have confirmed who they are.
+     * The tools this stage may use, built from the bound scenario (ROADMAP A.3). Every
+     * tool declaration is re-sent (and re-billed) on every turn, and the ones that
+     * cannot legitimately fire yet are also the ones a model is most likely to misfire.
      *
-     * <p>The set only changes on a state transition, so the request prefix — which
+     * <p>Two of a scenario's tools — {@code recordPaymentPromise}/{@code
+     * recordRefusalReason} — are hardcoded {@link DialogTools} methods (they carry real
+     * code guardrails, e.g. rejecting a past promised date) and only appear when the
+     * scenario actually declares a matching {@link ToolDef} name; every other declared
+     * tool is built generically by {@link ScenarioToolCallbackFactory}.
+     *
+     * <p>The set only changes on a stage transition, so the request prefix — which
      * includes the tool declarations — still holds still for several turns at a time.
      * Set {@code voice-agent.dialog.state-scoped-tools=false} to send them all.
      */
     private List<ToolCallback> toolsFor(DialogSession s) {
-        ToolCallback[] all = MethodToolCallbackProvider.builder()
-                .toolObjects(new DialogTools(s))
-                .build()
-                .getToolCallbacks();
-        if (!props.stateScopedTools()) {
-            return List.of(all);
+        Set<String> declared = declaredToolNames(s.scenario());
+        List<ToolCallback> callbacks = new ArrayList<>();
+        for (ToolCallback fixed : MethodToolCallbackProvider.builder()
+                .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
+            String name = fixed.getToolDefinition().name();
+            // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
+            // are universal and always included; recordPaymentPromise/recordRefusalReason
+            // only when this scenario actually declares them.
+            if (ALWAYS_AVAILABLE_TOOLS.contains(name) || declared.contains(name)) {
+                callbacks.add(fixed);
+            }
         }
-        Set<String> allowed = allowedTools(s.state());
-        return Arrays.stream(all)
+        if (s.scenario().tools() != null) {
+            for (ToolDef toolDef : s.scenario().tools()) {
+                if (!DialogTools.HARDCODED_TOOL_NAMES.contains(toolDef.name())) {
+                    callbacks.add(ScenarioToolCallbackFactory.build(toolDef, s));
+                }
+            }
+        }
+        if (!props.stateScopedTools()) {
+            return callbacks;
+        }
+        Set<String> allowed = allowedTools(s);
+        return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
                 .toList();
     }
 
-    private static Set<String> allowedTools(DialogState state) {
-        return switch (state) {
-            // Before the debt has been stated, the only outcomes on the table are "this
-            // is the wrong person" and the always-available escalations.
-            case GREETING, IDENTITY_CHECK -> union("recordWrongPerson");
-            // The client may volunteer a date or a reason as soon as they hear the
-            // amount, so both recording tools are live from here on.
-            case DEBT_NOTICE -> union("recordWrongPerson", "recordPaymentPromise", "recordRefusalReason");
-            case REASON_INQUIRY, PAYMENT_DATE, CONFIRMATION ->
-                    union("recordPaymentPromise", "recordRefusalReason");
-            // Closing and the terminal states only need to say goodbye and hang up.
-            case CLOSING, ESCALATE_TO_HUMAN, END_CALL -> ALWAYS_AVAILABLE_TOOLS;
-        };
+    private static Set<String> declaredToolNames(ScenarioDefinition def) {
+        if (def.tools() == null) {
+            return Set.of();
+        }
+        Set<String> names = new HashSet<>();
+        def.tools().forEach(t -> names.add(t.name()));
+        return names;
     }
 
-    private static Set<String> union(String... extra) {
-        Set<String> names = new HashSet<>(ALWAYS_AVAILABLE_TOOLS);
-        names.addAll(Arrays.asList(extra));
-        return names;
+    /**
+     * Tools callable from the session's current stage: the fixed universal set plus
+     * whatever the current {@link StageDef#allowedTools()} names — or, when a stage
+     * declares no restriction (the common case), every tool this scenario has.
+     */
+    private static Set<String> allowedTools(DialogSession s) {
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        Set<String> allowed = new HashSet<>(ALWAYS_AVAILABLE_TOOLS);
+        // null = not specified, every scenario tool is available here (the common case);
+        // an explicit (possibly empty) list means exactly those tools and no others —
+        // debt-collection's GREETING/CLOSING/etc. stages rely on the empty-list case to
+        // exclude recordPaymentPromise/recordRefusalReason.
+        List<String> perStage = stage != null ? stage.allowedTools() : null;
+        if (perStage == null) {
+            if (s.scenario().tools() != null) {
+                s.scenario().tools().forEach(t -> allowed.add(t.name()));
+            }
+        } else {
+            allowed.addAll(perStage);
+        }
+        return allowed;
     }
 
     /**
@@ -847,11 +908,21 @@ public class DialogEngine {
      *
      * <p>A fresh options object every turn — the ChatClient merges the tool callbacks
      * into the instance it is handed, so a shared one would accumulate them.
+     *
+     * <p>Also where the call's company AI-model overrides (§11 settings, {@link
+     * DialogSession#aiModel()}) are layered in — {@code GoogleGenAiChatOptions}
+     * implements {@code ToolCallingChatOptions}, so one options object carries both;
+     * a null override leaves the Spring AI auto-configured default in place (same
+     * runtime-merge-over-default Spring AI already does for every unset field).
      */
-    private static ChatOptions manualToolOptions(List<ToolCallback> tools) {
-        return ToolCallingChatOptions.builder()
+    private static ChatOptions manualToolOptions(DialogSession s, List<ToolCallback> tools) {
+        EffectiveAiModelConfig aiModel = s.aiModel();
+        return GoogleGenAiChatOptions.builder()
                 .toolCallbacks(tools)
                 .internalToolExecutionEnabled(false)
+                .model(aiModel.model())
+                .temperature(aiModel.temperature())
+                .maxOutputTokens(aiModel.maxOutputTokens())
                 .build();
     }
 
@@ -941,7 +1012,7 @@ public class DialogEngine {
      * asking the client to repeat keeps the conversation alive.
      */
     private static String fallbackLine(DialogSession s) {
-        if (s.state() == DialogState.GREETING && !s.isDisclosureSpoken()) {
+        if (s.state().equals(s.scenario().stages().get(0).id()) && !s.isDisclosureSpoken()) {
             return disclosureLine(s);
         }
         return DialogPhrases.didNotCatch(s.language());
@@ -986,7 +1057,7 @@ public class DialogEngine {
             return SpeechOutcome.SKIPPED;
         }
         if (props.factGuard()) {
-            List<String> bad = FactGuard.violations(text, s.context());
+            List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
             if (!bad.isEmpty()) {
                 // Not spoken, not recorded as said: the caller must never hear a sum
                 // that is not in their file (§4.4). The caller-facing recovery is the
@@ -994,14 +1065,14 @@ public class DialogEngine {
                 s.recordFactViolation();
                 metrics.factGuardBlock();
                 log.error("[{}] fact guard BLOCKED a sentence in {}: figures {} are not in the "
-                                + "call facts (debt={}) — text was: {}",
+                                + "call facts ({}) — text was: {}",
                         s.channelId(), s.state(), bad,
-                        s.context() != null ? s.context().debtAmount() : null, text);
+                        s.context() != null ? s.context().facts() : null, text);
                 return SpeechOutcome.BLOCKED;
             }
         }
         try {
-            short[] pcm = ttsRouter.synthesize(text, s.language(), s.ttsVoice());
+            short[] pcm = ttsRouter.synthesize(text, s.language(), s.ttsVoice(), s.voiceSettings());
             if (s.isCancelled()) {
                 return SpeechOutcome.SKIPPED; // barge-in landed while we were synthesizing
             }
@@ -1061,9 +1132,9 @@ public class DialogEngine {
                 .map(s -> new LiveDialogSnapshot(
                         s.channelId(),
                         s.startedAt(),
-                        s.state().name(),
+                        s.state(),
                         s.language(),
-                        s.context() != null ? s.context().clientName() : null))
+                        asString(s.context(), "clientName")))
                 .toList();
     }
 
@@ -1076,13 +1147,26 @@ public class DialogEngine {
         CallContext c = s.context();
         return new OperatorSnapshot(
                 channelId,
-                c.clientName(),
-                c.debtAmount() != null ? c.debtAmount().toString() : null,
-                c.currency(),
-                c.dueDate() != null ? c.dueDate().toString() : null,
-                c.contractNumber(),
-                s.state().name(),
+                asString(c, "clientName"),
+                asString(c, "debtAmount"),
+                asString(c, "currency"),
+                asString(c, "dueDate"),
+                asString(c, "contractNumber"),
+                s.state(),
                 records.transcriptText(s.callAttemptId()));
+    }
+
+    /**
+     * A well-known fact by name, as text — {@code null} if the call has no context or
+     * the bound scenario's factSchema doesn't declare that fact (ROADMAP A.3: not every
+     * scenario has a debtor identity, so these UI fields are best-effort).
+     */
+    private static String asString(CallContext c, String factName) {
+        if (c == null) {
+            return null;
+        }
+        Object value = c.fact(factName);
+        return value == null ? null : value.toString();
     }
 
     private static int offsetMs(DialogSession s) {

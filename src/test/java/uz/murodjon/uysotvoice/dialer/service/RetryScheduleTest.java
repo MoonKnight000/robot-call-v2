@@ -91,7 +91,7 @@ class RetryScheduleTest {
     void anEmptyDayListConstrainsOnlyTheTimeOfDay() {
         // Treating "no days" as "no constraint" is the safer reading: the alternative parks
         // every target forever with nothing in the logs to say why. The time window still
-        // applies, and CampaignRow already normalizes a blank dial_days to all seven days.
+        // applies, and Campaign already normalizes a blank dial_days to all seven days.
         assertThat(RetrySchedule.intoWindow(at(1, 10, 0), EnumSet.noneOf(DayOfWeek.class), OPEN, CLOSE))
                 .isEqualTo(at(1, 10, 0));
         assertThat(RetrySchedule.intoWindow(at(4, 3, 0), EnumSet.noneOf(DayOfWeek.class), OPEN, CLOSE))

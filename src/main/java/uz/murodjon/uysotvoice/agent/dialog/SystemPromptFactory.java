@@ -2,21 +2,25 @@ package uz.murodjon.uysotvoice.agent.dialog;
 
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.uysotvoice.shared.dialog.DialogState;
+import uz.murodjon.uysotvoice.scenario.dto.FactField;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
+import uz.murodjon.uysotvoice.scenario.dto.StageDef;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Builds the per-turn prompt from a session's facts and FSM state (PROJECT.md §4.1,
- * §4.4).
+ * Builds the per-turn prompt from a session's bound scenario, facts and FSM stage
+ * (PROJECT.md §4.1, §4.4, ROADMAP A.3).
  *
  * <p>Deliberately split in two. {@link #stablePrefix} is everything that cannot change
- * during a call — role, today's date, the debtor's facts, the guardrails, the style
- * rules — and is built once per call and reused verbatim as the system message.
- * {@link #turnAnnex} is the part that moves with the FSM (current state, its objective,
- * the allowed transitions, a barge-in note) and is appended <em>after</em> the chat
- * history as a transient system aside.
+ * during a call — role, today's date, the facts, the guardrails, the style rules — and
+ * is built once per call and reused verbatim as the system message. {@link #turnAnnex}
+ * is the part that moves with the FSM (current stage, its purpose, the allowed
+ * transitions, a barge-in note) and is appended <em>after</em> the chat history as a
+ * transient system aside.
  *
  * <p>The split is what makes the request cacheable. Gemini's implicit context caching
  * only pays off when consecutive requests share a byte-identical <em>prefix</em>; with
@@ -30,16 +34,42 @@ import java.time.LocalDate;
 public class SystemPromptFactory {
 
     /**
+     * Platform-level rules that apply to every scenario regardless of what it declares
+     * (ROADMAP A.3/§5.1): a custom scenario's own {@code guardrails} cannot remove or
+     * soften these. Domain-specific rules (e.g. "never change the debt amount") belong
+     * in the scenario's own {@code guardrails} instead — see the {@code debt-collection}
+     * seed for an example.
+     */
+    private static final List<String> PLATFORM_GUARDRAILS = List.of(
+            "Mijozning shaxsiy ma'lumotlarini begona odamga aytma.",
+            "Savolga javobni bilmasang — requestHumanTransfer bilan operatorga o'tkaz, o'ylab topma.",
+            "Mijoz asabiylashsa yoki haqorat qilsa — darhol requestHumanTransfer chaqir.",
+            "Suhbatdosh bu qo'ng'iroqning haqiqiy manzili emasligi aniqlansa — recordWrongPerson chaqiring.",
+            "Mijoz \"boshqa qo'ng'iroq qilmang\" desa — bahslashma, darhol recordDoNotCall chaqir va "
+                    + "uzr so'rab xayrlash."
+    );
+
+    /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
+    private static final Map<String, String> FACT_LABELS = Map.of(
+            "clientName", "Ism",
+            "debtAmount", "Summa",
+            "currency", "Valyuta",
+            "dueDate", "Muddat",
+            "contractNumber", "Shartnoma raqami"
+    );
+
+    /**
      * The unchanging half of the prompt: who the agent is, the facts it may state, and
      * the rules it must not break. Cache this per call ({@link DialogSession#systemPrefix()}) —
      * rebuilding it produces the same string and only risks breaking the cached prefix
      * (e.g. across midnight).
      */
     public String stablePrefix(DialogSession s) {
+        ScenarioDefinition def = s.scenario();
         CallContext c = s.context();
         StringBuilder sb = new StringBuilder();
 
-        sb.append("Siz \"Uysot\" kompaniyasining avtomatik qarz undirish ovozli agentisiz. ")
+        sb.append(def.rolePrompt()).append(' ')
                 .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
                 .append(" tilida tabiiy suhbatlashasiz.\n\n");
 
@@ -49,12 +79,14 @@ public class SystemPromptFactory {
         sb.append("BUGUNGI SANA: ").append(today).append(" (").append(weekdayUz(today.getDayOfWeek()))
                 .append(").\n\n");
 
-        sb.append("MIJOZ MA'LUMOTLARI (FAKTLAR — faqat shu raqamlarni ayting, o'zgartirmang):\n");
-        sb.append("- Ism: ").append(orDash(c.clientName())).append('\n');
-        sb.append("- Qarz summasi: ").append(orDash(c.debtAmount()))
-                .append(c.currency() != null ? " " + c.currency() : "").append('\n');
-        sb.append("- Dastlabki to'lov muddati: ").append(orDash(c.dueDate())).append('\n');
-        sb.append("- Shartnoma raqami: ").append(orDash(c.contractNumber())).append('\n');
+        List<FactField> factSchema = def.factSchema();
+        if (factSchema != null && !factSchema.isEmpty()) {
+            sb.append("FAKTLAR (faqat shu ma'lumotlarni ayting, o'zgartirmang):\n");
+            for (FactField f : factSchema) {
+                sb.append("- ").append(FACT_LABELS.getOrDefault(f.name(), f.name())).append(": ")
+                        .append(orDash(c.fact(f.name()))).append('\n');
+            }
+        }
         if (c.goal() != null && !c.goal().isBlank()) {
             sb.append("- Kampaniya maqsadi: ").append(c.goal()).append('\n');
         }
@@ -68,19 +100,16 @@ public class SystemPromptFactory {
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
-        sb.append("- Qarz summasini HECH QACHON o'zgartirma. Faqat berilgan raqamni ayt.\n");
-        sb.append("- Chegirma, imtiyoz yoki qarz kechirishni HECH QACHON taklif qilma.\n");
-        sb.append("- To'lov muddatini o'zing uzaytirma — faqat mijoz aytgan sanani yozib ol.\n");
-        sb.append("- Mijoz nisbiy sana aytsa (\"ertaga\", \"dushanba\", \"kelasi oyning 5-sanasi\") — uni ")
-                .append("BUGUNGI SANAdan hisoblab yyyy-MM-dd ko'rinishida recordPaymentPromise'ga ber. ")
-                .append("Yilni o'zingdan to'qima.\n");
-        sb.append("- Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma.\n");
-        sb.append("- Mijozning shaxsiy ma'lumotlarini begona odamga (qarzdor bo'lmagan kishiga) aytma.\n");
-        sb.append("- Savolga javobni bilmasang — requestHumanTransfer bilan operatorga o'tkaz, o'ylab topma.\n");
-        sb.append("- Mijoz asabiylashsa yoki haqorat qilsa — darhol requestHumanTransfer chaqir.\n");
-        sb.append("- Telefondagi odam qarzdor emas bo'lsa — recordWrongPerson chaqir.\n");
-        sb.append("- Mijoz \"boshqa qo'ng'iroq qilmang\" desa — bahslashma, darhol ")
-                .append("recordDoNotCall chaqir va uzr so'rab xayrlash.\n\n");
+        List<String> scenarioGuardrails = def.guardrails();
+        if (scenarioGuardrails != null) {
+            for (String rule : scenarioGuardrails) {
+                sb.append("- ").append(rule).append('\n');
+            }
+        }
+        for (String rule : PLATFORM_GUARDRAILS) {
+            sb.append("- ").append(rule).append('\n');
+        }
+        sb.append('\n');
 
         sb.append("USLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")
                 .append("Ovozga aylantiriladi — qisqa gaplar tuz, ro'yxat yoki maxsus belgilar ishlatma.\n");
@@ -97,9 +126,11 @@ public class SystemPromptFactory {
      * with stale state blocks and stop being an append-only (cacheable) prefix.
      */
     public String turnAnnex(DialogSession s) {
+        StageDef stage = stageOf(s.scenario(), s.state());
         StringBuilder sb = new StringBuilder();
-        sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ").append(objective(s.state())).append('\n');
-        sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(s.state())).append('\n');
+        sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ")
+                .append(stage != null ? stage.purpose() : "").append('\n');
+        sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(stage)).append('\n');
         sb.append("Bosqichni o'zgartirish kerak bo'lsa transitionTo tool'ini chaqiring.]");
         if (s.isInterrupted()) {
             // Tell the model it was cut off and where it stopped (§7.2 step 5).
@@ -110,31 +141,19 @@ public class SystemPromptFactory {
         return sb.toString();
     }
 
-    private static String objective(DialogState state) {
-        return switch (state) {
-            case GREETING -> "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.";
-            case IDENTITY_CHECK -> "Suhbatdosh aynan qarzdor ekanini tasdiqla.";
-            case DEBT_NOTICE -> "Qarz miqdori va muddatini xushmuomala yetkaz.";
-            case REASON_INQUIRY -> "To'lov nega amalga oshmayotgan sababini aniqla.";
-            case PAYMENT_DATE -> "Mijozdan aniq to'lov sanasini ol.";
-            case CONFIRMATION -> "Kelishuvni takrorlab tasdiqla.";
-            case CLOSING -> "Xushmuomala xayrlash.";
-            case ESCALATE_TO_HUMAN -> "Operatorga o'tkazishni bildirib xayrlash.";
-            case END_CALL -> "Qo'ng'iroqni yakunlash.";
-        };
+    /** The stage a given id names, or {@code null} if the scenario has none by that id. */
+    static StageDef stageOf(ScenarioDefinition def, String stageId) {
+        if (def.stages() == null) {
+            return null;
+        }
+        return def.stages().stream().filter(st -> st.id().equals(stageId)).findFirst().orElse(null);
     }
 
-    private static String allowedNext(DialogState state) {
-        return switch (state) {
-            case GREETING -> "IDENTITY_CHECK, END_CALL, ESCALATE_TO_HUMAN";
-            case IDENTITY_CHECK -> "DEBT_NOTICE, END_CALL, ESCALATE_TO_HUMAN";
-            case DEBT_NOTICE -> "REASON_INQUIRY, ESCALATE_TO_HUMAN, END_CALL";
-            case REASON_INQUIRY -> "PAYMENT_DATE, ESCALATE_TO_HUMAN, END_CALL";
-            case PAYMENT_DATE -> "CONFIRMATION, ESCALATE_TO_HUMAN, END_CALL";
-            case CONFIRMATION -> "CLOSING, PAYMENT_DATE, ESCALATE_TO_HUMAN";
-            case CLOSING -> "END_CALL";
-            case ESCALATE_TO_HUMAN, END_CALL -> "(yakuniy holat)";
-        };
+    private static String allowedNext(StageDef stage) {
+        if (stage == null || stage.allowedTransitions() == null || stage.allowedTransitions().isEmpty()) {
+            return "(yakuniy holat)";
+        }
+        return String.join(", ", stage.allowedTransitions());
     }
 
     /** Weekday in Uzbek — the JVM has no reliable uz locale, and "dushanba" is what a caller says. */

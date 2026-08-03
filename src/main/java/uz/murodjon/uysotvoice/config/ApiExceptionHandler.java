@@ -10,6 +10,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 import uz.murodjon.uysotvoice.shared.exception.AppException;
@@ -77,6 +78,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ResponseData<Object>> typeMismatch(MethodArgumentTypeMismatchException e) {
         return respond(HttpStatus.BAD_REQUEST, "Invalid value for parameter: " + e.getName(), null, e);
+    }
+
+    /**
+     * No handler matched the request — a typo'd path, or an {@code Accept} header that
+     * doesn't satisfy a mapping's {@code produces} (e.g. hitting {@code /listen} without
+     * accepting {@code audio/wav}). Spring's own resolution falls through to the static-
+     * resource handler in this case, not a routing 404 — normalized here so it doesn't
+     * look like a server bug.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ResponseData<Object>> noResourceFound(NoResourceFoundException e) {
+        return respond(HttpStatus.NOT_FOUND, "No such endpoint: " + e.getResourcePath(), null, e);
     }
 
     /** Anything not handled above is a bug, not a client error. */

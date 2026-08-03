@@ -27,7 +27,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `tags` | ❌ | vergul bilan ajratilgan |
 | `notes` | ❌ | — |
 
-**Response** (`ContactRow`):
+**Response** (`Contact`):
 
 ```json
 {
@@ -55,7 +55,7 @@ Body — `ContactFilter`:
 Saralanadigan ustunlar: `ID`, `NAME`, `PHONE`, `CREATED_AT`. Standart:
 `NAME ASC`.
 
-Javob — `PageableData<ContactRow>` (`ContactRow` shakli yuqorida).
+Javob — `PageableData<Contact>` (`Contact` shakli yuqorida).
 
 ---
 
@@ -65,7 +65,7 @@ Javob — `PageableData<ContactRow>` (`ContactRow` shakli yuqorida).
 
 ```json
 {
-  "contact": { /* ContactRow */ },
+  "contact": { /* Contact */ },
   "callHistory": [
     { "callId": 501, "campaignName": "Iyul qarzdorlik", "startedAt": "2026-07-15T10:00:00Z", "durationSec": 87, "disposition": "PROMISE_TO_PAY" }
   ]
@@ -86,7 +86,7 @@ birinchi.
 { "name": "Aziz Karimov", "address": "Toshkent", "tags": "vip", "notes": "Yangilangan izoh" }
 ```
 
-Javob — yangilangan `ContactRow`.
+Javob — yangilangan `Contact`.
 
 ---
 

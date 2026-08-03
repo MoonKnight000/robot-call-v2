@@ -1,5 +1,6 @@
 package uz.murodjon.uysotvoice.agent.session;
 
+import uz.murodjon.uysotvoice.agent.audio.LiveAudioMonitor;
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
 
 import java.time.Instant;
@@ -21,6 +22,13 @@ import java.time.Instant;
  *                          is the opaque ARI id
  * @param trunk             the PJSIP endpoint dialled, parsed from {@code channelName}; null if it
  *                          does not match the expected {@code PJSIP/<endpoint>-<seq>} shape
+ * @param scenarioId        the scenario row this call ran (ROADMAP A.3) — resolved once
+ *                          at setup and carried here so teardown can build the post-call
+ *                          summary against the same scenario, regardless of whether the
+ *                          call was a campaign call or a manual/test one
+ * @param audioMonitor      mixes this call's caller+bot audio for operator "listen in"
+ *                          (§10.3); closed alongside {@code endpoint} at teardown, which
+ *                          disconnects any operator still listening
  */
 public record CallSession(
         String channelId,
@@ -32,6 +40,8 @@ public record CallSession(
         Instant startedAt,
         String wavPath,
         String channelName,
-        String trunk
+        String trunk,
+        long scenarioId,
+        LiveAudioMonitor audioMonitor
 ) {
 }

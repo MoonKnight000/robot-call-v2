@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.uysotvoice.contact.dto.ContactDetail;
 import uz.murodjon.uysotvoice.contact.dto.ContactFilter;
 import uz.murodjon.uysotvoice.contact.dto.ContactImportResult;
-import uz.murodjon.uysotvoice.contact.dto.ContactRow;
+import uz.murodjon.uysotvoice.contact.dto.Contact;
 import uz.murodjon.uysotvoice.contact.dto.CreateContactRequest;
 import uz.murodjon.uysotvoice.contact.dto.UpdateContactRequest;
 import uz.murodjon.uysotvoice.contact.service.ContactService;
@@ -24,12 +24,12 @@ public class ContactControllerImpl implements ContactController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<ContactRow>> create(CreateContactRequest r) {
+    public ResponseEntity<ResponseData<Contact>> create(CreateContactRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.create(r)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<ContactRow>>> list(ContactFilter filter) {
+    public ResponseEntity<ResponseData<PageableData<Contact>>> list(ContactFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(service.list(filter)));
     }
 
@@ -39,7 +39,7 @@ public class ContactControllerImpl implements ContactController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<ContactRow>> update(long id, UpdateContactRequest r) {
+    public ResponseEntity<ResponseData<Contact>> update(long id, UpdateContactRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.update(id, r)));
     }
 

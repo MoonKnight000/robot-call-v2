@@ -3,12 +3,12 @@ package uz.murodjon.uysotvoice.agent.dialog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import uz.murodjon.uysotvoice.shared.dialog.DialogState;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
-import uz.murodjon.uysotvoice.shared.dialog.ReasonCode;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,10 +23,16 @@ class DialogToolsTest {
 
     @BeforeEach
     void setUp() {
-        CallContext context = new CallContext("Aziz Karimov", new BigDecimal("1500000"), "so'm",
-                LocalDate.of(2026, 7, 1), "UY-2026-00123", "goal");
+        CallContext context = new CallContext(Map.of(
+                "clientName", "Aziz Karimov",
+                "debtAmount", new BigDecimal("1500000"),
+                "currency", "so'm",
+                "dueDate", LocalDate.of(2026, 7, 1),
+                "contractNumber", "UY-2026-00123"
+        ), "goal");
         // No RTP endpoint: none of these tools touch audio.
-        session = new DialogSession("chan-1", "uz-UZ", null, context, null, null, null, 42L, null);
+        session = new DialogSession("chan-1", "uz-UZ", null, context, ScenarioFixtures.debtCollection(),
+                null, null, null, 42L, null, true, null, EffectiveVoiceSettings.NONE);
         tools = new DialogTools(session);
     }
 
@@ -40,7 +46,7 @@ class DialogToolsTest {
         // The usual cause is a wrong year, so today's date has to be in the reply —
         // without it the model has nothing to correct against and re-sends the same date.
         assertThat(result).contains(LocalDate.now().toString());
-        assertThat(session.promisedDate()).isNull();
+        assertThat(session.outcome()).doesNotContainKey("promisedDate");
         assertThat(session.disposition()).isNull();
     }
 
@@ -50,8 +56,8 @@ class DialogToolsTest {
 
         tools.recordPaymentPromise(today, new BigDecimal("500000"), "yarim to'lov");
 
-        assertThat(session.promisedDate()).isEqualTo(today);
-        assertThat(session.promisedAmount()).isEqualByComparingTo("500000");
+        assertThat(session.outcome().get("promisedDate")).isEqualTo(today);
+        assertThat((BigDecimal) session.outcome().get("promisedAmount")).isEqualByComparingTo("500000");
         assertThat(session.disposition()).isEqualTo(Disposition.PROMISE_TO_PAY);
     }
 
@@ -67,9 +73,9 @@ class DialogToolsTest {
 
     @Test
     void refusalRecordsTheReasonCode() {
-        tools.recordRefusalReason(ReasonCode.JOB_LOSS, "ishdan bo'shadi");
+        tools.recordRefusalReason("JOB_LOSS", "ishdan bo'shadi");
 
-        assertThat(session.reasonCode()).isEqualTo(ReasonCode.JOB_LOSS);
+        assertThat(session.outcome().get("reasonCode")).isEqualTo("JOB_LOSS");
         assertThat(session.disposition()).isEqualTo(Disposition.REFUSED);
         assertThat(session.isEnded()).isFalse(); // the agent still has to close the call
     }
@@ -92,9 +98,9 @@ class DialogToolsTest {
 
     @Test
     void transitionMovesTheFsm() {
-        tools.transitionTo(DialogState.IDENTITY_CHECK);
+        tools.transitionTo("IDENTITY_CHECK");
 
-        assertThat(session.state()).isEqualTo(DialogState.IDENTITY_CHECK);
+        assertThat(session.state()).isEqualTo("IDENTITY_CHECK");
     }
 
     @Test

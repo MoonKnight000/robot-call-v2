@@ -14,6 +14,8 @@ import uz.murodjon.uysotvoice.crm.service.CrmClient;
 import uz.murodjon.uysotvoice.dialer.config.RabbitConfig;
 import uz.murodjon.uysotvoice.dialer.dto.CallTask;
 import uz.murodjon.uysotvoice.dialer.dto.OutboundCall;
+import uz.murodjon.uysotvoice.scenario.dto.Scenario;
+import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 /**
@@ -31,16 +33,18 @@ public class CallTaskConsumer {
     private final OutboundCallRegistry registry;
     private final DialerState state;
     private final CampaignService campaignService;
+    private final ScenarioService scenarioService;
     private final CrmClient crmClient;
     private final AuditService audit;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
-                            DialerState state, CampaignService campaignService,
+                            DialerState state, CampaignService campaignService, ScenarioService scenarioService,
                             CrmClient crmClient, AuditService audit) {
         this.ariService = ariService;
         this.registry = registry;
         this.state = state;
         this.campaignService = campaignService;
+        this.scenarioService = scenarioService;
         this.crmClient = crmClient;
         this.audit = audit;
     }
@@ -51,15 +55,16 @@ public class CallTaskConsumer {
             // Refresh the facts and the language BEFORE the phone rings: the imported
             // context_data is a snapshot from when the campaign was built, and the agent is
             // about to state its debt figure out loud (§9 step 4, §3.1).
-            CrmClientSnapshot crm = crmClient.fetchClient(task.clientId());
+            Scenario scenario = scenarioService.requireScenario(task.scenarioId());
+            CrmClientSnapshot crm = crmClient.fetchClient(task.companyId(), task.clientId());
             CallContext context = CallContextMapper.merge(
-                    CallContextMapper.fromJson(task.contextData(), null), crm);
+                    CallContextMapper.fromJson(task.contextData(), null, scenario.definition().factSchema()), crm);
             String language = resolveLanguage(task, crm);
 
-            String channelId = ariService.originate(task.phone());
+            String channelId = ariService.originate(task.phone(), task.companyId());
             registry.register(channelId, new OutboundCall(
                     task.campaignId(), task.targetId(), task.clientId(), task.phone(),
-                    language, task.ttsVoice(), context));
+                    language, task.ttsVoice(), context, task.scenarioId(), task.disclosureEnabled()));
             audit.record("CALL_ORIGINATE", "call", channelId,
                     "target " + task.targetId() + " -> " + task.phone() + " (" + language + ")");
             log.info("Originated target {} -> channel {} (lang={})", task.targetId(), channelId, language);

@@ -1,9 +1,14 @@
 package uz.murodjon.uysotvoice.agent.dialog;
 
+import uz.murodjon.uysotvoice.scenario.dto.FactField;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
+
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,9 +27,10 @@ import java.util.regex.Pattern;
  * <p>Only <b>money-scale</b> numbers are checked. A telephone conversation is full of
  * small ones — "3 kun", "5-sana", "2 hafta" — and treating those as facts would block
  * ordinary speech while catching nothing that matters. Everything at or above
- * {@link #MONEY_SCALE}, outside the year window, has to match a figure from the
- * {@link CallContext}: the debt amount (in any of the ways it can be written), or a run
- * of digits from the contract number.
+ * {@link #MONEY_SCALE}, outside the year window, has to match a figure from the call's
+ * facts (ROADMAP A.3): a {@code number}-type fact (in any of the ways it can be
+ * written), a {@code date}-type fact's year, or a run of digits embedded in a
+ * {@code string}-type fact (e.g. a contract number).
  *
  * <p>Known limit: this reads digits, so an amount the model spells out in words ("bir
  * million besh yuz ming") passes unchecked. Models write sums as digits when the prompt
@@ -59,15 +65,16 @@ public final class FactGuard {
     }
 
     /**
-     * Money-scale numbers in {@code text} that do not appear in {@code context}.
+     * Money-scale numbers in {@code text} that do not appear in {@code context}'s facts,
+     * per {@code scenario}'s factSchema (ROADMAP A.3).
      *
      * @return the offending numbers as written, in order; empty when the text is safe
      */
-    public static List<String> violations(String text, CallContext context) {
+    public static List<String> violations(String text, ScenarioDefinition scenario, CallContext context) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
-        Set<BigDecimal> allowed = allowedValues(context);
+        Set<BigDecimal> allowed = allowedValues(scenario, context);
         List<String> bad = new ArrayList<>();
         Matcher m = NUMBER.matcher(text);
         while (m.find()) {
@@ -87,26 +94,37 @@ public final class FactGuard {
         return bad;
     }
 
-    /** Every money-scale figure the agent is allowed to say out loud. */
-    private static Set<BigDecimal> allowedValues(CallContext context) {
+    /** Every money-scale figure the agent is allowed to say out loud, per the scenario's factSchema. */
+    private static Set<BigDecimal> allowedValues(ScenarioDefinition scenario, CallContext context) {
         Set<BigDecimal> allowed = new LinkedHashSet<>();
-        if (context == null) {
+        if (scenario == null || scenario.factSchema() == null || context == null) {
             return allowed;
         }
-        BigDecimal debt = context.debtAmount();
-        if (debt != null) {
-            allowed.add(debt);
-            // A model that says "1 500 000 so'm 40 tiyin" or rounds the trailing zeros
-            // off a whole sum is still stating the same fact; only a different figure
-            // is a violation.
-            allowed.add(debt.stripTrailingZeros());
-        }
-        // The contract number is a fact too, and it is full of long digit runs
-        // ("UY-2026-00123" → 2026, 00123). Reading it back must not trip the guard.
-        allowed.addAll(digitRuns(context.contractNumber()));
-        // A due date read out as a bare year ("2026") is also given, not invented.
-        if (context.dueDate() != null) {
-            allowed.add(BigDecimal.valueOf(context.dueDate().getYear()));
+        Map<String, Object> facts = context.facts();
+        for (FactField f : scenario.factSchema()) {
+            Object value = facts.get(f.name());
+            if (value == null) {
+                continue;
+            }
+            switch (f.type()) {
+                case "number" -> {
+                    BigDecimal amount = value instanceof BigDecimal b ? b : new BigDecimal(value.toString());
+                    allowed.add(amount);
+                    // A model that says "1 500 000 so'm 40 tiyin" or rounds the trailing
+                    // zeros off a whole sum is still stating the same fact; only a
+                    // different figure is a violation.
+                    allowed.add(amount.stripTrailingZeros());
+                }
+                case "date" -> {
+                    // A date read out as a bare year ("2026") is also given, not invented.
+                    LocalDate date = value instanceof LocalDate d ? d : LocalDate.parse(value.toString());
+                    allowed.add(BigDecimal.valueOf(date.getYear()));
+                }
+                default -> // A string fact (e.g. a contract number) may itself be full of
+                        // long digit runs ("UY-2026-00123" -> 2026, 00123). Reading it
+                        // back must not trip the guard.
+                        allowed.addAll(digitRuns(value.toString()));
+            }
         }
         return allowed;
     }

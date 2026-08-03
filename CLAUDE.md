@@ -97,7 +97,7 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<CampaignRow>> get(long id) {
+    public ResponseEntity<ResponseData<Campaign>> get(long id) {
         return ResponseEntity.ok(ResponseData.ok(service.requireCampaign(id)));
     }
 }
@@ -145,21 +145,31 @@ throw new ValidationException("phone is empty");
 
 | Type | Qoida | Misol |
 |---|---|---|
-| JPA entity | Suffikssiz, birlikda | `Campaign`, `CallAttempt` |
+| JPA entity | `<Domain>Entity` — doim `Entity` suffiksi bilan | `CampaignEntity`, `CallAttemptEntity` |
 | Spring Data interfeys | `<Entity>JpaRepository` | `CampaignJpaRepository` |
 | DAO klass | `<Entity>Repository` | `CampaignRepository` |
 | Service | `<Feature>Service` | `CampaignService` |
 | Controller | `<Feature>Controller` + `...Impl` | `CampaignController` |
 | Request DTO | `<Verb><Noun>Request` | `CreateCampaignRequest` |
 | Response DTO | `<Noun>Response` | `CreateCampaignResponse` |
-| Jadval qatori | `<Noun>Row` | `CampaignRow` |
+| Jadval qatori — bitta entity'ni 1:1 ifodalasa | Suffikssiz, entity bilan bir xil domain nomi | `Campaign`, `Company` |
+| Jadval qatori — bir nechta entity'ni birlashtirgan proyeksiya | `<Noun>Row` | `CallRow`, `LiveCallRow` |
 | Filtr | `<Noun>Filter` | `CampaignFilter` |
 | Sort ustunlari | `<Noun>TableField` | `CampaignTableField` |
 | Properties | `<Noun>Properties` | `DialerProperties`, `RetryProperties` |
 
-- `*Entity` suffiksi ishlatilmaydi.
+- JPA entity **doim** `Entity` suffiksi bilan tugaydi. Bu uni xuddi shu domain
+  nomidagi DTO'dan ajratib turadi: `entity.CampaignEntity` vs `dto.Campaign`,
+  `entity.CompanyEntity` vs `dto.Company`.
+- Row DTO faqat **bitta** entity'ni to'g'ridan-to'g'ri ifodalasa (`GET /api/companies`
+  javobidagi bir qator — bu `Company`), suffikssiz, entity bilan bir xil domain nomi
+  olinadi. Agar DTO bir nechta entity'ni birlashtirgan proyeksiya bo'lsa (masalan
+  `CallRow` — `call_attempt` + target + disposition'ni birlashtiradi), eski `<Noun>Row`
+  qoidasi qoladi — bitta backing entity yo'qligini aniq ko'rsatish uchun.
 - Bitta simple name butun loyihada **faqat bir marta** uchraydi. Ikki paketda bir xil
-  nomli klass bo'lmasin — import chalkashadi va IDE'da qidirish qiyinlashadi.
+  nomli klass bo'lmasin — import chalkashadi va IDE'da qidirish qiyinlashadi. (Entity/DTO
+  juftligi bundan mustasno: ular turli paketda va nomlari `Entity` suffiksi bilan
+  ajraladi, shuning uchun `Campaign` va `CampaignEntity` ikkalasi ham loyihada bo'lishi joiz.)
 
 ## 7. API konvert
 
@@ -192,6 +202,14 @@ throw new ValidationException("phone is empty");
    o'zi tekshiradi.
 7. **Bosqichma-bosqich.** `docs/PROJECT.md` §10 dagi tartibni buzma; foydalanuvchi
    "keyingi bosqich" demaguncha oldinga yugurma.
+8. **Integration testlarga tegilmaydi.** `@SpringBootTest` + `@Testcontainers` (real
+   Postgres) ishlatadigan testlar — ularni ishga tushirish uchun butun loyihani (Docker,
+   Testcontainers) ko'tarish kerak, buni faqat foydalanuvchi o'zi qiladi. Production
+   kodga o'zgartirish kiritilganda (masalan bir DTO'ga yangi maydon qo'shilsa) bu
+   testlarni **tuzatishga urinma va ularga umuman tegma** — ular hozircha
+   compile bo'lmasa ham, foydalanuvchi loyihani to'liq ko'tarib, o'zi qo'lda
+   moslashtiradi. Faqat mock asosidagi sof unit testlar (Spring context'siz)
+   tegishli — ularni yangi signaturaga moslab yangilash mumkin.
 
 ---
 

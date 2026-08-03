@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.ari.AriService;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
-import uz.murodjon.uysotvoice.call.dto.LiveCallRow;
+import uz.murodjon.uysotvoice.callrecord.dto.LiveCallRow;
 import uz.murodjon.uysotvoice.live.enums.LiveEventType;
 import uz.murodjon.uysotvoice.live.dto.LiveKpiSnapshot;
 

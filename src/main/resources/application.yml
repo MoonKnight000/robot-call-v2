@@ -3,13 +3,9 @@ spring:
     name: uysot-voice
 
   autoconfigure:
-    # Authentication is the X-Api-Key header (ApiKeyFilter) — there are no user
-    # accounts. Without this exclusion Boot would create a default "user" and log a
-    # generated password that authenticates nothing, which only confuses operators.
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
-  # Wait up to this long for @PreDestroy (call draining, §12) during shutdown.
   lifecycle:
     timeout-per-shutdown-phase: 90s
 
@@ -21,10 +17,6 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: false
-    # No migration in this project uses a real ${...} placeholder. Off because the
-    # scanner matches "${" as plain text anywhere in a script — including inside a
-    # dollar-quoted string tag glued to a JSON brace (e.g. "$def${") — and fails with
-    # "No value provided for placeholder" on a false positive.
     placeholder-replacement: false
 
   jpa:
@@ -46,6 +38,22 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+
+  # SMTP for scheduled report emails (§10.10 "Jadval bo'yicha yuborish", voice-agent.report-schedule
+  # below). Blank host/username/password until an operator sets one — the dispatch
+  # sweep itself stays off (voice-agent.report-schedule.enabled: false) until then, so
+  # no send is attempted against an unconfigured server.
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
   ai:
     model:
@@ -78,6 +86,38 @@ voice-agent:
     # static panel is same-origin and never needs this; a separately hosted frontend (e.g.
     # a Vite dev server) does. Empty = no cross-origin browser calls allowed.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    jwt:
+      # HS256 signing key for user login (ROADMAP E.1, Authorization: Bearer). Blank =
+      # fail-closed: nobody can log in. Hashed to 256 bits before use, so any non-blank
+      # value works — length beyond that adds no extra security.
+      secret: ${JWT_SECRET:}
+      # Access token lifetime. No server-side revocation exists — logout is a client-side
+      # token discard (stateless JWT), see AuthController.logout.
+      expiry-minutes: ${JWT_EXPIRY_MINUTES:720}
+    password-reset:
+      # "Parolni unutdingizmi?" email sender (backend-uchun-talablar.md §9) — same
+      # spring.mail.* SMTP connection as report-schedule. Unlike report-schedule there is
+      # no enabled flag: POST /api/auth/forgot-password always answers 200 regardless of
+      # whether the send actually succeeds (never reveal whether an email is registered),
+      # so an unconfigured SMTP server just means the send silently fails server-side.
+      from: ${PASSWORD_RESET_FROM:no-reply@uysot.uz}
+  encryption:
+    # AES-256 key (base64, 32 bytes) for secrets that must be read back — Uysot OAuth
+    # client_secret/access/refresh tokens (§11 integrations, shared.util.SecretCipher).
+    # Unlike JWT_SECRET/API_KEY, this cannot be "any non-blank value": it is decoded as
+    # raw key bytes, so it must be exactly 32 bytes once base64-decoded. Generate one:
+    #   openssl rand -base64 32
+    # Blank = the integrations feature stays inert (fails closed) rather than storing
+    # secrets in plaintext.
+    secret-key: ${ENCRYPTION_SECRET_KEY:}
+  user:
+    # First admin account, seeded once on startup if the default company has no users yet
+    # (UserBootstrap) — otherwise nobody could ever call POST /api/auth/login to create
+    # the rest through the API. Blank email/password = nothing seeded (fail-closed).
+    bootstrap-admin-name: ${BOOTSTRAP_ADMIN_NAME:Admin}
+    bootstrap-admin-username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    bootstrap-admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   asterisk:
     enabled: ${ASTERISK_ENABLED:true}
     # ari4java needs the HTTP base URL (not ws://). It derives the WebSocket itself.
@@ -340,6 +380,21 @@ voice-agent:
     # stating a figure the client may already have paid down. Blank = no lookup, keep the
     # imported values. A failed lookup never blocks the call.
     client-path: ${CRM_CLIENT_PATH:api/clients/{id}}
+  integration:
+    uysot:
+      # Uysot's OAuth2 endpoints (§11 settings, authorization-code flow) — the same for
+      # every company; only client_id/client_secret differ per company (entered via
+      # PUT /api/settings/integrations/uysot). Blank = the whole feature stays inert
+      # (CrmIntegrationService refuses to build an authorize URL) until an operator
+      # supplies Uysot's real endpoints — these are not yet known.
+      authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:}
+      token-url: ${UYSOT_OAUTH_TOKEN_URL:}
+      redirect-uri: ${UYSOT_OAUTH_REDIRECT_URI:}
+  notification:
+    # One Telegram bot for the whole deployment (§11 settings) — a company only supplies
+    # its own destination chat_id as its notification_channel.target. Blank = the
+    # Telegram channel is skipped deployment-wide (NotificationTelegramSender logs why).
+    telegram-bot-token: ${TELEGRAM_BOT_TOKEN:}
   outbox:
     # Retries the post-call work that failed the first time (§4.3). A CRM outage or an LLM
     # quota error used to mean a WARN log and a permanently lost note — for a call whose
@@ -392,6 +447,12 @@ voice-agent:
     min-sample: ${ALERTING_MIN_SAMPLE:20}
     success-threshold: ${ALERTING_SUCCESS_THRESHOLD:0.3}
     check-minutes: ${ALERTING_CHECK_MINUTES:5}
+  report-schedule:
+    # §10.10 "Jadval bo'yicha yuborish" — off by default: turning it on with no
+    # spring.mail.host configured would just fail every send. Enable once SMTP is set.
+    enabled: ${REPORT_SCHEDULE_ENABLED:false}
+    check-minutes: ${REPORT_SCHEDULE_CHECK_MINUTES:60}
+    from: ${REPORT_SCHEDULE_FROM:no-reply@uysot.uz}
   live:
     # Live SSE channel (§0.7): KPI ticks, live-call list, transcript lines, notifications.
     # Audio-level events are opt-in — they run on the RTP thread of every active call.
@@ -400,7 +461,7 @@ voice-agent:
   company:
     # ROADMAP Bosqich B: every request is scoped to this one company until real
     # per-request resolution (api_key -> company_id) exists — see CurrentCompany.
-    # Matches the bootstrap row V12__company.sql seeds as id 1.
+    # Matches the bootstrap row R__seed_data.sql seeds as id 1.
     default-id: ${COMPANY_DEFAULT_ID:1}
 
 server:

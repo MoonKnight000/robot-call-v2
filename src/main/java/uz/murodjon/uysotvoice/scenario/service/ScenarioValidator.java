@@ -22,6 +22,15 @@ import java.util.Set;
  */
 public final class ScenarioValidator {
 
+    /**
+     * Tool names {@link uz.murodjon.uysotvoice.agent.dialog.DialogEngine} always makes
+     * available regardless of scenario (ROADMAP A.1/A.3) — a scenario cannot declare a
+     * {@link ToolDef} with one of these names, since it would collide with the fixed
+     * platform implementation.
+     */
+    private static final Set<String> RESERVED_TOOL_NAMES = Set.of(
+            "transitionTo", "endCall", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall");
+
     private ScenarioValidator() {
     }
 
@@ -35,6 +44,7 @@ public final class ScenarioValidator {
         checkNamesUnique("fact", def.factSchema() == null ? List.of()
                 : def.factSchema().stream().map(FactField::name).toList(), errors);
         checkTools(def.tools(), errors);
+        checkStageTools(def.stages(), def.tools(), errors);
         checkOutcome(def.outcomeSchema(), errors);
         return errors;
     }
@@ -116,11 +126,35 @@ public final class ScenarioValidator {
         }
         checkNamesUnique("tool", tools.stream().map(ToolDef::name).toList(), errors);
         for (ToolDef t : tools) {
+            if (RESERVED_TOOL_NAMES.contains(t.name())) {
+                errors.add("tool name '" + t.name() + "' is reserved for the fixed universal tool set");
+            }
             if (t.params() == null) {
                 continue;
             }
             checkNamesUnique("tool " + t.name() + " param",
                     t.params().stream().map(ToolParamDef::name).toList(), errors);
+        }
+    }
+
+    /** Every stage's {@code allowedTools} must name either a declared scenario tool or a reserved universal one. */
+    private static void checkStageTools(List<StageDef> stages, List<ToolDef> tools, List<String> errors) {
+        if (stages == null) {
+            return;
+        }
+        Set<String> known = new HashSet<>(RESERVED_TOOL_NAMES);
+        if (tools != null) {
+            tools.forEach(t -> known.add(t.name()));
+        }
+        for (StageDef s : stages) {
+            if (s.allowedTools() == null) {
+                continue;
+            }
+            for (String toolName : s.allowedTools()) {
+                if (!known.contains(toolName)) {
+                    errors.add("stage " + s.id() + " allows unknown tool " + toolName);
+                }
+            }
         }
     }
 

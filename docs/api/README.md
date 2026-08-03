@@ -8,8 +8,17 @@ endpointlar uchun `docs/API-REQUIREMENTS.md`ga qarang (holat: ✅/⚠️/❌ jad
 
 | Fayl | Nima haqida |
 |---|---|
+| [auth.md](auth.md) | Login/logout/me, Uysot OAuth stub, kompaniya tanlagich (ROADMAP E.1) |
+| [users.md](users.md) | Foydalanuvchi boshqaruvi: invite, rol, block/unblock (ROADMAP E.1) |
+| [profile.md](profile.md) | O'z profili: umumiy ma'lumot, parol, faol sessiyalar, shaxsiy bildirishnoma matritsasi, ish jadvali, bugungi statistika (§15) |
+| [notifications.md](notifications.md) | Topbar bildirishnomalar + preference toggle |
+| [search.md](search.md) | Command palette (⌘K) qidiruv backend'i |
+| [companies.md](companies.md) | Kompaniya (tenant) CRUD: yaratish, sozlamalarni tahrirlash (ROADMAP B.1) |
+| [sip-trunks.md](sip-trunks.md) | Kompaniyaga xos SIP trunklar: CRUD, default trunkni belgilash (ROADMAP B.3) |
+| [settings.md](settings.md) | O'z kompaniyasi sozlamalari: API kalitlar, AI model, bildirishnoma matritsasi, integratsiyalar (§11) |
 | [campaigns.md](campaigns.md) | Kampaniyalar: yaratish, tahrirlash, arxivlash, nishonlar (targets), CSV import, start/pause |
 | [scenarios.md](scenarios.md) | Ssenariy CRUD, validatsiya, klonlash |
+| [inbound-routes.md](inbound-routes.md) | Kiruvchi DID marshrutlash: raqam → ssenariy/til/ish vaqti (ROADMAP C.1) |
 | [contacts.md](contacts.md) | Kontaktlar: CRUD, CSV import, qo'ng'iroqlar tarixi |
 | [do-not-call.md](do-not-call.md) | "Qo'ng'iroq qilinmasin" (DNC) ro'yxati |
 | [calls.md](calls.md) | Qo'lda qo'ng'iroq boshlash / play / say (test-tekshiruv uchun) |
@@ -22,8 +31,10 @@ endpointlar uchun `docs/API-REQUIREMENTS.md`ga qarang (holat: ✅/⚠️/❌ jad
 
 ## 1. Bazaviy URL va autentifikatsiya
 
-Barcha endpoint `/api` prefiksi ostida. Autentifikatsiya — `X-Api-Key` sarlavhasi
-(header), sessiya yoki cookie yo'q:
+Barcha endpoint `/api` prefiksi ostida. Ikkita mustaqil autentifikatsiya usuli
+bor, biri yetarli — sessiya yoki cookie yo'q, ikkalasi ham stateless:
+
+### 1.1 `X-Api-Key` — machine-to-machine
 
 ```
 X-Api-Key: <kalit>
@@ -33,19 +44,29 @@ Ikki xil kalit bor, ikkita rol beradi:
 
 | Rol | Kalit | Nimaga ruxsat beradi |
 |---|---|---|
-| `ADMIN` | `voice-agent.security.api-key` (`API_KEY` env) | Hammasi — qo'ng'iroq boshlash, kampaniya yaratish/boshqarish, DNC'ga qo'shish va h.k. |
+| `ADMIN` | `voice-agent.security.api-key` (`API_KEY` env) | Hammasi — qo'ng'iroq boshlash, kampaniya yaratish/boshqarish, foydalanuvchi/kompaniya boshqaruvi va h.k. |
 | `VIEWER` | `voice-agent.security.read-api-key` (`READ_API_KEY` env) | Faqat o'qish: `GET /api/reports/**` va `GET /api/live/**` |
 
-`ADMIN` kaliti `VIEWER` huquqini ham beradi — ya'ni admin kalit bilan hisobotlarni
-ham o'qib bo'ladi. Kalit noto'g'ri yoki berilmagan bo'lsa — `401 Unauthorized`
-(body yo'q, sof status kod).
+`ADMIN` kaliti `OPERATOR` va `VIEWER` huquqini ham beradi. Kalit noto'g'ri
+yoki berilmagan bo'lsa — `401 Unauthorized` (body yo'q, sof status kod).
 
-Frontend uchun amaliy xulosa: **hisobot/jonli-monitoring sahifalari** uchun
-`read-api-key` yetarli; kampaniya yaratish, qo'ng'iroq boshlash, kontakt/DNC
-o'zgartirish kabi harakatlar uchun **admin kalit** kerak. Ikkalasini bitta joyda
-config qilib, sahifaga qarab tanlang — yoki (oddiyroq) frontend har doim admin
-kalit bilan ishlaydi, agar backendda alohida "faqat o'qish" foydalanuvchi
-bo'lmasa.
+### 1.2 `Authorization: Bearer` — foydalanuvchi login (ROADMAP E.1)
+
+```
+Authorization: Bearer <token>
+```
+
+`POST /api/auth/login` qaytargan JWT — batafsil [auth.md](auth.md)ga qarang.
+Uchta rol: `ADMIN` (hammasi) > `OPERATOR` (kundalik operatsion ish — kampaniya,
+qo'ng'iroq, kontakt, ssenariy, kiruvchi marshrut) > `VIEWER` (faqat o'qish).
+Foydalanuvchi boshqaruvi (`/api/users/**`) va kompaniya/telefoniya/panel
+sozlamalari (`/api/companies/**`, `/api/sip-trunks/**`, `/api/settings/**`)
+faqat `ADMIN`ga ochiq.
+
+Frontend uchun amaliy xulosa: panel foydalanuvchi bilan **Bearer** token
+ishlatadi; skript/integratsiya (masalan CRM webhook) **X-Api-Key** bilan
+ishlaydi. Ikkalasi bir so'rovda kelsa — ikkalasi ham tekshiriladi, qaysi
+biri to'g'ri kelsa o'sha autentifikatsiya qiladi.
 
 > `GET /api/live/stream` — brauzerning tayyor `EventSource` klassi maxsus
 > sarlavha (`X-Api-Key`) qo'ya olmaydi, shuning uchun bu endpoint uchun
@@ -161,9 +182,13 @@ qiymatlari, JSON'da string sifatida yuboriladi):
 
 | Endpoint | Filtr turi | Saralanadigan ustunlar |
 |---|---|---|
+| `POST /api/companies/list` | `CompanyFilter` | `ID`, `NAME`, `STATUS`, `CREATED_AT` |
+| `POST /api/sip-trunks/list` | `SipTrunkFilter` | `ID`, `NAME`, `IS_DEFAULT`, `ENABLED`, `CREATED_AT` |
+| `POST /api/settings/api-keys/list` | `ApiKeyFilter` | `ID`, `NAME`, `ROLE`, `CREATED_AT`, `LAST_USED_AT` |
 | `POST /api/campaigns/list` | `CampaignFilter` | `ID`, `NAME`, `TYPE`, `STATUS` |
 | `POST /api/campaigns/{id}/targets/list` | `TargetFilter` | `ID`, `PHONE`, `STATUS`, `ATTEMPTS` |
 | `POST /api/scenarios/list` | `ScenarioFilter` | `ID`, `SCENARIO_KEY`, `NAME`, `VERSION`, `CREATED_AT` |
+| `POST /api/inbound-routes/list` | `InboundRouteFilter` | `ID`, `DID_NUMBER`, `LANGUAGE`, `ENABLED`, `CREATED_AT` |
 | `POST /api/contacts/list` | `ContactFilter` | `ID`, `NAME`, `PHONE`, `CREATED_AT` |
 | `POST /api/do-not-call/list` | `DoNotCallFilter` | `ID`, `PHONE`, `CREATED_AT` |
 | `POST /api/reports/calls/list`, `POST /api/reports/campaigns/{id}/calls/list` | `CallFilter` | `CALL_ID`, `STARTED_AT`, `ENDED_AT`, `DURATION_SEC`, `DISPOSITION` |
@@ -211,5 +236,10 @@ yuborish kerak.
   `400` bilan rad etiladi (aniq xabar bilan).
 - **`campaignId`/`contactId`/`id` kabi path parametrlar** — `long`. Raqam
   bo'lmagan qiymat `400 Invalid value for parameter: id` beradi.
-- Hozircha **bitta kompaniya** bilan ishlaydi (`voice-agent.company.default-id`)
-  — frontendda kompaniya tanlash/almashtirish UI'si hali kerak emas.
+- **Kompaniya izolyatsiyasi**: `Authorization: Bearer` bilan kirgan foydalanuvchi
+  o'z kompaniyasiga avtomatik scoped (ROADMAP E.1). Ikkita global konstantali
+  `X-Api-Key` (`voice-agent.security.api-key`/`read-api-key`) hamon bitta
+  hardcoded default kompaniyaga ishlaydi. `POST /api/settings/api-keys` orqali
+  yaratilgan kalitlar esa o'zi yaratilgan kompaniyaga scoped — kalit → kompaniya
+  xaritalash shu bilan yopildi (ROADMAP B.2'ning ochiq qoldig'i), qarang
+  [settings.md](settings.md).

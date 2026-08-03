@@ -8,6 +8,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -93,8 +95,8 @@ public class TtsCache {
      * Cached audio for this line, or {@code null} for a miss (including lines that are
      * not worth caching at all).
      */
-    public short[] get(String provider, String language, String voice, String text) {
-        String key = key(provider, language, voice, text);
+    public short[] get(String provider, String language, String voice, String text, EffectiveVoiceSettings style) {
+        String key = key(provider, language, voice, text, style);
         if (key == null) {
             return null;
         }
@@ -116,8 +118,9 @@ public class TtsCache {
     }
 
     /** Store freshly synthesized audio in both levels. */
-    public void put(String provider, String language, String voice, String text, short[] pcm) {
-        String key = key(provider, language, voice, text);
+    public void put(String provider, String language, String voice, String text, short[] pcm,
+                    EffectiveVoiceSettings style) {
+        String key = key(provider, language, voice, text, style);
         if (key == null || pcm == null || pcm.length == 0) {
             return;
         }
@@ -140,8 +143,13 @@ public class TtsCache {
      * configured voice was used. It is part of the key for the same reason the
      * fingerprint is: two campaigns speaking the same disclosure in different voices
      * must not be served each other's audio.
+     *
+     * <p>{@code style} (§11 settings/voice) is folded in only when a company actually
+     * overrode speed/pitch — leaving the key unchanged for the common case keeps every
+     * entry cached before this feature existed valid, and a company with no override
+     * shares the default-routing cache instead of never hitting it.
      */
-    private String key(String provider, String language, String voice, String text) {
+    private String key(String provider, String language, String voice, String text, EffectiveVoiceSettings style) {
         if ((memory == null && redis == null) || text == null) {
             return null;
         }
@@ -152,8 +160,10 @@ public class TtsCache {
             return null;
         }
         String voiceSegment = (voice == null || voice.isBlank()) ? "-" : voice;
+        String styleSegment = (style == null || (style.speed() == null && style.pitch() == null))
+                ? "" : ":" + style.speed() + "/" + style.pitch();
         return KEY_PREFIX + voiceFingerprint + ':' + provider + ':' + language + ':'
-                + voiceSegment + ':' + sha256(normalized);
+                + voiceSegment + styleSegment + ':' + sha256(normalized);
     }
 
     /**

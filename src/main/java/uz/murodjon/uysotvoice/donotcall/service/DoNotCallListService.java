@@ -5,14 +5,17 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.audit.service.AuditService;
+import uz.murodjon.uysotvoice.contact.service.ContactService;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallFilter;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallRemoveResponse;
+import uz.murodjon.uysotvoice.donotcall.dto.DoNotCall;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallRow;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The "Qo'ng'iroq qilinmasin (DNC)" tab (§10.8) — listing and removal. Not campaign-
@@ -23,17 +26,27 @@ import java.util.List;
 public class DoNotCallListService {
 
     private final DoNotCallRepository doNotCall;
+    private final ContactService contacts;
     private final AuditService audit;
 
-    public DoNotCallListService(DoNotCallRepository doNotCall, AuditService audit) {
+    public DoNotCallListService(DoNotCallRepository doNotCall, ContactService contacts, AuditService audit) {
         this.doNotCall = doNotCall;
+        this.contacts = contacts;
         this.audit = audit;
     }
 
+    /**
+     * Enriches each row with {@code contactName} (backend-uchun-talablar.md §15) via a
+     * batched phone→name lookup rather than one query per row.
+     */
     public PageableData<DoNotCallRow> list(DoNotCallFilter filter) {
-        List<DoNotCallRow> rows = doNotCall.findAll(filter);
+        List<DoNotCall> rows = doNotCall.findAll(filter);
         long total = doNotCall.count(filter);
-        return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
+        Map<String, String> contactNames = contacts.namesByPhones(rows.stream().map(DoNotCall::phone).toList());
+        List<DoNotCallRow> enriched = rows.stream()
+                .map(d -> DoNotCallRow.of(d, contactNames.get(d.phone())))
+                .toList();
+        return PageableData.of(enriched, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     /** "Ro'yxatdan chiqarish" — a phone never opted out here (or already removed) is a 404. */

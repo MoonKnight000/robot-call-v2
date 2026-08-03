@@ -12,6 +12,11 @@ package uz.murodjon.uysotvoice.dialer.dto;
  * @param ttsVoice    catalog id of the campaign's chosen voice (§2.5); null → the
  *                    configured routing
  * @param contextData raw {@code context_data} JSON with the debtor facts
+ * @param scenarioId  the campaign's bound scenario row (ROADMAP A.3)
+ * @param companyId   the campaign's owning company (ROADMAP B.1) — decides which SIP
+ *                    trunk originates this call (ROADMAP B.3)
+ * @param disclosureEnabled whether this campaign's calls open with the §11.1
+ *                    disclosure
  */
 public record CallTask(
         Long campaignId,
@@ -20,6 +25,9 @@ public record CallTask(
         String phone,
         String language,
         String ttsVoice,
-        String contextData
+        String contextData,
+        Long scenarioId,
+        long companyId,
+        boolean disclosureEnabled
 ) {
 }

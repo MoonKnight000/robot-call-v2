@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
-import uz.murodjon.uysotvoice.voice.dto.TtsVoiceRow;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
+import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.util.List;
@@ -63,9 +64,20 @@ public class TtsRouter {
      * @throws IllegalStateException if no provider can serve the language
      */
     public short[] synthesize(String text, String language, String voiceId) {
+        return synthesize(text, language, voiceId, EffectiveVoiceSettings.NONE);
+    }
+
+    /**
+     * As {@link #synthesize(String, String, String)}, additionally applying a company's
+     * §11 settings/voice overrides ({@code provider}/{@code speed}/{@code pitch}) —
+     * resolved once per call by {@code DialogEngine.startCall} and passed in from there.
+     * The overridden provider only wins when a campaign voice was not already chosen
+     * (that already pins its own provider) and it can actually serve the language.
+     */
+    public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style) {
         String lang = (language == null || language.isBlank()) ? props.defaultLanguage() : language;
 
-        TtsVoiceRow chosen = resolve(voiceId, lang);
+        TtsVoice chosen = resolve(voiceId, lang);
         TtsProvider provider = null;
         String voiceName = null;
         if (chosen != null) {
@@ -78,14 +90,14 @@ public class TtsRouter {
             }
         }
         if (provider == null) {
-            provider = select(lang);
+            provider = select(lang, style != null ? style.provider() : null);
         }
         if (provider == null) {
             throw new ConflictException("No TTS provider available for language " + lang);
         }
         log.debug("TTS route: lang={} voice={} -> provider={}", lang, voiceName, provider.name());
 
-        short[] hit = cache.get(provider.name(), lang, voiceName, text);
+        short[] hit = cache.get(provider.name(), lang, voiceName, text, style);
         if (hit != null) {
             metrics.ttsCacheHit();
             metrics.ttsCharsSaved(text.length());
@@ -95,7 +107,7 @@ public class TtsRouter {
         Timer.Sample sample = metrics.startTimer();
         short[] pcm;
         try {
-            pcm = provider.synthesize(text, lang, voiceName);
+            pcm = provider.synthesize(text, lang, voiceName, style);
         } catch (RuntimeException e) {
             metrics.ttsError();
             throw e;
@@ -104,7 +116,7 @@ public class TtsRouter {
         }
         metrics.ttsCacheMiss();
         metrics.ttsCharsSynthesized(text.length());
-        cache.put(provider.name(), lang, voiceName, text, pcm);
+        cache.put(provider.name(), lang, voiceName, text, pcm, style);
         return pcm;
     }
 
@@ -116,11 +128,11 @@ public class TtsRouter {
      * Uzbek may still hold a target marked ru-RU, and having the Uzbek voice read
      * Russian text out is worse than the provider's own Russian voice.
      */
-    private TtsVoiceRow resolve(String voiceId, String language) {
+    private TtsVoice resolve(String voiceId, String language) {
         if (voiceId == null || voiceId.isBlank()) {
             return null;
         }
-        TtsVoiceRow voice = catalog.find(voiceId);
+        TtsVoice voice = catalog.find(voiceId);
         if (voice == null) {
             log.warn("Unknown TTS voice '{}' — using default routing", voiceId);
             return null;
@@ -152,9 +164,15 @@ public class TtsRouter {
         return null;
     }
 
-    private TtsProvider select(String language) {
-        // Preferred provider first, if it can serve this language.
-        String preferred = props.provider();
+    /**
+     * @param companyOverride a company's §11 settings/voice preferred provider, checked
+     *                        before the process-wide default; {@code null} defers to it
+     */
+    private TtsProvider select(String language, String companyOverride) {
+        // Preferred provider first, if it can serve this language: the company's own
+        // override (§11 settings) wins over the process-wide default.
+        String preferred = (companyOverride != null && !companyOverride.isBlank())
+                ? companyOverride : props.provider();
         if (preferred != null && !preferred.isBlank()) {
             for (TtsProvider provider : providers) {
                 if (provider.name().equalsIgnoreCase(preferred) && provider.supports(language)) {

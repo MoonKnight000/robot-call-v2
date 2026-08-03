@@ -12,13 +12,17 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import uz.murodjon.uysotvoice.campaign.dto.TargetRow;
+import uz.murodjon.uysotvoice.campaign.dto.Campaign;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.donotcall.enums.DoNotCallSource;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 
+import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,9 +69,12 @@ class CampaignTargetRepositoryTest {
     @BeforeEach
     void setUp() {
         jdbc.update("DELETE FROM do_not_call_list");
-        campaignId = campaigns.create("claim-test", CampaignType.DEBT_COLLECTION, "goal", "{}", "uz-UZ",
-                LocalTime.of(9, 0), LocalTime.of(20, 0), "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY",
-                3, 24, 5, null, 0);
+        long scenarioId = jdbc.queryForObject(
+                "SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active", Long.class);
+        campaignId = campaigns.create(new Campaign(0, "claim-test", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
+                "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0),
+                EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
+                3, 24, 5, null, 0, scenarioId, 0, true));
     }
 
     private long addTarget(String phone) {
@@ -78,7 +85,7 @@ class CampaignTargetRepositoryTest {
     void claimMarksInProgressAndCountsTheAttempt() {
         addTarget("998900000001");
 
-        List<TargetRow> claimed = targets.claimDue(campaignId, 10);
+        List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
 
         assertThat(claimed).hasSize(1);
         assertThat(claimed.get(0).status()).isEqualTo(TargetStatus.IN_PROGRESS);
@@ -91,13 +98,13 @@ class CampaignTargetRepositoryTest {
         addTarget("998900000002");
         addTarget("998900000003");
 
-        List<TargetRow> first = targets.claimDue(campaignId, 2);
-        List<TargetRow> second = targets.claimDue(campaignId, 2);
+        List<CampaignTarget> first = targets.claimDue(campaignId, 2);
+        List<CampaignTarget> second = targets.claimDue(campaignId, 2);
 
         assertThat(first).hasSize(2);
         assertThat(second).hasSize(1); // only one PENDING row was left
-        assertThat(first.stream().map(TargetRow::id))
-                .doesNotContainAnyElementsOf(second.stream().map(TargetRow::id).toList());
+        assertThat(first.stream().map(CampaignTarget::id))
+                .doesNotContainAnyElementsOf(second.stream().map(CampaignTarget::id).toList());
     }
 
     @Test
@@ -117,9 +124,9 @@ class CampaignTargetRepositoryTest {
         long allowed = addTarget("998900000002");
         doNotCall.add("998900000001", "asked not to be called", DoNotCallSource.CALL);
 
-        List<TargetRow> claimed = targets.claimDue(campaignId, 10);
+        List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
 
-        assertThat(claimed).extracting(TargetRow::id).containsExactly(allowed);
+        assertThat(claimed).extracting(CampaignTarget::id).containsExactly(allowed);
     }
 
     @Test
@@ -128,9 +135,9 @@ class CampaignTargetRepositoryTest {
         long allowed = addTarget("998900000002");
         targets.setDoNotCall(flagged);
 
-        List<TargetRow> claimed = targets.claimDue(campaignId, 10);
+        List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
 
-        assertThat(claimed).extracting(TargetRow::id).containsExactly(allowed);
+        assertThat(claimed).extracting(CampaignTarget::id).containsExactly(allowed);
     }
 
     @Test
@@ -140,9 +147,9 @@ class CampaignTargetRepositoryTest {
         jdbc.update("UPDATE campaign_target SET status = 'PENDING', next_attempt_at = now() + interval '1 hour' "
                 + "WHERE id = ?", later);
 
-        List<TargetRow> claimed = targets.claimDue(campaignId, 10);
+        List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
 
-        assertThat(claimed).extracting(TargetRow::id).containsExactly(now);
+        assertThat(claimed).extracting(CampaignTarget::id).containsExactly(now);
     }
 
     @Test

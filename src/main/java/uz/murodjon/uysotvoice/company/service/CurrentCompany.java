@@ -5,13 +5,14 @@ import uz.murodjon.uysotvoice.company.config.CompanyProperties;
 /**
  * The company the current unit of work belongs to (ROADMAP Bosqich B).
  *
- * <p>Backed today by {@link DefaultCompanyResolver} — a single hardcoded id, since
- * there is no per-request identity yet (no user accounts, one shared {@code X-Api-Key}
- * per role; ROADMAP E.1). Every repository that filters by company depends on this
- * interface rather than reading {@link CompanyProperties} directly, so that when real
- * per-request resolution exists (an {@code api_key} table mapping a presented key to
- * its company), swapping the implementation is the only change needed — no repository
- * call site changes.
+ * <p>Real per-request resolution exists via {@code auth.service.JwtCurrentCompanyResolver}
+ * — a JWT login, or a per-company DB-backed {@code X-Api-Key} (backend-uchun-talablar.md
+ * §8, {@code apikey.service.ApiKeyService}/{@code security.ApiKeyFilter}), both resolve to
+ * the real company. {@link DefaultCompanyResolver} — a single hardcoded id — is now only
+ * the fallback for the two global bootstrap keys (admin/read-only), which stay
+ * intentionally unscoped. Every repository that filters by company depends on this
+ * interface rather than either resolver directly, so that fallback never leaks into
+ * call sites that should always see the real company.
  */
 public interface CurrentCompany {
 
