@@ -73,7 +73,7 @@ CREATE TABLE scenario (
     -- guardrails, disclosureText.
     definition   JSONB        NOT NULL,
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by   VARCHAR(64)
+    created_by   BIGINT
 );
 -- Exactly one active version per scenario_key (ROADMAP A.4 versioning).
 CREATE UNIQUE INDEX idx_scenario_active_key ON scenario(scenario_key) WHERE is_active;
@@ -102,20 +102,28 @@ CREATE UNIQUE INDEX idx_inbound_route_did ON inbound_route(did_number) WHERE ena
 CREATE INDEX idx_inbound_route_company ON inbound_route(company_id);
 
 -- ROADMAP B.3: a company may register several outbound PJSIP trunks, one of which is
--- its default. This project does not manage pjsip.conf itself — an endpoint must
--- already be configured in Asterisk before it is registered here (SipTrunkService).
+-- its default. Two modes (report #7): "managed" (host/sip_username/sip_password_enc
+-- set, pjsip_endpoint app-generated — PjsipConfigWriter/AmiClient actually register it
+-- with the provider) or "manual" (those three NULL, pjsip_endpoint names an endpoint an
+-- operator already hand-configured in pjsip.conf — the original ROADMAP B.3 shape).
 CREATE TABLE sip_trunk (
-    id             BIGSERIAL PRIMARY KEY,
-    company_id     BIGINT       NOT NULL REFERENCES company(id),
-    name           VARCHAR(255) NOT NULL,
-    -- The PJSIP endpoint name from pjsip.conf, used as PJSIP/<number>@<pjsip_endpoint>
-    -- (mirrors voice-agent.asterisk.trunk-endpoint, now sourced from here per company).
-    pjsip_endpoint VARCHAR(128) NOT NULL,
+    id               BIGSERIAL PRIMARY KEY,
+    company_id       BIGINT       NOT NULL REFERENCES company(id),
+    name             VARCHAR(255) NOT NULL,
+    -- The PJSIP endpoint name, used as PJSIP/<number>@<pjsip_endpoint> — app-generated
+    -- (trunk_<company_id>_<id>) for a managed trunk, user-supplied for a manual one.
+    pjsip_endpoint   VARCHAR(128) NOT NULL,
     -- NULL falls back to the company's own caller_id, then voice-agent.asterisk.caller-id.
-    caller_id      VARCHAR(20),
-    is_default     BOOLEAN      NOT NULL DEFAULT false,
-    enabled        BOOLEAN      NOT NULL DEFAULT true,
-    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
+    caller_id        VARCHAR(20),
+    -- Managed mode only — the provider's own host/domain and credentials.
+    host             VARCHAR(255),
+    port             INT          NOT NULL DEFAULT 5060,
+    sip_username     VARCHAR(255),
+    sip_password_enc TEXT,
+    transport        VARCHAR(10)  NOT NULL DEFAULT 'UDP', -- UDP, TCP, TLS (siptrunk.enums.SipTrunkTransport)
+    is_default       BOOLEAN      NOT NULL DEFAULT false,
+    enabled          BOOLEAN      NOT NULL DEFAULT true,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_sip_trunk_company ON sip_trunk(company_id);
 -- At most one default trunk per company (mirrors idx_scenario_active_key).
@@ -133,7 +141,7 @@ CREATE TABLE app_user (
     -- Login identifier, separate from email (ROADMAP E.1 follow-up).
     username          VARCHAR(100) NOT NULL,
     password_hash     VARCHAR(255),           -- NULL while INVITED (no password set yet)
-    role              VARCHAR(20)  NOT NULL,  -- ADMIN, OPERATOR, VIEWER
+    role              VARCHAR(20)  NOT NULL,  -- ADMIN, OPERATOR, VIEWER, SUPERADMIN (platform staff, report #3)
     status            VARCHAR(20)  NOT NULL DEFAULT 'INVITED', -- INVITED, ACTIVE, BLOCKED
     -- One-time activation link (no SMTP integration yet, §API-REQUIREMENTS 12):
     -- the raw token is returned once from POST /api/users/invite and never stored;
@@ -480,24 +488,6 @@ CREATE INDEX idx_report_schedule_company ON report_schedule(company_id);
 -- The dispatch sweep scans only enabled rows every tick; narrow the index to those.
 CREATE INDEX idx_report_schedule_due ON report_schedule(enabled, last_sent_at) WHERE enabled;
 
--- Per-company API keys (§11 "GET/POST/DELETE /api/settings/api-keys") — replaces the
--- single global X-Api-Key/read-api-key pair with panel-managed, revocable keys scoped
--- to one company each. The static keys in voice-agent.security.* keep working
--- unchanged (ApiKeyFilter tries them first); this table is additive.
-CREATE TABLE api_key (
-    id            BIGSERIAL PRIMARY KEY,
-    company_id    BIGINT      NOT NULL REFERENCES company(id),
-    name          VARCHAR(255) NOT NULL,
-    key_hash      VARCHAR(64) NOT NULL, -- SHA-256 hex digest (shared/util/Tokens#hash)
-    key_prefix    VARCHAR(8)  NOT NULL, -- first 8 chars of the raw key, for the list UI
-    role          VARCHAR(20) NOT NULL, -- ADMIN, OPERATOR, VIEWER (user.enums.UserRole)
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_used_at  TIMESTAMPTZ,
-    revoked_at    TIMESTAMPTZ
-);
-CREATE UNIQUE INDEX idx_api_key_hash ON api_key(key_hash);
-CREATE INDEX idx_api_key_company ON api_key(company_id);
-
 -- Per-company AI model overrides (§11 "GET/PUT /api/settings/ai-model"). Every column
 -- is nullable: null means "use the process default from application.yml/DialogProperties".
 CREATE TABLE ai_model_config (
@@ -539,15 +529,19 @@ CREATE TABLE notification_matrix (
 );
 CREATE UNIQUE INDEX idx_notification_matrix_unique ON notification_matrix(company_id, type, channel);
 
--- Per-company Uysot CRM OAuth connection (§11 "GET/PUT /api/settings/integrations").
--- client_secret/access_token/refresh_token are AES-GCM ciphertext
--- (shared.util.SecretCipher), never plaintext.
+-- Per-company Uysot CRM OAuth connection (§11 "GET/PUT /api/settings/integrations",
+-- report #10). client_id/client_secret are NOT here — per Uysot's real OAuth docs one
+-- platform-wide app (integration.config.UysotOAuthProperties) serves every company, so
+-- each row only carries this company's own app_name/grants declaration.
+-- access_token/refresh_token are AES-GCM ciphertext (shared.util.SecretCipher), never
+-- plaintext.
 CREATE TABLE crm_integration (
     id                BIGSERIAL PRIMARY KEY,
     company_id        BIGINT      NOT NULL UNIQUE REFERENCES company(id),
     provider          VARCHAR(20) NOT NULL DEFAULT 'UYSOT',
-    client_id         VARCHAR(255),
-    client_secret_enc TEXT,
+    app_name          VARCHAR(255),
+    -- JSON array of {"permission":"LEAD","scope":"READ"} (integration.dto.CrmGrant).
+    grants_json       TEXT,
     access_token_enc  TEXT,
     refresh_token_enc TEXT,
     token_expires_at  TIMESTAMPTZ,

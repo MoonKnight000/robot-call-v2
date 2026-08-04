@@ -58,7 +58,7 @@ public class UserSessionRepository {
         });
     }
 
-    /** No-op if {@code id} does not belong to {@code userId} — same ownership-check shape as apikey/revoke. */
+    /** No-op if {@code id} does not belong to {@code userId}. */
     public void revoke(long id, long userId) {
         jpa.findByIdAndUserId(id, userId).ifPresent(entity -> {
             entity.setRevokedAt(Instant.now());

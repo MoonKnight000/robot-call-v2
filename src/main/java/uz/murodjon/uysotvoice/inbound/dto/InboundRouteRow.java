@@ -1,5 +1,9 @@
 package uz.murodjon.uysotvoice.inbound.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
+import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
+
 import java.time.Instant;
 import java.time.LocalTime;
 
@@ -20,8 +24,8 @@ public record InboundRouteRow(
         long scenarioId,
         String scenarioName,
         String language,
-        LocalTime businessHoursStart,
-        LocalTime businessHoursEnd,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime businessHoursStart,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime businessHoursEnd,
         String fallbackMessage,
         boolean enabled,
         Instant createdAt

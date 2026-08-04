@@ -64,8 +64,8 @@ public class UserEntity {
     @Column(name = "position")
     private String position;
 
-    @Column(name = "avatar_url")
-    private String avatarUrl;
+    @Column(name = "avatar_file_id")
+    private Long avatarFileId;
 
     @Column(name = "call_columns")
     private String callColumns;
@@ -187,12 +187,12 @@ public class UserEntity {
         this.position = position;
     }
 
-    public String getAvatarUrl() {
-        return avatarUrl;
+    public Long getAvatarFileId() {
+        return avatarFileId;
     }
 
-    public void setAvatarUrl(String avatarUrl) {
-        this.avatarUrl = avatarUrl;
+    public void setAvatarFileId(Long avatarFileId) {
+        this.avatarFileId = avatarFileId;
     }
 
     public String getCallColumns() {

@@ -10,6 +10,7 @@ import uz.murodjon.uysotvoice.report.dto.CampaignComparisonRow;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
 import uz.murodjon.uysotvoice.report.dto.FunnelStage;
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
+import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -52,7 +53,7 @@ public class CsvResponseFactory {
                     r.hangupCause(),
                     String.valueOf(r.hasRecording()),
                     r.summary(),
-                    r.promisedDate() != null ? r.promisedDate().toString() : "",
+                    r.promisedDate() != null ? DateTimeProperties.DATE_FORMATTER.format(r.promisedDate()) : "",
                     r.promisedAmount() != null ? r.promisedAmount().toString() : "",
                     r.crmNoteId() != null ? String.valueOf(r.crmNoteId()) : "");
         }

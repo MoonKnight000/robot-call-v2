@@ -1,7 +1,10 @@
 package uz.murodjon.uysotvoice.integration.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,8 +15,11 @@ import uz.murodjon.uysotvoice.config.EncryptionProperties;
 import uz.murodjon.uysotvoice.integration.config.UysotOAuthProperties;
 import uz.murodjon.uysotvoice.integration.dto.AuthorizeUrlResponse;
 import uz.murodjon.uysotvoice.integration.dto.ConnectIntegrationRequest;
+import uz.murodjon.uysotvoice.integration.dto.CrmCatalogEntry;
+import uz.murodjon.uysotvoice.integration.dto.CrmGrant;
 import uz.murodjon.uysotvoice.integration.dto.CrmIntegration;
 import uz.murodjon.uysotvoice.integration.entity.CrmIntegrationEntity;
+import uz.murodjon.uysotvoice.integration.enums.CrmAuthMethod;
 import uz.murodjon.uysotvoice.integration.enums.CrmIntegrationStatus;
 import uz.murodjon.uysotvoice.integration.enums.CrmProvider;
 import uz.murodjon.uysotvoice.integration.repository.CrmIntegrationRepository;
@@ -35,14 +41,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Uysot CRM OAuth connection (§11 settings, authorization-code flow) — each company
- * registers its own Uysot OAuth app ({@code client_id}/{@code client_secret}, entered
- * via the panel) and connects it through the standard redirect+consent dance. {@link
- * #currentAccessToken} is the runtime hot path {@code CrmClient} calls before every
- * CRM request; the rest is the settings-page CRUD plus the OAuth callback.
+ * Uysot CRM OAuth connection (§11 settings, authorization-code flow — verified against
+ * Uysot's real Open API docs, report #10). One platform-wide app ({@code
+ * UysotOAuthProperties}) serves every company; each company only declares its own
+ * {@code app_name}/{@code grants} and goes through the standard redirect+consent dance.
+ * {@link #currentAccessToken} is the runtime hot path {@code CrmClient} calls before
+ * every CRM request; the rest is the settings-page CRUD plus the OAuth callback.
  */
 @Service
 public class CrmIntegrationService {
@@ -73,17 +81,26 @@ public class CrmIntegrationService {
         this.audit = audit;
     }
 
-    public CrmIntegration find() {
-        return repo.find(company.id()).map(CrmIntegrationService::toRow)
-                .orElseGet(() -> new CrmIntegration(company.id(), CrmProvider.UYSOT,
-                        null, false, CrmIntegrationStatus.NOT_CONNECTED, null));
+    /** The static catalog (report #10) — only {@link CrmProvider#UYSOT} is actually connectable today. */
+    public List<CrmCatalogEntry> catalog() {
+        return List.of(
+                new CrmCatalogEntry(CrmProvider.UYSOT, "Uysot CRM", CrmAuthMethod.OAUTH, true),
+                new CrmCatalogEntry(CrmProvider.BITRIX24, "Bitrix24", CrmAuthMethod.OAUTH, false),
+                new CrmCatalogEntry(CrmProvider.AMOCRM, "amoCRM", CrmAuthMethod.OAUTH, false)
+        );
     }
 
-    public CrmIntegration saveCredentials(ConnectIntegrationRequest r) {
-        requireCipher();
+    public CrmIntegration find() {
+        return repo.find(company.id()).map(this::toRow)
+                .orElseGet(() -> new CrmIntegration(company.id(), CrmProvider.UYSOT,
+                        null, List.of(), CrmIntegrationStatus.NOT_CONNECTED, null));
+    }
+
+    /** Declares this company's app identity/requested grants — the authorize URL needs both before it can be built. */
+    public CrmIntegration connect(ConnectIntegrationRequest r) {
         long companyId = company.id();
-        CrmIntegrationEntity entity = repo.saveCredentials(companyId, r.clientId(), cipher.encrypt(r.clientSecret()));
-        audit.record("CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId), r.clientId());
+        CrmIntegrationEntity entity = repo.saveAppInfo(companyId, r.appName(), writeGrants(r.grants()));
+        audit.record("CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId), r.appName());
         return toRow(entity);
     }
 
@@ -93,12 +110,17 @@ public class CrmIntegrationService {
         }
         long companyId = company.id();
         CrmIntegrationEntity entity = repo.find(companyId)
-                .orElseThrow(() -> new ValidationException("Save client_id/client_secret first"));
+                .orElseThrow(() -> new ValidationException("Save appName/grants first"));
+        List<CrmGrant> grants = readGrants(entity.getGrantsJson());
+        if (grants.isEmpty()) {
+            throw new ValidationException("Save appName/grants first");
+        }
         String state = signState(companyId);
         String url = oauth.authorizeUrl()
-                + "?client_id=" + encode(entity.getClientId())
-                + "&redirect_uri=" + encode(oauth.redirectUri())
-                + "&response_type=code"
+                + "?client_id=" + encode(oauth.clientId())
+                + "&app_name=" + encode(entity.getAppName())
+                + "&redirect_url=" + encode(oauth.redirectUri())
+                + "&grants=" + encode(grantsParam(grants))
                 + "&state=" + encode(state);
         return new AuthorizeUrlResponse(url);
     }
@@ -117,11 +139,13 @@ public class CrmIntegrationService {
         CrmIntegrationEntity entity = repo.find(companyId)
                 .orElseThrow(() -> new NotFoundException("crm_integration", companyId));
         try {
+            // redirect_uri here, not redirect_url — Uysot's token endpoint names the
+            // same param differently than its authorize endpoint (buildAuthorizeUrl).
             String body = "grant_type=authorization_code"
                     + "&code=" + encode(code)
                     + "&redirect_uri=" + encode(oauth.redirectUri())
-                    + "&client_id=" + encode(entity.getClientId())
-                    + "&client_secret=" + encode(cipher.decrypt(entity.getClientSecretEnc()));
+                    + "&client_id=" + encode(oauth.clientId())
+                    + "&client_secret=" + encode(oauth.clientSecret());
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(oauth.tokenUrl()))
                     .timeout(Duration.ofSeconds(10))
@@ -169,8 +193,38 @@ public class CrmIntegrationService {
 
     public void disconnect() {
         long companyId = company.id();
+        repo.find(companyId).ifPresent(this::revokeUpstream);
         repo.disconnect(companyId);
         audit.record("CRM_INTEGRATION_DISCONNECT", "crm_integration", String.valueOf(companyId), null);
+    }
+
+    /**
+     * Invalidates the token on Uysot's side too, not just locally — best-effort: a
+     * company disconnecting must not be blocked by Uysot's revoke endpoint being slow
+     * or unreachable (the local tokens are cleared regardless, see {@link #disconnect}).
+     */
+    private void revokeUpstream(CrmIntegrationEntity entity) {
+        if (entity.getAccessTokenEnc() == null || !oauth.configured() || !cipher.available()
+                || oauth.revokeUrl() == null || oauth.revokeUrl().isBlank()) {
+            return;
+        }
+        try {
+            String body = "token=" + encode(cipher.decrypt(entity.getAccessTokenEnc()))
+                    + "&client_id=" + encode(oauth.clientId())
+                    + "&client_secret=" + encode(oauth.clientSecret());
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(oauth.revokeUrl()))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() / 100 != 2) {
+                log.warn("Uysot token revoke for company {} HTTP {}", entity.getCompanyId(), resp.statusCode());
+            }
+        } catch (Exception e) {
+            log.warn("Uysot token revoke for company {} failed: {}", entity.getCompanyId(), e.getMessage());
+        }
     }
 
     private Optional<String> refresh(CrmIntegrationEntity entity) {
@@ -180,8 +234,8 @@ public class CrmIntegrationService {
         try {
             String body = "grant_type=refresh_token"
                     + "&refresh_token=" + encode(cipher.decrypt(entity.getRefreshTokenEnc()))
-                    + "&client_id=" + encode(entity.getClientId())
-                    + "&client_secret=" + encode(cipher.decrypt(entity.getClientSecretEnc()));
+                    + "&client_id=" + encode(oauth.clientId())
+                    + "&client_secret=" + encode(oauth.clientSecret());
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(oauth.tokenUrl()))
                     .timeout(Duration.ofSeconds(10))
@@ -264,8 +318,42 @@ public class CrmIntegrationService {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private static CrmIntegration toRow(CrmIntegrationEntity e) {
-        return new CrmIntegration(e.getCompanyId(), e.getProvider(), e.getClientId(),
-                e.getClientSecretEnc() != null, e.getStatus(), e.getConnectedAt());
+    /** Uysot's wire format for the {@code grants} param: base64(JSON), permissions as {@code PERMISSION_OPEN_API_*}. */
+    private String grantsParam(List<CrmGrant> grants) {
+        ArrayNode array = mapper.createArrayNode();
+        for (CrmGrant grant : grants) {
+            ObjectNode node = mapper.createObjectNode();
+            node.put("permission", grant.permission().wireName());
+            node.put("scope", grant.scope().name());
+            array.add(node);
+        }
+        return Base64.getEncoder().encodeToString(array.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Our own storage/API shape for grants — plain JSON, not Uysot's base64-wrapped wire format. */
+    private String writeGrants(List<CrmGrant> grants) {
+        try {
+            return mapper.writeValueAsString(grants);
+        } catch (Exception e) {
+            throw new IllegalStateException("could not serialize grants", e);
+        }
+    }
+
+    private List<CrmGrant> readGrants(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return mapper.readValue(json, new TypeReference<List<CrmGrant>>() {
+            });
+        } catch (Exception e) {
+            log.warn("Corrupt crm_integration.grants_json: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private CrmIntegration toRow(CrmIntegrationEntity e) {
+        return new CrmIntegration(e.getCompanyId(), e.getProvider(), e.getAppName(),
+                readGrants(e.getGrantsJson()), e.getStatus(), e.getConnectedAt());
     }
 }

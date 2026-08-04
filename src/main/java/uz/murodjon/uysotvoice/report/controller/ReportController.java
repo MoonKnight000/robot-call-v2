@@ -76,9 +76,10 @@ public interface ReportController {
 
     /**
      * The call recording (§11.3 — a recording is evidence in a dispute, so it has to be
-     * retrievable without shell access to the box). Serves a local file directly and
-     * redirects to the object store otherwise. Returns raw audio, not the {@code
-     * ResponseData} envelope other endpoints use.
+     * retrievable without shell access to the box). A 302 to {@code GET /api/files/{id}},
+     * which streams it out of MinIO — never a raw MinIO URL, so a browser fetching this
+     * same-origin keeps its {@code X-Api-Key}/Bearer header across the redirect. Returns
+     * raw audio, not the {@code ResponseData} envelope other endpoints use.
      */
     @GetMapping("/calls/{callId}/recording")
     ResponseEntity<Resource> recording(@PathVariable long callId);

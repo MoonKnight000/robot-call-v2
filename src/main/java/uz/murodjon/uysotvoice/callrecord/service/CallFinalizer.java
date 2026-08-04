@@ -15,11 +15,11 @@ import uz.murodjon.uysotvoice.crm.service.CrmClient;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.storage.dto.StoredFile;
 import uz.murodjon.uysotvoice.storage.service.AudioStorageService;
 import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -76,18 +76,17 @@ public class CallFinalizer {
             metrics.recordCallDuration(durationSec);
             metrics.disposition(disposition);
 
-            String uploadedUrl = storage.upload(wav, wav.getFileName().toString());
-            // Record where the audio actually is. With storage off, upload returns null and
-            // the column used to stay empty — which meant the recording existed on disk but
-            // nothing could find it, and §11.3 evidence needed shell access to retrieve.
-            // A "file:" URL keeps the two cases distinguishable for the reporting API.
-            String recordingUrl = uploadedUrl != null
-                    ? uploadedUrl
-                    : (Files.isReadable(wav) ? "file:" + wav.toAbsolutePath() : null);
-            records.finishAttempt(callAttemptId, disposition, recordingUrl, durationSec);
+            long companyId = records.companyIdOf(callAttemptId);
+            StoredFile stored = storage.upload(wav, companyId, wav.getFileName().toString());
+            // With storage off (or the upload failing), the recording just stays on local
+            // disk with no stored_file row — retrievable by an operator with shell access,
+            // but not through GET /api/files/{id}. Accepted tradeoff of running with
+            // storage off; a recording is evidence in a dispute (§11.3), so we never
+            // discard the only copy just because it isn't catalogued.
+            records.finishAttempt(callAttemptId, disposition, stored != null ? stored.id() : null, durationSec);
             // Only once the upload is confirmed: deleting on a failed upload would
             // destroy the only copy of a recording that may be needed as evidence (§11.3).
-            if (uploadedUrl != null) {
+            if (stored != null) {
                 storage.deleteLocalCopy(wav);
             }
 
@@ -95,7 +94,7 @@ public class CallFinalizer {
             ScenarioDefinition scenario = scenarioService.requireScenario(scenarioId).definition();
             CallSummary summary = summaryService.summarize(transcript, scenario);
             if (summary != null) {
-                Long crmNoteId = crmClient.postNote(records.companyIdOf(callAttemptId), clientId, summary);
+                Long crmNoteId = crmClient.postNote(companyId, clientId, summary);
                 records.writeResult(callAttemptId, summary, escalated, crmNoteId);
                 log.info("Finalized call {} (dur={}s, disposition={}, sentiment={})",
                         callAttemptId, durationSec, disposition, summary.sentiment());

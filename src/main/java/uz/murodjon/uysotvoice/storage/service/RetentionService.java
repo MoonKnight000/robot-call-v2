@@ -6,9 +6,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.agent.rtp.RtpProperties;
-import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptJpaRepository;
 import uz.murodjon.uysotvoice.callrecord.repository.CallTranscriptJpaRepository;
 import uz.murodjon.uysotvoice.storage.config.AudioStorageProperties;
+import uz.murodjon.uysotvoice.storage.dto.StoredFile;
+import uz.murodjon.uysotvoice.storage.enums.FileCategory;
+import uz.murodjon.uysotvoice.storage.repository.StoredFileRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,11 +22,14 @@ import java.util.stream.Stream;
 
 /**
  * Enforces the recording retention period (PROJECT.md §11.3). Recordings are evidence
- * in a dispute, so they are kept for a configured window and then removed — from
- * object storage, from the local recording directory, and as transcript rows.
+ * in a dispute, so they are kept for a configured window and then removed — from MinIO,
+ * from the {@code stored_file} catalog, from the local recording directory, and as
+ * transcript rows.
  *
  * <p>{@code call_attempt} and {@code call_result} survive: they carry the disposition
  * and summary that reporting is built on and hold no raw audio or verbatim speech.
+ * {@code call_attempt.recording_file_id} clears itself ({@code ON DELETE SET NULL}) the
+ * moment its {@code stored_file} row is deleted below — no separate cleanup query needed.
  *
  * <p>Runs nightly and is best-effort — a failure is logged and retried on the next run.
  */
@@ -33,21 +38,19 @@ public class RetentionService {
 
     private static final Logger log = LoggerFactory.getLogger(RetentionService.class);
 
-    private final AudioStorageService storage;
+    private final StoredFileRepository storedFiles;
+    private final ObjectStorageService objectStorage;
     private final AudioStorageProperties storageProps;
     private final CallTranscriptJpaRepository transcripts;
-    private final CallAttemptJpaRepository callAttempts;
     private final Path recordingDir;
 
-    public RetentionService(AudioStorageService storage,
-                            AudioStorageProperties storageProps,
-                            CallTranscriptJpaRepository transcripts,
-                            CallAttemptJpaRepository callAttempts,
+    public RetentionService(StoredFileRepository storedFiles, ObjectStorageService objectStorage,
+                            AudioStorageProperties storageProps, CallTranscriptJpaRepository transcripts,
                             RtpProperties rtpProps) {
-        this.storage = storage;
+        this.storedFiles = storedFiles;
+        this.objectStorage = objectStorage;
         this.storageProps = storageProps;
         this.transcripts = transcripts;
-        this.callAttempts = callAttempts;
         this.recordingDir = Path.of(rtpProps.recordingDir());
     }
 
@@ -62,15 +65,30 @@ public class RetentionService {
         }
         Instant cutoff = Instant.now().minus(days, ChronoUnit.DAYS);
 
-        List<String> removedObjects = storage.deleteOlderThan(days);
+        int removedObjects = purgeStoredRecordings(cutoff);
         int localFiles = purgeLocalRecordings(cutoff);
         int transcriptRows = purgeTranscripts(cutoff);
-        int urls = clearRecordingUrls(cutoff);
 
-        if (!removedObjects.isEmpty() || localFiles > 0 || transcriptRows > 0) {
-            log.info("Retention ({} days): {} object(s), {} local file(s), {} transcript row(s), {} url(s) cleared",
-                    days, removedObjects.size(), localFiles, transcriptRows, urls);
+        if (removedObjects > 0 || localFiles > 0 || transcriptRows > 0) {
+            log.info("Retention ({} days): {} object(s), {} local file(s), {} transcript row(s)",
+                    days, removedObjects, localFiles, transcriptRows);
         }
+    }
+
+    /** Every {@code stored_file} of category AUDIO older than {@code cutoff} — MinIO object, then catalog row. */
+    private int purgeStoredRecordings(Instant cutoff) {
+        List<StoredFile> old = storedFiles.findOlderThan(FileCategory.AUDIO, cutoff);
+        int removed = 0;
+        for (StoredFile file : old) {
+            try {
+                objectStorage.delete(file.bucket(), file.path());
+                storedFiles.delete(file.id());
+                removed++;
+            } catch (Exception e) {
+                log.warn("Could not remove stored recording {}: {}", file.id(), e.getMessage());
+            }
+        }
+        return removed;
     }
 
     /**
@@ -109,18 +127,6 @@ public class RetentionService {
             return transcripts.purgeForAttemptsEndedBefore(cutoff);
         } catch (Exception e) {
             log.warn("Transcript purge failed: {}", e.getMessage());
-            return 0;
-        }
-    }
-
-    /**
-     * A URL pointing at a deleted object is worse than no URL.
-     */
-    private int clearRecordingUrls(Instant cutoff) {
-        try {
-            return callAttempts.clearRecordingUrlsEndedBefore(cutoff);
-        } catch (Exception e) {
-            log.warn("Recording-url cleanup failed: {}", e.getMessage());
             return 0;
         }
     }

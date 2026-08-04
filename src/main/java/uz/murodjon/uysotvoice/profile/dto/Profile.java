@@ -20,7 +20,7 @@ public record Profile(
         String email,
         String phone,
         String position,
-        String avatarUrl,
+        Long avatarFileId,
         UserRole role,
         long companyId,
         Instant lastLoginAt,

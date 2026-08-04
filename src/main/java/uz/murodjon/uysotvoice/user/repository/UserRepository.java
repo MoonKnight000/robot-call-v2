@@ -206,15 +206,22 @@ public class UserRepository {
     }
 
     /** {@code PUT /api/profile} — self-service "Umumiy" tab (API-REQUIREMENTS §15). */
-    public void updateProfile(long id, String name, String email, String phone, String position, String avatarUrl,
+    public void updateProfile(long id, String name, String email, String phone, String position,
                               String sipExtension) {
         jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
             entity.setName(name);
             entity.setEmail(email);
             entity.setPhone(phone);
             entity.setPosition(position);
-            entity.setAvatarUrl(avatarUrl);
             entity.setSipExtension(sipExtension);
+            jpa.save(entity);
+        });
+    }
+
+    /** {@code POST /api/profile/avatar} — a partial update, leaves every other profile field untouched. */
+    public void updateAvatarFileId(long id, Long avatarFileId) {
+        jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
+            entity.setAvatarFileId(avatarFileId);
             jpa.save(entity);
         });
     }

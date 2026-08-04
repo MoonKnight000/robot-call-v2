@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.profile.service;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.profile.dto.ChangePasswordRequest;
@@ -14,6 +15,8 @@ import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
+import uz.murodjon.uysotvoice.storage.dto.StoredFile;
+import uz.murodjon.uysotvoice.storage.service.ImageUploadService;
 import uz.murodjon.uysotvoice.user.entity.UserEntity;
 import uz.murodjon.uysotvoice.user.repository.UserRepository;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
@@ -32,14 +35,16 @@ public class ProfileService {
     private final UserRepository users;
     private final CurrentUser currentUser;
     private final PasswordEncoder passwordEncoder;
+    private final ImageUploadService images;
     private final AuditService audit;
     private final ReportRepository reports;
 
     public ProfileService(UserRepository users, CurrentUser currentUser, PasswordEncoder passwordEncoder,
-                           AuditService audit, ReportRepository reports) {
+                           ImageUploadService images, AuditService audit, ReportRepository reports) {
         this.users = users;
         this.currentUser = currentUser;
         this.passwordEncoder = passwordEncoder;
+        this.images = images;
         this.audit = audit;
         this.reports = reports;
     }
@@ -53,9 +58,18 @@ public class ProfileService {
         if (!entity.getEmail().equalsIgnoreCase(r.email()) && users.existsByEmail(r.email())) {
             throw new ValidationException("bu email allaqachon band");
         }
-        users.updateProfile(entity.getId(), r.name(), r.email(), r.phone(), r.position(), r.avatarUrl(),
+        users.updateProfile(entity.getId(), r.name(), r.email(), r.phone(), r.position(),
                 entity.getSipExtension());
         audit.record("PROFILE_UPDATE", "user", String.valueOf(entity.getId()), r.name());
+        return find();
+    }
+
+    /** {@code POST /api/profile/avatar} (report #11) — replaces {@code avatarFileId}, nothing else. */
+    public Profile uploadAvatar(MultipartFile file) {
+        UserEntity entity = requireEntity();
+        StoredFile stored = images.upload(file, entity.getCompanyId());
+        users.updateAvatarFileId(entity.getId(), stored.id());
+        audit.record("PROFILE_AVATAR_UPLOAD", "user", String.valueOf(entity.getId()), String.valueOf(stored.id()));
         return find();
     }
 
@@ -101,7 +115,7 @@ public class ProfileService {
 
     private static Profile toProfile(UserEntity e) {
         return new Profile(e.getId(), e.getName(), e.getUsername(), e.getEmail(), e.getPhone(), e.getPosition(),
-                e.getAvatarUrl(), e.getRole(), e.getCompanyId(), e.getLastLoginAt(), e.getCreatedAt(),
+                e.getAvatarFileId(), e.getRole(), e.getCompanyId(), e.getLastLoginAt(), e.getCreatedAt(),
                 parseCallColumns(e.getCallColumns()));
     }
 

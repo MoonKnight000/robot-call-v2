@@ -7,6 +7,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.ari.AsteriskProperties;
+import uz.murodjon.uysotvoice.siptrunk.enums.SipTrunkTransport;
 import uz.murodjon.uysotvoice.siptrunk.repository.SipTrunkRepository;
 
 /**
@@ -44,7 +45,11 @@ public class SipTrunkBootstrap {
             return;
         }
         String callerId = asterisk.callerId() == null || asterisk.callerId().isBlank() ? null : asterisk.callerId();
-        long id = trunks.create("Default", asterisk.trunkEndpoint(), callerId, true);
+        // Manual mode (SipTrunkEntity's class javadoc, report #7) — this migrates a
+        // pre-existing, hand-configured pjsip.conf endpoint, so there is no
+        // host/username/password for the app to manage.
+        long id = trunks.create("Default", asterisk.trunkEndpoint(), callerId, true,
+                null, 5060, null, null, SipTrunkTransport.UDP);
         log.info("Seeded default SIP trunk {} (endpoint '{}') from voice-agent.asterisk.trunk-endpoint",
                 id, asterisk.trunkEndpoint());
     }

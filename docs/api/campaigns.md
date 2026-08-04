@@ -20,8 +20,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "type": "debt_collection",
   "goalPrompt": "Qarzni undirish, to'lov va'dasini olish",
   "defaultLanguage": "uz-UZ",
-  "dialWindowStart": "09:00:00",
-  "dialWindowEnd": "18:00:00",
+  "dialWindowStart": "09:00",
+  "dialWindowEnd": "18:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
   "retryIntervalHours": 24,
@@ -39,7 +39,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `type` | `"DEBT_COLLECTION"` \| `"SURVEY"` | ✅ (`@NotNull`) | qat'iy enum, faqat shu ikki qiymat. Ilgari bo'sh/berilmagan bo'lsa `DEBT_COLLECTION`ga sukut bo'yicha almashtirilar edi (backend-uchun-talablar.md §9a) — bu xatti-harakat olib tashlandi, endi bo'sh qiymat `400` qaytaradi |
 | `goalPrompt` | string | ❌ | agentga maqsad sifatida beriladi |
 | `defaultLanguage` | string | ❌ | BCP-47, masalan `uz-UZ`, `ru-RU`. Kompaniyaning `CompanyConfig.supportedLanguages` ro'yxatida bo'lishi shart — bo'lmasa `400`; berilmasa shu ro'yxatning birinchisi (default til) ishlatiladi. Batafsil: [companies.md](companies.md). |
-| `dialWindowStart` / `dialWindowEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | qo'ng'iroq qilish mumkin bo'lgan soat oralig'i. Kompaniyaning `CompanyConfig.dialWindowStart/End` oralig'idan tashqariga chiqmasligi kerak (§B.3 — kompaniya darajasidagi qat'iy shift) — chiqsa `400`. Batafsil: [companies.md](companies.md). |
+| `dialWindowStart` / `dialWindowEnd` | `LocalTime` (`HH:mm`) | ❌ | qo'ng'iroq qilish mumkin bo'lgan soat oralig'i; berilmasa `09:00`/`20:00`. Kompaniyaning `CompanyConfig.dialWindowStart/End` oralig'idan tashqariga chiqmasligi kerak (§B.3 — kompaniya darajasidagi qat'iy shift) — chiqsa `400`. Batafsil: [companies.md](companies.md). |
 | `dialDays` | `DayOfWeek[]` | ❌ | qo'ng'iroq qilish mumkin bo'lgan hafta kunlari (`["MONDAY", ...]`); berilmasa yoki bo'sh bo'lsa Dush-Juma |
 | `maxAttempts` | int | ❌ | bitta nishonga necha marta urinish |
 | `retryIntervalHours` | int | ❌ | urinishlar orasidagi soat |
@@ -75,8 +75,8 @@ qaytariladi (masalan dashboard "faol kampaniyalar" bloki uchun `"status":
   "status": "ACTIVE",
   "goalPrompt": "...",
   "defaultLanguage": "uz-UZ",
-  "dialWindowStart": "09:00:00",
-  "dialWindowEnd": "18:00:00",
+  "dialWindowStart": "09:00",
+  "dialWindowEnd": "18:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
   "retryIntervalHours": 24,
@@ -118,8 +118,8 @@ boshqa ssenariy uchun yangi kampaniya yarating, ROADMAP A.3):
   "name": "Iyul qarzdorlik (yangilangan)",
   "goalPrompt": "Qarzni undirish, to'lov va'dasini olish",
   "defaultLanguage": "uz-UZ",
-  "dialWindowStart": "09:00:00",
-  "dialWindowEnd": "18:00:00",
+  "dialWindowStart": "09:00",
+  "dialWindowEnd": "18:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
   "retryIntervalHours": 24,

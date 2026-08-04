@@ -89,7 +89,7 @@ birortasi bilan `tools[].name` deklaratsiya qilinsa — saqlash/validatsiya
 Saqlashdan oldin avtomatik validatsiya qilinadi (deadlock, tool/outcome/fakt
 nom to'qnashuvi) — muvaffaqiyatsiz bo'lsa `400`.
 
-**Response** — yaratilgan `Scenario` (pastga qarang).
+**Response** — yaratilgan `ScenarioRow` (pastga qarang).
 
 ---
 
@@ -109,7 +109,7 @@ Saralanadigan ustunlar: `ID`, `SCENARIO_KEY`, `NAME`, `VERSION`,
 `CREATED_AT`. Standart: `ID ASC`. Ro'yxat har doim har bir `scenarioKey`ning
 faqat **faol** versiyasini qaytaradi.
 
-**Javob qatori** (`Scenario`, `definition`siz emas — to'liq keladi):
+**Javob qatori** (`ScenarioRow`, `definition`siz emas — to'liq keladi):
 
 ```json
 {
@@ -122,7 +122,8 @@ faqat **faol** versiyasini qaytaradi.
   "active": true,
   "definition": { /* ScenarioDefinition */ },
   "createdAt": "2026-01-10T08:00:00Z",
-  "createdBy": "system"
+  "createdBy": 7,
+  "createdByName": "Aziz Karimov"
 }
 ```
 
@@ -133,12 +134,16 @@ faqat **faol** versiyasini qaytaradi.
   qarang). **Read-only** — to'g'ridan-to'g'ri tahrirlanmaydi, avval klonlash kerak.
 - `active` — bu versiya yangi kampaniyaga bog'lanadigan versiyami; eski
   versiyaga bog'langan ishlab turgan kampaniyaga ta'sir qilmaydi.
+- `createdBy`/`createdByName` — ssenariyni yaratgan `app_user` (ROADMAP E.1);
+  ikkalasi ham `null` bo'lishi mumkin: built-in shablon, `X-Api-Key` orqali
+  (shaxssiz) yaratilgan yoki bu ustun ishga tushirilishidan oldin yaratilgan
+  ssenariylar uchun.
 
 ---
 
 ## `GET /api/scenarios/{id}` — tahrirlagich uchun to'liq ma'lumot
 
-Javob — bitta `Scenario` (yuqoridagi shakl, to'liq `definition` bilan).
+Javob — bitta `ScenarioRow` (yuqoridagi shakl, to'liq `definition` bilan).
 
 ---
 
@@ -153,7 +158,9 @@ Javob — bitta `Scenario` (yuqoridagi shakl, to'liq `definition` bilan).
 tahrirlashga urinish **`409 Conflict`** bilan rad etiladi — avval
 `POST /api/scenarios/{id}/clone` qiling.
 
-Javob — yangi versiyaning `Scenario`i.
+Javob — yangi versiyaning `ScenarioRow`i. `createdBy` yangi versiyani
+yaratgan joriy foydalanuvchiga yangilanadi — avvalgi versiyaning yaratuvchisi
+emas.
 
 ---
 
@@ -167,7 +174,8 @@ Javob — yangi versiyaning `Scenario`i.
 shablonni ("Tayyor shablon") tahrirlash uchun asosiy yo'l — avval klonlang,
 keyin klonni `PUT` bilan tahrirlang.
 
-Javob — yangi (klonlangan) ssenariyning `Scenario`i.
+Javob — yangi (klonlangan) ssenariyning `ScenarioRow`i. `createdBy` manba
+yaratuvchisi emas — nusxalashni bajargan joriy foydalanuvchi.
 
 ---
 

@@ -13,6 +13,10 @@ import java.time.Instant;
  * @param active      whether this is the version offered when attaching a *new*
  *                    campaign to {@code scenarioKey}; a campaign already bound to an
  *                    older row is unaffected by this flag
+ * @param createdBy   {@code app_user} who created this scenario; {@code null} for a
+ *                    built-in template or one created via the machine-to-machine
+ *                    {@code X-Api-Key} (no associated person) — resolved to a name only
+ *                    on {@link ScenarioRow}, matching {@code Campaign#createdBy}
  */
 public record Scenario(
         long id,
@@ -24,6 +28,6 @@ public record Scenario(
         boolean active,
         ScenarioDefinition definition,
         Instant createdAt,
-        String createdBy
+        Long createdBy
 ) {
 }

@@ -41,7 +41,9 @@ Body (`InviteUserRequest`):
 
 `username` login uchun ishlatiladi ([auth.md](auth.md#post-apiauthlogin--kirish)),
 `email` esa faqat aloqa maqsadida. Ikkalasi ham butun platformada unique.
-Email yoki username allaqachon ro'yxatdan o'tgan bo'lsa — `409`.
+Email yoki username allaqachon ro'yxatdan o'tgan bo'lsa — `409`. `role`
+sifatida `SUPERADMIN` yuborilsa — `400` (report #3): bu platforma xodimi
+roli, kompaniyaning o'z ADMINi orqali hech qachon berilmaydi.
 Muvaffaqiyatda hisob `INVITED` holatida yaratiladi va bir martalik
 aktivatsiya tokeni qaytadi:
 
@@ -67,7 +69,8 @@ Body (`UpdateUserRoleRequest`): `{ "role": "VIEWER" }`
 Rollar: `ADMIN` > `OPERATOR` > `VIEWER` (config/SecurityConfig'dagi
 authority ierarxiyasiga qarang). **Guardrail:** kompaniyaning yagona faol
 ADMIN'ini boshqa rolga o'tkazib bo'lmaydi — `409` (avval boshqa birortasini
-ADMIN qiling).
+ADMIN qiling). `role: "SUPERADMIN"` — `400`, xuddi `POST /api/users/invite`
+kabi (report #3).
 
 ---
 

@@ -16,8 +16,16 @@ import java.time.Instant;
 
 /**
  * JPA entity for {@code crm_integration} (§11 settings) — one company's Uysot CRM OAuth
- * connection. {@code clientSecretEnc}/{@code accessTokenEnc}/{@code refreshTokenEnc} are
- * {@code shared.util.SecretCipher} ciphertext, never plaintext.
+ * connection. {@code accessTokenEnc}/{@code refreshTokenEnc} are {@code
+ * shared.util.SecretCipher} ciphertext, never plaintext.
+ *
+ * <p>{@code appName}/{@code grantsJson} (report #10) — not {@code clientId}/{@code
+ * clientSecret}: per Uysot's real OAuth docs, one platform-wide app (a single {@code
+ * client_id}/{@code client_secret}, {@code integration.config.UysotOAuthProperties})
+ * serves every company — which company is connecting is decided by who is logged into
+ * Uysot during consent, not by a per-company client id. Each company only supplies its
+ * own {@code app_name} (shown on Uysot's consent screen) and which {@code grants}
+ * (scopes) it wants to request.
  */
 @Entity
 @Table(name = "crm_integration")
@@ -34,11 +42,12 @@ public class CrmIntegrationEntity {
     @Column(nullable = false)
     private CrmProvider provider = CrmProvider.UYSOT;
 
-    @Column(name = "client_id")
-    private String clientId;
+    @Column(name = "app_name")
+    private String appName;
 
-    @Column(name = "client_secret_enc")
-    private String clientSecretEnc;
+    /** JSON array of {@code {"permission":"LEAD","scope":"READ"}} — see {@code CrmGrant}. */
+    @Column(name = "grants_json")
+    private String grantsJson;
 
     @Column(name = "access_token_enc")
     private String accessTokenEnc;
@@ -79,20 +88,20 @@ public class CrmIntegrationEntity {
         this.provider = provider;
     }
 
-    public String getClientId() {
-        return clientId;
+    public String getAppName() {
+        return appName;
     }
 
-    public void setClientId(String clientId) {
-        this.clientId = clientId;
+    public void setAppName(String appName) {
+        this.appName = appName;
     }
 
-    public String getClientSecretEnc() {
-        return clientSecretEnc;
+    public String getGrantsJson() {
+        return grantsJson;
     }
 
-    public void setClientSecretEnc(String clientSecretEnc) {
-        this.clientSecretEnc = clientSecretEnc;
+    public void setGrantsJson(String grantsJson) {
+        this.grantsJson = grantsJson;
     }
 
     public String getAccessTokenEnc() {

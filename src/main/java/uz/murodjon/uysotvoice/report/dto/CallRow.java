@@ -1,6 +1,9 @@
 package uz.murodjon.uysotvoice.report.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -45,7 +48,7 @@ public record CallRow(
         String hangupCause,
         boolean hasRecording,
         String summary,
-        LocalDate promisedDate,
+        @JsonFormat(pattern = DateTimeProperties.DATE_PATTERN) LocalDate promisedDate,
         BigDecimal promisedAmount,
         Long crmNoteId,
         String clientName,

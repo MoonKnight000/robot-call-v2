@@ -9,8 +9,7 @@ import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 /**
  * Picks the response shape for {@code GET /api/reports/export?format=...} (§10.10
  * "⇩ Hisobotni yuklab olish"). Which renderer runs is a web/format concern, not
- * business logic and not a controller's single delegation — the same reasoning
- * {@link RecordingResponseFactory} documents for its own two-shape choice.
+ * business logic and not a controller's single delegation.
  */
 @Component
 public class ReportExportFactory {

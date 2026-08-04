@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.company.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
 import uz.murodjon.uysotvoice.company.dto.CompanyFilter;
@@ -9,6 +10,7 @@ import uz.murodjon.uysotvoice.company.dto.Company;
 import uz.murodjon.uysotvoice.company.dto.CreateCompanyRequest;
 import uz.murodjon.uysotvoice.company.dto.UpdateCompanyConfigRequest;
 import uz.murodjon.uysotvoice.company.dto.UpdateCompanyRequest;
+import uz.murodjon.uysotvoice.company.dto.UpdateCompanyStatusRequest;
 import uz.murodjon.uysotvoice.company.service.CompanyConfigService;
 import uz.murodjon.uysotvoice.company.service.CompanyService;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
@@ -46,8 +48,18 @@ public class CompanyControllerImpl implements CompanyController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<Company>> updateStatus(long id, UpdateCompanyStatusRequest r) {
+        return ResponseEntity.ok(ResponseData.ok(service.updateStatus(id, r)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<Company>> uploadLogo(long id, MultipartFile file) {
+        return ResponseEntity.ok(ResponseData.ok(service.uploadLogo(id, file)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<CompanyConfig>> getConfig(long id) {
-        return ResponseEntity.ok(ResponseData.ok(configService.requireConfig(id)));
+        return ResponseEntity.ok(ResponseData.ok(configService.requireConfigForApi(id)));
     }
 
     @Override

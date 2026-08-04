@@ -57,7 +57,7 @@ public class ScenarioRepository {
 
     /** Inserts the first version (version 1) of a new scenario key. */
     public long create(String scenarioKey, String name, String description, boolean builtin,
-                       ScenarioDefinition definition, String createdBy) {
+                       ScenarioDefinition definition, Long createdBy) {
         return insertVersion(scenarioKey, 1, name, description, builtin, definition, createdBy);
     }
 
@@ -67,7 +67,7 @@ public class ScenarioRepository {
      * current company for a custom one.
      */
     public long insertVersion(String scenarioKey, int version, String name, String description,
-                              boolean builtin, ScenarioDefinition definition, String createdBy) {
+                              boolean builtin, ScenarioDefinition definition, Long createdBy) {
         ScenarioEntity entity = new ScenarioEntity();
         entity.setScenarioKey(scenarioKey);
         entity.setVersion(version);

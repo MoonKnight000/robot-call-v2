@@ -1,5 +1,10 @@
 package uz.murodjon.uysotvoice.company.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
+import uz.murodjon.uysotvoice.company.enums.Language;
+import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
+
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
@@ -11,18 +16,19 @@ import java.util.List;
  *                           explicitly (backend-uchun-talablar.md §13); always a member
  *                           of {@code supportedLanguages}
  * @param supportedLanguages every language a campaign or inbound route may declare,
- *                           {@code defaultLanguage} included
+ *                           {@code defaultLanguage} included — a closed set (report #6),
+ *                           no longer free-text
  * @param dialWindowStart    strict ceiling on top of every campaign's own window
  * @param dialWindowEnd      strict ceiling on top of every campaign's own window
  */
 public record CompanyConfig(
         long id,
         long companyId,
-        LocalTime dialWindowStart,
-        LocalTime dialWindowEnd,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         String timezone,
-        String defaultLanguage,
-        List<String> supportedLanguages,
+        Language defaultLanguage,
+        List<Language> supportedLanguages,
         Instant createdAt
 ) {
 }

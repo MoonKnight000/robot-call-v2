@@ -1,65 +1,18 @@
 # Sozlamalar API (§11)
 
-Har bir bo'lim o'z paketida: `apikey`, `aimodel`, `notification` (matritsa qismi),
+Har bir bo'lim o'z paketida: `aimodel`, `notification` (matritsa qismi),
 `integration`. Barchasi rol: **ADMIN**, va barchasi so'rov qilgan foydalanuvchining
 **o'z kompaniyasiga** scoped (`CurrentCompany`, JWT orqali) — path'da `{id}` yo'q,
 boshqa kompaniyaning sozlamasiga path orqali kira olmaysiz.
 
+**Kompaniyaga scoped API kalitlar panel olib tashlandi (report #11 — "API KEYLAR
+UMUMAN KERAK EMAS").** `X-Api-Key` autentifikatsiyasi endi faqat ikkita global,
+konstantali kalit orqali ishlaydi: `voice-agent.security.api-key` (to'liq huquq) va
+`voice-agent.security.read-api-key` (faqat o'qish) — batafsil
+[README.md §1.1](README.md)da.
+
 Umumiy javob shakli, xatolar va pagination konventsiyasi uchun [README.md](README.md)ga
 qarang.
-
----
-
-## API kalitlar — `uz.murodjon.uysotvoice.apikey`
-
-Ikkita global, konstantali `X-Api-Key` (`voice-agent.security.api-key`/`read-api-key`)
-o'rniga — panel orqali yaratiladigan, bekor qilinadigan, **kompaniyaga scoped** kalitlar.
-Global kalitlar hamon ishlaydi (fallback/bootstrap), bu ularni almashtirmaydi, ustiga
-qo'shadi.
-
-### `POST /api/settings/api-keys` — yangi kalit
-
-**Request body** (`CreateApiKeyRequest`):
-
-```json
-{ "name": "CRM webhook", "role": "OPERATOR" }
-```
-
-| Maydon | Majburiymi | Izoh |
-|---|---|---|
-| `name` | ✅ (`@NotBlank`) | Ro'yxatda ko'rsatish uchun |
-| `role` | ✅ (`@NotNull`) | `ADMIN` \| `OPERATOR` \| `VIEWER` — `JwtAuthFilter`dagi bir xil rol ierarxiyasi |
-
-**Response** (`CreateApiKeyResponse`) — **xom kalit faqat shu javobda bir marta
-qaytadi**, keyin qayta ko'rsatilmaydi (faqat hash saqlanadi):
-
-```json
-{
-  "key": {
-    "id": 3, "companyId": 1, "name": "CRM webhook", "keyPrefix": "aB3dEf9x",
-    "role": "OPERATOR", "createdAt": "2026-08-02T10:00:00Z",
-    "lastUsedAt": null, "revokedAt": null
-  },
-  "rawKey": "aB3dEf9xQ7...<256-bit, faqat bir marta>"
-}
-```
-
----
-
-### `POST /api/settings/api-keys/list` — ro'yxat
-
-Body — `ApiKeyFilter` (`page`/`size`/`orders`). Saralanadigan ustunlar: `ID`, `NAME`,
-`ROLE`, `CREATED_AT`, `LAST_USED_AT`. Standart: `CREATED_AT DESC`. Javobdagi qatorlar
-hech qachon `rawKey`ni o'z ichiga olmaydi — faqat `keyPrefix`.
-
----
-
-### `DELETE /api/settings/api-keys/{id}` — bekor qilish (revoke)
-
-Body yo'q. Kalitni darhol ishlamaydigan qiladi (`revoked_at` belgilanadi, o'chirilmaydi —
-audit tarixi saqlanadi). Boshqa kompaniyaning kalitini bekor qilib bo'lmaydi (`404`).
-
----
 
 ---
 
@@ -187,41 +140,66 @@ Bir kanal `enabled: false` yoki `target` bo'sh bo'lsa — matritsada o'sha kanal
 
 ## Integratsiyalar — `uz.murodjon.uysotvoice.integration`
 
-Hozircha faqat **Uysot CRM**, OAuth2 authorization-code oqimi (Google'nikiga o'xshash:
-`client_id`/`client_secret`/`redirect_uri`/`state`). Har bir kompaniya o'zining Uysot
-OAuth ilovasini ro'yxatdan o'tkazadi va `client_id`/`client_secret`ni shu yerdan
-kiritadi; `authorize_url`/`token_url`/`redirect_uri` esa global (`voice-agent
-.integration.uysot.*`) — bitta Uysot instansiyasi hammaga bir xil.
+OAuth2 authorization-code oqimi, Uysot'ning haqiqiy Open API hujjatlariga qarshi
+tekshirilgan (report #10). **`client_id`/`client_secret` global** — bitta platforma
+darajasidagi Uysot ilovasi (`voice-agent.integration.uysot.client-id/client-secret`)
+barcha kompaniyalarga xizmat qiladi; Uysot hujjatlariga ko'ra, qaysi kompaniya
+ulanayotgani `client_id`dan emas, balki consent bosqichida tizimga kirgan
+foydalanuvchining o'zidan aniqlanadi. Har bir kompaniya faqat o'zining `appName`
+(consent ekranida ko'rsatiladi) va so'ralayotgan `grants` (ruxsatlar) ro'yxatini
+kiritadi.
 
-**Muhim:** Uysot'ning haqiqiy OAuth endpoint'lari hali noma'lum — konfiguratsiya bo'sh
-bo'lsa, bu bo'lim `502 Bad Gateway` (`ExternalServiceException`) bilan javob beradi,
-lekin ilova o'zi ishlayveradi. `crm_integration.client_secret`/tokenlar AES-256-GCM bilan
-shifrlanadi (`ENCRYPTION_SECRET_KEY` — alohida, `API_KEY`/`JWT_SECRET`dan mustaqil).
+`authorize_url`/`token_url`/`revoke_url`/`redirect_uri` global
+(`voice-agent.integration.uysot.*`) — bitta Uysot instansiyasi hammaga bir xil.
+`crm_integration`dagi access/refresh tokenlar AES-256-GCM bilan shifrlanadi
+(`ENCRYPTION_SECRET_KEY` — alohida, `API_KEY`/`JWT_SECRET`dan mustaqil).
+
+### `GET /api/settings/integrations/catalog` — ulanish mumkin bo'lgan CRM'lar
+
+Statik ro'yxat, kompaniyaga bog'liq emas (report #10):
+
+```json
+[
+  { "provider": "UYSOT", "displayName": "Uysot CRM", "authMethod": "OAUTH", "available": true },
+  { "provider": "BITRIX24", "displayName": "Bitrix24", "authMethod": "OAUTH", "available": false },
+  { "provider": "AMOCRM", "displayName": "amoCRM", "authMethod": "OAUTH", "available": false }
+]
+```
+
+`available: false` — hozircha faqat katalogda ko'rsatish uchun ("tez orada"); ulanish
+oqimi ("connect") hali faqat Uysot uchun ishlaydi.
 
 ### `GET /api/settings/integrations` — joriy holat
 
-**Response** (`CrmIntegration`) — hech qachon `client_secret`/tokenlarni qaytarmaydi:
+**Response** (`CrmIntegration`) — hech qachon tokenlarni qaytarmaydi:
 
 ```json
 {
-  "companyId": 1, "provider": "UYSOT", "clientId": "abc123",
-  "hasClientSecret": true, "status": "CONNECTED", "connectedAt": "2026-08-02T10:00:00Z"
+  "companyId": 1, "provider": "UYSOT", "appName": "Bizning CRM integratsiyamiz",
+  "grants": [ { "permission": "LEAD", "scope": "READ" }, { "permission": "CALL", "scope": "SAVE" } ],
+  "status": "CONNECTED", "connectedAt": "2026-08-02T10:00:00Z"
 }
 ```
 
-`status`: `NOT_CONNECTED` (client_id/secret hali kiritilmagan yoki OAuth hali
+`status`: `NOT_CONNECTED` (appName/grants hali kiritilmagan yoki OAuth hali
 yakunlanmagan) → `CONNECTED` (token bor, ishlatilmoqda) → `ERROR` (refresh muvaffaqiyatsiz —
 `CrmClient` avtomatik global statik tokenga qaytadi, agar u sozlangan bo'lsa).
 
-### `PUT /api/settings/integrations/uysot` — client_id/secret saqlash
+### `PUT /api/settings/integrations/uysot` — appName/grants saqlash
 
 **Request body** (`ConnectIntegrationRequest`):
 
 ```json
-{ "clientId": "abc123", "clientSecret": "shh..." }
+{ "appName": "Bizning CRM integratsiyamiz", "grants": [ { "permission": "LEAD", "scope": "READ" } ] }
 ```
 
-Saqlagandan keyin holat `NOT_CONNECTED`ga qaytadi (yangi kalit — eski token endi
+`grants[].permission` — `LEAD`, `LEAD_NOTE`, `LEAD_TASK`, `CONTRACT`,
+`CONTRACT_PAYMENT`, `CALL`. `grants[].scope` — `READ`, `SAVE`, `DELETE`. Bu yerda
+so'ralgan ruxsatlar platformaning Uysot'da ro'yxatdan o'tgan ilovasi uchun
+ruxsat etilgan doiradan chiqmasligi kerak — chiqsa, Uysot consent bosqichida
+`invalid_scope` bilan rad etadi.
+
+Saqlagandan keyin holat `NOT_CONNECTED`ga qaytadi (yangi grants — eski token endi
 ishlamaydi) — keyingi qadam autentifikatsiya URL'iga o'tish.
 
 ### `GET /api/settings/integrations/uysot/authorize-url` — OAuth boshlash
@@ -229,11 +207,13 @@ ishlamaydi) — keyingi qadam autentifikatsiya URL'iga o'tish.
 **Response** (`AuthorizeUrlResponse`):
 
 ```json
-{ "authorizeUrl": "https://uysot.uz/oauth/authorize?client_id=abc123&redirect_uri=...&response_type=code&state=..." }
+{ "authorizeUrl": "https://app.uysotdev.aws.softex.uz/oauth/authorize?client_id=...&app_name=...&redirect_url=...&grants=...&state=..." }
 ```
 
-Panel shu URL'ga brauzerni yo'naltiradi. `client_id`/`client_secret` hali
-saqlanmagan bo'lsa — `400`.
+`grants` — `{"permission":"PERMISSION_OPEN_API_LEAD","scope":"READ"}` shaklidagi
+massivning base64'i (Uysot'ning haqiqiy wire formatiga mos). **`redirect_url`, `redirect_uri` emas** — Uysot bu ikki bosqichda parametrni turlicha nomlaydi
+(authorize'da `redirect_url`, token almashinuvida `redirect_uri`); ikkalasi ham bir
+xil qiymatga ishora qiladi. `appName`/`grants` hali saqlanmagan bo'lsa — `400`.
 
 ### `GET /api/settings/integrations/uysot/callback?code=&state=` — OAuth qaytishi
 
@@ -244,5 +224,8 @@ o'tadi; token almashinuvi muvaffaqiyatsiz bo'lsa — `502`.
 
 ### `DELETE /api/settings/integrations/uysot` — uzish
 
-Body yo'q. Tokenlarni tozalaydi, holatni `NOT_CONNECTED`ga qaytaradi. `client_id`/secret
-o'chirilmaydi — qayta ulash uchun avtorizatsiya URL'iga qaytish yetarli.
+Body yo'q. Avval Uysot'ning o'zida tokenni bekor qiladi (`POST
+/v1/open-api/oauth/revoke`, best-effort — muvaffaqiyatsiz bo'lsa ham davom etadi),
+so'ng mahalliy tokenlarni tozalaydi va holatni `NOT_CONNECTED`ga qaytaradi.
+`appName`/`grants` o'chirilmaydi — qayta ulash uchun avtorizatsiya URL'iga qaytish
+yetarli.

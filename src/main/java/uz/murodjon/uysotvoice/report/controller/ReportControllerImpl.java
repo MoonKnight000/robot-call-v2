@@ -1,6 +1,7 @@
 package uz.murodjon.uysotvoice.report.controller;
 
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -23,22 +24,20 @@ import uz.murodjon.uysotvoice.report.service.ReportService;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 
+import java.net.URI;
 import java.util.List;
 
 @RestController
 public class ReportControllerImpl implements ReportController {
 
     private final ReportService service;
-    private final RecordingResponseFactory recordings;
     private final CsvResponseFactory csv;
     private final TranscriptResponseFactory transcripts;
     private final ReportExportFactory export;
 
-    public ReportControllerImpl(ReportService service, RecordingResponseFactory recordings,
-                                CsvResponseFactory csv, TranscriptResponseFactory transcripts,
-                                ReportExportFactory export) {
+    public ReportControllerImpl(ReportService service, CsvResponseFactory csv,
+                                TranscriptResponseFactory transcripts, ReportExportFactory export) {
         this.service = service;
-        this.recordings = recordings;
         this.csv = csv;
         this.transcripts = transcripts;
         this.export = export;
@@ -66,7 +65,9 @@ public class ReportControllerImpl implements ReportController {
 
     @Override
     public ResponseEntity<Resource> recording(long callId) {
-        return recordings.toResponse(service.resolveRecording(callId));
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create("/api/files/" + service.resolveRecording(callId)))
+                .build();
     }
 
     @Override

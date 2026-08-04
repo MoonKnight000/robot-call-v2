@@ -1,7 +1,10 @@
 package uz.murodjon.uysotvoice.campaign.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
@@ -25,8 +28,8 @@ public record CampaignRow(
         CampaignStatus status,
         String goalPrompt,
         String defaultLanguage,
-        LocalTime dialWindowStart,
-        LocalTime dialWindowEnd,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
         int maxAttempts,
         int retryIntervalHours,

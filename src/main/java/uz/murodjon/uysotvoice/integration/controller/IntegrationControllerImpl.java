@@ -5,9 +5,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import uz.murodjon.uysotvoice.integration.dto.AuthorizeUrlResponse;
 import uz.murodjon.uysotvoice.integration.dto.ConnectIntegrationRequest;
+import uz.murodjon.uysotvoice.integration.dto.CrmCatalogEntry;
 import uz.murodjon.uysotvoice.integration.dto.CrmIntegration;
 import uz.murodjon.uysotvoice.integration.service.CrmIntegrationService;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
+
+import java.util.List;
 
 @RestController
 public class IntegrationControllerImpl implements IntegrationController {
@@ -19,13 +22,18 @@ public class IntegrationControllerImpl implements IntegrationController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<List<CrmCatalogEntry>>> catalog() {
+        return ResponseEntity.ok(ResponseData.ok(service.catalog()));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<CrmIntegration>> get() {
         return ResponseEntity.ok(ResponseData.ok(service.find()));
     }
 
     @Override
     public ResponseEntity<ResponseData<CrmIntegration>> connect(ConnectIntegrationRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(service.saveCredentials(r)));
+        return ResponseEntity.ok(ResponseData.ok(service.connect(r)));
     }
 
     @Override

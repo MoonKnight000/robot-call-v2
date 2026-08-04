@@ -58,8 +58,8 @@ public class CallAttemptEntity {
     @Column(name = "hangup_cause")
     private String hangupCause;
 
-    @Column(name = "recording_url")
-    private String recordingUrl;
+    @Column(name = "recording_file_id")
+    private Long recordingFileId;
 
     @Column(name = "error_message")
     private String errorMessage;
@@ -169,12 +169,12 @@ public class CallAttemptEntity {
         this.hangupCause = hangupCause;
     }
 
-    public String getRecordingUrl() {
-        return recordingUrl;
+    public Long getRecordingFileId() {
+        return recordingFileId;
     }
 
-    public void setRecordingUrl(String recordingUrl) {
-        this.recordingUrl = recordingUrl;
+    public void setRecordingFileId(Long recordingFileId) {
+        this.recordingFileId = recordingFileId;
     }
 
     public String getErrorMessage() {

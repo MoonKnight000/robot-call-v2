@@ -25,8 +25,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "didNumber": "998712345678",
   "scenarioId": 6,
   "language": "uz-UZ",
-  "businessHoursStart": "09:00:00",
-  "businessHoursEnd": "20:00:00",
+  "businessHoursStart": "09:00",
+  "businessHoursEnd": "20:00",
   "fallbackMessage": null
 }
 ```
@@ -36,7 +36,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `didNumber` | string | ✅ (`@NotBlank`) | dialangan raqam (3-15 raqam, `+` bilan/bepul); bitta faol raqam uchun faqat bitta yoqilgan marshrut bo'lishi mumkin — dublikat `409` |
 | `scenarioId` | long | ✅ (`@NotNull`) | `GET/POST /api/scenarios/list`dagi `id`; noma'lum yoki boshqa kompaniyaniki bo'lsa `404` |
 | `language` | string | ❌ | BCP-47; bo'sh bo'lsa `uz-UZ` |
-| `businessHoursStart` / `businessHoursEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | ikkalasidan biri bo'lmasa — cheklovsiz (doim ochiq) |
+| `businessHoursStart` / `businessHoursEnd` | `LocalTime` (`HH:mm`) | ❌ | ikkalasidan biri bo'lmasa — cheklovsiz (doim ochiq) |
 | `fallbackMessage` | string | ❌ | ish vaqtidan tashqari kelgan qo'ng'iroqda TTS orqali aytiladi, so'ng qo'ng'iroq tugatiladi (`AriService.playFallbackAndHangup`) — dialog/ssenariy ishga tushmaydi, `call_attempt` yozuvi ham ochilmaydi. Bo'sh bo'lsa — jim tarzda tugatiladi. Marshrut umuman topilmagan (noma'lum DID) holatda hech qachon aytilmaydi — aytadigan marshrut yo'q |
 
 **Response** (`InboundRouteRow`):
@@ -48,8 +48,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "scenarioId": 6,
   "scenarioName": "Kirish so'rovlari",
   "language": "uz-UZ",
-  "businessHoursStart": "09:00:00",
-  "businessHoursEnd": "20:00:00",
+  "businessHoursStart": "09:00",
+  "businessHoursEnd": "20:00",
   "fallbackMessage": null,
   "enabled": true,
   "createdAt": "2026-08-01T09:00:00Z"
@@ -88,8 +88,8 @@ bilan bir xil maydonlar, plus `enabled`:
   "didNumber": "998712345678",
   "scenarioId": 6,
   "language": "uz-UZ",
-  "businessHoursStart": "09:00:00",
-  "businessHoursEnd": "20:00:00",
+  "businessHoursStart": "09:00",
+  "businessHoursEnd": "20:00",
   "fallbackMessage": null,
   "enabled": true
 }

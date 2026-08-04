@@ -9,6 +9,14 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 90s
 
+  # Company logo / user avatar uploads (report #4, #11) are capped at 5 MB in
+  # ImageUploadService — the Spring Boot default (1 MB) would reject those before that
+  # check even runs, so both limits move together.
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/uysot_voice}
     username: ${DB_USER:uysot}
@@ -23,10 +31,6 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
 
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
@@ -138,6 +142,26 @@ voice-agent:
     local-number-pattern: ${LOCAL_NUMBER_PATTERN:\d\d\d\d?}
     caller-id: ${CALLER_ID:}
     answer-timeout-sec: 30
+    ami:
+      # AMI is used for exactly one thing: reloading res_pjsip.so after a managed SIP
+      # trunk is created/edited (report #7, agent.ami.AmiClient) — not call control,
+      # that's ARI above. Off by default: requires manager.conf configured on the
+      # Asterisk side (see asterisk/etc/asterisk/manager.conf) and only matters once
+      # voice-agent.siptrunk.enabled is also on.
+      enabled: ${AMI_ENABLED:false}
+      host: ${AMI_HOST:localhost}
+      port: ${AMI_PORT:5038}
+      username: ${AMI_USER:uysot-ami}
+      password: ${AMI_PASSWORD:CHANGE_ME_AMI_PASSWORD}
+  siptrunk:
+    # Writes the generated PJSIP trunk config (report #7, siptrunk.service.PjsipConfigWriter).
+    # Off by default: config-dir must be the SAME directory Asterisk reads pjsip.conf
+    # from, mounted into this app's container (see docker-compose.yml's app service) —
+    # a managed trunk's row still saves fine with this off, it just is not registered
+    # with Asterisk until an operator wires this up.
+    enabled: ${SIPTRUNK_CONFIG_ENABLED:false}
+    config-dir: ${SIPTRUNK_CONFIG_DIR:}
+    config-file-name: ${SIPTRUNK_CONFIG_FILE:pjsip_trunks.conf}
   rtp:
     # Address Asterisk sends RTP to. Must be reachable FROM Asterisk:
     #  - all local (Asterisk on host): 127.0.0.1
@@ -353,12 +377,16 @@ voice-agent:
     reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
     max-tokens: ${SUMMARY_MAX_TOKENS:2048}
   storage:
-    # Upload call recordings to MinIO/S3. Off by default (recordings stay local).
+    # Upload files (call recordings, company logos, user avatars) to MinIO/S3. Off by
+    # default (recordings stay local; image uploads fail — see ImageUploadService).
     enabled: ${STORAGE_ENABLED:false}
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_USER:uysot}
     secret-key: ${MINIO_PASSWORD:uysot-secret}
-    bucket: ${MINIO_BUCKET:recordings}
+    # One shared bucket for every stored_file — object keys are namespaced per company/
+    # category (com-{companyId}/{images,audio,documents}/...) so a single bucket is
+    # enough; see FileStorageService.
+    bucket: ${MINIO_BUCKET:files}
     # Drop the on-disk WAV once it is in object storage. Off while storage is off —
     # deleting then would throw the only copy away.
     delete-local-after-upload: ${STORAGE_DELETE_LOCAL:true}
@@ -382,14 +410,20 @@ voice-agent:
     client-path: ${CRM_CLIENT_PATH:api/clients/{id}}
   integration:
     uysot:
-      # Uysot's OAuth2 endpoints (§11 settings, authorization-code flow) — the same for
-      # every company; only client_id/client_secret differ per company (entered via
-      # PUT /api/settings/integrations/uysot). Blank = the whole feature stays inert
+      # Uysot's OAuth2 endpoints (§11 settings, authorization-code flow — verified
+      # against Uysot's real Open API docs, report #10). Endpoint URLs are the same for
+      # every deployment (defaulted below); client-id/client-secret are this platform's
+      # own registered Uysot app — global, not per-company (report #10 design
+      # correction — see UysotOAuthProperties) — and genuinely secret, so no default.
+      # Blank client-id/client-secret/redirect-uri = the whole feature stays inert
       # (CrmIntegrationService refuses to build an authorize URL) until an operator
-      # supplies Uysot's real endpoints — these are not yet known.
-      authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:}
-      token-url: ${UYSOT_OAUTH_TOKEN_URL:}
+      # registers an app with Uysot and supplies its credentials.
+      authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:https://app.uysotdev.aws.softex.uz/oauth/authorize}
+      token-url: ${UYSOT_OAUTH_TOKEN_URL:https://serv.app.uysotdev.aws.softex.uz/v1/open-api/oauth/token}
+      revoke-url: ${UYSOT_OAUTH_REVOKE_URL:https://serv.app.uysotdev.aws.softex.uz/v1/open-api/oauth/revoke}
       redirect-uri: ${UYSOT_OAUTH_REDIRECT_URI:}
+      client-id: ${UYSOT_OAUTH_CLIENT_ID:}
+      client-secret: ${UYSOT_OAUTH_CLIENT_SECRET:}
   notification:
     # One Telegram bot for the whole deployment (§11 settings) — a company only supplies
     # its own destination chat_id as its notification_channel.target. Blank = the
@@ -459,8 +493,9 @@ voice-agent:
     audio-level-enabled: ${LIVE_AUDIO_LEVEL_ENABLED:false}
     kpi-poll-ms: ${LIVE_KPI_POLL_MS:2000}
   company:
-    # ROADMAP Bosqich B: every request is scoped to this one company until real
-    # per-request resolution (api_key -> company_id) exists — see CurrentCompany.
+    # Fallback only, for the two global bootstrap X-Api-Key secrets (voice-agent
+    # .security.api-key/read-api-key) — real per-request resolution exists for JWT
+    # logins (JwtCurrentCompanyResolver, ROADMAP E.1). See CurrentCompany/DefaultCompanyResolver.
     # Matches the bootstrap row R__seed_data.sql seeds as id 1.
     default-id: ${COMPANY_DEFAULT_ID:1}
 

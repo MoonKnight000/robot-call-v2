@@ -1,47 +1,96 @@
 package uz.murodjon.uysotvoice.siptrunk.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.uysotvoice.audit.service.AuditService;
+import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
+import uz.murodjon.uysotvoice.shared.exception.ValidationException;
+import uz.murodjon.uysotvoice.shared.util.SecretCipher;
 import uz.murodjon.uysotvoice.siptrunk.dto.CreateSipTrunkRequest;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkFilter;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
 import uz.murodjon.uysotvoice.siptrunk.dto.UpdateSipTrunkRequest;
+import uz.murodjon.uysotvoice.siptrunk.enums.SipTrunkTransport;
 import uz.murodjon.uysotvoice.siptrunk.repository.SipTrunkRepository;
 
 import java.util.List;
 
 /**
- * SIP trunk CRUD (ROADMAP B.3): each company may register several outbound PJSIP
- * trunks (this project does not manage {@code pjsip.conf} itself — an endpoint must
- * already be configured in Asterisk before it is registered here), exactly one of
- * which is the company's default. {@link #findDefaultForCall} is the runtime hot path
- * {@code AriService} calls when originating a call — it must never throw, only the
- * admin CRUD methods below it do.
+ * SIP trunk CRUD (ROADMAP B.3, report #7): each company may register several outbound
+ * PJSIP trunks, exactly one of which is the default. Two modes, see {@link
+ * SipTrunk#managed()} / {@code SipTrunkEntity}'s class javadoc: <strong>manual</strong>
+ * (an admin already configured the endpoint by hand in {@code pjsip.conf}, this only
+ * picks which one a call uses) or <strong>managed</strong> (real host/username/password
+ * entered here — {@link PjsipConfigWriter} generates the PJSIP config and registers it
+ * with Asterisk). {@link #findDefaultForCall} is the runtime hot path {@code AriService}
+ * calls when originating a call — it must never throw, only the admin CRUD methods
+ * below it do.
  */
 @Service
 public class SipTrunkService {
 
     private final SipTrunkRepository repo;
+    private final PjsipConfigWriter pjsipConfig;
+    private final SecretCipher cipher;
+    private final CurrentCompany company;
     private final AuditService audit;
 
-    public SipTrunkService(SipTrunkRepository repo, AuditService audit) {
+    public SipTrunkService(SipTrunkRepository repo, PjsipConfigWriter pjsipConfig, SecretCipher cipher,
+                           CurrentCompany company, AuditService audit) {
         this.repo = repo;
+        this.pjsipConfig = pjsipConfig;
+        this.cipher = cipher;
+        this.company = company;
         this.audit = audit;
     }
 
+    @Transactional
     public SipTrunk create(CreateSipTrunkRequest r) {
-        long id = repo.create(r.name(), r.pjsipEndpoint(), r.callerId(), false);
+        long id;
+        if (isManaged(r.pjsipEndpoint(), r.host())) {
+            requireUsername(r.sipUsername());
+            requireValidTransport(r.transport());
+            if (r.sipPassword() == null || r.sipPassword().isBlank()) {
+                throw new ValidationException("sipPassword is required for a managed trunk");
+            }
+            id = repo.create(r.name(), pendingEndpoint(), r.callerId(), false,
+                    r.host(), portOrDefault(r.port()), r.sipUsername(), encryptPassword(r.sipPassword()),
+                    transportOrDefault(r.transport()));
+            repo.updatePjsipEndpoint(id, generatedEndpoint(id));
+        } else {
+            id = repo.create(r.name(), r.pjsipEndpoint(), r.callerId(), false,
+                    null, 5060, null, null, SipTrunkTransport.UDP);
+        }
+        pjsipConfig.regenerateAndReload();
         audit.record("SIP_TRUNK_CREATE", "sip_trunk", String.valueOf(id), r.name());
         return requireTrunk(id);
     }
 
     public SipTrunk update(long id, UpdateSipTrunkRequest r) {
-        requireTrunk(id);
-        repo.update(id, r.name(), r.pjsipEndpoint(), r.callerId(), r.enabled());
+        SipTrunk existing = requireTrunk(id);
+        if (isManaged(r.pjsipEndpoint(), r.host())) {
+            requireUsername(r.sipUsername());
+            requireValidTransport(r.transport());
+            String passwordEnc;
+            if (r.sipPassword() != null && !r.sipPassword().isBlank()) {
+                passwordEnc = encryptPassword(r.sipPassword());
+            } else if (existing.managed()) {
+                passwordEnc = null; // repo.update keeps the trunk's current encrypted password
+            } else {
+                throw new ValidationException("sipPassword is required when switching a trunk to managed mode");
+            }
+            repo.update(id, r.name(), generatedEndpoint(id), r.callerId(), r.enabled(),
+                    r.host(), portOrDefault(r.port()), r.sipUsername(), passwordEnc, transportOrDefault(r.transport()));
+        } else {
+            repo.update(id, r.name(), r.pjsipEndpoint(), r.callerId(), r.enabled(),
+                    null, 5060, null, null, SipTrunkTransport.UDP);
+        }
+        pjsipConfig.regenerateAndReload();
         audit.record("SIP_TRUNK_UPDATE", "sip_trunk", String.valueOf(id), r.name());
         return requireTrunk(id);
     }
@@ -66,6 +115,7 @@ public class SipTrunkService {
                     "Cannot delete the default trunk — set another one as default first");
         }
         repo.delete(id);
+        pjsipConfig.regenerateAndReload();
         audit.record("SIP_TRUNK_DELETE", "sip_trunk", String.valueOf(id), trunk.name());
     }
 
@@ -91,5 +141,56 @@ public class SipTrunkService {
      */
     public SipTrunk findDefaultForCall(long companyId) {
         return repo.findDefaultForCompany(companyId);
+    }
+
+    private static boolean isManaged(String pjsipEndpoint, String host) {
+        boolean hasManual = pjsipEndpoint != null && !pjsipEndpoint.isBlank();
+        boolean hasManaged = host != null && !host.isBlank();
+        if (hasManual && hasManaged) {
+            throw new ValidationException(
+                    "provide either pjsipEndpoint (manual mode) or host/sipUsername/sipPassword (managed mode), not both");
+        }
+        if (!hasManual && !hasManaged) {
+            throw new ValidationException(
+                    "either pjsipEndpoint (manual mode) or host+sipUsername+sipPassword (managed mode) is required");
+        }
+        return hasManaged;
+    }
+
+    private static void requireUsername(String sipUsername) {
+        if (sipUsername == null || sipUsername.isBlank()) {
+            throw new ValidationException("sipUsername is required for a managed trunk");
+        }
+    }
+
+    private static void requireValidTransport(SipTrunkTransport transport) {
+        if (transport != null && transport != SipTrunkTransport.UDP) {
+            throw new ValidationException(
+                    "transport '" + transport + "' is not wired to an Asterisk transport yet — only UDP is supported");
+        }
+    }
+
+    private String encryptPassword(String plaintext) {
+        if (!cipher.available()) {
+            throw new ExternalServiceException("siptrunk", "voice-agent.encryption.secret-key is not set — cannot store SIP credentials");
+        }
+        return cipher.encrypt(plaintext);
+    }
+
+    private String generatedEndpoint(long id) {
+        return "trunk_" + company.id() + "_" + id;
+    }
+
+    /** Overwritten by {@link #generatedEndpoint} once {@code id} exists — {@code pjsip_endpoint} is NOT NULL. */
+    private static String pendingEndpoint() {
+        return "pending";
+    }
+
+    private static int portOrDefault(Integer port) {
+        return port != null && port > 0 ? port : 5060;
+    }
+
+    private static SipTrunkTransport transportOrDefault(SipTrunkTransport transport) {
+        return transport != null ? transport : SipTrunkTransport.UDP;
     }
 }

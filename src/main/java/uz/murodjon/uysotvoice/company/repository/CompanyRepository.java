@@ -36,12 +36,27 @@ public class CompanyRepository {
         return jpa.findById(id).map(CompanyRepository::toRow).orElse(null);
     }
 
-    public void update(long id, String name, CompanyStatus status, String logoUrl, String address) {
+    /** {@code PUT /api/companies/{id}} — identity fields only; {@code status} has its own {@link #updateStatus}. */
+    public void update(long id, String name, String address) {
         jpa.findById(id).ifPresent(entity -> {
             entity.setName(name);
-            entity.setStatus(status);
-            entity.setLogoUrl(logoUrl);
             entity.setAddress(address);
+            jpa.save(entity);
+        });
+    }
+
+    /** {@code POST /api/companies/{id}/logo} — a partial update, leaves every other field untouched. */
+    public void updateLogoFileId(long id, Long logoFileId) {
+        jpa.findById(id).ifPresent(entity -> {
+            entity.setLogoFileId(logoFileId);
+            jpa.save(entity);
+        });
+    }
+
+    /** {@code PUT /api/companies/{id}/status} (SUPERADMIN-only, report #3) — a partial update. */
+    public void updateStatus(long id, CompanyStatus status) {
+        jpa.findById(id).ifPresent(entity -> {
+            entity.setStatus(status);
             jpa.save(entity);
         });
     }
@@ -61,6 +76,6 @@ public class CompanyRepository {
     }
 
     private static Company toRow(CompanyEntity e) {
-        return new Company(e.getId(), e.getName(), e.getStatus(), e.getCreatedAt(), e.getLogoUrl(), e.getAddress());
+        return new Company(e.getId(), e.getName(), e.getStatus(), e.getCreatedAt(), e.getLogoFileId(), e.getAddress());
     }
 }

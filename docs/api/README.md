@@ -15,7 +15,7 @@ endpointlar uchun `docs/API-REQUIREMENTS.md`ga qarang (holat: ✅/⚠️/❌ jad
 | [search.md](search.md) | Command palette (⌘K) qidiruv backend'i |
 | [companies.md](companies.md) | Kompaniya (tenant) CRUD: yaratish, sozlamalarni tahrirlash (ROADMAP B.1) |
 | [sip-trunks.md](sip-trunks.md) | Kompaniyaga xos SIP trunklar: CRUD, default trunkni belgilash (ROADMAP B.3) |
-| [settings.md](settings.md) | O'z kompaniyasi sozlamalari: API kalitlar, AI model, bildirishnoma matritsasi, integratsiyalar (§11) |
+| [settings.md](settings.md) | O'z kompaniyasi sozlamalari: AI model, bildirishnoma matritsasi, integratsiyalar (§11) |
 | [campaigns.md](campaigns.md) | Kampaniyalar: yaratish, tahrirlash, arxivlash, nishonlar (targets), CSV import, start/pause |
 | [scenarios.md](scenarios.md) | Ssenariy CRUD, validatsiya, klonlash |
 | [inbound-routes.md](inbound-routes.md) | Kiruvchi DID marshrutlash: raqam → ssenariy/til/ish vaqti (ROADMAP C.1) |
@@ -26,6 +26,7 @@ endpointlar uchun `docs/API-REQUIREMENTS.md`ga qarang (holat: ✅/⚠️/❌ jad
 | [operator.md](operator.md) | Operatorga uzatilgan qo'ng'iroq konteksti |
 | [reports.md](reports.md) | Dashboard KPI/grafiklar, qo'ng'iroqlar tarixi + filtr/eksport/ommaviy amal, texnik tafsilot, transkript TXT, audit jurnali, recording |
 | [voices.md](voices.md) | TTS ovozlar katalogi |
+| [files.md](files.md) | Fayllarni (logo, avatar, qo'ng'iroq yozuvi) MinIO'dan streamlab beruvchi umumiy endpoint |
 
 ---
 
@@ -57,11 +58,16 @@ Authorization: Bearer <token>
 ```
 
 `POST /api/auth/login` qaytargan JWT — batafsil [auth.md](auth.md)ga qarang.
-Uchta rol: `ADMIN` (hammasi) > `OPERATOR` (kundalik operatsion ish — kampaniya,
-qo'ng'iroq, kontakt, ssenariy, kiruvchi marshrut) > `VIEWER` (faqat o'qish).
-Foydalanuvchi boshqaruvi (`/api/users/**`) va kompaniya/telefoniya/panel
-sozlamalari (`/api/companies/**`, `/api/sip-trunks/**`, `/api/settings/**`)
-faqat `ADMIN`ga ochiq.
+To'rtta rol: `ADMIN` (o'z kompaniyasi ichida hammasi) > `OPERATOR` (kundalik
+operatsion ish — kampaniya, qo'ng'iroq, kontakt, ssenariy, kiruvchi marshrut)
+> `VIEWER` (faqat o'qish); plyus alohida `SUPERADMIN` — platforma xodimi,
+`ADMIN`/`OPERATOR`/`VIEWER` ierarxiyasiga **kirmaydi** (`JwtAuthFilter`),
+faqat tenant boshqaruviga ega: `POST /api/companies`, `POST
+/api/companies/list`, `PUT /api/companies/{id}/status` (report #3 —
+[companies.md](companies.md)ga qarang). Foydalanuvchi boshqaruvi
+(`/api/users/**`) va kompaniya/telefoniya/panel sozlamalari (`/api/companies/**`,
+`/api/sip-trunks/**`, `/api/settings/**`) — qolgan hammasi `ADMIN`ga ochiq,
+lekin har doim faqat **o'z** kompaniyasi doirasida.
 
 Frontend uchun amaliy xulosa: panel foydalanuvchi bilan **Bearer** token
 ishlatadi; skript/integratsiya (masalan CRM webhook) **X-Api-Key** bilan
@@ -184,7 +190,6 @@ qiymatlari, JSON'da string sifatida yuboriladi):
 |---|---|---|
 | `POST /api/companies/list` | `CompanyFilter` | `ID`, `NAME`, `STATUS`, `CREATED_AT` |
 | `POST /api/sip-trunks/list` | `SipTrunkFilter` | `ID`, `NAME`, `IS_DEFAULT`, `ENABLED`, `CREATED_AT` |
-| `POST /api/settings/api-keys/list` | `ApiKeyFilter` | `ID`, `NAME`, `ROLE`, `CREATED_AT`, `LAST_USED_AT` |
 | `POST /api/campaigns/list` | `CampaignFilter` | `ID`, `NAME`, `TYPE`, `STATUS` |
 | `POST /api/campaigns/{id}/targets/list` | `TargetFilter` | `ID`, `PHONE`, `STATUS`, `ATTEMPTS` |
 | `POST /api/scenarios/list` | `ScenarioFilter` | `ID`, `SCENARIO_KEY`, `NAME`, `VERSION`, `CREATED_AT` |
@@ -238,8 +243,6 @@ yuborish kerak.
   bo'lmagan qiymat `400 Invalid value for parameter: id` beradi.
 - **Kompaniya izolyatsiyasi**: `Authorization: Bearer` bilan kirgan foydalanuvchi
   o'z kompaniyasiga avtomatik scoped (ROADMAP E.1). Ikkita global konstantali
-  `X-Api-Key` (`voice-agent.security.api-key`/`read-api-key`) hamon bitta
-  hardcoded default kompaniyaga ishlaydi. `POST /api/settings/api-keys` orqali
-  yaratilgan kalitlar esa o'zi yaratilgan kompaniyaga scoped — kalit → kompaniya
-  xaritalash shu bilan yopildi (ROADMAP B.2'ning ochiq qoldig'i), qarang
-  [settings.md](settings.md).
+  `X-Api-Key` (`voice-agent.security.api-key`/`read-api-key`) bitta hardcoded
+  default kompaniyaga ishlaydi — bu ikkitasi yagona `X-Api-Key` mexanizmi
+  (kompaniyaga scoped API kalitlar paneli olib tashlandi, report #11).

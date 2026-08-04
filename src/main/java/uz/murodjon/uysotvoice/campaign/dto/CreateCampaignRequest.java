@@ -1,9 +1,11 @@
 package uz.murodjon.uysotvoice.campaign.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
@@ -32,8 +34,8 @@ public record CreateCampaignRequest(
         @NotNull CampaignType type,
         String goalPrompt,
         String defaultLanguage,
-        LocalTime dialWindowStart,
-        LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
+        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
         int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
         String ttsVoice, int dailyCallCap,
         @NotNull Long scenarioId,

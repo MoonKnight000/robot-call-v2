@@ -6,6 +6,7 @@ import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
+import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.Tokens;
 import uz.murodjon.uysotvoice.user.dto.InviteUserRequest;
 import uz.murodjon.uysotvoice.user.dto.InviteUserResponse;
@@ -56,6 +57,7 @@ public class UserService {
     }
 
     public InviteUserResponse invite(InviteUserRequest r) {
+        requireNotSuperadmin(r.role());
         if (repo.existsByEmail(r.email())) {
             throw new ConflictException("email " + r.email() + " already registered");
         }
@@ -70,6 +72,7 @@ public class UserService {
     }
 
     public User changeRole(long id, UserRole role) {
+        requireNotSuperadmin(role);
         User target = requireUser(id);
         if (target.role() == UserRole.ADMIN && role != UserRole.ADMIN
                 && repo.countActiveAdmins(company.id()) <= 1) {
@@ -78,6 +81,17 @@ public class UserService {
         repo.updateRole(id, role);
         audit.record("USER_ROLE_CHANGE", "user", String.valueOf(id), role.name());
         return requireUser(id);
+    }
+
+    /**
+     * {@code SUPERADMIN} is platform staff, not a tenant role (report #3) — never
+     * settable through this tenant-scoped ({@code ADMIN}-gated, per-company) service.
+     * The first superadmin account is a one-time manual {@code app_user} row.
+     */
+    private static void requireNotSuperadmin(UserRole role) {
+        if (role == UserRole.SUPERADMIN) {
+            throw new ValidationException("SUPERADMIN cannot be granted through company user management");
+        }
     }
 
     public User block(long id) {

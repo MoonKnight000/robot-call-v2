@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
 import uz.murodjon.uysotvoice.company.dto.UpdateCompanyConfigRequest;
+import uz.murodjon.uysotvoice.company.enums.Language;
 import uz.murodjon.uysotvoice.company.repository.CompanyConfigRepository;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
@@ -22,17 +23,19 @@ import java.util.List;
 @Service
 public class CompanyConfigService {
 
-    private static final String DEFAULT_LANGUAGE = "uz-UZ";
-    private static final List<String> DEFAULT_LANGUAGES = List.of(DEFAULT_LANGUAGE);
+    private static final Language DEFAULT_LANGUAGE = Language.UZ_UZ;
+    private static final List<Language> DEFAULT_LANGUAGES = List.of(DEFAULT_LANGUAGE);
     private static final LocalTime DEFAULT_WINDOW_START = LocalTime.of(9, 0);
     private static final LocalTime DEFAULT_WINDOW_END = LocalTime.of(20, 0);
     private static final String DEFAULT_TIMEZONE = "Asia/Tashkent";
 
     private final CompanyConfigRepository repo;
+    private final CompanyAccessGuard access;
     private final AuditService audit;
 
-    public CompanyConfigService(CompanyConfigRepository repo, AuditService audit) {
+    public CompanyConfigService(CompanyConfigRepository repo, CompanyAccessGuard access, AuditService audit) {
         this.repo = repo;
+        this.access = access;
         this.audit = audit;
     }
 
@@ -56,16 +59,28 @@ public class CompanyConfigService {
         return row;
     }
 
+    /**
+     * As {@link #requireConfig}, but for {@code GET /api/companies/{id}/config} directly
+     * (report #3) — {@link #requireConfig} itself stays unscoped since {@link
+     * #resolveLanguage} calls it on the dialer's hot path with the caller's own,
+     * already-legitimate company id, not a path parameter to police.
+     */
+    public CompanyConfig requireConfigForApi(long companyId) {
+        access.requireOwnOrSuperadmin(companyId);
+        return requireConfig(companyId);
+    }
+
     public CompanyConfig update(long companyId, UpdateCompanyConfigRequest r) {
+        access.requireOwnOrSuperadmin(companyId);
         requireConfig(companyId);
         if (!r.supportedLanguages().contains(r.defaultLanguage())) {
-            throw new ValidationException("defaultLanguage '" + r.defaultLanguage()
-                    + "' must be one of supportedLanguages " + r.supportedLanguages());
+            throw new ValidationException("defaultLanguage '" + r.defaultLanguage().code()
+                    + "' must be one of supportedLanguages " + codesOf(r.supportedLanguages()));
         }
         repo.update(companyId, r.dialWindowStart(), r.dialWindowEnd(), r.timezone(),
                 r.defaultLanguage(), r.supportedLanguages());
         audit.record("COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
-                r.supportedLanguages().toString());
+                codesOf(r.supportedLanguages()).toString());
         return requireConfig(companyId);
     }
 
@@ -74,16 +89,32 @@ public class CompanyConfigService {
      * {@code requested} validated against {@code companyId}'s supported list, or the
      * company's explicit {@code defaultLanguage} when {@code requested} is null/blank
      * (backend-uchun-talablar.md §13 — previously the supported list's index 0).
+     *
+     * <p>Takes/returns a raw BCP-47 {@code String}, not {@link Language} — {@code
+     * campaign}/{@code inbound} carry their own language field as a free {@code String}
+     * (their own scope, not part of report #6's "company settings become a select"
+     * ask), so this is where the closed-set check actually happens: an unparseable code
+     * is rejected the same as one that parses but isn't in {@code supportedLanguages}.
      */
     public String resolveLanguage(long companyId, String requested) {
         CompanyConfig config = requireConfig(companyId);
         if (requested == null || requested.isBlank()) {
-            return config.defaultLanguage();
+            return config.defaultLanguage().code();
         }
-        if (!config.supportedLanguages().contains(requested)) {
+        Language language;
+        try {
+            language = Language.fromCode(requested);
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException(e.getMessage());
+        }
+        if (!config.supportedLanguages().contains(language)) {
             throw new ValidationException("Language '" + requested + "' is not supported by this company; "
-                    + "supported: " + config.supportedLanguages());
+                    + "supported: " + codesOf(config.supportedLanguages()));
         }
-        return requested;
+        return language.code();
+    }
+
+    private static List<String> codesOf(List<Language> languages) {
+        return languages.stream().map(Language::code).toList();
     }
 }

@@ -243,13 +243,13 @@ public class CallRecordService {
     }
 
     /** Close out a call_attempt with its outcome. */
-    public void finishAttempt(long callId, Disposition disposition, String recordingUrl, int durationSec) {
+    public void finishAttempt(long callId, Disposition disposition, Long recordingFileId, int durationSec) {
         seqCounters.remove(callId);
         if (callId == 0) {
             return;
         }
         try {
-            callAttempts.finishAttempt(callId, Instant.now(), durationSec, disposition, recordingUrl);
+            callAttempts.finishAttempt(callId, Instant.now(), durationSec, disposition, recordingFileId);
         } catch (Exception e) {
             log.warn("finishAttempt failed for call {}: {}", callId, e.getMessage());
         }

@@ -28,10 +28,10 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
 
     @Modifying @Transactional
     @Query("UPDATE CallAttemptEntity a SET a.endedAt = :endedAt, a.durationSec = :durationSec, "
-            + "a.disposition = :disposition, a.recordingUrl = :recordingUrl WHERE a.id = :id")
+            + "a.disposition = :disposition, a.recordingFileId = :recordingFileId WHERE a.id = :id")
     void finishAttempt(@Param("id") long id, @Param("endedAt") Instant endedAt,
                        @Param("durationSec") int durationSec, @Param("disposition") Disposition disposition,
-                       @Param("recordingUrl") String recordingUrl);
+                       @Param("recordingFileId") Long recordingFileId);
 
     @Modifying @Transactional
     @Query("UPDATE CallAttemptEntity a SET a.finalizeAttempts = a.finalizeAttempts + 1 WHERE a.id = :id")
@@ -49,12 +49,6 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     long countByEndedAtGreaterThanEqual(Instant since);
 
     long countByEndedAtGreaterThanEqualAndDisposition(Instant since, Disposition disposition);
-
-    /** A URL pointing at a deleted object is worse than no URL. */
-    @Modifying @Transactional
-    @Query("UPDATE CallAttemptEntity a SET a.recordingUrl = NULL "
-            + "WHERE a.recordingUrl IS NOT NULL AND a.endedAt IS NOT NULL AND a.endedAt < :cutoff")
-    int clearRecordingUrlsEndedBefore(@Param("cutoff") Instant cutoff);
 
     /**
      * Finished calls that still have no {@code call_result}. Restricted to attempts with

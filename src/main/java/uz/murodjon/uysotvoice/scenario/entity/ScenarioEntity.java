@@ -49,8 +49,11 @@ public class ScenarioEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** {@code app_user.id} who created this scenario; resolved to a name via {@code
+     * UserService#namesByIds} at the API layer (see {@code ScenarioRow#createdByName}) —
+     * not a JPA relation, matching {@code CampaignEntity#createdBy}. */
     @Column(name = "created_by")
-    private String createdBy;
+    private Long createdBy;
 
     @Column(name = "company_id")
     private Long companyId;
@@ -123,11 +126,11 @@ public class ScenarioEntity {
         this.createdAt = createdAt;
     }
 
-    public String getCreatedBy() {
+    public Long getCreatedBy() {
         return createdBy;
     }
 
-    public void setCreatedBy(String createdBy) {
+    public void setCreatedBy(Long createdBy) {
         this.createdBy = createdBy;
     }
 

@@ -10,7 +10,7 @@ public record Company(
         String name,
         CompanyStatus status,
         Instant createdAt,
-        String logoUrl,
+        Long logoFileId,
         String address
 ) {
 }

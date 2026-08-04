@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.company.entity;
 
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -11,6 +12,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
+
+import uz.murodjon.uysotvoice.company.enums.Language;
+import uz.murodjon.uysotvoice.company.enums.LanguageConverter;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -54,14 +58,16 @@ public class CompanyConfigEntity {
     @Column(nullable = false)
     private String timezone;
 
+    @Convert(converter = LanguageConverter.class)
     @Column(name = "default_language", nullable = false)
-    private String defaultLanguage;
+    private Language defaultLanguage;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "company_config_language", joinColumns = @JoinColumn(name = "company_config_id"))
     @OrderColumn(name = "ord")
+    @Convert(converter = LanguageConverter.class)
     @Column(name = "language", nullable = false)
-    private List<String> supportedLanguages = new ArrayList<>();
+    private List<Language> supportedLanguages = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -102,19 +108,19 @@ public class CompanyConfigEntity {
         this.timezone = timezone;
     }
 
-    public String getDefaultLanguage() {
+    public Language getDefaultLanguage() {
         return defaultLanguage;
     }
 
-    public void setDefaultLanguage(String defaultLanguage) {
+    public void setDefaultLanguage(Language defaultLanguage) {
         this.defaultLanguage = defaultLanguage;
     }
 
-    public List<String> getSupportedLanguages() {
+    public List<Language> getSupportedLanguages() {
         return supportedLanguages;
     }
 
-    public void setSupportedLanguages(List<String> supportedLanguages) {
+    public void setSupportedLanguages(List<Language> supportedLanguages) {
         this.supportedLanguages = supportedLanguages != null ? supportedLanguages : new ArrayList<>();
     }
 

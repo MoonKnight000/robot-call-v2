@@ -29,6 +29,12 @@ import java.util.List;
  * own. This is what lets the existing {@code X-Api-Key} admin key (now granting
  * {@code ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER}, see {@link ApiKeyFilter}) keep working
  * against endpoints that moved from {@code hasRole(ADMIN)} to {@code hasRole(OPERATOR)}.
+ *
+ * <p>{@code SUPERADMIN} (report #3) is deliberately <strong>not</strong> part of that
+ * hierarchy — it grants only {@code ROLE_SUPERADMIN}, nothing else. Platform staff
+ * managing tenant status/onboarding must not thereby gain access to any tenant's
+ * operational data (campaigns, calls, contacts...), which every other role transitively
+ * can reach via {@code ROLE_OPERATOR}/{@code ROLE_VIEWER}.
  */
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -72,6 +78,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             case ADMIN -> AuthorityUtils.createAuthorityList("ROLE_ADMIN", "ROLE_OPERATOR", "ROLE_VIEWER");
             case OPERATOR -> AuthorityUtils.createAuthorityList("ROLE_OPERATOR", "ROLE_VIEWER");
             case VIEWER -> AuthorityUtils.createAuthorityList("ROLE_VIEWER");
+            case SUPERADMIN -> AuthorityUtils.createAuthorityList("ROLE_SUPERADMIN");
         };
     }
 }

@@ -15,10 +15,9 @@ import java.time.Duration;
 
 /**
  * Builds the {@code transcript.txt} download for {@code GET
- * /api/reports/calls/{callId}/transcript.txt} (§10.5 "TXT yuklab olish"). Same
- * two-layer split as {@link RecordingResponseFactory}: the service already has the
- * data ({@link CallDetail#transcript()}), only the text format and HTTP headers are
- * a web concern.
+ * /api/reports/calls/{callId}/transcript.txt} (§10.5 "TXT yuklab olish"). The service
+ * already has the data ({@link CallDetail#transcript()}); only the text format and
+ * HTTP headers are a web concern, which is what this class owns.
  */
 @Component
 public class TranscriptResponseFactory {

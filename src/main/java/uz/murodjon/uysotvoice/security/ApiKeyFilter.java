@@ -5,33 +5,24 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import uz.murodjon.uysotvoice.apikey.dto.ApiKey;
-import uz.murodjon.uysotvoice.apikey.service.ApiKeyService;
-import uz.murodjon.uysotvoice.auth.dto.AuthenticatedUser;
-import uz.murodjon.uysotvoice.user.enums.UserRole;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.List;
-import java.util.Optional;
 
 /**
  * Authenticates a request by its {@code X-Api-Key} header (PROJECT.md §11 — the API can
  * place real calls, so it must not be reachable anonymously).
  *
- * <p>Three sources, tried in order: the global admin key, the global read-only key, then
- * a per-company DB-backed key (§11 settings, {@link ApiKeyService}). The two static keys
- * stay unscoped (fallback/bootstrap access, {@code CurrentCompany} defaults them); a
- * DB-backed key authenticates as an {@link AuthenticatedUser} carrying its own {@code
- * companyId} — the exact principal shape {@code JwtAuthFilter} already produces, so
- * {@code JwtCurrentCompanyResolver} scopes these requests correctly with no changes of
- * its own. {@link SecurityConfig} decides which paths and methods each role reaches.
+ * <p>Two sources, tried in order: the global admin key, then the global read-only key —
+ * both unscoped (fallback/bootstrap access, {@code CurrentCompany} defaults them).
+ * {@link SecurityConfig} decides which paths and methods each role reaches. The
+ * per-company DB-backed key panel (§11 settings, {@code apikey.*}) was removed (report
+ * #11 — "API KEYLAR UMUMAN KERAK EMAS"); these two static keys are the only
+ * machine-to-machine auth mechanism now.
  *
  * <p>The static-key comparison is constant-time: a plain {@code equals} on a secret leaks
  * its length and prefix to an attacker who can time responses. A blank configured key
@@ -53,12 +44,10 @@ public class ApiKeyFilter extends OncePerRequestFilter {
 
     private final byte[] adminKey;
     private final byte[] readKey;
-    private final ApiKeyService apiKeys;
 
-    public ApiKeyFilter(String apiKey, String readApiKey, ApiKeyService apiKeys) {
+    public ApiKeyFilter(String apiKey, String readApiKey) {
         this.adminKey = bytesOrNull(apiKey);
         this.readKey = bytesOrNull(readApiKey);
-        this.apiKeys = apiKeys;
     }
 
     /**
@@ -86,30 +75,9 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                 authenticate("api-key", ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER);
             } else if (matches(readKey, offered)) {
                 authenticate("read-api-key", ROLE_VIEWER);
-            } else {
-                authenticateDbKey(presented);
             }
         }
         chain.doFilter(request, response);
-    }
-
-    private void authenticateDbKey(String presented) {
-        Optional<ApiKey> key = apiKeys.resolve(presented);
-        key.ifPresent(k -> {
-            AuthenticatedUser principal = new AuthenticatedUser(
-                    0, k.companyId(), k.role(), "api-key:" + k.name(), "");
-            var authentication = new UsernamePasswordAuthenticationToken(
-                    principal, null, authorities(k.role()));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-        });
-    }
-
-    private static List<GrantedAuthority> authorities(UserRole role) {
-        return switch (role) {
-            case ADMIN -> AuthorityUtils.createAuthorityList(ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER);
-            case OPERATOR -> AuthorityUtils.createAuthorityList(ROLE_OPERATOR, ROLE_VIEWER);
-            case VIEWER -> AuthorityUtils.createAuthorityList(ROLE_VIEWER);
-        };
     }
 
     private static void authenticate(String principal, String... roles) {

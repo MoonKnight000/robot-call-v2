@@ -19,7 +19,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import uz.murodjon.uysotvoice.apikey.service.ApiKeyService;
 import uz.murodjon.uysotvoice.auth.config.JwtProperties;
 import uz.murodjon.uysotvoice.auth.service.JwtTokenService;
 
@@ -46,18 +45,16 @@ public class SecurityConfig {
     private static final String ADMIN = "ADMIN";
     private static final String OPERATOR = "OPERATOR";
     private static final String VIEWER = "VIEWER";
+    private static final String SUPERADMIN = "SUPERADMIN";
 
     private final SecurityProperties props;
     private final JwtProperties jwtProps;
     private final JwtTokenService jwtTokenService;
-    private final ApiKeyService apiKeyService;
 
-    public SecurityConfig(SecurityProperties props, JwtProperties jwtProps, JwtTokenService jwtTokenService,
-                           ApiKeyService apiKeyService) {
+    public SecurityConfig(SecurityProperties props, JwtProperties jwtProps, JwtTokenService jwtTokenService) {
         this.props = props;
         this.jwtProps = jwtProps;
         this.jwtTokenService = jwtTokenService;
-        this.apiKeyService = apiKeyService;
     }
 
     @PostConstruct
@@ -99,7 +96,7 @@ public class SecurityConfig {
                 // Neither filter ever rejects on its own, only populates the context (see
                 // each filter's javadoc), so order between them does not matter — whichever
                 // header is present wins, and a request with both is not expected to occur.
-                .addFilterBefore(new ApiKeyFilter(props.apiKey(), props.readApiKey(), apiKeyService),
+                .addFilterBefore(new ApiKeyFilter(props.apiKey(), props.readApiKey()),
                         UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new JwtAuthFilter(jwtTokenService), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> {
@@ -129,6 +126,18 @@ public class SecurityConfig {
                     // §7.3) — this exact GET must be checked before the broader
                     // /api/companies/** admin bucket below, or that would shadow it.
                     auth.requestMatchers(HttpMethod.GET, "/api/companies").authenticated();
+                    // Tenant onboarding (creating a company), listing every tenant, and
+                    // changing a company's status are platform-staff-only (SUPERADMIN, report
+                    // #3) — a tenant's own ADMIN must not be able to suspend/reactivate itself
+                    // or see other tenants. Checked before the general /api/companies/** ADMIN
+                    // bucket below, which would otherwise shadow these with a broader role.
+                    // GET /api/companies/{id} stays reachable by both: a tenant ADMIN views its
+                    // own company (self-scoped in CompanyService), a superadmin views any of
+                    // them while deciding on a status change.
+                    auth.requestMatchers(HttpMethod.POST, "/api/companies").hasRole(SUPERADMIN);
+                    auth.requestMatchers(HttpMethod.POST, "/api/companies/list").hasRole(SUPERADMIN);
+                    auth.requestMatchers(HttpMethod.PUT, "/api/companies/*/status").hasRole(SUPERADMIN);
+                    auth.requestMatchers(HttpMethod.GET, "/api/companies/*").hasAnyRole(SUPERADMIN, ADMIN);
                     // Any logged-in identity (any role) — these only ever act on the caller's
                     // own session, never on another company's data. /api/profile/** (§15) is
                     // the self-service profile page — same reasoning, every method resolves
@@ -150,6 +159,11 @@ public class SecurityConfig {
                     // reporting already exposes, not an endpoint that changes anything.
                     auth.requestMatchers(HttpMethod.GET, "/api/live/**")
                             .hasRole(VIEWER);
+                    // Any logged-in identity (any role) — a company logo or a teammate's
+                    // avatar is visible to everyone in the company regardless of role;
+                    // FileStorageService#download enforces the own-company/SUPERADMIN
+                    // boundary itself, same as every other cross-tenant lookup.
+                    auth.requestMatchers(HttpMethod.GET, "/api/files/**").authenticated();
                     auth.requestMatchers(EndpointRequest.toAnyEndpoint()).hasRole(VIEWER);
                     // Every remaining route either changes state or places a call — day-to-day
                     // operational work (campaigns, calls, contacts, scenarios, inbound routes),

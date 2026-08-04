@@ -28,8 +28,8 @@ public class CrmIntegrationRepository {
         return jpa.findByCompanyId(companyId);
     }
 
-    /** Upsert the credentials; resets any prior connection — a new client_id/secret needs a fresh OAuth dance. */
-    public CrmIntegrationEntity saveCredentials(long companyId, String clientId, String clientSecretEnc) {
+    /** Upsert the app identity/grants; resets any prior connection — new grants need a fresh OAuth dance. */
+    public CrmIntegrationEntity saveAppInfo(long companyId, String appName, String grantsJson) {
         CrmIntegrationEntity entity = jpa.findByCompanyId(companyId).orElseGet(() -> {
             CrmIntegrationEntity fresh = new CrmIntegrationEntity();
             fresh.setCompanyId(companyId);
@@ -37,8 +37,8 @@ public class CrmIntegrationRepository {
             fresh.setCreatedAt(Instant.now());
             return fresh;
         });
-        entity.setClientId(clientId);
-        entity.setClientSecretEnc(clientSecretEnc);
+        entity.setAppName(appName);
+        entity.setGrantsJson(grantsJson);
         entity.setAccessTokenEnc(null);
         entity.setRefreshTokenEnc(null);
         entity.setTokenExpiresAt(null);

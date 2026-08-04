@@ -4,6 +4,7 @@ import org.springframework.stereotype.Repository;
 
 import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
 import uz.murodjon.uysotvoice.company.entity.CompanyConfigEntity;
+import uz.murodjon.uysotvoice.company.enums.Language;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -25,7 +26,7 @@ public class CompanyConfigRepository {
     }
 
     public long create(long companyId, LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
-                       String defaultLanguage, List<String> supportedLanguages) {
+                       Language defaultLanguage, List<Language> supportedLanguages) {
         CompanyConfigEntity entity = new CompanyConfigEntity();
         entity.setCompanyId(companyId);
         entity.setDialWindowStart(dialWindowStart);
@@ -48,7 +49,7 @@ public class CompanyConfigRepository {
 
     /** No-op if {@code companyId} has no config row yet. */
     public void update(long companyId, LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
-                       String defaultLanguage, List<String> supportedLanguages) {
+                       Language defaultLanguage, List<Language> supportedLanguages) {
         jpa.findByCompanyId(companyId).ifPresent(entity -> {
             entity.setDialWindowStart(dialWindowStart);
             entity.setDialWindowEnd(dialWindowEnd);

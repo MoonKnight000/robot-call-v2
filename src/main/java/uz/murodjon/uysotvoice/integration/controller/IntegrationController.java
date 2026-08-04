@@ -11,8 +11,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import uz.murodjon.uysotvoice.integration.dto.AuthorizeUrlResponse;
 import uz.murodjon.uysotvoice.integration.dto.ConnectIntegrationRequest;
+import uz.murodjon.uysotvoice.integration.dto.CrmCatalogEntry;
 import uz.murodjon.uysotvoice.integration.dto.CrmIntegration;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
+
+import java.util.List;
 
 /**
  * Uysot CRM OAuth connection (§11 settings) — scoped to the caller's own company via
@@ -22,6 +25,10 @@ import uz.murodjon.uysotvoice.shared.api.ResponseData;
  */
 @RequestMapping("/api/settings/integrations")
 public interface IntegrationController {
+
+    /** "Qaysi CRM'larga ulanish mumkin" ro'yxati (report #10) — static, kompaniyaga bog'liq emas. */
+    @GetMapping("/catalog")
+    ResponseEntity<ResponseData<List<CrmCatalogEntry>>> catalog();
 
     @GetMapping
     ResponseEntity<ResponseData<CrmIntegration>> get();

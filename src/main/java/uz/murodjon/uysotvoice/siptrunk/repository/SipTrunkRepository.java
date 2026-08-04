@@ -7,6 +7,7 @@ import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkFilter;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
 import uz.murodjon.uysotvoice.siptrunk.entity.SipTrunkEntity;
+import uz.murodjon.uysotvoice.siptrunk.enums.SipTrunkTransport;
 
 import java.time.Instant;
 import java.util.List;
@@ -23,8 +24,15 @@ public class SipTrunkRepository {
         this.company = company;
     }
 
-    /** {@code makeDefault} is forced true for a company's first trunk — never leave it unroutable. */
-    public long create(String name, String pjsipEndpoint, String callerId, boolean makeDefault) {
+    /**
+     * {@code makeDefault} is forced true for a company's first trunk — never leave it
+     * unroutable. {@code pjsipEndpoint} is the final manual-mode name, or a placeholder
+     * for a managed one — the caller (service layer) knows the mode and, for managed,
+     * follows up with {@link #updatePjsipEndpoint} once the generated id is known.
+     */
+    public long create(String name, String pjsipEndpoint, String callerId, boolean makeDefault,
+                       String host, int port, String sipUsername, String sipPasswordEnc,
+                       SipTrunkTransport transport) {
         long companyId = company.id();
         boolean first = !jpa.existsByCompanyId(companyId);
         boolean asDefault = makeDefault || first;
@@ -36,6 +44,11 @@ public class SipTrunkRepository {
         entity.setName(name);
         entity.setPjsipEndpoint(pjsipEndpoint);
         entity.setCallerId(callerId);
+        entity.setHost(host);
+        entity.setPort(port);
+        entity.setSipUsername(sipUsername);
+        entity.setSipPasswordEnc(sipPasswordEnc);
+        entity.setTransport(transport);
         entity.setDefault(asDefault);
         entity.setEnabled(true);
         entity.setCreatedAt(Instant.now());
@@ -51,13 +64,37 @@ public class SipTrunkRepository {
         return jpa.existsByCompanyIdAndIsDefaultTrue(company.id());
     }
 
-    /** No-op if {@code id} does not belong to the current company. Does not touch {@code isDefault}. */
-    public void update(long id, String name, String pjsipEndpoint, String callerId, boolean enabled) {
+    /**
+     * No-op if {@code id} does not belong to the current company. Does not touch {@code
+     * isDefault}. {@code sipPasswordEnc} of {@code null} keeps the trunk's current
+     * encrypted password — see {@code SipTrunkService#update}.
+     */
+    public void update(long id, String name, String pjsipEndpoint, String callerId, boolean enabled,
+                       String host, int port, String sipUsername, String sipPasswordEnc,
+                       SipTrunkTransport transport) {
         jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
             entity.setName(name);
             entity.setPjsipEndpoint(pjsipEndpoint);
             entity.setCallerId(callerId);
             entity.setEnabled(enabled);
+            entity.setHost(host);
+            entity.setPort(port);
+            entity.setSipUsername(sipUsername);
+            if (sipPasswordEnc != null) {
+                entity.setSipPasswordEnc(sipPasswordEnc);
+            }
+            entity.setTransport(transport);
+            jpa.save(entity);
+        });
+    }
+
+    /**
+     * {@code POST /api/sip-trunks} for a managed trunk (report #7) — the generated
+     * endpoint name embeds {@code id}, which only exists after {@link #create}'s insert.
+     */
+    public void updatePjsipEndpoint(long id, String pjsipEndpoint) {
+        jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
+            entity.setPjsipEndpoint(pjsipEndpoint);
             jpa.save(entity);
         });
     }
@@ -99,8 +136,19 @@ public class SipTrunkRepository {
                 .map(SipTrunkRepository::toRow).orElse(null);
     }
 
+    /**
+     * Every enabled managed-mode trunk, across every company, with its encrypted
+     * password intact — {@code siptrunk.service.PjsipConfigWriter} only, never exposed
+     * through {@link SipTrunk}/the API. Raw entities rather than a dto since this is
+     * purely internal wiring within the feature.
+     */
+    public List<SipTrunkEntity> findAllManagedEnabledEntities() {
+        return jpa.findByHostIsNotNullAndEnabledTrue();
+    }
+
     private static SipTrunk toRow(SipTrunkEntity e) {
         return new SipTrunk(e.getId(), e.getName(), e.getPjsipEndpoint(), e.getCallerId(),
+                e.getHost() != null, e.getHost(), e.getPort(), e.getSipUsername(), e.getTransport(),
                 e.isDefault(), e.isEnabled(), e.getCreatedAt());
     }
 }

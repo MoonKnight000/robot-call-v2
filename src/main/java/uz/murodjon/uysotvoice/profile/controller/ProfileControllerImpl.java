@@ -3,6 +3,7 @@ package uz.murodjon.uysotvoice.profile.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import uz.murodjon.uysotvoice.auth.dto.UserSession;
 import uz.murodjon.uysotvoice.profile.dto.ChangePasswordRequest;
@@ -50,6 +51,11 @@ public class ProfileControllerImpl implements ProfileController {
     @Override
     public ResponseEntity<ResponseData<Profile>> update(UpdateProfileRequest r) {
         return ResponseEntity.ok(ResponseData.ok(profile.update(r)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<Profile>> uploadAvatar(MultipartFile file) {
+        return ResponseEntity.ok(ResponseData.ok(profile.uploadAvatar(file)));
     }
 
     @Override

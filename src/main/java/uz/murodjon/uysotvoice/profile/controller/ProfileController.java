@@ -2,13 +2,17 @@ package uz.murodjon.uysotvoice.profile.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 
 import uz.murodjon.uysotvoice.auth.dto.UserSession;
 import uz.murodjon.uysotvoice.profile.dto.ChangePasswordRequest;
@@ -37,6 +41,13 @@ public interface ProfileController {
 
     @PutMapping
     ResponseEntity<ResponseData<Profile>> update(@Valid @RequestBody UpdateProfileRequest r);
+
+    /**
+     * Avatar upload (report #11) — the only way {@code avatarFileId} changes; image-
+     * only, 5 MB max, served back via {@code GET /api/files/{id}}.
+     */
+    @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    ResponseEntity<ResponseData<Profile>> uploadAvatar(@RequestParam("file") MultipartFile file);
 
     @PutMapping("/password")
     ResponseEntity<ResponseData<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest r);

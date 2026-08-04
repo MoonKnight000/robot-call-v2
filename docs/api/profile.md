@@ -19,11 +19,14 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 ```json
 {
   "id": 1, "name": "Aziz Bekmurodov", "username": "aziz", "email": "aziz@uysot.uz",
-  "phone": "+998901234567", "position": "Operator", "avatarUrl": null,
+  "phone": "+998901234567", "position": "Operator", "avatarFileId": null,
   "role": "OPERATOR", "companyId": 1,
   "lastLoginAt": "2026-08-02T08:00:00Z", "createdAt": "2026-07-01T00:00:00Z"
 }
 ```
+
+`avatarFileId` — [files.md](files.md)dagi `GET /api/files/{avatarFileId}`ga
+beriladigan id, xom MinIO URL emas.
 
 ## `PUT /api/profile` — "Umumiy" tab, saqlash
 
@@ -31,7 +34,7 @@ Body (`UpdateProfileRequest`):
 
 ```json
 { "name": "Aziz Bekmurodov", "email": "aziz@uysot.uz", "phone": "+998901234567",
-  "position": "Operator", "avatarUrl": null }
+  "position": "Operator" }
 ```
 
 `username` bu yerda yo'q — login identifikatori, o'zgarmaydi. `email`
@@ -39,8 +42,20 @@ hozircha har doim tahrirlanadi: loyihada hali SSO provayder yo'q (Uysot
 OAuth, `POST /api/auth/uysot/callback`, hali stub), shuning uchun
 UI-DESIGN §8.3'dagi "email o'zgarmas, agar SSO bo'lsa" qoidasi hozircha
 qo'llanmaydi. Boshqa foydalanuvchining email'i band bo'lsa — `400`.
-`avatarUrl` — tayyor URL satri (fayl yuklash endpointi yo'q, panel
-tashqi/mavjud rasmga havola beradi).
+**`avatarFileId` bu yerda yo'q** — avatar faqat pastdagi
+`POST /api/profile/avatar` orqali o'zgaradi, qo'lda arbitrar id sifatida
+yuborib bo'lmaydi.
+
+---
+
+## `POST /api/profile/avatar` — avatar yuklash
+
+`multipart/form-data`, maydon nomi `file`. Faqat rasm (`image/png`,
+`image/jpeg`, `image/webp`), maksimum **5 MB** — mos kelmasa `400`, MinIO
+ishlamasa `502`. Muvaffaqiyatli yuklangan fayl `Profile.avatarFileId`ni
+almashtiradi, boshqa hech qaysi maydonga tegmaydi.
+
+Javob — yangilangan `Profile` (yuqoridagi shakl, yangi `avatarFileId` bilan).
 
 ---
 
@@ -117,7 +132,7 @@ Butun matritsani almashtiradi (jo'natilmagan katak — o'chiq bo'lib qoladi).
 **Javob** (`List<ScheduleSlot>`):
 
 ```json
-[ { "dayOfWeek": "MONDAY", "startTime": "09:00:00", "endTime": "18:00:00" } ]
+[ { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00" } ]
 ```
 
 Operator qaysi hafta kuni/soatlarda kiruvchi qo'ng'iroq qabul qilishga
@@ -129,7 +144,7 @@ kiruvchi marshrutlash bu jadvalni hali o'qimaydi (kelgusi bosqich).
 Body (`UpdateScheduleRequest`):
 
 ```json
-{ "slots": [ { "dayOfWeek": "MONDAY", "startTime": "09:00:00", "endTime": "18:00:00" } ] }
+{ "slots": [ { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00" } ] }
 ```
 
 `startTime >= endTime` bo'lgan slot — `400`. Butun jadvalni almashtiradi.

@@ -142,7 +142,7 @@ maydonlarini ham qabul qiladi — hammasi berilmasa oddiy ro'yxat:
   "hangupCause": "NORMAL_CLEARING",
   "hasRecording": true,
   "summary": "Mijoz 5 avgustgacha 1 500 000 so'm to'lashga va'da berdi.",
-  "promisedDate": "2026-08-05",
+  "promisedDate": "05.08.2026",
   "promisedAmount": 1500000,
   "crmNoteId": 98213
 }
@@ -158,6 +158,7 @@ maydonlarini ham qabul qiladi — hammasi berilmasa oddiy ro'yxat:
 | `hangupCause` | Asterisk sabab kodi — `NO_ANSWER` nima uchun sodir bo'lganini tushuntiradi |
 | `hasRecording` | shu qo'ng'iroq uchun audio olish mumkinmi |
 | `summary` | CRM eslatma matni (LLM tomonidan yaratilgan), hali yaratilmagan bo'lsa `null` |
+| `promisedDate` | `LocalDate` (`dd.MM.yyyy`) — mijoz to'lashga va'da bergan sana, bo'lmasa `null` |
 | `crmNoteId` | CRM bergan id; `null` — hali CRM tomonidan qabul qilinmagan (outbox hali qayta urinmoqda yoki CRM o'chiq) |
 
 ---
@@ -267,11 +268,16 @@ to'xtatmaydi — `failed` ro'yxatiga tushadi.
 
 ## `GET /api/reports/calls/{callId}/recording` — qo'ng'iroq yozuvi
 
-**`ResponseData`ga o'ralmagan** — xom audio qaytaradi (`ResponseEntity<Resource>`).
-Faylni to'g'ridan-to'g'ri serverdan beradi (mahalliy diskda bo'lsa) yoki
-object storage'ga redirect qiladi (`RecordingRedirect`) — ikkalasi ham
-frontend uchun bir xil ko'rinadi: `<audio src="/api/reports/calls/{id}/recording">`
-kabi to'g'ridan-to'g'ri ishlaydi, redirectni brauzer o'zi bosib o'tadi.
+**`ResponseData`ga o'ralmagan** — `302` bilan `GET /api/files/{id}`ga
+redirect qiladi ([files.md](files.md)), u yerda audio MinIO'dan olib
+streamlanadi — hech qachon xom MinIO URL emas.
+
+Bu endpoint ham, redirect nishoni ham autentifikatsiya talab qiladi
+(`X-Api-Key`/Bearer), shuning uchun oddiy `<audio src="...">` ishlamaydi
+(brauzer maxsus sarlavha qo'ya olmaydi) — frontend `fetch` bilan blob
+sifatida olib, `URL.createObjectURL`ga o'raydi (`requestBlob`,
+`src/api/http.ts`); fetch bir xil origin'dagi redirectda sarlavhani
+avtomatik saqlab qoladi.
 
 Yozuv yo'q bo'lsa (`hasRecording: false` bo'lgan qo'ng'iroq) — `404`.
 

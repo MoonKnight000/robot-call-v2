@@ -3,6 +3,9 @@ HELP.md
 recordings/
 # SIP trunk credentials (secret) — included by pjsip.conf
 asterisk/etc/asterisk/pjsip_auth.conf
+# Generated per-company managed SIP trunk config (report #7) — written by
+# PjsipConfigWriter, contains plaintext passwords (PJSIP requires it), never committed.
+asterisk/etc/asterisk/pjsip_trunks.conf
 # Cloud credentials — Google STT/TTS read them via GOOGLE_APPLICATION_CREDENTIALS
 # (a path outside the repo), so a key file must never live here.
 **/credential/

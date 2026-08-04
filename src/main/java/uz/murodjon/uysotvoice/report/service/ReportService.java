@@ -1,7 +1,5 @@
 package uz.murodjon.uysotvoice.report.service;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
@@ -28,17 +26,12 @@ import uz.murodjon.uysotvoice.report.dto.DashboardTotals;
 import uz.murodjon.uysotvoice.report.dto.DurationHistogramBucket;
 import uz.murodjon.uysotvoice.report.dto.FunnelStage;
 import uz.murodjon.uysotvoice.report.dto.HourlyHeatmapCell;
-import uz.murodjon.uysotvoice.report.dto.RecordingFile;
-import uz.murodjon.uysotvoice.report.dto.RecordingLocation;
-import uz.murodjon.uysotvoice.report.dto.RecordingRedirect;
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,11 +43,6 @@ import java.util.List;
  */
 @Service
 public class ReportService {
-
-    private static final Logger log = LoggerFactory.getLogger(ReportService.class);
-
-    /** Local recordings are stored with this prefix to distinguish them from object URLs. */
-    private static final String FILE_PREFIX = "file:";
 
     private final ReportRepository reports;
     private final AuditService audit;
@@ -159,29 +147,18 @@ public class ReportService {
     }
 
     /**
-     * Where the recording for {@code callId} lives (§11.3 — a recording is evidence in a
-     * dispute, so it has to be retrievable without shell access to the box). Records the
-     * download in the audit trail before handing back a local file.
+     * The {@code stored_file} id the recording for {@code callId} is catalogued under
+     * (§11.3 — a recording is evidence in a dispute, so it has to be retrievable without
+     * shell access to the box). The controller redirects here to {@code GET
+     * /api/files/{id}}, which does the actual MinIO streaming.
      */
-    public RecordingLocation resolveRecording(long callId) {
-        String url = reports.recordingUrl(callId);
-        if (url == null || url.isBlank()) {
+    public long resolveRecording(long callId) {
+        Long fileId = reports.recordingFileId(callId);
+        if (fileId == null) {
             throw new NotFoundException("No recording for call " + callId);
         }
-        if (!url.startsWith(FILE_PREFIX)) {
-            // Object storage owns it; hand the caller a redirect rather than proxying
-            // megabytes of audio through this service.
-            return new RecordingRedirect(url);
-        }
-        Path path = Path.of(url.substring(FILE_PREFIX.length()));
-        if (!Files.isReadable(path)) {
-            // The retention sweep (§11.3) deletes recordings on schedule, so a missing file
-            // is an ordinary outcome, not a fault.
-            log.info("Recording for call {} is no longer on disk: {}", callId, path);
-            throw new NotFoundException("Recording for call " + callId + " is gone");
-        }
-        audit.record("RECORDING_DOWNLOAD", "call", String.valueOf(callId), path.getFileName().toString());
-        return new RecordingFile(path, "call-" + callId + ".wav");
+        audit.record("RECORDING_DOWNLOAD", "call", String.valueOf(callId), String.valueOf(fileId));
+        return fileId;
     }
 
     /** Who changed what through the API (§11). */

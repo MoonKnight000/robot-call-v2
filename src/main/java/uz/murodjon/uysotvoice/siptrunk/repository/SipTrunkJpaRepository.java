@@ -40,4 +40,12 @@ public interface SipTrunkJpaRepository extends JpaRepository<SipTrunkEntity, Lon
     @Transactional
     @Query("UPDATE SipTrunkEntity t SET t.isDefault = false WHERE t.companyId = :companyId AND t.isDefault = true")
     void clearDefault(@Param("companyId") long companyId);
+
+    /**
+     * Every enabled managed-mode trunk across every company — {@code
+     * siptrunk.service.PjsipConfigWriter} regenerates the whole generated-trunks file
+     * from this set after any create/update/delete (report #7), so unscoped by {@code
+     * CurrentCompany} like {@link #findByCompanyIdAndIsDefaultTrueAndEnabledTrue}.
+     */
+    List<SipTrunkEntity> findByHostIsNotNullAndEnabledTrue();
 }

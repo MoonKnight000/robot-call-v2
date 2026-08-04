@@ -9,6 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -90,6 +91,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ResponseData<Object>> noResourceFound(NoResourceFoundException e) {
         return respond(HttpStatus.NOT_FOUND, "No such endpoint: " + e.getResourcePath(), null, e);
+    }
+
+    /**
+     * The client disconnected mid-stream (tab closed, SSE auto-reconnect, page navigation)
+     * while an async response — e.g. {@code GET /api/live/stream} — was still writing to
+     * it. This is routine SSE churn, not a client-facing error, and the connection is
+     * already gone: falling through to {@link #unexpected} would try to write a {@link
+     * ResponseData} body over a response whose content type is fixed to something other
+     * than JSON (e.g. {@code text/event-stream}), which has no matching converter and
+     * throws a second, noisier {@code HttpMessageNotWritableException} on top of this one.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void asyncRequestNotUsable(AsyncRequestNotUsableException e) {
+        log.debug("Async request became unusable, client likely disconnected: {}", e.getMessage());
     }
 
     /** Anything not handled above is a bug, not a client error. */

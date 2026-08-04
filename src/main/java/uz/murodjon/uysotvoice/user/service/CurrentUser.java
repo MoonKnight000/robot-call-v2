@@ -1,5 +1,7 @@
 package uz.murodjon.uysotvoice.user.service;
 
+import uz.murodjon.uysotvoice.user.enums.UserRole;
+
 import java.util.Optional;
 
 /**
@@ -11,4 +13,12 @@ import java.util.Optional;
 public interface CurrentUser {
 
     Optional<Long> id();
+
+    /**
+     * The caller's role, if a JWT-authenticated person made this request — used by
+     * {@code company.service.CompanyAccessGuard} to let {@code SUPERADMIN} bypass the
+     * usual "own company only" scoping (report #3). Empty for {@code X-Api-Key}
+     * requests, same as {@link #id()} — a machine key is never a superadmin.
+     */
+    Optional<UserRole> role();
 }

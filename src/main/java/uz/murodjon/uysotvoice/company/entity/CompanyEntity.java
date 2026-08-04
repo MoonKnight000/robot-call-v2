@@ -37,8 +37,8 @@ public class CompanyEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "logo_url")
-    private String logoUrl;
+    @Column(name = "logo_file_id")
+    private Long logoFileId;
 
     @Column(name = "address")
     private String address;
@@ -71,12 +71,12 @@ public class CompanyEntity {
         this.createdAt = createdAt;
     }
 
-    public String getLogoUrl() {
-        return logoUrl;
+    public Long getLogoFileId() {
+        return logoFileId;
     }
 
-    public void setLogoUrl(String logoUrl) {
-        this.logoUrl = logoUrl;
+    public void setLogoFileId(Long logoFileId) {
+        this.logoFileId = logoFileId;
     }
 
     public String getAddress() {

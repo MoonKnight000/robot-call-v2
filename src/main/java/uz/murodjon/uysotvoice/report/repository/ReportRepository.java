@@ -68,7 +68,7 @@ public class ReportRepository {
                    a.duration_sec  AS duration_sec,
                    a.disposition   AS disposition,
                    a.hangup_cause  AS hangup_cause,
-                   a.recording_url AS recording_url,
+                   a.recording_file_id AS recording_file_id,
                    r.summary       AS summary,
                    r.promised_date AS promised_date,
                    r.promised_amount AS promised_amount,
@@ -738,14 +738,14 @@ public class ReportRepository {
                 .toList();
     }
 
-    /** Where this call's audio lives ({@code file:} path or object-store URL), or null. */
-    public String recordingUrl(long callId) {
+    /** The {@code stored_file} id this call's audio is catalogued under, or null. */
+    public Long recordingFileId(long callId) {
         List<Object> result = em.createNativeQuery(
-                        "SELECT recording_url FROM call_attempt WHERE id = :callId AND company_id = :companyId")
+                        "SELECT recording_file_id FROM call_attempt WHERE id = :callId AND company_id = :companyId")
                 .setParameter("callId", callId)
                 .setParameter("companyId", company.id())
                 .getResultList();
-        return result.isEmpty() ? null : (String) result.get(0);
+        return result.isEmpty() || result.get(0) == null ? null : ((Number) result.get(0)).longValue();
     }
 
     /** Run a two-column {@code (k, n)} grouping query into an ordered map. */

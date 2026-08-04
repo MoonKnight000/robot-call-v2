@@ -110,7 +110,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -158,7 +158,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -195,7 +195,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -239,7 +239,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -281,7 +281,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -319,7 +319,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -365,7 +365,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
@@ -401,7 +401,7 @@ $def$
   "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
 }
 $def$::jsonb,
-    'system'
+    NULL
 )
 ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
 
