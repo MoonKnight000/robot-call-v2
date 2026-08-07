@@ -3,7 +3,7 @@ package uz.murodjon.uysotvoice.report.service;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditLog;
+import uz.murodjon.uysotvoice.audit.domain.AuditLog;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
@@ -29,6 +29,7 @@ import uz.murodjon.uysotvoice.report.dto.HourlyHeatmapCell;
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
@@ -61,7 +62,7 @@ public class ReportService {
     public CampaignStats campaign(long id) {
         CampaignStats stats = reports.campaignStats(id);
         if (stats == null) {
-            throw new NotFoundException("campaign", id);
+            throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id);
         }
         return stats;
     }
@@ -133,7 +134,7 @@ public class ReportService {
                 doNotCall.add(call.phone(), "opted out via bulk action", DoNotCallSource.MANUAL);
                 yield true;
             }
-            default -> throw new ValidationException("Unknown bulk action '" + action + "'");
+            default -> throw new ValidationException(ErrorCode.REPORT_BULK_ACTION_UNKNOWN, action);
         };
     }
 
@@ -141,7 +142,7 @@ public class ReportService {
     public CallDetail call(long callId) {
         CallDetail detail = reports.callDetail(callId);
         if (detail == null) {
-            throw new NotFoundException("call", callId);
+            throw new NotFoundException(ErrorCode.CALL_NOT_FOUND, callId);
         }
         return detail;
     }
@@ -155,7 +156,7 @@ public class ReportService {
     public long resolveRecording(long callId) {
         Long fileId = reports.recordingFileId(callId);
         if (fileId == null) {
-            throw new NotFoundException("No recording for call " + callId);
+            throw new NotFoundException(ErrorCode.CALL_RECORDING_NOT_FOUND, callId);
         }
         audit.record("RECORDING_DOWNLOAD", "call", String.valueOf(callId), String.valueOf(fileId));
         return fileId;

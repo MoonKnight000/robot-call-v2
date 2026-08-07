@@ -1,0 +1,13 @@
+-- Yandex TTS v3 "role" synthesis hint, stored per voice instead of as one global
+-- setting (voice-agent.tts.yandex.emotion, removed with this migration).
+--
+-- A role is voice-specific: uz-UZ nigora declares none, zamira has neutral/strict/
+-- friendly, yulduz adds whisper. Sending one voice's role to another is not ignored —
+-- SpeechKit rejects the whole request with INVALID_ARGUMENT ("role neutral is not
+-- supported for voice nigora"), which silences every sentence of the call. A global
+-- knob therefore cannot be set correctly for a catalog with more than one voice in it.
+--
+-- NULL = send no role, which every voice accepts. Since `id` and `name` are separate
+-- columns, the same provider-side voice can also appear as several catalog entries that
+-- differ only by role (e.g. id 'yulduz-whisper' -> name 'yulduz', role 'whisper').
+ALTER TABLE tts_voice ADD COLUMN role VARCHAR(32);

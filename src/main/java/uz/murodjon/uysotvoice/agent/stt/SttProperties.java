@@ -10,6 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param defaultLanguage BCP-47 language used until per-call language selection exists
  * @param vadGating       withhold non-speech audio from the provider's (per-second
  *                        billed) stream
+ * @param endpointing     decide end-of-utterance here instead of at the provider, so a
+ *                        one-word answer is not made to wait like a long one
  * @param google          Google-specific settings
  * @param yandex          Yandex-specific settings
  */
@@ -19,6 +21,7 @@ public record SttProperties(
         String provider,
         String defaultLanguage,
         VadGatingProperties vadGating,
+        EndpointingProperties endpointing,
         GoogleSttProperties google,
         YandexSttProperties yandex
 ) {

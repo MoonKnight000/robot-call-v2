@@ -13,6 +13,7 @@ import uz.murodjon.uysotvoice.auth.dto.ResetPasswordRequest;
 import uz.murodjon.uysotvoice.auth.service.AuthService;
 import uz.murodjon.uysotvoice.company.dto.Company;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 
 import java.util.List;
@@ -65,7 +66,7 @@ public class AuthControllerImpl implements AuthController {
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> uysotCallback() {
-        throw new ExternalServiceException("uysot-oauth", "not configured yet (ROADMAP Bosqich D)");
+        throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_LOGIN_NOT_AVAILABLE, "uysot-oauth");
     }
 
     @Override

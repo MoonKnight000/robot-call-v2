@@ -27,6 +27,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       inside the &lt;1s budget (§1.3) — waiting for the whole reply
  *                       and then the whole synthesis serializes two full latencies.
  *                       Set false to fall back to a single blocking call.
+ * @param fillerDelayMs  how long a turn may leave the caller in silence before a short
+ *                       "bir soniya" is played over the gap while the LLM is still
+ *                       generating (§1.3). It does not make the reply arrive sooner — it
+ *                       stops the wait sounding like a dropped line, which is what a
+ *                       caller actually reacts to. Only ever fires when the turn is
+ *                       genuinely slow, never on the greeting, and never on consecutive
+ *                       turns. 0 disables it
  * @param mandatoryDisclosure speak the §11.1 notice ("this is an automated system, the
  *                       call is recorded") from code before the model's first turn.
  *                       The requirement is legal; leaving it to the prompt means a
@@ -65,6 +72,7 @@ public record DialogProperties(
         int maxTurns,
         int maxCallSeconds,
         boolean streaming,
+        int fillerDelayMs,
         boolean mandatoryDisclosure,
         boolean stateScopedTools,
         int historyMaxMessages,

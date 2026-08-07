@@ -15,6 +15,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 import uz.murodjon.uysotvoice.shared.exception.AppException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 
 import java.util.List;
 
@@ -48,7 +49,7 @@ public class ApiExceptionHandler {
     /** Every failure the application raises on purpose. */
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ResponseData<Object>> appException(AppException e) {
-        return respond(e.status(), e.getMessage(), null, e);
+        return respond(e.status(), e.code(), e.getMessage(), null, e);
     }
 
     /** A {@code @Valid @RequestBody} failed Bean Validation — one message per failed field. */
@@ -57,7 +58,8 @@ public class ApiExceptionHandler {
         List<String> errors = e.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .toList();
-        return respond(HttpStatus.BAD_REQUEST, "Validation failed", errors, e);
+        return respond(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.format(),
+                errors, e);
     }
 
     /**
@@ -66,19 +68,22 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ResponseData<Object>> malformedBody(HttpMessageNotReadableException e) {
-        return respond(HttpStatus.BAD_REQUEST, "Malformed or invalid request body", null, e);
+        return respond(HttpStatus.BAD_REQUEST, ErrorCode.MALFORMED_REQUEST_BODY,
+                ErrorCode.MALFORMED_REQUEST_BODY.format(), null, e);
     }
 
     /** A required {@code @RequestParam} was left out entirely. */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ResponseData<Object>> missingParameter(MissingServletRequestParameterException e) {
-        return respond(HttpStatus.BAD_REQUEST, "Missing required parameter: " + e.getParameterName(), null, e);
+        return respond(HttpStatus.BAD_REQUEST, ErrorCode.MISSING_REQUIRED_PARAMETER,
+                ErrorCode.MISSING_REQUIRED_PARAMETER.format(e.getParameterName()), null, e);
     }
 
     /** A path/query value could not be converted to the parameter's type (e.g. a non-numeric id). */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ResponseData<Object>> typeMismatch(MethodArgumentTypeMismatchException e) {
-        return respond(HttpStatus.BAD_REQUEST, "Invalid value for parameter: " + e.getName(), null, e);
+        return respond(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_PARAMETER_VALUE,
+                ErrorCode.INVALID_PARAMETER_VALUE.format(e.getName()), null, e);
     }
 
     /**
@@ -90,7 +95,8 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ResponseData<Object>> noResourceFound(NoResourceFoundException e) {
-        return respond(HttpStatus.NOT_FOUND, "No such endpoint: " + e.getResourcePath(), null, e);
+        return respond(HttpStatus.NOT_FOUND, ErrorCode.NO_SUCH_ENDPOINT,
+                ErrorCode.NO_SUCH_ENDPOINT.format(e.getResourcePath()), null, e);
     }
 
     /**
@@ -110,7 +116,8 @@ public class ApiExceptionHandler {
     /** Anything not handled above is a bug, not a client error. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ResponseData<Object>> unexpected(Exception e) {
-        return respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", null, e);
+        return respond(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_SERVER_ERROR,
+                ErrorCode.INTERNAL_SERVER_ERROR.format(), null, e);
     }
 
     /**
@@ -118,13 +125,13 @@ public class ApiExceptionHandler {
      * status: a 5xx is always worth the full stack trace, a 4xx from ordinary bad input is
      * not — it would just drown the logs the one time it is actually a server bug.
      */
-    private ResponseEntity<ResponseData<Object>> respond(HttpStatus status, String message,
+    private ResponseEntity<ResponseData<Object>> respond(HttpStatus status, ErrorCode code, String message,
                                                          List<String> errors, Exception cause) {
         if (status.is5xxServerError()) {
             log.error("Request failed with {}", status, cause);
         } else {
             log.debug("Rejected request with {}: {}", status, message);
         }
-        return ResponseEntity.status(status).body(ResponseData.error(message, errors));
+        return ResponseEntity.status(status).body(ResponseData.error(code, message, errors));
     }
 }

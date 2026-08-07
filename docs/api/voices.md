@@ -9,6 +9,11 @@ ko'radigan variantlar aynan `POST /api/campaigns`ning `ttsVoice` maydoni qabul
 qiladigan id'larning o'zi. Hozircha faqat o'qish uchun (`GET`) — yaratish/
 o'chirish endpoint yo'q.
 
+`id` va `name` alohida ustunlar — shuning uchun bitta provayder ovozi bir nechta
+katalog qatori bo'lib turishi mumkin, faqat `role` bilan farq qiladi (masalan
+`id: "yulduz-whisper"` → `name: "yulduz"`, `role: "whisper"`). Operator uchun bu
+ikkita tanlov, provayder uchun bitta ovozning ikki uslubi.
+
 Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 
 ---
@@ -24,9 +29,11 @@ ko'rsatish uchun.
 ```json
 {
   "data": [
-    { "id": "nigora", "provider": "yandex", "language": "uz-UZ", "name": "uz_UZ_nigora", "label": "Nigora (ayol, o'zbekcha)" }
+    { "id": "nigora", "provider": "yandex", "language": "uz-UZ", "name": "nigora", "label": "Nigora — o'zbek, ayol", "role": null },
+    { "id": "zamira", "provider": "yandex", "language": "uz-UZ", "name": "zamira", "label": "Zamira — o'zbek, ayol", "role": null },
+    { "id": "yulduz", "provider": "yandex", "language": "uz-UZ", "name": "yulduz", "label": "Yulduz — o'zbek, ayol", "role": null }
   ],
-  "message": null, "accept": true, "errors": null
+  "message": null, "messageCode": null, "accept": true, "errors": null
 }
 ```
 
@@ -37,3 +44,4 @@ ko'rsatish uchun.
 | `language` | BCP-47; boshqa tildagi qo'ng'iroq bu ovozni e'tiborsiz qoldirib standart marshrutlashga qaytadi (masalan ruscha ovoz o'zbekcha matn o'qishi standart ovozdan yomonroq bo'lgani uchun) |
 | `name` | provayder tomonidagi ovoz nomi (sintez so'roviga yuboriladi) |
 | `label` | UI'da ko'rsatiladigan inson-o'qiy oladigan nom |
+| `role` | ovozning gapirish uslubi (Yandex v3 `Hints.role`: `neutral`, `strict`, `friendly`, `whisper`), yoki `null` — yuborilmaydi. Har bir ovozning o'z role'lari bor: `nigora` da umuman yo'q, `zamira` da neutral/strict/friendly, `yulduz` da yana `whisper`. Ovoz qo'llab-quvvatlamaydigan role yuborilsa provayder butun so'rovni rad etadi, shuning uchun bu global sozlama emas, aynan shu qatorning ustuni |

@@ -37,6 +37,9 @@ public interface ScenarioJpaRepository extends JpaRepository<ScenarioEntity, Lon
     /** The active version of {@code scenarioKey} — at most one exists (idx_scenario_active_key). */
     Optional<ScenarioEntity> findByScenarioKeyAndActiveTrue(String scenarioKey);
 
+    /** Every tenant's active scenarios — the TTS warm-up's cross-company read. */
+    List<ScenarioEntity> findByActiveTrue();
+
     /**
      * Every scenario's current active version — never a superseded one (§10.7 list).
      * Includes global builtins plus the current company's own custom scenarios.

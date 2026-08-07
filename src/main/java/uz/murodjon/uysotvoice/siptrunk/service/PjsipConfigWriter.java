@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.uysotvoice.agent.ami.AmiClient;
 import uz.murodjon.uysotvoice.shared.util.SecretCipher;
 import uz.murodjon.uysotvoice.siptrunk.config.PjsipConfigProperties;
-import uz.murodjon.uysotvoice.siptrunk.entity.SipTrunkEntity;
+import uz.murodjon.uysotvoice.siptrunk.domain.SipTrunk;
 import uz.murodjon.uysotvoice.siptrunk.repository.SipTrunkRepository;
 
 import java.io.IOException;
@@ -68,7 +68,7 @@ public class PjsipConfigWriter {
             log.warn("voice-agent.siptrunk.config-dir is not set — cannot write generated PJSIP config");
             return;
         }
-        List<SipTrunkEntity> trunks = repo.findAllManagedEnabledEntities();
+        List<SipTrunk> trunks = repo.findAllManagedEnabled();
         Path file = Path.of(props.configDir(), props.configFileName());
         try {
             Files.writeString(file, render(trunks), StandardCharsets.UTF_8);
@@ -81,35 +81,35 @@ public class PjsipConfigWriter {
                 file, trunks.size(), reloaded ? "ok" : "skipped/failed, will retry on next change");
     }
 
-    private String render(List<SipTrunkEntity> trunks) {
+    private String render(List<SipTrunk> trunks) {
         StringBuilder sb = new StringBuilder(HEADER);
-        for (SipTrunkEntity trunk : trunks) {
+        for (SipTrunk trunk : trunks) {
             appendTrunk(sb, trunk);
         }
         return sb.toString();
     }
 
-    private void appendTrunk(StringBuilder sb, SipTrunkEntity trunk) {
+    private void appendTrunk(StringBuilder sb, SipTrunk trunk) {
         String password;
         try {
-            password = cipher.decrypt(trunk.getSipPasswordEnc());
+            password = cipher.decrypt(trunk.sipPasswordEnc());
         } catch (Exception e) {
             log.warn("Skipping trunk {} in generated PJSIP config — password could not be decrypted: {}",
-                    trunk.getId(), e.getMessage());
+                    trunk.id(), e.getMessage());
             return;
         }
-        String endpoint = trunk.getPjsipEndpoint();
+        String endpoint = trunk.pjsipEndpoint();
         String authId = endpoint + "-auth";
         String aorId = endpoint + "-aor";
-        String hostPort = trunk.getHost() + ":" + trunk.getPort();
+        String hostPort = trunk.host() + ":" + trunk.port();
 
-        sb.append("; --- sip_trunk.id=").append(trunk.getId())
-                .append(" (company_id=").append(trunk.getCompanyId()).append(") ---\n");
+        sb.append("; --- sip_trunk.id=").append(trunk.id())
+                .append(" (company_id=").append(trunk.companyId()).append(") ---\n");
 
         sb.append('[').append(authId).append("]\n");
         sb.append("type = auth\n");
         sb.append("auth_type = userpass\n");
-        sb.append("username = ").append(trunk.getSipUsername()).append('\n');
+        sb.append("username = ").append(trunk.sipUsername()).append('\n');
         sb.append("password = ").append(password).append("\n\n");
 
         sb.append('[').append(endpoint).append("-reg]\n");
@@ -117,7 +117,7 @@ public class PjsipConfigWriter {
         sb.append("transport = transport-trunk\n");
         sb.append("outbound_auth = ").append(authId).append('\n');
         sb.append("server_uri = sip:").append(hostPort).append('\n');
-        sb.append("client_uri = sip:").append(trunk.getSipUsername()).append('@').append(hostPort).append('\n');
+        sb.append("client_uri = sip:").append(trunk.sipUsername()).append('@').append(hostPort).append('\n');
         sb.append("retry_interval = 60\n");
         sb.append("expiration = 120\n\n");
 
@@ -129,8 +129,8 @@ public class PjsipConfigWriter {
         sb.append("allow = ulaw\n");
         sb.append("allow = alaw\n");
         sb.append("direct_media = no\n");
-        sb.append("from_user = ").append(trunk.getSipUsername()).append('\n');
-        sb.append("from_domain = ").append(trunk.getHost()).append('\n');
+        sb.append("from_user = ").append(trunk.sipUsername()).append('\n');
+        sb.append("from_domain = ").append(trunk.host()).append('\n');
         sb.append("outbound_auth = ").append(authId).append('\n');
         sb.append("aors = ").append(aorId).append('\n');
         sb.append("rtp_symmetric = yes\n");

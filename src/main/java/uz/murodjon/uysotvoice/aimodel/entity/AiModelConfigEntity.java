@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -15,6 +17,9 @@ import java.time.Instant;
  * {@code DialogProperties}). Every override column is nullable: null means "use the
  * process default", not zero.
  */
+
+@Getter
+@Setter
 @Entity
 @Table(name = "ai_model_config")
 public class AiModelConfigEntity {
@@ -44,63 +49,5 @@ public class AiModelConfigEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public Long getId() {
-        return id;
-    }
 
-    public long getCompanyId() {
-        return companyId;
-    }
-
-    public void setCompanyId(long companyId) {
-        this.companyId = companyId;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public Double getTemperature() {
-        return temperature;
-    }
-
-    public void setTemperature(Double temperature) {
-        this.temperature = temperature;
-    }
-
-    public Integer getMaxOutputTokens() {
-        return maxOutputTokens;
-    }
-
-    public void setMaxOutputTokens(Integer maxOutputTokens) {
-        this.maxOutputTokens = maxOutputTokens;
-    }
-
-    public Integer getMaxCallSeconds() {
-        return maxCallSeconds;
-    }
-
-    public void setMaxCallSeconds(Integer maxCallSeconds) {
-        this.maxCallSeconds = maxCallSeconds;
-    }
-
-    public Long getMaxTokensPerCall() {
-        return maxTokensPerCall;
-    }
-
-    public void setMaxTokensPerCall(Long maxTokensPerCall) {
-        this.maxTokensPerCall = maxTokensPerCall;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
 }

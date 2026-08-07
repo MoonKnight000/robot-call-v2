@@ -93,7 +93,7 @@ class CampaignServiceTest {
         companyConfig = mock(CompanyConfigService.class);
         currentCompany = mock(CurrentCompany.class);
         notifications = mock(NotificationService.class);
-        when(voices.find("nigora")).thenReturn(new TtsVoice("nigora", "yandex", "uz-UZ", "nigora", "Nigora"));
+        when(voices.find("nigora")).thenReturn(new TtsVoice("nigora", "yandex", "uz-UZ", "nigora", "Nigora", null));
         when(voices.ids()).thenReturn(List.of("nigora"));
         when(currentCompany.id()).thenReturn(COMPANY_ID);
         // Mirrors CompanyConfigService.resolveLanguage's real fallback shape (null -> default,
@@ -116,12 +116,12 @@ class CampaignServiceTest {
     private void givenTarget(int attempts) {
         when(targets.find(TARGET_ID)).thenReturn(new CampaignTarget(
                 TARGET_ID, CAMPAIGN_ID, 100L, "998901112233", "uz-UZ", "{}", TargetStatus.IN_PROGRESS, attempts, false));
-        when(campaigns.find(CAMPAIGN_ID)).thenReturn(campaign(3, 24));
+        when(campaigns.find(CAMPAIGN_ID)).thenReturn(campaign(3, 0));
     }
 
-    private static Campaign campaign(int maxAttempts, int retryHours) {
+    private static Campaign campaign(int maxAttempts, int retryMinutes) {
         return new Campaign(CAMPAIGN_ID, "test", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "goal", "uz-UZ",
-                null, null, Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY), maxAttempts, retryHours, 5, null, 0,
+                null, null, Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY), maxAttempts, retryMinutes, 5, null, 0,
                 SCENARIO_ID, COMPANY_ID, true, null);
     }
 
@@ -234,7 +234,9 @@ class CampaignServiceTest {
         assertThat(row.getValue().dialDays()).isEqualTo(Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY,
                 DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY));
         assertThat(row.getValue().maxAttempts()).isEqualTo(3);
-        assertThat(row.getValue().retryIntervalHours()).isEqualTo(24);
+        // 0 is kept as sent: it means "no campaign preference", and the retry then
+        // follows the per-disposition defaults (RetrySchedule).
+        assertThat(row.getValue().retryIntervalMinutes()).isZero();
         assertThat(row.getValue().maxConcurrentCalls()).isEqualTo(20);
         assertThat(row.getValue().ttsVoice()).isNull();
         assertThat(row.getValue().scenarioId()).isEqualTo(SCENARIO_ID);
@@ -327,7 +329,7 @@ class CampaignServiceTest {
 
     @Test
     void dialDaysAreExposedAsWeekdays() {
-        assertThat(campaign(3, 24).allowedDays())
+        assertThat(campaign(3, 0).allowedDays())
                 .containsExactlyInAnyOrder(DayOfWeek.MONDAY, DayOfWeek.TUESDAY);
     }
 

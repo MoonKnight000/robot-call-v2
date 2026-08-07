@@ -7,21 +7,16 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
 import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.uysotvoice.callrecord.entity.CallAttemptEntity;
-import uz.murodjon.uysotvoice.callrecord.entity.CallTechnicalEntity;
-import uz.murodjon.uysotvoice.callrecord.entity.CallTranscriptEntity;
-import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptJpaRepository;
-import uz.murodjon.uysotvoice.callrecord.repository.CallResultJpaRepository;
-import uz.murodjon.uysotvoice.callrecord.repository.CallTechnicalJpaRepository;
-import uz.murodjon.uysotvoice.callrecord.repository.CallTranscriptJpaRepository;
-import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetJpaRepository;
+import uz.murodjon.uysotvoice.callrecord.repository.CallAttemptRepository;
+import uz.murodjon.uysotvoice.callrecord.repository.CallResultRepository;
+import uz.murodjon.uysotvoice.callrecord.repository.CallTechnicalRepository;
+import uz.murodjon.uysotvoice.callrecord.repository.CallTranscriptRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -42,24 +37,22 @@ public class CallRecordService {
     private static final Logger log = LoggerFactory.getLogger(CallRecordService.class);
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final CallAttemptJpaRepository callAttempts;
-    private final CallTranscriptJpaRepository transcripts;
-    private final CallResultJpaRepository results;
-    private final CallTechnicalJpaRepository technicalDetails;
-    private final CampaignTargetJpaRepository targets;
+    private final CallAttemptRepository callAttempts;
+    private final CallTranscriptRepository transcripts;
+    private final CallResultRepository results;
+    private final CallTechnicalRepository technicalDetails;
     private final CurrentCompany company;
     private final AtomicLong manualTargetId = new AtomicLong(0);
     private final AtomicLong inboundTargetId = new AtomicLong(0);
     private final Map<Long, AtomicInteger> seqCounters = new ConcurrentHashMap<>();
 
-    public CallRecordService(CallAttemptJpaRepository callAttempts, CallTranscriptJpaRepository transcripts,
-                             CallResultJpaRepository results, CallTechnicalJpaRepository technicalDetails,
-                             CampaignTargetJpaRepository targets, CurrentCompany company) {
+    public CallRecordService(CallAttemptRepository callAttempts, CallTranscriptRepository transcripts,
+                             CallResultRepository results, CallTechnicalRepository technicalDetails,
+                             CurrentCompany company) {
         this.callAttempts = callAttempts;
         this.transcripts = transcripts;
         this.results = results;
         this.technicalDetails = technicalDetails;
-        this.targets = targets;
         this.company = company;
     }
 
@@ -84,10 +77,10 @@ public class CallRecordService {
             return cached;
         }
         try {
-            return targets.findFirstByPhoneOrderById("MANUAL")
-                    .map(t -> {
-                        manualTargetId.set(t.getId());
-                        return t.getId();
+            return callAttempts.findTargetIdByPhone("MANUAL")
+                    .map(id -> {
+                        manualTargetId.set(id);
+                        return id;
                     })
                     .orElse(0L);
         } catch (Exception e) {
@@ -108,10 +101,10 @@ public class CallRecordService {
             return cached;
         }
         try {
-            return targets.findFirstByPhoneOrderById("INBOUND")
-                    .map(t -> {
-                        inboundTargetId.set(t.getId());
-                        return t.getId();
+            return callAttempts.findTargetIdByPhone("INBOUND")
+                    .map(id -> {
+                        inboundTargetId.set(id);
+                        return id;
                     })
                     .orElse(0L);
         } catch (Exception e) {
@@ -136,17 +129,7 @@ public class CallRecordService {
             return 0;
         }
         try {
-            Instant now = Instant.now();
-            CallAttemptEntity entity = new CallAttemptEntity();
-            entity.setTarget(targets.getReferenceById(targetId));
-            entity.setAsteriskChannel(channelId);
-            entity.setLanguage(language);
-            entity.setStartedAt(now);
-            entity.setAnsweredAt(now);
-            entity.setCreatedAt(now);
-            entity.setCompanyId(company.id());
-            entity.setInboundRouteId(inboundRouteId);
-            return callAttempts.save(entity).getId();
+            return callAttempts.startAttempt(targetId, channelId, language, inboundRouteId, company.id());
         } catch (Exception e) {
             log.warn("startAttempt failed for {}: {}", channelId, e.getMessage());
             return 0;
@@ -161,15 +144,7 @@ public class CallRecordService {
         }
         int seq = seqCounters.computeIfAbsent(callId, k -> new AtomicInteger()).incrementAndGet();
         try {
-            CallTranscriptEntity entity = new CallTranscriptEntity();
-            entity.setCall(callAttempts.getReferenceById(callId));
-            entity.setSeq(seq);
-            entity.setRole(role);
-            entity.setText(text);
-            entity.setDialogState(dialogState);
-            entity.setTsOffsetMs(Math.max(0, tsOffsetMs));
-            entity.setSttConfidence(confidence);
-            transcripts.save(entity);
+            transcripts.save(callId, seq, role, text, dialogState, tsOffsetMs, confidence);
         } catch (Exception e) {
             log.warn("addTranscript failed for call {}: {}", callId, e.getMessage());
         }
@@ -215,10 +190,9 @@ public class CallRecordService {
             return "";
         }
         try {
-            List<CallTranscriptEntity> rows = transcripts.findByCall_IdOrderBySeq(callId);
             StringBuilder sb = new StringBuilder();
-            for (CallTranscriptEntity row : rows) {
-                sb.append(row.getRole()).append(": ").append(row.getText()).append('\n');
+            for (String line : transcripts.transcriptLines(callId)) {
+                sb.append(line).append('\n');
             }
             return sb.toString();
         } catch (Exception e) {
@@ -340,27 +314,8 @@ public class CallRecordService {
             return;
         }
         try {
-            CallTechnicalEntity entity = new CallTechnicalEntity();
-            entity.setCall(callAttempts.getReferenceById(callId));
-            entity.setChannelName(channelName);
-            entity.setTrunk(trunk);
-            entity.setAmdResult(amdResult);
-            entity.setSttProvider(sttProvider);
-            entity.setTtsProvider(ttsProvider);
-            entity.setTtsVoice(ttsVoice);
-            entity.setLlmModel(llmModel);
-            if (technical != null) {
-                entity.setPromptTokens((int) technical.promptTokens());
-                entity.setCompletionTokens((int) technical.completionTokens());
-                entity.setCachedTokens((int) technical.cachedTokens());
-                entity.setTurnCount(technical.turnCount());
-                entity.setAvgTurnLatencyMs(technical.avgTurnLatencyMs());
-                entity.setMaxTurnLatencyMs(technical.maxTurnLatencyMs());
-                entity.setAvgLlmLatencyMs(technical.avgLlmLatencyMs());
-                entity.setMaxLlmLatencyMs(technical.maxLlmLatencyMs());
-            }
-            entity.setCreatedAt(Instant.now());
-            technicalDetails.save(entity);
+            technicalDetails.save(callId, channelName, trunk, amdResult, sttProvider, ttsProvider, ttsVoice,
+                    llmModel, technical);
         } catch (Exception e) {
             log.warn("writeTechnicalDetail failed for call {}: {}", callId, e.getMessage());
         }

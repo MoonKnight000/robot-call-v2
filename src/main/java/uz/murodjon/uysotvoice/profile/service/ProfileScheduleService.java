@@ -6,6 +6,7 @@ import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.profile.dto.ScheduleSlot;
 import uz.murodjon.uysotvoice.profile.dto.UpdateScheduleRequest;
 import uz.murodjon.uysotvoice.profile.repository.UserScheduleRepository;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
@@ -33,7 +34,7 @@ public class ProfileScheduleService {
     public List<ScheduleSlot> update(UpdateScheduleRequest r) {
         for (ScheduleSlot slot : r.slots()) {
             if (!slot.startTime().isBefore(slot.endTime())) {
-                throw new ValidationException("boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak");
+                throw new ValidationException(ErrorCode.SCHEDULE_START_AFTER_END);
             }
         }
         long userId = requireUserId();
@@ -43,6 +44,6 @@ public class ProfileScheduleService {
     }
 
     private long requireUserId() {
-        return currentUser.id().orElseThrow(() -> new ForbiddenException("no user session on this request"));
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 }

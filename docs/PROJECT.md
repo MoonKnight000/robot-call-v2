@@ -399,7 +399,7 @@ CREATE TABLE campaign (
     dial_window_start TIME       NOT NULL DEFAULT '09:00',
     dial_window_end   TIME       NOT NULL DEFAULT '20:00',
     max_attempts    INT          NOT NULL DEFAULT 3,
-    retry_interval_hours INT     NOT NULL DEFAULT 24,
+    retry_interval_minutes INT   NOT NULL DEFAULT 0,   -- 0 -> natijaga qarab (dialer.retry.*)
     max_concurrent_calls INT     NOT NULL DEFAULT 20,
     tts_voice       VARCHAR(64),             -- tanlangan ovoz (voice-agent.tts.catalog id); null -> sozlamadagi yo'naltirish
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),

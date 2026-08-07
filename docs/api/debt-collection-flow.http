@@ -27,7 +27,7 @@ Content-Type: application/json
   "dialWindowStart": "00:00",
   "dialWindowEnd": "23:59",
   "maxAttempts": 3,
-  "retryIntervalHours": 24,
+  "retryIntervalMinutes": 0,
   "maxConcurrentCalls": 1,
   "dailyCallCap": 10
 }

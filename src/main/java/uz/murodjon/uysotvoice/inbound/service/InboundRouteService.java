@@ -14,6 +14,7 @@ import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
 
@@ -46,7 +47,7 @@ public class InboundRouteService {
         // 404s if the scenario is unknown or belongs to another company.
         scenarios.requireScenario(r.scenarioId());
         if (routes.existsEnabledByDid(did)) {
-            throw new ConflictException("An enabled inbound route for " + did + " already exists");
+            throw new ConflictException(ErrorCode.INBOUND_ROUTE_DID_EXISTS, did);
         }
         long id = routes.create(did, r.scenarioId(), r.language(), r.businessHoursStart(), r.businessHoursEnd(),
                 r.fallbackMessage());
@@ -59,7 +60,7 @@ public class InboundRouteService {
         String did = PhoneNumbers.require(r.didNumber());
         scenarios.requireScenario(r.scenarioId());
         if (r.enabled() && routes.existsEnabledByDidExcluding(did, id)) {
-            throw new ConflictException("An enabled inbound route for " + did + " already exists");
+            throw new ConflictException(ErrorCode.INBOUND_ROUTE_DID_EXISTS, did);
         }
         routes.update(id, did, r.scenarioId(), r.language(), r.businessHoursStart(), r.businessHoursEnd(),
                 r.fallbackMessage(), r.enabled());
@@ -94,7 +95,7 @@ public class InboundRouteService {
     public InboundRoute requireRoute(long id) {
         InboundRoute row = routes.find(id);
         if (row == null) {
-            throw new NotFoundException("inbound_route", id);
+            throw new NotFoundException(ErrorCode.INBOUND_ROUTE_NOT_FOUND, id);
         }
         return row;
     }

@@ -8,6 +8,11 @@ package uz.murodjon.uysotvoice.agent.audio;
  * paid full price for silence. The VAD that already runs for barge-in scores every
  * window anyway, so the same signal opens and closes a gate in front of the STT stream.
  *
+ * <p>The moment it shuts is also this call's end-of-utterance signal when the recognizer
+ * has been told to stop deciding that for itself ({@code EndpointingProperties}), which
+ * is why the hangover can differ per utterance: see
+ * {@link #hangoverForCurrentUtterance()}.
+ *
  * <p>Two margins keep the recognizer whole. A <b>pre-roll</b> ring buffer holds the last
  * few hundred milliseconds while the gate is shut, so the syllables that arrive before
  * the VAD has made up its mind are still delivered — without it every utterance loses
@@ -22,6 +27,8 @@ package uz.murodjon.uysotvoice.agent.audio;
 public class SpeechGate {
 
     private final int hangoverSamples;
+    private final int shortHangoverSamples;
+    private final int shortUtteranceSamples;
     private final short[] preRoll;
 
     /** Write position in the ring, and how many samples it currently holds. */
@@ -30,18 +37,31 @@ public class SpeechGate {
 
     private boolean open;
     private int silenceSamples;
+    /** Speech in the utterance being gated — what decides which hangover applies. */
+    private int speechSamples;
 
     /** Set when VAD is unusable — the gate then passes everything, as before gating. */
     private boolean bypassed;
 
-    public SpeechGate(int sampleRate, int preRollMs, int postRollMs) {
+    /**
+     * @param shortUtteranceMs speech up to this long is a short answer, closed after
+     *                         {@code shortPostRollMs} instead of the full hangover.
+     *                         {@code 0} (with {@code shortPostRollMs}) turns the
+     *                         adaptation off and every utterance waits the same
+     * @param shortPostRollMs  the shorter hangover a short answer gets
+     */
+    public SpeechGate(int sampleRate, int preRollMs, int postRollMs,
+                      int shortUtteranceMs, int shortPostRollMs) {
         this.hangoverSamples = Math.max(0, postRollMs) * sampleRate / 1000;
+        this.shortHangoverSamples = Math.max(0, shortPostRollMs) * sampleRate / 1000;
+        this.shortUtteranceSamples = Math.max(0, shortUtteranceMs) * sampleRate / 1000;
         this.preRoll = new short[Math.max(1, Math.max(0, preRollMs) * sampleRate / 1000)];
     }
 
     /**
      * One scored VAD window. Speech opens the gate immediately (the pre-roll covers
-     * what came before); silence closes it only after the post-roll hangover.
+     * what came before); silence closes it only after the hangover this utterance
+     * has earned.
      *
      * @param speech  whether the window scored above the VAD threshold
      * @param samples how many samples the window covered
@@ -52,6 +72,7 @@ public class SpeechGate {
         }
         if (speech) {
             silenceSamples = 0;
+            speechSamples += samples;
             open = true;
             return;
         }
@@ -59,10 +80,23 @@ public class SpeechGate {
             return;
         }
         silenceSamples += samples;
-        if (silenceSamples >= hangoverSamples) {
+        if (silenceSamples >= hangoverForCurrentUtterance()) {
             open = false;
             silenceSamples = 0;
+            speechSamples = 0;
         }
+    }
+
+    /**
+     * How much silence closes the utterance in hand. A word or two ("ha", "yo'q",
+     * "eshitaman") is over the moment it stops, and making it wait as long as a dictated
+     * contract number costs that wait on the most common turn there is. Anything longer
+     * keeps the conservative hangover: it is the utterance that can still be
+     * mid-sentence, and cutting that one short is what produces half-heard turns.
+     */
+    private int hangoverForCurrentUtterance() {
+        boolean shortAnswer = shortHangoverSamples > 0 && speechSamples <= shortUtteranceSamples;
+        return shortAnswer ? shortHangoverSamples : hangoverSamples;
     }
 
     /**

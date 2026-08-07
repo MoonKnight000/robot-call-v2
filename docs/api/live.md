@@ -36,7 +36,7 @@ Hozir suhbatda bo'lgan har bir qo'ng'iroq. `DialogEngine.liveDialogs()`
       "dialogState": "DEBT_NOTICE"
     }
   ],
-  "message": null, "accept": true, "errors": null
+  "message": null, "messageCode": null, "accept": true, "errors": null
 }
 ```
 

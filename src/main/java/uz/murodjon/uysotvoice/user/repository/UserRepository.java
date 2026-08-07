@@ -3,7 +3,7 @@ package uz.murodjon.uysotvoice.user.repository;
 import org.springframework.stereotype.Repository;
 
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
-import uz.murodjon.uysotvoice.user.dto.User;
+import uz.murodjon.uysotvoice.user.domain.User;
 import uz.murodjon.uysotvoice.user.entity.UserEntity;
 import uz.murodjon.uysotvoice.user.enums.UserRole;
 import uz.murodjon.uysotvoice.user.enums.UserStatus;
@@ -69,27 +69,23 @@ public class UserRepository {
     }
 
     /** Unscoped by design — see class javadoc. */
-    public Optional<UserEntity> findByEmail(String email) {
-        return jpa.findByEmail(email);
+    public Optional<User> findByEmail(String email) {
+        return jpa.findByEmail(email).map(UserRepository::toUser);
     }
 
     /** Unscoped by design, same reasoning as {@link #findByEmail} — login happens by username now. */
-    public Optional<UserEntity> findByUsername(String username) {
-        return jpa.findByUsername(username);
+    public Optional<User> findByUsername(String username) {
+        return jpa.findByUsername(username).map(UserRepository::toUser);
     }
 
     /** Unscoped by design — {@code POST /api/auth/refresh} only knows the user id off a {@code user_session} row. */
-    public Optional<UserEntity> findById(long id) {
-        return jpa.findById(id);
+    public Optional<User> findById(long id) {
+        return jpa.findById(id).map(UserRepository::toUser);
     }
 
+    /** The full account record, scoped to the current company; {@code null} if not found. */
     public User find(long id) {
-        return jpa.findByIdAndCompanyId(id, company.id()).map(UserRepository::toRow).orElse(null);
-    }
-
-    /** Full entity (incl. profile fields not on the {@link User} row) — {@code profile.service.ProfileService}. */
-    public Optional<UserEntity> findEntity(long id) {
-        return jpa.findByIdAndCompanyId(id, company.id());
+        return jpa.findByIdAndCompanyId(id, company.id()).map(UserRepository::toUser).orElse(null);
     }
 
     /**
@@ -103,11 +99,11 @@ public class UserRepository {
         if (sipExtension == null || sipExtension.isBlank()) {
             return null;
         }
-        return jpa.findBySipExtensionAndCompanyId(sipExtension, companyId).map(UserRepository::toRow).orElse(null);
+        return jpa.findBySipExtensionAndCompanyId(sipExtension, companyId).map(UserRepository::toUser).orElse(null);
     }
 
     public List<User> findAll() {
-        return jpa.findByCompanyIdOrderById(company.id()).stream().map(UserRepository::toRow).toList();
+        return jpa.findByCompanyIdOrderById(company.id()).stream().map(UserRepository::toUser).toList();
     }
 
     /** Cheap id→name lookup for other features to enrich rows with e.g. {@code createdByName}. */
@@ -128,7 +124,7 @@ public class UserRepository {
     public List<User> findActiveByCompany(long companyId) {
         return jpa.findByCompanyIdOrderById(companyId).stream()
                 .filter(e -> e.getStatus() == UserStatus.ACTIVE)
-                .map(UserRepository::toRow)
+                .map(UserRepository::toUser)
                 .toList();
     }
 
@@ -148,8 +144,8 @@ public class UserRepository {
         });
     }
 
-    public Optional<UserEntity> findByInviteTokenHash(String tokenHash) {
-        return jpa.findByInviteTokenHash(tokenHash);
+    public Optional<User> findByInviteTokenHash(String tokenHash) {
+        return jpa.findByInviteTokenHash(tokenHash).map(UserRepository::toUser);
     }
 
     /** Sets the password, clears the invite token and marks the account {@link UserStatus#ACTIVE}. */
@@ -173,8 +169,8 @@ public class UserRepository {
     }
 
     /** Unscoped by design, same reasoning as {@link #findByInviteTokenHash} — the token itself is the proof. */
-    public Optional<UserEntity> findByResetTokenHash(String tokenHash) {
-        return jpa.findByResetTokenHash(tokenHash);
+    public Optional<User> findByResetTokenHash(String tokenHash) {
+        return jpa.findByResetTokenHash(tokenHash).map(UserRepository::toUser);
     }
 
     /** {@code POST /api/auth/reset-password} — sets the password and clears the reset token (one-time use). */
@@ -242,8 +238,10 @@ public class UserRepository {
         });
     }
 
-    private static User toRow(UserEntity e) {
-        return new User(e.getId(), e.getCompanyId(), e.getName(), e.getUsername(), e.getEmail(), e.getRole(),
-                e.getStatus(), e.getLastLoginAt(), e.getCreatedAt());
+    private static User toUser(UserEntity e) {
+        return new User(e.getId(), e.getCompanyId(), e.getName(), e.getUsername(), e.getEmail(),
+                e.getPasswordHash(), e.getRole(), e.getStatus(), e.getInviteTokenHash(), e.getInviteExpiresAt(),
+                e.getResetTokenHash(), e.getResetExpiresAt(), e.getLastLoginAt(), e.getCreatedAt(), e.getPhone(),
+                e.getPosition(), e.getAvatarFileId(), e.getCallColumns(), e.getSipExtension());
     }
 }

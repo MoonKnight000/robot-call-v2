@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 /**
@@ -29,8 +30,26 @@ public class ReportExportFactory {
             case "csv" -> csv.toCsv("report.csv", summary);
             case "pdf" -> pdf.toResponse("report.pdf", summary);
             case "xlsx" -> xlsx.toResponse("report.xlsx", summary);
-            default -> throw new ValidationException(
-                    "Unknown export format '" + format + "' — use csv, pdf, or xlsx");
+            default -> throw new ValidationException(ErrorCode.REPORT_EXPORT_FORMAT_UNKNOWN, format);
+        };
+    }
+
+    /** As {@link #toResponse}, without the HTTP wrapping — for {@code ReportScheduleService}'s email attachment. */
+    public byte[] renderBytes(String format, ReportSummary summary) {
+        return switch (format == null ? "" : format.toLowerCase()) {
+            case "csv" -> csv.renderBytes(summary);
+            case "pdf" -> pdf.renderBytes(summary);
+            case "xlsx" -> xlsx.renderBytes(summary);
+            default -> throw new ValidationException(ErrorCode.REPORT_EXPORT_FORMAT_UNKNOWN, format);
+        };
+    }
+
+    public String contentType(String format) {
+        return switch (format == null ? "" : format.toLowerCase()) {
+            case "csv" -> csv.contentType();
+            case "pdf" -> pdf.contentType();
+            case "xlsx" -> xlsx.contentType();
+            default -> throw new ValidationException(ErrorCode.REPORT_EXPORT_FORMAT_UNKNOWN, format);
         };
     }
 }

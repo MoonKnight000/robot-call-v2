@@ -3,8 +3,6 @@ package uz.murodjon.uysotvoice.report.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -17,10 +15,10 @@ import uz.murodjon.uysotvoice.report.dto.CreateReportScheduleRequest;
 import uz.murodjon.uysotvoice.report.dto.ReportSchedule;
 import uz.murodjon.uysotvoice.report.dto.ReportScheduleFilter;
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
-import uz.murodjon.uysotvoice.report.entity.ReportScheduleEntity;
 import uz.murodjon.uysotvoice.report.enums.ReportPeriodicity;
 import uz.murodjon.uysotvoice.report.repository.ReportScheduleRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
@@ -67,7 +65,7 @@ public class ReportScheduleService {
 
     public ReportSchedule create(CreateReportScheduleRequest r) {
         if (r.format() != null && !r.format().isBlank() && !ALLOWED_FORMATS.contains(r.format().toLowerCase())) {
-            throw new ValidationException("format must be one of " + ALLOWED_FORMATS + ", got '" + r.format() + "'");
+            throw new ValidationException(ErrorCode.REPORT_SCHEDULE_FORMAT_INVALID, ALLOWED_FORMATS, r.format());
         }
         if (r.campaignId() != null) {
             campaigns.requireCampaign(r.campaignId()); // 404s if unknown or another company's
@@ -87,7 +85,7 @@ public class ReportScheduleService {
     public ReportSchedule requireSchedule(long id) {
         ReportSchedule row = schedules.find(id);
         if (row == null) {
-            throw new NotFoundException("report_schedule", id);
+            throw new NotFoundException(ErrorCode.REPORT_SCHEDULE_NOT_FOUND, id);
         }
         return row;
     }
@@ -112,34 +110,32 @@ public class ReportScheduleService {
             return;
         }
         Instant now = Instant.now();
-        for (ReportScheduleEntity schedule : schedules.findEnabled()) {
+        for (ReportSchedule schedule : schedules.findEnabled()) {
             try {
-                Instant since = schedule.getLastSentAt() != null ? schedule.getLastSentAt() : schedule.getCreatedAt();
-                if (since.plus(schedule.getPeriodicity().span()).isAfter(now)) {
+                Instant since = schedule.lastSentAt() != null ? schedule.lastSentAt() : schedule.createdAt();
+                if (since.plus(schedule.periodicity().span()).isAfter(now)) {
                     continue; // not due yet
                 }
                 sendOne(schedule, since, now);
-                schedules.markSent(schedule.getId(), now);
+                schedules.markSent(schedule.id(), now);
             } catch (Exception e) {
-                log.warn("Report schedule {} failed: {}", schedule.getId(), e.getMessage());
+                log.warn("Report schedule {} failed: {}", schedule.id(), e.getMessage());
             }
         }
     }
 
-    private void sendOne(ReportScheduleEntity schedule, Instant from, Instant to) throws Exception {
-        ReportSummary summary = reportService.summary(from.toString(), to.toString(), schedule.getCampaignId());
-        ResponseEntity<byte[]> rendered = exportFactory.toResponse(schedule.getFormat(), summary);
-        MediaType contentType = rendered.getHeaders().getContentType();
-        emailSender.send(schedule.getEmail(),
-                "Uysot Voice — hisobot (" + schedule.getPeriodicity() + ")",
+    private void sendOne(ReportSchedule schedule, Instant from, Instant to) throws Exception {
+        ReportSummary summary = reportService.summary(from.toString(), to.toString(), schedule.campaignId());
+        byte[] rendered = exportFactory.renderBytes(schedule.format(), summary);
+        String contentType = exportFactory.contentType(schedule.format());
+        emailSender.send(schedule.email(),
+                "Uysot Voice — hisobot (" + schedule.periodicity() + ")",
                 "Ilova qilingan fayl " + from + " dan " + to + " gacha bo'lgan davrni qamrab oladi.",
-                rendered.getBody(), "report." + schedule.getFormat(),
-                contentType != null ? contentType.toString() : "application/octet-stream");
-        audit.record("REPORT_SCHEDULE_SENT", "report_schedule", String.valueOf(schedule.getId()),
-                schedule.getEmail());
-        if (schedule.getPeriodicity() == ReportPeriodicity.DAILY) {
-            notifications.notify(schedule.getCompanyId(), NotificationType.DAILY_REPORT,
-                    "Kunlik hisobot tayyor", schedule.getEmail() + " manziliga yuborildi", null);
+                rendered, "report." + schedule.format(), contentType);
+        audit.record("REPORT_SCHEDULE_SENT", "report_schedule", String.valueOf(schedule.id()), schedule.email());
+        if (schedule.periodicity() == ReportPeriodicity.DAILY) {
+            notifications.notify(schedule.companyId(), NotificationType.DAILY_REPORT,
+                    "Kunlik hisobot tayyor", schedule.email() + " manziliga yuborildi", null);
         }
     }
 }

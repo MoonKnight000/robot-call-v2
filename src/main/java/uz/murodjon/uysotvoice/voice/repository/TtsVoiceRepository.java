@@ -62,6 +62,6 @@ public class TtsVoiceRepository {
     }
 
     private static TtsVoice toRow(TtsVoiceEntity e) {
-        return new TtsVoice(e.getId(), e.getProvider(), e.getLanguage(), e.getName(), e.getLabel());
+        return new TtsVoice(e.getId(), e.getProvider(), e.getLanguage(), e.getName(), e.getLabel(), e.getRole());
     }
 }

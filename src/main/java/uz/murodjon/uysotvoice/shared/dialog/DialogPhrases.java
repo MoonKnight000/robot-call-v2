@@ -1,5 +1,6 @@
 package uz.murodjon.uysotvoice.shared.dialog;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -17,11 +18,26 @@ public final class DialogPhrases {
     private DialogPhrases() {
     }
 
-    /** The §11.1 disclosure: automated system, call is recorded. */
-    public static String disclosure(String language) {
+    /**
+     * The §11.1 disclosure: automated system, call is recorded — spoken in the name of
+     * the company whose campaign is dialling, since the platform is multi-tenant and a
+     * caller is owed the identity of whoever is actually calling them.
+     *
+     * @param companyName the calling company's name; blank falls back to naming no
+     *                    company at all, which is still a valid disclosure — the notice
+     *                    is that this is a machine and it records, not who owns it
+     */
+    public static String disclosure(String language, String companyName) {
+        if (companyName == null || companyName.isBlank()) {
+            return russian(language)
+                    ? "Здравствуйте! Это автоматический голосовой сервис. Разговор записывается."
+                    : "Assalomu alaykum! Bu avtomatik ovozli xizmat. Suhbat yozib olinmoqda.";
+        }
+        String company = companyName.trim();
         return russian(language)
-                ? "Здравствуйте! Это автоматический голосовой сервис компании Uysot. Разговор записывается."
-                : "Assalomu alaykum! Bu Uysot kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.";
+                ? "Здравствуйте! Это автоматический голосовой сервис компании " + company + ". Разговор записывается."
+                : "Assalomu alaykum! Bu " + company + " kompaniyasining avtomatik ovozli xizmati. "
+                        + "Suhbat yozib olinmoqda.";
     }
 
     /** Closing line when a guardrail (turn cap, duration cap) ends the call. */
@@ -61,12 +77,41 @@ public final class DialogPhrases {
     }
 
     /**
+     * Short "I heard you, I'm working on it" fillers, spoken over the gap while the LLM
+     * is still generating (§1.3). A person answering a question does not go silent for a
+     * second and a half; they say something like this, and the pause stops feeling like
+     * a dropped line.
+     *
+     * <p>Chosen to be things the model itself would never open a reply with. An
+     * acknowledgement ("ha, tushunarli") risks the model beginning its own answer the
+     * same way, and the caller then hears it twice. A "give me a second" cannot collide.
+     *
+     * <p>Kept short on purpose: whatever plays here is queued ahead of the real reply, so
+     * a long filler buys the caller company at the cost of delaying the actual answer.
+     * More than one so a caller on a long call does not hear the same word every turn.
+     */
+    public static List<String> thinking(String language) {
+        return russian(language)
+                ? List.of("Секунду.", "Сейчас скажу.")
+                : List.of("Bir soniya.", "Hozir aytaman.");
+    }
+
+    /**
      * Every fixed line in one language — what the TTS warm-up pre-synthesizes. Audio is
      * only reusable for the voice of its own language, so warm-up is per language.
+     *
+     * <p>The fillers matter most here: one that is not already in the cache has to be
+     * synthesized inside the very turn it is meant to cover, which is the one situation
+     * where it cannot help.
+     *
+     * @param companyName whose disclosure to include; the rest of the lines name no
+     *                    company, so warming a second company only adds that one line
      */
-    public static List<String> forLanguage(String language) {
-        return List.of(disclosure(language), farewell(language), didNotCatch(language),
-                stillThere(language), transferring(language));
+    public static List<String> forLanguage(String language, String companyName) {
+        List<String> lines = new ArrayList<>(List.of(disclosure(language, companyName), farewell(language),
+                didNotCatch(language), stillThere(language), transferring(language)));
+        lines.addAll(thinking(language));
+        return List.copyOf(lines);
     }
 
     private static boolean russian(String language) {

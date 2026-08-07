@@ -12,7 +12,7 @@ import java.util.List;
 
 /** Spring Data repository for {@link AuditLogEntity}. */
 @Repository
-public interface AuditRepository extends JpaRepository<AuditLogEntity, Long> {
+public interface AuditLogJpaRepository extends JpaRepository<AuditLogEntity, Long> {
 
     List<AuditLogEntity> findByCompanyId(long companyId, Pageable pageable);
 

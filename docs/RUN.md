@@ -203,7 +203,14 @@ Nimaga qarash kerak:
   `STT_VAD_GATING=false` bilan o'chiring.
 - **Birinchi qo'ng'iroqda ovoz kechiksa** — startupdagi TTS warm-up logini ko'ring:
   `TTS warm-up: N line(s) cached in ... ms`. `failed` bo'lsa kalit/voice sozlamasi
-  noto'g'ri.
+  noto'g'ri. Warm-up har kompaniyaning **o'z ovoz sozlamalari** (tezlik/ton/provayder)
+  bilan sintez qiladi — bular kesh kalitining bir qismi, shuning uchun sozlamani
+  o'zgartirgan kompaniya uchun bir marta qayta sintez bo'ladi.
+- **`voice_tts_failovers_total` o'sib turibdi** — asosiy TTS provayder yiqilgan va
+  gaplarni ikkinchisi aytyapti (logda `TTS provider ... failed ... goes to ... instead`).
+  Qo'ng'iroq buzilmaydi, lekin mijoz kampaniya tanlagan ovozni emas, o'rinbosarning
+  standart ovozini eshitadi va belgi narxi ham boshqa provayderniki bo'ladi. Yiqilgan
+  provayder 60 soniya chetlab o'tiladi, keyin o'zi qayta sinaladi.
 
 Sozlamalar `.env.example` dagi "Cost controls" bo'limida.
 
@@ -217,6 +224,80 @@ Bundan tashqari ikkita qattiq chegara bor:
   (`dialer:campaign:{id}:{sana}`) va *dispatch* bo'yicha yuritiladi, `call_attempt`
   bo'yicha emas: javobsiz qo'ng'iroq attempt yozuvi yaratmaydi, lekin trunk daqiqasini
   sarflaydi.
+
+## Audio yo'lining sifati (RTP)
+
+"Bot meni eshitmadi" degan shikoyatning uch xil sababi bor va ular tashqaridan bir xil
+ko'rinadi: tarmoq audioni yo'qotgan, mijoz jim turgan, yoki STT final qaytarmagan. Har
+qo'ng'iroq oxirida kiruvchi RTP oqimi (RFC 3550) hisoblanadi va logda bitta qator
+bo'lib chiqadi:
+
+```
+[PJSIP/trunk-0000001] inbound RTP: 1487 packets, 0% loss, jitter 3ms
+```
+
+```powershell
+curl.exe -s -H "X-Api-Key: $key" http://localhost:8080/actuator/prometheus |
+  Select-String "voice_rtp"
+```
+
+| Metrika | Nimani ko'rsatadi |
+|---|---|
+| `voice_rtp_packets_received_total` / `_lost_total` | kelgan / ketma-ketlik bo'yicha umuman kelmagan paketlar |
+| `voice_rtp_packets_reordered_total` | kech yoki ikki marta kelgan paketlar |
+| `voice_rtp_calls_silent_total` | bitta ham kiruvchi paket kelmagan qo'ng'iroqlar |
+| `voice_rtp_jitter` / `voice_rtp_loss` | har qo'ng'iroq uchun jitter (ms) va yo'qotish (%) taqsimoti |
+
+Nimaga qarash kerak:
+
+- **`voice_rtp_calls_silent_total` nolda emas** — media yo'li umuman qurilmagan. Logda
+  `ALERT: no inbound RTP at all on call ...` chiqadi: `RTP_LOCAL_IP` Asterisk tomondan
+  erishilmayapti yoki externalMedia porti yopiq ([NETWORK.md](NETWORK.md)).
+- **5% dan ortiq yo'qotish** — logda `poor inbound RTP` ogohlantirishi. Bunday
+  qo'ng'iroqning transkripti ishonchsiz: STT eshitilmagan so'zlarni "to'ldiradi", va
+  disposition ham shunga qarab noto'g'ri chiqadi. Trunk/tarmoqni tekshiring, LLM
+  promptini emas.
+- **Jitter 30-40 ms dan oshsa** — `RTP_EVENT_LOOP_THREADS` ni oshiring: bitta Netty
+  threadi barcha qo'ng'iroqlarning ham kiruvchi paketini, ham 20 ms pacer'ini
+  tortayotgan bo'lishi mumkin.
+
+## Javob tezligi (turnaround)
+
+`voice_turnaround_latency` — mijoz gapirib bo'lgandan botning birinchi tovushi simga
+chiqqunicha o'tgan vaqt. §1.3 byudjeti: **p95 < 1000 ms**. Endi buni kimdir kutib
+o'tirmaydi — `AlertingService` har 5 daqiqada tekshiradi va oshsa logga yozadi:
+
+```
+ALERT: turnaround p95 1840ms over the last 64 turns exceeds the 1000ms budget (§1.3)
+```
+
+Oyna aylanma (Micrometer), ya'ni "hozir qanday" degan savolga javob beradi; kam turnli
+oynaga baho berilmaydi (`ALERTING_TURNAROUND_MIN_TURNS`, default 30).
+
+Byudjetdagi eng katta bo'lak — **mijoz jim bo'lgandan keyin STT "gap tugadi" deb
+hisoblagunicha** o'tgan vaqt. Uni tezlashtirish uchun ikki yo'l bor va ikkalasi ham
+transkript sifati bilan savdolashadi:
+
+1. `STT_YANDEX_EOU_SENSITIVITY=HIGH` — SpeechKit'ning o'z detektorini tezlashtiradi.
+   **Bu allaqachon sinalgan va qaytarilgan:** uz-UZ finallari bo'lak-bo'lak kela
+   boshlagan (application.yml dagi izohga qarang).
+2. `STT_ENDPOINTING=true` — qarorni o'zimiz qabul qilamiz: barge-in uchun ishlayotgan
+   VAD "gap tugadi" deydi va SpeechKit'ga aytiladi (external EOU klassifikatori).
+   Farqi shundaki, tez kesish **faqat qisqa javoblarga** qo'llanadi:
+   `STT_ENDPOINTING_SHORT_UTTERANCE_MS` (1200 ms) dan qisqa gap
+   `STT_ENDPOINTING_SHORT_SILENCE_MS` (400 ms) jimlikdan keyin yopiladi, undan uzunlari
+   esa oldingidek to'liq `STT_VAD_POST_ROLL_MS` ni kutadi. Ya'ni "ha"/"yo'q" tez ketadi,
+   shartnoma raqamini sekin aytayotgan odam esa bo'linmaydi.
+
+`STT_ENDPOINTING` **default o'chiq** va uni faqat real uz-UZ qo'ng'iroqlarni tinglab
+yoqish kerak. Yoqqandan keyin:
+
+- `voice_stt_utterances_endpointed_total` mijoz navbatlari soniga yaqin bo'lsin. Ancha
+  ko'p bo'lsa — gaplar bo'linyapti (`SHORT_SILENCE_MS` ni oshiring), ancha kam bo'lsa —
+  gaplar qo'shilib ketyapti.
+- Logda `utterance ran past ... ms — forcing end of utterance` chiqsa, VAD ishlamayapti
+  (model yo'q yoki liniyada doimiy shovqin): bu xavfsizlik to'ri, normal holat emas.
+- Google STT bilan bu sozlama ta'sir qilmaydi — uning API'sida bunday imkoniyat yo'q.
 
 ## Natijalar va hisobotlar
 
@@ -242,6 +323,11 @@ curl.exe -s -H "X-Api-Key: $key" -o call-12.wav `
 Yozuv MinIO yoqilgan bo'lsa u yerga redirect qilinadi, aks holda diskdagi fayl
 beriladi (`recording_url` `file:` bilan boshlanadi). `STORAGE_RETENTION_DAYS` o'tgach
 yozuv ham, transkript ham o'chadi — `call_attempt`/`call_result` esa qoladi.
+
+Fayl **stereo**: chap kanal — mijoz, o'ng kanal — botning o'z ovozi (8 kHz, 16-bit).
+Ikkalasi aralashtirilmagan, shuning uchun ikkovi bir vaqtda gapirganda ham kim nima
+deganini ajratib bo'ladi. Bitta kanalni tinglash uchun pleyerda balansni buring yoki
+`ffmpeg -i call-12.wav -map_channel 0.0.0 mijoz.wav -map_channel 0.0.1 bot.wav`.
 
 ## Nishonlarni CSV bilan yuklash
 

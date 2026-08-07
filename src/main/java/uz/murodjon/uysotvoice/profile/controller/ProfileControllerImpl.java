@@ -5,7 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import uz.murodjon.uysotvoice.auth.dto.UserSession;
+import uz.murodjon.uysotvoice.auth.dto.UserSessionRow;
 import uz.murodjon.uysotvoice.profile.dto.ChangePasswordRequest;
 import uz.murodjon.uysotvoice.profile.dto.PersonalNotificationMatrixEntry;
 import uz.murodjon.uysotvoice.profile.dto.Profile;
@@ -65,7 +65,7 @@ public class ProfileControllerImpl implements ProfileController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<UserSession>>> sessions() {
+    public ResponseEntity<ResponseData<List<UserSessionRow>>> sessions() {
         return ResponseEntity.ok(ResponseData.ok(sessions.list()));
     }
 

@@ -204,12 +204,12 @@
         <label>Maqsad / skript (goalPrompt)</label>
         <textarea id="c_goal">Mijozdan qarzni to'lash sanasini aniqlang. Muloyim va professional bo'ling.</textarea>
         <div class="row">
-          <div><label>Oyna boshi</label><input id="c_ws" type="time" value="09:00"></div>
-          <div><label>Oyna oxiri</label><input id="c_we" type="time" value="20:00"></div>
+          <div><label>Oyna boshi</label><input id="c_ws" type="time" value="07:00"></div>
+          <div><label>Oyna oxiri</label><input id="c_we" type="time" value="23:00"></div>
         </div>
         <div class="row">
           <div><label>Max urinish</label><input id="c_max" type="number" value="3"></div>
-          <div><label>Retry (soat)</label><input id="c_retry" type="number" value="24"></div>
+          <div><label>Retry (daqiqa, 0=avto)</label><input id="c_retry" type="number" value="0"></div>
           <div><label>Parallel</label><input id="c_conc" type="number" value="20"></div>
           <div><label>Kunlik limit (0=cheksiz)</label><input id="c_cap" type="number" value="0"></div>
         </div>
@@ -506,7 +506,7 @@ async function createCampaign(){
     name:$('c_name').value, type:$('c_type').value, goalPrompt:$('c_goal').value,
     defaultLanguage:$('c_lang').value, dialWindowStart:$('c_ws').value+':00',
     dialWindowEnd:$('c_we').value+':00', maxAttempts:+$('c_max').value,
-    retryIntervalHours:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value,
+    retryIntervalMinutes:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value,
     ttsVoice:$('c_voice').value||null, dailyCallCap:+$('c_cap').value,
     scenarioId:+$('c_scenario').value||null
   };

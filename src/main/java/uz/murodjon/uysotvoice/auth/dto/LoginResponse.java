@@ -1,6 +1,6 @@
 package uz.murodjon.uysotvoice.auth.dto;
 
-import uz.murodjon.uysotvoice.user.dto.User;
+import uz.murodjon.uysotvoice.user.dto.UserRow;
 
 import java.time.Instant;
 
@@ -17,6 +17,6 @@ public record LoginResponse(
         Instant accessTokenExpiresAt,
         String refreshToken,
         Instant refreshTokenExpiresAt,
-        User me
+        UserRow me
 ) {
 }

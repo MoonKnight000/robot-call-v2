@@ -18,6 +18,7 @@ import java.time.Instant;
  */
 public record ReportSchedule(
         long id,
+        long companyId,
         String email,
         ReportPeriodicity periodicity,
         String format,

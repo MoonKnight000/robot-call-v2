@@ -165,7 +165,7 @@ saqlaydi/qaytaradi.
 saqlanmagan bo'lsa `null`:
 
 ```json
-{ "data": ["phone", "campaign", "disposition", "duration"], "message": null, "accept": true, "errors": null }
+{ "data": ["phone", "campaign", "disposition", "duration"], "message": null, "messageCode": null, "accept": true, "errors": null }
 ```
 
 ## `PUT /api/profile/table-config/{key}` — jadval sozlamasini saqlash

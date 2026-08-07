@@ -41,11 +41,11 @@ qatlamlarni aralashtirib yuborish eng ko'p uchraydigan xato.
 
 ### Uchta IP — hech qachon aralashtirmang
 
-| IP turi | Qiymat (hozir) | Qayerda ishlatiladi | Kim ko'radi |
-|---|---|---|---|
-| **Public / WAN** | `90.156.197.92` | `pjsip.conf` → `external_media_address`, `external_signaling_address` | Internet, SIP provayder |
-| **LAN** | `192.168.88.72` (PC), `192.168.88.1` (router) | `local_net`, port forward maqsadi, softphone testi | Faqat uy/ofis tarmog'i |
-| **Docker ichki** | `app`, `asterisk`, `postgres`… (DNS nomlari) | `RTP_LOCAL_IP=app`, `ARI_URL=http://asterisk:8088/` | Faqat konteynerlar |
+| IP turi          | Qiymat (hozir)                                | Qayerda ishlatiladi                                                   | Kim ko'radi             |
+|------------------|-----------------------------------------------|-----------------------------------------------------------------------|-------------------------|
+| **Public / WAN** | `90.156.197.92`                               | `pjsip.conf` → `external_media_address`, `external_signaling_address` | Internet, SIP provayder |
+| **LAN**          | `192.168.88.72` (PC), `192.168.88.1` (router) | `local_net`, port forward maqsadi, softphone testi                    | Faqat uy/ofis tarmog'i  |
+| **Docker ichki** | `app`, `asterisk`, `postgres`… (DNS nomlari)  | `RTP_LOCAL_IP=app`, `ARI_URL=http://asterisk:8088/`                   | Faqat konteynerlar      |
 
 > `90.156.197.92` — **kompyuterning IP'si emas, routerning WAN IP'si**. Shuning
 > uchun `http://90.156.197.92:8080` ga kirish ishlamaydi: router bu paketni
@@ -72,12 +72,12 @@ bo'lgan qiymat.
 Router'ga kirib **WAN interfeysning IP'siga** qarang va public IP bilan
 solishtiring:
 
-| Router WAN IP | Ma'nosi | Port forward ishlaydimi |
-|---|---|---|
-| `90.156.197.92` (public IP bilan bir xil) | Real public IP, bitta NAT | ✅ Ha |
-| `10.x.x.x` | Provayder NAT'i ostidasiz | ❌ Yo'q |
-| `100.64.x.x` – `100.127.x.x` | **CGNAT** (RFC 6598) | ❌ Yo'q |
-| `192.168.x.x` / `172.16–31.x.x` | Double NAT (modem + router) | ❌ Yo'q (modemda ham forward kerak) |
+| Router WAN IP                             | Ma'nosi                     | Port forward ishlaydimi             |
+|-------------------------------------------|-----------------------------|-------------------------------------|
+| `90.156.197.92` (public IP bilan bir xil) | Real public IP, bitta NAT   | ✅ Ha                               |
+| `10.x.x.x`                                | Provayder NAT'i ostidasiz   | ❌ Yo'q                             |
+| `100.64.x.x` – `100.127.x.x`              | **CGNAT** (RFC 6598)        | ❌ Yo'q                             |
+| `192.168.x.x` / `172.16–31.x.x`           | Double NAT (modem + router) | ❌ Yo'q (modemda ham forward kerak) |
 
 **Agar CGNAT bo'lsa**, router'da nima qilsangiz ham tashqaridan kirib
 bo'lmaydi. Yechimlar:
@@ -133,11 +133,11 @@ Asterisk'ga "SDP/Contact ichida bu manzilni yoz" deb aytadi.
 
 ### Qaysi holatda nima yozish
 
-| Holat | `external_*_address` | `local_net` |
-|---|---|---|
-| **Real trunk** (provayder internet orqali) | Public IP: `90.156.197.92` | LAN subnet: `192.168.88.0/24` |
-| **Faqat LAN softphone** (trunk'siz, `600` ga qo'ng'iroq) | LAN IP: `192.168.88.72` | `192.168.88.0/24` |
-| **VPS / public IP'li server** | Serverning public IP'si (yoki umuman olib tashlash — [§9](#9-vps--serverga-kochirilganda)) | Kerak bo'lmaydi |
+| Holat                                                    | `external_*_address`                                                                       | `local_net`                   |
+|----------------------------------------------------------|--------------------------------------------------------------------------------------------|-------------------------------|
+| **Real trunk** (provayder internet orqali)               | Public IP: `90.156.197.92`                                                                 | LAN subnet: `192.168.88.0/24` |
+| **Faqat LAN softphone** (trunk'siz, `600` ga qo'ng'iroq) | LAN IP: `192.168.88.72`                                                                    | `192.168.88.0/24`             |
+| **VPS / public IP'li server**                            | Serverning public IP'si (yoki umuman olib tashlash — [§9](#9-vps--serverga-kochirilganda)) | Kerak bo'lmaydi               |
 
 Transport bittа bo'lgani uchun **ikkalasini bir vaqtda ishlatib bo'lmaydi** —
 faylda tayyor kommentlangan variantlar bor, kerakligini yoqib, ikkinchisini
@@ -165,12 +165,12 @@ teshik orqali javob paketlarini qaytaradi. Ya'ni:
 
 ### 4.2. Amaliy javob
 
-| Rejim | Port forward | Izoh |
-|---|---|---|
-| **Outbound-only** (hozirgi MVP: app qo'ng'iroq qiladi) | ❌ Shart emas, ✅ tavsiya etiladi | Registratsiya va RTP outbound teshiklar orqali ishlaydi. Lekin teshik **vaqt bilan yopiladi** ([§4.3](#43-outbound-only-boyicha-ogohlantirishlar)) |
-| **Inbound / DID** (tashqaridan qo'ng'iroq qabul qilish) | ✅ **Shart** | Provayder o'zi `INVITE` boshlaydi, teshik yo'q |
-| **Tashqi softphone** (uydan ofis Asterisk'iga registratsiya) | ✅ **Shart** | Yuqoridagi bilan bir xil sabab |
-| **Faqat LAN softphone** | ❌ Kerak emas | Trafik router'ning WAN tomoniga chiqmaydi |
+| Rejim                                                        | Port forward                      | Izoh                                                                                                                                               |
+|--------------------------------------------------------------|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Outbound-only** (hozirgi MVP: app qo'ng'iroq qiladi)       | ❌ Shart emas, ✅ tavsiya etiladi | Registratsiya va RTP outbound teshiklar orqali ishlaydi. Lekin teshik **vaqt bilan yopiladi** ([§4.3](#43-outbound-only-boyicha-ogohlantirishlar)) |
+| **Inbound / DID** (tashqaridan qo'ng'iroq qabul qilish)      | ✅ **Shart**                      | Provayder o'zi `INVITE` boshlaydi, teshik yo'q                                                                                                     |
+| **Tashqi softphone** (uydan ofis Asterisk'iga registratsiya) | ✅ **Shart**                      | Yuqoridagi bilan bir xil sabab                                                                                                                     |
+| **Faqat LAN softphone**                                      | ❌ Kerak emas                     | Trafik router'ning WAN tomoniga chiqmaydi                                                                                                          |
 
 Loyihaning hozirgi qamrovi outbound-only: `extensions.conf` dagi
 `[from-trunk]` konteksti kiruvchi qo'ng'iroqni ataylab `Hangup()` qiladi. Ya'ni
@@ -222,14 +222,14 @@ Asterisk'dami — ajratish osonroq.
 
 ### 4.4. Forward qilinadigan portlar
 
-| Port | Proto | Nimaga | Forward |
-|---|---|---|---|
-| `5060` | UDP | SIP signalizatsiya | Trunk uchun ✅ |
-| `10000-10200` | UDP | Asterisk RTP (`asterisk/etc/asterisk/rtp.conf`) | Trunk uchun ✅ |
-| `20000-20500` | UDP | App'ning externalMedia RTP (`application.yml` → `voice.rtp.port-range-*`) | ❌ **Kerak emas** — Asterisk↔app trafigi Docker ichida (`RTP_LOCAL_IP=app`), router'ga chiqmaydi |
-| `8088` | TCP | Asterisk ARI / WebSocket | ❌ **Hech qachon ochmang** — parol bilan to'liq PBX boshqaruvi |
-| `8080` | TCP | App REST API + actuator | ❌ Ochmang ([§8](#8-xavfsizlik--nimalarni-ochmaslik-kerak)) |
-| `5432`, `6379`, `5672`, `15672`, `9000`, `9001` | TCP | Postgres, Redis, RabbitMQ, MinIO | ❌ **Hech qachon** |
+| Port                                            | Proto | Nimaga                                                                    | Forward                                                                                          |
+|-------------------------------------------------|-------|---------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `5060`                                          | UDP   | SIP signalizatsiya                                                        | Trunk uchun ✅                                                                                   |
+| `10000-10200`                                   | UDP   | Asterisk RTP (`asterisk/etc/asterisk/rtp.conf`)                           | Trunk uchun ✅                                                                                   |
+| `20000-20500`                                   | UDP   | App'ning externalMedia RTP (`application.yml` → `voice.rtp.port-range-*`) | ❌ **Kerak emas** — Asterisk↔app trafigi Docker ichida (`RTP_LOCAL_IP=app`), router'ga chiqmaydi |
+| `8088`                                          | TCP   | Asterisk ARI / WebSocket                                                  | ❌ **Hech qachon ochmang** — parol bilan to'liq PBX boshqaruvi                                   |
+| `8080`                                          | TCP   | App REST API + actuator                                                   | ❌ Ochmang ([§8](#8-xavfsizlik--nimalarni-ochmaslik-kerak))                                      |
+| `5432`, `6379`, `5672`, `15672`, `9000`, `9001` | TCP   | Postgres, Redis, RabbitMQ, MinIO                                          | ❌ **Hech qachon**                                                                               |
 
 RTP diapazoni SIP portidan ancha keng — har bir suhbat 2 port oladi. 100
 parallel qo'ng'iroq uchun 10000–10200 yetadi.
@@ -286,10 +286,10 @@ Web-interfeysda bo'lim nomi har xil: **Port Forwarding**, **Virtual Server**,
 
 Ikkita yozuv qo'shing:
 
-| Nom | Tashqi port | Ichki IP | Ichki port | Protokol |
-|---|---|---|---|---|
-| `asterisk-sip` | 5060 | 192.168.88.72 | 5060 | UDP |
-| `asterisk-rtp` | 10000–10200 | 192.168.88.72 | 10000–10200 | UDP |
+| Nom            | Tashqi port | Ichki IP      | Ichki port  | Protokol |
+|----------------|-------------|---------------|-------------|----------|
+| `asterisk-sip` | 5060        | 192.168.88.72 | 5060        | UDP      |
+| `asterisk-rtp` | 10000–10200 | 192.168.88.72 | 10000–10200 | UDP      |
 
 Diapazon qo'llab-quvvatlanmasa, RTP'ni toraytirish mumkin — `rtp.conf` da
 `rtpend = 10020` qilib, forward'ni ham `10000–10020` qilasiz (≈10 parallel
@@ -466,32 +466,69 @@ Yechimlar, yaxshiroqdan boshlab:
    /ip cloud set ddns-enabled=yes
    /ip cloud print          # → xxxxxxxx.sn.mynetname.net
    ```
-3. **Qo'lda tekshirish** (IP o'zgardi deb gumon qilganda):
-   ```powershell
-   curl.exe -s https://ifconfig.me     # yangi IP
-   # pjsip.conf:15-16 ni yangilash, keyin:
-   docker compose restart asterisk
-   ```
+3. **Avtomatik tekshirish va yangilash** — `asterisk/update-external-ip.sh`
+   ([§10.1](#101-avtomatik-yangilash-skripti)). IP statik xizmatga ega
+   bo'lmaganingizda va DDNS sozlashni istamasangiz, shu skript qo'lda
+   qilinadigan (2)-bandni avtomatlashtiradi.
 
 STUN (`asterisk/etc/asterisk/pjsip.conf` da `stun_server`) — bu yerda tavsiya
 qilinmaydi: Asterisk'ning STUN qo'llashi cheklangan va `external_*_address`
 bilan konflikt beradi. Statik IP yoki VPS ancha barqaror.
 
+### 10.1. Avtomatik yangilash skripti
+
+`asterisk/update-external-ip.sh` `docker-compose.yml`dagi `asterisk-ip-sync`
+xizmati sifatida ulangan — **har `docker compose up` da, asterisk konteyneri
+ishga tushishidan OLDIN** avtomatik ishlaydi (`asterisk` uni
+`depends_on: condition: service_completed_successfully` bilan kutadi).
+Qo'lda ishga tushirish, cron, yoki Task Scheduler shart emas.
+
+1. Joriy public IP'ni oladi (`ifconfig.me`, muvaffaqiyatsiz bo'lsa
+   `ipinfo.io/ip`).
+2. `pjsip.conf`dagi `[transport-trunk]` bo'limida e'lon qilingan IP bilan
+   solishtiradi.
+3. Farq bo'lsa — **faqat shu bo'limdagi** ikkita qatorni
+   (`external_signaling_address`, `external_media_address`) yangilaydi
+   (`[transport-lan]` — softphone/LAN transporti — tegilmaydi).
+4. Farq bo'lmasa — hech narsa qilmaydi.
+
+Asterisk hali ishga tushmagani uchun bu bosqichda restart shart emas — fayl
+Asterisk o'qishidan oldin allaqachon to'g'ri. Natijani ko'rish:
+
+```powershell
+docker compose up -d
+docker compose logs asterisk-ip-sync
+```
+
+Diqqat: bu **faqat startda** ishlaydi. Stack allaqachon ishlab turgan paytda
+IP o'zgarsa (kamdan-kam holat), qayta ishga tushirish kerak:
+
+```powershell
+docker compose up -d asterisk-ip-sync   # qayta tekshiradi, fayl yangilanadi
+docker compose restart asterisk         # Asterisk yangi qiymatni o'qiydi
+```
+
+Qo'lda, konteynersiz tekshirish uchun (Git Bash):
+
+```powershell
+bash asterisk/update-external-ip.sh
+```
+
 ---
 
 ## 11. Muammolar jadvali
 
-| Belgi | Ehtimoliy sabab | Nima qilish |
-|---|---|---|
-| Public IP:8080 ga kirilmayapti | Port forward yo'q, yoki hairpin ishlamayapti, yoki CGNAT | [§2.2](#22-cgnat-bormi-eng-muhim-tekshiruv), [§5](#5-port-forward-qilish), [§7.3](#73-hairpin-nat-testi) |
-| `pjsip show registrations` → `Rejected` | Login/parol xato (`pjsip_auth.conf`), yoki provayder IP'ni bloklagan | SIP loggerni yoqib `401/403` javobini ko'rish |
-| Registratsiya bor-yo'q bo'lib turadi | SIP ALG yoqilgan, yoki NAT teshigi yopilyapti | [§6](#6-sip-alg--albatta-ochiring), [§4.3](#43-outbound-only-boyicha-ogohlantirishlar) keepalive |
-| Qo'ng'iroq ulanadi, **ovoz yo'q ikki tomondan** | `external_media_address` xato yoki eski IP | `pjsip show transport transport-udp`, [§3](#3-pjsipconf-dagi-ip-maydonlari) |
-| Mijoz eshitadi, AI eshitmaydi (yoki teskari) | Bir tomonda RTP bloklangan — RTP forward yoki `rtp_symmetric` | `rtp set debug on`, RTP diapazon forward'i |
-| Softphone `600` ga qo'ng'iroq qiladi, jim | `external_media_address` public IP'da qolgan (softphone LAN'da) | LAN IP variantiga o'tish — [§3](#3-pjsipconf-dagi-ip-maydonlari) jadvali |
-| Asterisk log'ida `172.x.x.x` ko'rinadi | Docker IP e'lon qilinyapti; `external_*` o'qilmagan | `docker compose restart asterisk` |
-| Tashqi qo'ng'iroq umuman kelmayapti | Inbound uchun forward shart + `[from-trunk]` `Hangup()` qilyapti | [§4.2](#42-amaliy-javob), `extensions.conf:15-17` |
-| Kutilmagan xalqaro qo'ng'iroqlar / hisobdan pul ketishi | 5060 internetga ochiq, brute-force | Darhol forward'ni o'chirish, parolni almashtirish — [§8](#8-xavfsizlik--nimalarni-ochmaslik-kerak) |
+| Belgi                                                   | Ehtimoliy sabab                                                      | Nima qilish                                                                                              |
+|---------------------------------------------------------|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| Public IP:8080 ga kirilmayapti                          | Port forward yo'q, yoki hairpin ishlamayapti, yoki CGNAT             | [§2.2](#22-cgnat-bormi-eng-muhim-tekshiruv), [§5](#5-port-forward-qilish), [§7.3](#73-hairpin-nat-testi) |
+| `pjsip show registrations` → `Rejected`                 | Login/parol xato (`pjsip_auth.conf`), yoki provayder IP'ni bloklagan | SIP loggerni yoqib `401/403` javobini ko'rish                                                            |
+| Registratsiya bor-yo'q bo'lib turadi                    | SIP ALG yoqilgan, yoki NAT teshigi yopilyapti                        | [§6](#6-sip-alg--albatta-ochiring), [§4.3](#43-outbound-only-boyicha-ogohlantirishlar) keepalive         |
+| Qo'ng'iroq ulanadi, **ovoz yo'q ikki tomondan**         | `external_media_address` xato yoki eski IP                           | `pjsip show transport transport-udp`, [§3](#3-pjsipconf-dagi-ip-maydonlari)                              |
+| Mijoz eshitadi, AI eshitmaydi (yoki teskari)            | Bir tomonda RTP bloklangan — RTP forward yoki `rtp_symmetric`        | `rtp set debug on`, RTP diapazon forward'i                                                               |
+| Softphone `600` ga qo'ng'iroq qiladi, jim               | `external_media_address` public IP'da qolgan (softphone LAN'da)      | LAN IP variantiga o'tish — [§3](#3-pjsipconf-dagi-ip-maydonlari) jadvali                                 |
+| Asterisk log'ida `172.x.x.x` ko'rinadi                  | Docker IP e'lon qilinyapti; `external_*` o'qilmagan                  | `docker compose restart asterisk`                                                                        |
+| Tashqi qo'ng'iroq umuman kelmayapti                     | Inbound uchun forward shart + `[from-trunk]` `Hangup()` qilyapti     | [§4.2](#42-amaliy-javob), `extensions.conf:15-17`                                                        |
+| Kutilmagan xalqaro qo'ng'iroqlar / hisobdan pul ketishi | 5060 internetga ochiq, brute-force                                   | Darhol forward'ni o'chirish, parolni almashtirish — [§8](#8-xavfsizlik--nimalarni-ochmaslik-kerak)       |
 
 ---
 
@@ -512,6 +549,7 @@ Hech qachon ochmaslik:              8088, 8080, 5432, 6379, 5672, 15672, 9000, 9
 Tegishli fayllar:
 
 - `asterisk/etc/asterisk/pjsip.conf` — transport, external IP, trunk, softphone
+- `asterisk/update-external-ip.sh` — dinamik IP'ni avtomatik aniqlab yangilaydigan skript ([§10.1](#101-avtomatik-yangilash-skripti))
 - `asterisk/etc/asterisk/rtp.conf` — Asterisk RTP diapazoni (10000–10200)
 - `asterisk/etc/asterisk/extensions.conf` — dialplan (`outbound-ai`, `from-trunk`, `from-internal`)
 - `src/main/resources/application.yml` → `voice.rtp` — app'ning externalMedia sozlamalari

@@ -3,8 +3,9 @@ package uz.murodjon.uysotvoice.profile.service;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.audit.service.AuditService;
-import uz.murodjon.uysotvoice.auth.dto.UserSession;
+import uz.murodjon.uysotvoice.auth.dto.UserSessionRow;
 import uz.murodjon.uysotvoice.auth.service.SessionService;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
 
@@ -24,7 +25,7 @@ public class ProfileSessionService {
         this.audit = audit;
     }
 
-    public List<UserSession> list() {
+    public List<UserSessionRow> list() {
         return sessions.listActive(requireUserId());
     }
 
@@ -36,6 +37,6 @@ public class ProfileSessionService {
     }
 
     private long requireUserId() {
-        return currentUser.id().orElseThrow(() -> new ForbiddenException("no user session on this request"));
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 }

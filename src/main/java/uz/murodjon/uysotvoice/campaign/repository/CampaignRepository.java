@@ -107,7 +107,7 @@ public class CampaignRepository {
         entity.setDialWindowEnd(row.dialWindowEnd());
         entity.setDialDays(row.dialDays());
         entity.setMaxAttempts(row.maxAttempts());
-        entity.setRetryIntervalHours(row.retryIntervalHours());
+        entity.setRetryIntervalMinutes(row.retryIntervalMinutes());
         entity.setMaxConcurrentCalls(row.maxConcurrentCalls());
         entity.setTtsVoice(row.ttsVoice());
         entity.setDailyCallCap(row.dailyCallCap());
@@ -126,7 +126,7 @@ public class CampaignRepository {
                 e.getDialWindowEnd(),
                 Set.copyOf(e.getDialDays()),
                 e.getMaxAttempts(),
-                e.getRetryIntervalHours(),
+                e.getRetryIntervalMinutes(),
                 e.getMaxConcurrentCalls(),
                 e.getTtsVoice(),
                 e.getDailyCallCap(),

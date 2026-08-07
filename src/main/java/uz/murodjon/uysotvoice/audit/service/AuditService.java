@@ -9,13 +9,11 @@ import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import uz.murodjon.uysotvoice.audit.domain.AuditLog;
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditLog;
-import uz.murodjon.uysotvoice.audit.entity.AuditLogEntity;
-import uz.murodjon.uysotvoice.audit.repository.AuditRepository;
+import uz.murodjon.uysotvoice.audit.repository.AuditLogRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
-import java.time.Instant;
 import java.util.List;
 
 /**
@@ -39,11 +37,11 @@ public class AuditService {
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
-    private final AuditRepository auditRepository;
+    private final AuditLogRepository repository;
     private final CurrentCompany company;
 
-    public AuditService(AuditRepository auditRepository, CurrentCompany company) {
-        this.auditRepository = auditRepository;
+    public AuditService(AuditLogRepository repository, CurrentCompany company) {
+        this.repository = repository;
         this.company = company;
     }
 
@@ -58,16 +56,7 @@ public class AuditService {
     public void record(String action, String entity, String entityId, String detail) {
         String actor = currentActor();
         try {
-            AuditLogEntity e = new AuditLogEntity();
-            e.setActor(actor);
-            e.setAction(action);
-            e.setEntity(entity);
-            e.setEntityId(entityId);
-            e.setDetail(detail);
-            e.setCreatedAt(Instant.now());
-            e.setCompanyId(company.id());
-            e.setIpAddress(currentIp());
-            auditRepository.save(e);
+            repository.save(company.id(), AuditLog.entry(actor, action, entity, entityId, detail, currentIp()));
         } catch (Exception e) {
             log.warn("Audit write failed ({} {} {} by {}: {}): {}",
                     action, entity, entityId, actor, detail, e.getMessage());
@@ -77,11 +66,8 @@ public class AuditService {
     /** Most recent entries first — what an incident review reads. Scoped to the current company. */
     public List<AuditLog> recent(AuditFilter filter) {
         try {
-            return auditRepository.findByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity(),
-                            filter.pageable())
-                    .stream()
-                    .map(AuditService::toRow)
-                    .toList();
+            return repository.findByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity(),
+                    filter.pageable());
         } catch (Exception e) {
             log.warn("Audit read failed: {}", e.getMessage());
             return List.of();
@@ -90,7 +76,7 @@ public class AuditService {
 
     public long count(AuditFilter filter) {
         try {
-            return auditRepository.countByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity());
+            return repository.countByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity());
         } catch (Exception e) {
             log.warn("Audit count failed: {}", e.getMessage());
             return 0;
@@ -127,10 +113,5 @@ public class AuditService {
             return null;
         }
         return servletAttrs.getRequest().getRemoteAddr();
-    }
-
-    private static AuditLog toRow(AuditLogEntity e) {
-        return new AuditLog(e.getId(), e.getActor(), e.getAction(), e.getEntity(), e.getEntityId(),
-                e.getDetail(), e.getCreatedAt(), e.getIpAddress());
     }
 }

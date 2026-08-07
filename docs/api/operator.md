@@ -27,7 +27,7 @@ Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
     "dialogState": "HUMAN_TRANSFER",
     "transcript": "AGENT: Assalomu alaykum...\nCLIENT: Ha, tinglayapman...\n..."
   },
-  "message": null, "accept": true, "errors": null
+  "message": null, "messageCode": null, "accept": true, "errors": null
 }
 ```
 

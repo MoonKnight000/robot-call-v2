@@ -532,7 +532,7 @@ narsa qilmaydi.
 
 ```json
 {
-  "id": 3, "email": "boss@uysot.uz", "periodicity": "WEEKLY", "format": "pdf",
+  "id": 3, "companyId": 1, "email": "boss@uysot.uz", "periodicity": "WEEKLY", "format": "pdf",
   "campaignId": null, "enabled": true, "lastSentAt": null,
   "createdAt": "2026-08-02T09:00:00Z"
 }

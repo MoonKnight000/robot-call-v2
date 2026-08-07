@@ -20,6 +20,7 @@ import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.csv.CsvRowError;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
 
@@ -57,7 +58,7 @@ public class ContactService {
     public Contact create(CreateContactRequest r) {
         String phone = PhoneNumbers.require(r.phone());
         if (contacts.existsByPhone(phone)) {
-            throw new ConflictException("Contact with phone " + phone + " already exists");
+            throw new ConflictException(ErrorCode.CONTACT_PHONE_EXISTS, phone);
         }
         long id = contacts.create(r.name(), phone, r.address(), r.tags(), r.notes());
         audit.record("CONTACT_CREATE", "contact", String.valueOf(id), phone);
@@ -81,7 +82,7 @@ public class ContactService {
     public Contact requireContact(long id) {
         Contact row = contacts.find(id);
         if (row == null) {
-            throw new NotFoundException("contact", id);
+            throw new NotFoundException(ErrorCode.CONTACT_NOT_FOUND, id);
         }
         return row;
     }

@@ -18,6 +18,7 @@ import uz.murodjon.uysotvoice.report.dto.CampaignComparisonRow;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
 import uz.murodjon.uysotvoice.report.dto.FunnelStage;
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 
 import java.io.ByteArrayOutputStream;
@@ -40,10 +41,16 @@ public class PdfResponseFactory {
         return ResponseEntity.ok()
                 .contentType(PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .body(render(summary));
+                .body(renderBytes(summary));
     }
 
-    private static byte[] render(ReportSummary summary) {
+    /** The {@code GET /api/reports/export?format=pdf} content type — for the scheduled email attachment. */
+    public String contentType() {
+        return PDF.toString();
+    }
+
+    /** Raw bytes of {@link #toResponse}, without the HTTP wrapping — for the scheduled email attachment. */
+    public byte[] renderBytes(ReportSummary summary) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4, 36, 36, 54, 36);
         try {
@@ -97,7 +104,7 @@ public class PdfResponseFactory {
                 document.add(campaigns);
             }
         } catch (Exception e) {
-            throw new ExternalServiceException("pdf", "Failed to render report PDF: " + e.getMessage(), e);
+            throw new ExternalServiceException(ErrorCode.REPORT_PDF_RENDER_FAILED, "pdf", e, e.getMessage());
         } finally {
             document.close();
         }

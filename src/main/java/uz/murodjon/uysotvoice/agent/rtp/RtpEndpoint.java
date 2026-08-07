@@ -29,10 +29,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * One RTP UDP listener + sender for a single call, sharing a single NIO datagram
  * socket. Incoming: the Netty handler copies each datagram and enqueues it; a
- * dedicated virtual thread parses RTP, decodes G.711 and records WAV. Outgoing: a
- * single pacer emits one 20ms G.711 frame every 20ms to the peer (symmetric RTP — we
- * reply to the address Asterisk sends from). No blocking I/O runs on the event loop
- * (PROJECT.md §7.1, §7.3, Stages 3–4).
+ * dedicated virtual thread parses RTP, scores the stream's quality ({@link RtpStats}),
+ * decodes G.711 and records WAV. Outgoing: a single pacer emits one 20ms G.711 frame
+ * every 20ms to the peer (symmetric RTP — we reply to the address Asterisk sends from),
+ * and hands the same frame to the recorder so both halves of the conversation end up
+ * in the file. No blocking I/O runs on the event loop (PROJECT.md §7.1, §7.3, Stages 3–4).
  *
  * <p>Playback is a <em>queue</em>, not a single buffer: sentence-level TTS streaming
  * (§7.2) hands over one sentence at a time while the previous one is still on the
@@ -49,6 +50,9 @@ public class RtpEndpoint implements Closeable {
     private static final int PT_PCMA = 8; // A-law
     private static final int QUEUE_CAPACITY = 2000;
 
+    /** RTP clock of G.711 telephony audio — the unit sequence/timestamp arithmetic uses. */
+    private static final int CLOCK_RATE = 8000;
+
     private static final int SAMPLES_PER_FRAME = 160; // 20 ms @ 8 kHz
     private static final int FRAME_MS = 20;
     private static final byte ULAW_SILENCE = (byte) 0xFF;
@@ -58,7 +62,8 @@ public class RtpEndpoint implements Closeable {
     private final List<AudioListener> listeners;
     /** Tap for the bot's own outgoing frames (live "listen in", §10.3); null if nobody taps it. */
     private final AudioListener outboundTap;
-    private final BlockingQueue<byte[]> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+    private final BlockingQueue<ReceivedPacket> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+    private final RtpStats stats = new RtpStats(CLOCK_RATE);
     private final long ssrc = Integer.toUnsignedLong(new Random().nextInt());
 
     /** Pending playback audio, oldest first. Guarded by {@link #playLock}. */
@@ -117,7 +122,9 @@ public class RtpEndpoint implements Closeable {
                         ByteBuf content = packet.content();
                         byte[] data = new byte[content.readableBytes()];
                         content.readBytes(data);
-                        if (!queue.offer(data)) {
+                        // Arrival is stamped here rather than at parse time: the queue's
+                        // own delay would otherwise be measured as the network's jitter.
+                        if (!queue.offer(new ReceivedPacket(data, System.nanoTime()))) {
                             log.warn("RTP queue full on port {}, dropping packet", port);
                         }
                     }
@@ -129,6 +136,11 @@ public class RtpEndpoint implements Closeable {
 
     public int port() {
         return port;
+    }
+
+    /** Inbound stream quality, for the per-call read-out at teardown (§10 Bosqich 12). */
+    public RtpStats stats() {
+        return stats;
     }
 
     /**
@@ -257,9 +269,10 @@ public class RtpEndpoint implements Closeable {
             return;
         }
         byte[] ulaw = new byte[SAMPLES_PER_FRAME];
-        // Only built when someone is listening — the live "listen in" tap (§10.3), not
-        // needed for the RTP send itself, which only needs the ulaw encoding above.
-        short[] pcmFrame = outboundTap != null ? new short[SAMPLES_PER_FRAME] : null;
+        // The same frame before encoding, for everyone who wants the bot's own audio as
+        // PCM: the recording's right channel and the live "listen in" tap (§10.3). The
+        // RTP send itself only needs the ulaw encoding above.
+        short[] pcmFrame = new short[SAMPLES_PER_FRAME];
         int filled = 0;
         boolean first;
         synchronized (playLock) {
@@ -275,9 +288,7 @@ public class RtpEndpoint implements Closeable {
                 for (int i = 0; i < n; i++) {
                     short sample = currentChunk[currentOffset + i];
                     ulaw[filled + i] = G711Codec.pcmToUlaw(sample);
-                    if (pcmFrame != null) {
-                        pcmFrame[filled + i] = sample;
-                    }
+                    pcmFrame[filled + i] = sample;
                 }
                 filled += n;
                 currentOffset += n;
@@ -288,11 +299,12 @@ public class RtpEndpoint implements Closeable {
             return;
         }
         // A short tail is padded to a whole frame; Asterisk expects fixed-size frames.
-        // pcmFrame's tail stays 0 (silence), which is exactly what the listen tap wants.
+        // pcmFrame's tail stays 0 (silence), which is exactly what the taps below want.
         for (int i = filled; i < SAMPLES_PER_FRAME; i++) {
             ulaw[i] = ULAW_SILENCE;
         }
-        if (pcmFrame != null) {
+        recorder.writeBot(pcmFrame, SAMPLES_PER_FRAME);
+        if (outboundTap != null) {
             outboundTap.onAudio(pcmFrame, SAMPLES_PER_FRAME);
         }
         first = sendSeq == 0;
@@ -310,18 +322,22 @@ public class RtpEndpoint implements Closeable {
     private void consume() {
         short[] pcm = new short[512];
         while (running || !queue.isEmpty()) {
-            byte[] raw;
+            ReceivedPacket received;
             try {
-                raw = queue.poll(200, TimeUnit.MILLISECONDS);
+                received = queue.poll(200, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
-            if (raw == null) {
+            if (received == null) {
                 continue;
             }
             try {
+                byte[] raw = received.data();
                 RtpPacket p = RtpPacket.parse(raw, raw.length);
+                // Counted before the payload filter below: sequence continuity is a
+                // property of the whole stream, comfort-noise and DTMF packets included.
+                stats.onPacket(p.sequenceNumber(), p.timestamp(), received.arrivalNanos());
                 byte[] payload = p.payload();
                 if (payload.length > pcm.length) {
                     pcm = new short[payload.length];
@@ -334,7 +350,7 @@ public class RtpEndpoint implements Closeable {
                         continue;
                     }
                 }
-                recorder.write(pcm, payload.length);
+                recorder.writeCaller(pcm, payload.length);
                 for (AudioListener listener : listeners) {
                     listener.onAudio(pcm, payload.length);
                 }
@@ -373,5 +389,13 @@ public class RtpEndpoint implements Closeable {
             channel.close();
         }
         log.info("RTP endpoint on port {} closed", port);
+    }
+
+    /**
+     * One datagram as it left the event loop, with the moment it was read. Parsing
+     * happens on the consumer thread, but jitter can only be measured against an
+     * arrival time taken before any queueing of ours.
+     */
+    private record ReceivedPacket(byte[] data, long arrivalNanos) {
     }
 }

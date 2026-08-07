@@ -66,8 +66,8 @@ public class CampaignEntity {
     @Column(name = "max_attempts", nullable = false)
     private int maxAttempts;
 
-    @Column(name = "retry_interval_hours", nullable = false)
-    private int retryIntervalHours;
+    @Column(name = "retry_interval_minutes", nullable = false)
+    private int retryIntervalMinutes;
 
     @Column(name = "max_concurrent_calls", nullable = false)
     private int maxConcurrentCalls;
@@ -180,12 +180,12 @@ public class CampaignEntity {
         this.maxAttempts = maxAttempts;
     }
 
-    public int getRetryIntervalHours() {
-        return retryIntervalHours;
+    public int getRetryIntervalMinutes() {
+        return retryIntervalMinutes;
     }
 
-    public void setRetryIntervalHours(int retryIntervalHours) {
-        this.retryIntervalHours = retryIntervalHours;
+    public void setRetryIntervalMinutes(int retryIntervalMinutes) {
+        this.retryIntervalMinutes = retryIntervalMinutes;
     }
 
     public int getMaxConcurrentCalls() {

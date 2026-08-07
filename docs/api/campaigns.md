@@ -24,7 +24,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "dialWindowEnd": "18:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
-  "retryIntervalHours": 24,
+  "retryIntervalMinutes": 0,
   "maxConcurrentCalls": 5,
   "ttsVoice": "nigora",
   "dailyCallCap": 500,
@@ -42,17 +42,17 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `dialWindowStart` / `dialWindowEnd` | `LocalTime` (`HH:mm`) | ❌ | qo'ng'iroq qilish mumkin bo'lgan soat oralig'i; berilmasa `09:00`/`20:00`. Kompaniyaning `CompanyConfig.dialWindowStart/End` oralig'idan tashqariga chiqmasligi kerak (§B.3 — kompaniya darajasidagi qat'iy shift) — chiqsa `400`. Batafsil: [companies.md](companies.md). |
 | `dialDays` | `DayOfWeek[]` | ❌ | qo'ng'iroq qilish mumkin bo'lgan hafta kunlari (`["MONDAY", ...]`); berilmasa yoki bo'sh bo'lsa Dush-Juma |
 | `maxAttempts` | int | ❌ | bitta nishonga necha marta urinish |
-| `retryIntervalHours` | int | ❌ | urinishlar orasidagi soat |
+| `retryIntervalMinutes` | int | ❌ | javob bermagan/uzilib qolgan mijozga qayta qo'ng'iroq qilishgacha necha **daqiqa** kutilsin. Berilgan musbat qiymat barcha natijalar uchun ishlaydi. `0` (default) — kampaniyada tanlov yo'q, tizim natijaga qarab tanlaydi: javob bermadi 180 daqiqa, texnik xato 15 daqiqa, avtojavob 1200 daqiqa (`voice-agent.dialer.retry.*`). Har ikki holda ham hisoblangan vaqt kampaniyaning qo'ng'iroq oynasi ichiga suriladi |
 | `maxConcurrentCalls` | int | ❌ | bir vaqtda nechta qo'ng'iroq |
 | `ttsVoice` | string | ❌ | `GET /api/tts/voices`dagi `id`; noma'lum id rad etiladi; bo'sh bo'lsa standart provayder ishlaydi |
 | `dailyCallCap` | int | ❌ | kunlik qo'ng'iroq chegarasi (xarajat nazorati); `0` = cheksiz |
 | `scenarioId` | long | ✅ (`@NotNull`) | `GET/POST /api/scenarios/list`dagi ssenariy `id`si (ROADMAP A.3) — kampaniyaning butun umri davomida o'zgarmaydi; noma'lum yoki boshqa kompaniyaniki bo'lsa `404`. `contextData`dagi maydonlar shu ssenariyning `factSchema`siga mos kelishi kerak — batafsil [scenarios.md](scenarios.md)da |
-| `disclosureEnabled` | boolean | ❌ | qo'ng'iroq boshida "Assalomu alaykum! Bu Uysot kompaniyasining avtomatik ovozli xizmati..." xabari aytilsinmi (§11.1); berilmasa `true` (yoqilgan) |
+| `disclosureEnabled` | boolean | ❌ | qo'ng'iroq boshida "Assalomu alaykum! Bu &lt;kompaniya nomi&gt; kompaniyasining avtomatik ovozli xizmati..." xabari aytilsinmi (§11.1). Kompaniya nomi kampaniya egasining `company.name` qiymatidan olinadi — kodda qat'iy yozilmagan. Berilmasa `true` (yoqilgan) |
 
 **Response** (`CreateCampaignResponse`):
 
 ```json
-{ "data": { "id": 42, "status": "DRAFT" }, "message": null, "accept": true, "errors": null }
+{ "data": { "id": 42, "status": "DRAFT" }, "message": null, "messageCode": null, "accept": true, "errors": null }
 ```
 
 ---
@@ -79,7 +79,7 @@ qaytariladi (masalan dashboard "faol kampaniyalar" bloki uchun `"status":
   "dialWindowEnd": "18:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
-  "retryIntervalHours": 24,
+  "retryIntervalMinutes": 0,
   "maxConcurrentCalls": 5,
   "ttsVoice": "nigora",
   "dailyCallCap": 500,
@@ -122,7 +122,7 @@ boshqa ssenariy uchun yangi kampaniya yarating, ROADMAP A.3):
   "dialWindowEnd": "18:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
   "maxAttempts": 3,
-  "retryIntervalHours": 24,
+  "retryIntervalMinutes": 0,
   "maxConcurrentCalls": 5,
   "ttsVoice": "nigora",
   "dailyCallCap": 500,

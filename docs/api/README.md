@@ -90,6 +90,7 @@ qaytaradi:
 {
   "data": { /* T — muvaffaqiyatda */ },
   "message": null,
+  "messageCode": null,
   "accept": true,
   "errors": null
 }
@@ -101,32 +102,42 @@ har doim shu shaklda:
 ```json
 {
   "data": null,
-  "message": "campaign 42 not found",
+  "message": "Campaign 42 not found",
+  "messageCode": "CAMPAIGN_NOT_FOUND",
   "accept": false,
   "errors": null
 }
 ```
 
-`errors` faqat maydon darajasidagi validatsiya xatosida to'ldiriladi (pastga
-qarang), qolgan hollarda `null` — `message`ning o'zi yetarli.
+`messageCode` — barqaror, mashina o'qiydigan kod (`shared/exception/ErrorCode`
+enumidan); **frontend shu kodga qarab tarjima qiladi**, `message`ning o'zi
+erkin tahrirlanishi mumkin (server logi/fallback uchun). Muvaffaqiyatli
+javobda ikkalasi ham odatda `null`. `errors` faqat maydon darajasidagi
+validatsiya xatosida to'ldiriladi (pastga qarang), qolgan hollarda `null`.
 
 Frontend uchun amaliy qoida: **har doim `accept`ga qarab tekshiring**, HTTP
 status kodga emas — ikkalasi ham mos keladi, lekin `accept: false` bo'lganda
 `data` doim `null` bo'ladi, shuning uchun `data`ni undefined/null tekshiruvisiz
-ishlatmang.
+ishlatmang. Xato matnini ekranga chiqarishda `message`ni emas, `messageCode`ni
+frontend'ning o'z tarjima jadvalidan izlang — `message` kodga mos tarjima
+topilmagan holatlar uchun zaxira matn sifatida ishlatilsin.
 
 ### Status kodlar va nima uchun
 
 | Status | Qachon | Misol |
 |---|---|---|
 | `200` | Muvaffaqiyat | — |
-| `400` | Validatsiya xatosi — kiruvchi ma'lumot noto'g'ri (bo'sh maydon, noto'g'ri sana, JSON buzilgan, majburiy parametr yo'q) | `"name: must not be blank"` |
+| `400` | Validatsiya xatosi — kiruvchi ma'lumot noto'g'ri (bo'sh maydon, noto'g'ri sana, JSON buzilgan, majburiy parametr yo'q) | `"name: must not be blank"` (`messageCode: VALIDATION_FAILED`) |
 | `401` | `X-Api-Key` yo'q yoki noto'g'ri | body yo'q |
-| `403` | Kalit to'g'ri, lekin bu amalga ruxsat yo'q (masalan built-in ssenariyni tahrirlash) | `"builtin scenario cannot be edited — clone it first"` |
-| `404` | Berilgan `id` topilmadi (yoki boshqa kompaniyaniki — ataylab bir xil xabar bilan) | `"campaign 42 not found"` |
-| `409` | So'rov to'g'ri, lekin tizim holati mos emas (ARI ulanmagan, allaqachon DNC'da) | `"phone already on the do-not-call list"` |
-| `502` | Tashqi xizmat (Asterisk/CRM/STT/TTS/storage) ishlamadi | `"asterisk: channel already hung up"` |
-| `500` | Kutilmagan ichki xato (bug) — tafsilot faqat server logida | `"Internal server error"` |
+| `403` | Kalit to'g'ri, lekin bu amalga ruxsat yo'q (masalan built-in ssenariyni tahrirlash) | `"Built-in scenario '...' cannot be edited — clone it first"` (`messageCode: SCENARIO_BUILTIN_READONLY`) |
+| `404` | Berilgan `id` topilmadi (yoki boshqa kompaniyaniki — ataylab bir xil xabar bilan) | `"Campaign 42 not found"` (`messageCode: CAMPAIGN_NOT_FOUND`) |
+| `409` | So'rov to'g'ri, lekin tizim holati mos emas (ARI ulanmagan, allaqachon DNC'da) | `"An enabled inbound route for ... already exists"` (`messageCode: INBOUND_ROUTE_DID_EXISTS`) |
+| `502` | Tashqi xizmat (Asterisk/CRM/STT/TTS/storage) ishlamadi | `"asterisk: ARI is not connected"` (`messageCode: ARI_NOT_CONNECTED`) |
+| `500` | Kutilmagan ichki xato (bug) — tafsilot faqat server logida | `"Internal server error"` (`messageCode: INTERNAL_SERVER_ERROR`) |
+
+Har bir `messageCode` qiymati `shared/exception/ErrorCode` enumidagi bitta
+konstantaga mos keladi — kod va uning xabar shabloni shu bitta faylda,
+bir joyda e'lon qilinadi, hech qachon bir-biridan ajralib qolmaydi.
 
 **Bean Validation xatosi** (`@Valid @RequestBody` o'tmagan maydon) — `errors`
 massivi har bir maydon uchun bitta xabar bilan to'ladi:
@@ -135,6 +146,7 @@ massivi har bir maydon uchun bitta xabar bilan to'ladi:
 {
   "data": null,
   "message": "Validation failed",
+  "messageCode": "VALIDATION_FAILED",
   "accept": false,
   "errors": ["name: must not be blank", "phone: must not be blank"]
 }
@@ -178,6 +190,7 @@ Javob har doim shu shaklda keladi (`ResponseData<T>` ichida):
     "data": [ /* T qatorlar ro'yxati */ ]
   },
   "message": null,
+  "messageCode": null,
   "accept": true,
   "errors": null
 }

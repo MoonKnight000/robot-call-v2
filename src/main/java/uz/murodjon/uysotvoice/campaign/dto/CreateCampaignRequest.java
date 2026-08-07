@@ -25,8 +25,12 @@ import java.util.Set;
  * @param type         required (backend-uchun-talablar.md §9a) — previously an omitted/blank
  *                     value silently fell back to {@code DEBT_COLLECTION}, which surprised
  *                     callers that meant to leave it unset; a missing value is now a 400
+ * @param retryIntervalMinutes minutes before a client who did not answer (or whose call
+ *                     failed) is dialled again; 0 leaves it to the per-disposition
+ *                     defaults, which wait longer after a voicemail than after a busy
+ *                     line. A retry lands inside the dial window either way
  * @param disclosureEnabled whether calls open with the §11.1 disclosure ("Assalomu
- *                     alaykum! Bu Uysot kompaniyasining avtomatik ovozli xizmati...");
+ *                     alaykum! Bu &lt;kompaniya&gt; kompaniyasining avtomatik ovozli xizmati...");
  *                     omit for the default (enabled)
  */
 public record CreateCampaignRequest(
@@ -36,7 +40,7 @@ public record CreateCampaignRequest(
         String defaultLanguage,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-        int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
+        int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls,
         String ttsVoice, int dailyCallCap,
         @NotNull Long scenarioId,
         Boolean disclosureEnabled) {

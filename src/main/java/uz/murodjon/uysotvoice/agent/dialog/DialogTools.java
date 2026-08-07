@@ -16,10 +16,24 @@ import java.util.Set;
  * fresh instance is bound to one {@link DialogSession} per turn and passed to the
  * ChatClient. Return strings are fed back to the model as tool results. Code-level
  * guardrails (§4.4) live here — e.g. rejecting a past promised date.
+ *
+ * <p>Every tool takes {@code reply} — the line to say to the caller — as its first
+ * argument. A tool-calling turn comes back from the provider as function calls with no
+ * text of its own, however plainly the system prompt asks for both, and the engine then
+ * had to spend a second LLM round trip just to get the sentence to speak (see {@link
+ * DialogSession#toolReplies()}). A required argument is filled; an instruction is
+ * followed when the model feels like it.
  */
 public class DialogTools {
 
     private static final Logger log = LoggerFactory.getLogger(DialogTools.class);
+
+    /** The universal first argument's name, shared with {@link ScenarioToolCallbackFactory}. */
+    static final String REPLY_PARAM = "reply";
+
+    /** What the model is told {@link #REPLY_PARAM} is for, in every tool it can call. */
+    static final String REPLY_DESCRIPTION =
+            "shu tool bilan birga mijozga ovoz bilan aytiladigan gap — bo'sh qoldirmang";
 
     /**
      * The two tools here that are scenario-specific rather than universal (ROADMAP
@@ -38,7 +52,9 @@ public class DialogTools {
     }
 
     @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
-    public String transitionTo(@ToolParam(description = "keyingi bosqich id'si") String nextStage) {
+    public String transitionTo(@ToolParam(description = REPLY_DESCRIPTION) String reply,
+                               @ToolParam(description = "keyingi bosqich id'si") String nextStage) {
+        session.addToolReply(reply);
         session.setState(nextStage);
         log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
         return "Holat " + nextStage + " ga o'tkazildi";
@@ -46,6 +62,7 @@ public class DialogTools {
 
     @Tool(description = "Mijoz aniq to'lov sanasini va'da qilganda chaqiriladi")
     public String recordPaymentPromise(
+            @ToolParam(description = REPLY_DESCRIPTION) String reply,
             @ToolParam(description = "va'da qilingan sana, format yyyy-MM-dd") LocalDate promisedDate,
             @ToolParam(description = "va'da qilingan summa", required = false) BigDecimal amount,
             @ToolParam(description = "qo'shimcha izoh", required = false) String note) {
@@ -56,6 +73,9 @@ public class DialogTools {
             return "XATO: " + promisedDate + " o'tmishda. Bugun " + LocalDate.now()
                     + ". Sanani shundan hisoblab qaytadan yuboring yoki mijozdan aniq sanani so'rang.";
         }
+        // Only once the promise is actually recorded: the line the model wrote alongside
+        // a rejected date confirms a promise that was never taken.
+        session.addToolReply(reply);
         session.recordOutcome("promisedDate", promisedDate);
         session.recordOutcome("promisedAmount", amount);
         session.setDisposition(Disposition.PROMISE_TO_PAY);
@@ -66,8 +86,10 @@ public class DialogTools {
 
     @Tool(description = "Mijoz to'lay olmasligini aytganda sababni yozib qo'yadi")
     public String recordRefusalReason(
+            @ToolParam(description = REPLY_DESCRIPTION) String reply,
             @ToolParam(description = "to'lamaslik sababi") String reason,
             @ToolParam(description = "sabab tafsiloti", required = false) String detail) {
+        session.addToolReply(reply);
         session.recordOutcome("reasonCode", reason);
         session.setDisposition(Disposition.REFUSED);
         log.info("[{}] refusal reason: {} ({})", session.channelId(), reason, detail);
@@ -75,21 +97,27 @@ public class DialogTools {
     }
 
     @Tool(description = "Mijoz operator bilan gaplashishni so'raganda yoki janjal qilganda operatorga o'tkazadi")
-    public String requestHumanTransfer(@ToolParam(description = "o'tkazish sababi") String reason) {
+    public String requestHumanTransfer(@ToolParam(description = REPLY_DESCRIPTION) String reply,
+                                       @ToolParam(description = "o'tkazish sababi") String reason) {
+        session.addToolReply(reply);
         session.end(Disposition.TRANSFERRED);
         log.info("[{}] human transfer requested: {}", session.channelId(), reason);
         return "Operatorga o'tkazish so'raldi. Mijoz bilan xayrlashing.";
     }
 
     @Tool(description = "Telefonni ko'targan odam qarzdor emasligi aniqlanganda chaqiriladi")
-    public String recordWrongPerson(@ToolParam(description = "tafsilot") String detail) {
+    public String recordWrongPerson(@ToolParam(description = REPLY_DESCRIPTION) String reply,
+                                    @ToolParam(description = "tafsilot") String detail) {
+        session.addToolReply(reply);
         session.end(Disposition.WRONG_NUMBER);
         log.info("[{}] wrong person: {}", session.channelId(), detail);
         return "Noto'g'ri odam belgilandi. Uzr so'rab xayrlashing.";
     }
 
     @Tool(description = "Mijoz boshqa qo'ng'iroq qilinmasligini so'raganda chaqiriladi")
-    public String recordDoNotCall(@ToolParam(description = "mijozning so'rovi/sababi") String reason) {
+    public String recordDoNotCall(@ToolParam(description = REPLY_DESCRIPTION) String reply,
+                                  @ToolParam(description = "mijozning so'rovi/sababi") String reason) {
+        session.addToolReply(reply);
         // §11.4: the opt-out is a legal obligation, so it is recorded against the
         // phone number at teardown, not just against this campaign's target row.
         session.setDoNotCallReason(reason);
@@ -98,10 +126,13 @@ public class DialogTools {
         return "So'rov qabul qilindi, raqam ro'yxatdan chiqariladi. Uzr so'rab xayrlashing.";
     }
 
-    @Tool(description = "Suhbat tugadi — qo'ng'iroqni yakunlaydi (avval xayrlashing)")
-    public String endCall(@ToolParam(description = "qo'ng'iroq natijasi. Qarz undirishga oid "
-            + "bo'lmagan ssenariylarda (so'rovnoma, xabar va h.k.) odatda COMPLETED ishlatiladi")
+    @Tool(description = "Suhbat tugadi — qo'ng'iroqni yakunlaydi (reply'da xayrlashing)")
+    public String endCall(
+            @ToolParam(description = REPLY_DESCRIPTION) String reply,
+            @ToolParam(description = "qo'ng'iroq natijasi. Qarz undirishga oid "
+                    + "bo'lmagan ssenariylarda (so'rovnoma, xabar va h.k.) odatda COMPLETED ishlatiladi")
             Disposition disposition) {
+        session.addToolReply(reply);
         session.end(disposition);
         log.info("[{}] end call requested: disposition={}", session.channelId(), disposition);
         return "Qo'ng'iroq yakunlanadi. Mijoz bilan qisqa xayrlashing.";

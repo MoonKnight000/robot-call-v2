@@ -9,11 +9,7 @@ import org.springframework.http.HttpStatus;
  */
 public class ValidationException extends AppException {
 
-    public ValidationException(String message) {
-        super(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message);
-    }
-
-    public ValidationException(String message, Throwable cause) {
-        super(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, cause);
+    public ValidationException(ErrorCode code, Object... args) {
+        super(HttpStatus.BAD_REQUEST, code, code.format(args));
     }
 }

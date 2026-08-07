@@ -9,8 +9,14 @@ ON CONFLICT (id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('company', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM company), 1), true);
 
-INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone, default_language)
-VALUES (1, '09:00', '20:00', 'Asia/Tashkent', 'uz-UZ')
+-- disclosure_text: the §11.1 notice this company's calls open with (V5). {company} is
+-- filled in at call time, so the same wording serves every tenant; blank would fall back
+-- to the platform's own line, but every company is provisioned with it explicitly so an
+-- owner can see and edit what their callers hear.
+INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone, default_language,
+                            disclosure_text)
+VALUES (1, '07:00', '23:00', 'Asia/Tashkent', 'uz-UZ',
+        'Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.')
 ON CONFLICT (company_id) DO NOTHING;
 
 INSERT INTO company_config_language (company_config_id, ord, language)
@@ -25,8 +31,12 @@ VALUES (1, 'Murodjon', 'murodjon000@softex.uz', 'murodjon',
         '$2a$10$6cGgfpkqI8lHvRx7rlHJKuW7PhH1XttNnYBGhe.lc4rqSMORrizFO', 'ADMIN', 'ACTIVE')
 ON CONFLICT (username) DO NOTHING;
 
+-- zamira/yulduz are v3-only voices, so they became reachable when Yandex TTS moved from
+-- the REST v1 endpoint to the v3 gRPC API. Uzbek was a single voice before that.
 INSERT INTO tts_voice (id, provider, language, name, label) VALUES
     ('nigora', 'yandex', 'uz-UZ', 'nigora', 'Nigora — o''zbek, ayol'),
+    ('zamira', 'yandex', 'uz-UZ', 'zamira', 'Zamira — o''zbek, ayol'),
+    ('yulduz', 'yandex', 'uz-UZ', 'yulduz', 'Yulduz — o''zbek, ayol'),
     ('alena',  'yandex', 'ru-RU', 'alena',  'Alena — rus, ayol'),
     ('jane',   'yandex', 'ru-RU', 'jane',   'Jane — rus, ayol'),
     ('omazh',  'yandex', 'ru-RU', 'omazh',  'Omazh — rus, ayol'),
@@ -106,8 +116,7 @@ $def$
     "To'lov muddatini o'zing uzaytirma — faqat mijoz aytgan sanani yozib ol.",
     "Mijoz nisbiy sana aytsa (\"ertaga\", \"dushanba\", \"kelasi oyning 5-sanasi\") — uni BUGUNGI SANAdan hisoblab yyyy-MM-dd ko'rinishida recordPaymentPromise'ga ber. Yilni o'zingdan to'qima.",
     "Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma."
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -154,8 +163,7 @@ $def$
   "rolePrompt": "Siz mahsulotga qiziqish bildirgan potensial mijoz bilan suhbatlashadigan savdo agentisiz. Qiziqish darajasini, byudjetni va uchrashuv vaqtini aniqlang.",
   "guardrails": [
     "Narx yoki chegirma bo'yicha rasmiy bo'lmagan va'da bermang"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -191,8 +199,7 @@ $def$
   "rolePrompt": "Siz mijozga muhim xabarni yetkazadigan avtomatik agentisiz. Xabarni aniq va qisqa yetkazing, keyin tushunganini tasdiqlang.",
   "guardrails": [
     "Berilgan xabar matnidan tashqari qo'shimcha va'da bermang"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -235,8 +242,7 @@ $def$
   "guardrails": [
     "Savollarni yetakchilik qilmasdan, neytral tarzda bering",
     "Mijozning javobini talqin qilib o'zgartirmang"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -277,8 +283,7 @@ $def$
   "rolePrompt": "Siz mijozga uchrashuvini eslatadigan agentisiz. Uchrashuv vaqtini tasdiqlang yoki ko'chirish so'rovini aniq yozib oling.",
   "guardrails": [
     "Uchrashuvni o'zingiz bekor qilmang, faqat ko'chirish so'rovini yozib oling"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -315,8 +320,7 @@ $def$
   "rolePrompt": "Siz qabulxona agentisiz. Qo'ng'iroq qiluvchining savoliga mavjud ma'lumotlar asosida javob bering, bilmasangiz operatorga o'tkazing.",
   "guardrails": [
     "Bilmagan savolingizga o'zingizdan javob to'qimang — requestHumanTransfer chaqiring"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -361,8 +365,7 @@ $def$
   "rolePrompt": "Siz reklama orqali kelgan qo'ng'iroqlarga javob beradigan sotuv agentisiz. Mijozning qiziqishini aniqlang, aloqa ma'lumotlarini yozib oling va imkon bo'lsa uchrashuvga taklif qiling.",
   "guardrails": [
     "Narx yoki chegirma bo'yicha rasmiy bo'lmagan va'da bermang"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL
@@ -397,8 +400,7 @@ $def$
   "rolePrompt": "Siz hozir band bo'lgan operator o'rniga qo'ng'iroqni qabul qiladigan agentisiz. Mijozdan qachon qayta qo'ng'iroq qilish qulayligini so'rang va yozib oling.",
   "guardrails": [
     "Qachon operator qo'ng'iroq qilishini aniq va'da qilmang — faqat so'rovni yozib oling"
-  ],
-  "disclosureText": "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
+  ]
 }
 $def$::jsonb,
     NULL

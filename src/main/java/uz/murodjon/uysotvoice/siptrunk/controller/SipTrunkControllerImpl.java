@@ -8,7 +8,7 @@ import uz.murodjon.uysotvoice.shared.api.ResponseData;
 import uz.murodjon.uysotvoice.siptrunk.dto.CreateSipTrunkRequest;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkDeleteResponse;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkFilter;
-import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
+import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkRow;
 import uz.murodjon.uysotvoice.siptrunk.dto.UpdateSipTrunkRequest;
 import uz.murodjon.uysotvoice.siptrunk.service.SipTrunkService;
 
@@ -22,27 +22,27 @@ public class SipTrunkControllerImpl implements SipTrunkController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<SipTrunk>> create(CreateSipTrunkRequest r) {
+    public ResponseEntity<ResponseData<SipTrunkRow>> create(CreateSipTrunkRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.create(r)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<SipTrunk>>> list(SipTrunkFilter filter) {
+    public ResponseEntity<ResponseData<PageableData<SipTrunkRow>>> list(SipTrunkFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(service.list(filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<SipTrunk>> get(long id) {
+    public ResponseEntity<ResponseData<SipTrunkRow>> get(long id) {
         return ResponseEntity.ok(ResponseData.ok(service.requireTrunk(id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<SipTrunk>> update(long id, UpdateSipTrunkRequest r) {
+    public ResponseEntity<ResponseData<SipTrunkRow>> update(long id, UpdateSipTrunkRequest r) {
         return ResponseEntity.ok(ResponseData.ok(service.update(id, r)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<SipTrunk>> makeDefault(long id) {
+    public ResponseEntity<ResponseData<SipTrunkRow>> makeDefault(long id) {
         return ResponseEntity.ok(ResponseData.ok(service.makeDefault(id)));
     }
 

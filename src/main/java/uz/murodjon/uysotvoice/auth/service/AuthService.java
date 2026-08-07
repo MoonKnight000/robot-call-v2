@@ -6,6 +6,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.audit.service.AuditService;
+import uz.murodjon.uysotvoice.auth.domain.UserSession;
 import uz.murodjon.uysotvoice.auth.dto.ActivateRequest;
 import uz.murodjon.uysotvoice.auth.dto.AuthenticatedUser;
 import uz.murodjon.uysotvoice.auth.dto.CurrentUserResponse;
@@ -15,16 +16,16 @@ import uz.murodjon.uysotvoice.auth.dto.LoginRequest;
 import uz.murodjon.uysotvoice.auth.dto.LoginResponse;
 import uz.murodjon.uysotvoice.auth.dto.RefreshTokenRequest;
 import uz.murodjon.uysotvoice.auth.dto.ResetPasswordRequest;
-import uz.murodjon.uysotvoice.auth.entity.UserSessionEntity;
 import uz.murodjon.uysotvoice.company.dto.Company;
 import uz.murodjon.uysotvoice.company.repository.CompanyRepository;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.Tokens;
-import uz.murodjon.uysotvoice.user.dto.User;
-import uz.murodjon.uysotvoice.user.entity.UserEntity;
+import uz.murodjon.uysotvoice.user.domain.User;
+import uz.murodjon.uysotvoice.user.dto.UserRow;
 import uz.murodjon.uysotvoice.user.enums.UserStatus;
 import uz.murodjon.uysotvoice.user.repository.UserRepository;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
@@ -86,21 +87,21 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest r) {
-        UserEntity entity = users.findByUsername(r.username())
-                .orElseThrow(() -> new ValidationException("username yoki parol noto'g'ri"));
-        if (entity.getStatus() == UserStatus.BLOCKED) {
-            throw new ForbiddenException("this account has been blocked");
+        User user = users.findByUsername(r.username())
+                .orElseThrow(() -> new ValidationException(ErrorCode.LOGIN_INVALID_CREDENTIALS));
+        if (user.status() == UserStatus.BLOCKED) {
+            throw new ForbiddenException(ErrorCode.ACCOUNT_BLOCKED);
         }
-        if (entity.getStatus() == UserStatus.INVITED || entity.getPasswordHash() == null) {
-            throw new ForbiddenException("account not activated yet — use the invite link first");
+        if (user.status() == UserStatus.INVITED || user.passwordHash() == null) {
+            throw new ForbiddenException(ErrorCode.ACCOUNT_NOT_ACTIVATED);
         }
-        if (!passwordEncoder.matches(r.password(), entity.getPasswordHash())) {
-            throw new ValidationException("username yoki parol noto'g'ri");
+        if (!passwordEncoder.matches(r.password(), user.passwordHash())) {
+            throw new ValidationException(ErrorCode.LOGIN_INVALID_CREDENTIALS);
         }
-        users.touchLastLogin(entity.getId());
-        audit.record("USER_LOGIN", "user", String.valueOf(entity.getId()), entity.getEmail());
-        IssuedSession issued = issueTokens(entity);
-        sessions.create(entity.getCompanyId(), entity.getId(), issued.refreshTokenHash(), issued.refreshExpiresAt());
+        users.touchLastLogin(user.id());
+        audit.record("USER_LOGIN", "user", String.valueOf(user.id()), user.email());
+        IssuedSession issued = issueTokens(user);
+        sessions.create(user.companyId(), user.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
     }
 
@@ -112,18 +113,18 @@ public class AuthService {
      */
     public LoginResponse refresh(RefreshTokenRequest r) {
         String tokenHash = Tokens.hash(r.refreshToken());
-        UserSessionEntity session = sessions.findActiveByHash(tokenHash)
-                .orElseThrow(() -> new ForbiddenException("invalid or already used refresh token"));
-        if (session.getExpiresAt().isBefore(Instant.now())) {
-            throw new ForbiddenException("refresh token has expired — log in again");
+        UserSession session = sessions.findActiveByHash(tokenHash)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.REFRESH_TOKEN_INVALID));
+        if (session.expiresAt().isBefore(Instant.now())) {
+            throw new ForbiddenException(ErrorCode.REFRESH_TOKEN_EXPIRED);
         }
-        UserEntity entity = users.findById(session.getUserId())
-                .orElseThrow(() -> new ForbiddenException("invalid or already used refresh token"));
-        if (entity.getStatus() != UserStatus.ACTIVE) {
-            throw new ForbiddenException("this account is no longer active");
+        User user = users.findById(session.userId())
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.REFRESH_TOKEN_INVALID));
+        if (user.status() != UserStatus.ACTIVE) {
+            throw new ForbiddenException(ErrorCode.ACCOUNT_INACTIVE);
         }
-        IssuedSession issued = issueTokens(entity);
-        sessions.rotate(session.getId(), issued.refreshTokenHash(), issued.refreshExpiresAt());
+        IssuedSession issued = issueTokens(user);
+        sessions.rotate(session.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
     }
 
@@ -134,16 +135,16 @@ public class AuthService {
 
     public LoginResponse activate(ActivateRequest r) {
         String tokenHash = Tokens.hash(r.token());
-        UserEntity entity = users.findByInviteTokenHash(tokenHash)
-                .orElseThrow(() -> new ValidationException("invalid or already used activation token"));
-        if (entity.getInviteExpiresAt() == null || entity.getInviteExpiresAt().isBefore(Instant.now())) {
-            throw new ValidationException("activation token has expired — ask an admin to invite you again");
+        User user = users.findByInviteTokenHash(tokenHash)
+                .orElseThrow(() -> new ValidationException(ErrorCode.ACTIVATION_TOKEN_INVALID));
+        if (user.inviteExpiresAt() == null || user.inviteExpiresAt().isBefore(Instant.now())) {
+            throw new ValidationException(ErrorCode.ACTIVATION_TOKEN_EXPIRED);
         }
-        users.activate(entity.getId(), passwordEncoder.encode(r.password()));
-        audit.record("USER_ACTIVATE", "user", String.valueOf(entity.getId()), entity.getEmail());
-        UserEntity activated = users.findByEmail(entity.getEmail()).orElseThrow();
+        users.activate(user.id(), passwordEncoder.encode(r.password()));
+        audit.record("USER_ACTIVATE", "user", String.valueOf(user.id()), user.email());
+        User activated = users.findByEmail(user.email()).orElseThrow();
         IssuedSession issued = issueTokens(activated);
-        sessions.create(activated.getCompanyId(), activated.getId(), issued.refreshTokenHash(), issued.refreshExpiresAt());
+        sessions.create(activated.companyId(), activated.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
     }
 
@@ -155,15 +156,15 @@ public class AuthService {
      */
     public void forgotPassword(ForgotPasswordRequest r) {
         users.findByEmail(r.email())
-                .filter(entity -> entity.getStatus() == UserStatus.ACTIVE)
-                .ifPresent(entity -> {
+                .filter(user -> user.status() == UserStatus.ACTIVE)
+                .ifPresent(user -> {
                     String token = Tokens.generate();
-                    users.setResetToken(entity.getId(), Tokens.hash(token), Instant.now().plus(RESET_TTL));
-                    audit.record("PASSWORD_RESET_REQUEST", "user", String.valueOf(entity.getId()), entity.getEmail());
+                    users.setResetToken(user.id(), Tokens.hash(token), Instant.now().plus(RESET_TTL));
+                    audit.record("PASSWORD_RESET_REQUEST", "user", String.valueOf(user.id()), user.email());
                     try {
-                        resetMail.send(entity.getEmail(), token);
+                        resetMail.send(user.email(), token);
                     } catch (Exception e) {
-                        log.warn("Password reset email to {} failed: {}", entity.getEmail(), e.getMessage());
+                        log.warn("Password reset email to {} failed: {}", user.email(), e.getMessage());
                     }
                 });
     }
@@ -176,25 +177,25 @@ public class AuthService {
      */
     public LoginResponse resetPassword(ResetPasswordRequest r) {
         String tokenHash = Tokens.hash(r.token());
-        UserEntity entity = users.findByResetTokenHash(tokenHash)
-                .orElseThrow(() -> new ValidationException("invalid or already used reset token"));
-        if (entity.getResetExpiresAt() == null || entity.getResetExpiresAt().isBefore(Instant.now())) {
-            throw new ValidationException("reset token has expired — request a new one");
+        User user = users.findByResetTokenHash(tokenHash)
+                .orElseThrow(() -> new ValidationException(ErrorCode.RESET_TOKEN_INVALID));
+        if (user.resetExpiresAt() == null || user.resetExpiresAt().isBefore(Instant.now())) {
+            throw new ValidationException(ErrorCode.RESET_TOKEN_EXPIRED);
         }
-        users.resetPassword(entity.getId(), passwordEncoder.encode(r.newPassword()));
-        audit.record("PASSWORD_RESET", "user", String.valueOf(entity.getId()), entity.getEmail());
-        UserEntity updated = users.findByEmail(entity.getEmail()).orElseThrow();
+        users.resetPassword(user.id(), passwordEncoder.encode(r.newPassword()));
+        audit.record("PASSWORD_RESET", "user", String.valueOf(user.id()), user.email());
+        User updated = users.findByEmail(user.email()).orElseThrow();
         IssuedSession issued = issueTokens(updated);
-        sessions.create(updated.getCompanyId(), updated.getId(), issued.refreshTokenHash(), issued.refreshExpiresAt());
+        sessions.create(updated.companyId(), updated.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
     }
 
     public CurrentUserResponse me() {
         long userId = currentUser.id()
-                .orElseThrow(() -> new ForbiddenException("no user session on this request"));
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
         User user = users.find(userId);
         if (user == null) {
-            throw new NotFoundException("user", userId);
+            throw new NotFoundException(ErrorCode.USER_NOT_FOUND, userId);
         }
         var company = companies.find(user.companyId());
         return new CurrentUserResponse(user.id(), user.name(), user.username(), user.email(), user.role(),
@@ -202,19 +203,16 @@ public class AuthService {
     }
 
     /** Issues the JWT/refresh-token pair; the caller decides whether to {@code create} or {@code rotate} the session. */
-    private IssuedSession issueTokens(UserEntity entity) {
-        AuthenticatedUser principal = new AuthenticatedUser(entity.getId(), entity.getCompanyId(), entity.getRole(),
-                entity.getName(), entity.getEmail());
+    private IssuedSession issueTokens(User user) {
+        AuthenticatedUser principal = new AuthenticatedUser(user.id(), user.companyId(), user.role(),
+                user.name(), user.email());
         IssuedToken issued = tokens.issue(principal);
 
         String refreshToken = Tokens.generate();
         Instant refreshExpiresAt = Instant.now().plus(REFRESH_TTL);
 
-        User me = new User(entity.getId(), entity.getCompanyId(), entity.getName(), entity.getUsername(),
-                entity.getEmail(), entity.getRole(), entity.getStatus(), entity.getLastLoginAt(),
-                entity.getCreatedAt());
         LoginResponse response = new LoginResponse(issued.token(), issued.expiresAt(), refreshToken,
-                refreshExpiresAt, me);
+                refreshExpiresAt, UserRow.of(user));
         return new IssuedSession(response, Tokens.hash(refreshToken), refreshExpiresAt);
     }
 

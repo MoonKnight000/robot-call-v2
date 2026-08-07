@@ -32,7 +32,7 @@ public record CampaignRow(
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
         int maxAttempts,
-        int retryIntervalHours,
+        int retryIntervalMinutes,
         int maxConcurrentCalls,
         String ttsVoice,
         int dailyCallCap,
@@ -48,7 +48,7 @@ public record CampaignRow(
         return new CampaignRow(
                 c.id(), c.name(), c.type(), c.status(), c.goalPrompt(), c.defaultLanguage(),
                 c.dialWindowStart(), c.dialWindowEnd(), c.dialDays(), c.maxAttempts(),
-                c.retryIntervalHours(), c.maxConcurrentCalls(), c.ttsVoice(), c.dailyCallCap(),
+                c.retryIntervalMinutes(), c.maxConcurrentCalls(), c.ttsVoice(), c.dailyCallCap(),
                 c.scenarioId(), scenarioName, c.companyId(), c.disclosureEnabled(),
                 c.createdBy(), createdByName);
     }

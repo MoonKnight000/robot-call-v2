@@ -20,6 +20,10 @@ import java.util.List;
  *                           no longer free-text
  * @param dialWindowStart    strict ceiling on top of every campaign's own window
  * @param dialWindowEnd      strict ceiling on top of every campaign's own window
+ * @param disclosureText     the §11.1 notice spoken at the start of this company's
+ *                           calls; {@code {company}} is replaced with the company name.
+ *                           Blank falls back to the platform's own wording, and a
+ *                           scenario may override it — see {@code shared.dialog.Disclosure}
  */
 public record CompanyConfig(
         long id,
@@ -29,6 +33,7 @@ public record CompanyConfig(
         String timezone,
         Language defaultLanguage,
         List<Language> supportedLanguages,
+        String disclosureText,
         Instant createdAt
 ) {
 }

@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import uz.murodjon.uysotvoice.integration.dto.AuthorizeUrlResponse;
 import uz.murodjon.uysotvoice.integration.dto.ConnectIntegrationRequest;
 import uz.murodjon.uysotvoice.integration.dto.CrmCatalogEntry;
-import uz.murodjon.uysotvoice.integration.dto.CrmIntegration;
+import uz.murodjon.uysotvoice.integration.dto.CrmIntegrationRow;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 
 import java.util.List;
@@ -31,10 +31,10 @@ public interface IntegrationController {
     ResponseEntity<ResponseData<List<CrmCatalogEntry>>> catalog();
 
     @GetMapping
-    ResponseEntity<ResponseData<CrmIntegration>> get();
+    ResponseEntity<ResponseData<CrmIntegrationRow>> get();
 
     @PutMapping("/uysot")
-    ResponseEntity<ResponseData<CrmIntegration>> connect(@Valid @RequestBody ConnectIntegrationRequest r);
+    ResponseEntity<ResponseData<CrmIntegrationRow>> connect(@Valid @RequestBody ConnectIntegrationRequest r);
 
     @GetMapping("/uysot/authorize-url")
     ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl();

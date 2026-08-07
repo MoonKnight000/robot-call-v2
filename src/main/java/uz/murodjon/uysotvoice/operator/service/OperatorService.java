@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
 import uz.murodjon.uysotvoice.agent.dialog.OperatorSnapshot;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 
 /**
@@ -23,7 +24,7 @@ public class OperatorService {
     public OperatorSnapshot snapshot(String channelId) {
         OperatorSnapshot snapshot = dialogEngine.operatorSnapshot(channelId);
         if (snapshot == null) {
-            throw new NotFoundException("No operator snapshot for channel " + channelId);
+            throw new NotFoundException(ErrorCode.OPERATOR_SNAPSHOT_NOT_FOUND, channelId);
         }
         return snapshot;
     }

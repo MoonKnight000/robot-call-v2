@@ -14,11 +14,15 @@ import java.util.Set;
  * creation time (type, script config).
  *
  * @param dialDays     weekdays this campaign may dial on ({@code ["MONDAY", ...]})
+ * @param retryIntervalMinutes minutes before a client who did not answer (or whose call
+ *                     failed) is dialled again; 0 leaves it to the per-disposition
+ *                     defaults, which wait longer after a voicemail than after a busy
+ *                     line. A retry lands inside the dial window either way
  * @param ttsVoice     id of a voice from {@code GET /api/tts/voices} (§2.5); an unknown id
  *                     is rejected
  * @param dailyCallCap most calls this campaign may place in one day; 0 for unlimited
  * @param disclosureEnabled whether calls open with the §11.1 disclosure ("Assalomu
- *                     alaykum! Bu Uysot kompaniyasining avtomatik ovozli xizmati...")
+ *                     alaykum! Bu &lt;kompaniya&gt; kompaniyasining avtomatik ovozli xizmati...")
  */
 public record UpdateCampaignRequest(
         @NotBlank String name,
@@ -27,7 +31,7 @@ public record UpdateCampaignRequest(
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
-        int maxAttempts, int retryIntervalHours, int maxConcurrentCalls,
+        int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls,
         String ttsVoice, int dailyCallCap,
         boolean disclosureEnabled) {
 }

@@ -1,8 +1,9 @@
 package uz.murodjon.uysotvoice.dialer.config;
 
 /**
- * How long to wait before retrying, by why the last attempt failed. The campaign's
- * own {@code retry_interval_hours} still covers everything not listed here.
+ * How long to wait before retrying, by why the last attempt failed. These apply only to
+ * campaigns that set no {@code retry_interval_minutes} of their own — a campaign that
+ * names an interval means it for every outcome (see {@code RetrySchedule.delayFor}).
  *
  * @param noAnswerMinutes   subscriber did not pick up — they may be free within hours
  * @param failedMinutes     technical/carrier failure — nothing about the subscriber

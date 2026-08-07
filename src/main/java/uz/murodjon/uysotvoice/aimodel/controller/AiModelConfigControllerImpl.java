@@ -3,7 +3,7 @@ package uz.murodjon.uysotvoice.aimodel.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-import uz.murodjon.uysotvoice.aimodel.dto.AiModelConfig;
+import uz.murodjon.uysotvoice.aimodel.domain.AiModelConfig;
 import uz.murodjon.uysotvoice.aimodel.dto.UpdateAiModelConfigRequest;
 import uz.murodjon.uysotvoice.aimodel.service.AiModelConfigService;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
@@ -19,11 +19,11 @@ public class AiModelConfigControllerImpl implements AiModelConfigController {
 
     @Override
     public ResponseEntity<ResponseData<AiModelConfig>> get() {
-        return ResponseEntity.ok(ResponseData.ok(service.find()));
+        return ResponseEntity.ok(ResponseData.ok(service.findForCurrentCompany()));
     }
 
     @Override
-    public ResponseEntity<ResponseData<AiModelConfig>> update(UpdateAiModelConfigRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(service.update(r)));
+    public ResponseEntity<ResponseData<AiModelConfig>> update(UpdateAiModelConfigRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(service.updateForCurrentCompany(request)));
     }
 }

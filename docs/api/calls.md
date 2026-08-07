@@ -33,7 +33,7 @@ endpointni tasvirlaydi).
 **Response** (`CallOriginateResponse`):
 
 ```json
-{ "data": { "number": "998901234567", "channelId": "PJSIP/trunk-00000012" }, "message": null, "accept": true, "errors": null }
+{ "data": { "number": "998901234567", "channelId": "PJSIP/trunk-00000012" }, "message": null, "messageCode": null, "accept": true, "errors": null }
 ```
 
 Noto'g'ri formatdagi raqam — `400`. `channelId`ni keyingi `play`/`say`

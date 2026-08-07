@@ -1,24 +1,30 @@
 package uz.murodjon.uysotvoice.agent.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.distribution.ValueAtPercentile;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Micrometer metrics for the voice pipeline (PROJECT.md §10 Bosqich 12): call and
  * disposition counts, STT/TTS/LLM error counters, LLM-turn and TTS-synthesis
- * latency timers, call duration, and a live active-call gauge. Exposed via Actuator
- * at {@code /actuator/prometheus}.
+ * latency timers, inbound RTP quality, call duration, and a live active-call gauge.
+ * Exposed via Actuator at {@code /actuator/prometheus}.
  */
 @Component
 public class VoiceMetrics {
+
+    /** The percentile the §1.3 turnaround budget is judged on. */
+    private static final double SLO_PERCENTILE = 0.95;
 
     private final MeterRegistry registry;
     private final Counter calls;
@@ -34,10 +40,20 @@ public class VoiceMetrics {
     private final Counter llmCachedTokens;
     private final Counter sttSecondsSent;
     private final Counter sttSecondsSkipped;
+    private final Counter sttUtterancesEndpointed;
     private final Counter noInputPrompts;
     private final Counter noInputHangups;
     private final Counter factGuardBlocks;
     private final Counter voicemailsDetected;
+    private final Counter spokenLineRetries;
+    private final Counter fillersPlayed;
+    private final Counter ttsFailovers;
+    private final Counter rtpPacketsReceived;
+    private final Counter rtpPacketsLost;
+    private final Counter rtpPacketsReordered;
+    private final Counter rtpSilentCalls;
+    private final DistributionSummary rtpJitter;
+    private final DistributionSummary rtpLoss;
     private final Timer llmTurn;
     private final Timer ttsSynth;
     private final Timer turnaround;
@@ -76,6 +92,12 @@ public class VoiceMetrics {
         this.sttSecondsSkipped = Counter.builder("voice.stt.audio.seconds.skipped")
                 .description("audio seconds withheld from the STT provider by VAD gating")
                 .register(registry);
+        // Zero while the provider's own detector is in charge. Once it isn't, this should
+        // track the number of caller turns: far fewer means utterances are being run
+        // together, far more means they are being chopped up.
+        this.sttUtterancesEndpointed = Counter.builder("voice.stt.utterances.endpointed")
+                .description("utterances this side declared finished, instead of the provider")
+                .register(registry);
         // A rising prompt count means callers are going quiet — a recognizer that stopped
         // emitting finals looks exactly like this, so it is worth watching.
         this.noInputPrompts = Counter.builder("voice.dialog.no.input.prompts")
@@ -92,6 +114,49 @@ public class VoiceMetrics {
         this.voicemailsDetected = Counter.builder("voice.calls.voicemail.detected")
                 .description("calls cut short because an answering machine picked up")
                 .register(registry);
+        // Each one is a second LLM round trip inside a live turn (DialogEngine.streamTurn),
+        // so this is the direct read-out on whether the prompt is getting the model to
+        // speak and call a tool in the same breath. Watch it against voice.turnaround.latency.
+        this.spokenLineRetries = Counter.builder("voice.llm.spoken.line.retries")
+                .description("turns the model answered with tool calls only, forcing a second request")
+                .register(registry);
+        // How often a turn was slow enough that the caller was given something to listen
+        // to. Read as a share of voice.llm.turn.latency's count: a few percent is the
+        // feature working, most turns means the pipeline is slow and this is papering
+        // over it — fix the latency, do not lengthen the filler.
+        this.fillersPlayed = Counter.builder("voice.dialog.filler.played")
+                .description("turns where a short filler covered the wait for the LLM")
+                .register(registry);
+        // A provider outage that the substitute covered. Never zero for long without
+        // someone looking: the caller is hearing a different voice than the campaign chose.
+        this.ttsFailovers = Counter.builder("voice.tts.failovers")
+                .description("lines a second TTS provider spoke after the first one failed")
+                .register(registry);
+        // Inbound stream quality (RFC 3550). The counters are the fleet-wide view; the
+        // two summaries below are per call, which is where a handful of bad calls inside
+        // an otherwise healthy total becomes visible.
+        this.rtpPacketsReceived = Counter.builder("voice.rtp.packets.received").register(registry);
+        this.rtpPacketsLost = Counter.builder("voice.rtp.packets.lost")
+                .description("packets the sequence numbers say the network never delivered")
+                .register(registry);
+        this.rtpPacketsReordered = Counter.builder("voice.rtp.packets.reordered")
+                .description("packets that arrived late or twice")
+                .register(registry);
+        // Should be zero. Anything else is a media path that was never established —
+        // the caller talked to a bot that could not hear a thing (docs/NETWORK.md).
+        this.rtpSilentCalls = Counter.builder("voice.rtp.calls.silent")
+                .description("calls that ended without a single inbound RTP packet")
+                .register(registry);
+        this.rtpJitter = DistributionSummary.builder("voice.rtp.jitter")
+                .description("interarrival jitter of one call's inbound RTP")
+                .baseUnit("milliseconds")
+                .publishPercentileHistogram()
+                .register(registry);
+        this.rtpLoss = DistributionSummary.builder("voice.rtp.loss")
+                .description("packet loss of one call's inbound RTP")
+                .baseUnit("percent")
+                .publishPercentileHistogram()
+                .register(registry);
         this.llmTurn = Timer.builder("voice.llm.turn.latency").publishPercentileHistogram().register(registry);
         this.ttsSynth = Timer.builder("voice.tts.synth.latency").register(registry);
         // The number §1.3 actually budgets (<1000ms): client stopped speaking -> first
@@ -100,6 +165,9 @@ public class VoiceMetrics {
         this.turnaround = Timer.builder("voice.turnaround.latency")
                 .description("client final transcript -> first byte of bot audio queued")
                 .publishPercentileHistogram()
+                // Also computed in-process, because the §1.3 budget is checked here
+                // (AlertingService) and not only in whatever scrapes Prometheus.
+                .publishPercentiles(SLO_PERCENTILE)
                 .register(registry);
         this.callDuration = Timer.builder("voice.call.duration").register(registry);
         Gauge.builder("voice.calls.active", active, AtomicInteger::get).register(registry);
@@ -163,6 +231,16 @@ public class VoiceMetrics {
         llmErrors.increment();
     }
 
+    /** A turn produced tool calls but no speakable text, so it had to be asked again. */
+    public void spokenLineRetry() {
+        spokenLineRetries.increment();
+    }
+
+    /** A short filler was played because the turn was leaving the caller in silence. */
+    public void fillerPlayed() {
+        fillersPlayed.increment();
+    }
+
     /**
      * Record one LLM call's token usage. {@code cached} is the part of {@code prompt}
      * the provider served from its context cache — it is included in {@code prompt},
@@ -194,6 +272,11 @@ public class VoiceMetrics {
         }
     }
 
+    /** We told the recognizer an utterance was over instead of letting it decide (§1.3). */
+    public void sttUtteranceEnded() {
+        sttUtterancesEndpointed.increment();
+    }
+
     /** The bot asked whether the caller was still there. */
     public void noInputPrompt() {
         noInputPrompts.increment();
@@ -214,6 +297,32 @@ public class VoiceMetrics {
         voicemailsDetected.increment();
     }
 
+    /** A line the preferred TTS provider failed to speak was spoken by another one. */
+    public void ttsFailover() {
+        ttsFailovers.increment();
+    }
+
+    /**
+     * Record one finished call's inbound RTP quality. A call with no packets at all is
+     * only counted as silent: it has no loss ratio (nothing was expected either) and no
+     * jitter, and averaging those zeros in would hide exactly the failure being counted.
+     */
+    public void recordRtpQuality(long received, long lost, long reordered, double jitterMillis) {
+        if (received <= 0) {
+            rtpSilentCalls.increment();
+            return;
+        }
+        rtpPacketsReceived.increment(received);
+        if (lost > 0) {
+            rtpPacketsLost.increment(lost);
+        }
+        if (reordered > 0) {
+            rtpPacketsReordered.increment(reordered);
+        }
+        rtpJitter.record(jitterMillis);
+        rtpLoss.record(lost * 100.0 / (received + lost));
+    }
+
     public Timer.Sample startTimer() {
         return Timer.start(registry);
     }
@@ -230,6 +339,30 @@ public class VoiceMetrics {
     /** Record how long the caller waited between finishing their turn and hearing the bot. */
     public void recordTurnaround(Duration elapsed) {
         turnaround.record(elapsed);
+    }
+
+    /**
+     * The 95th percentile turnaround in milliseconds, or {@code 0} before anything has
+     * been measured. Micrometer keeps this over a rolling window (its default statistic
+     * expiry), so it answers "how is the pipeline doing now", not "since startup" — which
+     * is what an alert needs.
+     */
+    public double turnaroundP95Millis() {
+        for (ValueAtPercentile value : turnaround.takeSnapshot().percentileValues()) {
+            if (value.percentile() == SLO_PERCENTILE) {
+                return value.value(TimeUnit.MILLISECONDS);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Turns measured since startup. Cumulative on purpose: the caller compares it against
+     * its own previous reading to learn how many turns the latest window actually holds,
+     * which no windowed count of ours could tell it.
+     */
+    public long turnaroundCount() {
+        return turnaround.count();
     }
 
     public void recordCallDuration(long seconds) {

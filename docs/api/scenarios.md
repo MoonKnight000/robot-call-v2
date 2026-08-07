@@ -46,7 +46,7 @@ validatsiya so'rovlarida ham, o'qishda ham):
   ],
   "rolePrompt": "Siz UySot kompaniyasining qarz undirish agentisiz...",
   "guardrails": ["Foizlar/jarima haqida hech qachon o'zingizdan gapirmang"],
-  "disclosureText": "Assalomu alaykum, bu UySot kompaniyasidan avtomatik qo'ng'iroq..."
+  "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda."
 }
 ```
 
@@ -64,13 +64,53 @@ validatsiya so'rovlarida ham, o'qishda ham):
 | `outcomeSchema[].type` | `"string"` \| `"number"` \| `"boolean"` \| `"date"` \| `"array"` | — |
 | `rolePrompt` | string | "Siz ... agentisiz" — agentning roli/personasi |
 | `guardrails` | string[] | qo'shimcha qoidalar — platforma darajasidagi taqiqlar (§11.1 ochiqlik, foiz/muddat haqida gapirmaslik) bularga qo'shimcha, ular kod darajasida majburiy va hech qanday ssenariy ularni yumshata olmaydi |
-| `disclosureText` | string | qo'ng'iroq boshida o'qiladigan majburiy ochiqlik matni |
+| `disclosureText` | string \| null | qo'ng'iroq boshida o'qiladigan §11.1 ochiqlik matni. Bo'sh qoldirilsa platformaning o'z matni aytiladi (pastga qarang) |
 
 Fixed universal tool'lar (`transitionTo`, `endCall`, `requestHumanTransfer`,
 `recordWrongPerson`, `recordDoNotCall`) `tools` ro'yxatida **e'lon qilinmaydi**
 — har bir ssenariyga, har bir bosqichda avtomatik beriladi. Shu 5 ta nomdan
 birortasi bilan `tools[].name` deklaratsiya qilinsa — saqlash/validatsiya
 `400` bilan rad etadi (nom to'qnashuvi).
+
+Har bir tool — universal ham, ssenariy e'lon qilgani ham — avtomatik ravishda
+majburiy `reply` parametrini oladi: model shu maydonga mijozga ovoz bilan
+aytiladigan gapni yozadi, agent aynan shuni o'qib eshittiradi. `reply` nomi band,
+uni `tools[].params` da qayta e'lon qilmang.
+
+### `disclosureText` — ochiqlik matni (§11.1)
+
+Ochiqlik matni **asosan kompaniya sozlamasida** turadi
+(`PUT /api/companies/{id}/config` → `disclosureText`, `docs/api/companies.md`) —
+u kim qo'ng'iroq qilayotganini aytadi, ya'ni tenantga tegishli fakt. Ssenariydagi
+bu maydon esa **shu ssenariy uchun ustun turuvchi variant**: berilsa, shu ssenariy
+bo'yicha qo'ng'iroqlarda kompaniya matni o'rniga aytiladi. Tartib:
+
+```
+ssenariy disclosureText  →  kompaniya config disclosureText  →  platforma matni
+```
+
+Builtin (tayyor) ssenariylarda bu maydon **bo'sh** — ular hamma tenantga umumiy,
+shuning uchun ularda qotirilgan matn kompaniya nomini ayta olmaydi.
+
+Ssenariy ochiqlik matnini **o'z so'zi bilan yozishi mumkin, lekin undan qutula
+olmaydi**. Matn faqat uchala shart bajarilganda aytiladi:
+
+1. **Ikkala majburiy faktni aytadi** — qo'ng'iroq avtomatik ekani *va* yozib
+   olinayotgani. Tekshiruv kalit so'zlar bo'yicha: `avtomatik`/`robot`/
+   `автоматич`/`робот` va `yozib ol`/`yozuv`/`запис`. Bittasi yetishmasa —
+   saqlashda `400`, va (agar baza chetidan kirib qolgan bo'lsa) qo'ng'iroqda ham
+   ishlatilmaydi.
+2. **Qo'ng'iroq tili bilan mos** — matn kirill yozuvida bo'lsa `ru-*` qo'ng'iroqqa,
+   lotin yozuvida bo'lsa qolganlariga tegishli deb hisoblanadi. Bir ssenariy ikkala
+   tilda dial qilsa, `disclosureText` ni bo'sh qoldiring: platforma matni har bir
+   qo'ng'iroqda to'g'ri tilda aytiladi.
+3. **Bo'sh emas** — bo'sh/`null` bo'lsa platformaning o'z matni ishlatiladi.
+
+Bu shartlardan biri bajarilmasa, xato qaytmaydi — shunchaki platforma matni
+aytiladi (ochiqlik hech qachon tushib qolmaydi).
+
+`{company}` — qo'ng'iroq qilayotgan kompaniya nomiga almashadi, shuning uchun
+bitta umumiy (builtin) ssenariy har bir tenantni o'z nomi bilan tanishtira oladi.
 
 ---
 
@@ -87,7 +127,7 @@ birortasi bilan `tools[].name` deklaratsiya qilinsa — saqlash/validatsiya
 
 `scenarioKey` bo'sh qoldirilsa `name`dan avtomatik generatsiya qilinadi.
 Saqlashdan oldin avtomatik validatsiya qilinadi (deadlock, tool/outcome/fakt
-nom to'qnashuvi) — muvaffaqiyatsiz bo'lsa `400`.
+nom to'qnashuvi, `disclosureText` mazmuni) — muvaffaqiyatsiz bo'lsa `400`.
 
 **Response** — yaratilgan `ScenarioRow` (pastga qarang).
 

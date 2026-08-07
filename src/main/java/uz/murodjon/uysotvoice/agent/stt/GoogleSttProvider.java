@@ -14,7 +14,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Google Cloud Speech-to-Text streaming provider (PROJECT.md §2.4). Uses
@@ -55,10 +58,16 @@ public class GoogleSttProvider implements SttProvider {
     }
 
     @Override
-    public SttSession startStream(String languageCode, TranscriptListener listener) {
+    public SttSession startStream(String languageCode, TranscriptListener listener, boolean externalEndpointing) {
         SpeechClient current = client;
         if (current == null) {
-            throw new ExternalServiceException("google-stt", "client is not available");
+            throw new ExternalServiceException(ErrorCode.STT_GOOGLE_CLIENT_UNAVAILABLE, "google-stt");
+        }
+        if (externalEndpointing) {
+            // Google's streaming API has no equivalent of SpeechKit's external EOU
+            // classifier: its own endpointer always decides. Saying so beats letting the
+            // setting look effective while nothing about the timing changes.
+            log.debug("Google STT has no external endpointing — its own endpointer stays in charge");
         }
 
         RecognitionConfig.Builder recConfig = RecognitionConfig.newBuilder()
@@ -77,6 +86,10 @@ public class GoogleSttProvider implements SttProvider {
                 .setSingleUtterance(false)
                 .build();
 
+        // Shared with the session below so a stream torn down under a live call (Google
+        // caps a streaming recognize at a few minutes) is visible to the side that writes
+        // audio, instead of every later frame vanishing silently.
+        AtomicBoolean alive = new AtomicBoolean(true);
         ResponseObserver<StreamingRecognizeResponse> observer = new ResponseObserver<>() {
             @Override
             public void onStart(StreamController controller) {
@@ -97,11 +110,13 @@ public class GoogleSttProvider implements SttProvider {
             @Override
             public void onError(Throwable t) {
                 metrics.sttError();
+                alive.set(false);
                 log.warn("STT stream error ({}): {}", languageCode, t.getMessage());
             }
 
             @Override
             public void onComplete() {
+                alive.set(false);
                 log.debug("STT stream completed ({})", languageCode);
             }
         };
@@ -110,7 +125,7 @@ public class GoogleSttProvider implements SttProvider {
         // First request carries the config only; audio requests follow.
         stream.send(StreamingRecognizeRequest.newBuilder().setStreamingConfig(streamingConfig).build());
         log.info("Opened Google STT stream for {}", languageCode);
-        return new GoogleSttSession(stream);
+        return new GoogleSttSession(stream, alive);
     }
 
     @PreDestroy
@@ -125,20 +140,31 @@ public class GoogleSttProvider implements SttProvider {
     private static final class GoogleSttSession implements SttSession {
 
         private final ClientStream<StreamingRecognizeRequest> stream;
+        private final AtomicBoolean alive;
 
-        private GoogleSttSession(ClientStream<StreamingRecognizeRequest> stream) {
+        private GoogleSttSession(ClientStream<StreamingRecognizeRequest> stream, AtomicBoolean alive) {
             this.stream = stream;
+            this.alive = alive;
         }
 
         @Override
         public void sendAudio(byte[] pcm16le) {
+            if (!alive.get()) {
+                return;
+            }
             stream.send(StreamingRecognizeRequest.newBuilder()
                     .setAudioContent(ByteString.copyFrom(pcm16le))
                     .build());
         }
 
         @Override
+        public boolean isAlive() {
+            return alive.get();
+        }
+
+        @Override
         public void close() {
+            alive.set(false);
             stream.closeSend();
         }
     }

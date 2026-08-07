@@ -8,6 +8,7 @@ import uz.murodjon.uysotvoice.report.dto.CallRow;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
 import uz.murodjon.uysotvoice.search.dto.SearchItem;
 import uz.murodjon.uysotvoice.search.dto.SearchResult;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.util.List;
@@ -33,7 +34,7 @@ public class SearchService {
 
     public SearchResult search(String q) {
         if (q == null || q.isBlank()) {
-            throw new ValidationException("q: must not be blank");
+            throw new ValidationException(ErrorCode.SEARCH_QUERY_BLANK);
         }
         List<SearchItem> campaignResults = campaigns.searchByName(q, GROUP_LIMIT).stream()
                 .map(c -> new SearchItem(c.id(), c.name(), c.status().name()))

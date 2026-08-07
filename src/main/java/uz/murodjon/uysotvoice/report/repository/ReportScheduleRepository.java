@@ -63,8 +63,8 @@ public class ReportScheduleRepository {
      * CampaignRepository#findActive} — the dispatch sweep must service every company's
      * schedules, not just the one the current request happens to be scoped to).
      */
-    public List<ReportScheduleEntity> findEnabled() {
-        return jpa.findByEnabledTrue();
+    public List<ReportSchedule> findEnabled() {
+        return jpa.findByEnabledTrue().stream().map(ReportScheduleRepository::toRow).toList();
     }
 
     /** Record that {@code id}'s email actually went out just now. */
@@ -76,7 +76,7 @@ public class ReportScheduleRepository {
     }
 
     private static ReportSchedule toRow(ReportScheduleEntity e) {
-        return new ReportSchedule(e.getId(), e.getEmail(), e.getPeriodicity(), e.getFormat(), e.getCampaignId(),
-                e.isEnabled(), e.getLastSentAt(), e.getCreatedAt());
+        return new ReportSchedule(e.getId(), e.getCompanyId(), e.getEmail(), e.getPeriodicity(), e.getFormat(),
+                e.getCampaignId(), e.isEnabled(), e.getLastSentAt(), e.getCreatedAt());
     }
 }

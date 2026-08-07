@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
@@ -73,7 +74,7 @@ public class GoogleTtsProvider implements TtsProvider {
     public short[] synthesize(String text, String language, String requestedVoice, EffectiveVoiceSettings style) {
         TextToSpeechClient current = client;
         if (current == null) {
-            throw new ExternalServiceException("google-tts", "client is not available");
+            throw new ExternalServiceException(ErrorCode.TTS_GOOGLE_CLIENT_UNAVAILABLE, "google-tts");
         }
 
         SynthesisInput input = SynthesisInput.newBuilder().setText(text).build();
@@ -103,7 +104,7 @@ public class GoogleTtsProvider implements TtsProvider {
             WavAudio audio = WavReader.read(response.getAudioContent().toByteArray());
             return audio.samples();
         } catch (IOException e) {
-            throw new ExternalServiceException("google-tts", "failed to parse audio: " + e.getMessage(), e);
+            throw new ExternalServiceException(ErrorCode.TTS_GOOGLE_AUDIO_PARSE_FAILED, "google-tts", e, e.getMessage());
         }
     }
 

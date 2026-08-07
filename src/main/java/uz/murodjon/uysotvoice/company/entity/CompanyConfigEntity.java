@@ -69,6 +69,15 @@ public class CompanyConfigEntity {
     @Column(name = "language", nullable = false)
     private List<Language> supportedLanguages = new ArrayList<>();
 
+    /**
+     * This company's §11.1 opening disclosure, spoken at the start of every one of its
+     * calls. Every company is provisioned with the platform's wording, so this is
+     * normally set; blank falls back to {@code DialogPhrases.disclosure} in the call's
+     * own language, and a scenario may still override it for its own flow.
+     */
+    @Column(name = "disclosure_text", length = 500)
+    private String disclosureText;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -122,6 +131,14 @@ public class CompanyConfigEntity {
 
     public void setSupportedLanguages(List<Language> supportedLanguages) {
         this.supportedLanguages = supportedLanguages != null ? supportedLanguages : new ArrayList<>();
+    }
+
+    public String getDisclosureText() {
+        return disclosureText;
+    }
+
+    public void setDisclosureText(String disclosureText) {
+        this.disclosureText = disclosureText;
     }
 
     public Instant getCreatedAt() {

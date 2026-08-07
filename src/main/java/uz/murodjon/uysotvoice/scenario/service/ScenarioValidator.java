@@ -6,6 +6,7 @@ import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.dto.StageDef;
 import uz.murodjon.uysotvoice.scenario.dto.ToolDef;
 import uz.murodjon.uysotvoice.scenario.dto.ToolParamDef;
+import uz.murodjon.uysotvoice.shared.dialog.Disclosure;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,8 +18,9 @@ import java.util.Set;
 /**
  * Structural checks a {@link ScenarioDefinition} must pass before it can be saved
  * (ROADMAP A.4): every stage can reach a terminal one (no deadlock), tool/outcome/fact
- * names don't collide, and every transition points at a real stage. A definition that
- * fails any of these is rejected with a 400, never partially saved.
+ * names don't collide, every transition points at a real stage, and a custom §11.1
+ * disclosure is still a disclosure. A definition that fails any of these is rejected
+ * with a 400, never partially saved.
  */
 public final class ScenarioValidator {
 
@@ -46,7 +48,23 @@ public final class ScenarioValidator {
         checkTools(def.tools(), errors);
         checkStageTools(def.stages(), def.tools(), errors);
         checkOutcome(def.outcomeSchema(), errors);
+        checkDisclosure(def.disclosureText(), errors);
         return errors;
+    }
+
+    /**
+     * A scenario may word the §11.1 disclosure itself, but not word its way out of it
+     * (ROADMAP risk #1). Leaving the field blank is always fine — the calling company's
+     * own line is spoken then; filling it with something that is not a disclosure is not.
+     */
+    private static void checkDisclosure(String disclosureText, List<String> errors) {
+        if (disclosureText == null || disclosureText.isBlank()) {
+            return;
+        }
+        if (!Disclosure.discloses(disclosureText)) {
+            errors.add("disclosureText must state that the call is automated and that it is recorded (§11.1) "
+                    + "— leave it empty to use the company's own wording");
+        }
     }
 
     private static void checkStages(List<StageDef> stages, List<String> errors) {

@@ -25,7 +25,7 @@ class SystemPromptFactoryTest {
 
     private static DialogSession session(CallContext context, String language) {
         return new DialogSession("chan-1", language, null, context, ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, null, true, null, EffectiveVoiceSettings.NONE);
+                null, null, null, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
     }
 
     @Test
@@ -138,7 +138,7 @@ class SystemPromptFactoryTest {
                 "disclosure");
         DialogSession s = new DialogSession("chan-2", "uz-UZ", null,
                 new CallContext(Map.of("topicName", "xizmat sifati"), null), survey, null, null, null, 1L, null, true,
-                null, EffectiveVoiceSettings.NONE);
+                "Uysot", null, null, EffectiveVoiceSettings.NONE);
 
         String prompt = factory.stablePrefix(s);
 

@@ -187,8 +187,8 @@ CREATE TABLE campaign (
     goal_prompt          TEXT         NOT NULL,   -- part of the LLM system prompt
     script_config        JSONB        NOT NULL,   -- FSM settings, questions
     default_language     VARCHAR(10)  NOT NULL DEFAULT 'uz-UZ',
-    dial_window_start    TIME         NOT NULL DEFAULT '09:00',
-    dial_window_end      TIME         NOT NULL DEFAULT '20:00',
+    dial_window_start    TIME         NOT NULL DEFAULT '07:00',
+    dial_window_end      TIME         NOT NULL DEFAULT '23:00',
     max_attempts         INT          NOT NULL DEFAULT 3,
     retry_interval_hours INT          NOT NULL DEFAULT 24,
     max_concurrent_calls INT          NOT NULL DEFAULT 20,

@@ -3,18 +3,23 @@ package uz.murodjon.uysotvoice.agent.tts;
 import java.util.Map;
 
 /**
- * Yandex SpeechKit synthesis settings ({@code voice-agent.tts.yandex.*}).
+ * Yandex SpeechKit TTS v3 streaming (gRPC {@code Synthesizer.UtteranceSynthesis}),
+ * settings under {@code voice-agent.tts.yandex.*}.
  *
  * @param enabled    whether the Yandex provider bean is created (needs an API key)
- * @param apiKey     SpeechKit API key (sent as {@code Authorization: Api-Key ...})
- * @param folderId   optional Yandex Cloud folder id (only needed for some auth setups)
+ * @param apiKey     SpeechKit API key (gRPC metadata {@code authorization: Api-Key ...})
+ * @param folderId   optional Yandex Cloud folder id (sent as {@code x-folder-id})
  * @param voice      default voice name (ru-RU: alena, filipp, ermil, jane, omazh, zahar, ...)
  * @param voices     per-language voice overrides (e.g. {@code uz-UZ -> nigora}); a
  *                   language absent here falls back to {@code voice}. Each language
  *                   needs its own voice — a ru-RU voice cannot speak Uzbek text.
- * @param emotion    voice emotion/role: neutral | good | evil
- * @param apiUrl     REST synthesize endpoint
- * @param sampleRate LPCM output rate (8000 for telephone)
+ * @param host       gRPC endpoint host
+ * @param port       gRPC endpoint port (443, TLS)
+ * @param sampleRate raw LINEAR16_PCM output rate (8000 for telephone)
+ * @param keepAliveSeconds how often to ping an idle gRPC connection so the far side does
+ *                   not drop it. Synthesis is bursty — a call can go a minute between
+ *                   requests — and a reconnect costs a TCP+TLS handshake inside a live
+ *                   turn, exactly where the §1.3 budget cannot absorb it. 0 = no keepalive
  */
 public record YandexTtsProperties(
         boolean enabled,
@@ -22,8 +27,9 @@ public record YandexTtsProperties(
         String folderId,
         String voice,
         Map<String, String> voices,
-        String emotion,
-        String apiUrl,
-        int sampleRate
+        String host,
+        int port,
+        int sampleRate,
+        int keepAliveSeconds
 ) {
 }

@@ -43,6 +43,8 @@ public class VoiceSettingsService {
     public EffectiveVoiceSettings effective(long companyId) {
         VoiceSettings row = repo.find(companyId);
         return row == null ? EffectiveVoiceSettings.NONE
-                : new EffectiveVoiceSettings(row.provider(), row.speed(), row.pitch());
+                // role stays null here: it belongs to the voice, and which voice this call
+                // uses is only known once TtsRouter has resolved it.
+                : new EffectiveVoiceSettings(row.provider(), row.speed(), row.pitch(), null);
     }
 }

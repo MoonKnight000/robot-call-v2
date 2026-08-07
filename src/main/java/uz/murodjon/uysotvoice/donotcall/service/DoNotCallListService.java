@@ -12,6 +12,7 @@ import uz.murodjon.uysotvoice.donotcall.dto.DoNotCall;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallRow;
 import uz.murodjon.uysotvoice.donotcall.repository.DoNotCallRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 
 import java.util.List;
@@ -53,7 +54,7 @@ public class DoNotCallListService {
     public DoNotCallRemoveResponse remove(String phone) {
         boolean removed = doNotCall.remove(phone, currentActor());
         if (!removed) {
-            throw new NotFoundException("No active do-not-call entry for " + phone);
+            throw new NotFoundException(ErrorCode.DO_NOT_CALL_ENTRY_NOT_FOUND, phone);
         }
         audit.record("DNC_REMOVE", "do_not_call", phone, null);
         return new DoNotCallRemoveResponse(phone, true);

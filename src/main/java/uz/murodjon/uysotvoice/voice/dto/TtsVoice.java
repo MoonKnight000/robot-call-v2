@@ -10,12 +10,18 @@ package uz.murodjon.uysotvoice.voice.dto;
  *                 voice reading Uzbek text is worse than the default voice
  * @param name     provider-side voice name sent with the synthesis request
  * @param label    human-readable name shown in the campaign UI
+ * @param role     provider-side speaking role sent alongside {@code name} (Yandex v3
+ *                 {@code Hints.role}: {@code neutral}, {@code strict}, {@code friendly},
+ *                 {@code whisper}, ...), or null to send none. Per-voice rather than a
+ *                 global setting because only the voice that declares a role accepts it —
+ *                 the provider rejects the whole request otherwise
  */
 public record TtsVoice(
         String id,
         String provider,
         String language,
         String name,
-        String label
+        String label,
+        String role
 ) {
 }

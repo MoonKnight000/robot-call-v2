@@ -13,16 +13,17 @@ import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.config.EncryptionProperties;
 import uz.murodjon.uysotvoice.integration.config.UysotOAuthProperties;
+import uz.murodjon.uysotvoice.integration.domain.CrmIntegration;
 import uz.murodjon.uysotvoice.integration.dto.AuthorizeUrlResponse;
 import uz.murodjon.uysotvoice.integration.dto.ConnectIntegrationRequest;
 import uz.murodjon.uysotvoice.integration.dto.CrmCatalogEntry;
 import uz.murodjon.uysotvoice.integration.dto.CrmGrant;
-import uz.murodjon.uysotvoice.integration.dto.CrmIntegration;
-import uz.murodjon.uysotvoice.integration.entity.CrmIntegrationEntity;
+import uz.murodjon.uysotvoice.integration.dto.CrmIntegrationRow;
 import uz.murodjon.uysotvoice.integration.enums.CrmAuthMethod;
 import uz.murodjon.uysotvoice.integration.enums.CrmIntegrationStatus;
 import uz.murodjon.uysotvoice.integration.enums.CrmProvider;
 import uz.murodjon.uysotvoice.integration.repository.CrmIntegrationRepository;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
@@ -90,35 +91,36 @@ public class CrmIntegrationService {
         );
     }
 
-    public CrmIntegration find() {
-        return repo.find(company.id()).map(this::toRow)
-                .orElseGet(() -> new CrmIntegration(company.id(), CrmProvider.UYSOT,
+    public CrmIntegrationRow find() {
+        return repo.find(company.id())
+                .map(c -> CrmIntegrationRow.of(c, readGrants(c.grantsJson())))
+                .orElseGet(() -> new CrmIntegrationRow(company.id(), CrmProvider.UYSOT,
                         null, List.of(), CrmIntegrationStatus.NOT_CONNECTED, null));
     }
 
     /** Declares this company's app identity/requested grants — the authorize URL needs both before it can be built. */
-    public CrmIntegration connect(ConnectIntegrationRequest r) {
+    public CrmIntegrationRow connect(ConnectIntegrationRequest r) {
         long companyId = company.id();
-        CrmIntegrationEntity entity = repo.saveAppInfo(companyId, r.appName(), writeGrants(r.grants()));
+        CrmIntegration saved = repo.saveAppInfo(companyId, r.appName(), writeGrants(r.grants()));
         audit.record("CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId), r.appName());
-        return toRow(entity);
+        return CrmIntegrationRow.of(saved, readGrants(saved.grantsJson()));
     }
 
     public AuthorizeUrlResponse buildAuthorizeUrl() {
         if (!oauth.configured()) {
-            throw new ExternalServiceException("uysot-oauth", "Uysot OAuth endpoints are not configured yet");
+            throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_NOT_CONFIGURED, "uysot-oauth");
         }
         long companyId = company.id();
-        CrmIntegrationEntity entity = repo.find(companyId)
-                .orElseThrow(() -> new ValidationException("Save appName/grants first"));
-        List<CrmGrant> grants = readGrants(entity.getGrantsJson());
+        CrmIntegration integration = repo.find(companyId)
+                .orElseThrow(() -> new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED));
+        List<CrmGrant> grants = readGrants(integration.grantsJson());
         if (grants.isEmpty()) {
-            throw new ValidationException("Save appName/grants first");
+            throw new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED);
         }
         String state = signState(companyId);
         String url = oauth.authorizeUrl()
                 + "?client_id=" + encode(oauth.clientId())
-                + "&app_name=" + encode(entity.getAppName())
+                + "&app_name=" + encode(integration.appName())
                 + "&redirect_url=" + encode(oauth.redirectUri())
                 + "&grants=" + encode(grantsParam(grants))
                 + "&state=" + encode(state);
@@ -133,11 +135,10 @@ public class CrmIntegrationService {
     public void handleCallback(String code, String state) {
         requireCipher();
         if (!oauth.configured()) {
-            throw new ExternalServiceException("uysot-oauth", "Uysot OAuth endpoints are not configured yet");
+            throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_NOT_CONFIGURED, "uysot-oauth");
         }
         long companyId = verifyState(state);
-        CrmIntegrationEntity entity = repo.find(companyId)
-                .orElseThrow(() -> new NotFoundException("crm_integration", companyId));
+        repo.find(companyId).orElseThrow(() -> new NotFoundException(ErrorCode.CRM_INTEGRATION_NOT_FOUND, companyId));
         try {
             // redirect_uri here, not redirect_url — Uysot's token endpoint names the
             // same param differently than its authorize endpoint (buildAuthorizeUrl).
@@ -154,18 +155,18 @@ public class CrmIntegrationService {
                     .build();
             HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
-                entity.setStatus(CrmIntegrationStatus.ERROR);
-                repo.save(entity);
-                throw new ExternalServiceException("uysot-oauth", "token exchange HTTP " + resp.statusCode());
+                repo.markError(companyId);
+                throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_TOKEN_EXCHANGE_HTTP_ERROR, "uysot-oauth",
+                        resp.statusCode());
             }
-            applyTokenResponse(entity, resp.body());
+            applyTokenResponse(companyId, resp.body());
             audit.record("CRM_INTEGRATION_CONNECTED", "crm_integration", String.valueOf(companyId), null);
         } catch (ExternalServiceException e) {
             throw e;
         } catch (Exception e) {
-            entity.setStatus(CrmIntegrationStatus.ERROR);
-            repo.save(entity);
-            throw new ExternalServiceException("uysot-oauth", "token exchange failed: " + e.getMessage());
+            repo.markError(companyId);
+            throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_TOKEN_EXCHANGE_FAILED, "uysot-oauth",
+                    e.getMessage());
         }
     }
 
@@ -179,16 +180,17 @@ public class CrmIntegrationService {
         if (!cipher.available()) {
             return Optional.empty();
         }
-        Optional<CrmIntegrationEntity> found = repo.find(companyId);
-        if (found.isEmpty() || found.get().getStatus() != CrmIntegrationStatus.CONNECTED
-                || found.get().getAccessTokenEnc() == null) {
+        Optional<CrmIntegration> found = repo.find(companyId);
+        if (found.isEmpty() || found.get().status() != CrmIntegrationStatus.CONNECTED
+                || found.get().accessTokenEnc() == null) {
             return Optional.empty();
         }
-        CrmIntegrationEntity entity = found.get();
-        if (entity.getTokenExpiresAt() != null && Instant.now().isAfter(entity.getTokenExpiresAt().minus(REFRESH_SKEW))) {
-            return refresh(entity);
+        CrmIntegration integration = found.get();
+        if (integration.tokenExpiresAt() != null
+                && Instant.now().isAfter(integration.tokenExpiresAt().minus(REFRESH_SKEW))) {
+            return refresh(integration);
         }
-        return Optional.of(cipher.decrypt(entity.getAccessTokenEnc()));
+        return Optional.of(cipher.decrypt(integration.accessTokenEnc()));
     }
 
     public void disconnect() {
@@ -203,13 +205,13 @@ public class CrmIntegrationService {
      * company disconnecting must not be blocked by Uysot's revoke endpoint being slow
      * or unreachable (the local tokens are cleared regardless, see {@link #disconnect}).
      */
-    private void revokeUpstream(CrmIntegrationEntity entity) {
-        if (entity.getAccessTokenEnc() == null || !oauth.configured() || !cipher.available()
+    private void revokeUpstream(CrmIntegration integration) {
+        if (integration.accessTokenEnc() == null || !oauth.configured() || !cipher.available()
                 || oauth.revokeUrl() == null || oauth.revokeUrl().isBlank()) {
             return;
         }
         try {
-            String body = "token=" + encode(cipher.decrypt(entity.getAccessTokenEnc()))
+            String body = "token=" + encode(cipher.decrypt(integration.accessTokenEnc()))
                     + "&client_id=" + encode(oauth.clientId())
                     + "&client_secret=" + encode(oauth.clientSecret());
             HttpRequest request = HttpRequest.newBuilder()
@@ -220,20 +222,20 @@ public class CrmIntegrationService {
                     .build();
             HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
-                log.warn("Uysot token revoke for company {} HTTP {}", entity.getCompanyId(), resp.statusCode());
+                log.warn("Uysot token revoke for company {} HTTP {}", integration.companyId(), resp.statusCode());
             }
         } catch (Exception e) {
-            log.warn("Uysot token revoke for company {} failed: {}", entity.getCompanyId(), e.getMessage());
+            log.warn("Uysot token revoke for company {} failed: {}", integration.companyId(), e.getMessage());
         }
     }
 
-    private Optional<String> refresh(CrmIntegrationEntity entity) {
-        if (entity.getRefreshTokenEnc() == null || !oauth.configured()) {
+    private Optional<String> refresh(CrmIntegration integration) {
+        if (integration.refreshTokenEnc() == null || !oauth.configured()) {
             return Optional.empty();
         }
         try {
             String body = "grant_type=refresh_token"
-                    + "&refresh_token=" + encode(cipher.decrypt(entity.getRefreshTokenEnc()))
+                    + "&refresh_token=" + encode(cipher.decrypt(integration.refreshTokenEnc()))
                     + "&client_id=" + encode(oauth.clientId())
                     + "&client_secret=" + encode(oauth.clientSecret());
             HttpRequest request = HttpRequest.newBuilder()
@@ -244,36 +246,34 @@ public class CrmIntegrationService {
                     .build();
             HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
-                log.warn("Uysot token refresh for company {} HTTP {}", entity.getCompanyId(), resp.statusCode());
-                entity.setStatus(CrmIntegrationStatus.ERROR);
-                repo.save(entity);
+                log.warn("Uysot token refresh for company {} HTTP {}", integration.companyId(), resp.statusCode());
+                repo.markError(integration.companyId());
                 return Optional.empty();
             }
-            applyTokenResponse(entity, resp.body());
-            return Optional.of(cipher.decrypt(entity.getAccessTokenEnc()));
+            CrmIntegration updated = applyTokenResponse(integration.companyId(), resp.body());
+            return Optional.of(cipher.decrypt(updated.accessTokenEnc()));
         } catch (Exception e) {
-            log.warn("Uysot token refresh for company {} failed: {}", entity.getCompanyId(), e.getMessage());
-            entity.setStatus(CrmIntegrationStatus.ERROR);
-            repo.save(entity);
+            log.warn("Uysot token refresh for company {} failed: {}", integration.companyId(), e.getMessage());
+            repo.markError(integration.companyId());
             return Optional.empty();
         }
     }
 
-    private void applyTokenResponse(CrmIntegrationEntity entity, String json) throws Exception {
+    private CrmIntegration applyTokenResponse(long companyId, String json) throws Exception {
         JsonNode node = mapper.readTree(json);
         String accessToken = node.hasNonNull("access_token") ? node.get("access_token").asText() : null;
         if (accessToken == null) {
-            throw new ExternalServiceException("uysot-oauth", "token response had no access_token");
+            throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_TOKEN_MISSING, "uysot-oauth");
         }
-        entity.setAccessTokenEnc(cipher.encrypt(accessToken));
-        if (node.hasNonNull("refresh_token")) {
-            entity.setRefreshTokenEnc(cipher.encrypt(node.get("refresh_token").asText()));
-        }
+        String refreshTokenEnc = node.hasNonNull("refresh_token")
+                ? cipher.encrypt(node.get("refresh_token").asText()) : null;
         long expiresIn = node.hasNonNull("expires_in") ? node.get("expires_in").asLong() : 3600;
-        entity.setTokenExpiresAt(Instant.now().plusSeconds(expiresIn));
-        entity.setStatus(CrmIntegrationStatus.CONNECTED);
-        entity.setConnectedAt(Instant.now());
-        repo.save(entity);
+        CrmIntegration updated = repo.applyTokenResponse(companyId, cipher.encrypt(accessToken), refreshTokenEnc,
+                Instant.now().plusSeconds(expiresIn));
+        if (updated == null) {
+            throw new IllegalStateException("crm_integration row missing for company " + companyId);
+        }
+        return updated;
     }
 
     /** {@code base64(companyId) + "." + hex(HMAC-SHA256)} — avoids a server-side state table (§11). */
@@ -285,14 +285,14 @@ public class CrmIntegrationService {
 
     private long verifyState(String state) {
         if (state == null || !state.contains(".")) {
-            throw new ValidationException("invalid state");
+            throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
         }
         int dot = state.indexOf('.');
         String encodedPayload = state.substring(0, dot);
         String signature = state.substring(dot + 1);
         String payload = new String(Base64.getUrlDecoder().decode(encodedPayload), StandardCharsets.UTF_8);
         if (!MessageDigest.isEqual(hmac(payload).getBytes(StandardCharsets.UTF_8), signature.getBytes(StandardCharsets.UTF_8))) {
-            throw new ValidationException("invalid state");
+            throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
         }
         return Long.parseLong(payload);
     }
@@ -310,7 +310,7 @@ public class CrmIntegrationService {
 
     private void requireCipher() {
         if (!cipher.available()) {
-            throw new ExternalServiceException("uysot-oauth", "voice-agent.encryption.secret-key is not set");
+            throw new ExternalServiceException(ErrorCode.ENCRYPTION_KEY_NOT_SET, "uysot-oauth");
         }
     }
 
@@ -350,10 +350,5 @@ public class CrmIntegrationService {
             log.warn("Corrupt crm_integration.grants_json: {}", e.getMessage());
             return List.of();
         }
-    }
-
-    private CrmIntegration toRow(CrmIntegrationEntity e) {
-        return new CrmIntegration(e.getCompanyId(), e.getProvider(), e.getAppName(),
-                readGrants(e.getGrantsJson()), e.getStatus(), e.getConnectedAt());
     }
 }

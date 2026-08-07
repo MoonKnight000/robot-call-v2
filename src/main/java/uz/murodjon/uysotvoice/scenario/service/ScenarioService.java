@@ -15,6 +15,7 @@ import uz.murodjon.uysotvoice.scenario.dto.UpdateScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.repository.ScenarioRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
@@ -51,7 +52,7 @@ public class ScenarioService {
         requireValid(r.definition());
         String key = keyOf(r.scenarioKey(), r.name());
         if (repo.existsByKey(key)) {
-            throw new ConflictException("Scenario key '" + key + "' already exists");
+            throw new ConflictException(ErrorCode.SCENARIO_KEY_EXISTS, key);
         }
         long id = repo.create(key, r.name(), r.description(), false, r.definition(), currentUser.id().orElse(null));
         audit.record("SCENARIO_CREATE", "scenario", String.valueOf(id), key);
@@ -67,8 +68,7 @@ public class ScenarioService {
     public ScenarioRow update(long id, UpdateScenarioRequest r) {
         Scenario current = requireScenario(id);
         if (current.builtin()) {
-            throw new ForbiddenException(
-                    "Built-in scenario '" + current.scenarioKey() + "' cannot be edited — clone it first");
+            throw new ForbiddenException(ErrorCode.SCENARIO_BUILTIN_READONLY, current.scenarioKey());
         }
         requireValid(r.definition());
         int nextVersion = repo.maxVersion(current.scenarioKey()) + 1;
@@ -85,7 +85,7 @@ public class ScenarioService {
         Scenario source = requireScenario(id);
         String key = keyOf(r.scenarioKey(), r.name());
         if (repo.existsByKey(key)) {
-            throw new ConflictException("Scenario key '" + key + "' already exists");
+            throw new ConflictException(ErrorCode.SCENARIO_KEY_EXISTS, key);
         }
         long newId = repo.create(key, r.name(), source.description(), false, source.definition(),
                 currentUser.id().orElse(null));
@@ -132,7 +132,7 @@ public class ScenarioService {
     public Scenario requireScenario(long id) {
         Scenario row = repo.find(id);
         if (row == null) {
-            throw new NotFoundException("scenario", id);
+            throw new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, id);
         }
         return row;
     }
@@ -141,9 +141,20 @@ public class ScenarioService {
     public Scenario requireScenarioByKey(String scenarioKey) {
         Scenario row = repo.findActiveByKey(scenarioKey);
         if (row == null) {
-            throw new NotFoundException("scenario", scenarioKey);
+            throw new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, scenarioKey);
         }
         return row;
+    }
+
+    /**
+     * Every active scenario across companies, for the TTS warm-up: a scenario that words
+     * the §11.1 disclosure itself makes that text the first thing a caller hears, so it
+     * belongs in the cache before the call arrives rather than being synthesized while
+     * the line is already open. Unscoped — the warm-up runs at startup, outside any
+     * request, and covers every tenant this instance serves.
+     */
+    public List<Scenario> findAllActiveForWarmup() {
+        return repo.findAllActive();
     }
 
     /**
@@ -158,7 +169,7 @@ public class ScenarioService {
     private static void requireValid(ScenarioDefinition definition) {
         List<String> errors = ScenarioValidator.validate(definition);
         if (!errors.isEmpty()) {
-            throw new ValidationException("Invalid scenario definition: " + String.join("; ", errors));
+            throw new ValidationException(ErrorCode.SCENARIO_DEFINITION_INVALID, String.join("; ", errors));
         }
     }
 
@@ -171,7 +182,7 @@ public class ScenarioService {
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-+|-+$)", "");
         if (slug.isBlank()) {
-            throw new ValidationException("Could not derive a scenario key from name '" + name + "'");
+            throw new ValidationException(ErrorCode.SCENARIO_KEY_DERIVE_FAILED, name);
         }
         return slug;
     }

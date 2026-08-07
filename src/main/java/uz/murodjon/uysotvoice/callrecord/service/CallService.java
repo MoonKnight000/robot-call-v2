@@ -13,6 +13,7 @@ import uz.murodjon.uysotvoice.callrecord.dto.SayResponse;
 import uz.murodjon.uysotvoice.callrecord.dto.TransferResponse;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.util.List;
@@ -61,7 +62,7 @@ public class CallService {
     public CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition) {
         var result = scenarios.validate(definition);
         if (!result.valid()) {
-            throw new ValidationException("Invalid scenario definition: " + String.join("; ", result.errors()));
+            throw new ValidationException(ErrorCode.SCENARIO_DEFINITION_INVALID, String.join("; ", result.errors()));
         }
         return ari.originateTestCall(number, definition);
     }

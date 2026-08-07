@@ -13,7 +13,7 @@ import uz.murodjon.uysotvoice.shared.api.ResponseData;
 import uz.murodjon.uysotvoice.user.dto.InviteUserRequest;
 import uz.murodjon.uysotvoice.user.dto.InviteUserResponse;
 import uz.murodjon.uysotvoice.user.dto.UpdateUserRoleRequest;
-import uz.murodjon.uysotvoice.user.dto.User;
+import uz.murodjon.uysotvoice.user.dto.UserRow;
 
 import java.util.List;
 
@@ -22,17 +22,17 @@ import java.util.List;
 public interface UserController {
 
     @GetMapping
-    ResponseEntity<ResponseData<List<User>>> list();
+    ResponseEntity<ResponseData<List<UserRow>>> list();
 
     @PostMapping("/invite")
     ResponseEntity<ResponseData<InviteUserResponse>> invite(@Valid @RequestBody InviteUserRequest r);
 
     @PutMapping("/{id}/role")
-    ResponseEntity<ResponseData<User>> changeRole(@PathVariable long id, @Valid @RequestBody UpdateUserRoleRequest r);
+    ResponseEntity<ResponseData<UserRow>> changeRole(@PathVariable long id, @Valid @RequestBody UpdateUserRoleRequest r);
 
     @PostMapping("/{id}/block")
-    ResponseEntity<ResponseData<User>> block(@PathVariable long id);
+    ResponseEntity<ResponseData<UserRow>> block(@PathVariable long id);
 
     @PostMapping("/{id}/unblock")
-    ResponseEntity<ResponseData<User>> unblock(@PathVariable long id);
+    ResponseEntity<ResponseData<UserRow>> unblock(@PathVariable long id);
 }

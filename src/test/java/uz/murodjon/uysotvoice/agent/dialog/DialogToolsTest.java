@@ -32,7 +32,7 @@ class DialogToolsTest {
         ), "goal");
         // No RTP endpoint: none of these tools touch audio.
         session = new DialogSession("chan-1", "uz-UZ", null, context, ScenarioFixtures.debtCollection(),
-                null, null, null, 42L, null, true, null, EffectiveVoiceSettings.NONE);
+                null, null, null, 42L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
         tools = new DialogTools(session);
     }
 
@@ -40,9 +40,11 @@ class DialogToolsTest {
     void rejectsAPromiseInThePast() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
-        String result = tools.recordPaymentPromise(yesterday, null, null);
+        String result = tools.recordPaymentPromise("Yaxshi, yozib qo'ydim.", yesterday, null, null);
 
         assertThat(result).startsWith("XATO:");
+        // The line confirmed a promise the guardrail refused — it must not be spoken.
+        assertThat(session.toolReplies()).isNull();
         // The usual cause is a wrong year, so today's date has to be in the reply —
         // without it the model has nothing to correct against and re-sends the same date.
         assertThat(result).contains(LocalDate.now().toString());
@@ -54,8 +56,10 @@ class DialogToolsTest {
     void acceptsAPromiseFromToday() {
         LocalDate today = LocalDate.now();
 
-        tools.recordPaymentPromise(today, new BigDecimal("500000"), "yarim to'lov");
+        tools.recordPaymentPromise("Kelishdik, belgilab qo'ydim.", today, new BigDecimal("500000"), "yarim to'lov");
 
+        // What the caller hears on a tool-only turn, without a second LLM round trip.
+        assertThat(session.toolReplies()).isEqualTo("Kelishdik, belgilab qo'ydim.");
         assertThat(session.outcome().get("promisedDate")).isEqualTo(today);
         assertThat((BigDecimal) session.outcome().get("promisedAmount")).isEqualByComparingTo("500000");
         assertThat(session.disposition()).isEqualTo(Disposition.PROMISE_TO_PAY);
@@ -64,7 +68,8 @@ class DialogToolsTest {
     @Test
     void optOutEndsTheCallAndKeepsTheReason() {
         // §11.4: the reason has to survive until teardown writes the phone-level entry.
-        tools.recordDoNotCall("mijoz boshqa qo'ng'iroq qilinmasligini so'radi");
+        tools.recordDoNotCall("Uzr so'rayman, boshqa bezovta qilmaymiz.",
+                "mijoz boshqa qo'ng'iroq qilinmasligini so'radi");
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.DO_NOT_CALL);
@@ -73,7 +78,7 @@ class DialogToolsTest {
 
     @Test
     void refusalRecordsTheReasonCode() {
-        tools.recordRefusalReason("JOB_LOSS", "ishdan bo'shadi");
+        tools.recordRefusalReason("Tushundim, holatingizni yozib qo'ydim.", "JOB_LOSS", "ishdan bo'shadi");
 
         assertThat(session.outcome().get("reasonCode")).isEqualTo("JOB_LOSS");
         assertThat(session.disposition()).isEqualTo(Disposition.REFUSED);
@@ -82,7 +87,7 @@ class DialogToolsTest {
 
     @Test
     void transferEndsTheCallAsTransferred() {
-        tools.requestHumanTransfer("mijoz operator so'radi");
+        tools.requestHumanTransfer("Bir daqiqa, operatorga ulayman.", "mijoz operator so'radi");
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.TRANSFERRED);
@@ -90,7 +95,7 @@ class DialogToolsTest {
 
     @Test
     void wrongPersonEndsTheCall() {
-        tools.recordWrongPerson("boshqa odam ko'tardi");
+        tools.recordWrongPerson("Uzr, bezovta qildim.", "boshqa odam ko'tardi");
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.WRONG_NUMBER);
@@ -98,14 +103,15 @@ class DialogToolsTest {
 
     @Test
     void transitionMovesTheFsm() {
-        tools.transitionTo("IDENTITY_CHECK");
+        tools.transitionTo("Murodjon sizmi?", "IDENTITY_CHECK");
 
         assertThat(session.state()).isEqualTo("IDENTITY_CHECK");
+        assertThat(session.toolReplies()).isEqualTo("Murodjon sizmi?");
     }
 
     @Test
     void endCallKeepsTheDispositionItWasGiven() {
-        tools.endCall(Disposition.HUNG_UP);
+        tools.endCall("Xayr, kuningiz xayrli o'tsin!", Disposition.HUNG_UP);
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.HUNG_UP);

@@ -7,7 +7,7 @@ import uz.murodjon.uysotvoice.notification.entity.NotificationEntity;
 import uz.murodjon.uysotvoice.notification.entity.NotificationPreferenceEntity;
 import uz.murodjon.uysotvoice.notification.entity.NotificationRecipientEntity;
 import uz.murodjon.uysotvoice.notification.enums.NotificationType;
-import uz.murodjon.uysotvoice.user.dto.User;
+import uz.murodjon.uysotvoice.user.domain.User;
 import uz.murodjon.uysotvoice.user.repository.UserRepository;
 
 import java.time.Instant;

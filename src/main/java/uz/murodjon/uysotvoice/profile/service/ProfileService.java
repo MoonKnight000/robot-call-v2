@@ -12,12 +12,13 @@ import uz.murodjon.uysotvoice.profile.dto.UpdateCallColumnsRequest;
 import uz.murodjon.uysotvoice.profile.dto.UpdateProfileRequest;
 import uz.murodjon.uysotvoice.report.dto.DashboardTotals;
 import uz.murodjon.uysotvoice.report.repository.ReportRepository;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.storage.dto.StoredFile;
 import uz.murodjon.uysotvoice.storage.service.ImageUploadService;
-import uz.murodjon.uysotvoice.user.entity.UserEntity;
+import uz.murodjon.uysotvoice.user.domain.User;
 import uz.murodjon.uysotvoice.user.repository.UserRepository;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
 
@@ -50,41 +51,40 @@ public class ProfileService {
     }
 
     public Profile find() {
-        return toProfile(requireEntity());
+        return toProfile(requireUser());
     }
 
     public Profile update(UpdateProfileRequest r) {
-        UserEntity entity = requireEntity();
-        if (!entity.getEmail().equalsIgnoreCase(r.email()) && users.existsByEmail(r.email())) {
-            throw new ValidationException("bu email allaqachon band");
+        User user = requireUser();
+        if (!user.email().equalsIgnoreCase(r.email()) && users.existsByEmail(r.email())) {
+            throw new ValidationException(ErrorCode.EMAIL_ALREADY_TAKEN);
         }
-        users.updateProfile(entity.getId(), r.name(), r.email(), r.phone(), r.position(),
-                entity.getSipExtension());
-        audit.record("PROFILE_UPDATE", "user", String.valueOf(entity.getId()), r.name());
+        users.updateProfile(user.id(), r.name(), r.email(), r.phone(), r.position(), user.sipExtension());
+        audit.record("PROFILE_UPDATE", "user", String.valueOf(user.id()), r.name());
         return find();
     }
 
     /** {@code POST /api/profile/avatar} (report #11) — replaces {@code avatarFileId}, nothing else. */
     public Profile uploadAvatar(MultipartFile file) {
-        UserEntity entity = requireEntity();
-        StoredFile stored = images.upload(file, entity.getCompanyId());
-        users.updateAvatarFileId(entity.getId(), stored.id());
-        audit.record("PROFILE_AVATAR_UPLOAD", "user", String.valueOf(entity.getId()), String.valueOf(stored.id()));
+        User user = requireUser();
+        StoredFile stored = images.upload(file, user.companyId());
+        users.updateAvatarFileId(user.id(), stored.id());
+        audit.record("PROFILE_AVATAR_UPLOAD", "user", String.valueOf(user.id()), String.valueOf(stored.id()));
         return find();
     }
 
     public void changePassword(ChangePasswordRequest r) {
-        UserEntity entity = requireEntity();
-        if (entity.getPasswordHash() == null || !passwordEncoder.matches(r.currentPassword(), entity.getPasswordHash())) {
-            throw new ValidationException("joriy parol noto'g'ri");
+        User user = requireUser();
+        if (user.passwordHash() == null || !passwordEncoder.matches(r.currentPassword(), user.passwordHash())) {
+            throw new ValidationException(ErrorCode.CURRENT_PASSWORD_INCORRECT);
         }
-        users.updatePassword(entity.getId(), passwordEncoder.encode(r.newPassword()));
-        audit.record("PROFILE_PASSWORD_CHANGE", "user", String.valueOf(entity.getId()), null);
+        users.updatePassword(user.id(), passwordEncoder.encode(r.newPassword()));
+        audit.record("PROFILE_PASSWORD_CHANGE", "user", String.valueOf(user.id()), null);
     }
 
     public List<String> updateCallColumns(UpdateCallColumnsRequest r) {
-        UserEntity entity = requireEntity();
-        users.updateCallColumns(entity.getId(), String.join(",", r.columns()));
+        User user = requireUser();
+        users.updateCallColumns(user.id(), String.join(",", r.columns()));
         return r.columns();
     }
 
@@ -105,18 +105,22 @@ public class ProfileService {
     }
 
     private long requireUserId() {
-        return currentUser.id().orElseThrow(() -> new ForbiddenException("no user session on this request"));
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 
-    private UserEntity requireEntity() {
+    private User requireUser() {
         long id = requireUserId();
-        return users.findEntity(id).orElseThrow(() -> new NotFoundException("user", id));
+        User user = users.find(id);
+        if (user == null) {
+            throw new NotFoundException(ErrorCode.USER_NOT_FOUND, id);
+        }
+        return user;
     }
 
-    private static Profile toProfile(UserEntity e) {
-        return new Profile(e.getId(), e.getName(), e.getUsername(), e.getEmail(), e.getPhone(), e.getPosition(),
-                e.getAvatarFileId(), e.getRole(), e.getCompanyId(), e.getLastLoginAt(), e.getCreatedAt(),
-                parseCallColumns(e.getCallColumns()));
+    private static Profile toProfile(User u) {
+        return new Profile(u.id(), u.name(), u.username(), u.email(), u.phone(), u.position(),
+                u.avatarFileId(), u.role(), u.companyId(), u.lastLoginAt(), u.createdAt(),
+                parseCallColumns(u.callColumns()));
     }
 
     private static List<String> parseCallColumns(String stored) {

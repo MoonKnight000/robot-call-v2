@@ -5,8 +5,8 @@ import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import uz.murodjon.uysotvoice.auth.dto.UserSession;
-import uz.murodjon.uysotvoice.auth.entity.UserSessionEntity;
+import uz.murodjon.uysotvoice.auth.domain.UserSession;
+import uz.murodjon.uysotvoice.auth.dto.UserSessionRow;
 import uz.murodjon.uysotvoice.auth.repository.UserSessionRepository;
 
 import java.time.Instant;
@@ -33,7 +33,7 @@ public class SessionService {
         return sessions.create(companyId, userId, tokenHash, expiresAt, currentDevice(), currentIp());
     }
 
-    public Optional<UserSessionEntity> findActiveByHash(String tokenHash) {
+    public Optional<UserSession> findActiveByHash(String tokenHash) {
         return sessions.findActiveByHash(tokenHash);
     }
 
@@ -52,8 +52,8 @@ public class SessionService {
         sessions.revoke(sessionId, userId);
     }
 
-    public List<UserSession> listActive(long userId) {
-        return sessions.listActiveForUser(userId);
+    public List<UserSessionRow> listActive(long userId) {
+        return sessions.listActiveForUser(userId).stream().map(UserSessionRow::of).toList();
     }
 
     /**

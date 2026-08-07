@@ -6,6 +6,7 @@ import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.profile.dto.PersonalNotificationMatrixEntry;
 import uz.murodjon.uysotvoice.profile.dto.UpdatePersonalNotificationSettingsRequest;
 import uz.murodjon.uysotvoice.profile.repository.PersonalNotificationMatrixRepository;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
 
@@ -43,6 +44,6 @@ public class ProfileNotificationService {
     }
 
     private long requireUserId() {
-        return currentUser.id().orElseThrow(() -> new ForbiddenException("no user session on this request"));
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 }

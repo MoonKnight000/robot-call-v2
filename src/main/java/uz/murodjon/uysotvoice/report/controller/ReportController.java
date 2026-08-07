@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import uz.murodjon.uysotvoice.audit.dto.AuditFilter;
-import uz.murodjon.uysotvoice.audit.dto.AuditLog;
+import uz.murodjon.uysotvoice.audit.domain.AuditLog;
 import uz.murodjon.uysotvoice.report.dto.BulkCallActionRequest;
 import uz.murodjon.uysotvoice.report.dto.BulkCallActionResult;
 import uz.murodjon.uysotvoice.report.dto.CallDetail;

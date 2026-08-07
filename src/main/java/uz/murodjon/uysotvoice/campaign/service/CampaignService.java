@@ -42,6 +42,7 @@ import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.csv.CsvRowError;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
@@ -131,7 +132,9 @@ public class CampaignService {
                 dialWindowEnd,
                 r.dialDays() != null && !r.dialDays().isEmpty() ? r.dialDays() : DEFAULT_DIAL_DAYS,
                 r.maxAttempts() > 0 ? r.maxAttempts() : 3,
-                r.retryIntervalHours() > 0 ? r.retryIntervalHours() : 24,
+                // 0 is a real choice here, not a missing value: it means "no campaign
+                // preference", and the retry then follows the per-disposition defaults.
+                Math.max(0, r.retryIntervalMinutes()),
                 r.maxConcurrentCalls() > 0 ? r.maxConcurrentCalls() : 20,
                 requireKnownVoice(r.ttsVoice()),
                 dailyCallCap,
@@ -163,7 +166,7 @@ public class CampaignService {
                 r.dialWindowEnd(),
                 r.dialDays(),
                 r.maxAttempts(),
-                r.retryIntervalHours(),
+                Math.max(0, r.retryIntervalMinutes()),
                 r.maxConcurrentCalls(),
                 requireKnownVoice(r.ttsVoice()),
                 Math.max(0, r.dailyCallCap()),
@@ -195,7 +198,7 @@ public class CampaignService {
                 source.dialWindowEnd(),
                 source.dialDays(),
                 source.maxAttempts(),
-                source.retryIntervalHours(),
+                source.retryIntervalMinutes(),
                 source.maxConcurrentCalls(),
                 source.ttsVoice(),
                 source.dailyCallCap(),
@@ -225,9 +228,8 @@ public class CampaignService {
             return;
         }
         if (start.isBefore(config.dialWindowStart()) || end.isAfter(config.dialWindowEnd())) {
-            throw new ValidationException("Campaign dial window (" + start + "-" + end
-                    + ") must fit inside the company's allowed dial window ("
-                    + config.dialWindowStart() + "-" + config.dialWindowEnd() + ")");
+            throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_WINDOW_OUT_OF_RANGE,
+                    start, end, config.dialWindowStart(), config.dialWindowEnd());
         }
     }
 
@@ -245,7 +247,7 @@ public class CampaignService {
         }
         String trimmed = ttsVoice.trim();
         if (voices.find(trimmed) == null) {
-            throw new ValidationException("Unknown TTS voice '" + trimmed + "'; available: " + voices.ids());
+            throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed, voices.ids());
         }
         return trimmed;
     }
@@ -352,7 +354,7 @@ public class CampaignService {
     public Campaign requireCampaign(long id) {
         Campaign campaign = getCampaign(id);
         if (campaign == null) {
-            throw new NotFoundException("campaign", id);
+            throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id);
         }
         return campaign;
     }
@@ -448,8 +450,8 @@ public class CampaignService {
      * When to dial this target again, honouring the campaign's window (§11.2).
      */
     private Instant nextAttemptAt(Disposition disposition, Campaign campaign) {
-        int retryHours = campaign != null ? campaign.retryIntervalHours() : 24;
-        Duration delay = RetrySchedule.delayFor(disposition, dialerProps.retry(), retryHours);
+        int retryMinutes = campaign != null ? campaign.retryIntervalMinutes() : 0;
+        Duration delay = RetrySchedule.delayFor(disposition, dialerProps.retry(), retryMinutes);
         ZonedDateTime candidate = ZonedDateTime.now(clock).plus(delay);
         RetryProperties retry = dialerProps.retry();
         if (campaign == null || retry == null || !retry.respectDialWindow()) {

@@ -7,6 +7,7 @@ import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.company.dto.*;
 import uz.murodjon.uysotvoice.company.repository.CompanyRepository;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.storage.dto.StoredFile;
 import uz.murodjon.uysotvoice.storage.service.ImageUploadService;
@@ -77,6 +78,26 @@ public class CompanyService {
     }
 
     /**
+     * The company behind a call, or {@code null} if it is gone. Deliberately skips {@link
+     * CompanyAccessGuard}, unlike {@link #requireCompany}: this is read from the call path
+     * (DialogEngine.startCall, to speak the §11.1 disclosure in the company's own name),
+     * where the id comes from the call attempt row and there is no logged-in user for the
+     * guard to check. Never use it to serve a request — {@link #requireCompany} is that.
+     */
+    public Company findById(long id) {
+        return repo.find(id);
+    }
+
+    /**
+     * Every company, for the TTS warm-up: the §11.1 disclosure names the calling company
+     * (so each one is a different line to pre-synthesize) and each may speak with its own
+     * voice settings (so the same line is different audio per company).
+     */
+    public List<Company> findAllForWarmup() {
+        return repo.findAll();
+    }
+
+    /**
      * As {@link CompanyRepository#find}, for the REST API — a missing company is a 404,
      * not a null. Also enforces {@link CompanyAccessGuard} (report #3): a tenant's own
      * {@code ADMIN} only ever sees its own company through this method; {@code
@@ -92,7 +113,7 @@ public class CompanyService {
     private Company requireCompanyUnscoped(long id) {
         Company row = repo.find(id);
         if (row == null) {
-            throw new NotFoundException("company", id);
+            throw new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, id);
         }
         return row;
     }

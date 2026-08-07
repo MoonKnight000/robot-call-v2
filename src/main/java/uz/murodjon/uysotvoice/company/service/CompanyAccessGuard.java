@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.company.service;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.user.enums.UserRole;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
@@ -33,7 +34,7 @@ public class CompanyAccessGuard {
             return;
         }
         if (companyId != company.id()) {
-            throw new NotFoundException("company", companyId);
+            throw new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId);
         }
     }
 }

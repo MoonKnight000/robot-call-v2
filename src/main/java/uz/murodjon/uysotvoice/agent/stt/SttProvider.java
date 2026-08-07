@@ -10,8 +10,14 @@ public interface SttProvider {
      * Open a streaming recognition session for the given BCP-47 language
      * (e.g. {@code uz-UZ}, {@code ru-RU}). Transcripts are delivered to
      * {@code listener}.
+     *
+     * @param externalEndpointing whether the caller decides when an utterance ends and
+     *                            says so via {@link SttSession#endUtterance()}
+     *                            ({@link EndpointingProperties}). A provider that cannot
+     *                            hand that decision over keeps its own detector and
+     *                            simply ignores the later signals
      */
-    SttSession startStream(String languageCode, TranscriptListener listener);
+    SttSession startStream(String languageCode, TranscriptListener listener, boolean externalEndpointing);
 
     /**
      * Sample rate this provider expects audio in, in Hz. The call pipeline decodes

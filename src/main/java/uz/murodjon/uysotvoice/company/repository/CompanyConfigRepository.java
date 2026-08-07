@@ -26,7 +26,7 @@ public class CompanyConfigRepository {
     }
 
     public long create(long companyId, LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
-                       Language defaultLanguage, List<Language> supportedLanguages) {
+                       Language defaultLanguage, List<Language> supportedLanguages, String disclosureText) {
         CompanyConfigEntity entity = new CompanyConfigEntity();
         entity.setCompanyId(companyId);
         entity.setDialWindowStart(dialWindowStart);
@@ -34,6 +34,7 @@ public class CompanyConfigRepository {
         entity.setTimezone(timezone);
         entity.setDefaultLanguage(defaultLanguage);
         entity.setSupportedLanguages(supportedLanguages);
+        entity.setDisclosureText(disclosureText);
         entity.setCreatedAt(Instant.now());
         return jpa.save(entity).getId();
     }
@@ -49,19 +50,21 @@ public class CompanyConfigRepository {
 
     /** No-op if {@code companyId} has no config row yet. */
     public void update(long companyId, LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
-                       Language defaultLanguage, List<Language> supportedLanguages) {
+                       Language defaultLanguage, List<Language> supportedLanguages, String disclosureText) {
         jpa.findByCompanyId(companyId).ifPresent(entity -> {
             entity.setDialWindowStart(dialWindowStart);
             entity.setDialWindowEnd(dialWindowEnd);
             entity.setTimezone(timezone);
             entity.setDefaultLanguage(defaultLanguage);
             entity.setSupportedLanguages(supportedLanguages);
+            entity.setDisclosureText(disclosureText);
             jpa.save(entity);
         });
     }
 
     private static CompanyConfig toRow(CompanyConfigEntity e) {
         return new CompanyConfig(e.getId(), e.getCompanyId(), e.getDialWindowStart(), e.getDialWindowEnd(),
-                e.getTimezone(), e.getDefaultLanguage(), List.copyOf(e.getSupportedLanguages()), e.getCreatedAt());
+                e.getTimezone(), e.getDefaultLanguage(), List.copyOf(e.getSupportedLanguages()),
+                e.getDisclosureText(), e.getCreatedAt());
     }
 }

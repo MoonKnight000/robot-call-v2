@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.profile.repository.TableConfigRepository;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
@@ -41,16 +42,16 @@ public class ProfileTableConfigService {
 
     private static String requireKey(String key) {
         if (key == null || key.isBlank()) {
-            throw new ValidationException("config key bo'sh bo'lishi mumkin emas");
+            throw new ValidationException(ErrorCode.PROFILE_TABLE_CONFIG_KEY_BLANK);
         }
         if (key.length() > 100) {
-            throw new ValidationException("config key 100 belgidan oshmasligi kerak");
+            throw new ValidationException(ErrorCode.PROFILE_TABLE_CONFIG_KEY_TOO_LONG);
         }
         return key;
     }
 
     private long requireUserId() {
-        return currentUser.id().orElseThrow(() -> new ForbiddenException("no user session on this request"));
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 
     private static JsonNode readValue(String json) {

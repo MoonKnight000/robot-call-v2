@@ -2,7 +2,7 @@ package uz.murodjon.uysotvoice.auth.repository;
 
 import org.springframework.stereotype.Repository;
 
-import uz.murodjon.uysotvoice.auth.dto.UserSession;
+import uz.murodjon.uysotvoice.auth.domain.UserSession;
 import uz.murodjon.uysotvoice.auth.entity.UserSessionEntity;
 
 import java.time.Instant;
@@ -38,8 +38,8 @@ public class UserSessionRepository {
     }
 
     /** Not revoked — a revoked session's old hash must never authenticate a refresh again. */
-    public Optional<UserSessionEntity> findActiveByHash(String tokenHash) {
-        return jpa.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash);
+    public Optional<UserSession> findActiveByHash(String tokenHash) {
+        return jpa.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash).map(UserSessionRepository::toUserSession);
     }
 
     /** Rotates the token in place — same session id/device/created_at, new hash+expiry. */
@@ -76,8 +76,12 @@ public class UserSessionRepository {
 
     public List<UserSession> listActiveForUser(long userId) {
         return jpa.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId).stream()
-                .map(e -> new UserSession(e.getId(), e.getDevice(), e.getIpAddress(), e.getCreatedAt(),
-                        e.getLastActivityAt()))
+                .map(UserSessionRepository::toUserSession)
                 .toList();
+    }
+
+    private static UserSession toUserSession(UserSessionEntity e) {
+        return new UserSession(e.getId(), e.getCompanyId(), e.getUserId(), e.getRefreshTokenHash(), e.getDevice(),
+                e.getIpAddress(), e.getCreatedAt(), e.getLastActivityAt(), e.getExpiresAt(), e.getRevokedAt());
     }
 }

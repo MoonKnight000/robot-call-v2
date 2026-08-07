@@ -5,12 +5,14 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.Tokens;
+import uz.murodjon.uysotvoice.user.domain.User;
 import uz.murodjon.uysotvoice.user.dto.InviteUserRequest;
 import uz.murodjon.uysotvoice.user.dto.InviteUserResponse;
-import uz.murodjon.uysotvoice.user.dto.User;
+import uz.murodjon.uysotvoice.user.dto.UserRow;
 import uz.murodjon.uysotvoice.user.enums.UserRole;
 import uz.murodjon.uysotvoice.user.enums.UserStatus;
 import uz.murodjon.uysotvoice.user.repository.UserRepository;
@@ -44,8 +46,8 @@ public class UserService {
         this.audit = audit;
     }
 
-    public List<User> list() {
-        return repo.findAll();
+    public List<UserRow> list() {
+        return repo.findAll().stream().map(UserRow::of).toList();
     }
 
     /**
@@ -59,28 +61,28 @@ public class UserService {
     public InviteUserResponse invite(InviteUserRequest r) {
         requireNotSuperadmin(r.role());
         if (repo.existsByEmail(r.email())) {
-            throw new ConflictException("email " + r.email() + " already registered");
+            throw new ConflictException(ErrorCode.USER_EMAIL_TAKEN, r.email());
         }
         if (repo.existsByUsername(r.username())) {
-            throw new ConflictException("username " + r.username() + " already registered");
+            throw new ConflictException(ErrorCode.USER_USERNAME_TAKEN, r.username());
         }
         long id = repo.create(r.name(), r.username(), r.email(), r.role(), UserStatus.INVITED);
         String token = Tokens.generate();
         repo.setInviteToken(id, Tokens.hash(token), Instant.now().plus(INVITE_TTL));
         audit.record("USER_INVITE", "user", String.valueOf(id), r.email());
-        return new InviteUserResponse(requireUser(id), token);
+        return new InviteUserResponse(UserRow.of(requireUser(id)), token);
     }
 
-    public User changeRole(long id, UserRole role) {
+    public UserRow changeRole(long id, UserRole role) {
         requireNotSuperadmin(role);
         User target = requireUser(id);
         if (target.role() == UserRole.ADMIN && role != UserRole.ADMIN
                 && repo.countActiveAdmins(company.id()) <= 1) {
-            throw new ConflictException("cannot change the role of the last admin — promote another user first");
+            throw new ConflictException(ErrorCode.LAST_ADMIN_ROLE_CHANGE_FORBIDDEN);
         }
         repo.updateRole(id, role);
         audit.record("USER_ROLE_CHANGE", "user", String.valueOf(id), role.name());
-        return requireUser(id);
+        return UserRow.of(requireUser(id));
     }
 
     /**
@@ -90,39 +92,39 @@ public class UserService {
      */
     private static void requireNotSuperadmin(UserRole role) {
         if (role == UserRole.SUPERADMIN) {
-            throw new ValidationException("SUPERADMIN cannot be granted through company user management");
+            throw new ValidationException(ErrorCode.SUPERADMIN_GRANT_FORBIDDEN);
         }
     }
 
-    public User block(long id) {
+    public UserRow block(long id) {
         User target = requireUser(id);
         guardLastAdmin(target, "block");
         repo.updateStatus(id, UserStatus.BLOCKED);
         audit.record("USER_BLOCK", "user", String.valueOf(id), target.email());
-        return requireUser(id);
+        return UserRow.of(requireUser(id));
     }
 
-    public User unblock(long id) {
+    public UserRow unblock(long id) {
         requireUser(id);
         repo.updateStatus(id, UserStatus.ACTIVE);
         audit.record("USER_UNBLOCK", "user", String.valueOf(id), null);
-        return requireUser(id);
+        return UserRow.of(requireUser(id));
     }
 
     private void guardLastAdmin(User target, String action) {
         if (currentUser.id().isPresent() && currentUser.id().get() == target.id()) {
-            throw new ConflictException("cannot " + action + " your own account");
+            throw new ConflictException(ErrorCode.SELF_ACTION_FORBIDDEN, action);
         }
         if (target.role() == UserRole.ADMIN && target.status() == UserStatus.ACTIVE
                 && repo.countActiveAdmins(company.id()) <= 1) {
-            throw new ConflictException("cannot " + action + " the last admin");
+            throw new ConflictException(ErrorCode.LAST_ADMIN_ACTION_FORBIDDEN, action);
         }
     }
 
     private User requireUser(long id) {
         User row = repo.find(id);
         if (row == null) {
-            throw new NotFoundException("user", id);
+            throw new NotFoundException(ErrorCode.USER_NOT_FOUND, id);
         }
         return row;
     }

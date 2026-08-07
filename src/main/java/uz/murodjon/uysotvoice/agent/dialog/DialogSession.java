@@ -3,7 +3,7 @@ package uz.murodjon.uysotvoice.agent.dialog;
 import org.springframework.ai.chat.messages.Message;
 
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
-import uz.murodjon.uysotvoice.aimodel.dto.EffectiveAiModelConfig;
+import uz.murodjon.uysotvoice.aimodel.domain.EffectiveAiModelConfig;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,6 +49,11 @@ public class DialogSession {
     /** Campaign's own choice on the §11.1 opening disclosure (§10.6); the engine also
      * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
     private final boolean disclosureEnabled;
+
+    /** Whose name the §11.1 disclosure is spoken in — the company this call's campaign belongs to. */
+    private final String companyName;
+    /** That company's own wording of the §11.1 disclosure (company config), resolved once. */
+    private final String companyDisclosureText;
     private final List<Message> history = new ArrayList<>();
     private final Instant startedAt = Instant.now();
     private final AtomicBoolean busy = new AtomicBoolean(false);
@@ -67,6 +73,13 @@ public class DialogSession {
     /** Whether the §11.1 disclosure has already been spoken from code this call. */
     private volatile boolean disclosureSpoken;
     private int turnCount;
+
+    /**
+     * Turn number the last "bir soniya" filler was played on, or 0 for none. A filler
+     * every turn is worse than none at all — it stops reading as thinking and starts
+     * reading as a tic — so a turn only gets one if the previous turn did not.
+     */
+    private volatile int lastFillerTurn;
 
     /**
      * Set when the client's turn ends, cleared once the bot's first audio for that
@@ -89,6 +102,17 @@ public class DialogSession {
      * window is exactly the input the next turn needs.
      */
     private final AtomicReference<String> pendingInput = new AtomicReference<>();
+
+    /**
+     * What this turn's tool calls said should be spoken, in the order they were called.
+     *
+     * <p>A tool-calling turn comes back from the provider as function calls and nothing
+     * else — no text — and the caller is then listening to silence while a second request
+     * asks for the line (a whole extra round trip inside the §1.3 budget). So every tool
+     * carries its line as an argument instead ({@link DialogTools}), and the engine speaks
+     * what the tools brought with them.
+     */
+    private final List<String> toolReplies = new CopyOnWriteArrayList<>();
 
     // Recorded by tool calls. disposition is read at teardown (CampaignService.applyOutcome,
     // CallFinalizer). outcome is a live-monitoring convenience only (operatorSnapshot) — the
@@ -129,7 +153,8 @@ public class DialogSession {
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
                          ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
                          long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         EffectiveAiModelConfig aiModel, EffectiveVoiceSettings voiceSettings) {
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings) {
         this.channelId = channelId;
         this.language = language;
         this.ttsVoice = ttsVoice;
@@ -144,6 +169,8 @@ public class DialogSession {
         this.callAttemptId = callAttemptId;
         this.watchdog = watchdog;
         this.disclosureEnabled = disclosureEnabled;
+        this.companyName = companyName;
+        this.companyDisclosureText = companyDisclosureText;
         this.aiModel = aiModel;
         this.voiceSettings = voiceSettings;
     }
@@ -270,6 +297,14 @@ public class DialogSession {
         return ttsVoice;
     }
 
+    public String companyName() {
+        return companyName;
+    }
+
+    public String companyDisclosureText() {
+        return companyDisclosureText;
+    }
+
     public boolean disclosureEnabled() {
         return disclosureEnabled;
     }
@@ -381,6 +416,19 @@ public class DialogSession {
         return ++turnCount;
     }
 
+    /**
+     * Whether a filler may be played on {@code turn} — i.e. the previous turn did not
+     * already get one.
+     */
+    public boolean fillerAllowed(int turn) {
+        return turn - lastFillerTurn >= 2;
+    }
+
+    /** Note that {@code turn} used its filler, so the next turn does not. */
+    public void markFillerSpoken(int turn) {
+        lastFillerTurn = turn;
+    }
+
     /** Start the turnaround clock — the client just stopped speaking. */
     public void startTurnClock() {
         turnStartedAt = Instant.now();
@@ -400,6 +448,16 @@ public class DialogSession {
         return Duration.between(started, Instant.now());
     }
 
+    /**
+     * Non-consuming peek at whether {@link #takeTurnaround()} would still return a value —
+     * i.e. whether the turn's first audio has not been queued yet. Lets a caller decide
+     * *before* synthesizing whether this is the sentence the §1.3 clock is waiting on
+     * (streaming-worthy) without tripping the once-per-turn flag itself.
+     */
+    public boolean isFirstAudioPending() {
+        return turnStartedAt != null && !turnaroundRecorded.get();
+    }
+
     /** Queue client speech that could not be handled now; merged with anything already waiting. */
     public void deferInput(String text) {
         pendingInput.accumulateAndGet(text, (existing, added) ->
@@ -409,6 +467,27 @@ public class DialogSession {
     /** Take the deferred client speech, or {@code null} if there is none. */
     public String takeDeferredInput() {
         return pendingInput.getAndSet(null);
+    }
+
+    /** Record the line a tool call carried; a blank one is no line at all. */
+    public void addToolReply(String reply) {
+        if (reply != null && !reply.isBlank()) {
+            toolReplies.add(reply.trim());
+        }
+    }
+
+    /**
+     * This turn's tool-carried lines as one utterance, or {@code null} if the tools
+     * brought none. Several tools in one turn read as consecutive sentences — "va'dangizni
+     * belgilab qo'ydim" then "xayr" — which is how the model wrote them.
+     */
+    public String toolReplies() {
+        return toolReplies.isEmpty() ? null : String.join(" ", toolReplies);
+    }
+
+    /** Drop the previous turn's lines before a new turn calls its tools. */
+    public void clearToolReplies() {
+        toolReplies.clear();
     }
 
     public boolean isCancelled() {

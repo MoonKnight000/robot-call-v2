@@ -9,12 +9,7 @@ import org.springframework.http.HttpStatus;
  */
 public class NotFoundException extends AppException {
 
-    public NotFoundException(String message) {
-        super(HttpStatus.NOT_FOUND, "NOT_FOUND", message);
-    }
-
-    /** @param entity lower-case entity name, e.g. {@code campaign} */
-    public NotFoundException(String entity, Object id) {
-        super(HttpStatus.NOT_FOUND, "NOT_FOUND", entity + " " + id + " not found");
+    public NotFoundException(ErrorCode code, Object... args) {
+        super(HttpStatus.NOT_FOUND, code, code.format(args));
     }
 }

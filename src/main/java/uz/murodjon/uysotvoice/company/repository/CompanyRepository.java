@@ -61,6 +61,15 @@ public class CompanyRepository {
         });
     }
 
+    /**
+     * Every company, unfiltered and unpaged — for the internal callers that need the whole
+     * tenant list rather than a page of it (the TTS warm-up pre-synthesizes one disclosure
+     * per company). {@link #findAll(CompanyFilter)} is the API-facing, paged read.
+     */
+    public List<Company> findAll() {
+        return jpa.findAll().stream().map(CompanyRepository::toRow).toList();
+    }
+
     public List<Company> findAll(CompanyFilter filter) {
         return jpa.search(likePattern(filter.search()), filter.pageable()).stream()
                 .map(CompanyRepository::toRow)

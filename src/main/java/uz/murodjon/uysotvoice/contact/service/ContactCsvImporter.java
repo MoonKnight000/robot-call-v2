@@ -3,6 +3,7 @@ package uz.murodjon.uysotvoice.contact.service;
 import uz.murodjon.uysotvoice.contact.dto.ContactCsvParseResult;
 import uz.murodjon.uysotvoice.contact.dto.ParsedContact;
 import uz.murodjon.uysotvoice.shared.csv.CsvRowError;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ public final class ContactCsvImporter {
     public static ContactCsvParseResult parse(String csv) {
         List<String> lines = splitLines(csv);
         if (lines.isEmpty()) {
-            throw new ValidationException("CSV is empty");
+            throw new ValidationException(ErrorCode.CSV_EMPTY);
         }
         char delimiter = detectDelimiter(lines.get(0));
         List<String> header = splitRow(lines.get(0), delimiter);
@@ -57,7 +58,7 @@ public final class ContactCsvImporter {
             }
         }
         if (!index.containsKey(COL_PHONE)) {
-            throw new ValidationException("CSV needs a 'phone' column; found: " + header);
+            throw new ValidationException(ErrorCode.CSV_PHONE_COLUMN_MISSING, header);
         }
 
         List<ParsedContact> contacts = new ArrayList<>();
@@ -80,11 +81,11 @@ public final class ContactCsvImporter {
     private static ParsedContact toContact(List<String> cells, Map<String, Integer> index, int line) {
         String phone = value(cells, index, COL_PHONE);
         if (phone == null || phone.isBlank()) {
-            throw new ValidationException("phone is empty");
+            throw new ValidationException(ErrorCode.CSV_PHONE_EMPTY);
         }
         String name = value(cells, index, COL_NAME);
         if (name == null || name.isBlank()) {
-            throw new ValidationException("name is empty");
+            throw new ValidationException(ErrorCode.CSV_NAME_EMPTY);
         }
         return new ParsedContact(line, name.trim(), phone.trim(),
                 blankToNull(value(cells, index, COL_ADDRESS)),

@@ -14,9 +14,15 @@ public final class WavHeader {
     private WavHeader() {
     }
 
-    /** Mono 16-bit PCM header for {@code dataBytes} of audio at {@code sampleRate}. */
-    public static byte[] bytes(int sampleRate, int dataBytes) {
-        int byteRate = sampleRate * 2; // mono, 16-bit
+    /**
+     * 16-bit PCM header for {@code dataBytes} of audio at {@code sampleRate}.
+     *
+     * @param channels 1 for the live "listen in" stream (both directions already mixed
+     *                 into one), 2 for a recording that keeps them apart
+     */
+    public static byte[] bytes(int sampleRate, int channels, int dataBytes) {
+        int blockAlign = channels * 2; // 16-bit samples
+        int byteRate = sampleRate * blockAlign;
         byte[] h = new byte[SIZE];
         System.arraycopy("RIFF".getBytes(StandardCharsets.US_ASCII), 0, h, 0, 4);
         putIntLE(h, 4, 36 + dataBytes);
@@ -24,10 +30,10 @@ public final class WavHeader {
         System.arraycopy("fmt ".getBytes(StandardCharsets.US_ASCII), 0, h, 12, 4);
         putIntLE(h, 16, 16);       // PCM fmt chunk size
         putShortLE(h, 20, 1);      // audio format = PCM
-        putShortLE(h, 22, 1);      // channels = mono
+        putShortLE(h, 22, channels);
         putIntLE(h, 24, sampleRate);
         putIntLE(h, 28, byteRate);
-        putShortLE(h, 32, 2);      // block align
+        putShortLE(h, 32, blockAlign);
         putShortLE(h, 34, 16);     // bits per sample
         System.arraycopy("data".getBytes(StandardCharsets.US_ASCII), 0, h, 36, 4);
         putIntLE(h, 40, dataBytes);

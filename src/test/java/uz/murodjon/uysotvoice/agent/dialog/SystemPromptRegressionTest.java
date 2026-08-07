@@ -27,7 +27,8 @@ class SystemPromptRegressionTest {
 
     private static DialogSession session(String stageId) {
         DialogSession s = new DialogSession("chan-1", "uz-UZ", null, ScenarioFixtures.fullContext(),
-                ScenarioFixtures.debtCollection(), null, null, null, 1L, null, true, null, EffectiveVoiceSettings.NONE);
+                ScenarioFixtures.debtCollection(), null, null, null, 1L, null, true, "Uysot",
+                null, null, EffectiveVoiceSettings.NONE);
         s.setState(stageId);
         return s;
     }

@@ -7,11 +7,22 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
+import uz.murodjon.uysotvoice.company.dto.Company;
+import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
+import uz.murodjon.uysotvoice.company.service.CompanyConfigService;
+import uz.murodjon.uysotvoice.company.service.CompanyService;
+import uz.murodjon.uysotvoice.scenario.dto.Scenario;
+import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
+import uz.murodjon.uysotvoice.shared.dialog.Disclosure;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
+import uz.murodjon.uysotvoice.voice.service.VoiceSettingsService;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -37,14 +48,24 @@ public class TtsWarmup {
     private final TtsRouter router;
     private final TtsCache cache;
     private final TtsVoiceService catalog;
+    private final CompanyService companyService;
+    private final CompanyConfigService companyConfigService;
+    private final VoiceSettingsService voiceSettingsService;
+    private final ScenarioService scenarioService;
 
     public TtsWarmup(TtsProperties ttsProps, DialogProperties dialogProps, TtsRouter router,
-                     TtsCache cache, TtsVoiceService catalog) {
+                     TtsCache cache, TtsVoiceService catalog, CompanyService companyService,
+                     CompanyConfigService companyConfigService,
+                     VoiceSettingsService voiceSettingsService, ScenarioService scenarioService) {
         this.ttsProps = ttsProps;
         this.dialogProps = dialogProps;
         this.router = router;
         this.cache = cache;
         this.catalog = catalog;
+        this.companyService = companyService;
+        this.companyConfigService = companyConfigService;
+        this.voiceSettingsService = voiceSettingsService;
+        this.scenarioService = scenarioService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -60,14 +81,14 @@ public class TtsWarmup {
         int failed = 0;
         long startedAt = System.nanoTime();
         for (Warm target : targets()) {
-            for (String line : DialogPhrases.forLanguage(target.language())) {
+            for (Spoken spoken : linesToWarm(target.language())) {
                 try {
-                    router.synthesize(line, target.language(), target.voiceId());
+                    router.synthesize(spoken.line(), target.language(), target.voiceId(), spoken.style());
                     done++;
                 } catch (Exception e) {
                     failed++;
                     log.debug("TTS warm-up failed for {}/{} ('{}'): {}",
-                            target.language(), target.voiceId(), line, e.getMessage());
+                            target.language(), target.voiceId(), spoken.line(), e.getMessage());
                 }
             }
         }
@@ -82,6 +103,71 @@ public class TtsWarmup {
 
     /** One language, optionally in one selectable voice ({@code null} = default routing). */
     private record Warm(String language, String voiceId) {
+    }
+
+    /** One line as one company will actually hear it — the same text at another speed is other audio. */
+    private record Spoken(String line, EffectiveVoiceSettings style) {
+    }
+
+    /**
+     * The fixed lines to warm for one language, each paired with the voice settings it
+     * will be spoken with.
+     *
+     * <p>Both halves matter for a hit. Only the §11.1 disclosure names a company, so the
+     * lines themselves collapse to "the shared ones, plus one disclosure per tenant". The
+     * settings do not collapse: {@code speed}/{@code pitch}/{@code provider} are part of
+     * the cache key ({@code TtsRouter}), so warming everything at the process defaults
+     * left every company that had tuned its voice paying for the whole set on its first
+     * call — the one warm-up exists to spare.
+     */
+    private Set<Spoken> linesToWarm(String language) {
+        List<Company> companies = companyService.findAllForWarmup();
+        List<Scenario> scenarios = scenarioService.findAllActiveForWarmup();
+        if (companies.isEmpty()) {
+            return spoken(linesFor(null, language, scenarios, null), EffectiveVoiceSettings.NONE);
+        }
+        Set<Spoken> lines = new LinkedHashSet<>();
+        for (Company company : companies) {
+            CompanyConfig config = companyConfigService.find(company.id());
+            lines.addAll(spoken(linesFor(company.name(), language, scenarios,
+                            config != null ? config.disclosureText() : null),
+                    voiceSettingsService.effective(company.id())));
+        }
+        return lines;
+    }
+
+    /**
+     * The fixed lines one company speaks in one language: the platform's own, plus every
+     * §11.1 disclosure that may replace the platform's — the company's own wording and
+     * that of any scenario overriding it.
+     *
+     * <p>All of them, because which one a given call opens with depends on the scenario
+     * it runs, and the disclosure is precisely the line worth having ready: it plays
+     * before the caller has said anything, so there is no turn in flight for its
+     * synthesis to hide behind.
+     */
+    private static List<String> linesFor(String companyName, String language, List<Scenario> scenarios,
+                                         String companyDisclosureText) {
+        List<String> lines = new ArrayList<>(DialogPhrases.forLanguage(language, companyName));
+        addIfPresent(lines, Disclosure.resolve(companyDisclosureText, language, companyName));
+        for (Scenario scenario : scenarios) {
+            addIfPresent(lines, Disclosure.resolve(scenario.definition().disclosureText(), language, companyName));
+        }
+        return lines;
+    }
+
+    private static void addIfPresent(List<String> lines, String line) {
+        if (line != null) {
+            lines.add(line);
+        }
+    }
+
+    private static Set<Spoken> spoken(List<String> lines, EffectiveVoiceSettings style) {
+        Set<Spoken> out = new LinkedHashSet<>();
+        for (String line : lines) {
+            out.add(new Spoken(line, style));
+        }
+        return out;
     }
 
     /**

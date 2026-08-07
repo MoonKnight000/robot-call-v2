@@ -1,4 +1,4 @@
-package uz.murodjon.uysotvoice.aimodel.dto;
+package uz.murodjon.uysotvoice.aimodel.domain;
 
 /**
  * A company's {@link AiModelConfig} merged over the process-wide defaults ({@code

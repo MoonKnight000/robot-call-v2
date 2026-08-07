@@ -20,12 +20,19 @@ import java.util.List;
  *                            code (anything other than {@code uz-UZ}/{@code ru-RU}/
  *                            {@code en-US}) is rejected at deserialization, before
  *                            validation even runs
+ * @param disclosureText      the §11.1 notice this company's calls open with. It must
+ *                            still say the call is automated and recorded — a text that
+ *                            does not is rejected (§11.1 is not negotiable, see {@code
+ *                            shared.dialog.Disclosure}). {@code {company}} is replaced
+ *                            with the company's name; null/blank restores the
+ *                            platform's own wording
  */
 public record UpdateCompanyConfigRequest(
         @NotNull @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @NotNull @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         @NotBlank String timezone,
         @NotNull Language defaultLanguage,
-        @NotEmpty List<@NotNull Language> supportedLanguages
+        @NotEmpty List<@NotNull Language> supportedLanguages,
+        String disclosureText
 ) {
 }

@@ -157,7 +157,7 @@ Default trunk **o'chirilmaydi** — avval boshqa trunkni default qilib
 belgilang, keyin o'chiring:
 
 ```json
-{ "data": null, "message": "Cannot delete the default trunk — set another one as default first", "accept": false, "errors": null }
+{ "data": null, "message": "Cannot delete the default trunk — set another one as default first", "messageCode": "SIP_TRUNK_DEFAULT_DELETE_FORBIDDEN", "accept": false, "errors": null }
 ```
 (`409`)
 

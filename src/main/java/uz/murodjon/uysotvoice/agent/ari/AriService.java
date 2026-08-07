@@ -38,11 +38,13 @@ import uz.murodjon.uysotvoice.agent.routing.CallRouteRegistry;
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
 import uz.murodjon.uysotvoice.agent.rtp.RtpPortAllocator;
 import uz.murodjon.uysotvoice.agent.rtp.RtpProperties;
+import uz.murodjon.uysotvoice.agent.rtp.RtpStats;
 import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
 import uz.murodjon.uysotvoice.agent.rtp.WavHeader;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
 import uz.murodjon.uysotvoice.agent.rtp.WavRecorder;
 import uz.murodjon.uysotvoice.agent.session.CallSession;
+import uz.murodjon.uysotvoice.agent.stt.EndpointingProperties;
 import uz.murodjon.uysotvoice.agent.stt.SttProperties;
 import uz.murodjon.uysotvoice.agent.stt.SttProvider;
 import uz.murodjon.uysotvoice.agent.stt.SttStreamBridge;
@@ -84,10 +86,11 @@ import uz.murodjon.uysotvoice.scenario.dto.Scenario;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.PhoneNumbers;
-import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
+import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkRow;
 import uz.murodjon.uysotvoice.siptrunk.service.SipTrunkService;
 
 import java.io.IOException;
@@ -131,6 +134,13 @@ public class AriService {
     private static final Pattern TRUNK_FROM_CHANNEL_NAME = Pattern.compile("PJSIP/(.+)-[0-9a-fA-F]+");
     /** {@link #pendingManualScenarios} sentinel: a manual call with no explicit {@code scenarioId}. */
     private static final long NO_EXPLICIT_SCENARIO = 0L;
+
+    /**
+     * Inbound packet loss above which a finished call is called out in the log. G.711
+     * carries a lost 20ms packet without much complaint; a few percent is where words
+     * start going missing and the recognizer begins inventing them.
+     */
+    private static final double POOR_RTP_LOSS_PERCENT = 5.0;
 
     private final AsteriskProperties props;
     private final RtpProperties rtpProps;
@@ -270,7 +280,9 @@ public class AriService {
             // Asterisk 20 sends event fields (e.g. ChannelDestroyed.tech_cause) that this
             // pinned ari4java version's generated ARI 8.0.0 models don't declare — without
             // this, Jackson's default FAIL_ON_UNKNOWN_PROPERTIES throws on every such event
-            // and the websocket callback never runs.
+            // and the websocket callback never runs. The handler it installs still logs the
+            // would-be exception at WARN before skipping the field, which reads like a
+            // failure it is not; application.yml quietens that logger for the same reason.
             BaseAriAction.setObjectMapperLessStrict();
             // IM_FEELING_LUCKY negotiates the ARI version with Asterisk automatically.
             ari = ARI.build(props.ariUrl(), props.appName(), props.ariUser(), props.ariPassword(),
@@ -321,7 +333,7 @@ public class AriService {
      *
      * <p>The number decides which PJSIP endpoint carries the call: short internal
      * numbers go to the local test softphone, everything else to {@code companyId}'s
-     * default SIP trunk (ROADMAP B.3). See {@link #endpointFor(String, SipTrunk)}.
+     * default SIP trunk (ROADMAP B.3). See {@link #endpointFor(String, SipTrunkRow)}.
      *
      * @param companyId whose trunk carries the call — the dialer passes the dialled
      *                  campaign's own company, not necessarily the caller's
@@ -334,7 +346,7 @@ public class AriService {
         String number = PhoneNumbers.require(rawNumber);
         ARI current = requireConnection();
         String callId = "call-" + System.currentTimeMillis();
-        SipTrunk trunk = isLocalNumber(number) ? null : sipTrunkService.findDefaultForCall(companyId);
+        SipTrunkRow trunk = isLocalNumber(number) ? null : sipTrunkService.findDefaultForCall(companyId);
         String endpoint = endpointFor(number, trunk);
         String callerId = callerIdFor(trunk);
         try {
@@ -350,8 +362,8 @@ public class AriService {
             log.info("Originated call {} to {} via {} -> channel {}", callId, number, endpoint, channel.getId());
             return channel.getId();
         } catch (Exception e) {
-            throw new ExternalServiceException("asterisk", "Originate to " + number + " via " + endpoint
-                    + " failed: " + e.getMessage(), e);
+            throw new ExternalServiceException(ErrorCode.ARI_ORIGINATE_FAILED, "asterisk", e,
+                    number, endpoint, e.getMessage());
         }
     }
 
@@ -416,7 +428,7 @@ public class AriService {
      * company has no enabled default trunk (e.g. not yet migrated to the {@code
      * sip_trunk} table, or newly created and not configured yet).
      */
-    private String endpointFor(String number, SipTrunk trunk) {
+    private String endpointFor(String number, SipTrunkRow trunk) {
         if (isLocalNumber(number)) {
             return props.localEndpoint();
         }
@@ -428,7 +440,7 @@ public class AriService {
      * then the global {@code voice-agent.asterisk.caller-id}. {@code trunk} is {@code
      * null} for a local test call, which never needs a caller id override.
      */
-    private String callerIdFor(SipTrunk trunk) {
+    private String callerIdFor(SipTrunkRow trunk) {
         if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
             return trunk.callerId();
         }
@@ -452,7 +464,7 @@ public class AriService {
     public void play(String channelId, Path file) {
         CallSession session = sessions.get(channelId);
         if (session == null) {
-            throw new ConflictException("No active call for channel " + channelId);
+            throw new ConflictException(ErrorCode.CALL_NOT_ACTIVE, channelId);
         }
         try {
             WavAudio audio = WavReader.read(file);
@@ -462,7 +474,7 @@ public class AriService {
             }
             session.endpoint().playPcm(audio.samples());
         } catch (IOException e) {
-            throw new ExternalServiceException("asterisk", "Failed to play " + file + ": " + e.getMessage(), e);
+            throw new ExternalServiceException(ErrorCode.ARI_PLAYBACK_FAILED, "asterisk", e, file, e.getMessage());
         }
     }
 
@@ -483,22 +495,22 @@ public class AriService {
      */
     private Path resolveInRecordingDir(String file) {
         if (file == null || file.isBlank()) {
-            throw new ValidationException("file must not be blank");
+            throw new ValidationException(ErrorCode.PLAYBACK_FILE_BLANK);
         }
         Path base = Path.of(rtpProps.recordingDir()).toAbsolutePath().normalize();
         Path resolved = base.resolve(file).normalize();
         if (!resolved.startsWith(base)) {
-            throw new ValidationException("file must be inside " + base);
+            throw new ValidationException(ErrorCode.PLAYBACK_FILE_OUTSIDE_BASE, base);
         }
         try {
             // Resolves symlinks too — a link inside the directory must not escape it.
             Path real = resolved.toRealPath();
             if (!real.startsWith(base.toRealPath())) {
-                throw new ValidationException("file must be inside " + base);
+                throw new ValidationException(ErrorCode.PLAYBACK_FILE_OUTSIDE_BASE, base);
             }
             return real;
         } catch (IOException e) {
-            throw new ValidationException("No such playback file: " + file);
+            throw new ValidationException(ErrorCode.PLAYBACK_FILE_NOT_FOUND, file);
         }
     }
 
@@ -521,10 +533,10 @@ public class AriService {
     public void speak(String channelId, String text, String language, String ttsVoice) {
         CallSession session = sessions.get(channelId);
         if (session == null) {
-            throw new ConflictException("No active call for channel " + channelId);
+            throw new ConflictException(ErrorCode.CALL_NOT_ACTIVE, channelId);
         }
         if (!ttsProps.enabled()) {
-            throw new ConflictException("TTS is disabled (voice-agent.tts.enabled=false)");
+            throw new ConflictException(ErrorCode.TTS_DISABLED);
         }
         String lang = (language == null || language.isBlank()) ? ttsProps.defaultLanguage() : language;
         short[] pcm = ttsRouter.synthesize(text, lang, ttsVoice);
@@ -540,10 +552,10 @@ public class AriService {
      */
     public SayResponse say(String channelId, String text, String language, String voice) {
         if (text.isBlank()) {
-            throw new ValidationException("text must not be blank");
+            throw new ValidationException(ErrorCode.SAY_TEXT_BLANK);
         }
         if (text.length() > MAX_SAY_CHARS) {
-            throw new ValidationException("text is longer than " + MAX_SAY_CHARS + " characters");
+            throw new ValidationException(ErrorCode.SAY_TEXT_TOO_LONG, MAX_SAY_CHARS);
         }
         speak(channelId, text, language, voice);
         return new SayResponse(channelId, "speaking");
@@ -565,13 +577,14 @@ public class AriService {
     public StreamingResponseBody listen(String channelId) {
         CallSession session = sessions.get(channelId);
         if (session == null) {
-            throw new ConflictException("No active call for channel " + channelId);
+            throw new ConflictException(ErrorCode.CALL_NOT_ACTIVE, channelId);
         }
         LiveAudioMonitor monitor = session.audioMonitor();
         return output -> {
             BlockingQueue<byte[]> queue = monitor.subscribe();
             try {
-                output.write(WavHeader.bytes(SAMPLE_RATE, Integer.MAX_VALUE - WavHeader.SIZE));
+                // Mono: the monitor already mixed both directions into one stream.
+                output.write(WavHeader.bytes(SAMPLE_RATE, 1, Integer.MAX_VALUE - WavHeader.SIZE));
                 output.flush();
                 while (true) {
                     byte[] chunk;
@@ -893,7 +906,13 @@ public class AriService {
             if (vad != null && vad.available()) {
                 VadGatingProperties gating = sttProps.vadGating();
                 if (gating != null && gating.enabled() && sttProps.enabled()) {
-                    speechGate = new SpeechGate(SAMPLE_RATE, gating.preRollMs(), gating.postRollMs());
+                    // With client-side endpointing on, the gate shutting is also what ends
+                    // the utterance, so a short answer gets the short hangover (§1.3).
+                    EndpointingProperties endpointing = sttProps.endpointing();
+                    boolean adaptive = endpointing != null && endpointing.enabled();
+                    speechGate = new SpeechGate(SAMPLE_RATE, gating.preRollMs(), gating.postRollMs(),
+                            adaptive ? endpointing.shortUtteranceMs() : 0,
+                            adaptive ? endpointing.shortSilenceMs() : 0);
                 }
                 listeners.add(new VadStream(vad, vadProps, channelId,
                         () -> dialogEngine.notifyBargeIn(channelId), speechGate,
@@ -930,7 +949,7 @@ public class AriService {
                     String sttLanguage = (language == null || language.isBlank())
                             ? sttProps.defaultLanguage() : language;
                     listeners.add(new SttStreamBridge(stt, stt.sampleRate(), SAMPLE_RATE,
-                            channelId, sttLanguage, listener, speechGate, metrics));
+                            channelId, sttLanguage, listener, speechGate, metrics, sttProps.endpointing()));
                 } catch (Exception e) {
                     log.warn("STT not started for {}: {}", channelId, e.getMessage());
                 }
@@ -1219,6 +1238,7 @@ public class AriService {
             }
         }
         session.endpoint().close(); // finalizes the WAV file
+        reportRtpQuality(session);
         portAllocator.release(session.rtpPort());
         ARI current = ari;
         if (current != null) {
@@ -1262,6 +1282,36 @@ public class AriService {
         }
     }
 
+    /**
+     * Book what the call's inbound audio path was actually like, and say so in the log
+     * when it was bad (§10 Bosqich 12).
+     *
+     * <p>Nothing else in the pipeline can tell these failures apart: a caller the
+     * network swallowed, a caller who said nothing, and a recognizer that stopped
+     * returning finals all end the same way — an empty transcript and a NO_ANSWER-ish
+     * disposition. The packet counters name which one it was.
+     */
+    private void reportRtpQuality(CallSession session) {
+        RtpStats stats = session.endpoint().stats();
+        long received = stats.receivedPackets();
+        metrics.recordRtpQuality(received, stats.lostPackets(), stats.reorderedPackets(), stats.jitterMillis());
+        if (received == 0) {
+            log.error("ALERT: no inbound RTP at all on call {} — the caller was never heard. "
+                            + "Check that RTP_LOCAL_IP ({}) is reachable from Asterisk (docs/NETWORK.md)",
+                    session.channelId(), rtpProps.localIp());
+            return;
+        }
+        double loss = stats.lossPercent();
+        if (loss >= POOR_RTP_LOSS_PERCENT) {
+            log.warn("[{}] poor inbound RTP: {}% loss ({} lost / {} received), jitter {}ms, {} out of order",
+                    session.channelId(), Math.round(loss), stats.lostPackets(), received,
+                    Math.round(stats.jitterMillis()), stats.reorderedPackets());
+        } else {
+            log.info("[{}] inbound RTP: {} packets, {}% loss, jitter {}ms",
+                    session.channelId(), received, Math.round(loss), Math.round(stats.jitterMillis()));
+        }
+    }
+
     /** Hang up a channel by id (used by the dialer to reclaim unanswered calls). */
     public void hangupChannel(String channelId) {
         hangup(channelId);
@@ -1288,7 +1338,7 @@ public class AriService {
     private ARI requireConnection() {
         ARI current = ari;
         if (current == null) {
-            throw new ExternalServiceException("asterisk", "ARI is not connected");
+            throw new ExternalServiceException(ErrorCode.ARI_NOT_CONNECTED, "asterisk");
         }
         return current;
     }

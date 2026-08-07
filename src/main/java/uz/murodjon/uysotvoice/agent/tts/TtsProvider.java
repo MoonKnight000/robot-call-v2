@@ -45,4 +45,19 @@ public interface TtsProvider {
     default short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
         return synthesize(text, language, voice);
     }
+
+    /**
+     * As {@link #synthesize(String, String, String, EffectiveVoiceSettings)}, but delivers
+     * PCM to {@code onChunk} as it becomes available instead of returning the whole
+     * utterance at once. Providers whose wire protocol streams audio (Yandex v3 gRPC)
+     * override this to start playback before the full sentence has finished synthesizing;
+     * the default just wraps the blocking call and delivers it as a single chunk.
+     *
+     * @throws RuntimeException if synthesis fails or the provider is unavailable — any
+     *                          chunks already delivered to {@code onChunk} are still valid
+     */
+    default void synthesizeStreaming(String text, String language, String voice, EffectiveVoiceSettings style,
+                                      PcmChunkListener onChunk) {
+        onChunk.onChunk(synthesize(text, language, voice, style));
+    }
 }

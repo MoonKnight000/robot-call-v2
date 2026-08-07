@@ -1,5 +1,6 @@
 package uz.murodjon.uysotvoice.report.dto;
 
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.time.Duration;
@@ -26,10 +27,10 @@ public record DashboardRange(Instant from, Instant to) {
         Instant end = from(to, Instant.now());
         Instant start = from(from, end.minus(DEFAULT_SPAN));
         if (!start.isBefore(end)) {
-            throw new ValidationException("'from' must be before 'to'");
+            throw new ValidationException(ErrorCode.DATE_RANGE_INVALID);
         }
         if (Duration.between(start, end).compareTo(MAX_SPAN) > 0) {
-            throw new ValidationException("range must not exceed " + MAX_SPAN.toDays() + " days");
+            throw new ValidationException(ErrorCode.DATE_RANGE_TOO_LONG, MAX_SPAN.toDays());
         }
         return new DashboardRange(start, end);
     }
@@ -41,7 +42,7 @@ public record DashboardRange(Instant from, Instant to) {
         try {
             return Instant.parse(value);
         } catch (DateTimeParseException e) {
-            throw new ValidationException("'" + value + "' is not an ISO-8601 instant");
+            throw new ValidationException(ErrorCode.INSTANT_PARSE_FAILED, value);
         }
     }
 

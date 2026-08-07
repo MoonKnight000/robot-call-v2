@@ -141,6 +141,16 @@ public class ScenarioRepository {
         return jpa.countVisible(company.id(), filter.builtinOnly());
     }
 
+    /**
+     * Every active scenario, of every company — see
+     * {@code ScenarioService.findAllActiveForWarmup}. Unscoped on purpose, unlike
+     * {@link #findAll}: this one runs outside any request, where there is no current
+     * company to scope to.
+     */
+    public List<Scenario> findAllActive() {
+        return jpa.findByActiveTrue().stream().map(ScenarioRepository::toRow).toList();
+    }
+
     private static Scenario toRow(ScenarioEntity e) {
         return new Scenario(
                 e.getId(),

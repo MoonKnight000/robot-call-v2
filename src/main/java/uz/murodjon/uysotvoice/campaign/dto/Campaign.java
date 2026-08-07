@@ -23,7 +23,7 @@ import java.util.Set;
  * @param companyId owning company (ROADMAP B.1) — decides which SIP trunk the dialer
  *                 originates this campaign's calls through (ROADMAP B.3)
  * @param disclosureEnabled whether the §11.1 opening disclosure ("Assalomu alaykum!
- *                 Bu Uysot kompaniyasining avtomatik ovozli xizmati...") is spoken on
+ *                 Bu &lt;kompaniya&gt; kompaniyasining avtomatik ovozli xizmati...") is spoken on
  *                 this campaign's calls; the global {@code voice-agent.dialog.mandatory-
  *                 disclosure} switch still applies on top as a hard kill-switch
  * @param createdBy {@code app_user} who created this campaign; {@code null} for a
@@ -41,7 +41,7 @@ public record Campaign(
         LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
         int maxAttempts,
-        int retryIntervalHours,
+        int retryIntervalMinutes,
         int maxConcurrentCalls,
         String ttsVoice,
         int dailyCallCap,

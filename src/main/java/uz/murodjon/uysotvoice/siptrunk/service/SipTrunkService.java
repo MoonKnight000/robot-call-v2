@@ -7,13 +7,15 @@ import uz.murodjon.uysotvoice.audit.service.AuditService;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.exception.ConflictException;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.shared.util.SecretCipher;
+import uz.murodjon.uysotvoice.siptrunk.domain.SipTrunk;
 import uz.murodjon.uysotvoice.siptrunk.dto.CreateSipTrunkRequest;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkFilter;
-import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
+import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkRow;
 import uz.murodjon.uysotvoice.siptrunk.dto.UpdateSipTrunkRequest;
 import uz.murodjon.uysotvoice.siptrunk.enums.SipTrunkTransport;
 import uz.murodjon.uysotvoice.siptrunk.repository.SipTrunkRepository;
@@ -23,7 +25,7 @@ import java.util.List;
 /**
  * SIP trunk CRUD (ROADMAP B.3, report #7): each company may register several outbound
  * PJSIP trunks, exactly one of which is the default. Two modes, see {@link
- * SipTrunk#managed()} / {@code SipTrunkEntity}'s class javadoc: <strong>manual</strong>
+ * SipTrunkRow#managed()} / {@code SipTrunkEntity}'s class javadoc: <strong>manual</strong>
  * (an admin already configured the endpoint by hand in {@code pjsip.conf}, this only
  * picks which one a call uses) or <strong>managed</strong> (real host/username/password
  * entered here — {@link PjsipConfigWriter} generates the PJSIP config and registers it
@@ -50,13 +52,13 @@ public class SipTrunkService {
     }
 
     @Transactional
-    public SipTrunk create(CreateSipTrunkRequest r) {
+    public SipTrunkRow create(CreateSipTrunkRequest r) {
         long id;
         if (isManaged(r.pjsipEndpoint(), r.host())) {
             requireUsername(r.sipUsername());
             requireValidTransport(r.transport());
             if (r.sipPassword() == null || r.sipPassword().isBlank()) {
-                throw new ValidationException("sipPassword is required for a managed trunk");
+                throw new ValidationException(ErrorCode.SIP_TRUNK_PASSWORD_REQUIRED);
             }
             id = repo.create(r.name(), pendingEndpoint(), r.callerId(), false,
                     r.host(), portOrDefault(r.port()), r.sipUsername(), encryptPassword(r.sipPassword()),
@@ -71,18 +73,18 @@ public class SipTrunkService {
         return requireTrunk(id);
     }
 
-    public SipTrunk update(long id, UpdateSipTrunkRequest r) {
-        SipTrunk existing = requireTrunk(id);
+    public SipTrunkRow update(long id, UpdateSipTrunkRequest r) {
+        SipTrunk existing = requireSipTrunk(id);
         if (isManaged(r.pjsipEndpoint(), r.host())) {
             requireUsername(r.sipUsername());
             requireValidTransport(r.transport());
             String passwordEnc;
             if (r.sipPassword() != null && !r.sipPassword().isBlank()) {
                 passwordEnc = encryptPassword(r.sipPassword());
-            } else if (existing.managed()) {
+            } else if (existing.host() != null) {
                 passwordEnc = null; // repo.update keeps the trunk's current encrypted password
             } else {
-                throw new ValidationException("sipPassword is required when switching a trunk to managed mode");
+                throw new ValidationException(ErrorCode.SIP_TRUNK_PASSWORD_REQUIRED_ON_SWITCH);
             }
             repo.update(id, r.name(), generatedEndpoint(id), r.callerId(), r.enabled(),
                     r.host(), portOrDefault(r.port()), r.sipUsername(), passwordEnc, transportOrDefault(r.transport()));
@@ -96,7 +98,7 @@ public class SipTrunkService {
     }
 
     /** Promotes {@code id} to the company's default trunk, demoting whichever one held it before. */
-    public SipTrunk makeDefault(long id) {
+    public SipTrunkRow makeDefault(long id) {
         requireTrunk(id);
         repo.makeDefault(id);
         audit.record("SIP_TRUNK_SET_DEFAULT", "sip_trunk", String.valueOf(id), null);
@@ -109,29 +111,32 @@ public class SipTrunkService {
      * without anyone having decided that on purpose.
      */
     public void delete(long id) {
-        SipTrunk trunk = requireTrunk(id);
+        SipTrunk trunk = requireSipTrunk(id);
         if (trunk.isDefault()) {
-            throw new ConflictException(
-                    "Cannot delete the default trunk — set another one as default first");
+            throw new ConflictException(ErrorCode.SIP_TRUNK_DEFAULT_DELETE_FORBIDDEN);
         }
         repo.delete(id);
         pjsipConfig.regenerateAndReload();
         audit.record("SIP_TRUNK_DELETE", "sip_trunk", String.valueOf(id), trunk.name());
     }
 
-    public PageableData<SipTrunk> list(SipTrunkFilter filter) {
-        List<SipTrunk> rows = repo.findAll(filter);
+    public PageableData<SipTrunkRow> list(SipTrunkFilter filter) {
+        List<SipTrunkRow> rows = repo.findAll(filter).stream().map(SipTrunkRow::of).toList();
         long total = repo.count(filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     /** As {@link SipTrunkRepository#find}, for the REST API — a missing trunk is a 404, not a null. */
-    public SipTrunk requireTrunk(long id) {
-        SipTrunk row = repo.find(id);
-        if (row == null) {
-            throw new NotFoundException("sip_trunk", id);
+    public SipTrunkRow requireTrunk(long id) {
+        return SipTrunkRow.of(requireSipTrunk(id));
+    }
+
+    private SipTrunk requireSipTrunk(long id) {
+        SipTrunk trunk = repo.find(id);
+        if (trunk == null) {
+            throw new NotFoundException(ErrorCode.SIP_TRUNK_NOT_FOUND, id);
         }
-        return row;
+        return trunk;
     }
 
     /**
@@ -139,40 +144,38 @@ public class SipTrunkService {
      * called from {@code AriService} at call-origination time, on the call thread, so
      * this never throws; the caller falls back to the globally configured trunk.
      */
-    public SipTrunk findDefaultForCall(long companyId) {
-        return repo.findDefaultForCompany(companyId);
+    public SipTrunkRow findDefaultForCall(long companyId) {
+        SipTrunk trunk = repo.findDefaultForCompany(companyId);
+        return trunk == null ? null : SipTrunkRow.of(trunk);
     }
 
     private static boolean isManaged(String pjsipEndpoint, String host) {
         boolean hasManual = pjsipEndpoint != null && !pjsipEndpoint.isBlank();
         boolean hasManaged = host != null && !host.isBlank();
         if (hasManual && hasManaged) {
-            throw new ValidationException(
-                    "provide either pjsipEndpoint (manual mode) or host/sipUsername/sipPassword (managed mode), not both");
+            throw new ValidationException(ErrorCode.SIP_TRUNK_MODE_CONFLICT);
         }
         if (!hasManual && !hasManaged) {
-            throw new ValidationException(
-                    "either pjsipEndpoint (manual mode) or host+sipUsername+sipPassword (managed mode) is required");
+            throw new ValidationException(ErrorCode.SIP_TRUNK_MODE_MISSING);
         }
         return hasManaged;
     }
 
     private static void requireUsername(String sipUsername) {
         if (sipUsername == null || sipUsername.isBlank()) {
-            throw new ValidationException("sipUsername is required for a managed trunk");
+            throw new ValidationException(ErrorCode.SIP_TRUNK_USERNAME_REQUIRED);
         }
     }
 
     private static void requireValidTransport(SipTrunkTransport transport) {
         if (transport != null && transport != SipTrunkTransport.UDP) {
-            throw new ValidationException(
-                    "transport '" + transport + "' is not wired to an Asterisk transport yet — only UDP is supported");
+            throw new ValidationException(ErrorCode.SIP_TRUNK_TRANSPORT_UNSUPPORTED, transport);
         }
     }
 
     private String encryptPassword(String plaintext) {
         if (!cipher.available()) {
-            throw new ExternalServiceException("siptrunk", "voice-agent.encryption.secret-key is not set — cannot store SIP credentials");
+            throw new ExternalServiceException(ErrorCode.ENCRYPTION_KEY_NOT_SET, "siptrunk");
         }
         return cipher.encrypt(plaintext);
     }

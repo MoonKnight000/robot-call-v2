@@ -30,6 +30,14 @@ public class TtsVoiceEntity {
     @Column(nullable = false)
     private String label;
 
+    /**
+     * Provider-side speaking role (Yandex v3 {@code Hints.role}), or null to send none.
+     * Nullable and per-voice because a role only exists for the voice that declares it —
+     * sending another voice's role fails the whole synthesis request.
+     */
+    @Column(name = "role")
+    private String role;
+
     public String getId() {
         return id;
     }
@@ -68,5 +76,13 @@ public class TtsVoiceEntity {
 
     public void setLabel(String label) {
         this.label = label;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 }

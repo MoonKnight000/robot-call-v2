@@ -4,8 +4,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
+import uz.murodjon.uysotvoice.siptrunk.domain.SipTrunk;
 import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkFilter;
-import uz.murodjon.uysotvoice.siptrunk.dto.SipTrunk;
 import uz.murodjon.uysotvoice.siptrunk.entity.SipTrunkEntity;
 import uz.murodjon.uysotvoice.siptrunk.enums.SipTrunkTransport;
 
@@ -57,7 +57,7 @@ public class SipTrunkRepository {
 
     /** Scoped to the current company — another company's id reads as missing, not found. */
     public SipTrunk find(long id) {
-        return jpa.findByIdAndCompanyId(id, company.id()).map(SipTrunkRepository::toRow).orElse(null);
+        return jpa.findByIdAndCompanyId(id, company.id()).map(SipTrunkRepository::toSipTrunk).orElse(null);
     }
 
     public boolean hasDefault() {
@@ -117,7 +117,7 @@ public class SipTrunkRepository {
 
     public List<SipTrunk> findAll(SipTrunkFilter filter) {
         return jpa.findByCompanyId(company.id(), filter.pageable()).stream()
-                .map(SipTrunkRepository::toRow)
+                .map(SipTrunkRepository::toSipTrunk)
                 .toList();
     }
 
@@ -133,22 +133,21 @@ public class SipTrunkRepository {
      */
     public SipTrunk findDefaultForCompany(long companyId) {
         return jpa.findByCompanyIdAndIsDefaultTrueAndEnabledTrue(companyId)
-                .map(SipTrunkRepository::toRow).orElse(null);
+                .map(SipTrunkRepository::toSipTrunk).orElse(null);
     }
 
     /**
      * Every enabled managed-mode trunk, across every company, with its encrypted
      * password intact — {@code siptrunk.service.PjsipConfigWriter} only, never exposed
-     * through {@link SipTrunk}/the API. Raw entities rather than a dto since this is
-     * purely internal wiring within the feature.
+     * through {@link uz.murodjon.uysotvoice.siptrunk.dto.SipTrunkRow}/the API.
      */
-    public List<SipTrunkEntity> findAllManagedEnabledEntities() {
-        return jpa.findByHostIsNotNullAndEnabledTrue();
+    public List<SipTrunk> findAllManagedEnabled() {
+        return jpa.findByHostIsNotNullAndEnabledTrue().stream().map(SipTrunkRepository::toSipTrunk).toList();
     }
 
-    private static SipTrunk toRow(SipTrunkEntity e) {
-        return new SipTrunk(e.getId(), e.getName(), e.getPjsipEndpoint(), e.getCallerId(),
-                e.getHost() != null, e.getHost(), e.getPort(), e.getSipUsername(), e.getTransport(),
+    private static SipTrunk toSipTrunk(SipTrunkEntity e) {
+        return new SipTrunk(e.getId(), e.getCompanyId(), e.getName(), e.getPjsipEndpoint(), e.getCallerId(),
+                e.getHost(), e.getPort(), e.getSipUsername(), e.getSipPasswordEnc(), e.getTransport(),
                 e.isDefault(), e.isEnabled(), e.getCreatedAt());
     }
 }

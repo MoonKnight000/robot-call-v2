@@ -7,6 +7,8 @@ import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
 import uz.murodjon.uysotvoice.company.dto.UpdateCompanyConfigRequest;
 import uz.murodjon.uysotvoice.company.enums.Language;
 import uz.murodjon.uysotvoice.company.repository.CompanyConfigRepository;
+import uz.murodjon.uysotvoice.shared.dialog.Disclosure;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
@@ -29,6 +31,15 @@ public class CompanyConfigService {
     private static final LocalTime DEFAULT_WINDOW_END = LocalTime.of(20, 0);
     private static final String DEFAULT_TIMEZONE = "Asia/Tashkent";
 
+    /**
+     * The §11.1 disclosure every new company starts with — the platform's own wording,
+     * with the tenant's name filled in at call time. Provisioned per company rather than
+     * left blank so that a company owner can see the notice their calls open with, and
+     * edit it, instead of it being an invisible constant in the code.
+     */
+    private static final String DEFAULT_DISCLOSURE_TEXT =
+            "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.";
+
     private final CompanyConfigRepository repo;
     private final CompanyAccessGuard access;
     private final AuditService audit;
@@ -42,7 +53,7 @@ public class CompanyConfigService {
     /** Provisions {@code companyId}'s config row with sane defaults — called right after a company is created. */
     public void createDefault(long companyId) {
         repo.create(companyId, DEFAULT_WINDOW_START, DEFAULT_WINDOW_END, DEFAULT_TIMEZONE,
-                DEFAULT_LANGUAGE, DEFAULT_LANGUAGES);
+                DEFAULT_LANGUAGE, DEFAULT_LANGUAGES, DEFAULT_DISCLOSURE_TEXT);
     }
 
     /** {@code companyId}'s config, or {@code null} — the dialer's hot path; never throws. */
@@ -54,7 +65,7 @@ public class CompanyConfigService {
     public CompanyConfig requireConfig(long companyId) {
         CompanyConfig row = repo.find(companyId);
         if (row == null) {
-            throw new NotFoundException("company_config", companyId);
+            throw new NotFoundException(ErrorCode.COMPANY_CONFIG_NOT_FOUND, companyId);
         }
         return row;
     }
@@ -74,11 +85,18 @@ public class CompanyConfigService {
         access.requireOwnOrSuperadmin(companyId);
         requireConfig(companyId);
         if (!r.supportedLanguages().contains(r.defaultLanguage())) {
-            throw new ValidationException("defaultLanguage '" + r.defaultLanguage().code()
-                    + "' must be one of supportedLanguages " + codesOf(r.supportedLanguages()));
+            throw new ValidationException(ErrorCode.COMPANY_CONFIG_DEFAULT_LANGUAGE_NOT_IN_SUPPORTED,
+                    r.defaultLanguage().code(), codesOf(r.supportedLanguages()));
+        }
+        // §11.1 is the platform's obligation, not the tenant's choice: a company may word
+        // the notice, or clear it and get the platform's wording, but it cannot replace it
+        // with a text that discloses neither of the two things it has to.
+        if (r.disclosureText() != null && !r.disclosureText().isBlank()
+                && !Disclosure.discloses(r.disclosureText())) {
+            throw new ValidationException(ErrorCode.COMPANY_CONFIG_DISCLOSURE_INCOMPLETE);
         }
         repo.update(companyId, r.dialWindowStart(), r.dialWindowEnd(), r.timezone(),
-                r.defaultLanguage(), r.supportedLanguages());
+                r.defaultLanguage(), r.supportedLanguages(), r.disclosureText());
         audit.record("COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
                 codesOf(r.supportedLanguages()).toString());
         return requireConfig(companyId);
@@ -105,11 +123,11 @@ public class CompanyConfigService {
         try {
             language = Language.fromCode(requested);
         } catch (IllegalArgumentException e) {
-            throw new ValidationException(e.getMessage());
+            throw new ValidationException(ErrorCode.LANGUAGE_CODE_INVALID, e.getMessage());
         }
         if (!config.supportedLanguages().contains(language)) {
-            throw new ValidationException("Language '" + requested + "' is not supported by this company; "
-                    + "supported: " + codesOf(config.supportedLanguages()));
+            throw new ValidationException(ErrorCode.COMPANY_CONFIG_LANGUAGE_NOT_SUPPORTED,
+                    requested, codesOf(config.supportedLanguages()));
         }
         return language.code();
     }

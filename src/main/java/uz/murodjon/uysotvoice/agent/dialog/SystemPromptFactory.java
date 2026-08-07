@@ -73,6 +73,17 @@ public class SystemPromptFactory {
                 .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
                 .append(" tilida tabiiy suhbatlashasiz.\n\n");
 
+        // Which company the call is actually from, overriding whatever name the scenario's
+        // rolePrompt happens to carry. A built-in template is cloned by every tenant, so a
+        // company name written into it belongs to whoever wrote the template — and the
+        // disclosure spoken from code (§11.1) already names the real one. Hearing two
+        // different companies in one call is worse than either name on its own.
+        if (s.companyName() != null && !s.companyName().isBlank()) {
+            sb.append("KOMPANIYA: siz \"").append(s.companyName().trim())
+                    .append("\" kompaniyasi nomidan qo'ng'iroq qilyapsiz. O'zingizni tanishtirganda ")
+                    .append("faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
+        }
+
         // Without today's date the model invents a year for "kelasi oyning 5-sanasi",
         // and recordPaymentPromise then rejects it as a past date (§4.4 guardrail).
         LocalDate today = LocalDate.now();
@@ -113,9 +124,16 @@ public class SystemPromptFactory {
 
         sb.append("USLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")
                 .append("Ovozga aylantiriladi — qisqa gaplar tuz, ro'yxat yoki maxsus belgilar ishlatma.\n");
+        // The TTS layer writes digits out in Uzbek words (SpeechTextNormalizer), and the
+        // fact guard compares digits against the facts. Both only work on digits, so the
+        // model must not spell a sum out itself.
+        sb.append("Summa, sana va raqamlarni FAKTLARdagidek raqam bilan yoz ")
+                .append("(masalan \"1500000 so'm\", \"2026-yil 1-iyul\") — so'z bilan yozma, ")
+                .append("ovozga aylantirilganda o'zi to'g'ri o'qiladi.\n");
         sb.append("HAR BIR javobing mijozga ovoz bilan aytiladigan matn bo'lishi SHART — matnsiz javob ")
-                .append("qaytarma. Tool chaqirish (bosqich o'tkazish, va'da/sabab yozish, yakunlash) matnning ")
-                .append("o'rnini bosmaydi: kerakli tool'ni chaqir VA aytadigan gapingni ham yoz.");
+                .append("qaytarma. Tool chaqirsang (bosqich o'tkazish, va'da/sabab yozish, yakunlash), ")
+                .append("aytadigan gapingni o'sha tool'ning \"reply\" parametriga yoz — mijoz aynan shuni ")
+                .append("eshitadi. \"reply\" ni bo'sh qoldirma.");
 
         return sb.toString();
     }
@@ -124,6 +142,14 @@ public class SystemPromptFactory {
      * The moving half: where the FSM is now and where it may go next. Sent after the
      * history as a transient aside — never stored in it, or the history would fill up
      * with stale state blocks and stop being an append-only (cacheable) prefix.
+     *
+     * <p>The "a tool call does not replace the spoken line" rule is repeated here even
+     * though {@link #stablePrefix} already states it. That is deliberate: the prefix sits
+     * tens of turns back by mid-call, and the rule is broken precisely on the turns this
+     * block is about — a stage transition. A model that calls {@code transitionTo} and
+     * says nothing costs {@code DialogEngine.streamTurn} a whole second LLM round trip
+     * inside the turnaround budget, so the reminder belongs next to the instruction that
+     * provokes it.
      */
     public String turnAnnex(DialogSession s) {
         StageDef stage = stageOf(s.scenario(), s.state());
@@ -131,7 +157,9 @@ public class SystemPromptFactory {
         sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
         sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(stage)).append('\n');
-        sb.append("Bosqichni o'zgartirish kerak bo'lsa transitionTo tool'ini chaqiring.]");
+        sb.append("Bosqichni o'zgartirish kerak bo'lsa transitionTo tool'ini chaqiring va mijozga ")
+                .append("aytadigan gapingizni uning \"reply\" parametriga yozing — u bo'sh bo'lsa ")
+                .append("mijoz jimlikni eshitadi.]");
         if (s.isInterrupted()) {
             // Tell the model it was cut off and where it stopped (§7.2 step 5).
             sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Siz shu yergacha aytgan edingiz: \"")

@@ -45,6 +45,8 @@ final class ScenarioToolCallbackFactory {
     }
 
     private static String execute(ToolDef toolDef, DialogSession session, Map<String, Object> args) {
+        Object reply = args == null ? null : args.get(DialogTools.REPLY_PARAM);
+        session.addToolReply(reply == null ? null : reply.toString());
         List<ToolParamDef> params = toolDef.params();
         if (params != null) {
             for (ToolParamDef p : params) {
@@ -85,6 +87,13 @@ final class ScenarioToolCallbackFactory {
         schema.put("type", "object");
         ObjectNode properties = schema.putObject("properties");
         ArrayNode required = schema.putArray("required");
+        // The line to speak, on every tool a scenario declares just as on the hardcoded
+        // ones — a tool-only turn must never leave the caller waiting for a second LLM
+        // round trip (see DialogTools).
+        properties.putObject(DialogTools.REPLY_PARAM)
+                .put("type", "string")
+                .put("description", DialogTools.REPLY_DESCRIPTION);
+        required.add(DialogTools.REPLY_PARAM);
         List<ToolParamDef> params = toolDef.params();
         if (params != null) {
             for (ToolParamDef p : params) {

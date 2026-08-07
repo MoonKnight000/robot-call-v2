@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 
-import uz.murodjon.uysotvoice.auth.dto.UserSession;
+import uz.murodjon.uysotvoice.auth.dto.UserSessionRow;
 import uz.murodjon.uysotvoice.profile.dto.ChangePasswordRequest;
 import uz.murodjon.uysotvoice.profile.dto.PersonalNotificationMatrixEntry;
 import uz.murodjon.uysotvoice.profile.dto.Profile;
@@ -53,7 +53,7 @@ public interface ProfileController {
     ResponseEntity<ResponseData<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest r);
 
     @GetMapping("/sessions")
-    ResponseEntity<ResponseData<List<UserSession>>> sessions();
+    ResponseEntity<ResponseData<List<UserSessionRow>>> sessions();
 
     @DeleteMapping("/sessions/{id}")
     ResponseEntity<ResponseData<Void>> revokeSession(@PathVariable long id);

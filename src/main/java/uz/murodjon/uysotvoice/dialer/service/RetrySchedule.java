@@ -14,9 +14,12 @@ import java.util.Set;
  *
  * <p>Two decisions, both of which were previously a single 24-hour constant.
  *
- * <p><b>How long to wait</b> depends on why the last attempt failed. A subscriber who did
- * not pick up may well answer this afternoon; a call that died on a carrier error should
- * be retried in minutes; a voicemail should be retried at a different hour of the day,
+ * <p><b>How long to wait</b> is the campaign's own {@code retry_interval_minutes} whenever
+ * it names one — it is the field an operator reaches for, and it says exactly what it
+ * means: how long before this client is dialled again. A campaign that leaves it at 0
+ * falls back to a delay chosen from why the last attempt failed: a subscriber who did not
+ * pick up may well answer this afternoon; a call that died on a carrier error should be
+ * retried in minutes; a voicemail should be retried at a different hour of the day,
  * because calling the same machine at the same time tomorrow reaches the same machine.
  * Treating all of them as "tomorrow" wastes most of a campaign's retry budget on the one
  * outcome least likely to change.
@@ -35,20 +38,29 @@ public final class RetrySchedule {
     /** Give up looking for an allowed weekday after this long — a misconfigured campaign. */
     private static final int MAX_DAYS_AHEAD = 14;
 
+    /** What a retry waits when neither the campaign nor the disposition has an opinion. */
+    private static final int DEFAULT_MINUTES = 24 * 60;
+
     private RetrySchedule() {
     }
 
     /**
      * How long to wait before retrying after {@code disposition}.
      *
-     * @param campaignRetryHours the campaign's own {@code retry_interval_hours}, used for
-     *                           outcomes with no special handling
+     * @param campaignRetryMinutes the campaign's own {@code retry_interval_minutes}. Any
+     *                             positive value wins outright: a campaign that says
+     *                             "try this client again in 10 minutes" means it for a
+     *                             busy line as much as for a voicemail. 0 means the
+     *                             campaign has no preference, and the per-disposition
+     *                             defaults below decide
      */
     public static Duration delayFor(Disposition disposition, RetryProperties retry,
-                                    int campaignRetryHours) {
-        Duration campaignDefault = Duration.ofHours(Math.max(1, campaignRetryHours));
+                                    int campaignRetryMinutes) {
+        if (campaignRetryMinutes > 0) {
+            return Duration.ofMinutes(campaignRetryMinutes);
+        }
         if (disposition == null || retry == null) {
-            return campaignDefault;
+            return Duration.ofMinutes(DEFAULT_MINUTES);
         }
         return switch (disposition) {
             // Rang out or busy: the subscriber exists and may be free within hours.
@@ -59,7 +71,7 @@ public final class RetrySchedule {
             // A machine answers at every hour equally, so the only thing worth varying is
             // the hour. Default is deliberately not a multiple of 24.
             case VOICEMAIL -> Duration.ofMinutes(positive(retry.voicemailMinutes(), 20 * 60));
-            default -> campaignDefault;
+            default -> Duration.ofMinutes(DEFAULT_MINUTES);
         };
     }
 

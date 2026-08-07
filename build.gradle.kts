@@ -1,7 +1,10 @@
+import com.google.protobuf.gradle.id
+
 plugins {
     java
     id("org.springframework.boot") version "3.5.14"
     id("io.spring.dependency-management") version "1.1.7"
+    id("com.google.protobuf") version "0.10.0"
 }
 
 group = "uz.murodjon"
@@ -60,15 +63,19 @@ dependencies {
     // Credentials (GOOGLE_APPLICATION_CREDENTIALS). Abstracted behind SttProvider.
     implementation("com.google.cloud:google-cloud-speech:4.36.0")
 
-    // STT — Yandex SpeechKit v3 streaming (gRPC). The Yandex Cloud Java SDK bundles
-    // the generated stubs (yandex.cloud.api.ai.stt.v3.RecognizerGrpc / Stt). v3
-    // supports Uzbek (uz-UZ). gRPC transport comes transitively (also via google-cloud-speech).
-    implementation("com.yandex.cloud:java-sdk-services:2.10.0")
-
-    // TTS — Google Cloud Text-to-Speech (uz-UZ, and ru-RU fallback). Same ADC as
-    // STT. Yandex SpeechKit (ru-RU) is reached over its REST API via the JDK
-    // HttpClient, so it needs no extra dependency. Abstracted behind TtsProvider.
+    // TTS — Google Cloud Text-to-Speech (uz-UZ, and ru-RU fallback). Same ADC as STT.
     implementation("com.google.cloud:google-cloud-texttospeech:2.44.0")
+
+    // STT + TTS — Yandex SpeechKit v3 streaming (gRPC: RecognizeStreaming / UtteranceSynthesis).
+    // Stubs (yandex.cloud.api.ai.{stt,tts}.v3.*) are generated at build time from the
+    // .proto files vendored under src/main/proto (pulled from yandex-cloud/cloudapi) —
+    // see the protobuf {} block below — instead of depending on the full
+    // com.yandex.cloud:java-sdk-services SDK. v3 STT supports Uzbek (uz-UZ).
+    implementation("io.grpc:grpc-netty-shaded")
+    implementation("io.grpc:grpc-protobuf")
+    implementation("io.grpc:grpc-stub")
+    // @Generated is used by protoc-gen-grpc-java's output but was dropped from the JDK in 9+.
+    compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 
     // LLM dialog — Spring AI's native Google GenAI starter, talking to the Gemini
     implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
@@ -112,4 +119,25 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// Generates Java + gRPC stubs from the .proto files vendored under src/main/proto
+// (Yandex SpeechKit STT/TTS v3, pulled from yandex-cloud/cloudapi). Keeps the build
+// self-contained instead of depending on the full com.yandex.cloud:java-sdk-services SDK.
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:3.25.3"
+    }
+    plugins {
+        id("grpc") {
+            artifact = "io.grpc:protoc-gen-grpc-java:1.62.2"
+        }
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.plugins {
+                id("grpc")
+            }
+        }
+    }
 }

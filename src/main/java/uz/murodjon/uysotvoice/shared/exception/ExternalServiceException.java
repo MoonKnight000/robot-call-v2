@@ -10,11 +10,11 @@ import org.springframework.http.HttpStatus;
 public class ExternalServiceException extends AppException {
 
     /** @param service the dependency that failed, e.g. {@code asterisk}, {@code crm} */
-    public ExternalServiceException(String service, String message) {
-        super(HttpStatus.BAD_GATEWAY, "EXTERNAL_SERVICE_ERROR", service + ": " + message);
+    public ExternalServiceException(ErrorCode code, String service, Object... args) {
+        super(HttpStatus.BAD_GATEWAY, code, service + ": " + code.format(args));
     }
 
-    public ExternalServiceException(String service, String message, Throwable cause) {
-        super(HttpStatus.BAD_GATEWAY, "EXTERNAL_SERVICE_ERROR", service + ": " + message, cause);
+    public ExternalServiceException(ErrorCode code, String service, Throwable cause, Object... args) {
+        super(HttpStatus.BAD_GATEWAY, code, service + ": " + code.format(args), cause);
     }
 }

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
-import uz.murodjon.uysotvoice.aimodel.dto.AiModelConfig;
+import uz.murodjon.uysotvoice.aimodel.domain.AiModelConfig;
 import uz.murodjon.uysotvoice.aimodel.dto.UpdateAiModelConfigRequest;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 
@@ -23,5 +23,5 @@ public interface AiModelConfigController {
     ResponseEntity<ResponseData<AiModelConfig>> get();
 
     @PutMapping
-    ResponseEntity<ResponseData<AiModelConfig>> update(@Valid @RequestBody UpdateAiModelConfigRequest r);
+    ResponseEntity<ResponseData<AiModelConfig>> update(@Valid @RequestBody UpdateAiModelConfigRequest request);
 }

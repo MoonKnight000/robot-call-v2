@@ -4,6 +4,19 @@
 # externalMedia RTP path works on Docker Desktop (Windows/Mac) — no host
 # networking needed.
 
+# Silero VAD model for barge-in (§7.2). Fetched here rather than committed: it is a
+# 2.2 MB binary that never changes, and baking it into the image is what stops it from
+# being the one file someone forgets — a missing model does not fail anything loudly, it
+# just leaves the bot uninterruptible and answering-machine detection off.
+#
+# Pinned to a v5 tag on purpose: SileroVad targets the v5 interface (inputs
+# input/state/sr, state shape [2,1,128]). The v4 model splits that state into h/c and
+# would load but never run.
+FROM curlimages/curl:8.11.0 AS vad
+ARG SILERO_VAD_VERSION=v5.1.2
+RUN curl -fsSL -o /tmp/silero_vad.onnx \
+    "https://raw.githubusercontent.com/snakers4/silero-vad/${SILERO_VAD_VERSION}/src/silero_vad/data/silero_vad.onnx"
+
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
 
@@ -37,6 +50,9 @@ RUN --mount=type=cache,target=/gradle-home,sharing=locked \
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /out/app.jar /app/app.jar
+# docker-compose points VAD_MODEL_PATH here. Kept out of application.yml's default so a
+# local (non-Docker) run still starts cleanly with no model rather than logging an error.
+COPY --from=vad /tmp/silero_vad.onnx /app/silero_vad.onnx
 EXPOSE 8080
 # Heap follows the container limit instead of the JVM's conservative 25% default.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"

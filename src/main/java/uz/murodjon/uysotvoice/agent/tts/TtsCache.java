@@ -160,10 +160,27 @@ public class TtsCache {
             return null;
         }
         String voiceSegment = (voice == null || voice.isBlank()) ? "-" : voice;
-        String styleSegment = (style == null || (style.speed() == null && style.pitch() == null))
-                ? "" : ":" + style.speed() + "/" + style.pitch();
         return KEY_PREFIX + voiceFingerprint + ':' + provider + ':' + language + ':'
-                + voiceSegment + styleSegment + ':' + sha256(normalized);
+                + voiceSegment + styleSegment(style) + ':' + sha256(normalized);
+    }
+
+    /**
+     * The part of the key that separates two requests differing only in how the same voice
+     * speaks. Each piece is appended only when it is actually set, so every entry cached
+     * before that piece existed stays valid and the common case (no overrides at all)
+     * shares one set of entries.
+     *
+     * <p>{@code role} is not implied by the voice name: {@code tts_voice} may hold two
+     * catalog entries pointing at the same provider-side voice with different roles, and
+     * without it here they would be served each other's audio.
+     */
+    private static String styleSegment(EffectiveVoiceSettings style) {
+        if (style == null) {
+            return "";
+        }
+        String segment = (style.speed() == null && style.pitch() == null)
+                ? "" : ":" + style.speed() + "/" + style.pitch();
+        return (style.role() == null || style.role().isBlank()) ? segment : segment + ':' + style.role();
     }
 
     /**
@@ -176,7 +193,7 @@ public class TtsCache {
         YandexTtsProperties yandex = props.yandex();
         if (yandex != null) {
             sb.append(yandex.voice()).append('|').append(sorted(yandex.voices()))
-                    .append('|').append(yandex.emotion()).append('|').append(yandex.sampleRate());
+                    .append('|').append(yandex.sampleRate());
         }
         sb.append("//");
         GoogleTtsProperties google = props.google();

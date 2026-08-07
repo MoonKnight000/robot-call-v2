@@ -6,5 +6,5 @@ package uz.murodjon.uysotvoice.user.dto;
  * hash is persisted), so the admin must relay it to the invitee now (no SMTP
  * integration yet, ROADMAP E.4).
  */
-public record InviteUserResponse(User user, String activationToken) {
+public record InviteUserResponse(UserRow user, String activationToken) {
 }

@@ -158,6 +158,7 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
   "timezone": "Asia/Tashkent",
   "defaultLanguage": "uz-UZ",
   "supportedLanguages": ["uz-UZ", "ru-RU"],
+  "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.",
   "createdAt": "2026-08-01T09:00:00Z"
 }
 ```
@@ -165,6 +166,24 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
 `defaultLanguage`/`supportedLanguages` — yopiq to'plam (report #6, `company.enums.Language`):
 faqat `"uz-UZ"`, `"ru-RU"`, `"en-US"`. Boshqa qiymat JSON darajasida
 rad etiladi — `400`, validatsiyagacha yetib bormaydi.
+
+`disclosureText` — §11.1 ochiqlik matni: qo'ng'iroq boshida, bot gapirishni
+boshlashidan oldin aytiladi. Har bir kompaniya yaratilganda yuqoridagi default
+bilan to'ldiriladi.
+
+- `{company}` — kompaniya nomiga almashadi (shuning uchun bitta matn hamma
+  tenantga yaraydi).
+- **Matn ikkala majburiy faktni aytishi shart** — qo'ng'iroq avtomatik ekani *va*
+  yozib olinayotgani. Aks holda `PUT` `400` qaytaradi
+  (`COMPANY_CONFIG_DISCLOSURE_INCOMPLETE`). Ochiqlik — platformaning huquqiy
+  majburiyati, tenant uni o'chira olmaydi (§11.1).
+- `null`/bo'sh qoldirilsa — platformaning o'z matni aytiladi (qo'ng'iroq tiliga
+  qarab o'zbekcha yoki ruscha). Ya'ni maydonni tozalash ochiqlikni o'chirmaydi.
+- Matn **bitta tilda** saqlanadi: yozuvi qo'ng'iroq tiliga mos kelmasa (kirill
+  matn `uz-UZ` qo'ng'irog'ida yoki aksincha) shu qo'ng'iroqda platforma matni
+  ishlatiladi. Ikkala tilda dial qiladigan kompaniya matnni bo'sh qoldirsin.
+- Ssenariy o'z `disclosureText` ini bersa, u shu ssenariy bo'yicha qo'ng'iroqlarda
+  kompaniya matnidan ustun turadi (`docs/api/scenarios.md`).
 
 Topilmasa `404` — amalda bo'lmasligi kerak, chunki har bir kompaniya
 yaratilganda avtomatik config oladi.
@@ -178,7 +197,7 @@ yaratilganda avtomatik config oladi.
 **Request body** (`UpdateCompanyConfigRequest`):
 
 ```json
-{ "dialWindowStart": "08:00", "dialWindowEnd": "21:00", "timezone": "Asia/Tashkent", "defaultLanguage": "uz-UZ", "supportedLanguages": ["uz-UZ", "ru-RU"] }
+{ "dialWindowStart": "08:00", "dialWindowEnd": "21:00", "timezone": "Asia/Tashkent", "defaultLanguage": "uz-UZ", "supportedLanguages": ["uz-UZ", "ru-RU"], "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda." }
 ```
 
 | Maydon | Majburiymi | Izoh |
@@ -187,5 +206,6 @@ yaratilganda avtomatik config oladi.
 | `timezone` | ✅ (`@NotBlank`) | — |
 | `defaultLanguage` | ✅ | Aniq maydon (backend-uchun-talablar.md §13) — `supportedLanguages` ro'yxatining a'zosi bo'lishi shart, aks holda `400`. Kampaniya yaratish/tahrirlashda (`CreateCampaignRequest.defaultLanguage`/`UpdateCampaignRequest.defaultLanguage`) til berilmasa shu qiymatga tushadi. Yopiq to'plam — `"uz-UZ"`/`"ru-RU"`/`"en-US"` (report #6), boshqa qiymat `400`. |
 | `supportedLanguages` | ✅ (bo'sh bo'lmasin) | Kampaniya/marshrut e'lon qilishi mumkin bo'lgan barcha tillar, `defaultLanguage`ni ham o'z ichiga olgan holda; berilgan til shu ro'yxatda bo'lishi shart, aks holda `400`. Yopiq to'plam, xuddi `defaultLanguage` kabi. |
+| `disclosureText` | ❌ | §11.1 ochiqlik matni (yuqoridagi `GET` izohiga qarang). Matn qo'ng'iroq avtomatik ekanini va yozib olinayotganini aytmasa — `400` (`COMPANY_CONFIG_DISCLOSURE_INCOMPLETE`). `null`/bo'sh — platforma matniga qaytadi, ochiqlik o'chmaydi. |
 
 **Response** — yangilangan `CompanyConfig`.

@@ -16,6 +16,7 @@ import uz.murodjon.uysotvoice.report.dto.CampaignComparisonRow;
 import uz.murodjon.uysotvoice.report.dto.DashboardOutcome;
 import uz.murodjon.uysotvoice.report.dto.FunnelStage;
 import uz.murodjon.uysotvoice.report.dto.ReportSummary;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 
 import java.io.ByteArrayOutputStream;
@@ -35,10 +36,16 @@ public class XlsxResponseFactory {
         return ResponseEntity.ok()
                 .contentType(XLSX)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .body(render(summary));
+                .body(renderBytes(summary));
     }
 
-    private static byte[] render(ReportSummary summary) {
+    /** The {@code GET /api/reports/export?format=xlsx} content type — for the scheduled email attachment. */
+    public String contentType() {
+        return XLSX.toString();
+    }
+
+    /** Raw bytes of {@link #toResponse}, without the HTTP wrapping — for the scheduled email attachment. */
+    public byte[] renderBytes(ReportSummary summary) {
         try (XSSFWorkbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             CellStyle headerStyle = headerStyle(workbook);
@@ -97,7 +104,7 @@ public class XlsxResponseFactory {
             workbook.write(out);
             return out.toByteArray();
         } catch (Exception e) {
-            throw new ExternalServiceException("xlsx", "Failed to render report XLSX: " + e.getMessage(), e);
+            throw new ExternalServiceException(ErrorCode.REPORT_XLSX_RENDER_FAILED, "xlsx", e, e.getMessage());
         }
     }
 

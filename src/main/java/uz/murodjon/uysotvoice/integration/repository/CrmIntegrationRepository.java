@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.integration.repository;
 
 import org.springframework.stereotype.Repository;
 
+import uz.murodjon.uysotvoice.integration.domain.CrmIntegration;
 import uz.murodjon.uysotvoice.integration.entity.CrmIntegrationEntity;
 import uz.murodjon.uysotvoice.integration.enums.CrmIntegrationStatus;
 import uz.murodjon.uysotvoice.integration.enums.CrmProvider;
@@ -24,12 +25,12 @@ public class CrmIntegrationRepository {
         this.jpa = jpa;
     }
 
-    public Optional<CrmIntegrationEntity> find(long companyId) {
-        return jpa.findByCompanyId(companyId);
+    public Optional<CrmIntegration> find(long companyId) {
+        return jpa.findByCompanyId(companyId).map(CrmIntegrationRepository::toCrmIntegration);
     }
 
     /** Upsert the app identity/grants; resets any prior connection — new grants need a fresh OAuth dance. */
-    public CrmIntegrationEntity saveAppInfo(long companyId, String appName, String grantsJson) {
+    public CrmIntegration saveAppInfo(long companyId, String appName, String grantsJson) {
         CrmIntegrationEntity entity = jpa.findByCompanyId(companyId).orElseGet(() -> {
             CrmIntegrationEntity fresh = new CrmIntegrationEntity();
             fresh.setCompanyId(companyId);
@@ -44,11 +45,36 @@ public class CrmIntegrationRepository {
         entity.setTokenExpiresAt(null);
         entity.setConnectedAt(null);
         entity.setStatus(CrmIntegrationStatus.NOT_CONNECTED);
-        return jpa.save(entity);
+        return toCrmIntegration(jpa.save(entity));
     }
 
-    public CrmIntegrationEntity save(CrmIntegrationEntity entity) {
-        return jpa.save(entity);
+    /**
+     * Stores a fresh access/refresh token pair and marks the row {@code CONNECTED}.
+     * {@code refreshTokenEnc} of {@code null} leaves the existing refresh token
+     * untouched — Uysot's refresh response does not always include a new one.
+     * {@code null} if {@code companyId} has no row (should not happen: every caller
+     * has just loaded it via {@link #find}).
+     */
+    public CrmIntegration applyTokenResponse(long companyId, String accessTokenEnc, String refreshTokenEnc,
+                                              Instant tokenExpiresAt) {
+        return jpa.findByCompanyId(companyId).map(entity -> {
+            entity.setAccessTokenEnc(accessTokenEnc);
+            if (refreshTokenEnc != null) {
+                entity.setRefreshTokenEnc(refreshTokenEnc);
+            }
+            entity.setTokenExpiresAt(tokenExpiresAt);
+            entity.setStatus(CrmIntegrationStatus.CONNECTED);
+            entity.setConnectedAt(Instant.now());
+            return toCrmIntegration(jpa.save(entity));
+        }).orElse(null);
+    }
+
+    /** A token exchange/refresh failed upstream — the connection needs re-authorizing. */
+    public void markError(long companyId) {
+        jpa.findByCompanyId(companyId).ifPresent(entity -> {
+            entity.setStatus(CrmIntegrationStatus.ERROR);
+            jpa.save(entity);
+        });
     }
 
     public void disconnect(long companyId) {
@@ -60,5 +86,11 @@ public class CrmIntegrationRepository {
             entity.setStatus(CrmIntegrationStatus.NOT_CONNECTED);
             jpa.save(entity);
         });
+    }
+
+    private static CrmIntegration toCrmIntegration(CrmIntegrationEntity e) {
+        return new CrmIntegration(e.getCompanyId(), e.getProvider(), e.getAppName(), e.getGrantsJson(),
+                e.getAccessTokenEnc(), e.getRefreshTokenEnc(), e.getTokenExpiresAt(), e.getStatus(),
+                e.getConnectedAt(), e.getCreatedAt());
     }
 }

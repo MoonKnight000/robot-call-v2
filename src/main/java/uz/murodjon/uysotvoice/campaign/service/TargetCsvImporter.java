@@ -8,6 +8,7 @@ import uz.murodjon.uysotvoice.campaign.dto.ParsedTarget;
 import uz.murodjon.uysotvoice.campaign.dto.TargetCsvParseResult;
 import uz.murodjon.uysotvoice.dialer.service.CallContextMapper;
 import uz.murodjon.uysotvoice.shared.csv.CsvRowError;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.util.ArrayList;
@@ -79,7 +80,7 @@ public final class TargetCsvImporter {
     public static List<CsvColumnMapping> mapColumns(String csv) {
         List<String> lines = splitLines(csv);
         if (lines.isEmpty()) {
-            throw new ValidationException("CSV is empty");
+            throw new ValidationException(ErrorCode.CSV_EMPTY);
         }
         char delimiter = detectDelimiter(lines.get(0));
         List<String> header = splitRow(lines.get(0), delimiter);
@@ -99,7 +100,7 @@ public final class TargetCsvImporter {
     public static TargetCsvParseResult parse(String csv) {
         List<String> lines = splitLines(csv);
         if (lines.isEmpty()) {
-            throw new ValidationException("CSV is empty");
+            throw new ValidationException(ErrorCode.CSV_EMPTY);
         }
         char delimiter = detectDelimiter(lines.get(0));
         List<String> header = splitRow(lines.get(0), delimiter);
@@ -117,7 +118,7 @@ public final class TargetCsvImporter {
             }
         }
         if (!index.containsKey(COL_PHONE)) {
-            throw new ValidationException("CSV needs a 'phone' column; found: " + header);
+            throw new ValidationException(ErrorCode.CSV_PHONE_COLUMN_MISSING, header);
         }
 
         List<ParsedTarget> targets = new ArrayList<>();
@@ -140,7 +141,7 @@ public final class TargetCsvImporter {
     private static ParsedTarget toTarget(List<String> cells, Map<String, Integer> index, int line) {
         String phone = value(cells, index, COL_PHONE);
         if (phone == null || phone.isBlank()) {
-            throw new ValidationException("phone is empty");
+            throw new ValidationException(ErrorCode.CSV_PHONE_EMPTY);
         }
         long clientId = 0;
         String rawClientId = value(cells, index, COL_CLIENT_ID);
@@ -148,7 +149,7 @@ public final class TargetCsvImporter {
             try {
                 clientId = Long.parseLong(rawClientId.trim());
             } catch (NumberFormatException e) {
-                throw new ValidationException("clientId '" + rawClientId + "' is not a number");
+                throw new ValidationException(ErrorCode.CSV_CLIENT_ID_NOT_NUMBER, rawClientId);
             }
         }
 

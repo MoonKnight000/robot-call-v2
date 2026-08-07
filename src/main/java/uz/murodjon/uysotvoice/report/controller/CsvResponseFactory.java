@@ -70,6 +70,20 @@ public class CsvResponseFactory {
      * blank line between them since a CSV has no notion of separate sheets.
      */
     public ResponseEntity<byte[]> toCsv(String filename, ReportSummary summary) {
+        byte[] body = renderBytes(summary);
+        return ResponseEntity.ok()
+                .contentType(CSV)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .body(body);
+    }
+
+    /** The {@code GET /api/reports/export?format=csv} content type — for the scheduled email attachment. */
+    public String contentType() {
+        return CSV.toString();
+    }
+
+    /** Raw bytes of {@link #toCsv(String, ReportSummary)}, without the HTTP wrapping — for the scheduled email attachment. */
+    public byte[] renderBytes(ReportSummary summary) {
         StringBuilder sb = new StringBuilder();
 
         appendRow(sb, "section", "metric", "value");
@@ -103,11 +117,7 @@ public class CsvResponseFactory {
                     String.valueOf(c.promises()));
         }
 
-        byte[] body = sb.toString().getBytes(StandardCharsets.UTF_8);
-        return ResponseEntity.ok()
-                .contentType(CSV)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .body(body);
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private static void appendRow(StringBuilder sb, String... cells) {

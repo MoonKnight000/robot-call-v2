@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.uysotvoice.company.service.CompanyAccessGuard;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.shared.exception.NotFoundException;
 import uz.murodjon.uysotvoice.storage.config.AudioStorageProperties;
@@ -90,14 +91,14 @@ public class FileStorageService {
     public DownloadableFile download(long id) {
         StoredFile file = files.find(id);
         if (file == null) {
-            throw new NotFoundException("file", id);
+            throw new NotFoundException(ErrorCode.FILE_NOT_FOUND, id);
         }
         access.requireOwnOrSuperadmin(file.companyId());
         try {
             InputStream content = storage.download(file.bucket(), file.path());
             return new DownloadableFile(file, content);
         } catch (Exception e) {
-            throw new ExternalServiceException("object-storage", "could not read file " + id, e);
+            throw new ExternalServiceException(ErrorCode.FILE_READ_FAILED, "object-storage", e, id);
         }
     }
 

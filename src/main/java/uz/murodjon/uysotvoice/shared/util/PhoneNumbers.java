@@ -1,5 +1,6 @@
 package uz.murodjon.uysotvoice.shared.util;
 
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import java.util.regex.Pattern;
@@ -56,8 +57,7 @@ public final class PhoneNumbers {
     public static String require(String raw) {
         String normalized = normalize(raw);
         if (!isValid(normalized)) {
-            throw new ValidationException("Invalid phone number: '" + raw
-                    + "' (expected 3-15 digits, optional leading '+')");
+            throw new ValidationException(ErrorCode.PHONE_INVALID, raw);
         }
         return normalized;
     }

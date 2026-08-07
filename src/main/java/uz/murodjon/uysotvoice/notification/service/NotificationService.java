@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.uysotvoice.notification.dto.Notification;
 import uz.murodjon.uysotvoice.notification.enums.NotificationType;
 import uz.murodjon.uysotvoice.notification.repository.NotificationRepository;
+import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ForbiddenException;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
 
@@ -53,6 +54,6 @@ public class NotificationService {
     }
 
     private long requireUserId() {
-        return currentUser.id().orElseThrow(() -> new ForbiddenException("no user session on this request"));
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 }
