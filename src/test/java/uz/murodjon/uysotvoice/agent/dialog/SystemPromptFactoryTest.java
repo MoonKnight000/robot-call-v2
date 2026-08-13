@@ -106,6 +106,40 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void theUzbekSpellingRuleOnlyGoesToUzbekCalls() {
+        // Real uz-UZ calls produced "so me'doridagi" and "kuninigiz", which TTS then spoke
+        // as written. The rule that fixes that says nothing useful on a Russian call.
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
+                .contains("apostrof");
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
+                .doesNotContain("apostrof");
+    }
+
+    @Test
+    void speaksTheConversationalStyleRuleInTheCallsLanguage() {
+        // The rule itself is always there; its example words must follow the call's
+        // language, or the model drops Uzbek back-channels into a Russian call.
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
+                .contains("INSONDEK GAPIR")
+                .contains("Tushunarli")
+                .doesNotContain("Понятно");
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
+                .contains("INSONDEK GAPIR")
+                .contains("Понятно")
+                .doesNotContain("Tushunarli");
+    }
+
+    @Test
+    void tellsTheModelNotToRestateFactsItHasAlreadySpoken() {
+        // Asked "allo", the bot re-delivered the whole debt notice. The stage purpose is
+        // re-sent every turn and reads as an order to state it again, so the counter-rule
+        // has to be present — and it must not forbid the closing confirmation.
+        String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+
+        assertThat(prompt).contains("TAKRORLAMA").contains("Istisno");
+    }
+
+    @Test
     void alwaysCarriesTheGuardrails() {
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
@@ -117,12 +151,18 @@ class SystemPromptFactoryTest {
 
     @Test
     void tellsTheModelNotToRepeatASpokenDisclosure() {
-        // §11.1: the disclosure is spoken from code; repeating it sounds broken.
+        // §11.1: the disclosure is spoken from code; repeating it sounds broken. Keyed on
+        // the block's own wording rather than a word like "TAKRORLAMA", which the
+        // anti-repetition rule further down now carries on every call.
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
-        assertThat(factory.stablePrefix(s)).doesNotContain("TAKRORLAMA");
+        assertThat(factory.stablePrefix(s)).doesNotContain("allaqachon aytildi");
 
         s.setDisclosureSpoken(true);
-        assertThat(factory.stablePrefix(s)).contains("TAKRORLAMA");
+        assertThat(factory.stablePrefix(s))
+                .contains("allaqachon aytildi")
+                // A bare "do not repeat it" did not stop the model opening with a
+                // greeting anyway; what the first line must be instead has to be there.
+                .contains("BOSHLAMA");
     }
 
     @Test

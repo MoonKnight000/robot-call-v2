@@ -103,11 +103,17 @@ public class SystemPromptFactory {
         }
 
         if (s.isDisclosureSpoken()) {
-            // The disclosure was already spoken from code (§11.1). Repeating it makes
-            // the opening sound broken.
+            // The disclosure was already spoken from code (§11.1). Repeating it makes the
+            // opening sound broken — and "do not repeat it" alone did not stop the model
+            // opening with "Assalomu alaykum!" anyway. A negative rule leaves it to guess
+            // what the first line should be instead, so say what it must look like.
             sb.append("\n[TIZIM: Salomlashuv va \"avtomatik xizmat, suhbat yozib olinmoqda\" ")
-                    .append("ogohlantirishi allaqachon aytildi. Ularni TAKRORLAMA — to'g'ridan-to'g'ri ")
-                    .append("ishga o't.]\n");
+                    .append("ogohlantirishi allaqachon aytildi — mijoz ularni eshitib bo'ldi.\n")
+                    .append("Shuning uchun birinchi javobingni salom bilan ham, o'zingni ")
+                    .append("tanishtirish bilan ham BOSHLAMA (\"Assalomu alaykum\", \"Salom\", ")
+                    .append("\"Men ... kompaniyasidanman\" — hech biri). Birinchi javobing ")
+                    .append("to'g'ridan-to'g'ri ish bilan boshlansin: suhbatdosh aynan o'sha ")
+                    .append("odam ekanini so'ra.]\n");
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
@@ -124,12 +130,63 @@ public class SystemPromptFactory {
 
         sb.append("USLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")
                 .append("Ovozga aylantiriladi — qisqa gaplar tuz, ro'yxat yoki maxsus belgilar ishlatma.\n");
+        // What makes a call sound scripted is less the voice than the turn shape: every
+        // reply a complete formal paragraph that ignores what the caller just said. So
+        // ask for the spoken register a human agent uses — react first, written-official
+        // vocabulary out, acknowledgment before argument. The example words follow the
+        // call's language, or the model would drop Uzbek back-channels into a Russian
+        // call. Lives in the cached prefix like the other style rules: billed once per
+        // call, not per turn.
+        boolean russian = isRussian(s.language());
+        sb.append("INSONDEK GAPIR: mijoz gapiga avval bir og'iz munosabat bildir ")
+                .append(russian
+                        ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")"
+                        : "(\"Xo'p\", \"Tushunarli\", \"Yaxshi\")")
+                .append(", keyin davom et — lekin har safar har xil, bitta so'zni qayta-qayta ")
+                .append("ishlatsang robotga o'xshaysan. Yozma-rasmiy iboralar ")
+                .append(russian
+                        ? "(\"данный\", \"осуществлять\", \"уважаемый клиент\")"
+                        : "(\"ushbu\", \"mazkur\", \"amalga oshirish\", \"hurmatli mijoz\")")
+                .append(" o'rniga og'zaki so'zlashuvdagi oddiy shaklni tanla. Qisqa savolga qisqa ")
+                .append("javob ber — hammasini bir javobda tushuntirishga urinma. Mijoz xavotir yoki ")
+                .append("norozilik bildirsa, avval uni qisqa tan ol ")
+                .append(russian ? "(\"Понимаю вас\")" : "(\"Tushunaman, noqulay vaziyat\")")
+                .append(", keyin ishga qayt. Javoblaring anketa savol-javobi emas, tabiiy suhbat bo'lsin.\n");
+        if (!russian) {
+            // Real calls produced "1500000 so me'doridagi" for "so'm miqdoridagi" and
+            // "kuninigiz" for "kuningiz". A mangled word is not a spelling problem here —
+            // it goes straight to TTS and the caller hears the mangling.
+            sb.append("TIL: o'zbek adabiy tilida to'g'ri yoz. o' va g' harflarini doim apostrof ")
+                    .append("bilan yoz (so'm, to'lov, bo'yicha, o'tgan, kuningiz). So'zni bo'lib ")
+                    .append("yuborma va harfini tushirib qoldirma — buzuq yozilgan so'z ovozda ham ")
+                    .append("buzuq eshitiladi.\n");
+        }
         // The TTS layer writes digits out in Uzbek words (SpeechTextNormalizer), and the
         // fact guard compares digits against the facts. Both only work on digits, so the
         // model must not spell a sum out itself.
         sb.append("Summa, sana va raqamlarni FAKTLARdagidek raqam bilan yoz ")
                 .append("(masalan \"1500000 so'm\", \"2026-yil 1-iyul\") — so'z bilan yozma, ")
                 .append("ovozga aylantirilganda o'zi to'g'ri o'qiladi.\n");
+        // Observed on real calls: the caller said only "allo" and the bot answered by
+        // delivering the whole debt notice again — contract number, sum and due date. The
+        // stage purpose in turnAnnex is re-sent every turn and reads as an order to state
+        // it once more, so the counter-rule has to be spelled out. It lives here, in the
+        // cached prefix, rather than in the annex: the annex is billed on every turn.
+        sb.append("TAKRORLAMA: suhbatda allaqachon aytgan faktingni (shartnoma raqami, summa, ")
+                .append("muddat) qayta aytma. Mijoz eshitmagan yoki tushunmagan bo'lsa — butun ")
+                .append("xabarni emas, faqat so'ralgan qismini qisqa ayt. Har bir javobing ")
+                .append("suhbatning davomi bo'lsin, uni boshidan boshlash emas. Istisno: ")
+                .append("kelishilgan sana va summani yakunda bir marta tasdiqlab o'tish kerak.\n");
+        // "JORIY BOSQICH" arrives every turn; without this it reads as a fresh instruction
+        // to carry the stage out again, however far into the stage the conversation is.
+        sb.append("Quyida keladigan \"JORIY BOSQICH\" ostidagi matn — o'sha bosqichning MAQSADI, ")
+                .append("har bir javob uchun buyruq emas. Maqsadni allaqachon bajargan bo'lsang, ")
+                .append("takrorlama — suhbatni davom ettir.\n");
+        // Asking for plain text alongside the tool call (so it could be streamed and
+        // spoken sentence by sentence) was tried and reverted — Gemini answered a
+        // tool-calling turn with neither, and the retry round trip cost more than the
+        // streaming saved. The line goes in the tool argument because a required argument
+        // is the only part of this the model reliably fills. See DialogTools.
         sb.append("HAR BIR javobing mijozga ovoz bilan aytiladigan matn bo'lishi SHART — matnsiz javob ")
                 .append("qaytarma. Tool chaqirsang (bosqich o'tkazish, va'da/sabab yozish, yakunlash), ")
                 .append("aytadigan gapingni o'sha tool'ning \"reply\" parametriga yoz — mijoz aynan shuni ")
@@ -198,10 +255,12 @@ public class SystemPromptFactory {
     }
 
     private static String languageName(String bcp47) {
-        if (bcp47 == null) {
-            return "o'zbek";
-        }
-        return bcp47.startsWith("ru") ? "rus" : "o'zbek";
+        return isRussian(bcp47) ? "rus" : "o'zbek";
+    }
+
+    /** Uzbek is the default here, same as {@link #languageName} — only ru-RU opts out. */
+    private static boolean isRussian(String bcp47) {
+        return bcp47 != null && bcp47.startsWith("ru");
     }
 
     private static String orDash(Object value) {

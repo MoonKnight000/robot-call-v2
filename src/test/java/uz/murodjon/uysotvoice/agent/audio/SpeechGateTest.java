@@ -18,14 +18,19 @@ class SpeechGateTest {
     /** The VAD window size configured for 8 kHz (32ms). */
     private static final int WINDOW = 256;
 
-    /** The plain gate: one hangover for every utterance, no adaptation. */
+    /** The plain gate: opens on the first speech window, one hangover, no adaptation. */
     private static SpeechGate gate() {
-        return new SpeechGate(RATE, 500, 1000, 0, 0);
+        return new SpeechGate(RATE, 500, 1000, 0, 0, 0);
     }
 
     /** Short answers (up to 600ms of speech) close after 300ms instead of the full 1000. */
     private static SpeechGate adaptiveGate() {
-        return new SpeechGate(RATE, 500, 1000, 600, 300);
+        return new SpeechGate(RATE, 500, 1000, 0, 600, 300);
+    }
+
+    /** Opens only after 100ms of continuous speech — a blip is not an utterance. */
+    private static SpeechGate confirmingGate() {
+        return new SpeechGate(RATE, 500, 1000, 100, 0, 0);
     }
 
     /** Feed {@code ms} of speech or silence in VAD-sized windows. */
@@ -96,6 +101,56 @@ class SpeechGateTest {
         assertThat(gate.isOpen()).isTrue();
     }
 
+    // The confirmation window: Silero scores "is this speech", not "is this the caller",
+    // so a voice across the room opens the gate exactly as readily as the person on the
+    // phone. What these pin down is that a blip does not become a turn — and that a real
+    // answer still does.
+
+    @Test
+    void aBlipShorterThanTheConfirmationWindowNeverOpensIt() {
+        SpeechGate gate = confirmingGate();
+
+        feed(gate, true, 32);   // one VAD window: someone across the room
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void repeatedBlipsDoNotAddUpToAnOpenGate() {
+        // Without resetting the count on silence, background chatter would open the gate
+        // eventually however short each individual blip was.
+        SpeechGate gate = confirmingGate();
+
+        for (int i = 0; i < 20; i++) {
+            feed(gate, true, 32);
+            feed(gate, false, 200);
+        }
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void aRealAnswerStillOpensIt() {
+        // "ha" is the shortest thing a caller actually says, and it must get through.
+        SpeechGate gate = confirmingGate();
+
+        feed(gate, true, 200);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void whatWasSpentConfirmingIsStillReplayed() {
+        // The confirmation costs no audio: the run-up sits in the pre-roll ring and is
+        // drained when the gate opens, so the recognizer hears the utterance whole.
+        SpeechGate gate = confirmingGate();
+        gate.buffer(frame((short) 1), FRAME);
+        feed(gate, true, 200);
+
+        assertThat(gate.isOpen()).isTrue();
+        assertThat(gate.drainPreRoll()).hasSize(FRAME);
+    }
+
     @Test
     void preRollReplaysTheRunUpInOrder() {
         SpeechGate gate = gate();
@@ -115,7 +170,7 @@ class SpeechGateTest {
     void preRollKeepsOnlyTheMostRecentAudio() {
         // 20ms of pre-roll fits exactly one frame; the older one has to fall out or the
         // gate would replay minutes of silence at the start of every utterance.
-        SpeechGate gate = new SpeechGate(RATE, 20, 1000, 0, 0);
+        SpeechGate gate = new SpeechGate(RATE, 20, 1000, 0, 0, 0);
         gate.buffer(frame((short) 1), FRAME);
         gate.buffer(frame((short) 2), FRAME);
 

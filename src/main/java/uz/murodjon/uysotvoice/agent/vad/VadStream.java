@@ -14,11 +14,11 @@ import uz.murodjon.uysotvoice.agent.audio.SpeechGate;
  * back-channels are ignored. Re-arms after a silence gap for the next utterance.
  *
  * <p>The same scores also drive an optional {@link SpeechGate}, which is what keeps
- * silence off the (per-second billed) STT stream. Barge-in and gating read the windows
- * differently on purpose: barge-in waits for {@code minSpeechMs} of continuous speech
- * so a cough does not silence the bot, while the gate opens on the first speech window
- * because its pre-roll buffer means an early open costs nothing and a late one loses
- * the start of a word.
+ * silence off the (per-second billed) STT stream. Both wait for a run of continuous
+ * speech before acting — a cough must not silence the bot, and a voice across the room
+ * must not be transcribed as a caller turn — but they wait independently, and the gate
+ * can afford a shorter run because its pre-roll buffer replays whatever it spent
+ * confirming.
  *
  * <p>Runs on the RTP consumer thread; Silero inference on a 32ms window is cheap.
  */

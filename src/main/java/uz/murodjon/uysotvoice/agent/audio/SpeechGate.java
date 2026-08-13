@@ -29,6 +29,7 @@ public class SpeechGate {
     private final int hangoverSamples;
     private final int shortHangoverSamples;
     private final int shortUtteranceSamples;
+    private final int openSamples;
     private final short[] preRoll;
 
     /** Write position in the ring, and how many samples it currently holds. */
@@ -44,24 +45,30 @@ public class SpeechGate {
     private boolean bypassed;
 
     /**
+     * @param minSpeechMs      continuous speech required before the gate opens at all.
+     *                         Costs nothing in audio — the pre-roll ring is holding this
+     *                         run-up anyway and replays it — but it keeps a blip from
+     *                         counting as an utterance. {@code 0} opens on the first
+     *                         speech window, as before
      * @param shortUtteranceMs speech up to this long is a short answer, closed after
      *                         {@code shortPostRollMs} instead of the full hangover.
      *                         {@code 0} (with {@code shortPostRollMs}) turns the
      *                         adaptation off and every utterance waits the same
      * @param shortPostRollMs  the shorter hangover a short answer gets
      */
-    public SpeechGate(int sampleRate, int preRollMs, int postRollMs,
+    public SpeechGate(int sampleRate, int preRollMs, int postRollMs, int minSpeechMs,
                       int shortUtteranceMs, int shortPostRollMs) {
         this.hangoverSamples = Math.max(0, postRollMs) * sampleRate / 1000;
         this.shortHangoverSamples = Math.max(0, shortPostRollMs) * sampleRate / 1000;
         this.shortUtteranceSamples = Math.max(0, shortUtteranceMs) * sampleRate / 1000;
+        this.openSamples = Math.max(0, minSpeechMs) * sampleRate / 1000;
         this.preRoll = new short[Math.max(1, Math.max(0, preRollMs) * sampleRate / 1000)];
     }
 
     /**
-     * One scored VAD window. Speech opens the gate immediately (the pre-roll covers
-     * what came before); silence closes it only after the hangover this utterance
-     * has earned.
+     * One scored VAD window. Speech opens the gate once it has run for {@code minSpeechMs}
+     * (the pre-roll covers what came before, so nothing is lost by confirming first);
+     * silence closes it only after the hangover this utterance has earned.
      *
      * @param speech  whether the window scored above the VAD threshold
      * @param samples how many samples the window covered
@@ -73,10 +80,16 @@ public class SpeechGate {
         if (speech) {
             silenceSamples = 0;
             speechSamples += samples;
-            open = true;
+            if (speechSamples >= openSamples) {
+                open = true;
+            }
             return;
         }
         if (!open) {
+            // A run of speech that never reached openSamples was not an utterance —
+            // someone talking across the room, a cough, a door. Start the count over
+            // rather than letting unrelated blips add up to an open gate.
+            speechSamples = 0;
             return;
         }
         silenceSamples += samples;

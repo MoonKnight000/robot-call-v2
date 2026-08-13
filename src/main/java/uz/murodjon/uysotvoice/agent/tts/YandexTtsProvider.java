@@ -20,15 +20,18 @@ import uz.murodjon.uysotvoice.shared.exception.ExternalServiceException;
 import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Yandex SpeechKit text-to-speech over the <b>v3 streaming</b> gRPC API
- * (PROJECT.md §2.5): {@code Synthesizer.UtteranceSynthesis} sends the whole text
- * in one request and reads back a stream of raw LINEAR16_PCM audio chunks.
+ * (PROJECT.md §2.5): {@code Synthesizer.UtteranceSynthesis} sends the text in one
+ * request (split first if it exceeds {@link #MAX_TEXT_CHARS} — Yandex's own limit)
+ * and reads back a stream of raw LINEAR16_PCM audio chunks.
  * {@link #synthesize} buffers and concatenates them into the single {@code short[]}
  * the blocking {@link TtsProvider} contract returns; {@link #synthesizeStreaming}
  * forwards each chunk as it arrives instead, for the caller that can start playing
@@ -49,6 +52,17 @@ import java.util.concurrent.TimeUnit;
 public class YandexTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(YandexTtsProvider.class);
+
+    /**
+     * Longest text Yandex v3 accepts in one {@code UtteranceSynthesis} request — anything
+     * longer fails outright with {@code INVALID_ARGUMENT "Too long text"}, which on a live
+     * call cost the caller the whole line (and put this provider on the router's cooldown,
+     * so the rest of the call went unspoken too). Not a config knob: the limit is Yandex's
+     * own contract. It is reachable in normal operation because the number normalizer
+     * expands digits before synthesis — "1500000 so'm" arrives as six words — so a long
+     * tool-carried reply is split here and synthesized in sequence instead.
+     */
+    static final int MAX_TEXT_CHARS = 250;
 
     private final TtsProperties props;
     private volatile ManagedChannel channel;
@@ -105,9 +119,11 @@ public class YandexTtsProvider implements TtsProvider {
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
         try {
             ByteArrayOutputStream pcm = new ByteArrayOutputStream();
-            Iterator<Tts.UtteranceSynthesisResponse> responses = openStream(text, language, voice, style);
-            while (responses.hasNext()) {
-                pcm.writeBytes(responses.next().getAudioChunk().getData().toByteArray());
+            for (String piece : splitForSynthesis(text)) {
+                Iterator<Tts.UtteranceSynthesisResponse> responses = openStream(piece, language, voice, style);
+                while (responses.hasNext()) {
+                    pcm.writeBytes(responses.next().getAudioChunk().getData().toByteArray());
+                }
             }
             return toPcm16(pcm.toByteArray());
         } catch (StatusRuntimeException e) {
@@ -125,19 +141,60 @@ public class YandexTtsProvider implements TtsProvider {
     public void synthesizeStreaming(String text, String language, String voice, EffectiveVoiceSettings style,
                                      PcmChunkListener onChunk) {
         try {
-            Iterator<Tts.UtteranceSynthesisResponse> responses = openStream(text, language, voice, style);
-            while (responses.hasNext()) {
-                byte[] raw = responses.next().getAudioChunk().getData().toByteArray();
-                // Yandex flushes an AudioChunk on synthesis boundaries, not mid-sample, so
-                // (unlike the whole-utterance buffering above) converting chunk by chunk here
-                // is safe — each one is a whole number of 16-bit samples.
-                if (raw.length >= 2) {
-                    onChunk.onChunk(toPcm16(raw));
+            for (String piece : splitForSynthesis(text)) {
+                Iterator<Tts.UtteranceSynthesisResponse> responses = openStream(piece, language, voice, style);
+                while (responses.hasNext()) {
+                    byte[] raw = responses.next().getAudioChunk().getData().toByteArray();
+                    // Yandex flushes an AudioChunk on synthesis boundaries, not mid-sample, so
+                    // (unlike the whole-utterance buffering above) converting chunk by chunk here
+                    // is safe — each one is a whole number of 16-bit samples.
+                    if (raw.length >= 2) {
+                        onChunk.onChunk(toPcm16(raw));
+                    }
                 }
             }
         } catch (StatusRuntimeException e) {
             throw new ExternalServiceException(ErrorCode.TTS_YANDEX_STREAM_ERROR, "yandex-tts", e, e.getMessage());
         }
+    }
+
+    /**
+     * Cut {@code text} into pieces the v3 limit accepts, preferring a sentence end, then
+     * a word boundary. Nearly every line fits and comes back as the single piece it was;
+     * the split only exists so an over-long reply degrades into two sequential requests
+     * (heard as a slightly longer pause between them) instead of a lost line.
+     */
+    static List<String> splitForSynthesis(String text) {
+        String rest = text.trim();
+        if (rest.length() <= MAX_TEXT_CHARS) {
+            return List.of(rest);
+        }
+        List<String> pieces = new ArrayList<>();
+        while (rest.length() > MAX_TEXT_CHARS) {
+            int cut = cutPoint(rest);
+            pieces.add(rest.substring(0, cut).trim());
+            rest = rest.substring(cut).trim();
+        }
+        if (!rest.isEmpty()) {
+            pieces.add(rest);
+        }
+        return pieces;
+    }
+
+    /** The best split position within the limit: a sentence end, a space, or the hard limit. */
+    private static int cutPoint(String text) {
+        for (int i = MAX_TEXT_CHARS; i > 0; i--) {
+            char c = text.charAt(i - 1);
+            if (c == '.' || c == '!' || c == '?' || c == '…') {
+                return i;
+            }
+        }
+        for (int i = MAX_TEXT_CHARS; i > 0; i--) {
+            if (Character.isWhitespace(text.charAt(i - 1))) {
+                return i;
+            }
+        }
+        return MAX_TEXT_CHARS;
     }
 
     private Iterator<Tts.UtteranceSynthesisResponse> openStream(String text, String language, String voice,

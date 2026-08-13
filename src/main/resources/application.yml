@@ -193,24 +193,47 @@ voice-agent:
       # the VAD's own detection delay — too small and every utterance loses its first
       # syllable.
       pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:500}
-      # How long the stream stays open after speech stops. This is the silence the
-      # provider's end-of-utterance detector listens for: too short and the final
-      # transcript never arrives and the turn stalls. Lower it only while watching
-      # whether finals still come through.
-      post-roll-ms: ${STT_VAD_POST_ROLL_MS:1500}
+      # How long the stream stays open after speech stops — and, with endpointing below
+      # on, how long a LONG utterance waits before it is cut. It no longer has to be long
+      # enough to trigger the provider's own detector (we signal end-of-utterance
+      # outright), so it only has to outlast a mid-sentence pause: someone drawing breath
+      # between "ertaga" and "yo'q, indinga". A cut made too early is not lost speech —
+      # DialogSession.deferInput merges it into the next turn — but it does cost an extra
+      # LLM turn, so raise it back towards 1500 if turns start splitting.
+      #
+      # With endpointing DISABLED this has to go back up: SpeechKit's own detector has to
+      # HEAR the silence, and 800 ms may not be enough for it to fire at all — which is
+      # the one failure that leaves a turn hanging with no final.
+      post-roll-ms: ${STT_VAD_POST_ROLL_MS:800}
+      # Continuous speech required before the gate opens. Silero scores "is this speech",
+      # not "is this the person on the phone", so a voice across the room scores just as
+      # high as the caller — and a single 32ms window used to be enough to open the gate,
+      # stream the blip, and get back a one-word final ("allo") that the dialog then
+      # answered as if the caller had spoken.
+      #
+      # Costs no audio: the pre-roll ring above is holding this run-up anyway and replays
+      # it when the gate opens, so a confirmed utterance still arrives whole. Keep it well
+      # under pre-roll-ms, and under the length of the shortest real answer ("ha" is
+      # ~200ms). 0 = open on the first speech window, as before.
+      min-speech-ms: ${STT_VAD_MIN_SPEECH_MS:120}
     # Decide end-of-utterance here instead of at the provider (Yandex only — Google's
     # streaming API always endpoints for itself). The same VAD that gates the stream
     # decides the caller has finished, and SpeechKit is told outright.
     #
-    # What it buys: "ha" no longer waits as long as a dictated contract number. What it
-    # risks: the same thing the eou-sensitivity note below records — a cut made too early
-    # hands the model half a sentence to answer. That is why only SHORT utterances get the
-    # fast path; anything longer keeps post-roll-ms above, untouched.
+    # ON by default. Leaving it to SpeechKit put 1.5-2.5s between the caller falling
+    # silent and the final transcript arriving, and that is the single largest term in the
+    # ~4s a caller actually waits (§1.3) — larger than the LLM turn. "ha" no longer waits
+    # as long as a dictated contract number.
     #
-    # OFF by default. Turn it on only while listening to real uz-UZ calls, and watch
-    # voice_stt_utterances_endpointed against the number of caller turns.
+    # What it risks is what the eou-sensitivity note below records — a cut made too early
+    # hands the model half a sentence to answer. That is why only SHORT utterances get the
+    # fast path; anything longer keeps post-roll-ms above.
+    #
+    # Watch voice_stt_utterances_endpointed against the number of caller turns. If uz-UZ
+    # finals start coming back as fragments, set this false AND put post-roll-ms back to
+    # 1500 — the two move together.
     endpointing:
-      enabled: ${STT_ENDPOINTING:false}
+      enabled: ${STT_ENDPOINTING:true}
       # Speech up to this long counts as a short answer.
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1200}
       # Silence that ends a short answer (replaces post-roll-ms for those utterances).

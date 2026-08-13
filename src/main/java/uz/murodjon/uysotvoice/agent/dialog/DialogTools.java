@@ -23,6 +23,12 @@ import java.util.Set;
  * had to spend a second LLM round trip just to get the sentence to speak (see {@link
  * DialogSession#toolReplies()}). A required argument is filled; an instruction is
  * followed when the model feels like it.
+ *
+ * <p>Making it optional and asking the prompt for plain text instead was tried and
+ * reverted: Gemini then filled neither, and every tool-calling turn paid the retry round
+ * trip it was supposed to avoid (~3.0s to first audio against ~2.0s before). A line
+ * buried in a function call is slower than streamed text, but it is much faster than no
+ * line at all.
  */
 public class DialogTools {
 

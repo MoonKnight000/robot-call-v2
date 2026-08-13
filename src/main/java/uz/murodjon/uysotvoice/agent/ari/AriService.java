@@ -911,6 +911,7 @@ public class AriService {
                     EndpointingProperties endpointing = sttProps.endpointing();
                     boolean adaptive = endpointing != null && endpointing.enabled();
                     speechGate = new SpeechGate(SAMPLE_RATE, gating.preRollMs(), gating.postRollMs(),
+                            gating.minSpeechMs(),
                             adaptive ? endpointing.shortUtteranceMs() : 0,
                             adaptive ? endpointing.shortSilenceMs() : 0);
                 }
