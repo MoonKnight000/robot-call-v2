@@ -5,8 +5,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.annotation.Order;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
@@ -26,11 +25,12 @@ import java.util.Map;
  *
  * <p>Requests {@code LINEAR16} at 8 kHz, so the returned audio is a WAV container
  * we parse straight into telephone-rate PCM (no resampling on the RTP path).
- * Lower {@code @Order} providers (Yandex) win for the languages they support.
+ * Registered whenever {@code GOOGLE_APPLICATION_CREDENTIALS} is set — a company picks
+ * this provider per-call via {@code engine_config.tts_provider} (§11 settings), it does
+ * not have to be the process-wide {@code voice-agent.tts.provider} default.
  */
 @Component
-@Order(20)
-@ConditionalOnProperty(prefix = "voice-agent.tts.google", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnExpression("!'${GOOGLE_APPLICATION_CREDENTIALS:}'.isBlank()")
 public class GoogleTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleTtsProvider.class);

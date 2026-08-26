@@ -35,6 +35,9 @@ public class VoiceMetrics {
     private final Counter ttsCacheMisses;
     private final Counter ttsCharsSynthesized;
     private final Counter ttsCharsSaved;
+    private final Counter speculationsStarted;
+    private final Counter speculationsHit;
+    private final Counter speculationsMissed;
     private final Counter llmPromptTokens;
     private final Counter llmCompletionTokens;
     private final Counter llmCachedTokens;
@@ -44,9 +47,14 @@ public class VoiceMetrics {
     private final Counter noInputPrompts;
     private final Counter noInputHangups;
     private final Counter factGuardBlocks;
+    private final Counter factGuardSpokenFigures;
     private final Counter voicemailsDetected;
     private final Counter spokenLineRetries;
     private final Counter fillersPlayed;
+    private final Counter bargeIns;
+    private final Counter falseBargeIns;
+    private final Counter backchannels;
+    private final Counter echoSuppressed;
     private final Counter ttsFailovers;
     private final Counter rtpPacketsReceived;
     private final Counter rtpPacketsLost;
@@ -54,6 +62,9 @@ public class VoiceMetrics {
     private final Counter rtpSilentCalls;
     private final DistributionSummary rtpJitter;
     private final DistributionSummary rtpLoss;
+    private final DistributionSummary endpointingHangover;
+    private final Counter turnsExtended;
+    private final Counter turnsComplete;
     private final Timer llmTurn;
     private final Timer ttsSynth;
     private final Timer turnaround;
@@ -75,6 +86,20 @@ public class VoiceMetrics {
                 .register(registry);
         this.ttsCharsSaved = Counter.builder("voice.tts.chars.saved")
                 .description("characters served from cache instead of being synthesized")
+                .register(registry);
+        // Replies started before the caller had finished speaking. The ratio hit/started
+        // is the whole business case: a miss buys nothing and is billed anyway, so
+        // preemptive generation is only worth having while most guesses land. The missed
+        // tokens are NOT in the counters below — the stream is cancelled long before the
+        // provider reports usage — so read a miss as roughly one prompt's worth.
+        this.speculationsStarted = Counter.builder("voice.llm.speculation.started")
+                .description("replies begun on an interim transcript")
+                .register(registry);
+        this.speculationsHit = Counter.builder("voice.llm.speculation.hit")
+                .description("speculative replies the final transcript confirmed")
+                .register(registry);
+        this.speculationsMissed = Counter.builder("voice.llm.speculation.miss")
+                .description("speculative replies thrown away because the caller said something else")
                 .register(registry);
         // Token accounting for the LLM (§2.6). cached = the share of the prompt the
         // provider served from its context cache, i.e. the payoff of keeping the
@@ -98,6 +123,25 @@ public class VoiceMetrics {
         this.sttUtterancesEndpointed = Counter.builder("voice.stt.utterances.endpointed")
                 .description("utterances this side declared finished, instead of the provider")
                 .register(registry);
+        // Flat at post-roll-ms unless the adaptation is on. Once it is, this is the whole
+        // story: a distribution that never leaves the maximum means callers keep talking
+        // through the closes, and one that sits on the floor means the floor is too high
+        // to be worth the setting.
+        this.endpointingHangover = DistributionSummary.builder("voice.stt.endpointing.hangover")
+                .description("silence a long utterance had to wait out before it was closed")
+                .baseUnit("milliseconds")
+                .publishPercentileHistogram()
+                .register(registry);
+        // Utterances Smart Turn said were not finished when the timer wanted to close
+        // them. All of them means the model disagrees with the timer on every turn, which
+        // is a threshold problem, not a caller problem; none of them means it is adding
+        // latency to load a model that changes nothing.
+        this.turnsExtended = Counter.builder("voice.stt.turn.extended")
+                .description("utterances given extra silence because they sounded unfinished")
+                .register(registry);
+        this.turnsComplete = Counter.builder("voice.stt.turn.complete")
+                .description("utterances the turn detector agreed were finished")
+                .register(registry);
         // A rising prompt count means callers are going quiet — a recognizer that stopped
         // emitting finals looks exactly like this, so it is worth watching.
         this.noInputPrompts = Counter.builder("voice.dialog.no.input.prompts")
@@ -110,6 +154,13 @@ public class VoiceMetrics {
         // in the caller's file (§4.4) — alert on it rather than watch it.
         this.factGuardBlocks = Counter.builder("voice.dialog.fact.guard.blocks")
                 .description("sentences withheld because their figures did not match the call facts")
+                .register(registry);
+        // A different event from the one above, and a worse one: this figure was not
+        // withheld, it was spoken. A realtime engine talks straight from audio, so the
+        // guard only ever sees the transcript of what the caller has already heard.
+        // Blocks are the system working; these are incidents.
+        this.factGuardSpokenFigures = Counter.builder("voice.dialog.fact.guard.spoken")
+                .description("figures spoken on a realtime call that did not match the call facts")
                 .register(registry);
         this.voicemailsDetected = Counter.builder("voice.calls.voicemail.detected")
                 .description("calls cut short because an answering machine picked up")
@@ -126,6 +177,32 @@ public class VoiceMetrics {
         // over it — fix the latency, do not lengthen the filler.
         this.fillersPlayed = Counter.builder("voice.dialog.filler.played")
                 .description("turns where a short filler covered the wait for the LLM")
+                .register(registry);
+        // How often a caller talked the bot down mid-reply. A campaign where this is near
+        // zero is not one nobody interrupts — it is one where barge-in is not reaching the
+        // engine at all (no VAD model, a detector that never re-arms), which is invisible
+        // otherwise: the caller simply experiences a bot that talks over them.
+        this.bargeIns = Counter.builder("voice.dialog.barge.in")
+                .description("replies a caller interrupted mid-utterance")
+                .register(registry);
+        // Barge-ins the recognizer never backed up with words — a cough, a door, or the
+        // bot's own audio echoing back off a speakerphone. Read as a share of the counter
+        // above: a majority means the VAD is firing on noise, or there is echo on the line.
+        this.falseBargeIns = Counter.builder("voice.dialog.barge.in.false")
+                .description("interruptions no transcript followed, after which the reply resumed")
+                .register(registry);
+        // Barge-ins the caller did back up with words, but only "aha" — agreement over the
+        // top of the bot, not an answer to it. Counted separately from the false ones
+        // because the cause is different: these are not noise, and no amount of VAD
+        // tuning removes them.
+        this.backchannels = Counter.builder("voice.dialog.backchannel.ignored")
+                .description("caller agreement over the bot's line that did not start a turn")
+                .register(registry);
+        // Caller finals thrown away for repeating what the bot had just said. Non-zero
+        // means the far end has no echo cancellation and the agent was about to answer
+        // itself; the fix is on the Asterisk side, not here.
+        this.echoSuppressed = Counter.builder("voice.dialog.echo.suppressed")
+                .description("caller transcripts dropped as an echo of the bot's own line")
                 .register(registry);
         // A provider outage that the substitute covered. Never zero for long without
         // someone looking: the caller is hearing a different voice than the campaign chose.
@@ -277,6 +354,16 @@ public class VoiceMetrics {
         sttUtterancesEndpointed.increment();
     }
 
+    /** The wait a long utterance earned before it was closed — fixed, or learned. */
+    public void sttEndpointingHangover(int ms) {
+        endpointingHangover.record(ms);
+    }
+
+    /** The turn detector's verdict on one utterance the timer was ready to close. */
+    public void turnScored(boolean complete) {
+        (complete ? turnsComplete : turnsExtended).increment();
+    }
+
     /** The bot asked whether the caller was still there. */
     public void noInputPrompt() {
         noInputPrompts.increment();
@@ -292,9 +379,52 @@ public class VoiceMetrics {
         factGuardBlocks.increment();
     }
 
+    /**
+     * A figure that is not in the call's facts was <em>spoken</em> on a realtime call
+     * (§4.4). Unlike {@link #factGuardBlock}, nothing was prevented — alert on this.
+     */
+    public void factGuardSpoken() {
+        factGuardSpokenFigures.increment();
+    }
+
     /** An answering machine was detected and the call cut short (§8.6). */
     public void voicemailDetected() {
         voicemailsDetected.increment();
+    }
+
+    /** The caller spoke over the bot and the rest of the reply was dropped (§7.2). */
+    public void bargeIn() {
+        bargeIns.increment();
+    }
+
+    /** A barge-in no transcript followed, so the interrupted reply was resumed. */
+    public void falseBargeIn() {
+        falseBargeIns.increment();
+    }
+
+    /** A caller transcript was agreement over the bot's line, so it did not start a turn. */
+    public void backchannelIgnored() {
+        backchannels.increment();
+    }
+
+    /** A reply was begun on an interim transcript, before the caller had finished. */
+    public void speculationStarted() {
+        speculationsStarted.increment();
+    }
+
+    /** The final transcript said what the interim did, so the reply was already written. */
+    public void speculationHit() {
+        speculationsHit.increment();
+    }
+
+    /** The caller said something else, so the speculative reply was thrown away. */
+    public void speculationMiss() {
+        speculationsMissed.increment();
+    }
+
+    /** A caller transcript was dropped for echoing the bot's own line back at it. */
+    public void echoSuppressed() {
+        echoSuppressed.increment();
     }
 
     /** A line the preferred TTS provider failed to speak was spoken by another one. */

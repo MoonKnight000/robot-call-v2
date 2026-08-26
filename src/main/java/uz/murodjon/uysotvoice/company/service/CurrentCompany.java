@@ -1,7 +1,5 @@
 package uz.murodjon.uysotvoice.company.service;
 
-import uz.murodjon.uysotvoice.company.config.CompanyProperties;
-
 /**
  * The company the current unit of work belongs to (ROADMAP Bosqich B).
  *

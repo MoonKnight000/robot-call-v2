@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.slf4j.LoggerFactory;
 
+import uz.murodjon.uysotvoice.agent.audio.Resampler;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.agent.rtp.WavAudio;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
@@ -35,7 +36,8 @@ import java.util.stream.Stream;
  * <p>Credentials come from the same environment variables the app uses: {@code
  * STT_YANDEX_API_KEY} (plus optional {@code STT_YANDEX_FOLDER_ID}/{@code
  * STT_YANDEX_MODEL}) for Yandex, {@code GOOGLE_APPLICATION_CREDENTIALS} (plus optional
- * {@code STT_MODEL}) for Google. A provider with no credentials is skipped, so the tool
+ * {@code STT_MODEL}) for Google, {@code STT_AISHA_API_KEY} for Aisha. A provider with no
+ * credentials is skipped, so the tool
  * is still useful with only one configured — it then just transcribes.
  *
  * <p>Audio is paced at real time and both providers listen to the same pass
@@ -80,6 +82,7 @@ public final class SttComparisonTool {
         VoiceMetrics metrics = new VoiceMetrics(new SimpleMeterRegistry());
         YandexSttProvider yandex = buildYandex(language, metrics);
         GoogleSttProvider google = buildGoogle(language, metrics);
+        AishaSttProvider aisha = buildAisha(language, metrics);
         Map<String, SttProvider> providers = new LinkedHashMap<>();
         if (yandex != null) {
             providers.put("yandex", yandex);
@@ -87,9 +90,12 @@ public final class SttComparisonTool {
         if (google != null) {
             providers.put("google", google);
         }
+        if (aisha != null) {
+            providers.put("aisha", aisha);
+        }
         if (providers.isEmpty()) {
-            System.err.println("No STT credentials found. Set STT_YANDEX_API_KEY and/or "
-                    + "GOOGLE_APPLICATION_CREDENTIALS in the run environment.");
+            System.err.println("No STT credentials found. Set STT_YANDEX_API_KEY, "
+                    + "STT_AISHA_API_KEY and/or GOOGLE_APPLICATION_CREDENTIALS in the run environment.");
             System.exit(1);
         }
         System.out.printf("Comparing %d file(s) in %s with: %s%n%n",
@@ -126,6 +132,10 @@ public final class SttComparisonTool {
             return;
         }
         byte[] pcm = toLittleEndianBytes(audio.samples());
+        // Aisha only accepts a 16 kHz stream, so the same pass is prepared at both rates
+        // and each provider is fed the one it asked for — exactly what the live pipeline
+        // does (SttStreamBridge).
+        byte[] pcmWide = toLittleEndianBytes(Resampler.upsample8kTo16k(audio.samples(), audio.samples().length));
         System.out.printf("=== %s — %.1fs ===%n",
                 file, audio.samples().length / (double) TELEPHONE_RATE);
 
@@ -147,8 +157,11 @@ public final class SttComparisonTool {
         int chunkBytes = CHUNK_MS * TELEPHONE_RATE / 1000 * 2;
         for (int offset = 0; offset < pcm.length; offset += chunkBytes) {
             byte[] chunk = Arrays.copyOfRange(pcm, offset, Math.min(offset + chunkBytes, pcm.length));
-            for (SttSession session : sessions.values()) {
-                session.sendAudio(chunk);
+            byte[] wideChunk = Arrays.copyOfRange(pcmWide, offset * 2,
+                    Math.min(offset * 2 + chunkBytes * 2, pcmWide.length));
+            for (Map.Entry<String, SttSession> entry : sessions.entrySet()) {
+                boolean wide = providers.get(entry.getKey()).sampleRate() == 16000;
+                entry.getValue().sendAudio(wide ? wideChunk : chunk);
             }
             Thread.sleep(CHUNK_MS);
         }
@@ -191,7 +204,23 @@ public final class SttComparisonTool {
                 0,
                 0); // one-shot tool: no idle connection to keep alive
         YandexSttProvider provider = new YandexSttProvider(
-                buildSttProperties(language, null, yandexProperties), metrics);
+                buildSttProperties(language, null, yandexProperties, null), metrics);
+        provider.init();
+        return provider;
+    }
+
+    /** An Aisha provider from the environment, or {@code null} without an API key. */
+    private static AishaSttProvider buildAisha(String language, VoiceMetrics metrics) {
+        String apiKey = readEnv("STT_AISHA_API_KEY", "");
+        if (apiKey.isBlank()) {
+            return null;
+        }
+        AishaSttProperties aishaProperties = new AishaSttProperties(
+                apiKey,
+                readEnv("STT_AISHA_URL", "wss://back.aisha.group/api/v1/stt/realtime"),
+                false); // finals only — interims would just interleave in the output
+        AishaSttProvider provider = new AishaSttProvider(
+                buildSttProperties(language, null, null, aishaProperties), metrics);
         provider.init();
         return provider;
     }
@@ -204,7 +233,7 @@ public final class SttComparisonTool {
         GoogleSttProperties googleProperties = new GoogleSttProperties(
                 readEnv("STT_MODEL", ""), TELEPHONE_RATE, true, 600);
         GoogleSttProvider provider = new GoogleSttProvider(
-                buildSttProperties(language, googleProperties, null), metrics);
+                buildSttProperties(language, googleProperties, null, null), metrics);
         provider.init();
         return provider;
     }
@@ -214,9 +243,9 @@ public final class SttComparisonTool {
      * live pipeline's concern and stay null — the providers never read them.
      */
     private static SttProperties buildSttProperties(String language, GoogleSttProperties google,
-                                                    YandexSttProperties yandex) {
-        return new SttProperties(true, yandex != null ? "yandex" : "google", language,
-                null, null, google, yandex);
+                                                    YandexSttProperties yandex, AishaSttProperties aisha) {
+        String provider = yandex != null ? "yandex" : (aisha != null ? "aisha" : "google");
+        return new SttProperties(true, provider, language, null, null, google, yandex, aisha);
     }
 
     private static void collectWavFiles(Path path, List<Path> into) {

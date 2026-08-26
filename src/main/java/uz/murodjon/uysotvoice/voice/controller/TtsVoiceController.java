@@ -20,7 +20,12 @@ public interface TtsVoiceController {
 
     /**
      * @param language optional BCP-47 filter, so a form that already knows the campaign
-     *                 language only offers voices that can speak it
+     *                 language only offers voices that can speak it. The result is also
+     *                 always scoped to this build: only voices whose provider has
+     *                 credentials configured (and is therefore actually usable) are
+     *                 offered — not restricted to any one company's current
+     *                 {@code engine_config.ttsProvider}, since a campaign may pick any
+     *                 enabled provider's voice.
      */
     @GetMapping("/voices")
     ResponseEntity<ResponseData<List<TtsVoice>>> voices(@RequestParam(required = false) String language);

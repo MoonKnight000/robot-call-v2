@@ -8,10 +8,11 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.uysotvoice.agent.dialog.CallSummary;
 import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
-import uz.murodjon.uysotvoice.agent.stt.SttProperties;
 import uz.murodjon.uysotvoice.agent.summary.SummaryService;
 import uz.murodjon.uysotvoice.agent.vad.VadProperties;
 import uz.murodjon.uysotvoice.crm.service.CrmClient;
+import uz.murodjon.uysotvoice.engine.domain.EffectiveEngineConfig;
+import uz.murodjon.uysotvoice.engine.service.EngineConfigService;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
@@ -42,14 +43,14 @@ public class CallFinalizer {
     private final CrmClient crmClient;
     private final ScenarioService scenarioService;
     private final VoiceMetrics metrics;
-    private final SttProperties sttProps;
+    private final EngineConfigService engineConfigService;
     private final TtsVoiceService voices;
     private final VadProperties vadProps;
     private final String llmModel;
 
     public CallFinalizer(CallRecordService records, SummaryService summaryService,
                          AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
-                         VoiceMetrics metrics, SttProperties sttProps, TtsVoiceService voices,
+                         VoiceMetrics metrics, EngineConfigService engineConfigService, TtsVoiceService voices,
                          VadProperties vadProps,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
@@ -58,7 +59,7 @@ public class CallFinalizer {
         this.crmClient = crmClient;
         this.scenarioService = scenarioService;
         this.metrics = metrics;
-        this.sttProps = sttProps;
+        this.engineConfigService = engineConfigService;
         this.voices = voices;
         this.vadProps = vadProps;
         this.llmModel = llmModel;
@@ -102,7 +103,7 @@ public class CallFinalizer {
                 log.info("Finalized call {} without summary (LLM unavailable or empty transcript)", callAttemptId);
             }
 
-            writeTechnicalDetail(callAttemptId, disposition, channelName, trunk, technical);
+            writeTechnicalDetail(callAttemptId, companyId, disposition, channelName, trunk, technical);
         } catch (Exception e) {
             log.warn("Finalization failed for call {}: {}", callAttemptId, e.getMessage());
         }
@@ -113,10 +114,13 @@ public class CallFinalizer {
      * live — STT/TTS provider, LLM model, AMD result — and persists everything
      * together with what {@link DialogTechnicalSnapshot} already accumulated.
      */
-    private void writeTechnicalDetail(long callAttemptId, Disposition disposition, String channelName,
+    private void writeTechnicalDetail(long callAttemptId, long companyId, Disposition disposition, String channelName,
                                       String trunk, DialogTechnicalSnapshot technical) {
         String amdResult = amdResult(disposition);
-        String ttsProvider = null;
+        // Which engines this call actually ran on — a company setting since §11
+        // settings/engine, so the process defaults are no longer the answer for everyone.
+        EffectiveEngineConfig engine = engineConfigService.findEffectiveByCompanyId(companyId);
+        String ttsProvider = engine.ttsProvider();
         String ttsVoiceName = null;
         if (technical != null && technical.ttsVoice() != null) {
             TtsVoice voice = voices.find(technical.ttsVoice());
@@ -126,7 +130,7 @@ public class CallFinalizer {
             }
         }
         records.writeTechnicalDetail(callAttemptId, channelName, trunk, amdResult,
-                sttProps.provider(), ttsProvider, ttsVoiceName,
+                engine.sttProvider(), ttsProvider, ttsVoiceName,
                 llmModel == null || llmModel.isBlank() ? null : llmModel, technical);
     }
 

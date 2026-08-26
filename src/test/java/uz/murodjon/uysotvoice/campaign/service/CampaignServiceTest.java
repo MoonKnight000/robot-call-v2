@@ -26,7 +26,6 @@ import uz.murodjon.uysotvoice.notification.service.NotificationService;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.user.service.UserService;
-import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
 import java.time.Clock;
@@ -93,8 +92,8 @@ class CampaignServiceTest {
         companyConfig = mock(CompanyConfigService.class);
         currentCompany = mock(CurrentCompany.class);
         notifications = mock(NotificationService.class);
-        when(voices.find("nigora")).thenReturn(new TtsVoice("nigora", "yandex", "uz-UZ", "nigora", "Nigora", null));
-        when(voices.ids()).thenReturn(List.of("nigora"));
+        when(voices.isSelectable("nigora")).thenReturn(true);
+        when(voices.selectableIds()).thenReturn(List.of("nigora"));
         when(currentCompany.id()).thenReturn(COMPANY_ID);
         // Mirrors CompanyConfigService.resolveLanguage's real fallback shape (null -> default,
         // otherwise pass the requested value straight through) without needing a real config row.

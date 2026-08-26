@@ -1,7 +1,5 @@
 package uz.murodjon.uysotvoice.live.dto;
 
-import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
-
 /**
  * The one number a periodic {@code GET /api/reports/dashboard/kpi} cannot give a
  * dashboard between polls: how many calls are on the line right now

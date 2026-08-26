@@ -186,7 +186,7 @@ public class TtsWarmup {
         for (String language : languages) {
             targets.add(new Warm(language, null));
         }
-        for (TtsVoice voice : catalog.all()) {
+        for (TtsVoice voice : catalog.findSelectable(null)) {
             if (voice.language() != null && languages.contains(voice.language())) {
                 targets.add(new Warm(voice.language(), voice.id()));
             }

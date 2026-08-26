@@ -194,6 +194,12 @@ services:
       # changing .env needs an image rebuild to take effect.
       STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-DEFAULT}
       STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-0}
+      # Aisha (STT_PROVIDER/TTS_PROVIDER=aisha). Passed through for the same reason as
+      # the Yandex keys: selecting the provider in .env is pointless if its credentials
+      # never reach the container.
+      STT_AISHA_API_KEY: ${STT_AISHA_API_KEY:-}
+      TTS_AISHA_API_KEY: ${TTS_AISHA_API_KEY:-}
+      TTS_AISHA_SPEAKER: ${TTS_AISHA_SPEAKER:-neutral}
       ARI_LOG_LEVEL: ${ARI_LOG_LEVEL:-ERROR}
       # Barge-in + answering-machine detection (§7.2, §8.6). The model is baked into the
       # image by the Dockerfile; this is the path it lands on. Blank it to turn VAD off.

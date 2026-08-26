@@ -20,17 +20,32 @@ class SpeechGateTest {
 
     /** The plain gate: opens on the first speech window, one hangover, no adaptation. */
     private static SpeechGate gate() {
-        return new SpeechGate(RATE, 500, 1000, 0, 0, 0);
+        return new SpeechGate(RATE, 500, 1000, 0, 0, 0, 0, 0d, 0);
     }
 
     /** Short answers (up to 600ms of speech) close after 300ms instead of the full 1000. */
     private static SpeechGate adaptiveGate() {
-        return new SpeechGate(RATE, 500, 1000, 0, 600, 300);
+        return new SpeechGate(RATE, 500, 1000, 0, 600, 300, 0, 0d, 0);
     }
 
     /** Opens only after 100ms of continuous speech — a blip is not an utterance. */
     private static SpeechGate confirmingGate() {
-        return new SpeechGate(RATE, 500, 1000, 100, 0, 0);
+        return new SpeechGate(RATE, 500, 1000, 100, 0, 0, 0, 0d, 0);
+    }
+
+    /**
+     * Learns the long-utterance wait between 1000ms and a 600ms floor, moving half the
+     * remaining distance per utterance, and counting speech within 900ms of a close as
+     * evidence the close was premature.
+     */
+    private static SpeechGate learningGate() {
+        return new SpeechGate(RATE, 500, 1000, 0, 0, 0, 600, 0.5d, 900);
+    }
+
+    /** One turn that ends cleanly: a little speech, then silence nobody breaks. */
+    private static void cleanTurn(SpeechGate gate) {
+        feed(gate, true, 300);
+        feed(gate, false, 2000);
     }
 
     /** Feed {@code ms} of speech or silence in VAD-sized windows. */
@@ -170,7 +185,7 @@ class SpeechGateTest {
     void preRollKeepsOnlyTheMostRecentAudio() {
         // 20ms of pre-roll fits exactly one frame; the older one has to fall out or the
         // gate would replay minutes of silence at the start of every utterance.
-        SpeechGate gate = new SpeechGate(RATE, 20, 1000, 0, 0, 0);
+        SpeechGate gate = new SpeechGate(RATE, 20, 1000, 0, 0, 0, 0, 0d, 0);
         gate.buffer(frame((short) 1), FRAME);
         gate.buffer(frame((short) 2), FRAME);
 
@@ -253,5 +268,169 @@ class SpeechGateTest {
         feed(gate, false, 400);
 
         assertThat(gate.isOpen()).isTrue();
+    }
+
+    // The learned hangover. post-roll-ms has to be set for the slowest caller on the
+    // list, and every brisk caller then pays that wait on every turn. What these pin down
+    // is that the evidence works both ways: turns that end cleanly earn a shorter wait,
+    // and one caller talking through a close takes it straight back.
+
+    @Test
+    void theWaitStartsAtTheConfiguredMaximum() {
+        // Nothing has been learned yet, so the first utterance is treated as carefully as
+        // it would be without any of this.
+        assertThat(learningGate().hangoverMs()).isEqualTo(1000);
+    }
+
+    @Test
+    void turnsThatEndCleanlyShortenTheWait() {
+        SpeechGate gate = learningGate();
+
+        cleanTurn(gate);
+        assertThat(gate.hangoverMs()).isEqualTo(800);
+
+        cleanTurn(gate);
+        assertThat(gate.hangoverMs()).isEqualTo(700);
+    }
+
+    @Test
+    void speakingThroughACloseTakesTheWaitBack() {
+        // The failure this exists to undo: the gate shut and the caller was still talking,
+        // so their next words arrive as a separate turn.
+        SpeechGate gate = learningGate();
+        cleanTurn(gate);
+        assertThat(gate.hangoverMs()).isEqualTo(800);
+
+        feed(gate, true, 300);
+        feed(gate, false, 1000);   // closes after the learned 800ms, 200ms left over
+        feed(gate, true, 100);     // and the caller carries on, well inside the grace
+
+        assertThat(gate.hangoverMs()).isEqualTo(900);
+    }
+
+    @Test
+    void theWaitNeverFallsThroughTheFloor() {
+        // Below the floor the recognizer stops hearing enough silence to be sure the
+        // caller stopped at all, however brisk they are.
+        SpeechGate gate = learningGate();
+
+        for (int turn = 0; turn < 50; turn++) {
+            cleanTurn(gate);
+        }
+
+        assertThat(gate.hangoverMs()).isEqualTo(600);
+    }
+
+    @Test
+    void speechLongAfterACloseIsJustTheNextTurn() {
+        // A caller answering the NEXT question is not a caller who never finished the
+        // last one; counting it as one would leave the wait pinned at the maximum.
+        SpeechGate gate = learningGate();
+        cleanTurn(gate);
+
+        feed(gate, true, 300);
+        feed(gate, false, 3000);   // closes, and the grace runs out in the silence
+        feed(gate, true, 300);
+
+        assertThat(gate.hangoverMs()).isEqualTo(700);
+    }
+
+    @Test
+    void withoutTheFloorNothingIsLearned() {
+        // A floor at or above post-roll-ms leaves nothing to learn, so the gate stays on
+        // the fixed wait rather than pretending to adapt.
+        SpeechGate gate = new SpeechGate(RATE, 500, 1000, 0, 0, 0, 1000, 0.5d, 900);
+
+        cleanTurn(gate);
+
+        assertThat(gate.hangoverMs()).isEqualTo(1000);
+    }
+
+    // The semantic second opinion (SmartTurnDetector). It may only ever ADD silence: the
+    // timer's wait is the floor, because a model deciding to cut a wait short is a model
+    // deciding when a caller gets interrupted.
+
+    @Test
+    void anUtteranceThatSoundsUnfinishedGetsMoreSilence() {
+        SpeechGate gate = gate();                       // closes after 1000ms
+        gate.setTurnDetector(() -> false, 500);
+
+        feed(gate, true, 300);
+        feed(gate, false, 1200);
+        assertThat(gate.isOpen()).isTrue();             // 1500ms is the new bar
+
+        feed(gate, false, 400);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void anUtteranceThatSoundsFinishedClosesOnTheTimerAlone() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> true, 500);
+
+        feed(gate, true, 300);
+        feed(gate, false, 1200);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void theModelIsAskedOncePerUtterance() {
+        // It costs milliseconds and the answer cannot change while the line stays silent,
+        // so scoring every 32ms window afterwards would buy nothing.
+        int[] asked = {0};
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> {
+            asked[0]++;
+            return false;
+        }, 500);
+
+        feed(gate, true, 300);
+        feed(gate, false, 2000);
+
+        assertThat(asked[0]).isEqualTo(1);
+    }
+
+    @Test
+    void speakingAgainPutsTheQuestionBack() {
+        // The verdict was about the pause before those words; the pause after them is a
+        // different question.
+        int[] asked = {0};
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> {
+            asked[0]++;
+            return false;
+        }, 500);
+
+        feed(gate, true, 300);
+        feed(gate, false, 1100);   // past the timer, into the extension
+        feed(gate, true, 300);     // ...and the caller carries on
+        feed(gate, false, 1100);
+
+        assertThat(asked[0]).isEqualTo(2);
+    }
+
+    @Test
+    void withNoModelNothingIsExtended() {
+        SpeechGate gate = gate();
+
+        feed(gate, true, 300);
+        feed(gate, false, 1200);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void aShortAnswerIsNotWhatTheAdaptationMoves() {
+        // Short answers are already on the aggressive path; the learned wait belongs to
+        // the utterances that can still be mid-sentence.
+        SpeechGate gate = new SpeechGate(RATE, 500, 1000, 0, 600, 300, 600, 0.5d, 900);
+        cleanTurn(gate);
+
+        feed(gate, true, 300);   // "ha"
+        feed(gate, false, 400);
+
+        assertThat(gate.isOpen()).isFalse();
     }
 }

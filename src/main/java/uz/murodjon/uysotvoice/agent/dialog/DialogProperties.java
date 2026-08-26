@@ -34,6 +34,39 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       caller actually reacts to. Only ever fires when the turn is
  *                       genuinely slow, never on the greeting, and never on consecutive
  *                       turns. 0 disables it
+ * @param falseInterruptionTimeoutMs how long a barge-in waits for the caller's words
+ *                       before it is judged to have been noise. A VAD fires on a cough,
+ *                       a door, or the bot's own audio coming back off a speakerphone
+ *                       just as readily as on speech, and the bot has already gone silent
+ *                       by then. If no transcript follows within this window and nothing
+ *                       else has claimed the call, the reply resumes from where it was cut
+ *                       — the caller hears the rest of the sentence rather than a line
+ *                       that stops mid-thought. A real interruption never reaches it: the
+ *                       caller's transcript starts a new turn first. 0 disables the resume
+ * @param preemptive     start writing the reply from the recognizer's interim transcript,
+ *                       while the endpointing silence is still being waited out (§1.3,
+ *                       {@link Speculation}). The wait between "the caller stopped making
+ *                       noise" and "the recognizer says what they said" is several hundred
+ *                       milliseconds the turn currently spends doing nothing; this spends
+ *                       it on the LLM instead. Nothing is spoken from a guess — a final
+ *                       that says something else cancels it and the turn runs as it always
+ *                       did — but a cancelled guess is still billed, so it is only worth
+ *                       having while most of them land. Watch
+ *                       voice.llm.speculation.hit against .started. Streaming only
+ * @param preemptiveMinChars how much interim text is worth guessing from. The first
+ *                       syllables of an utterance are revised constantly and are almost
+ *                       never what the final says, so guessing there buys a cancelled
+ *                       request every time
+ * @param minInterruptionWords how many words a caller has to say over the bot before it
+ *                       counts as having been interrupted, rather than agreed with. A
+ *                       person says "aha" while the other one is talking and expects them
+ *                       to carry on; the recognizer turns it into a final, and a final
+ *                       otherwise starts a turn — so the caller gets a fresh question
+ *                       instead of the rest of the sentence they were agreeing with. Only
+ *                       ever applies to a reply that was cut off mid-way and can therefore
+ *                       be resumed, and only to the words in {@code Backchannels}: a
+ *                       one-word answer ("yo'q", "to'ladim") is still an answer. 0 or 1
+ *                       disables the filter
  * @param mandatoryDisclosure speak the §11.1 notice ("this is an automated system, the
  *                       call is recorded") from code before the model's first turn.
  *                       The requirement is legal; leaving it to the prompt means a
@@ -57,6 +90,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       facts before speaking them (§4.4). A hallucinated debt amount
  *                       is the worst output this system has; the prompt forbids it, and
  *                       this is the check that enforces it
+ * @param factViolationEscalateAfter how many fact-guard violations a REALTIME call may
+ *                       collect before it is handed to a human operator. Only realtime
+ *                       calls reach this: the cascade pipeline checks the sentence
+ *                       before it is spoken and simply withholds it, so there is nothing
+ *                       to escalate. A speech-to-speech engine has already said the
+ *                       figure by the time anything can read it, and the caller who just
+ *                       heard a demand for money they do not owe needs a person, not a
+ *                       retry. 1 escalates on the first; 0 disables escalation and
+ *                       leaves the violation logged and flagged on the attempt
  * @param maxTokensPerCall cumulative LLM tokens one call may spend before it is closed
  *                       politely. Bounds the cost of a call that loops or refuses to
  *                       end. 0 disables the budget
@@ -73,12 +115,17 @@ public record DialogProperties(
         int maxCallSeconds,
         boolean streaming,
         int fillerDelayMs,
+        int falseInterruptionTimeoutMs,
+        boolean preemptive,
+        int preemptiveMinChars,
+        int minInterruptionWords,
         boolean mandatoryDisclosure,
         boolean stateScopedTools,
         int historyMaxMessages,
         int noInputSeconds,
         int noInputMaxPrompts,
         boolean factGuard,
+        int factViolationEscalateAfter,
         long maxTokensPerCall,
         TestContextProperties testContext
 ) {

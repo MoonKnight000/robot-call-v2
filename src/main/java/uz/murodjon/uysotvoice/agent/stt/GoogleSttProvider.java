@@ -10,7 +10,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
@@ -24,9 +24,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Application Default Credentials — set {@code GOOGLE_APPLICATION_CREDENTIALS}
  * to a service-account JSON. If the client cannot be created (e.g. no
  * credentials), the app still starts and STT is simply unavailable.
+ *
+ * <p>Registered whenever {@code GOOGLE_APPLICATION_CREDENTIALS} is set — a company picks
+ * this provider per-call via {@code engine_config.stt_provider} (§11 settings), it does
+ * not have to be the process-wide {@code voice-agent.stt.provider} default.
  */
 @Component
-@ConditionalOnProperty(prefix = "voice-agent.stt", name = "provider", havingValue = "google")
+@ConditionalOnExpression("!'${GOOGLE_APPLICATION_CREDENTIALS:}'.isBlank()")
 public class GoogleSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleSttProvider.class);
@@ -50,6 +54,11 @@ public class GoogleSttProvider implements SttProvider {
             // Non-fatal: run without STT until credentials are configured.
             log.error("Google STT unavailable (check GOOGLE_APPLICATION_CREDENTIALS): {}", e.getMessage());
         }
+    }
+
+    @Override
+    public String name() {
+        return "google";
     }
 
     @Override

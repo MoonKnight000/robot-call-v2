@@ -1,0 +1,32 @@
+voice-agent:
+  routing:
+    # Sticky routing (§5.1): call_id -> instance_id in Redis. Blank id -> hostname.
+    instance-id: ${INSTANCE_ID:}
+    ttl-minutes: ${ROUTING_TTL_MINUTES:30}
+  shutdown:
+    # Seconds to let active calls finish before the app stops (§12).
+    drain-timeout-sec: ${SHUTDOWN_DRAIN_TIMEOUT:60}
+  alerting:
+    # Alert when the recent call success rate (promise-to-pay) drops below threshold.
+    enabled: ${ALERTING_ENABLED:true}
+    window-minutes: ${ALERTING_WINDOW_MINUTES:30}
+    min-sample: ${ALERTING_MIN_SAMPLE:20}
+    success-threshold: ${ALERTING_SUCCESS_THRESHOLD:0.3}
+    check-minutes: ${ALERTING_CHECK_MINUTES:5}
+    # Turnaround SLO (§1.3): caller stops speaking -> first bot audio on the wire, p95.
+    # 1000 ms is the budget the spec sets, so an alert here means the pipeline is outside
+    # what the project promised — raise it only as a deliberate decision, not to silence it.
+    turnaround-budget-ms: ${ALERTING_TURNAROUND_BUDGET_MS:1000}
+    # Turns the window must hold before its p95 is judged; a handful of turns says nothing.
+    turnaround-min-turns: ${ALERTING_TURNAROUND_MIN_TURNS:30}
+  live:
+    # Live SSE channel (§0.7): KPI ticks, live-call list, transcript lines, notifications.
+    # Audio-level events are opt-in — they run on the RTP thread of every active call.
+    audio-level-enabled: ${LIVE_AUDIO_LEVEL_ENABLED:false}
+    kpi-poll-ms: ${LIVE_KPI_POLL_MS:2000}
+  company:
+    # Fallback only, for the two global bootstrap X-Api-Key secrets (voice-agent
+    # .security.api-key/read-api-key) — real per-request resolution exists for JWT
+    # logins (JwtCurrentCompanyResolver, ROADMAP E.1). See CurrentCompany/DefaultCompanyResolver.
+    # Matches the bootstrap row R__seed_data.sql seeds as id 1.
+    default-id: ${COMPANY_DEFAULT_ID:1}

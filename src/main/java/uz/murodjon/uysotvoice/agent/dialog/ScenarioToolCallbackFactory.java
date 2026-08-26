@@ -35,7 +35,7 @@ final class ScenarioToolCallbackFactory {
     private ScenarioToolCallbackFactory() {
     }
 
-    static ToolCallback build(ToolDef toolDef, DialogSession session) {
+    static ToolCallback build(ToolDef toolDef, DialogOutcomeSink session) {
         return FunctionToolCallback
                 .<Map<String, Object>, String>builder(toolDef.name(), args -> execute(toolDef, session, args))
                 .description(toolDef.description())
@@ -44,7 +44,7 @@ final class ScenarioToolCallbackFactory {
                 .build();
     }
 
-    private static String execute(ToolDef toolDef, DialogSession session, Map<String, Object> args) {
+    private static String execute(ToolDef toolDef, DialogOutcomeSink session, Map<String, Object> args) {
         Object reply = args == null ? null : args.get(DialogTools.REPLY_PARAM);
         session.addToolReply(reply == null ? null : reply.toString());
         List<ToolParamDef> params = toolDef.params();

@@ -32,10 +32,16 @@ import java.util.regex.Pattern;
  * written), a {@code date}-type fact's year, or a run of digits embedded in a
  * {@code string}-type fact (e.g. a contract number).
  *
- * <p>Known limit: this reads digits, so an amount the model spells out in words ("bir
- * million besh yuz ming") passes unchecked. Models write sums as digits when the prompt
- * gives them as digits, which is the case here, but the guard is a net under the prompt
- * rather than a replacement for it.
+ * <p>Figures spelled out in words are checked too ({@link UzbekNumberParser}). That used
+ * to be a documented gap, on the reasoning that a prompt which gives sums as digits gets
+ * them back as digits. It holds for the cascade pipeline and not for a realtime one:
+ * there the guard reads a transcript of speech, so the form is whatever the engine
+ * happened to say, and the "write sums as digits" rule the cascade prompt carries exists
+ * to serve a TTS step that a realtime call does not have.
+ *
+ * <p>Known limit: only Uzbek number words are read. A sum spelled out in Russian on a
+ * {@code ru-RU} call still passes — the check is a net under the prompt, not a
+ * replacement for it.
  */
 public final class FactGuard {
 
@@ -80,18 +86,30 @@ public final class FactGuard {
         while (m.find()) {
             String raw = m.group();
             BigDecimal value = parse(raw);
-            if (value == null || value.compareTo(MONEY_SCALE) < 0) {
-                continue; // unparsable or conversational scale — not a money claim
-            }
-            if (value.compareTo(YEAR_MIN) >= 0 && value.compareTo(YEAR_MAX) <= 0
-                    && value.stripTrailingZeros().scale() <= 0) {
-                continue; // a year, not a sum
-            }
-            if (allowed.stream().noneMatch(a -> a.compareTo(value) == 0)) {
+            if (value != null && isUnexplainedClaim(value, allowed)) {
                 bad.add(raw.trim());
             }
         }
+        // ...and the same figures spelled out. Both paths end in the same three filters,
+        // because "besh million" and "5000000" are the same claim to the person hearing it.
+        for (SpelledNumber spelled : UzbekNumberParser.findAll(text)) {
+            if (isUnexplainedClaim(spelled.value(), allowed)) {
+                bad.add(spelled.words());
+            }
+        }
         return bad;
+    }
+
+    /** Money-scale, not a year, and not one of the figures this call was given. */
+    private static boolean isUnexplainedClaim(BigDecimal value, Set<BigDecimal> allowed) {
+        if (value.compareTo(MONEY_SCALE) < 0) {
+            return false; // conversational scale — not a money claim
+        }
+        if (value.compareTo(YEAR_MIN) >= 0 && value.compareTo(YEAR_MAX) <= 0
+                && value.stripTrailingZeros().scale() <= 0) {
+            return false; // a year, not a sum
+        }
+        return allowed.stream().noneMatch(a -> a.compareTo(value) == 0);
     }
 
     /** Every money-scale figure the agent is allowed to say out loud, per the scenario's factSchema. */

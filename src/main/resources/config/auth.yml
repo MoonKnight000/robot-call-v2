@@ -1,0 +1,50 @@
+voice-agent:
+  security:
+    # Shared secret for every /api/** and /actuator/** request (header: X-Api-Key).
+    # Blank = fail-closed: nothing authenticates and the API answers 401. There is no
+    # sensible default here — POST /api/calls dials the real trunk.
+    api-key: ${API_KEY:}
+    # Optional second secret that may only READ: /api/reports/** and /actuator/**.
+    # Reporting, transcripts and recordings are what most people need day to day, and
+    # handing them the key that can dial 50 000 subscribers to get them is the wrong
+    # trade. Blank = no read-only role (everything needs the admin key, as before).
+    read-api-key: ${READ_API_KEY:}
+    # Serve the static test panel and swagger-ui without a key. The panel still sends
+    # the key with every API call it makes. Set false to hide them too.
+    public-ui: ${SECURITY_PUBLIC_UI:true}
+    # Browser origins allowed to call the API cross-origin (comma-separated). The bundled
+    # static panel is same-origin and never needs this; a separately hosted frontend (e.g.
+    # a Vite dev server) does. Empty = no cross-origin browser calls allowed.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    jwt:
+      # HS256 signing key for user login (ROADMAP E.1, Authorization: Bearer). Blank =
+      # fail-closed: nobody can log in. Hashed to 256 bits before use, so any non-blank
+      # value works — length beyond that adds no extra security.
+      secret: ${JWT_SECRET:}
+      # Access token lifetime. No server-side revocation exists — logout is a client-side
+      # token discard (stateless JWT), see AuthController.logout.
+      expiry-minutes: ${JWT_EXPIRY_MINUTES:720}
+    password-reset:
+      # "Parolni unutdingizmi?" email sender (backend-uchun-talablar.md §9) — same
+      # spring.mail.* SMTP connection as report-schedule. Unlike report-schedule there is
+      # no enabled flag: POST /api/auth/forgot-password always answers 200 regardless of
+      # whether the send actually succeeds (never reveal whether an email is registered),
+      # so an unconfigured SMTP server just means the send silently fails server-side.
+      from: ${PASSWORD_RESET_FROM:no-reply@uysot.uz}
+  encryption:
+    # AES-256 key (base64, 32 bytes) for secrets that must be read back — Uysot OAuth
+    # client_secret/access/refresh tokens (§11 integrations, shared.util.SecretCipher).
+    # Unlike JWT_SECRET/API_KEY, this cannot be "any non-blank value": it is decoded as
+    # raw key bytes, so it must be exactly 32 bytes once base64-decoded. Generate one:
+    #   openssl rand -base64 32
+    # Blank = the integrations feature stays inert (fails closed) rather than storing
+    # secrets in plaintext.
+    secret-key: ${ENCRYPTION_SECRET_KEY:}
+  user:
+    # First admin account, seeded once on startup if the default company has no users yet
+    # (UserBootstrap) — otherwise nobody could ever call POST /api/auth/login to create
+    # the rest through the API. Blank email/password = nothing seeded (fail-closed).
+    bootstrap-admin-name: ${BOOTSTRAP_ADMIN_NAME:Admin}
+    bootstrap-admin-username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    bootstrap-admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}

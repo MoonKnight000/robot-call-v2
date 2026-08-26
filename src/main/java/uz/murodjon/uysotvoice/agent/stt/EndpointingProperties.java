@@ -31,11 +31,14 @@ package uz.murodjon.uysotvoice.agent.stt;
  *                         with constant noise) would otherwise leave the recognizer
  *                         holding a turn that never finalizes and a caller talking to a
  *                         bot that never answers
+ * @param dynamic          lets the long-utterance wait learn the caller's rhythm instead of
+ *                         staying at the one {@code post-roll-ms} configured for everyone
  */
 public record EndpointingProperties(
         boolean enabled,
         int shortUtteranceMs,
         int shortSilenceMs,
-        int maxUtteranceMs
+        int maxUtteranceMs,
+        DynamicEndpointingProperties dynamic
 ) {
 }

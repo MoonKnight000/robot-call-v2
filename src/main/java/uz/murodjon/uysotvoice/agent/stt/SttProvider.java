@@ -7,6 +7,12 @@ package uz.murodjon.uysotvoice.agent.stt;
 public interface SttProvider {
 
     /**
+     * Stable id used to select this provider before a run via
+     * {@code voice-agent.stt.provider} (e.g. {@code google}, {@code yandex}).
+     */
+    String name();
+
+    /**
      * Open a streaming recognition session for the given BCP-47 language
      * (e.g. {@code uz-UZ}, {@code ru-RU}). Transcripts are delivered to
      * {@code listener}.

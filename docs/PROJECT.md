@@ -146,6 +146,7 @@ dependencies {
 | **Google Cloud STT** | Yaxshi      | ✅ `uz-UZ` | gRPC bidirectional | ✅ rasmiy        |
 | Yandex SpeechKit     | Juda yaxshi | ✅ `uz-UZ` | gRPC               | stub generatsiya |
 | Deepgram             | Yaxshi      | ❌         | WebSocket          | ✅ rasmiy        |
+| Aisha (Toshkent)     | Yaxshi      | ✅ uz + uz/ru aralash | WebSocket (16 kHz PCM) | JDK WebSocket    |
 
 **MVP qarori: Google Cloud STT** — ikkala tilni bitta provayderda beradi, integratsiya bitta.
 
@@ -159,6 +160,7 @@ Keyingi bosqichda ruscha oqimni Yandexga ko'chirish mumkin (aniqroq), shuning uc
 |------------------|-------------------|-----------------------------|
 | Yandex SpeechKit | ✅ Ajoyib, tabiiy | ❌                          |
 | **Google TTS**   | Yaxshi            | ✅ `uz-UZ` Standard/WaveNet |
+| Aisha (Toshkent) | ✅                | ✅ Gulnoza (neutral/cheerful/happy/sad) |
 
 **Qaror:** interfeys orqali router.
 - `uz-UZ` → Google TTS
@@ -556,6 +558,19 @@ Optimallashtirish:
 - Lekin **endpointing** ni agressiv sozlang (jim turish 500-700ms → gap tugadi)
 - TTS ni birinchi **jumla** kelishi bilan boshlang, butun javobni kutmang
 - LLM streaming da jumla chegarasini aniqlash: `.`, `!`, `?` + probel
+
+Byudjetning ikki eng katta hadiga qarshi qo'shimcha mexanizmlar (hammasi **default
+o'chiq**, har biri alohida bayroq ostida — batafsil izoh `.env.example` da):
+
+| Mexanizm | Qaysi hadga tegadi | Sozlama |
+|---|---|---|
+| **Dinamik endpointing** — uzun utterance kutish vaqti sessiya davomida EMA bilan o'rganiladi: mijoz gapini davom ettirsa uzayadi, toza tugasa qisqaradi. Modelga bog'liq emas, uz-UZ da ham ishlaydi | STT endpointing | `STT_ENDPOINTING_DYNAMIC` |
+| **Preemptive generation** — LLM interim transkript bilan oldindan ishga tushiriladi, final mos kelmasa javob tashlanadi. Interim'ga javob **aytilmaydi** (yuqoridagi qoida buzilmaydi) | LLM first token | `DIALOG_PREEMPTIVE` |
+| **Semantik turn detection** (Smart Turn v3, ONNX) — mijoz *fikrini* tugatdimi degan savolga javob beradi va tugatmagan bo'lsa kutishni **uzaytiradi** (hech qachon qisqartirmaydi). O'zbek tilini qo'llamaydi — faqat ru-RU | STT endpointing | `TURN_DETECTOR` |
+| **`min_words` barge-in filtri** — bot gapini kesib o'tgan "aha" yangi turn boshlamaydi, kesilgan javob davom ettiriladi | (latency emas — suhbat sifati) | `DIALOG_MIN_INTERRUPTION_WORDS` |
+
+Bayroqlar yoqilgach jadvaldagi raqamlar `/actuator/prometheus` dagi `voice_turnaround`
+p50/p95 bo'yicha qayta o'lchanadi.
 
 ---
 

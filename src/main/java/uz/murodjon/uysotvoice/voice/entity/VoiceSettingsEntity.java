@@ -26,9 +26,6 @@ public class VoiceSettingsEntity {
     private long companyId;
 
     @Column
-    private String provider;
-
-    @Column
     private Double speed;
 
     @Column
@@ -47,14 +44,6 @@ public class VoiceSettingsEntity {
 
     public void setCompanyId(long companyId) {
         this.companyId = companyId;
-    }
-
-    public String getProvider() {
-        return provider;
-    }
-
-    public void setProvider(String provider) {
-        this.provider = provider;
     }
 
     public Double getSpeed() {

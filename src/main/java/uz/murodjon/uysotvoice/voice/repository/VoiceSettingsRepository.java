@@ -31,7 +31,7 @@ public class VoiceSettingsRepository {
     }
 
     /** Upsert: the current company's row is created on first {@code PUT}, updated after. */
-    public VoiceSettings save(String provider, Double speed, Double pitch) {
+    public VoiceSettings save(Double speed, Double pitch) {
         long companyId = company.id();
         VoiceSettingsEntity entity = jpa.findByCompanyId(companyId).orElseGet(() -> {
             VoiceSettingsEntity fresh = new VoiceSettingsEntity();
@@ -39,13 +39,12 @@ public class VoiceSettingsRepository {
             fresh.setCreatedAt(Instant.now());
             return fresh;
         });
-        entity.setProvider(provider);
         entity.setSpeed(speed);
         entity.setPitch(pitch);
         return toRow(jpa.save(entity));
     }
 
     private static VoiceSettings toRow(VoiceSettingsEntity e) {
-        return new VoiceSettings(e.getCompanyId(), e.getProvider(), e.getSpeed(), e.getPitch(), e.getCreatedAt());
+        return new VoiceSettings(e.getCompanyId(), e.getSpeed(), e.getPitch(), e.getCreatedAt());
     }
 }

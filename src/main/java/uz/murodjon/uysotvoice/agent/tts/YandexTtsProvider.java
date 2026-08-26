@@ -9,8 +9,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.annotation.Order;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import yandex.cloud.api.ai.tts.v3.SynthesizerGrpc;
 import yandex.cloud.api.ai.tts.v3.Tts;
@@ -43,12 +42,13 @@ import java.util.concurrent.TimeUnit;
  * <p>One shared {@link ManagedChannel} to {@code tts.api.cloud.yandex.net:443}
  * (TLS); each call opens its own unary-request/streaming-response call with a
  * fresh {@code x-client-request-id}. Auth is an API key in the
- * {@code authorization: Api-Key ...} gRPC metadata. Created only when
- * {@code voice-agent.tts.yandex.enabled=true} and a key is set.
+ * {@code authorization: Api-Key ...} gRPC metadata. Registered whenever
+ * {@code voice-agent.tts.yandex.api-key} is set — a company picks this provider per-call
+ * via {@code engine_config.tts_provider} (§11 settings), it does not have to be the
+ * process-wide {@code voice-agent.tts.provider} default.
  */
 @Component
-@Order(10)
-@ConditionalOnProperty(prefix = "voice-agent.tts.yandex", name = "enabled", havingValue = "true")
+@ConditionalOnExpression("!'${voice-agent.tts.yandex.api-key:}'.isBlank()")
 public class YandexTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(YandexTtsProvider.class);
@@ -56,8 +56,7 @@ public class YandexTtsProvider implements TtsProvider {
     /**
      * Longest text Yandex v3 accepts in one {@code UtteranceSynthesis} request — anything
      * longer fails outright with {@code INVALID_ARGUMENT "Too long text"}, which on a live
-     * call cost the caller the whole line (and put this provider on the router's cooldown,
-     * so the rest of the call went unspoken too). Not a config knob: the limit is Yandex's
+     * call cost the caller the whole line. Not a config knob: the limit is Yandex's
      * own contract. It is reachable in normal operation because the number normalizer
      * expands digits before synthesis — "1500000 so'm" arrives as six words — so a long
      * tool-carried reply is split here and synthesized in sequence instead.
@@ -75,7 +74,7 @@ public class YandexTtsProvider implements TtsProvider {
     public void init() {
         YandexTtsProperties y = props.yandex();
         if (y.apiKey() == null || y.apiKey().isBlank()) {
-            log.warn("Yandex TTS enabled but voice-agent.tts.yandex.api-key is blank — synthesis will fail");
+            log.warn("Yandex TTS selected but voice-agent.tts.yandex.api-key is blank — synthesis will fail");
             return;
         }
         ManagedChannelBuilder<?> builder = ManagedChannelBuilder.forAddress(y.host(), y.port())

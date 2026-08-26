@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * the outputs a turn's tool calls record. Not thread-safe by itself — {@code busy}
  * serializes turns and the engine mutates it on a single worker thread at a time.
  */
-public class DialogSession {
+public class DialogSession implements DialogOutcomeSink {
 
     private final String channelId;
     private final String language;
@@ -102,6 +102,30 @@ public class DialogSession {
      * window is exactly the input the next turn needs.
      */
     private final AtomicReference<String> pendingInput = new AtomicReference<>();
+
+    /**
+     * What this turn actually put on the wire, as opposed to what the model wrote.
+     *
+     * <p>The two are the same turn after turn until a barge-in, and then they are not: the
+     * caller heard the first sentence and the remaining three were never synthesized. The
+     * history, the transcript and the "you were cut off here" note all have to describe
+     * what the caller <em>heard</em> — told that it said all four, the model treats the
+     * unheard three as delivered and never comes back to them.
+     */
+    private final StringBuilder spokenText = new StringBuilder();
+
+    /**
+     * The tail of a reply a barge-in stopped before it could be spoken, kept in case the
+     * interruption turns out to have been noise. Cleared as soon as it is resumed or a
+     * real turn makes it stale.
+     */
+    private final AtomicReference<String> unspokenText = new AtomicReference<>();
+
+    /**
+     * A reply started while the caller was still speaking, waiting to find out whether
+     * they said what the recognizer guessed they were saying ({@link Speculation}).
+     */
+    private final AtomicReference<Speculation> speculation = new AtomicReference<>();
 
     /**
      * What this turn's tool calls said should be spoken, in the order they were called.
@@ -467,6 +491,75 @@ public class DialogSession {
     /** Take the deferred client speech, or {@code null} if there is none. */
     public String takeDeferredInput() {
         return pendingInput.getAndSet(null);
+    }
+
+    /** Drop the previous turn's spoken text before a new turn starts producing its own. */
+    public synchronized void clearSpokenText() {
+        spokenText.setLength(0);
+    }
+
+    /** Note that {@code text} was queued for the caller and is therefore heard. */
+    public synchronized void appendSpokenText(String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        if (!spokenText.isEmpty()) {
+            spokenText.append(' ');
+        }
+        spokenText.append(text.trim());
+    }
+
+    /** What the caller has heard of this turn so far, or {@code null} if nothing. */
+    public synchronized String spokenText() {
+        return spokenText.isEmpty() ? null : spokenText.toString();
+    }
+
+    /** Hold the tail of a reply a barge-in cut off, in case the interruption was noise. */
+    public void setUnspokenText(String text) {
+        unspokenText.set(text == null || text.isBlank() ? null : text.trim());
+    }
+
+    /** Take the interrupted reply's unspoken tail, or {@code null} if there is none. */
+    public String takeUnspokenText() {
+        return unspokenText.getAndSet(null);
+    }
+
+    /**
+     * Non-consuming peek at whether a cut-off reply is still waiting to be resumed — i.e.
+     * whether there is anything to go back to if the interruption turns out not to have
+     * been one.
+     */
+    public boolean hasUnspokenText() {
+        return unspokenText.get() != null;
+    }
+
+    /**
+     * Park a speculative reply. Anything it supersedes is cancelled: the caller has said
+     * more since, so the older hypothesis is answering half a sentence.
+     */
+    public void setSpeculation(Speculation next) {
+        Speculation previous = speculation.getAndSet(next);
+        if (previous != null) {
+            previous.discard();
+        }
+    }
+
+    /** Non-consuming peek at the parked speculative reply, or {@code null} if there is none. */
+    public Speculation speculation() {
+        return speculation.get();
+    }
+
+    /** Take the parked speculative reply, leaving none behind. */
+    public Speculation takeSpeculation() {
+        return speculation.getAndSet(null);
+    }
+
+    /** Cancel and drop any parked speculative reply. */
+    public void discardSpeculation() {
+        Speculation parked = speculation.getAndSet(null);
+        if (parked != null) {
+            parked.discard();
+        }
     }
 
     /** Record the line a tool call carried; a blank one is no line at all. */

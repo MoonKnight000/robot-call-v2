@@ -51,9 +51,9 @@ public class DialogTools {
      */
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of("recordPaymentPromise", "recordRefusalReason");
 
-    private final DialogSession session;
+    private final DialogOutcomeSink session;
 
-    public DialogTools(DialogSession session) {
+    public DialogTools(DialogOutcomeSink session) {
         this.session = session;
     }
 

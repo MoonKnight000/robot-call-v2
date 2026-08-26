@@ -238,16 +238,17 @@ public class CampaignService {
      * configured routing".
      *
      * <p>Rejecting an unknown id here is the point of validating at all: the router
-     * falls back to default routing for a voice it cannot resolve, so a typo would
-     * otherwise surface as a whole campaign quietly dialled in the wrong voice.
+     * falls back to default routing for a voice it cannot resolve, so a typo — or a voice
+     * whose provider has no credentials configured in this build — would otherwise
+     * surface as a whole campaign quietly dialled in the wrong voice.
      */
     private String requireKnownVoice(String ttsVoice) {
         if (ttsVoice == null || ttsVoice.isBlank()) {
             return null;
         }
         String trimmed = ttsVoice.trim();
-        if (voices.find(trimmed) == null) {
-            throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed, voices.ids());
+        if (!voices.isSelectable(trimmed)) {
+            throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed, voices.selectableIds());
         }
         return trimmed;
     }

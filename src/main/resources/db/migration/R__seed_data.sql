@@ -42,7 +42,14 @@ INSERT INTO tts_voice (id, provider, language, name, label) VALUES
     ('omazh',  'yandex', 'ru-RU', 'omazh',  'Omazh — rus, ayol'),
     ('filipp', 'yandex', 'ru-RU', 'filipp', 'Filipp — rus, erkak'),
     ('ermil',  'yandex', 'ru-RU', 'ermil',  'Ermil — rus, erkak'),
-    ('zahar',  'yandex', 'ru-RU', 'zahar',  'Zahar — rus, erkak')
+    ('zahar',  'yandex', 'ru-RU', 'zahar',  'Zahar — rus, erkak'),
+    -- Aisha (Toshkent) has one model, Gulnoza, whose speaker_id names a mood rather
+    -- than a person (PROJECT.md §2.5) — name carries that mood exactly as
+    -- AishaTtsProvider.speakerFor() sends it.
+    ('gulnoza-neutral',  'aisha', 'uz-UZ', 'neutral',  'Gulnoza — o''zbek, neytral'),
+    ('gulnoza-cheerful', 'aisha', 'uz-UZ', 'cheerful', 'Gulnoza — o''zbek, quvnoq'),
+    ('gulnoza-happy',    'aisha', 'uz-UZ', 'happy',    'Gulnoza — o''zbek, xursand'),
+    ('gulnoza-sad',      'aisha', 'uz-UZ', 'sad',      'Gulnoza — o''zbek, xafa')
 ON CONFLICT (id) DO NOTHING;
 
 -- Built-in scenario templates (ROADMAP A.2, A.3, C.3). Dollar-quoted throughout — the

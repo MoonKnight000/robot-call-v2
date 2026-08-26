@@ -1,0 +1,337 @@
+voice-agent:
+  # Speech-to-speech engines (PipelineMode.REALTIME) — one vendor does recognition,
+  # reasoning and speech, replacing the stt/tts/dialog chain below rather than sitting
+  # beside it. Empty is the normal state: with no engine wired, REALTIME simply cannot
+  # be selected (GET /api/settings/engine/options returns realtime: []) and nothing
+  # fails at startup. A company opts in per company, not per deployment.
+  realtime:
+    # A company that selects REALTIME runs its calls entirely on a speech-to-speech
+    # engine: AriService builds RealtimeAudioBridge + RealtimeDialogEngine instead of the
+    # STT bridge and DialogEngine. Off disables the mode entirely (it stops being
+    # offered by GET /api/settings/engine/options), which is the switch to reach for if
+    # an engine starts misbehaving in production.
+    enabled: ${REALTIME_ENABLED:true}
+    # Default engine for a company that chose REALTIME without naming one. Blank means
+    # there is no default and the company has to name an engine itself.
+    provider: ${REALTIME_PROVIDER:gemini-live}
+    # §4.4. The cascade pipeline writes the debt amount and due date into the prompt and
+    # gets away with it, because it reads the model's sentence before anything is spoken
+    # and withholds it if a figure is wrong. A realtime engine speaks first; the guard
+    # only ever sees a transcript of what the caller has already heard. So the values are
+    # kept out of the prompt entirely and handed over one at a time through getCallFact —
+    # an engine that was never told the amount cannot misremember it. Costs a tool round
+    # trip before a figure, heard as a short pause. True restores the cascade's shape.
+    facts-in-prompt: ${REALTIME_FACTS_IN_PROMPT:false}
+    gemini-live:
+      # The same Gemini account the chat client uses (spring.ai.google.genai.api-key,
+      # config/dialog.yml) — one key, two protocols. Blank means the engine is not
+      # registered at all and REALTIME cannot be selected, which is how a deployment
+      # opts out.
+      api-key: ${GEMINI_API_KEY:}
+      url: ${REALTIME_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
+      # Live model ids move fast and are preview-tagged; verify against
+      # ai.google.dev/gemini-api/docs/models before changing deployments.
+      model: ${GEMINI_LIVE_MODEL:gemini-3.1-flash-live-preview}
+      # Prebuilt voice (Aoede, Puck, Charon, Kore, Fenrir...). Blank = the model's own.
+      # Native-audio models pick the language themselves from what they hear.
+      voice: ${GEMINI_LIVE_VOICE:Aoede}
+      # Covers both the socket and the setupComplete that follows it. A call is already
+      # ringing while this runs, so it cannot be generous.
+      connect-timeout-seconds: ${REALTIME_GEMINI_CONNECT_TIMEOUT_SECONDS:15}
+  stt:
+    enabled: ${STT_ENABLED:true}
+    # Default STT provider: yandex (default), google or aisha. Every implemented
+    # provider is loaded; this is the one a company that has not chosen its own
+    # (PUT /api/settings/engine) recognises with. An unknown value fails startup. SpeechKit v3
+    # recognises both uz-UZ (Latin script) and ru-RU; aisha is the Tashkent provider,
+    # trained on Uzbek telephone speech and uz/ru code-switching — the case the global
+    # engines handle worst. Which one actually hears Uzbek better is measured, not
+    # assumed: run SttComparisonTool over recorded calls (§2.4).
+    provider: ${STT_PROVIDER:yandex}
+    default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
+    # Yandex bills STT per streamed audio-second, and most of a call is not speech —
+    # the bot talks, the caller thinks, the line idles. The Silero VAD that already runs
+    # for barge-in decides what reaches the recognizer; the rest is counted
+    # (voice.stt.audio.seconds.skipped) and dropped. Needs VAD enabled with its model
+    # present, otherwise every frame is streamed exactly as before.
+    vad-gating:
+      enabled: ${STT_VAD_GATING:true}
+      # Audio kept before the first speech window and sent once the gate opens. Covers
+      # the VAD's own detection delay — too small and every utterance loses its first
+      # syllable.
+      pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:500}
+      # How long the stream stays open after speech stops — and, with endpointing below
+      # on, how long a LONG utterance waits before it is cut. It no longer has to be long
+      # enough to trigger the provider's own detector (we signal end-of-utterance
+      # outright), so it only has to outlast a mid-sentence pause: someone drawing breath
+      # between "ertaga" and "yo'q, indinga". A cut made too early is not lost speech —
+      # DialogSession.deferInput merges it into the next turn — but it does cost an extra
+      # LLM turn, so raise it back towards 1500 if turns start splitting.
+      #
+      # With endpointing DISABLED this has to go back up: SpeechKit's own detector has to
+      # HEAR the silence, and 800 ms may not be enough for it to fire at all — which is
+      # the one failure that leaves a turn hanging with no final.
+      post-roll-ms: ${STT_VAD_POST_ROLL_MS:800}
+      # Continuous speech required before the gate opens. Silero scores "is this speech",
+      # not "is this the person on the phone", so a voice across the room scores just as
+      # high as the caller — and a single 32ms window used to be enough to open the gate,
+      # stream the blip, and get back a one-word final ("allo") that the dialog then
+      # answered as if the caller had spoken.
+      #
+      # Costs no audio: the pre-roll ring above is holding this run-up anyway and replays
+      # it when the gate opens, so a confirmed utterance still arrives whole. Keep it well
+      # under pre-roll-ms, and under the length of the shortest real answer ("ha" is
+      # ~200ms). 0 = open on the first speech window, as before.
+      min-speech-ms: ${STT_VAD_MIN_SPEECH_MS:120}
+    # Decide end-of-utterance here instead of at the provider (Yandex only — Google's
+    # streaming API always endpoints for itself). The same VAD that gates the stream
+    # decides the caller has finished, and SpeechKit is told outright.
+    #
+    # ON by default. Leaving it to SpeechKit put 1.5-2.5s between the caller falling
+    # silent and the final transcript arriving, and that is the single largest term in the
+    # ~4s a caller actually waits (§1.3) — larger than the LLM turn. "ha" no longer waits
+    # as long as a dictated contract number.
+    #
+    # What it risks is what the eou-sensitivity note below records — a cut made too early
+    # hands the model half a sentence to answer. That is why only SHORT utterances get the
+    # fast path; anything longer keeps post-roll-ms above.
+    #
+    # Watch voice_stt_utterances_endpointed against the number of caller turns. If uz-UZ
+    # finals start coming back as fragments, set this false AND put post-roll-ms back to
+    # 1500 — the two move together.
+    endpointing:
+      enabled: ${STT_ENDPOINTING:true}
+      # Speech up to this long counts as a short answer.
+      short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1200}
+      # Silence that ends a short answer (replaces post-roll-ms for those utterances).
+      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:400}
+      # Safety net: nothing but us ends an utterance on such a stream, so a VAD that dies
+      # mid-call would otherwise leave the turn hanging forever.
+      max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:20000}
+      # Let the LONG-utterance wait above learn this caller's rhythm instead of staying at
+      # post-roll-ms for everyone. A close the caller talks through was premature and grows
+      # the wait back towards post-roll-ms; a close nothing follows shrinks it towards
+      # min-post-roll-ms. Language-independent, so it works for uz-UZ too.
+      # Watch voice.stt.endpointing.hangover before leaving this on.
+      dynamic:
+        enabled: ${STT_ENDPOINTING_DYNAMIC:false}
+        # Floor. Below this the recognizer stops hearing enough silence to be sure the
+        # caller stopped at all, and finals arrive as fragments.
+        min-post-roll-ms: ${STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS:600}
+        # How much one utterance moves the average. 0.2 needs ~5 turns to adapt, which
+        # outlasts a single odd pause; raise it to track the last turn or two.
+        ema-alpha: ${STT_ENDPOINTING_DYNAMIC_EMA_ALPHA:0.2}
+        # Speech resuming this soon after a close means the close cut a mid-sentence
+        # pause. Too long and a caller answering the NEXT question looks like one who
+        # never finished the last.
+        reopen-grace-ms: ${STT_ENDPOINTING_DYNAMIC_REOPEN_GRACE_MS:900}
+    google:
+      # Leave model blank for uz-UZ (phone_call is English/Russian-centric and may
+      # not support Uzbek). Set to phone_call for ru-RU if desired.
+      model: ${STT_MODEL:}
+      sample-rate: 8000
+      enable-punctuation: true
+      endpointing-silence-ms: 600
+      # Needs GOOGLE_APPLICATION_CREDENTIALS pointing at a service-account JSON with
+      # Speech + Text-to-Speech access — read directly by the Google Cloud SDK, not a
+      # voice-agent.* property, so it has no key here (docker-compose.yml's GOOGLE_CREDS_PATH
+      # mounts it into the container; a local run points the env var at the file directly).
+    yandex:
+      # v3 streaming (gRPC bidirectional). Supports uz-UZ and ru-RU. Needs an API key
+      # (folder id optional with an API key).
+      api-key: ${STT_YANDEX_API_KEY:}
+      folder-id: ${STT_YANDEX_FOLDER_ID:}
+      host: ${STT_YANDEX_HOST:stt.api.cloud.yandex.net}
+      port: ${STT_YANDEX_PORT:443}
+      sample-rate: 8000
+      # Recognition model; blank = server default. "general" works for uz-UZ/ru-RU.
+      model: ${STT_YANDEX_MODEL:general}
+      interim-results: ${STT_YANDEX_INTERIM:true}
+      # End-of-utterance detector. A turn cannot start before the final transcript
+      # arrives, so this is the single biggest term in the <1s turnaround budget (§1.3) —
+      # and also the setting that decides whether a caller is heard out or cut off.
+      #
+      # Both knobs are back at SpeechKit's own defaults. HIGH + a 600 ms pause hint bought
+      # a few hundred milliseconds per turn, but uz-UZ finals came back as fragments the
+      # model then had to guess at ("machitda zapis vizova"), and a turn answered from a
+      # half-heard sentence costs far more than it saved. Speed here is only worth having
+      # once the transcript is right.
+      #
+      # Raise them again (HIGH / 600) once uz-UZ recognition is trustworthy — nothing is
+      # lost to an early split by itself, since speech arriving mid-turn is held by
+      # DialogSession.deferInput and merged into the next turn.
+      eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:DEFAULT}
+      # Longest pause SpeechKit should still treat as mid-utterance. Someone reading a
+      # contract number out slowly ("UY … ikki ming yigirma olti …") needs a larger value
+      # than someone running sentences together. 0 = no hint, let SpeechKit decide.
+      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:0}
+      # Ping the idle gRPC connection so Yandex's load balancer does not drop it — a
+      # reconnect costs a TCP+TLS handshake on the first audio frame of the next call.
+      # If the server answers GOAWAY "too_many_pings"/ENHANCE_YOUR_CALM, raise this
+      # (300 is the usual server-side minimum) or set 0 to switch keepalive off.
+      keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
+    aisha:
+      # Realtime WebSocket recognition. The key is sent as the ?token= query parameter —
+      # the realtime endpoint has no header auth — so it ends up in any proxy log the
+      # connection passes through. Get it at space.aisha.group.
+      api-key: ${STT_AISHA_API_KEY:}
+      url: ${STT_AISHA_URL:wss://back.aisha.group/api/v1/stt/realtime}
+      # Partial hypotheses ("partial": true). Only finals reach the dialog either way;
+      # interims are what the live panel shows while the caller is still talking.
+      interim-results: ${STT_AISHA_INTERIM:true}
+      # NOTE: the stream is fixed at 16 kHz mono s16le (format=pcm), so the pipeline
+      # resamples its 8 kHz telephone audio up — no sample-rate knob here.
+      #
+      # ⚠️ Aisha endpoints for itself: its protocol has no external end-of-utterance
+      # signal, only "end the session". It therefore has to HEAR the silence after an
+      # utterance — which the endpointing block above takes away by shutting the gate
+      # ~400 ms after speech stops, leaving the turn with no final at all. With
+      # provider=aisha set STT_ENDPOINTING=false AND STT_VAD_POST_ROLL_MS=1500. The
+      # provider logs a warning at startup if this was missed.
+      #
+      # Language selection is not part of the documented realtime protocol either (uz/ru
+      # are auto-detected) — confirm with Aisha before relying on a mixed-language
+      # campaign.
+  # Semantic end-of-turn detection (Smart Turn v3, BSD-2 — pipecat-ai/smart-turn). The VAD
+  # can only say the line went quiet; this listens to the utterance and scores whether the
+  # caller finished a THOUGHT. Used only to EXTEND the wait, never to shorten it.
+  #
+  # The model does not cover uz-UZ (23 languages, Uzbek is not one of them), so uz calls
+  # never reach it and keep the timer above. ru-RU is covered.
+  #
+  # n-fft/hop-samples/mels/frames must reproduce the model's declared input shape — they
+  # come from its preprocessor config, not from the file, so they are checked against the
+  # graph at startup and detection is refused (loudly) if they disagree. The defaults are
+  # the 8 s / 500-frame shape v3 declares.
+  turn:
+    enabled: ${TURN_DETECTOR:false}
+    model-path: ${TURN_MODEL_PATH:}
+    languages: ${TURN_LANGUAGES:ru-RU}
+    threshold: ${TURN_THRESHOLD:0.5}
+    max-extend-ms: ${TURN_MAX_EXTEND_MS:800}
+    n-fft: ${TURN_N_FFT:512}
+    hop-samples: ${TURN_HOP_SAMPLES:256}
+    mels: ${TURN_MELS:128}
+    frames: ${TURN_FRAMES:500}
+  tts:
+    enabled: ${TTS_ENABLED:true}
+    # Default TTS provider: yandex (default), google or aisha. Every implemented
+    # provider is loaded; this is the one a company that has not chosen its own
+    # (PUT /api/settings/engine) speaks with. An unknown value fails startup. There is
+    # still no cross-provider fallback — whichever provider speaks a call needs a voice
+    # for each language it is asked to speak (voices below).
+    provider: ${TTS_PROVIDER:yandex}
+    default-language: ${TTS_DEFAULT_LANGUAGE:uz-UZ}
+    # Synthesized-audio cache. Yandex bills per character and this agent repeats itself
+    # by design, so a hit saves both money and a synthesis round trip inside a live turn.
+    cache:
+      # Per-process LRU. 8 kHz 16-bit mono ≈ 16 KB per spoken second, so 200 entries is
+      # a few MB. 0 = off.
+      size: ${TTS_CACHE_SIZE:200}
+      # Longest line worth an entry — above this a line rarely repeats.
+      max-chars: ${TTS_CACHE_MAX_CHARS:200}
+      # Second level in Redis: a line paid for on one instance is free on the others and
+      # survives a restart. Best-effort — a Redis outage costs hits, never a call.
+      redis: ${TTS_CACHE_REDIS:true}
+      ttl-days: ${TTS_CACHE_TTL_DAYS:30}
+      # Synthesize the fixed lines (disclosure, farewell, "say that again") at startup,
+      # so the first call of a deploy neither pays for them nor waits for them.
+      prewarm: ${TTS_CACHE_PREWARM:true}
+    # Voices a campaign can be created with (GET /api/tts/voices fills the picker in
+    # the panel; POST /api/campaigns validates the id against this list) now live in
+    # the `tts_voice` table (PROJECT.md §2.5, migration V3), not here — a campaign
+    # that picks one speaks with it and with the provider that owns it; one that picks
+    # nothing keeps the provider/voices routing configured below. Add a Google voice
+    # the same way once one has been listened to: INSERT INTO tts_voice.
+    google:
+      sample-rate: 8000
+      speaking-rate: ${TTS_GOOGLE_RATE:1.0}
+      pitch: ${TTS_GOOGLE_PITCH:0.0}
+      # Optional per-language voice names; blank -> Google's default voice for the
+      # language. ⚠️ Listen to the uz-UZ voice before MVP (§2.5).
+      # An empty key here would bind as "" and fail; use {} (or list entries below).
+      voices: {}
+#         uz-UZ: uz-UZ  -Standard-A
+#         ru-RU: ru-RU-Standard-A
+    yandex:
+      # Natural ru-RU voice; needs an API key. Registered whenever this key is set,
+      # independent of voice-agent.tts.provider (a company can pick it per-call).
+      api-key: ${TTS_YANDEX_API_KEY:}
+      folder-id: ${TTS_YANDEX_FOLDER_ID:}
+      voice: ${TTS_YANDEX_VOICE:alena}
+      # Per-language voices. Each language needs its own voice — a ru-RU voice cannot
+      # speak Uzbek text. Uzbek: nigora, zamira or yulduz (the last two only exist on the
+      # v3 API). A language with no entry (and not ru-*) is reported unsupported, so the
+      # router falls back to Google.
+      voices:
+        uz-UZ: ${TTS_YANDEX_VOICE_UZ:nigora}
+      # The v3 "role" synthesis hint is not configured here: a role is voice-specific
+      # (nigora has none, zamira/yulduz have several), so one global value is wrong for
+      # any catalog with more than one voice in it — and a voice that does not declare
+      # the role rejects the whole request. It lives on tts_voice.role instead.
+      #
+      # v3 streaming (gRPC unary-request/streaming-response). Needs an API key
+      # (folder id optional with an API key).
+      host: ${TTS_YANDEX_HOST:tts.api.cloud.yandex.net}
+      port: ${TTS_YANDEX_PORT:443}
+      sample-rate: 8000
+      # Synthesis is bursty — a call can go a minute between requests — so the idle
+      # connection is exactly what a load balancer drops. Without keepalive the
+      # reconnect handshake is paid inside a live turn, on the one sentence the caller
+      # is waiting for. Same GOAWAY caveat as the STT setting above; 0 switches it off.
+      keep-alive-seconds: ${TTS_YANDEX_KEEPALIVE_SECONDS:60}
+    aisha:
+      # Realtime WebSocket synthesis. Same ?token= auth (and the same proxy-log caveat)
+      # as the STT side above.
+      api-key: ${TTS_AISHA_API_KEY:}
+      url: ${TTS_AISHA_URL:wss://back.aisha.group/api/v1/tts/realtime}
+      # Aisha names a MOOD, not a person: the Uzbek model (Gulnoza) speaks as neutral,
+      # cheerful, happy or sad, and that is what the API calls speaker_id. A collection
+      # call is neutral — cheerful reads as mockery when the subject is a debt.
+      speaker: ${TTS_AISHA_SPEAKER:neutral}
+      # Per-language mood overrides; a language absent here uses `speaker` above.
+      # An empty key would bind as "" and fail; use {} when there is nothing to override.
+      speakers: {}
+      # A line that never comes back would otherwise hold the call silent for as long as
+      # the caller stays on the line.
+      request-timeout-ms: ${TTS_AISHA_TIMEOUT_MS:10000}
+      # NOTE: Aisha returns 16 kHz mono WAV and the provider downsamples to the 8 kHz the
+      # RTP path plays — no output-format knob. The whole utterance arrives in one frame,
+      # so there is none of the first-chunk head start Yandex v3 streaming gives
+      # (DialogEngine.speakStreaming); expect the §1.3 turnaround to grow by roughly the
+      # synthesis time of the first sentence before switching a live campaign over.
+  vad:
+    # Barge-in via Silero VAD (§7.2). Needs silero_vad.onnx; without it, VAD is
+    # off and the bot cannot be interrupted (rest of the pipeline still works).
+    enabled: ${VAD_ENABLED:true}
+    model-path: ${VAD_MODEL_PATH:}
+    sample-rate: 8000
+    window-samples: 256
+    threshold: ${VAD_THRESHOLD:0.5}
+    # Continuous speech required before the bot is silenced. Raised from 200: a telephone
+    # line carries plenty that scores as speech and is not the caller talking — a cough, a
+    # door, a television, and on a speakerphone the bot's own voice coming back with no
+    # carrier-side echo cancellation to remove it. Each of those used to cut the bot off
+    # mid-sentence. 350 is still well under a real interruption ("to'xtang" is ~500 ms) and
+    # nothing is lost by confirming, because the detector no longer spends the call's one
+    # arming on speech that interrupted nothing (VadStream) — it simply tries again after
+    # another 350 ms of the same utterance.
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:350}
+    silence-reset-ms: ${VAD_SILENCE_RESET_MS:400}
+    # Answering-machine detection (§8.6), driven by the same VAD scores as barge-in.
+    # A person answers with something short ("alo?") and then waits; a machine plays an
+    # uninterrupted greeting. So one continuous run of speech longer than
+    # min-continuous-speech-ms, within the first observe-ms, means a recording: the call
+    # is marked VOICEMAIL, cut off, and retried later at a different hour.
+    #
+    # Without it the agent holds a full conversation with a voicemail beep — STT, LLM and
+    # TTS spent on nobody, and a disposition that describes nothing.
+    #
+    # The threshold is deliberately generous. Cutting off a talkative human
+    # ("Assalomu alaykum, eshitaman, kim gaplashadi?") is far worse than paying for one
+    # wasted voicemail, so tune it DOWN only against real recordings.
+    amd:
+      enabled: ${VAD_AMD_ENABLED:true}
+      observe-ms: ${VAD_AMD_OBSERVE_MS:6000}
+      min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:3500}
+      silence-tolerance-ms: ${VAD_AMD_SILENCE_TOLERANCE_MS:250}

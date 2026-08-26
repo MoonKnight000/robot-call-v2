@@ -7,11 +7,21 @@ import uz.murodjon.uysotvoice.agent.audio.AnsweringMachineDetector;
 import uz.murodjon.uysotvoice.agent.audio.AudioListener;
 import uz.murodjon.uysotvoice.agent.audio.SpeechGate;
 
+import java.util.function.BooleanSupplier;
+
 /**
  * Per-call barge-in detector (PROJECT.md §7.2). Buffers a call's decoded 8 kHz PCM
  * into fixed windows, scores each with {@link SileroVad}, and fires the barge-in
  * callback once continuous speech exceeds {@code minSpeechMs} — so short "aha"/"ha"
  * back-channels are ignored. Re-arms after a silence gap for the next utterance.
+ *
+ * <p>Only an interruption that actually <em>landed</em> disarms the detector. Most speech
+ * on a call interrupts nothing — the bot is not talking, and the caller is simply taking
+ * their turn — and treating that as the call's one barge-in used to leave the detector
+ * waiting for a silence gap that a talkative caller never gives it. The bot would then
+ * start replying over them and could not be stopped for the rest of the utterance. A
+ * callback that reports it did nothing costs only another {@code minSpeechMs} of the same
+ * speech run before the next attempt.
  *
  * <p>The same scores also drive an optional {@link SpeechGate}, which is what keeps
  * silence off the (per-second billed) STT stream. Both wait for a run of continuous
@@ -31,7 +41,7 @@ public class VadStream implements AudioListener {
     private final float threshold;
     private final int minSpeechWindows;
     private final int silenceResetWindows;
-    private final Runnable onBargeIn;
+    private final BooleanSupplier onBargeIn;
     /** Fed every scored window; null when STT gating is off. */
     private final SpeechGate gate;
     /** Fed every scored window; null when answering-machine detection is off. */
@@ -46,11 +56,13 @@ public class VadStream implements AudioListener {
     private boolean disabled;
 
     /**
+     * @param onBargeIn fired on a confirmed run of speech; returns whether it actually
+     *                  interrupted anything, which is what decides if the detector disarms
      * @param gate optional STT gate fed the same window scores; null to stream all audio
      * @param amd  optional answering-machine detector fed the same scores; null to skip
      *             detection (§8.6)
      */
-    public VadStream(SileroVad model, VadProperties props, String channelId, Runnable onBargeIn,
+    public VadStream(SileroVad model, VadProperties props, String channelId, BooleanSupplier onBargeIn,
                      SpeechGate gate, AnsweringMachineDetector amd) {
         this.model = model;
         this.channelId = channelId;
@@ -103,12 +115,21 @@ public class VadStream implements AudioListener {
             speechWindows++;
             silenceWindows = 0;
             if (armed && speechWindows >= minSpeechWindows) {
-                armed = false;
-                log.info("[{}] barge-in detected (speech {} windows)", channelId, speechWindows);
+                boolean interrupted;
                 try {
-                    onBargeIn.run();
+                    interrupted = onBargeIn.getAsBoolean();
                 } catch (Exception e) {
                     log.warn("[{}] barge-in handler failed: {}", channelId, e.getMessage());
+                    interrupted = true; // do not retry against a handler that throws
+                }
+                if (interrupted) {
+                    armed = false;
+                    log.info("[{}] barge-in detected (speech {} windows)", channelId, speechWindows);
+                } else {
+                    // Nothing was interrupted — the bot was not speaking. Start the run
+                    // over so the same continuing utterance can try again in another
+                    // minSpeechMs, rather than spending the call's one arming on it.
+                    speechWindows = 0;
                 }
             }
         } else {

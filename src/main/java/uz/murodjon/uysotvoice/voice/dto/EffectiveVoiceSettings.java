@@ -5,10 +5,12 @@ package uz.murodjon.uysotvoice.voice.dto;
  * settings, {@code agent.tts.TtsRouter}) — every field {@code null} means "no override,
  * use the provider's own configured default."
  *
- * <p>{@code provider}/{@code speed}/{@code pitch} come from the company's {@link
- * VoiceSettings}; {@code role} comes from the chosen voice's {@code tts_voice} row and is
- * filled in by {@code TtsRouter} while routing, since only the catalog knows which role a
- * given voice actually accepts.
+ * <p>The three fields come from three different places, and all three only meet here,
+ * on the way to {@code TtsRouter}: {@code provider} from the company's {@code
+ * engine_config}, {@code speed}/{@code pitch} from its {@link VoiceSettings}, and
+ * {@code role} from the chosen voice's {@code tts_voice} row — filled in by {@code
+ * TtsRouter} while routing, since only the catalog knows which role a given voice
+ * actually accepts.
  */
 public record EffectiveVoiceSettings(String provider, Double speed, Double pitch, String role) {
 

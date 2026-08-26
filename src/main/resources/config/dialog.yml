@@ -1,0 +1,177 @@
+spring:
+  ai:
+    model:
+      # Which chat provider Spring AI activates. "none" disables the LLM entirely — use
+      # it for a keyless deploy, since google-genai selected with a blank key throws while
+      # building the client and the app never starts.
+      chat: ${LLM_CHAT_PROVIDER:google-genai}
+
+    google:
+      genai:
+        # Only this key is required for the conversation engine (get one at
+        # https://aistudio.google.com/apikey) — without it the app still runs, dialog is
+        # just off. The native Google GenAI client builds its own endpoint, so there is no
+        # base URL or completions path to configure any more.
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            # Plain Gemini ids — no "gemini/" prefix (that was only for the LiteLLM
+            # gateway this used to go through). The pro models are quota 0 on a free
+            # Gemini key (429 on every call, verified), so both this and SUMMARY_MODEL
+            # run on flash until the key is on billing. gemini-2.5-* also 404s for a key
+            # that never used it before ("no longer available to new users") — list what
+            # your key may actually use with:
+            #   curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"
+            model: ${LLM_DIALOG_MODEL:gemini-3.7-flash}
+            max-output-tokens: 512
+            temperature: 0.3
+            # Gemini 3.x controls thinking differently from 2.5: it 400s on "none" and
+            # spells the same zero-thinking budget "minimal". Sending "none" is what made
+            # the agent answer "Uzr, sizni eshitolmadim" right after the greeting — the
+            # turn failed and the engine spoke its fallback line. Raise to
+            # low/medium/high only if reply quality suffers.
+            thinking-level: ${LLM_REASONING_EFFORT:MINIMAL}
+
+voice-agent:
+  dialog:
+    enabled: ${DIALOG_ENABLED:true}
+    # When true, the bot greets and drives the conversation on answer (Stage 7
+    # verification without a campaign/DB). Turn off once the dialer supplies calls.
+    auto-start: ${DIALOG_AUTO_START:true}
+    language: ${DIALOG_LANGUAGE:uz-UZ}
+    # Voice for manual/auto-started calls (an id from the tts_voice table) — campaign
+    # calls carry the voice chosen when the campaign was created. Blank = configured
+    # routing; this is how a voice is auditioned before a campaign uses it.
+    tts-voice: ${DIALOG_TTS_VOICE:}
+    # Kanal "javob berildi" bo'lgani bilan mijoz go'shakni hali qulog'iga olib
+    # bormagan bo'ladi (200 OK dan keyin telefon/GSM tomoni audio yo'lini ochishga
+    # ham vaqt oladi). Shu pauzasiz salomlashuvning boshi yo'qoladi: mijoz
+    # "assalom" ni eshitmay, faqat "...alaykum" ni ushlaydi.
+    # Juda uzaytirmang — jimlik ham "alo?" deyishga majbur qiladi.
+    greeting-delay-ms: ${DIALOG_GREETING_DELAY_MS:1200}
+    max-turns: ${DIALOG_MAX_TURNS:25}
+    max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
+    # Stream the LLM reply and synthesize sentence by sentence (§7.2), so the caller
+    # hears the first sentence while the rest is still being generated. Blocking mode
+    # waits for the whole reply AND the whole synthesis before any audio goes out —
+    # that is roughly 1.5-2.5s per turn against the <1s target (§1.3).
+    # Set false if the provider misbehaves with streaming + tool calls.
+    streaming: ${DIALOG_STREAMING:true}
+    # Silence a turn may leave the caller in before a short "Bir soniya." is played over
+    # the gap while the LLM is still generating. Served from the TTS cache (the line is
+    # pre-warmed at startup), so it costs no synthesis wait of its own.
+    #
+    # This does NOT make the reply arrive sooner — it is queued ahead of it, so the answer
+    # lands slightly later. What it removes is the silence, and silence is what a caller
+    # reacts to: 1.5s of nothing on a phone line reads as a dropped call, and people say
+    # "alo?" into it or hang up. A person who needs a moment says so out loud.
+    #
+    # Rationed hard for that reason: only on a genuinely slow turn, never on the greeting,
+    # never twice in a row. Watch voice.dialog.filler.played — a few percent of turns is
+    # the feature working; most turns means the pipeline is slow and this is papering over
+    # it, so fix the latency rather than lengthening the filler. 0 = off.
+    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:350}
+    # A barge-in silences the bot immediately, before anything can tell whether the caller
+    # actually spoke — and that order is right: waiting to be sure means talking over
+    # someone who did. This is how long the silence then waits for their words. A real
+    # interruption is followed by a transcript, and a transcript starts a turn; if the turn
+    # number has not moved by the time this expires, the VAD fired on a cough, a door, or
+    # the bot's own audio echoing back off a speakerphone, and the reply resumes from where
+    # it was cut.
+    #
+    # Resuming, not re-asking: the caller said nothing, so "uzr, takrorlang" asks them to
+    # repeat something they never said, and the sentence they were listening to stays
+    # unfinished. Only the part they had not heard yet is spoken.
+    #
+    # Too short and a slow recognizer looks like noise — the bot talks back over a caller
+    # whose words are still arriving. Too long and a genuinely dropped sentence hangs. Watch
+    # voice_dialog_barge_in_false_total against voice_dialog_barge_in_total: mostly false
+    # means the VAD is firing on noise (raise voice-agent.vad.min-speech-ms) or the line has
+    # echo on it. 0 = never resume, leave the reply cut (the no-input watchdog then covers
+    # the silence, several seconds later).
+    false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
+    # Start writing the reply from the recognizer's INTERIM transcript, while the
+    # endpointing silence is still being waited out. That wait — between the caller going
+    # quiet and the recognizer committing — is several hundred ms the turn currently spends
+    # doing nothing, and this spends it on the LLM instead. Nothing is spoken from a guess:
+    # a final that says something else cancels it and the turn runs exactly as before.
+    # But a cancelled guess is still billed, so this is only worth having while most of
+    # them land — watch voice_llm_speculation_hit_total against ..._started_total and turn
+    # it off below ~50%. Missed tokens do NOT appear in voice_llm_tokens_*: the stream is
+    # cancelled before the provider reports usage. Streaming mode only. OFF by default.
+    preemptive: ${DIALOG_PREEMPTIVE:false}
+    # How much interim text is worth guessing from. The opening syllables of an utterance
+    # are revised constantly and are almost never what the final says.
+    preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:12}
+    # The other half of the same problem: the caller DID speak, but only "aha" — agreement
+    # over the top of the bot, which no VAD tuning can tell from an interruption. Left
+    # alone it starts a turn, and the caller gets a new question instead of the end of the
+    # sentence they were agreeing with. An utterance of at least this many words is always
+    # taken as speech; below it, only the words in Backchannels are ignored, so a one-word
+    # answer ("yo'q", "to'ladim") still counts. Applies only to a reply that was cut off
+    # part-way and can therefore be resumed. Watch voice_dialog_backchannel_ignored_total.
+    # 0 or 1 disables it.
+    min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:2}
+    # §11.1: say "this is an automated system, the call is recorded" from code before
+    # the LLM's first turn. Leaving it to the system prompt means a model that skips
+    # or paraphrases it away breaks a legal requirement. The prompt is then told not
+    # to repeat the greeting.
+    mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}
+    # Send only the tools the current FSM state can legitimately use. Tool declarations
+    # are re-sent (and re-billed) on every turn, and a tool that cannot fire yet is
+    # mostly an opportunity to misfire — nothing can be promised before the debt has
+    # been named. Set false to send all of them if a transition starts getting missed.
+    state-scoped-tools: ${DIALOG_STATE_SCOPED_TOOLS:true}
+    # Hard cap on how many messages of the conversation are resent each turn; older ones
+    # are dropped in blocks (a block at a time, because each trim invalidates the
+    # provider's cached prefix). A normal call never reaches this — it bounds the cost of
+    # a pathological one. 0 = never trim.
+    history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
+    # Silence watchdog. A turn only happens on a final transcript, so a caller who says
+    # nothing — or a recognizer that stops emitting finals — used to leave the call mute
+    # until max-call-seconds. After this many quiet seconds the bot asks "alo, meni
+    # eshityapsizmi?"; after no-input-max-prompts unanswered asks it says goodbye and
+    # hangs up (disposition HUNG_UP, so the target is retried). 0 = no watchdog.
+    # Long enough to let someone think: interrupting a caller drawing breath is worse
+    # than waiting a beat too long.
+    no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
+    no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
+    # §4.4: check money figures in the model's reply against the injected facts before
+    # they are spoken. A hallucinated debt amount is the worst thing this system can do —
+    # the caller hears an official demand for money they do not owe, on a recorded line.
+    # A blocked reply is retried once with the mistake named, then escalated to a human.
+    # Watch voice.dialog.fact.guard.blocks; it should be zero.
+    fact-guard: ${DIALOG_FACT_GUARD:true}
+    # REALTIME calls only. A speech-to-speech engine speaks straight from audio, so there
+    # is no sentence to withhold — the figure is already in the caller's ear by the time
+    # the transcript arrives and can be checked. The guard therefore becomes an audit, and
+    # the response has to be the one a wrongly-billed caller actually needs: a person.
+    # 1 = escalate on the first violation, 0 = only log and flag the attempt.
+    fact-violation-escalate-after: ${DIALOG_FACT_VIOLATION_ESCALATE_AFTER:1}
+    # Cumulative LLM tokens one call may spend before it is closed politely (§C14). The
+    # turn and duration caps bound a call that behaves; this bounds one that loops, where
+    # each turn resends the whole context. ~25 turns of a normal call is well under this.
+    # 0 = no budget.
+    max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:200000}
+    # Placeholder debtor facts until campaign targets exist (Stage 10). FACTS —
+    # never generated by the LLM (§4.4).
+    test-context:
+      client-name: ${DIALOG_CLIENT_NAME:Aziz Karimov}
+      debt-amount: ${DIALOG_DEBT_AMOUNT:1500000}
+      currency: ${DIALOG_CURRENCY:so'm}
+      due-date: ${DIALOG_DUE_DATE:2026-07-01}
+      contract-number: ${DIALOG_CONTRACT:UY-2026-00123}
+      goal: ${DIALOG_GOAL:To'lanmagan qarz bo'yicha to'lov sanasini kelishish.}
+  summary:
+    # Post-call structured summary (§4.3). §2.6 wants a stronger model here than the
+    # dialog uses, but the pro models are quota 0 on a free Gemini key (verified: every
+    # call 429s, and SummaryService swallows that into a null summary). Flash produces
+    # valid CallSummary JSON; switch to a pro model once the key is on billing.
+    # NOTE: gemini-2.5-flash now 404s for keys that never used it ("no longer available
+    # to new users"), so the default is a 3.x flash like the dialog's.
+    enabled: ${SUMMARY_ENABLED:true}
+    model: ${SUMMARY_MODEL:gemini-3.6-flash}
+    # Set explicitly so the summary does not inherit the dialog's latency tuning
+    # (512 tokens / thinking off) — here quality matters and latency does not.
+    reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
+    max-tokens: ${SUMMARY_MAX_TOKENS:2048}

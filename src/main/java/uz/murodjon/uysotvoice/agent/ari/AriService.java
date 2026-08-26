@@ -30,8 +30,10 @@ import uz.murodjon.uysotvoice.agent.dialog.CallContext;
 import uz.murodjon.uysotvoice.agent.dialog.DialogEngine;
 import uz.murodjon.uysotvoice.agent.dialog.DialogOutcome;
 import uz.murodjon.uysotvoice.agent.dialog.DialogProperties;
+import uz.murodjon.uysotvoice.agent.dialog.DialogRouter;
 import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.agent.dialog.LiveDialogSnapshot;
+import uz.murodjon.uysotvoice.agent.dialog.RealtimeDialogEngine;
 import uz.murodjon.uysotvoice.agent.dialog.TestContextProperties;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.agent.routing.CallRouteRegistry;
@@ -44,9 +46,14 @@ import uz.murodjon.uysotvoice.agent.rtp.WavHeader;
 import uz.murodjon.uysotvoice.agent.rtp.WavReader;
 import uz.murodjon.uysotvoice.agent.rtp.WavRecorder;
 import uz.murodjon.uysotvoice.agent.session.CallSession;
+import uz.murodjon.uysotvoice.agent.turn.SmartTurnDetector;
+import uz.murodjon.uysotvoice.agent.turn.SmartTurnProperties;
+import uz.murodjon.uysotvoice.agent.turn.UtteranceBuffer;
+import uz.murodjon.uysotvoice.agent.stt.DynamicEndpointingProperties;
 import uz.murodjon.uysotvoice.agent.stt.EndpointingProperties;
 import uz.murodjon.uysotvoice.agent.stt.SttProperties;
 import uz.murodjon.uysotvoice.agent.stt.SttProvider;
+import uz.murodjon.uysotvoice.agent.stt.SttProviderSelector;
 import uz.murodjon.uysotvoice.agent.stt.SttStreamBridge;
 import uz.murodjon.uysotvoice.agent.stt.TranscriptListener;
 import uz.murodjon.uysotvoice.agent.stt.VadGatingProperties;
@@ -69,6 +76,10 @@ import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.crm.dto.CrmClientSnapshot;
 import uz.murodjon.uysotvoice.crm.service.CrmClient;
 import uz.murodjon.uysotvoice.dialer.dto.OutboundCall;
+import uz.murodjon.uysotvoice.agent.realtime.RealtimeAudioBridge;
+import uz.murodjon.uysotvoice.engine.domain.EffectiveEngineConfig;
+import uz.murodjon.uysotvoice.engine.enums.PipelineMode;
+import uz.murodjon.uysotvoice.engine.service.EngineConfigService;
 import uz.murodjon.uysotvoice.dialer.service.CallContextMapper;
 import uz.murodjon.uysotvoice.dialer.service.DialerState;
 import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
@@ -148,13 +159,18 @@ public class AriService {
     private final EventLoopGroup rtpEventLoopGroup;
     private final ExecutorService callExecutor;
     private final SttProperties sttProps;
-    private final ObjectProvider<SttProvider> sttProviderProvider;
+    private final SttProviderSelector sttProviderSelector;
+    private final EngineConfigService engineConfigService;
     private final TtsProperties ttsProps;
     private final TtsRouter ttsRouter;
     private final DialogProperties dialogProps;
     private final DialogEngine dialogEngine;
+    private final RealtimeDialogEngine realtimeDialogEngine;
+    private final DialogRouter dialogRouter;
     private final VadProperties vadProps;
     private final ObjectProvider<SileroVad> vadProvider;
+    private final SmartTurnProperties turnProps;
+    private final ObjectProvider<SmartTurnDetector> turnDetectorProvider;
     private final CallRecordService callRecordService;
     private final CallFinalizer callFinalizer;
     private final OutboundCallRegistry outboundRegistry;
@@ -210,13 +226,18 @@ public class AriService {
                       EventLoopGroup rtpEventLoopGroup,
                       ExecutorService callExecutor,
                       SttProperties sttProps,
-                      ObjectProvider<SttProvider> sttProviderProvider,
+                      SttProviderSelector sttProviderSelector,
+                      EngineConfigService engineConfigService,
                       TtsProperties ttsProps,
                       TtsRouter ttsRouter,
                       DialogProperties dialogProps,
                       DialogEngine dialogEngine,
+                      RealtimeDialogEngine realtimeDialogEngine,
+                      DialogRouter dialogRouter,
                       VadProperties vadProps,
                       ObjectProvider<SileroVad> vadProvider,
+                      SmartTurnProperties turnProps,
+                      ObjectProvider<SmartTurnDetector> turnDetectorProvider,
                       CallRecordService callRecordService,
                       CallFinalizer callFinalizer,
                       OutboundCallRegistry outboundRegistry,
@@ -242,13 +263,18 @@ public class AriService {
         this.rtpEventLoopGroup = rtpEventLoopGroup;
         this.callExecutor = callExecutor;
         this.sttProps = sttProps;
-        this.sttProviderProvider = sttProviderProvider;
+        this.sttProviderSelector = sttProviderSelector;
+        this.engineConfigService = engineConfigService;
         this.ttsProps = ttsProps;
         this.ttsRouter = ttsRouter;
         this.dialogProps = dialogProps;
         this.dialogEngine = dialogEngine;
+        this.realtimeDialogEngine = realtimeDialogEngine;
+        this.dialogRouter = dialogRouter;
         this.vadProps = vadProps;
         this.vadProvider = vadProvider;
+        this.turnProps = turnProps;
+        this.turnDetectorProvider = turnDetectorProvider;
         this.callRecordService = callRecordService;
         this.callFinalizer = callFinalizer;
         this.outboundRegistry = outboundRegistry;
@@ -617,7 +643,7 @@ public class AriService {
      * or {@code POST /api/calls} originated.
      */
     public List<LiveCallRow> liveCalls() {
-        return dialogEngine.liveDialogs().stream()
+        return dialogRouter.liveDialogs().stream()
                 .map(this::toLiveCallRow)
                 .toList();
     }
@@ -801,11 +827,26 @@ public class AriService {
             attemptId = callRecordService.startAttempt(targetId, channelId, language,
                     inboundRoute != null ? inboundRoute.id() : null);
 
+            // Which pipeline this call runs on is the calling company's setting (§11
+            // settings/engine), resolved once here and used for the whole call — the two
+            // are different pipelines, so this cannot be revisited mid-call.
+            EffectiveEngineConfig engineConfig =
+                    engineConfigService.findEffectiveByCompanyId(callRecordService.companyIdOf(attemptId));
+            boolean realtime = engineConfig.mode() == PipelineMode.REALTIME && realtimeDialogEngine.available();
+            if (engineConfig.mode() == PipelineMode.REALTIME && !realtime) {
+                log.warn("[{}] company is set to REALTIME but no engine is available — running cascade", channelId);
+            }
+            // Registered now, armed once the engine session exists: RtpEndpoint takes its
+            // listeners as an immutable list, and the session needs the endpoint to speak
+            // through, so neither can be built strictly before the other.
+            RealtimeAudioBridge realtimeBridge = realtime ? new RealtimeAudioBridge() : null;
+
             // Mixes caller+bot audio for operator "listen in" (§10.3) — registered as one
             // more caller-side AudioListener below, and tapped separately for the bot's
             // outgoing frames since those never pass through the inbound fan-out.
             LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
-            List<AudioListener> audioListeners = buildAudioListeners(channelId, attemptId, startedAt, language);
+            List<AudioListener> audioListeners = buildAudioListeners(channelId, attemptId, startedAt, language,
+                    engineConfig, realtimeBridge);
             audioListeners.add(audioMonitor);
             endpoint = new RtpEndpoint(port, recorder, audioListeners, audioMonitor::onBotAudio);
             endpoint.start(rtpEventLoopGroup);
@@ -846,8 +887,22 @@ public class AriService {
             // voice-agent.dialog.auto-start is on.
             boolean startDialog = !manual || dialogProps.autoStart();
             if (dialogProps.enabled() && startDialog) {
-                dialogEngine.startCall(channelId, endpoint, context, scenarioRow.definition(), language, ttsVoice,
-                        disclosureEnabled, () -> hangup(channelId), () -> transferToOperator(channelId), attemptId);
+                if (realtime) {
+                    boolean started = realtimeDialogEngine.startCall(channelId, endpoint, context,
+                            scenarioRow.definition(), language, disclosureEnabled,
+                            () -> hangup(channelId), () -> transferToOperator(channelId), attemptId,
+                            realtimeBridge);
+                    if (!started) {
+                        // Nothing is going to speak on this line and nothing is listening
+                        // to it either; leaving it open bills the caller for silence.
+                        log.error("[{}] realtime dialog did not start — hanging up", channelId);
+                        hangup(channelId);
+                    }
+                } else {
+                    dialogEngine.startCall(channelId, endpoint, context, scenarioRow.definition(), language, ttsVoice,
+                            disclosureEnabled, () -> hangup(channelId), () -> transferToOperator(channelId),
+                            attemptId);
+                }
             }
         } catch (Exception e) {
             log.error("Failed to set up media for {}: {}", channelId, e.getMessage(), e);
@@ -886,9 +941,24 @@ public class AriService {
         }
     }
 
+    /**
+     * The caller-side audio consumers for one call.
+     *
+     * <p>Two shapes, decided by {@code engineConfig}. A cascade call gets the VAD (for
+     * barge-in and for gating) and the STT bridge. A realtime call gets neither: its
+     * engine hears the audio itself, decides on its own when the caller has finished and
+     * stops itself when talked over, so a second detector here would only fight it. What
+     * both keep is the answering-machine detector, which is about whether a human picked
+     * up at all — a question no dialog engine answers.
+     *
+     * @param realtimeBridge the realtime engine's feed, non-null exactly when this call
+     *                       runs on one; still unarmed at this point
+     */
     private List<AudioListener> buildAudioListeners(String channelId, long callAttemptId, Instant startedAt,
-                                                    String language) {
+                                                    String language, EffectiveEngineConfig engineConfig,
+                                                    RealtimeAudioBridge realtimeBridge) {
         List<AudioListener> listeners = new ArrayList<>();
+        boolean realtime = realtimeBridge != null;
 
         // Live waveform (§11.8): off by default, since it runs on the RTP consumer
         // thread of every active call regardless of whether any UI is watching.
@@ -905,27 +975,49 @@ public class AriService {
             SileroVad vad = vadProvider.getIfAvailable();
             if (vad != null && vad.available()) {
                 VadGatingProperties gating = sttProps.vadGating();
-                if (gating != null && gating.enabled() && sttProps.enabled()) {
+                if (!realtime && gating != null && gating.enabled() && sttProps.enabled()) {
                     // With client-side endpointing on, the gate shutting is also what ends
                     // the utterance, so a short answer gets the short hangover (§1.3).
                     EndpointingProperties endpointing = sttProps.endpointing();
                     boolean adaptive = endpointing != null && endpointing.enabled();
+                    // And with the adaptation on, the long-utterance wait is a starting
+                    // point rather than a constant: it moves with what this caller's
+                    // pauses turn out to mean (DynamicEndpointingProperties).
+                    DynamicEndpointingProperties dynamic = adaptive ? endpointing.dynamic() : null;
+                    boolean learning = dynamic != null && dynamic.enabled();
                     speechGate = new SpeechGate(SAMPLE_RATE, gating.preRollMs(), gating.postRollMs(),
                             gating.minSpeechMs(),
                             adaptive ? endpointing.shortUtteranceMs() : 0,
-                            adaptive ? endpointing.shortSilenceMs() : 0);
+                            adaptive ? endpointing.shortSilenceMs() : 0,
+                            learning ? dynamic.minPostRollMs() : 0,
+                            learning ? dynamic.emaAlpha() : 0d,
+                            learning ? dynamic.reopenGraceMs() : 0);
+                    installTurnDetector(listeners, speechGate, language);
                 }
+                // Barge-in is the realtime engine's own: it hears the caller directly and
+                // stops itself, and a second detector cutting its playback would silence
+                // sentences it has not abandoned.
                 listeners.add(new VadStream(vad, vadProps, channelId,
-                        () -> dialogEngine.notifyBargeIn(channelId), speechGate,
+                        realtime ? () -> false : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
                         buildAmd(channelId)));
-            } else if (sttProps.vadGating() != null && sttProps.vadGating().enabled()) {
+            } else if (!realtime && sttProps.vadGating() != null && sttProps.vadGating().enabled()) {
                 log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }
         }
 
+        if (realtime) {
+            // Everything below is the cascade pipeline: a separate recognizer, and a
+            // dialog engine that has to be told what it said. Neither exists here.
+            listeners.add(realtimeBridge);
+            return listeners;
+        }
+
         // Speech-to-text + dialog (Stages 5/7) + transcript persistence (Stage 9).
         if (sttProps.enabled()) {
-            SttProvider stt = sttProviderProvider.getIfAvailable();
+            // Which recognizer this call uses is the calling company's setting (§11
+            // settings/engine), not a property of the process — two tenants on one
+            // instance may well have answered differently.
+            SttProvider stt = sttProviderSelector.findForCall(engineConfig.sttProvider());
             if (stt != null) {
                 boolean dialog = dialogProps.enabled() && dialogEngine.available();
                 TranscriptListener listener = (text, isFinal, confidence) -> {
@@ -938,6 +1030,11 @@ public class AriService {
                         }
                     } else {
                         log.debug("[{}] interim: {}", channelId, text);
+                        if (dialog) {
+                            // Not answered — only used to start the LLM early, while the
+                            // endpointing silence is still being waited out (§1.3).
+                            dialogEngine.onClientInterim(channelId, text);
+                        }
                     }
                 };
                 try {
@@ -960,6 +1057,42 @@ public class AriService {
     }
 
     /**
+     * Give the gate a second opinion on when the caller has finished — the semantic one
+     * a timer cannot have (Smart Turn v3, {@code SmartTurnDetector}).
+     *
+     * <p>Silent on every path that does not apply: detection off, no model loaded, or a
+     * call in a language the model was not trained for. uz-UZ is the last of those, and
+     * the common one — the published model covers 23 languages and Uzbek is not among
+     * them, so those calls keep the timer and nothing here runs.
+     *
+     * <p>The buffer is added to {@code listeners} ahead of the VAD deliberately: both run
+     * in order on the RTP consumer thread, and the audio the detector scores has to
+     * include the frame the gate is deciding on.
+     */
+    private void installTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language) {
+        if (!turnProps.enabled()) {
+            return;
+        }
+        SmartTurnDetector detector = turnDetectorProvider.getIfAvailable();
+        if (detector == null || !detector.available()) {
+            return;
+        }
+        String callLanguage = (language == null || language.isBlank())
+                ? sttProps.defaultLanguage() : language;
+        if (!turnProps.supports(callLanguage)) {
+            log.debug("Smart Turn skipped for {} — not a language the model was trained for", callLanguage);
+            return;
+        }
+        UtteranceBuffer buffer = new UtteranceBuffer(detector.samples());
+        listeners.add(buffer);
+        gate.setTurnDetector(() -> {
+            boolean complete = detector.isComplete(buffer.recent(), buffer.length());
+            metrics.turnScored(complete);
+            return complete;
+        }, turnProps.maxExtendMs());
+    }
+
+    /**
      * The answering-machine detector for this call, or {@code null} when detection is off
      * (§8.6). On detection the dialog is closed as VOICEMAIL and the channel dropped —
      * the rest of a recorded greeting is STT, LLM and TTS spent on nobody.
@@ -979,7 +1112,7 @@ public class AriService {
         metrics.voicemailDetected();
         // The disposition has to land on the dialog session: that is what teardown reads
         // to write call_attempt.disposition and to schedule the target's retry.
-        dialogEngine.notifyVoicemail(channelId);
+        dialogRouter.notifyVoicemail(channelId);
         callExecutor.execute(() -> withMdc(channelId, () -> hangup(channelId)));
     }
 
@@ -1210,9 +1343,9 @@ public class AriService {
         String channelId = event.getChannel().getId();
         // Read the dialog outcome and technical snapshot before dropping the session,
         // then tear down — endCall() below makes both unrecoverable.
-        DialogOutcome outcome = dialogEngine.outcome(channelId);
-        DialogTechnicalSnapshot technical = dialogEngine.technicalSnapshot(channelId);
-        dialogEngine.endCall(channelId);
+        DialogOutcome outcome = dialogRouter.outcome(channelId);
+        DialogTechnicalSnapshot technical = dialogRouter.technicalSnapshot(channelId);
+        dialogRouter.endCall(channelId);
         CallSession session = sessions.remove(channelId);
         if (session == null) {
             return; // externalMedia channel or already torn down
@@ -1348,9 +1481,9 @@ public class AriService {
     public void shutdown() {
         sessions.values().forEach(session -> {
             try {
-                teardown(session, dialogEngine.outcome(session.channelId()),
+                teardown(session, dialogRouter.outcome(session.channelId()),
                         hangupCauses.get(session.channelId()),
-                        dialogEngine.technicalSnapshot(session.channelId()));
+                        dialogRouter.technicalSnapshot(session.channelId()));
             } catch (Exception e) {
                 log.warn("Teardown during shutdown failed for {}: {}", session.channelId(), e.getMessage());
             }

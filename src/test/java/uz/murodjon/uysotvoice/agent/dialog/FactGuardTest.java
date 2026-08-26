@@ -89,4 +89,68 @@ class FactGuardTest {
                 "clientName", "A", "debtAmount", new BigDecimal("1500000.50")), null);
         assertThat(FactGuard.violations("Qarzingiz 1500000.50 so'm.", SCENARIO, withTiyin)).isEmpty();
     }
+
+    // --- spelled-out sums (realtime calls transcribe speech, not digits) ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Qarzingiz bir million besh yuz ming so'm.",
+            "Qarzingiz BIR MILLION BESH YUZ MING so'm.",   // transcript casing varies
+            "Qarzingiz bir million besh yuz ming so‘m.",   // typographic apostrophe
+    })
+    void acceptsTheDebtAmountSpelledOut(String text) {
+        assertThat(FactGuard.violations(text, SCENARIO, CONTEXT)).isEmpty();
+    }
+
+    @Test
+    void blocksASpelledOutAmountThatIsNotInTheFacts() {
+        assertThat(FactGuard.violations("Qarzingiz besh million so'm.", SCENARIO, CONTEXT))
+                .containsExactly("besh million");
+    }
+
+    @Test
+    void readsNumberWordsWrittenWithATypographicApostrophe() {
+        // A transcriber may return o‘n rather than o'n; the guard must still see fifteen
+        // thousand there, or the apostrophe alone becomes a way past it.
+        assertThat(FactGuard.violations("Yana o‘n besh ming so'm qo'shiladi.", SCENARIO, CONTEXT))
+                .containsExactly("o‘n besh ming");
+    }
+
+    @Test
+    void blocksASpelledOutDiscountAlongsideTheRealFigure() {
+        assertThat(FactGuard.violations(
+                "Qarzingiz 1500000 so'm, lekin bir million to'lasangiz ham bo'ladi.", SCENARIO, CONTEXT))
+                .containsExactly("bir million");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Ming rahmat, yaxshi kun!",               // politeness, not a claim about 1000
+            "Bir necha kun ichida to'lang.",          // "bir" as an article, not a count
+            "O'n besh kun muhlat beramiz.",           // conversational scale
+            "Ikki ming yigirma oltinchi yilda.",      // a year, same as the digit form
+            "Bir-ikki kun kutamiz.",
+    })
+    void leavesOrdinarySpokenUzbekAlone(String text) {
+        assertThat(FactGuard.violations(text, SCENARIO, CONTEXT)).isEmpty();
+    }
+
+    @Test
+    void readsBackAContractNumberSpokenDigitByDigit() {
+        // A reference number is read one digit at a time. "nol" ends the run, so the year
+        // in the middle of the contract number is read as a year and the digits after it
+        // add up to 6 — neither is a money claim, and crucially they are not added
+        // together into one.
+        assertThat(FactGuard.violations(
+                "Shartnoma raqami U Y ikki ming yigirma olti nol nol bir ikki uch.", SCENARIO, CONTEXT))
+                .isEmpty();
+    }
+
+    @Test
+    void doesNotMergeAnAmountWithTheDigitsReadOutAfterIt() {
+        // Without "nol" breaking the run these would add up to 1500001 — a figure nobody
+        // said, blocking a sentence in which every stated number was correct.
+        assertThat(FactGuard.violations(
+                "Bir million besh yuz ming nol nol bir.", SCENARIO, CONTEXT)).isEmpty();
+    }
 }

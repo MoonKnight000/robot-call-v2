@@ -15,7 +15,7 @@ endpointlar uchun `docs/API-REQUIREMENTS.md`ga qarang (holat: ✅/⚠️/❌ jad
 | [search.md](search.md) | Command palette (⌘K) qidiruv backend'i |
 | [companies.md](companies.md) | Kompaniya (tenant) CRUD: yaratish, sozlamalarni tahrirlash (ROADMAP B.1) |
 | [sip-trunks.md](sip-trunks.md) | Kompaniyaga xos SIP trunklar: CRUD, default trunkni belgilash (ROADMAP B.3) |
-| [settings.md](settings.md) | O'z kompaniyasi sozlamalari: AI model, bildirishnoma matritsasi, integratsiyalar (§11) |
+| [settings.md](settings.md) | O'z kompaniyasi sozlamalari: engine (STT/TTS/realtime tanlovi), ovoz, AI model, bildirishnoma matritsasi, integratsiyalar (§11) |
 | [campaigns.md](campaigns.md) | Kampaniyalar: yaratish, tahrirlash, arxivlash, nishonlar (targets), CSV import, start/pause |
 | [scenarios.md](scenarios.md) | Ssenariy CRUD, validatsiya, klonlash |
 | [inbound-routes.md](inbound-routes.md) | Kiruvchi DID marshrutlash: raqam → ssenariy/til/ish vaqti (ROADMAP C.1) |

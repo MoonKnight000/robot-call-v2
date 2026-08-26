@@ -1,0 +1,83 @@
+voice-agent:
+  asterisk:
+    enabled: ${ASTERISK_ENABLED:true}
+    # ari4java needs the HTTP base URL (not ws://). It derives the WebSocket itself.
+    ari-url: ${ARI_URL:http://localhost:8088/}
+    # Must match asterisk/etc/asterisk/ari.conf [uysot] password.
+    ari-user: ${ARI_USER:uysot}
+    ari-password: ${ARI_PASSWORD:CHANGE_ME_ARI_PASSWORD}
+    app-name: ${ARI_APP:uysot-voice-agent}
+    trunk-endpoint: ${TRUNK_ENDPOINT:trunk-endpoint}
+    # Number-based endpoint routing. A number matching local-number-pattern is
+    # dialled through local-endpoint (the registered test softphone) instead of the
+    # trunk — so POST /api/calls?number=600 rings your softphone and exercises the
+    # exact same outbound path as a real call, for free. Real subscriber numbers
+    # (998...) do not match and go out over the trunk as usual.
+    # Set local-endpoint to empty to disable and always use the trunk.
+    local-endpoint: ${LOCAL_ENDPOINT:softphone}
+    # 3-4 digits = internal extension. Written without {n,m} on purpose: a closing
+    # brace inside a ${...:default} would terminate the placeholder early.
+    local-number-pattern: ${LOCAL_NUMBER_PATTERN:\d\d\d\d?}
+    caller-id: ${CALLER_ID:}
+    answer-timeout-sec: 30
+    ami:
+      # AMI is used for exactly one thing: reloading res_pjsip.so after a managed SIP
+      # trunk is created/edited (report #7, agent.ami.AmiClient) — not call control,
+      # that's ARI above. Off by default: requires manager.conf configured on the
+      # Asterisk side (see asterisk/etc/asterisk/manager.conf) and only matters once
+      # voice-agent.siptrunk.enabled is also on.
+      enabled: ${AMI_ENABLED:false}
+      host: ${AMI_HOST:localhost}
+      port: ${AMI_PORT:5038}
+      username: ${AMI_USER:uysot-ami}
+      password: ${AMI_PASSWORD:CHANGE_ME_AMI_PASSWORD}
+  siptrunk:
+    # Writes the generated PJSIP trunk config (report #7, siptrunk.service.PjsipConfigWriter).
+    # Off by default: config-dir must be the SAME directory Asterisk reads pjsip.conf
+    # from, mounted into this app's container (see docker-compose.yml's app service) —
+    # a managed trunk's row still saves fine with this off, it just is not registered
+    # with Asterisk until an operator wires this up.
+    enabled: ${SIPTRUNK_CONFIG_ENABLED:false}
+    config-dir: ${SIPTRUNK_CONFIG_DIR:}
+    config-file-name: ${SIPTRUNK_CONFIG_FILE:pjsip_trunks.conf}
+  rtp:
+    # Address Asterisk sends RTP to. Must be reachable FROM Asterisk:
+    #  - all local (Asterisk on host): 127.0.0.1
+    #  - Asterisk in Docker, app on host: host.docker.internal (or the host LAN IP)
+    local-ip: ${RTP_LOCAL_IP:127.0.0.1}
+    port-range-start: 20000
+    port-range-end: 20500
+    recording-dir: ${RTP_RECORDING_DIR:recordings}
+    # Optional: 8 kHz mono 16-bit WAV auto-played to the caller on answer (Stage 4 test).
+    test-playback-file: ${RTP_TEST_PLAYBACK_FILE:}
+    # Netty threads shared by every call's RTP socket. 0 = one per processor (min 2).
+    # A single thread carries both the inbound packets and the 20ms playback pacer of
+    # every concurrent call, which jitters at the ~20 calls the MVP targets.
+    event-loop-threads: ${RTP_EVENT_LOOP_THREADS:0}
+  dialer:
+    # Scheduled outbound dialer (Stage 10). Scans ACTIVE campaigns and dispatches
+    # due targets via RabbitMQ, bounded by dispatch-batch (rate) and concurrency.
+    enabled: ${DIALER_ENABLED:true}
+    tick-seconds: ${DIALER_TICK_SECONDS:5}
+    dispatch-batch: ${DIALER_DISPATCH_BATCH:3}
+    max-concurrent-calls: ${DIALER_MAX_CONCURRENT:5}
+    reclaim-after-sec: ${DIALER_RECLAIM_AFTER_SEC:60}
+    # How long before a target is dialled again, by why the last attempt failed. One
+    # 24-hour interval for everything spent most of a campaign's three retries on the
+    # outcome least likely to change.
+    retry:
+      # Rang out or busy — the subscriber exists and may be free this afternoon.
+      no-answer-minutes: ${DIALER_RETRY_NO_ANSWER_MINUTES:180}
+      # Our fault or the carrier's; nothing about the subscriber changed.
+      failed-minutes: ${DIALER_RETRY_FAILED_MINUTES:15}
+      # A machine answers at every hour equally, so vary the hour: NOT a multiple of 24.
+      voicemail-minutes: ${DIALER_RETRY_VOICEMAIL_MINUTES:1200}
+      # Pull the computed time into the campaign's dial window and allowed weekdays
+      # (§11.2), so next_attempt_at never reads 03:00 on a Sunday.
+      respect-dial-window: ${DIALER_RETRY_RESPECT_WINDOW:true}
+  operator:
+    # Human-operator transfer (§11.6). endpoint is a direct agent (PJSIP/operator)
+    # or the queue via a Local channel (Local/support@operators — see queues.conf).
+    enabled: ${OPERATOR_ENABLED:true}
+    endpoint: ${OPERATOR_ENDPOINT:Local/support@operators}
+    answer-timeout-sec: ${OPERATOR_ANSWER_TIMEOUT:30}

@@ -181,16 +181,33 @@ curl.exe -s -H "X-Api-Key: $key" http://localhost:8080/actuator/prometheus |
   Select-String "voice_llm_tokens|voice_tts_chars|voice_stt_audio|voice_tts_cache"
 ```
 
-| Metrika | Nimani ko'rsatadi |
-|---|---|
-| `voice_llm_tokens_prompt_total` / `_completion_total` | LLM'ga ketgan/qaytgan tokenlar |
-| `voice_llm_tokens_cached_total` | prompt'ning provayder keshidan (arzon narxda) o'qilgan qismi |
-| `voice_tts_chars_synthesized_total` | TTS'ga haqiqatan yuborilgan (to'langan) belgilar |
-| `voice_tts_chars_saved_total` | kesh tufayli sotib olinmagan belgilar |
-| `voice_stt_audio_seconds_sent_total` | STT'ga uzatilgan (to'langan) audio-sekundlar |
-| `voice_stt_audio_seconds_skipped_total` | VAD gating ushlab qolgan audio-sekundlar |
+| Metrika                                               | Nimani ko'rsatadi                                                |
+|-------------------------------------------------------|------------------------------------------------------------------|
+| `voice_llm_tokens_prompt_total` / `_completion_total` | LLM'ga ketgan/qaytgan tokenlar                                   |
+| `voice_llm_tokens_cached_total`                       | prompt'ning provayder keshidan (arzon narxda) o'qilgan qismi     |
+| `voice_tts_chars_synthesized_total`                   | TTS'ga haqiqatan yuborilgan (to'langan) belgilar                 |
+| `voice_tts_chars_saved_total`                         | kesh tufayli sotib olinmagan belgilar                            |
+| `voice_stt_audio_seconds_sent_total`                  | STT'ga uzatilgan (to'langan) audio-sekundlar                     |
+| `voice_stt_audio_seconds_skipped_total`               | VAD gating ushlab qolgan audio-sekundlar                         |
+| `voice_dialog_barge_in_total`                         | mijoz botni bo'lgan javoblar soni                                |
+| `voice_dialog_barge_in_false_total`                   | bo'lish sodir bo'ldi, lekin so'z kelmadi — javob davom ettirildi |
+| `voice_dialog_echo_suppressed_total`                  | botning o'z gapi mijoz transkripti sifatida qaytgani             |
 
 Nimaga qarash kerak:
+
+- **`voice_dialog_barge_in_total` nolga yaqin** — bu "hech kim bo'lmaydi" degani emas,
+  odatda bo'lish umuman ishlamayotganini bildiradi. Avval startup logini tekshiring:
+  `Silero VAD ready (model=...)` bo'lishi shart, `barge-in disabled` emas
+  (`VAD_MODEL_PATH`; Docker'da model image ichida, `/app/silero_vad.onnx`).
+- **`voice_dialog_barge_in_false_total` `_barge_in_total` ning yarmidan ko'pi** — VAD
+  shovqinga ishlayapti yoki liniyada aks-sado bor. `VAD_MIN_SPEECH_MS` ni oshiring
+  (350 → 450) yoki `VAD_THRESHOLD` ni. Har bir noto'g'ri bo'lish mijozga
+  `DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS` chamasi pauza sifatida eshitiladi.
+- **`voice_dialog_echo_suppressed_total` noldan katta** — mijozning telefoni karnayda va
+  operator tomonida akustik aks-sado bekor qilish (AEC) yo'q: STT botning o'z gapini
+  mijoznikidek yozib beryapti. Bu yerdagi filtr faqat halqani to'xtatadi (bot o'ziga
+  javob bermaydi) — haqiqiy yechim Asterisk tomonida. Transkriptda AGENT gaplari CLIENT
+  qatorlarida takrorlanayotgan bo'lsa, shu holat.
 
 - **`voice_llm_tokens_cached_total` nol bo'lib qolsa** — so'rov prefiksi buzilyapti.
   Prefiks = system prompt + tarix; bosqich/holat matni tarixdan *keyin* yuboriladi

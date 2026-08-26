@@ -10,7 +10,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import yandex.cloud.api.ai.stt.v3.RecognizerGrpc;
 import yandex.cloud.api.ai.stt.v3.Stt;
@@ -33,10 +33,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>One shared {@link ManagedChannel} to {@code stt.api.cloud.yandex.net:443}
  * (TLS); each call opens its own stream with a fresh {@code x-client-request-id}.
  * Auth is an API key in the {@code authorization: Api-Key ...} gRPC metadata.
- * Selected via {@code voice-agent.stt.provider=yandex} (the default here).
+ * Registered whenever {@code voice-agent.stt.yandex.api-key} is set — a company picks
+ * this provider per-call via {@code engine_config.stt_provider} (§11 settings), it does
+ * not have to be the process-wide {@code voice-agent.stt.provider} default.
  */
 @Component
-@ConditionalOnProperty(prefix = "voice-agent.stt", name = "provider", havingValue = "yandex", matchIfMissing = true)
+@ConditionalOnExpression("!'${voice-agent.stt.yandex.api-key:}'.isBlank()")
 public class YandexSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(YandexSttProvider.class);
@@ -73,6 +75,11 @@ public class YandexSttProvider implements SttProvider {
         log.info("Yandex STT v3 ready (host={}:{}, sampleRate={}, model='{}', eou={}/{}ms)",
                 y.host(), y.port(), y.sampleRate(), y.model(),
                 y.eouSensitivity(), y.eouMaxPauseHintMs());
+    }
+
+    @Override
+    public String name() {
+        return "yandex";
     }
 
     @Override

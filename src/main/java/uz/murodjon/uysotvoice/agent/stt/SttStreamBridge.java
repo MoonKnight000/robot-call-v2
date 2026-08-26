@@ -172,6 +172,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         try {
             current.endUtterance();
             metrics.sttUtteranceEnded();
+            metrics.sttEndpointingHangover(gate.hangoverMs());
         } catch (Exception e) {
             log.warn("[{}] end-of-utterance signal failed: {}", channelId, e.getMessage());
         }

@@ -6,7 +6,6 @@ import java.util.Map;
  * Yandex SpeechKit TTS v3 streaming (gRPC {@code Synthesizer.UtteranceSynthesis}),
  * settings under {@code voice-agent.tts.yandex.*}.
  *
- * @param enabled    whether the Yandex provider bean is created (needs an API key)
  * @param apiKey     SpeechKit API key (gRPC metadata {@code authorization: Api-Key ...})
  * @param folderId   optional Yandex Cloud folder id (sent as {@code x-folder-id})
  * @param voice      default voice name (ru-RU: alena, filipp, ermil, jane, omazh, zahar, ...)
@@ -22,7 +21,6 @@ import java.util.Map;
  *                   turn, exactly where the §1.3 budget cannot absorb it. 0 = no keepalive
  */
 public record YandexTtsProperties(
-        boolean enabled,
         String apiKey,
         String folderId,
         String voice,

@@ -20,6 +20,6 @@ public class TtsVoiceControllerImpl implements TtsVoiceController {
 
     @Override
     public ResponseEntity<ResponseData<List<TtsVoice>>> voices(String language) {
-        return ResponseEntity.ok(ResponseData.ok(service.voices(language)));
+        return ResponseEntity.ok(ResponseData.ok(service.findSelectable(language)));
     }
 }

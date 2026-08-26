@@ -40,7 +40,7 @@ public class SystemPromptFactory {
      * in the scenario's own {@code guardrails} instead — see the {@code debt-collection}
      * seed for an example.
      */
-    private static final List<String> PLATFORM_GUARDRAILS = List.of(
+    static final List<String> PLATFORM_GUARDRAILS = List.of(
             "Mijozning shaxsiy ma'lumotlarini begona odamga aytma.",
             "Savolga javobni bilmasang — requestHumanTransfer bilan operatorga o'tkaz, o'ylab topma.",
             "Mijoz asabiylashsa yoki haqorat qilsa — darhol requestHumanTransfer chaqir.",
@@ -50,7 +50,7 @@ public class SystemPromptFactory {
     );
 
     /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
-    private static final Map<String, String> FACT_LABELS = Map.of(
+    static final Map<String, String> FACT_LABELS = Map.of(
             "clientName", "Ism",
             "debtAmount", "Summa",
             "currency", "Valyuta",
@@ -218,10 +218,17 @@ public class SystemPromptFactory {
                 .append("aytadigan gapingizni uning \"reply\" parametriga yozing — u bo'sh bo'lsa ")
                 .append("mijoz jimlikni eshitadi.]");
         if (s.isInterrupted()) {
-            // Tell the model it was cut off and where it stopped (§7.2 step 5).
-            sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Siz shu yergacha aytgan edingiz: \"")
+            // Tell the model it was cut off and where it stopped (§7.2 step 5). What the
+            // caller HEARD, not what the model wrote: a barge-in drops the rest of the
+            // reply unspoken, and a model told it delivered all of it treats the unheard
+            // half as said and never returns to it — the sum and the due date go missing
+            // from the call entirely.
+            sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Mijoz faqat shu qismini ")
+                    .append("eshitib ulgurdi: \"")
                     .append(s.lastAgentText() == null ? "" : s.lastAgentText())
-                    .append("\". Mijozning gapiga moslashing; butun gapni qaytadan boshlamang.]");
+                    .append("\". Qolgan qismini mijoz ESHITMADI — kerak bo'lsa uni qaytadan ayting, ")
+                    .append("lekin avval mijozning gapiga javob bering va butun gapni boshidan ")
+                    .append("boshlamang.]");
         }
         return sb.toString();
     }

@@ -1,7 +1,5 @@
 package uz.murodjon.uysotvoice.scenario.dto;
 
-import uz.murodjon.uysotvoice.agent.dialog.CallContext;
-
 /**
  * One fact a scenario needs injected into the prompt and checked by the fact guard
  * (ROADMAP A.1) — the declarative replacement for a hardcoded

@@ -24,6 +24,18 @@ Query parametr: `language` (ixtiyoriy) — BCP-47 filtr (masalan `uz-UZ`); forma
 kampaniya tilini allaqachon bilsa, faqat shu tilda gapira oladigan ovozlarni
 ko'rsatish uchun.
 
+Javob shu build'da **yoqilgan** (kredensiali sozlangan, shuning uchun Spring
+kontekstiga registratsiya bo'lgan) provayderlarga tegishli ovozlar bilan
+cheklanadi — kredensiali yo'q provayderning ovozi umuman qaytmaydi, chunki
+`TtsRouter` baribir uni e'tiborsiz qoldirib standart provayderning o'z ovozida
+gapiradi (`settings.md`). Bu **kompaniyaning `engine_config.ttsProvider`
+tanlovidan mustaqil** — `TtsRouter` tanlangan ovozni to'g'ridan-to'g'ri o'zining
+provayderi orqali gapiradi, shuning uchun bitta kampaniya turli provayderlarning
+ovozlarini aralashtirib ishlata oladi (masalan bitta target Yandex `nigora`da,
+boshqasi Aisha `gulnoza-cheerful`da). Masalan Aisha uchun kredensial sozlangan
+bo'lsa, `gulnoza-neutral`, `gulnoza-cheerful`, `gulnoza-happy`, `gulnoza-sad`
+qatorlari ham shu ro'yxatda chiqadi — qaysi provayder ekanidan qat'i nazar.
+
 **Response** — `List<TtsVoice>`:
 
 ```json
