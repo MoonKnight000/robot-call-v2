@@ -899,9 +899,10 @@ public class AriService {
                         hangup(channelId);
                     }
                 } else {
+                    boolean emotionAdaptive = outbound != null ? outbound.emotionAdaptiveVoice() : true;
                     dialogEngine.startCall(channelId, endpoint, context, scenarioRow.definition(), language, ttsVoice,
                             disclosureEnabled, () -> hangup(channelId), () -> transferToOperator(channelId),
-                            attemptId);
+                            attemptId, emotionAdaptive);
                 }
             }
         } catch (Exception e) {

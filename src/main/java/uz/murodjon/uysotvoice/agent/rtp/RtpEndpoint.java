@@ -11,8 +11,10 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import uz.murodjon.uysotvoice.agent.audio.AmbientSoundGenerator;
 import uz.murodjon.uysotvoice.agent.audio.AudioListener;
 import uz.murodjon.uysotvoice.agent.codec.G711Codec;
+import uz.murodjon.uysotvoice.campaign.enums.AmbientSound;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
@@ -34,13 +36,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * every 20ms to the peer (symmetric RTP — we reply to the address Asterisk sends from),
  * and hands the same frame to the recorder so both halves of the conversation end up
  * in the file. No blocking I/O runs on the event loop (PROJECT.md §7.1, §7.3, Stages 3–4).
- *
- * <p>Playback is a <em>queue</em>, not a single buffer: sentence-level TTS streaming
- * (§7.2) hands over one sentence at a time while the previous one is still on the
- * wire, and the pacer draws frames across the boundary without a gap. {@link #playPcm}
- * keeps the older "replace whatever is playing" semantics for one-shot playback;
- * {@link #enqueuePcm} appends. {@link #flushPlayback} drops everything — barge-in must
- * silence the whole reply, not just the sentence currently sounding.
  */
 public class RtpEndpoint implements Closeable {
 
@@ -57,6 +52,9 @@ public class RtpEndpoint implements Closeable {
     private static final int FRAME_MS = 20;
     private static final byte ULAW_SILENCE = (byte) 0xFF;
 
+    /** Grace underflow frames (5 frames = 100ms) before stopping pacer to avoid jitter on streaming chunk boundaries. */
+    private static final int MAX_IDLE_FRAMES = 5;
+
     private final int port;
     private final WavRecorder recorder;
     private final List<AudioListener> listeners;
@@ -71,6 +69,9 @@ public class RtpEndpoint implements Closeable {
     private final Object playLock = new Object();
     private short[] currentChunk;   // guarded by playLock
     private int currentOffset;      // guarded by playLock
+    private int idleFrames;         // guarded by playLock
+
+    private volatile AmbientSound ambientSound = AmbientSound.OFF;
 
     /**
      * Whether a pacer is (or is about to be) running. Owns the start/stop decision so
@@ -138,6 +139,14 @@ public class RtpEndpoint implements Closeable {
         return port;
     }
 
+    public AmbientSound ambientSound() {
+        return ambientSound;
+    }
+
+    public void setAmbientSound(AmbientSound ambientSound) {
+        this.ambientSound = ambientSound != null ? ambientSound : AmbientSound.OFF;
+    }
+
     /** Inbound stream quality, for the per-call read-out at teardown (§10 Bosqich 12). */
     public RtpStats stats() {
         return stats;
@@ -145,15 +154,6 @@ public class RtpEndpoint implements Closeable {
 
     /**
      * Point outgoing RTP at {@code remote} before any packet has arrived from it.
-     *
-     * <p>Without this we can only discover the peer from its own traffic (symmetric
-     * RTP), which fails whenever the caller's audio never reaches Asterisk — e.g. a
-     * trunk behind CGNAT: the 2-party bridge has nothing to forward, the
-     * externalMedia channel stays silent, and the bot's TTS is dropped with
-     * "No RTP peer yet". Asterisk publishes the externalMedia socket it listens on
-     * as UNICASTRTP_LOCAL_ADDRESS/PORT, so we can send regardless of the inbound
-     * direction. An inbound packet from a different source still wins (see the
-     * read handler).
      */
     public void setRemote(InetSocketAddress remote) {
         if (remote == null || remote.getAddress() == null || remote.getPort() <= 0) {
@@ -194,6 +194,7 @@ public class RtpEndpoint implements Closeable {
         }
         synchronized (playLock) {
             playQueue.addLast(pcm);
+            idleFrames = 0;
         }
         startPacer();
     }
@@ -207,6 +208,7 @@ public class RtpEndpoint implements Closeable {
             playQueue.clear();
             currentChunk = null;
             currentOffset = 0;
+            idleFrames = 0;
         }
         stopPacer();
     }
@@ -231,17 +233,13 @@ public class RtpEndpoint implements Closeable {
 
     /**
      * Start the 20ms pacer if it is not already running.
-     *
-     * <p>The schedule call itself is posted to the event loop rather than made from
-     * the calling thread. The event loop runs its tasks one at a time, so the {@link
-     * #pacer} field is assigned before {@link #sendFrame} can first run — scheduling
-     * from here would race, and a first frame that finished the queue immediately
-     * would leave a cancelled-but-recorded future behind, pinning {@code isPlaying()}
-     * to true for the rest of the call.
      */
-    private void startPacer() {
+    public void startPacer() {
         if (!running || channel == null || !pacerRunning.compareAndSet(false, true)) {
             return;
+        }
+        synchronized (playLock) {
+            idleFrames = 0;
         }
         channel.eventLoop().execute(() ->
                 pacer = channel.eventLoop().scheduleAtFixedRate(
@@ -269,9 +267,6 @@ public class RtpEndpoint implements Closeable {
             return;
         }
         byte[] ulaw = new byte[SAMPLES_PER_FRAME];
-        // The same frame before encoding, for everyone who wants the bot's own audio as
-        // PCM: the recording's right channel and the live "listen in" tap (§10.3). The
-        // RTP send itself only needs the ulaw encoding above.
         short[] pcmFrame = new short[SAMPLES_PER_FRAME];
         int filled = 0;
         boolean first;
@@ -293,16 +288,31 @@ public class RtpEndpoint implements Closeable {
                 filled += n;
                 currentOffset += n;
             }
+            if (filled == 0) {
+                idleFrames++;
+                if (idleFrames >= MAX_IDLE_FRAMES && ambientSound == AmbientSound.OFF) {
+                    stopPacer();
+                    return;
+                }
+                for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
+                    ulaw[i] = ULAW_SILENCE;
+                }
+            } else {
+                idleFrames = 0;
+                for (int i = filled; i < SAMPLES_PER_FRAME; i++) {
+                    ulaw[i] = ULAW_SILENCE;
+                }
+            }
         }
-        if (filled == 0) {
-            stopPacer();
-            return;
+
+        // Mix ambient soundscape if enabled
+        if (ambientSound != null && ambientSound != AmbientSound.OFF) {
+            pcmFrame = AmbientSoundGenerator.mix(pcmFrame, ambientSound, sendTimestamp);
+            for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
+                ulaw[i] = G711Codec.pcmToUlaw(pcmFrame[i]);
+            }
         }
-        // A short tail is padded to a whole frame; Asterisk expects fixed-size frames.
-        // pcmFrame's tail stays 0 (silence), which is exactly what the taps below want.
-        for (int i = filled; i < SAMPLES_PER_FRAME; i++) {
-            ulaw[i] = ULAW_SILENCE;
-        }
+
         recorder.writeBot(pcmFrame, SAMPLES_PER_FRAME);
         if (outboundTap != null) {
             outboundTap.onAudio(pcmFrame, SAMPLES_PER_FRAME);
@@ -335,8 +345,6 @@ public class RtpEndpoint implements Closeable {
             try {
                 byte[] raw = received.data();
                 RtpPacket p = RtpPacket.parse(raw, raw.length);
-                // Counted before the payload filter below: sequence continuity is a
-                // property of the whole stream, comfort-noise and DTMF packets included.
                 stats.onPacket(p.sequenceNumber(), p.timestamp(), received.arrivalNanos());
                 byte[] payload = p.payload();
                 if (payload.length > pcm.length) {
@@ -346,7 +354,6 @@ public class RtpEndpoint implements Closeable {
                     case PT_PCMU -> G711Codec.ulawToPcm(payload, payload.length, pcm);
                     case PT_PCMA -> G711Codec.alawToPcm(payload, payload.length, pcm);
                     default -> {
-                        // Non-audio (e.g. comfort noise / DTMF) — skip.
                         continue;
                     }
                 }
@@ -391,11 +398,6 @@ public class RtpEndpoint implements Closeable {
         log.info("RTP endpoint on port {} closed", port);
     }
 
-    /**
-     * One datagram as it left the event loop, with the moment it was read. Parsing
-     * happens on the consumer thread, but jitter can only be measured against an
-     * arrival time taken before any queueing of ours.
-     */
     private record ReceivedPacket(byte[] data, long arrivalNanos) {
     }
 }

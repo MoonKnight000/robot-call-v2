@@ -46,6 +46,10 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     @Query("SELECT a.companyId FROM CallAttemptEntity a WHERE a.id = :id")
     Long findCompanyIdById(@Param("id") long id);
 
+    /** Which target this call attempt belongs to. */
+    @Query("SELECT a.target.id FROM CallAttemptEntity a WHERE a.id = :id")
+    Long findTargetIdById(@Param("id") long id);
+
     long countByEndedAtGreaterThanEqual(Instant since);
 
     long countByEndedAtGreaterThanEqualAndDisposition(Instant since, Disposition disposition);

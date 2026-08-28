@@ -23,13 +23,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Persists the call lifecycle to Postgres (PROJECT.md §6, Stage 9): a
- * {@code call_attempt} per call, {@code call_transcript} per utterance, and one
- * {@code call_result}. JPA-backed against the known Flyway schema ({@code ddl-auto: validate}).
+ * Persists the call lifecycle to the database (PROJECT.md §9).
  *
- * <p>All writes are best-effort: a DB error is logged and swallowed so it never
- * breaks the live call. {@link #startAttempt} returns {@code 0} on failure, which
- * downstream treats as "no record".
+ * <p>Writes happen on virtual threads (ARI/STT callbacks), and fail-open:
+ * a database error is logged but must not crash the in-progress phone call.
  */
 @Service
 public class CallRecordService {
@@ -42,12 +39,23 @@ public class CallRecordService {
     private final CallResultRepository results;
     private final CallTechnicalRepository technicalDetails;
     private final CurrentCompany company;
-    private final AtomicLong manualTargetId = new AtomicLong(0);
-    private final AtomicLong inboundTargetId = new AtomicLong(0);
+
+    /** Sequence counter per active call, evicted at attempt finish. */
     private final Map<Long, AtomicInteger> seqCounters = new ConcurrentHashMap<>();
 
-    public CallRecordService(CallAttemptRepository callAttempts, CallTranscriptRepository transcripts,
-                             CallResultRepository results, CallTechnicalRepository technicalDetails,
+    /**
+     * Placeholder manual target id resolved once on demand and kept for the
+     * lifetime of the process. Saves a round-trip per manual origination.
+     */
+    private final AtomicLong manualTargetId = new AtomicLong();
+
+    /** Cached inbound target id (see {@link #inboundTargetId()}). */
+    private final AtomicLong inboundTargetId = new AtomicLong();
+
+    public CallRecordService(CallAttemptRepository callAttempts,
+                             CallTranscriptRepository transcripts,
+                             CallResultRepository results,
+                             CallTechnicalRepository technicalDetails,
                              CurrentCompany company) {
         this.callAttempts = callAttempts;
         this.transcripts = transcripts;
@@ -57,20 +65,42 @@ public class CallRecordService {
     }
 
     /**
-     * The company {@code callAttemptId} was recorded under (§11 ai-model settings) —
-     * {@code DialogEngine} resolves this once per call to look up its overrides. Falls
-     * back to {@link CurrentCompany} for {@code 0} (no persisted attempt, e.g. a manual
-     * test call whose insert failed) or an attempt somehow missing from the table.
+     * The company that owns {@code callAttemptId}. Read by {@code AriService.setupMedia}
+     * so it can resolve the engine settings (cascade vs realtime, §11) for this specific
+     * tenant rather than looking at any ambient request state.
      */
     public long companyIdOf(long callAttemptId) {
         if (callAttemptId == 0) {
             return company.id();
         }
-        Long companyId = callAttempts.findCompanyIdById(callAttemptId);
-        return companyId != null ? companyId : company.id();
+        try {
+            Long cid = callAttempts.findCompanyIdById(callAttemptId);
+            return cid != null ? cid : company.id();
+        } catch (Exception e) {
+            log.warn("companyIdOf failed for call {}: {}", callAttemptId, e.getMessage());
+            return company.id();
+        }
     }
 
-    /** Id of the placeholder target seeded by {@code V1} (phone = 'MANUAL'); cached. */
+    public long targetIdOf(long callAttemptId) {
+        if (callAttemptId == 0) {
+            return 0L;
+        }
+        try {
+            Long tid = callAttempts.findTargetIdById(callAttemptId);
+            return tid != null ? tid : 0L;
+        } catch (Exception e) {
+            log.warn("targetIdOf failed for call {}: {}", callAttemptId, e.getMessage());
+            return 0L;
+        }
+    }
+
+    /**
+     * Id of the placeholder target seeded by {@code V5} (phone = 'MANUAL'); cached.
+     * Manual calls placed through the REST API use this as their {@code
+     * call_attempt.target_id} so the row satisfies the NOT NULL FK while making
+     * it obvious the call was not part of an automated campaign (§8.4).
+     */
     public long manualTargetId() {
         long cached = manualTargetId.get();
         if (cached != 0) {

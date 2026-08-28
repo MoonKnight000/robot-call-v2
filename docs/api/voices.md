@@ -1,4 +1,4 @@
-# TTS ovozlar katalogi
+# TTS ovozlar katalogi va Dinamik Hissiyotlar
 
 `uz.murodjon.uysotvoice.voice` · rol: **ADMIN**
 
@@ -6,13 +6,14 @@ Kampaniya qaysi ovoz bilan yaratilishi mumkinligining katalogi — `tts_voice`
 jadvalida saqlanadi (migration bilan seed qilinadi), config fayl emas. Kampaniya
 formasi ovoz tanlagichini shu yerdan to'ldiradi — shuning uchun operator
 ko'radigan variantlar aynan `POST /api/campaigns`ning `ttsVoice` maydoni qabul
-qiladigan id'larning o'zi. Hozircha faqat o'qish uchun (`GET`) — yaratish/
+qilinadigan id'larning o'zi. Hozircha faqat o'qish uchun (`GET`) — yaratish/
 o'chirish endpoint yo'q.
 
 `id` va `name` alohida ustunlar — shuning uchun bitta provayder ovozi bir nechta
 katalog qatori bo'lib turishi mumkin, faqat `role` bilan farq qiladi (masalan
-`id: "yulduz-whisper"` → `name: "yulduz"`, `role: "whisper"`). Operator uchun bu
-ikkita tanlov, provayder uchun bitta ovozning ikki uslubi.
+`id: "yulduz-whisper"` → `name: "yulduz"`, `role: "whisper"`).
+
+Shuningdek, tizim **dinamik hissiyotlarga moslashuvchan rejimni (Emotion-Adaptive Voice)** qo'llab-quvvatlaydi. Bunda bot ssenariy bosqichi (masalan: `GREETING`da quvnoq, `DEBT_NOTICE`da qat'iy) va mijozning jonli kayfiyatiga qarab (`FRUSTRATED` bo'lganda muloyim/vazmin va sekinroq tempda) o'z ohangini avtomatik o'zgartiradi.
 
 Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 
@@ -31,19 +32,21 @@ cheklanadi — kredensiali yo'q provayderning ovozi umuman qaytmaydi, chunki
 gapiradi (`settings.md`). Bu **kompaniyaning `engine_config.ttsProvider`
 tanlovidan mustaqil** — `TtsRouter` tanlangan ovozni to'g'ridan-to'g'ri o'zining
 provayderi orqali gapiradi, shuning uchun bitta kampaniya turli provayderlarning
-ovozlarini aralashtirib ishlata oladi (masalan bitta target Yandex `nigora`da,
-boshqasi Aisha `gulnoza-cheerful`da). Masalan Aisha uchun kredensial sozlangan
-bo'lsa, `gulnoza-neutral`, `gulnoza-cheerful`, `gulnoza-happy`, `gulnoza-sad`
-qatorlari ham shu ro'yxatda chiqadi — qaysi provayder ekanidan qat'i nazar.
+ovozlarini aralashtirib ishlata oladi.
 
 **Response** — `List<TtsVoice>`:
 
 ```json
 {
   "data": [
-    { "id": "nigora", "provider": "yandex", "language": "uz-UZ", "name": "nigora", "label": "Nigora — o'zbek, ayol", "role": null },
+    { "id": "gulnoza", "provider": "aisha", "language": "uz-UZ", "name": "gulnoza", "label": "Gulnoza — o'zbek, moslashuvchan (avto-hissiyot)", "role": "neutral" },
+    { "id": "gulnoza-cheerful", "provider": "aisha", "language": "uz-UZ", "name": "cheerful", "label": "Gulnoza — o'zbek, quvnoq", "role": "cheerful" },
+    { "id": "gulnoza-sad", "provider": "aisha", "language": "uz-UZ", "name": "sad", "label": "Gulnoza — o'zbek, xafa/hamdard", "role": "sad" },
     { "id": "zamira", "provider": "yandex", "language": "uz-UZ", "name": "zamira", "label": "Zamira — o'zbek, ayol", "role": null },
-    { "id": "yulduz", "provider": "yandex", "language": "uz-UZ", "name": "yulduz", "label": "Yulduz — o'zbek, ayol", "role": null }
+    { "id": "yulduz", "provider": "yandex", "language": "uz-UZ", "name": "yulduz", "label": "Yulduz — o'zbek, ayol", "role": null },
+    { "id": "nigora", "provider": "yandex", "language": "uz-UZ", "name": "nigora", "label": "Nigora — o'zbek, ayol", "role": null },
+    { "id": "alena", "provider": "yandex", "language": "ru-RU", "name": "alena", "label": "Alena — rus, ayol", "role": "alena" },
+    { "id": "filipp", "provider": "yandex", "language": "ru-RU", "name": "filipp", "label": "Filipp — rus, erkak", "role": "filipp" }
   ],
   "message": null, "messageCode": null, "accept": true, "errors": null
 }
@@ -52,8 +55,33 @@ qatorlari ham shu ro'yxatda chiqadi — qaysi provayder ekanidan qat'i nazar.
 | Maydon | Izoh |
 |---|---|
 | `id` | kampaniyada saqlanadigan barqaror id (`CreateCampaignRequest.ttsVoice`ga shu qiymat yuboriladi) |
-| `provider` | `yandex` yoki `google` — ovozni qaysi provayder gapiradi |
-| `language` | BCP-47; boshqa tildagi qo'ng'iroq bu ovozni e'tiborsiz qoldirib standart marshrutlashga qaytadi (masalan ruscha ovoz o'zbekcha matn o'qishi standart ovozdan yomonroq bo'lgani uchun) |
+| `provider` | `yandex` yoki `aisha` — ovozni qaysi provayder gapiradi |
+| `language` | BCP-47; boshqa tildagi qo'ng'iroq bu ovozni e'tiborsiz qoldirib standart marshrutlashga qaytadi |
 | `name` | provayder tomonidagi ovoz nomi (sintez so'roviga yuboriladi) |
 | `label` | UI'da ko'rsatiladigan inson-o'qiy oladigan nom |
-| `role` | ovozning gapirish uslubi (Yandex v3 `Hints.role`: `neutral`, `strict`, `friendly`, `whisper`), yoki `null` — yuborilmaydi. Har bir ovozning o'z role'lari bor: `nigora` da umuman yo'q, `zamira` da neutral/strict/friendly, `yulduz` da yana `whisper`. Ovoz qo'llab-quvvatlamaydigan role yuborilsa provayder butun so'rovni rad etadi, shuning uchun bu global sozlama emas, aynan shu qatorning ustuni |
+| `role` | ovozning boshlang'ich gapirish uslubi / roli |
+
+---
+
+## 🎭 Dinamik Hissiyotlar va Moslashuvchan Ovoz (Voice Emotion Resolution)
+
+Agar kampaniyada `"emotionAdaptiveVoice": true` (odatiy holatda `true`) bo'lsa yoki ssenariy bosqichida `emotion` belgilangan bo'lsa, `VoiceEmotionResolver` har bir dialog replikasida ovozning xarakteri va tezligini quyidagicha moslashtiradi:
+
+1. **Ssenariy bosqichi bo'yicha moslashuv**:
+   - `GREETING`, `CLOSING`, `OFFER` bosqichlarida: `CHEERFUL` (quvnoq, samimiy).
+   - `DEBT_NOTICE`, `WARNING`, `DEMAND` bosqichlarida: `STRICT` (qat'iy, rasmiy).
+   - `ESCALATE_TO_HUMAN`, `APOLOGY` bosqichlarida: `FRIENDLY` (hamdard, muloyim).
+   - Agar `StageDef.emotion` da to'g'ridan-to'g'ri qiymat berilgan bo'lsa (`"cheerful"`, `"strict"`, `"friendly"`, `"whisper"`, `"sad"`), ustunlik aynan unga beriladi.
+
+2. **Mijoz hissiyotiga ko'ra dinamik tanaffus va tezlik**:
+   - `SentimentDetector` mijozning asabiylashganini yoki noroziligini (`FRUSTRATED`) aniqlasa:
+     - Bot ovoz ohangi avtomatik `FRIENDLY` / `EMPATHETIC` ga o'zgaradi.
+     - Gapirish tezligi `0.92x` ga tushirilib, xotirjam va muloyim intonatsiyada gapiriladi.
+     - System promptga de-eskalatsiya direktivasi kiritiladi.
+   - Mijoz tushunmaganida (`CONFUSED`):
+     - Bot tezligi `0.96x` ga tushiriladi va `NEUTRAL` ohangda tushuntiradi.
+
+3. **Provayderlar bo'yicha rollar moslashuvi**:
+   - **Aisha (Gulnoza)**: `cheerful`, `sad`, `neutral` speaker_id lari.
+   - **Yandex v3 (Zamira, Yulduz)**: `friendly`, `strict`, `whisper`, `neutral`. (Izoh: `nigora` ovozi gRPC darajasida rollarni qo'llab-quvvatlamagani uchun, unga `role: null` yuboriladi).
+   - **Yandex Russian (Alena, Filipp, Jane)**: `good`, `evil`, `whisper`, `neutral`.

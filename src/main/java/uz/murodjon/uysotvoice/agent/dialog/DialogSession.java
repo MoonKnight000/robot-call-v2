@@ -46,6 +46,8 @@ public class DialogSession implements DialogOutcomeSink {
     private final EffectiveAiModelConfig aiModel;
     /** This call's company's TTS overrides (§11 settings/voice), resolved once. */
     private final EffectiveVoiceSettings voiceSettings;
+    private final boolean emotionAdaptiveVoice;
+    private volatile uz.murodjon.uysotvoice.agent.dialog.SentimentDetector.CustomerSentiment lastCustomerSentiment = uz.murodjon.uysotvoice.agent.dialog.SentimentDetector.CustomerSentiment.NEUTRAL;
     /** Campaign's own choice on the §11.1 opening disclosure (§10.6); the engine also
      * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
     private final boolean disclosureEnabled;
@@ -178,7 +180,7 @@ public class DialogSession implements DialogOutcomeSink {
                          ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
                          long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
                          String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings) {
+                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice) {
         this.channelId = channelId;
         this.language = language;
         this.ttsVoice = ttsVoice;
@@ -197,6 +199,16 @@ public class DialogSession implements DialogOutcomeSink {
         this.companyDisclosureText = companyDisclosureText;
         this.aiModel = aiModel;
         this.voiceSettings = voiceSettings;
+        this.emotionAdaptiveVoice = emotionAdaptiveVoice;
+    }
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer, callAttemptId,
+                watchdog, disclosureEnabled, companyName, companyDisclosureText, aiModel, voiceSettings, true);
     }
 
     public EffectiveAiModelConfig aiModel() {
@@ -205,6 +217,18 @@ public class DialogSession implements DialogOutcomeSink {
 
     public EffectiveVoiceSettings voiceSettings() {
         return voiceSettings;
+    }
+
+    public boolean emotionAdaptiveVoice() {
+        return emotionAdaptiveVoice;
+    }
+
+    public uz.murodjon.uysotvoice.agent.dialog.SentimentDetector.CustomerSentiment lastCustomerSentiment() {
+        return lastCustomerSentiment;
+    }
+
+    public void setLastCustomerSentiment(uz.murodjon.uysotvoice.agent.dialog.SentimentDetector.CustomerSentiment sentiment) {
+        this.lastCustomerSentiment = sentiment != null ? sentiment : uz.murodjon.uysotvoice.agent.dialog.SentimentDetector.CustomerSentiment.NEUTRAL;
     }
 
     /** The silence watchdog, or {@code null} when it is disabled. */

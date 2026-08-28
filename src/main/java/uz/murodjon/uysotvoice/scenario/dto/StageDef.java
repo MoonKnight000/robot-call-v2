@@ -18,6 +18,19 @@ import java.util.List;
  *                           tools per stage needs to set this (e.g. debt-collection
  *                           restricting recordPaymentPromise to the stages where it
  *                           makes sense, with {@code []} elsewhere)
+ * @param emotion            optional emotional tone/persona for this stage (e.g.
+ *                           {@code "cheerful"}, {@code "friendly"}, {@code "strict"},
+ *                           {@code "neutral"}, {@code "whisper"}). When null, emotion is
+ *                           inferred dynamically from the stage id/purpose and customer sentiment.
  */
-public record StageDef(String id, String purpose, List<String> allowedTransitions, List<String> allowedTools) {
+public record StageDef(
+        String id,
+        String purpose,
+        List<String> allowedTransitions,
+        List<String> allowedTools,
+        String emotion
+) {
+    public StageDef(String id, String purpose, List<String> allowedTransitions, List<String> allowedTools) {
+        this(id, purpose, allowedTransitions, allowedTools, null);
+    }
 }

@@ -10,6 +10,7 @@ import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
 import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
 import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 
 import java.time.Duration;
 import java.util.List;
@@ -49,14 +50,16 @@ public class SpeechOutput {
     private final TtsRouter ttsRouter;
     private final VoiceMetrics metrics;
     private final DialogExecutors executors;
+    private final VoiceEmotionResolver emotionResolver;
 
     public SpeechOutput(DialogProperties props, TtsProperties ttsProps, TtsRouter ttsRouter,
-                        VoiceMetrics metrics, DialogExecutors executors) {
+                        VoiceMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver) {
         this.props = props;
         this.ttsProps = ttsProps;
         this.ttsRouter = ttsRouter;
         this.metrics = metrics;
         this.executors = executors;
+        this.emotionResolver = emotionResolver;
     }
 
     /**
@@ -90,13 +93,14 @@ public class SpeechOutput {
             }
         }
         try {
+            EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
             // Only the turn's first sentence is still on the §1.3 turnaround clock — that
             // is the one place shaving a TTS network round trip actually moves the number
             // that matters (everything after it already overlaps LLM generation, §7.2).
             if (s.isFirstAudioPending()) {
-                return speakStreaming(s, text);
+                return speakStreaming(s, text, dynamicSettings);
             }
-            short[] pcm = ttsRouter.synthesize(text, s.language(), s.ttsVoice(), s.voiceSettings());
+            short[] pcm = ttsRouter.synthesize(text, s.language(), s.ttsVoice(), dynamicSettings);
             if (s.isCancelled()) {
                 return SpeechOutcome.SKIPPED; // barge-in landed while we were synthesizing
             }
@@ -121,7 +125,7 @@ public class SpeechOutput {
      * still arrives as one chunk (TtsProvider's default), so this path is never worse than
      * the blocking one — only potentially faster.
      */
-    private SpeechOutcome speakStreaming(DialogSession s, String text) {
+    private SpeechOutcome speakStreaming(DialogSession s, String text, EffectiveVoiceSettings dynamicSettings) {
         AtomicBoolean any = new AtomicBoolean(false);
         PcmChunkListener onChunk = pcm -> {
             if (s.isCancelled()) {
@@ -137,7 +141,7 @@ public class SpeechOutput {
             s.endpoint().enqueuePcm(pcm);
         };
         try {
-            ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), s.voiceSettings(), onChunk);
+            ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), dynamicSettings, onChunk);
         } catch (Exception e) {
             log.warn("TTS streaming failed during dialog [{}]: {}", s.channelId(), e.getMessage());
         }
@@ -161,8 +165,6 @@ public class SpeechOutput {
         Duration turnaround = s.takeTurnaround();
         if (turnaround != null) {
             metrics.recordTurnaround(turnaround);
-            s.recordTurnLatency(turnaround.toMillis());
-            log.debug("[{}] turnaround {} ms", s.channelId(), turnaround.toMillis());
         }
     }
 
@@ -212,7 +214,8 @@ public class SpeechOutput {
         try {
             List<String> options = DialogPhrases.thinking(s.language());
             String line = options.get(Math.floorMod(turn, options.size()));
-            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), s.voiceSettings());
+            EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
+            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), dynamicSettings);
             if (!fillerStillWanted(s)) {
                 return;
             }

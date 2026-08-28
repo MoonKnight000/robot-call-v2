@@ -3,13 +3,13 @@ voice-agent:
   # reasoning and speech, replacing the stt/tts/dialog chain below rather than sitting
   # beside it.
   realtime:
-    enabled: ${REALTIME_ENABLED:false}
+    enabled: ${REALTIME_ENABLED:true}
     provider: ${REALTIME_PROVIDER:gemini-live}
-    facts-in-prompt: ${REALTIME_FACTS_IN_PROMPT:false}
+    facts-in-prompt: ${REALTIME_FACTS_IN_PROMPT:true}
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
       url: ${REALTIME_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
-      model: ${GEMINI_LIVE_MODEL:gemini-3.1-flash-live-preview}
+      model: ${GEMINI_LIVE_MODEL:gemini-2.0-flash-exp}
       voice: ${GEMINI_LIVE_VOICE:Aoede}
       connect-timeout-seconds: ${REALTIME_GEMINI_CONNECT_TIMEOUT_SECONDS:15}
   stt:
@@ -50,8 +50,8 @@ voice-agent:
       sample-rate: 8000
       model: ${STT_YANDEX_MODEL:general}
       interim-results: ${STT_YANDEX_INTERIM:true}
-      eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:DEFAULT}
-      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:0}
+      eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:HIGH}
+      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:700}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
     aisha:
       api-key: ${STT_AISHA_API_KEY:}
@@ -104,9 +104,10 @@ voice-agent:
     sample-rate: 8000
     window-samples: 256
     threshold: ${VAD_THRESHOLD:0.5}
-    min-speech-ms: ${VAD_MIN_SPEECH_MS:350}
-    silence-reset-ms: ${VAD_SILENCE_RESET_MS:400}
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:200}
+    silence-reset-ms: ${VAD_SILENCE_RESET_MS:300}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}
-      min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:3500}
+      min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:2800}
+      silence-tolerance-ms: ${VAD_AMD_SILENCE_TOLERANCE_MS:600}

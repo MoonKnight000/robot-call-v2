@@ -11,19 +11,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import uz.murodjon.uysotvoice.scenario.dto.CloneScenarioRequest;
 import uz.murodjon.uysotvoice.scenario.dto.CreateScenarioRequest;
+import uz.murodjon.uysotvoice.scenario.dto.PersonaTestResult;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioFilter;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioRow;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioSimulationRequest;
+import uz.murodjon.uysotvoice.scenario.dto.ScenarioSimulationResponse;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioValidationResult;
 import uz.murodjon.uysotvoice.scenario.dto.UpdateScenarioRequest;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
 
+import java.util.List;
+
 /**
- * Scenario CRUD API (ROADMAP A.4, §10.7): create, list, edit (as a new version),
- * clone, and validate a scenario definition. Storage + validation only in this
- * pass — see {@link ScenarioDefinition} for what deliberately stays out of scope
- * (nothing here changes how a live call runs yet).
+ * Scenario CRUD & Simulation API (ROADMAP A.4, §10.7): create, list, edit, clone,
+ * validate, interactive text simulation, and multi-persona automated test suite.
  */
 @RequestMapping("/api")
 public interface ScenarioController {
@@ -45,4 +48,10 @@ public interface ScenarioController {
 
     @PostMapping("/scenarios/validate")
     ResponseEntity<ResponseData<ScenarioValidationResult>> validate(@RequestBody ScenarioDefinition definition);
+
+    @PostMapping("/scenarios/simulate")
+    ResponseEntity<ResponseData<ScenarioSimulationResponse>> simulate(@RequestBody ScenarioSimulationRequest r);
+
+    @PostMapping("/scenarios/{id}/test-personas")
+    ResponseEntity<ResponseData<List<PersonaTestResult>>> testPersonas(@PathVariable long id);
 }

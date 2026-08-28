@@ -27,6 +27,11 @@ public class CallAttemptRepository {
         return jpa.findCompanyIdById(id);
     }
 
+    /** Which target this call attempt belongs to. */
+    public Long findTargetIdById(long id) {
+        return jpa.findTargetIdById(id);
+    }
+
     /** The placeholder target seeded for manual/inbound test calls (phone = {@code "MANUAL"}/{@code "INBOUND"}). */
     public Optional<Long> findTargetIdByPhone(String phone) {
         return targets.findFirstByPhoneOrderById(phone).map(CampaignTargetEntity::getId);

@@ -101,11 +101,13 @@ services:
       TZ: ${TZ:-Asia/Tashkent}   # so Asterisk log timestamps match the app's
     volumes:
       - ./asterisk/etc/asterisk:/etc/asterisk
+      - ./recordings:/var/spool/asterisk/recording
     ports:
-      - "5060:5060/udp"           # SIP - trunk side  (transport-trunk)
-      - "5062:5062/udp"           # SIP - LAN side    (transport-lan, softphone)
-      - "8088:8088/tcp"           # ARI / HTTP (WebSocket)
-      - "10000-10200:10000-10200/udp"  # RTP media (shared by both transports)
+      - "5060:5060/udp" # SIP signaling (UDP)
+      - "5060:5060/tcp" # SIP signaling (TCP)
+      - "8088:8088"     # ARI HTTP / WebSocket
+      - "5038:5038"     # AMI
+      - "10000-10200:10000-10200/udp" # RTP media range
     restart: unless-stopped
     # For Linux hosts, prefer host networking instead of the port mappings above:
     # network_mode: host
@@ -189,38 +191,32 @@ services:
       TTS_PROVIDER: ${TTS_PROVIDER:-yandex}
       STT_YANDEX_API_KEY: ${STT_YANDEX_API_KEY:-}
       STT_YANDEX_FOLDER_ID: ${STT_YANDEX_FOLDER_ID:-}
-      STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-DEFAULT}
-      STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-0}
+      # End-of-utterance tuning for Yandex STT v3:
+      # HIGH sensitivity + 700ms max pause cuts ~1.5 seconds off the turn latency.
+      STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-HIGH}
+      STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-700}
       STT_VAD_GATING: ${STT_VAD_GATING:-false}
       STT_ENDPOINTING: ${STT_ENDPOINTING:-false}
-      # Aisha (STT_PROVIDER/TTS_PROVIDER=aisha). Passed through for the same reason as
-      # the Yandex keys: selecting the provider in .env is pointless if its credentials
-      # never reach the container.
+      # Preemptive LLM Speculation (starts generating while interim speech is arriving)
+      DIALOG_PREEMPTIVE: ${DIALOG_PREEMPTIVE:-true}
+      DIALOG_STREAMING: ${DIALOG_STREAMING:-true}
+      # Aisha (STT_PROVIDER/TTS_PROVIDER=aisha).
       STT_AISHA_API_KEY: ${STT_AISHA_API_KEY:-}
       TTS_AISHA_API_KEY: ${TTS_AISHA_API_KEY:-}
       TTS_AISHA_SPEAKER: ${TTS_AISHA_SPEAKER:-neutral}
       ARI_LOG_LEVEL: ${ARI_LOG_LEVEL:-ERROR}
-      # Barge-in + answering-machine detection (§7.2, §8.6). The model is baked into the
-      # image by the Dockerfile; this is the path it lands on. Blank it to turn VAD off.
+      # Barge-in + answering-machine detection (§7.2, §8.6).
       VAD_MODEL_PATH: ${VAD_MODEL_PATH:-/app/silero_vad.onnx}
-      # Tuning, passed through so barge-in can be adjusted from .env without a rebuild:
-      # threshold too low and line noise interrupts the bot, min-speech too low and a
-      # cough does. Raise VAD_AMD_MIN_SPEECH_MS if real people get cut off as voicemail.
       VAD_THRESHOLD: ${VAD_THRESHOLD:-0.5}
       VAD_MIN_SPEECH_MS: ${VAD_MIN_SPEECH_MS:-200}
       VAD_AMD_ENABLED: ${VAD_AMD_ENABLED:-true}
-      VAD_AMD_MIN_SPEECH_MS: ${VAD_AMD_MIN_SPEECH_MS:-3500}
+      VAD_AMD_MIN_SPEECH_MS: ${VAD_AMD_MIN_SPEECH_MS:-2800}
       TTS_YANDEX_API_KEY: ${TTS_YANDEX_API_KEY:-}
       TTS_YANDEX_FOLDER_ID: ${TTS_YANDEX_FOLDER_ID:-}
       TTS_YANDEX_VOICE: ${TTS_YANDEX_VOICE:-alena}
       TTS_YANDEX_VOICE_UZ: ${TTS_YANDEX_VOICE_UZ:-nigora}
-      # Pause between the channel being answered and the bot's first word. Passed
-      # explicitly so it can be tuned from .env without a rebuild: too short and the
-      # caller lifts the handset into the middle of "assalom".
-      DIALOG_GREETING_DELAY_MS: ${DIALOG_GREETING_DELAY_MS:-1200}
-      # Dialer/dialog defaults can be overridden here too, e.g.:
-      # DIALOG_LANGUAGE: ru-RU
-      # STT_DEFAULT_LANGUAGE: ru-RU
+      # Fast greeting delay
+      DIALOG_GREETING_DELAY_MS: ${DIALOG_GREETING_DELAY_MS:-800}
     ports:
       - "8080:8080"
     volumes:

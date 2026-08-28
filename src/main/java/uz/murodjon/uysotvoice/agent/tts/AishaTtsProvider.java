@@ -24,6 +24,7 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -150,7 +151,7 @@ public class AishaTtsProvider implements TtsProvider {
         request.put("request_id", requestId);
         request.put("text", text);
         request.put("language", languageTag(language));
-        request.put("speaker_id", speakerFor(language, voice));
+        request.put("speaker_id", speakerFor(language, voice, style));
         if (style != null && style.speed() != null) {
             request.put("speed", style.speed());
         }
@@ -161,25 +162,45 @@ public class AishaTtsProvider implements TtsProvider {
     private String languageTag(String language) {
         String tag = (language == null || language.isBlank()) ? props.defaultLanguage() : language;
         int dash = tag.indexOf('-');
-        return (dash > 0 ? tag.substring(0, dash) : tag).toLowerCase();
+        return (dash > 0 ? tag.substring(0, dash) : tag).toLowerCase(Locale.ROOT);
     }
 
     /**
-     * The mood this line is spoken with: the campaign's catalog voice if it named one,
+     * The mood this line is spoken with: dynamic role from style, then the campaign's catalog voice,
      * then the per-language override, then the configured default.
      */
-    private String speakerFor(String language, String voice) {
+    private String speakerFor(String language, String voice, EffectiveVoiceSettings style) {
+        if (style != null && style.role() != null && !style.role().isBlank()) {
+            return normalizeAishaSpeaker(style.role());
+        }
         if (voice != null && !voice.isBlank()) {
-            return voice;
+            return normalizeAishaSpeaker(voice);
         }
         Map<String, String> speakers = props.aisha().speakers();
         if (speakers != null && language != null) {
             String exact = speakers.get(language);
             if (exact != null && !exact.isBlank()) {
-                return exact;
+                return normalizeAishaSpeaker(exact);
             }
         }
-        return props.aisha().speaker();
+        return normalizeAishaSpeaker(props.aisha().speaker());
+    }
+
+    private static String normalizeAishaSpeaker(String speaker) {
+        if (speaker == null || speaker.isBlank()) {
+            return "neutral";
+        }
+        String lower = speaker.trim().toLowerCase(Locale.ROOT);
+        if (lower.contains("cheerful") || lower.contains("happy") || lower.contains("good") || lower.contains("friendly")) {
+            return "cheerful";
+        }
+        if (lower.contains("sad")) {
+            return "sad";
+        }
+        if (lower.contains("neutral") || lower.contains("gulnoza") || lower.contains("strict")) {
+            return "neutral";
+        }
+        return lower;
     }
 
     /** Parse the returned WAV and bring it down to the 8 kHz the RTP path plays. */
@@ -255,6 +276,18 @@ public class AishaTtsProvider implements TtsProvider {
         }
         pending.clear();
         order.clear();
+    }
+
+    @PreDestroy
+    public void close() {
+        WebSocket current = webSocket;
+        if (current != null) {
+            try {
+                current.sendClose(WebSocket.NORMAL_CLOSURE, "app shutdown").get(1, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.debug("Aisha socket close failed: {}", e.getMessage());
+            }
+        }
     }
 
     /**
@@ -338,25 +371,15 @@ public class AishaTtsProvider implements TtsProvider {
 
         @Override
         public CompletionStage<?> onClose(WebSocket socket, int statusCode, String reason) {
-            log.warn("Aisha TTS socket closed: {} {}", statusCode, reason);
-            webSocket = null;
-            abandonPending("Aisha TTS socket closed: " + statusCode);
+            log.info("Aisha TTS socket closed: {} ({})", statusCode, reason);
+            abandonPending("socket closed by server: " + reason);
             return null;
         }
 
         @Override
         public void onError(WebSocket socket, Throwable error) {
             log.warn("Aisha TTS socket error: {}", error.getMessage());
-            webSocket = null;
-            abandonPending("Aisha TTS socket error: " + error.getMessage());
-        }
-    }
-
-    @PreDestroy
-    public void shutdown() {
-        WebSocket current = webSocket;
-        if (current != null) {
-            current.sendClose(WebSocket.NORMAL_CLOSURE, "shutdown");
+            abandonPending("socket error: " + error.getMessage());
         }
     }
 }

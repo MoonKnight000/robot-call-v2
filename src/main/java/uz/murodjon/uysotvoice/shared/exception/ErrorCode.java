@@ -10,6 +10,7 @@ public enum ErrorCode {
 
     // not found
     CAMPAIGN_NOT_FOUND("Campaign %s not found"),
+    TARGET_NOT_FOUND("Target %s not found"),
     COMPANY_NOT_FOUND("Company %s not found"),
     COMPANY_CONFIG_NOT_FOUND("Company config %s not found"),
     CONTACT_NOT_FOUND("Contact %s not found"),

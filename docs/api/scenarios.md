@@ -2,8 +2,8 @@
 
 `uz.murodjon.uysotvoice.scenario` · rol: **ADMIN** (barcha endpoint)
 
-Ssenariy — bosqichlar (FSM), kerakli faktlar, tool'lar, natija (outcome) shakli
-va rol-prompt'ni bitta JSON hujjatda saqlaydigan CRUD. **`DialogEngine` har bir
+Ssenariy — bosqichlar (FSM), kerakli faktlar, tool'lar, natija (outcome) shakli,
+rol-prompt va hissiyot (emotion) sozlamalarini bitta JSON hujjatda saqlaydigan CRUD. **`DialogEngine` har bir
 qo'ng'iroqni aynan shu ta'rifga qarab olib boradi** (ROADMAP A.3): kampaniya
 yaratilganda `scenarioId` tanlanadi ([campaigns.md](campaigns.md)ga qarang) va
 har bir qo'ng'iroq shu ssenariyning bosqichlari/tool'lari/promptidan foydalanadi.
@@ -21,9 +21,9 @@ validatsiya so'rovlarida ham, o'qishda ham):
 ```json
 {
   "stages": [
-    { "id": "GREETING", "purpose": "Salomlashish va shaxsni tasdiqlash", "allowedTransitions": ["DEBT_NOTICE"], "allowedTools": [] },
-    { "id": "DEBT_NOTICE", "purpose": "Qarz haqida xabar berish", "allowedTransitions": ["CLOSING"], "allowedTools": ["recordPaymentPromise"] },
-    { "id": "CLOSING", "purpose": "Yakunlash", "allowedTransitions": [] }
+    { "id": "GREETING", "purpose": "Salomlashish va shaxsni tasdiqlash", "allowedTransitions": ["DEBT_NOTICE"], "allowedTools": [], "emotion": "cheerful" },
+    { "id": "DEBT_NOTICE", "purpose": "Qarz haqida xabar berish", "allowedTransitions": ["CLOSING"], "allowedTools": ["recordPaymentPromise"], "emotion": "strict" },
+    { "id": "CLOSING", "purpose": "Yakunlash", "allowedTransitions": [], "allowedTools": [], "emotion": "cheerful" }
   ],
   "factSchema": [
     { "name": "clientName", "type": "string", "required": true },
@@ -55,7 +55,8 @@ validatsiya so'rovlarida ham, o'qishda ham):
 | `stages[].id` | string | barqaror holat id (masalan `GREETING`) |
 | `stages[].purpose` | string | promptga qo'shiladigan maqsad tavsifi |
 | `stages[].allowedTransitions` | string[] | `transitionTo`ga ruxsat berilgan keyingi holat id'lari; bo'sh/`null` — bu holat terminal (qo'ng'iroq shu yerda tugashi mumkin) |
-| `stages[].allowedTools` | string[] \| `null` | shu bosqichda, umumiy tool'lardan tashqari, qaysi `tools[]` chaqirilishi mumkin. `null` (odatiy holat) — ssenariyning **barcha** tool'lari shu bosqichda mavjud; aniq ro'yxat (bo'sh ro'yxat ham) — faqat shular, boshqa hech narsa. Faqat bosqichlar kesimida haqiqatan farqlanadigan tool'lari bor ssenariylarga kerak |
+| `stages[].allowedTools` | string[] \| `null` | shu bosqichda, umumiy tool'lardan tashqari, qaysi `tools[]` chaqirilishi mumkin. `null` (odatiy holat) — ssenariyning **barcha** tool'lari shu bosqichda mavjud; aniq ro'yxat (bo'sh ro'yxat ham) — faqat shular, boshqa hech narsa |
+| `stages[].emotion` | string \| `null` | shu bosqichdagi ovozning hissiy ohangi (`cheerful`, `strict`, `friendly`, `whisper`, `neutral`, `sad`) |
 | `factSchema[].name` | string | fakt kaliti, `campaign_target.context_data` bilan mos keladi |
 | `factSchema[].type` | `"string"` \| `"number"` \| `"date"` | — |
 | `factSchema[].required` | bool | shu fakt bo'lmasa qo'ng'iroq boshlanmaydi |
@@ -118,54 +119,55 @@ bitta umumiy (builtin) ssenariy har bir tenantni o'z nomi bilan tanishtira oladi
 
 ```json
 {
-  "scenarioKey": "my-debt-flow",
-  "name": "Mening qarz oqimim",
-  "description": "...",
-  "definition": { /* ScenarioDefinition, yuqoriga qarang */ }
+  "name": "Qarz undirish — mayin uslub",
+  "description": "Yumshoqroq ohangdagi qarz eslatmasi",
+  "definition": { /* ScenarioDefinition */ }
 }
 ```
 
-`scenarioKey` bo'sh qoldirilsa `name`dan avtomatik generatsiya qilinadi.
-Saqlashdan oldin avtomatik validatsiya qilinadi (deadlock, tool/outcome/fakt
-nom to'qnashuvi, `disclosureText` mazmuni) — muvaffaqiyatsiz bo'lsa `400`.
+Majburiy: `name` (`@NotBlank`), `definition` (`@NotNull`).
+`description` ixtiyoriy.
 
-**Response** — yaratilgan `ScenarioRow` (pastga qarang).
+Validatsiya xatosi (masalan ruxsat etilmagan tool nomi, `reply` nomi bilan
+parametr, bo'sh bosqichlar) — `400 Bad Request`, xato tavsiflari ro'yxati
+bilan.
+
+**Response** (`ScenarioRow`):
+
+```json
+{
+  "data": {
+    "id": 42,
+    "scenarioKey": "qarz-undirish-mayin-uslub",
+    "name": "Qarz undirish — mayin uslub",
+    "description": "...",
+    "version": 1,
+    "active": true,
+    "builtin": false,
+    "createdAt": "2026-07-01T10:00:00Z",
+    "updatedAt": "2026-07-01T10:00:00Z",
+    "createdBy": 7,
+    "createdByName": "Aziz Rahimov",
+    "definition": { /* ScenarioDefinition */ }
+  },
+  "message": null, "messageCode": null, "accept": true, "errors": null
+}
+```
 
 ---
 
 ## `POST /api/scenarios/list` — ro'yxat
 
-Body — `ScenarioFilter`:
+Body — `ScenarioFilter` (`page`/`size`/`orders`, [README §3](README.md#3-royxatfiltr-endpointlari-pagination)ga qarang).
+Saralanadigan ustunlar: `ID`, `NAME`, `UPDATED_AT`. Standart: `ID ASC`.
 
-```json
-{ "page": 0, "size": 20, "orders": { "NAME": "ASC" }, "builtinOnly": null }
-```
+Filter parametri `activeOnly: true` berilsa — faqat joriy (oxirgi) versiyalar
+qaytariladi (`active = true`).
 
-| Maydon | Izoh |
-|---|---|
-| `builtinOnly` | `true` — faqat 5 ta tayyor shablon ("Tayyor shablonlar" tab); `false` — faqat kompaniyaning o'z ssenariylari ("Mening ssenariylarim"); `null` — ikkalasi ham |
+**Response** — `PageableData<ScenarioRow>`: har bir element to'liq `definition`
+bilan qaytadi.
 
-Saralanadigan ustunlar: `ID`, `SCENARIO_KEY`, `NAME`, `VERSION`,
-`CREATED_AT`. Standart: `ID ASC`. Ro'yxat har doim har bir `scenarioKey`ning
-faqat **faol** versiyasini qaytaradi.
-
-**Javob qatori** (`ScenarioRow`, `definition`siz emas — to'liq keladi):
-
-```json
-{
-  "id": 7,
-  "scenarioKey": "debt-collection",
-  "version": 2,
-  "name": "Qarz undirish (standart)",
-  "description": "...",
-  "builtin": true,
-  "active": true,
-  "definition": { /* ScenarioDefinition */ },
-  "createdAt": "2026-01-10T08:00:00Z",
-  "createdBy": 7,
-  "createdByName": "Aziz Karimov"
-}
-```
+Har bir qatordagi muhim bayroqlar:
 
 - `builtin: true` — 8 ta seed shablondan biri: `debt-collection`,
   `lead-qualification`, `notification`, `survey`, `appointment-reminder`
@@ -239,3 +241,64 @@ hech narsani saqlamaydi, faqat `valid`/`errors` qaytaradi. `POST /api/scenarios`
 va `PUT /api/scenarios/{id}` ham xuddi shu tekshiruvni avtomatik qiladi, shuning
 uchun tahrirlagichda "Saqlash"dan oldin foydalanuvchiga tezkor fikr-mulohaza
 (instant feedback) berish uchun ishlatiladi.
+
+---
+
+## `POST /api/scenarios/simulate` — qadamma-qadam dialog simulyatori
+
+Asterisk yoki SIP trunk sarflamasdan, ssenariy bo'yicha AI botning qanday javob berishi va qaysi holatga o'tishini veb/Swagger orqali interaktiv testlash.
+Batafsil ma'lumot va AI benchmark uchun [scenario-testing.md](scenario-testing.md)ga qarang.
+
+**Request body** (`ScenarioSimulationRequest`):
+
+```json
+{
+  "scenarioId": 7,
+  "definition": null,
+  "language": "uz-UZ",
+  "currentState": "GREETING",
+  "clientMessage": "Assalomu alaykum, ha eshitaman",
+  "contextFacts": {
+    "clientName": "Aziz Karimov",
+    "debtAmount": 1500000,
+    "dueDate": "2026-09-01"
+  },
+  "history": [
+    { "role": "assistant", "content": "Assalomu alaykum, Aziz aka sizmisiz?" }
+  ]
+}
+```
+
+| Maydon | Turi | Majburiymi | Izoh |
+|---|---|---|---|
+| `scenarioId` | long | ❌ | Baza ssenariy id'si (berilmasa `definition` ishlatiladi) |
+| `definition` | `ScenarioDefinition` | ❌ | Saqlanmagan qorama ssenariy |
+| `language` | string | ❌ | Suhbat tili (`uz-UZ`, `ru-RU`) |
+| `currentState` | string | ❌ | Joriy bosqich (`GREETING`, `DEBT_NOTICE` va h.k.) |
+| `clientMessage` | string | ✅ (`@NotBlank`) | Mijoz yozgan yoki aytgan sinov gapi |
+| `contextFacts` | object | ❌ | Qo'ng'iroq parametrlari va faktlari |
+| `history` | array | ❌ | Oldingi replikalar tarixi |
+
+**Response** (`ScenarioSimulationResponse`):
+
+```json
+{
+  "data": {
+    "botReply": "Aziz aka, sizning 1 500 000 so'm qarzdorligingiz mavjud, qachon to'lay olasiz?",
+    "nextState": "DEBT_NOTICE",
+    "extractedOutcome": { "identityConfirmed": true },
+    "calledTools": ["transitionTo"],
+    "completed": false
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
+```
+
+---
+
+## `POST /api/scenarios/{id}/test-personas` — AI vs AI ko'p personali avtomatik test
+
+Batafsil foydalanish va natijalar strukturasi uchun [scenario-testing.md](scenario-testing.md)ga qarang.

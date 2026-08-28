@@ -14,8 +14,11 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import uz.murodjon.uysotvoice.campaign.enums.AmbientSound;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.campaign.enums.RecurrenceType;
+import uz.murodjon.uysotvoice.campaign.enums.VoicemailAction;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -103,6 +106,45 @@ public class CampaignEntity {
 
     @Column(name = "disclosure_enabled", nullable = false)
     private boolean disclosureEnabled;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recurrence_type", nullable = false)
+    private RecurrenceType recurrenceType = RecurrenceType.ONCE;
+
+    @Column(name = "recurring_day_of_month")
+    private Integer recurringDayOfMonth;
+
+    @Column(name = "cron_expression")
+    private String cronExpression;
+
+    @Column(name = "auto_reset_targets", nullable = false)
+    private boolean autoResetTargets;
+
+    @Column(name = "last_run_at")
+    private Instant lastRunAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ambient_sound", nullable = false)
+    private AmbientSound ambientSound = AmbientSound.OFF;
+
+    @Column(name = "mid_call_sms_enabled", nullable = false)
+    private boolean midCallSmsEnabled;
+
+    @Column(name = "mid_call_sms_template")
+    private String midCallSmsTemplate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "voicemail_action", nullable = false)
+    private VoicemailAction voicemailAction = VoicemailAction.HANGUP;
+
+    @Column(name = "voicemail_message")
+    private String voicemailMessage;
+
+    @Column(name = "dtmf_input_enabled", nullable = false)
+    private boolean dtmfInputEnabled;
+
+    @Column(name = "emotion_adaptive_voice", nullable = false)
+    private boolean emotionAdaptiveVoice = true;
 
     public Long getId() {
         return id;
@@ -218,7 +260,7 @@ public class CampaignEntity {
 
     public void setDialDays(Set<DayOfWeek> dialDays) {
         // EnumSet.copyOf throws on an empty non-EnumSet collection (it can't infer the
-        // enum type from zero elements), so the empty case needs its own branch.
+        // enum type from zero elements), so the empty case needs its own branch).
         this.dialDays = (dialDays == null || dialDays.isEmpty())
                 ? EnumSet.noneOf(DayOfWeek.class)
                 : EnumSet.copyOf(dialDays);
@@ -262,5 +304,101 @@ public class CampaignEntity {
 
     public void setDisclosureEnabled(boolean disclosureEnabled) {
         this.disclosureEnabled = disclosureEnabled;
+    }
+
+    public RecurrenceType getRecurrenceType() {
+        return recurrenceType;
+    }
+
+    public void setRecurrenceType(RecurrenceType recurrenceType) {
+        this.recurrenceType = recurrenceType != null ? recurrenceType : RecurrenceType.ONCE;
+    }
+
+    public Integer getRecurringDayOfMonth() {
+        return recurringDayOfMonth;
+    }
+
+    public void setRecurringDayOfMonth(Integer recurringDayOfMonth) {
+        this.recurringDayOfMonth = recurringDayOfMonth;
+    }
+
+    public String getCronExpression() {
+        return cronExpression;
+    }
+
+    public void setCronExpression(String cronExpression) {
+        this.cronExpression = cronExpression;
+    }
+
+    public boolean isAutoResetTargets() {
+        return autoResetTargets;
+    }
+
+    public void setAutoResetTargets(boolean autoResetTargets) {
+        this.autoResetTargets = autoResetTargets;
+    }
+
+    public Instant getLastRunAt() {
+        return lastRunAt;
+    }
+
+    public void setLastRunAt(Instant lastRunAt) {
+        this.lastRunAt = lastRunAt;
+    }
+
+    public AmbientSound getAmbientSound() {
+        return ambientSound;
+    }
+
+    public void setAmbientSound(AmbientSound ambientSound) {
+        this.ambientSound = ambientSound != null ? ambientSound : AmbientSound.OFF;
+    }
+
+    public boolean isMidCallSmsEnabled() {
+        return midCallSmsEnabled;
+    }
+
+    public void setMidCallSmsEnabled(boolean midCallSmsEnabled) {
+        this.midCallSmsEnabled = midCallSmsEnabled;
+    }
+
+    public String getMidCallSmsTemplate() {
+        return midCallSmsTemplate;
+    }
+
+    public void setMidCallSmsTemplate(String midCallSmsTemplate) {
+        this.midCallSmsTemplate = midCallSmsTemplate;
+    }
+
+    public VoicemailAction getVoicemailAction() {
+        return voicemailAction;
+    }
+
+    public void setVoicemailAction(VoicemailAction voicemailAction) {
+        this.voicemailAction = voicemailAction != null ? voicemailAction : VoicemailAction.HANGUP;
+    }
+
+    public String getVoicemailMessage() {
+        return voicemailMessage;
+    }
+
+    public void setVoicemailMessage(String voicemailMessage) {
+        this.voicemailMessage = voicemailMessage;
+    }
+
+    public boolean isDtmfInputEnabled() {
+        return dtmfInputEnabled;
+    }
+
+    public void setDtmfInputEnabled(boolean dtmfInputEnabled) {
+        this.dtmfInputEnabled = dtmfInputEnabled;
+    }
+
+    public boolean isEmotionAdaptiveVoice() {
+        return emotionAdaptiveVoice;
+    }
+
+    public void setEmotionAdaptiveVoice(boolean emotionAdaptiveVoice) {
+        this.emotionAdaptiveVoice = emotionAdaptiveVoice;
     }
 }

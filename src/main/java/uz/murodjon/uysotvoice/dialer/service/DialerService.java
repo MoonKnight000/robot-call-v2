@@ -108,7 +108,9 @@ public class DialerService {
                 rabbit.convertAndSend(RabbitConfig.CALL_TASK_QUEUE,
                         new CallTask(campaign.id(), t.id(), t.clientId(), t.phone(), language,
                                 campaign.ttsVoice(), t.contextData(), campaign.scenarioId(), campaign.companyId(),
-                                campaign.disclosureEnabled()));
+                                campaign.disclosureEnabled(), campaign.ambientSound(), campaign.midCallSmsEnabled(),
+                                campaign.midCallSmsTemplate(), campaign.voicemailAction(), campaign.voicemailMessage(),
+                                campaign.dtmfInputEnabled(), campaign.emotionAdaptiveVoice()));
                 log.info("Dispatched target {} ({}) of campaign {}", t.id(), t.phone(), campaign.id());
             }
         }

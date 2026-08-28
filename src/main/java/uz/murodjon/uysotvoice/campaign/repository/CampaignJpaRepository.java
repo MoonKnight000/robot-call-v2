@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.uysotvoice.campaign.entity.CampaignEntity;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.RecurrenceType;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,6 +35,9 @@ public interface CampaignJpaRepository extends JpaRepository<CampaignEntity, Lon
     /** Every active campaign, across every company — deliberately unscoped, see {@link CampaignRepository#findActive}. */
     List<CampaignEntity> findByStatusOrderById(CampaignStatus status);
 
+    /** Recurring campaigns across all companies for scheduler execution. */
+    List<CampaignEntity> findByRecurrenceTypeNotAndStatusNot(RecurrenceType recurrenceType, CampaignStatus status);
+
     /** Command palette (UI-DESIGN §11.9) — top matches by name, most recent first. */
     @Query("SELECT c FROM CampaignEntity c WHERE c.companyId = :companyId AND lower(c.name) LIKE :pattern "
             + "ORDER BY c.id DESC")
@@ -42,4 +47,8 @@ public interface CampaignJpaRepository extends JpaRepository<CampaignEntity, Lon
     @Modifying @Transactional
     @Query("UPDATE CampaignEntity c SET c.status = :status WHERE c.id = :id AND c.companyId = :companyId")
     void updateStatus(@Param("id") long id, @Param("status") CampaignStatus status, @Param("companyId") long companyId);
+
+    @Modifying @Transactional
+    @Query("UPDATE CampaignEntity c SET c.lastRunAt = :lastRunAt, c.status = :status WHERE c.id = :id")
+    void recordRecurrenceRun(@Param("id") long id, @Param("lastRunAt") Instant lastRunAt, @Param("status") CampaignStatus status);
 }

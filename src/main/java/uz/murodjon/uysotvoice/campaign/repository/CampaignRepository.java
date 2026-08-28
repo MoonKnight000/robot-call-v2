@@ -7,6 +7,7 @@ import uz.murodjon.uysotvoice.campaign.dto.CampaignFilter;
 import uz.murodjon.uysotvoice.campaign.dto.Campaign;
 import uz.murodjon.uysotvoice.campaign.entity.CampaignEntity;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.RecurrenceType;
 import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 import uz.murodjon.uysotvoice.user.service.CurrentUser;
 
@@ -82,8 +83,21 @@ public class CampaignRepository {
         return jpa.findByStatusOrderById(CampaignStatus.ACTIVE).stream().map(CampaignRepository::toRow).toList();
     }
 
+    /**
+     * Recurring campaigns across every company (excluding ARCHIVED) for scheduler execution.
+     */
+    public List<Campaign> findRecurring() {
+        return jpa.findByRecurrenceTypeNotAndStatusNot(RecurrenceType.ONCE, CampaignStatus.ARCHIVED).stream()
+                .map(CampaignRepository::toRow)
+                .toList();
+    }
+
     public void updateStatus(long id, CampaignStatus status) {
         jpa.updateStatus(id, status, company.id());
+    }
+
+    public void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status) {
+        jpa.recordRecurrenceRun(id, lastRunAt, status);
     }
 
     /**
@@ -112,6 +126,17 @@ public class CampaignRepository {
         entity.setTtsVoice(row.ttsVoice());
         entity.setDailyCallCap(row.dailyCallCap());
         entity.setDisclosureEnabled(row.disclosureEnabled());
+        entity.setRecurrenceType(row.recurrenceType());
+        entity.setRecurringDayOfMonth(row.recurringDayOfMonth());
+        entity.setCronExpression(row.cronExpression());
+        entity.setAutoResetTargets(row.autoResetTargets());
+        entity.setAmbientSound(row.ambientSound());
+        entity.setMidCallSmsEnabled(row.midCallSmsEnabled());
+        entity.setMidCallSmsTemplate(row.midCallSmsTemplate());
+        entity.setVoicemailAction(row.voicemailAction());
+        entity.setVoicemailMessage(row.voicemailMessage());
+        entity.setDtmfInputEnabled(row.dtmfInputEnabled());
+        entity.setEmotionAdaptiveVoice(row.emotionAdaptiveVoice());
     }
 
     private static Campaign toRow(CampaignEntity e) {
@@ -133,6 +158,18 @@ public class CampaignRepository {
                 e.getScenarioId(),
                 e.getCompanyId(),
                 e.isDisclosureEnabled(),
-                e.getCreatedBy());
+                e.getCreatedBy(),
+                e.getRecurrenceType(),
+                e.getRecurringDayOfMonth(),
+                e.getCronExpression(),
+                e.isAutoResetTargets(),
+                e.getLastRunAt(),
+                e.getAmbientSound(),
+                e.isMidCallSmsEnabled(),
+                e.getMidCallSmsTemplate(),
+                e.getVoicemailAction(),
+                e.getVoicemailMessage(),
+                e.isDtmfInputEnabled(),
+                e.isEmotionAdaptiveVoice());
     }
 }

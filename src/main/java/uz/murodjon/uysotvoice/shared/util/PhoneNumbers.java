@@ -3,61 +3,168 @@ package uz.murodjon.uysotvoice.shared.util;
 import uz.murodjon.uysotvoice.shared.exception.ErrorCode;
 import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Validation and normalization for dialled numbers.
+ * Validation and normalization for dialed and stored telephone numbers.
  *
- * <p>A number ends up concatenated into an Asterisk dial string
- * ({@code PJSIP/<number>@<endpoint>}), so an unchecked value is not merely invalid —
- * an embedded {@code @} silently redirects the call to another endpoint, and other
- * separators can alter the technology. Numbers reach us from the campaign API and
- * from {@code campaign_target.phone}, neither of which is trusted input, so every
- * dial path validates here.
+ * <p>Ensures all phone numbers across DB, CRM, campaign targets, contacts, and Asterisk dial strings
+ * are parsed and normalized consistently to standard E.164 (e.g. {@code +998901234567}).
  *
- * <p>Short numbers (3–4 digits) stay legal on purpose: they are internal extensions
- * used for softphone testing (see {@code voice-agent.asterisk.local-number-pattern}).
+ * <p>Short internal extensions (3–4 digits) stay legal without alteration on purpose:
+ * they are internal extensions used for softphone testing
+ * (see {@code voice-agent.asterisk.local-number-pattern}).
  */
 public final class PhoneNumbers {
 
-    /** E.164 allows at most 15 digits; 3 is the shortest internal extension we dial. */
-    private static final Pattern VALID = Pattern.compile("^\\+?\\d{3,15}$");
+    public static final String DEFAULT_REGION = "UZ";
 
-    /** Formatting characters humans type that carry no meaning for dialling. */
-    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\-.]");
+    /** Internal extensions (3–4 digits) used for test softphones. */
+    private static final Pattern INTERNAL_EXTENSION = Pattern.compile("^\\d{3,4}$");
+
+    /** Characters that are never part of a phone number and indicate injection or garbage. */
+    private static final Pattern FORBIDDEN_CHARS = Pattern.compile("[@&#/?!a-zA-Z]");
+
+    /** Standard Uzbek 9-digit local subscriber number. */
+    private static final Pattern UZ_LOCAL_9_DIGITS = Pattern.compile("^[389]\\d{8}$");
+
+    /** Standard E.164 pattern (10 to 15 digits). */
+    private static final Pattern E164_PATTERN = Pattern.compile("^\\+?[1-9]\\d{8,14}$");
 
     private PhoneNumbers() {
     }
 
     /**
-     * Strip formatting characters, keeping a leading {@code +}. Does not validate —
-     * pass the result to {@link #isValid} or {@link #require}.
+     * Normalizes a raw phone number input into canonical E.164 format (e.g. {@code +998901234567}).
+     * Short internal extensions (e.g. {@code 600}, {@code 6001}) are preserved as-is.
      *
-     * @return the cleaned number, or {@code null} if {@code raw} was null
+     * @param raw the raw input string
+     * @return the normalized phone number, or null if {@code raw} is null or blank
      */
     public static String normalize(String raw) {
         if (raw == null) {
             return null;
         }
-        return SEPARATORS.matcher(raw.trim()).replaceAll("");
-    }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (INTERNAL_EXTENSION.matcher(trimmed).matches()) {
+            return trimmed;
+        }
+        if (FORBIDDEN_CHARS.matcher(trimmed).find()) {
+            return null;
+        }
 
-    /** Whether {@code number} is dialable as-is (already normalized). */
-    public static boolean isValid(String number) {
-        return number != null && VALID.matcher(number).matches();
+        // Clean spaces, hyphens, brackets
+        String digitsOnly = trimmed.replaceAll("[^0-9+]", "");
+        if (digitsOnly.isEmpty()) {
+            return null;
+        }
+
+        if (digitsOnly.startsWith("+")) {
+            String digits = digitsOnly.substring(1);
+            if (digits.length() >= 9 && digits.length() <= 15) {
+                return "+" + digits;
+            }
+            return null;
+        }
+
+        // Local UZ 9 digits (e.g. 901234567 -> +998901234567)
+        if (UZ_LOCAL_9_DIGITS.matcher(digitsOnly).matches()) {
+            return "+998" + digitsOnly;
+        }
+
+        // UZ with 8 prefix (e.g. 8901234567 -> +998901234567)
+        if (digitsOnly.length() == 10 && digitsOnly.startsWith("8")) {
+            String sub = digitsOnly.substring(1);
+            if (UZ_LOCAL_9_DIGITS.matcher(sub).matches()) {
+                return "+998" + sub;
+            }
+        }
+
+        // UZ full 12 digits (998901234567 -> +998901234567)
+        if (digitsOnly.length() == 12 && digitsOnly.startsWith("998")) {
+            return "+" + digitsOnly;
+        }
+
+        // International without plus
+        if (digitsOnly.length() >= 10 && digitsOnly.length() <= 15) {
+            return "+" + digitsOnly;
+        }
+
+        return null;
     }
 
     /**
-     * Normalize and validate in one step.
+     * Checks if the given raw phone number is valid.
+     */
+    public static boolean isValid(String raw) {
+        return normalize(raw) != null;
+    }
+
+    /**
+     * Normalizes and validates the phone number in one step.
      *
-     * @return the normalized number, ready to concatenate into a dial string
-     * @throws IllegalArgumentException if it is not a dialable number (mapped to
-     *         HTTP 400 by {@code ApiExceptionHandler})
+     * @param raw raw phone number string
+     * @return canonical E.164 format string or extension digits
+     * @throws ValidationException if the number is invalid or cannot be normalized
      */
     public static String require(String raw) {
         String normalized = normalize(raw);
-        if (!isValid(normalized)) {
+        if (normalized == null) {
             throw new ValidationException(ErrorCode.PHONE_INVALID, raw);
+        }
+        return normalized;
+    }
+
+    /**
+     * Formats a phone number for display in international format (e.g. {@code +998 90 123 45 67}).
+     */
+    public static String formatInternational(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (INTERNAL_EXTENSION.matcher(trimmed).matches()) {
+            return trimmed;
+        }
+        String normalized = normalize(trimmed);
+        if (normalized == null) {
+            return trimmed;
+        }
+        if (normalized.startsWith("+998") && normalized.length() == 13) {
+            return String.format("+998 %s %s %s %s",
+                    normalized.substring(4, 6),
+                    normalized.substring(6, 9),
+                    normalized.substring(9, 11),
+                    normalized.substring(11, 13));
+        }
+        return normalized;
+    }
+
+    /**
+     * Formats a phone number for display in national format (e.g. {@code (90) 123 45 67}).
+     */
+    public static String formatNational(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (INTERNAL_EXTENSION.matcher(trimmed).matches()) {
+            return trimmed;
+        }
+        String normalized = normalize(trimmed);
+        if (normalized == null) {
+            return trimmed;
+        }
+        if (normalized.startsWith("+998") && normalized.length() == 13) {
+            return String.format("(%s) %s-%s-%s",
+                    normalized.substring(4, 6),
+                    normalized.substring(6, 9),
+                    normalized.substring(9, 11),
+                    normalized.substring(11, 13));
         }
         return normalized;
     }

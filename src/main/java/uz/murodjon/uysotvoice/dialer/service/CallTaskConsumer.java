@@ -64,7 +64,10 @@ public class CallTaskConsumer {
             String channelId = ariService.originate(task.phone(), task.companyId());
             registry.register(channelId, new OutboundCall(
                     task.campaignId(), task.targetId(), task.clientId(), task.phone(),
-                    language, task.ttsVoice(), context, task.scenarioId(), task.disclosureEnabled()));
+                    language, task.ttsVoice(), context, task.scenarioId(), task.disclosureEnabled(),
+                    task.ambientSound(), task.midCallSmsEnabled(), task.midCallSmsTemplate(),
+                    task.voicemailAction(), task.voicemailMessage(), task.dtmfInputEnabled(),
+                    task.emotionAdaptiveVoice()));
             audit.record("CALL_ORIGINATE", "call", channelId,
                     "target " + task.targetId() + " -> " + task.phone() + " (" + language + ")");
             log.info("Originated target {} -> channel {} (lang={})", task.targetId(), channelId, language);

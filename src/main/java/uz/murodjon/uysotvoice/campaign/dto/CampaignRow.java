@@ -2,11 +2,15 @@ package uz.murodjon.uysotvoice.campaign.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 
+import uz.murodjon.uysotvoice.campaign.enums.AmbientSound;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
+import uz.murodjon.uysotvoice.campaign.enums.RecurrenceType;
+import uz.murodjon.uysotvoice.campaign.enums.VoicemailAction;
 import uz.murodjon.uysotvoice.shared.util.DateTimeProperties;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.Set;
 
@@ -41,7 +45,19 @@ public record CampaignRow(
         long companyId,
         boolean disclosureEnabled,
         Long createdBy,
-        String createdByName
+        String createdByName,
+        RecurrenceType recurrenceType,
+        Integer recurringDayOfMonth,
+        String cronExpression,
+        boolean autoResetTargets,
+        Instant lastRunAt,
+        AmbientSound ambientSound,
+        boolean midCallSmsEnabled,
+        String midCallSmsTemplate,
+        VoicemailAction voicemailAction,
+        String voicemailMessage,
+        boolean dtmfInputEnabled,
+        boolean emotionAdaptiveVoice
 ) {
 
     public static CampaignRow of(Campaign c, String scenarioName, String createdByName) {
@@ -50,6 +66,15 @@ public record CampaignRow(
                 c.dialWindowStart(), c.dialWindowEnd(), c.dialDays(), c.maxAttempts(),
                 c.retryIntervalMinutes(), c.maxConcurrentCalls(), c.ttsVoice(), c.dailyCallCap(),
                 c.scenarioId(), scenarioName, c.companyId(), c.disclosureEnabled(),
-                c.createdBy(), createdByName);
+                c.createdBy(), createdByName,
+                c.recurrenceType() != null ? c.recurrenceType() : RecurrenceType.ONCE,
+                c.recurringDayOfMonth(), c.cronExpression(), c.autoResetTargets(), c.lastRunAt(),
+                c.ambientSound() != null ? c.ambientSound() : AmbientSound.OFF,
+                c.midCallSmsEnabled(),
+                c.midCallSmsTemplate(),
+                c.voicemailAction() != null ? c.voicemailAction() : VoicemailAction.HANGUP,
+                c.voicemailMessage(),
+                c.dtmfInputEnabled(),
+                c.emotionAdaptiveVoice());
     }
 }

@@ -10,12 +10,16 @@ import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.agent.summary.SummaryService;
 import uz.murodjon.uysotvoice.agent.vad.VadProperties;
+import uz.murodjon.uysotvoice.campaign.service.CampaignService;
 import uz.murodjon.uysotvoice.crm.service.CrmClient;
 import uz.murodjon.uysotvoice.engine.domain.EffectiveEngineConfig;
 import uz.murodjon.uysotvoice.engine.service.EngineConfigService;
+import uz.murodjon.uysotvoice.notification.enums.NotificationType;
+import uz.murodjon.uysotvoice.notification.service.NotificationService;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.shared.dialog.Sentiment;
 import uz.murodjon.uysotvoice.storage.dto.StoredFile;
 import uz.murodjon.uysotvoice.storage.service.AudioStorageService;
 import uz.murodjon.uysotvoice.voice.dto.TtsVoice;
@@ -24,6 +28,9 @@ import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * Runs the post-call pipeline once a call ends (PROJECT.md §4.3, Stage 9): upload the
@@ -42,6 +49,8 @@ public class CallFinalizer {
     private final AudioStorageService storage;
     private final CrmClient crmClient;
     private final ScenarioService scenarioService;
+    private final CampaignService campaignService;
+    private final NotificationService notificationService;
     private final VoiceMetrics metrics;
     private final EngineConfigService engineConfigService;
     private final TtsVoiceService voices;
@@ -50,6 +59,7 @@ public class CallFinalizer {
 
     public CallFinalizer(CallRecordService records, SummaryService summaryService,
                          AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
+                         CampaignService campaignService, NotificationService notificationService,
                          VoiceMetrics metrics, EngineConfigService engineConfigService, TtsVoiceService voices,
                          VadProperties vadProps,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
@@ -58,6 +68,8 @@ public class CallFinalizer {
         this.storage = storage;
         this.crmClient = crmClient;
         this.scenarioService = scenarioService;
+        this.campaignService = campaignService;
+        this.notificationService = notificationService;
         this.metrics = metrics;
         this.engineConfigService = engineConfigService;
         this.voices = voices;
@@ -79,14 +91,7 @@ public class CallFinalizer {
 
             long companyId = records.companyIdOf(callAttemptId);
             StoredFile stored = storage.upload(wav, companyId, wav.getFileName().toString());
-            // With storage off (or the upload failing), the recording just stays on local
-            // disk with no stored_file row — retrievable by an operator with shell access,
-            // but not through GET /api/files/{id}. Accepted tradeoff of running with
-            // storage off; a recording is evidence in a dispute (§11.3), so we never
-            // discard the only copy just because it isn't catalogued.
             records.finishAttempt(callAttemptId, disposition, stored != null ? stored.id() : null, durationSec);
-            // Only once the upload is confirmed: deleting on a failed upload would
-            // destroy the only copy of a recording that may be needed as evidence (§11.3).
             if (stored != null) {
                 storage.deleteLocalCopy(wav);
             }
@@ -97,6 +102,26 @@ public class CallFinalizer {
             if (summary != null) {
                 Long crmNoteId = crmClient.postNote(companyId, clientId, summary);
                 records.writeResult(callAttemptId, summary, escalated, crmNoteId);
+
+                // Smart Callback Rescheduling: If the customer asked to be called at a specific time
+                if (summary.callbackAt() != null && !summary.callbackAt().isBlank()) {
+                    long targetId = records.targetIdOf(callAttemptId);
+                    if (targetId != 0L) {
+                        Instant callbackInstant = parseCallbackInstant(summary.callbackAt());
+                        if (callbackInstant != null && callbackInstant.isAfter(Instant.now())) {
+                            campaignService.scheduleCallback(targetId, callbackInstant);
+                        }
+                    }
+                }
+
+                // Hostile Sentiment Alert
+                if (summary.sentiment() == Sentiment.HOSTILE) {
+                    notificationService.notify(companyId, NotificationType.OPERATOR_REQUEST,
+                            "Salbiy muloqot aniqlandi",
+                            "Qo'ng'iroqda (ID: " + callAttemptId + ") mijoz keskin norozilik bildirdi: " + summary.summary(),
+                            null);
+                }
+
                 log.info("Finalized call {} (dur={}s, disposition={}, sentiment={})",
                         callAttemptId, durationSec, disposition, summary.sentiment());
             } else {
@@ -109,6 +134,24 @@ public class CallFinalizer {
         }
     }
 
+    private Instant parseCallbackInstant(String callbackAt) {
+        if (callbackAt == null || callbackAt.isBlank()) {
+            return null;
+        }
+        try {
+            if (callbackAt.contains("T")) {
+                LocalDateTime ldt = LocalDateTime.parse(callbackAt);
+                return ldt.atZone(ZoneId.of("Asia/Tashkent")).toInstant();
+            } else {
+                LocalDate ld = LocalDate.parse(callbackAt);
+                return ld.atTime(10, 0).atZone(ZoneId.of("Asia/Tashkent")).toInstant();
+            }
+        } catch (Exception e) {
+            log.warn("Could not parse callbackAt '{}': {}", callbackAt, e.getMessage());
+            return null;
+        }
+    }
+
     /**
      * Resolves the bits of the "Texnik" tab (§10.5) that do not need to be captured
      * live — STT/TTS provider, LLM model, AMD result — and persists everything
@@ -117,8 +160,6 @@ public class CallFinalizer {
     private void writeTechnicalDetail(long callAttemptId, long companyId, Disposition disposition, String channelName,
                                       String trunk, DialogTechnicalSnapshot technical) {
         String amdResult = amdResult(disposition);
-        // Which engines this call actually ran on — a company setting since §11
-        // settings/engine, so the process defaults are no longer the answer for everyone.
         EffectiveEngineConfig engine = engineConfigService.findEffectiveByCompanyId(companyId);
         String ttsProvider = engine.ttsProvider();
         String ttsVoiceName = null;
@@ -134,16 +175,13 @@ public class CallFinalizer {
                 llmModel == null || llmModel.isBlank() ? null : llmModel, technical);
     }
 
-    /**
-     * AMD ran without persisting a result of its own (see {@code AnsweringMachineDetector}
-     * — it only fires a "detected" callback); both outcomes are reconstructed here instead:
-     * a voicemail disposition means it fired, otherwise it either cleared the call as human
-     * or never ran at all.
-     */
-    private String amdResult(Disposition disposition) {
-        if (disposition == Disposition.VOICEMAIL) {
-            return "MACHINE";
+    private String amdResult(Disposition d) {
+        if (d == Disposition.VOICEMAIL) {
+            return "VOICEMAIL";
         }
-        return vadProps.amd() != null && vadProps.amd().enabled() ? "HUMAN" : null;
+        if (vadProps.amd() == null || !vadProps.amd().enabled()) {
+            return "DISABLED";
+        }
+        return "HUMAN";
     }
 }

@@ -17,14 +17,21 @@ import java.util.Map;
  * @param sentiment     overall client sentiment
  * @param needsFollowUp whether a follow-up call is warranted
  * @param followUpNote  note for the follow-up (nullable)
+ * @param callbackAt    scheduled callback timestamp (ISO 8601 or similar, nullable)
  */
 public record CallSummary(
         String summary,
         Map<String, Object> outcome,
         Sentiment sentiment,
         boolean needsFollowUp,
-        String followUpNote
+        String followUpNote,
+        String callbackAt
 ) {
+
+    public CallSummary(String summary, Map<String, Object> outcome, Sentiment sentiment,
+                       boolean needsFollowUp, String followUpNote) {
+        this(summary, outcome, sentiment, needsFollowUp, followUpNote, null);
+    }
 
     public CallSummary {
         outcome = outcome == null ? Map.of() : Map.copyOf(outcome);

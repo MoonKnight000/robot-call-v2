@@ -77,6 +77,7 @@ public class TurnRunner {
     private final SpeechOutput speech;
     private final DialogTranscript transcript;
     private final DialogExecutors executors;
+    private final SentimentDetector sentimentDetector;
 
     private volatile ChatClient chatClient;
 
@@ -87,7 +88,8 @@ public class TurnRunner {
                       TurnTools turnTools,
                       SpeechOutput speech,
                       DialogTranscript transcript,
-                      DialogExecutors executors) {
+                      DialogExecutors executors,
+                      SentimentDetector sentimentDetector) {
         this.props = props;
         this.promptFactory = promptFactory;
         this.metrics = metrics;
@@ -96,6 +98,7 @@ public class TurnRunner {
         this.speech = speech;
         this.transcript = transcript;
         this.executors = executors;
+        this.sentimentDetector = sentimentDetector;
     }
 
     @PostConstruct
@@ -147,6 +150,9 @@ public class TurnRunner {
                 // clock from there used to reset the running turn's own measurement and
                 // hand the rest of its sentences to the streaming path meant for the first.
                 s.startTurnClock();
+                if (clientText != null && !clientText.isBlank()) {
+                    s.setLastCustomerSentiment(sentimentDetector.analyze(clientText));
+                }
             }
             // Cleared before the caps below, not after they have been checked: those close
             // the call with a spoken farewell, and a previous turn's barge-in flag left

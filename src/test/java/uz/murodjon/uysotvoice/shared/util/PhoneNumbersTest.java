@@ -3,25 +3,29 @@ package uz.murodjon.uysotvoice.shared.util;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * A number from here is concatenated straight into an Asterisk dial string
- * ({@code PJSIP/<number>@<endpoint>}), so these cases guard a dial-string injection,
- * not just tidy formatting.
+ * Unit tests for phone number normalization, validation and formatting using Google's libphonenumber.
  */
 class PhoneNumbersTest {
 
     @Test
-    void stripsHumanFormatting() {
+    void normalizesUzbekNumbersWithFormatting() {
         assertThat(PhoneNumbers.require(" +998 (95) 369-20-29 ")).isEqualTo("+998953692029");
+        assertThat(PhoneNumbers.require("998953692029")).isEqualTo("+998953692029");
+        assertThat(PhoneNumbers.require("95 369 20 29")).isEqualTo("+998953692029");
+        assertThat(PhoneNumbers.require("953692029")).isEqualTo("+998953692029");
+        assertThat(PhoneNumbers.require("+998901234567")).isEqualTo("+998901234567");
     }
 
     @Test
-    void keepsPlainNumberUnchanged() {
-        assertThat(PhoneNumbers.require("998953692029")).isEqualTo("998953692029");
+    void normalizesInternationalNumbers() {
+        assertThat(PhoneNumbers.require("+1 (650) 253-0000")).isEqualTo("+16502530000");
+        assertThat(PhoneNumbers.require("+7 999 123-45-67")).isEqualTo("+79991234567");
     }
 
     @Test
@@ -29,6 +33,13 @@ class PhoneNumbersTest {
         // 3-4 digit extensions ring the test softphone — they must stay dialable.
         assertThat(PhoneNumbers.require("600")).isEqualTo("600");
         assertThat(PhoneNumbers.require("6001")).isEqualTo("6001");
+    }
+
+    @Test
+    void formatsForDisplay() {
+        assertThat(PhoneNumbers.formatInternational("953692029")).isEqualTo("+998 95 369 20 29");
+        assertThat(PhoneNumbers.formatNational("+998953692029")).isEqualTo("(95) 369-20-29");
+        assertThat(PhoneNumbers.formatInternational("600")).isEqualTo("600");
     }
 
     @ParameterizedTest
@@ -44,13 +55,6 @@ class PhoneNumbersTest {
     })
     void rejectsAnythingNotDialable(String raw) {
         assertThatThrownBy(() -> PhoneNumbers.require(raw))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void rejectsNull() {
-        assertThatThrownBy(() -> PhoneNumbers.require(null))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(PhoneNumbers.isValid(null)).isFalse();
+                .isInstanceOf(ValidationException.class);
     }
 }

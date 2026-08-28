@@ -162,9 +162,14 @@ public class TtsRouter {
         TtsVoice chosen = resolve(voiceId, lang);
         TtsProvider ownProvider = chosen != null ? selector.tryFind(chosen.provider()) : null;
         if (ownProvider != null) {
-            // Only a catalog voice carries a role, and only its own: the provider's
-            // own default voice speaks role-less, which every voice accepts.
-            return new Routed(ownProvider, lang, chosen.name(), settings.withRole(chosen.role()));
+            String effectiveRole = (settings.role() != null && !settings.role().isBlank())
+                    ? settings.role()
+                    : chosen.role();
+            // Nigora in Yandex does not support roles
+            if ("yandex".equalsIgnoreCase(chosen.provider()) && "nigora".equalsIgnoreCase(chosen.name())) {
+                effectiveRole = null;
+            }
+            return new Routed(ownProvider, lang, chosen.name(), settings.withRole(effectiveRole));
         }
         if (chosen != null) {
             // The voice's own provider left the build since it was chosen; speak the line

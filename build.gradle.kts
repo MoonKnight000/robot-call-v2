@@ -103,6 +103,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     // Utils
+    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
 

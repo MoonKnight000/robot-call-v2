@@ -60,6 +60,24 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("—");
     }
 
+    @Test
+    void injectsMultiCallMemoryWhenPresent() {
+        CallContext contextWithMemory = new CallContext(Map.of(
+                "clientName", "Aziz Karimov",
+                "operatorNotes", "Mijoz bilan xushmuomala gaplashing, aka deb murojaat qiling",
+                "lastCallSummary", "O'tgan safar dushanba kuni to'lashga va'da bergandi",
+                "preferredName", "Aziz aka"
+        ), "To'lov sanasini kelishish.");
+
+        String prompt = factory.stablePrefix(session(contextWithMemory, "uz-UZ"));
+
+        assertThat(prompt)
+                .contains("MULTI-CALL MEMORY")
+                .contains("Aziz aka")
+                .contains("xushmuomala gaplashing")
+                .contains("dushanba kuni to'lashga va'da bergandi");
+    }
+
     private static Stream<String> debtCollectionStageIds() {
         return ScenarioFixtures.debtCollection().stages().stream().map(StageDef::id);
     }

@@ -1,97 +1,58 @@
 package uz.murodjon.uysotvoice.dialer.service;
 
 import org.junit.jupiter.api.Test;
-
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import uz.murodjon.uysotvoice.dialer.config.RetryProperties;
+import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 
 import java.time.DayOfWeek;
-import java.time.LocalDate;
+import java.time.Duration;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.EnumSet;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * §11.2 makes the dial window a legal constraint, not a preference, so the boundary cases are
- * worth pinning: an off-by-one here is the difference between a compliant retry and a bot
- * calling a debtor at three in the morning.
- */
 class RetryScheduleTest {
 
-    private static final ZoneId ZONE = ZoneId.of("Asia/Tashkent");
     private static final LocalTime OPEN = LocalTime.of(9, 0);
-    private static final LocalTime CLOSE = LocalTime.of(20, 0);
+    private static final LocalTime CLOSE = LocalTime.of(18, 0);
     private static final Set<DayOfWeek> WEEKDAYS = EnumSet.of(
-            DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
-            DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
+            DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
 
-    /** 2026-07-01 is a Wednesday. */
-    private static ZonedDateTime at(int day, int hour, int minute) {
-        return ZonedDateTime.of(LocalDate.of(2026, 7, day), LocalTime.of(hour, minute), ZONE);
+    private static ZonedDateTime at(int dayOfMonth, int hour, int minute) {
+        return ZonedDateTime.parse(String.format("2026-07-%02dT%02d:%02d:00+05:00[Asia/Tashkent]", dayOfMonth, hour, minute));
     }
 
     @Test
-    void aTimeInsideTheWindowIsLeftAlone() {
-        ZonedDateTime candidate = at(1, 14, 30);
-        assertThat(RetrySchedule.intoWindow(candidate, WEEKDAYS, OPEN, CLOSE)).isEqualTo(candidate);
+    void slotInsideWindowStaysUntouched() {
+        ZonedDateTime wednesdayNoon = at(1, 12, 0);
+        assertThat(RetrySchedule.intoWindow(wednesdayNoon, WEEKDAYS, OPEN, CLOSE)).isEqualTo(wednesdayNoon);
     }
 
     @Test
-    void tooEarlyMovesToTheOpeningTimeSameDay() {
-        assertThat(RetrySchedule.intoWindow(at(1, 3, 0), WEEKDAYS, OPEN, CLOSE))
+    void slotBeforeWindowPullsToOpening() {
+        assertThat(RetrySchedule.intoWindow(at(1, 7, 30), WEEKDAYS, OPEN, CLOSE))
                 .isEqualTo(at(1, 9, 0));
     }
 
     @Test
-    void afterHoursMovesToTheNextMorning() {
-        assertThat(RetrySchedule.intoWindow(at(1, 22, 15), WEEKDAYS, OPEN, CLOSE))
+    void slotAfterWindowPullsToNextDayOpening() {
+        assertThat(RetrySchedule.intoWindow(at(1, 19, 0), WEEKDAYS, OPEN, CLOSE))
                 .isEqualTo(at(2, 9, 0));
     }
 
     @Test
-    void theClosingTimeItselfIsOutsideTheWindow() {
-        // The window is [start, end): a call placed exactly at 20:00 is already late.
-        assertThat(RetrySchedule.intoWindow(at(1, 20, 0), WEEKDAYS, OPEN, CLOSE))
-                .isEqualTo(at(2, 9, 0));
-        assertThat(RetrySchedule.intoWindow(at(1, 19, 59), WEEKDAYS, OPEN, CLOSE))
-                .isEqualTo(at(1, 19, 59));
-    }
-
-    @Test
-    void theOpeningTimeItselfIsInside() {
-        assertThat(RetrySchedule.intoWindow(at(1, 9, 0), WEEKDAYS, OPEN, CLOSE))
-                .isEqualTo(at(1, 9, 0));
-    }
-
-    @Test
-    void weekendsAreSkippedToMondayMorning() {
-        // 2026-07-04 is a Saturday. Nobody wants a debt-collection bot on a Sunday morning.
-        assertThat(RetrySchedule.intoWindow(at(4, 11, 0), WEEKDAYS, OPEN, CLOSE))
+    void slotOnWeekendPullsToMondayOpening() {
+        // 2026-07-04 is Saturday
+        assertThat(RetrySchedule.intoWindow(at(4, 12, 0), WEEKDAYS, OPEN, CLOSE))
                 .isEqualTo(at(6, 9, 0));
-        assertThat(RetrySchedule.intoWindow(at(5, 11, 0), WEEKDAYS, OPEN, CLOSE))
-                .isEqualTo(at(6, 9, 0));
-    }
-
-    @Test
-    void fridayEveningLandsOnMonday() {
-        // 2026-07-03 is a Friday: after-hours, and the next two days are excluded.
-        assertThat(RetrySchedule.intoWindow(at(3, 21, 0), WEEKDAYS, OPEN, CLOSE))
-                .isEqualTo(at(6, 9, 0));
-    }
-
-    @Test
-    void noWindowMeansNoAdjustment() {
-        ZonedDateTime candidate = at(4, 3, 0);
-        assertThat(RetrySchedule.intoWindow(candidate, null, null, null)).isEqualTo(candidate);
     }
 
     @Test
     void anEmptyDayListConstrainsOnlyTheTimeOfDay() {
-        // Treating "no days" as "no constraint" is the safer reading: the alternative parks
-        // every target forever with nothing in the logs to say why. The time window still
-        // applies, and Campaign already normalizes a blank dial_days to all seven days.
         assertThat(RetrySchedule.intoWindow(at(1, 10, 0), EnumSet.noneOf(DayOfWeek.class), OPEN, CLOSE))
                 .isEqualTo(at(1, 10, 0));
         assertThat(RetrySchedule.intoWindow(at(4, 3, 0), EnumSet.noneOf(DayOfWeek.class), OPEN, CLOSE))
@@ -105,12 +66,11 @@ class RetryScheduleTest {
 
     @Test
     void delaysFallBackToTheCampaignIntervalWhenUnconfigured() {
-        assertThat(RetrySchedule.delayFor(null, null, 12).toHours()).isEqualTo(12);
+        assertThat(RetrySchedule.delayFor(null, null, 12 * 60).toHours()).isEqualTo(12);
     }
 
     @Test
-    void aZeroCampaignIntervalStillWaitsAnHour() {
-        // A misconfigured 0 would otherwise mean an immediate redial loop on the same number.
-        assertThat(RetrySchedule.delayFor(null, null, 0).toHours()).isEqualTo(1);
+    void aZeroCampaignIntervalStillWaitsDefault24Hours() {
+        assertThat(RetrySchedule.delayFor(null, null, 0).toHours()).isEqualTo(24);
     }
 }

@@ -25,6 +25,7 @@ import uz.murodjon.uysotvoice.notification.enums.NotificationType;
 import uz.murodjon.uysotvoice.notification.service.NotificationService;
 import uz.murodjon.uysotvoice.scenario.service.ScenarioService;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
+import uz.murodjon.uysotvoice.shared.exception.ValidationException;
 import uz.murodjon.uysotvoice.user.service.UserService;
 import uz.murodjon.uysotvoice.voice.service.TtsVoiceService;
 
@@ -212,11 +213,11 @@ class CampaignServiceTest {
         verify(targets).add(CAMPAIGN_ID, 1L, "+998901112233", "uz-UZ", "{}");
 
         assertThatThrownBy(() -> service.addTarget(CAMPAIGN_ID, 1L, "600@evil", "uz-UZ", null))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ValidationException.class);
     }
 
     private static CreateCampaignRequest createRequest(String ttsVoice, int dailyCallCap) {
-        return new CreateCampaignRequest("c", null, null, null, null, null, null,
+        return new CreateCampaignRequest("c", CampaignType.DEBT_COLLECTION, null, null, null, null, null,
                 0, 0, 0, ttsVoice, dailyCallCap, SCENARIO_ID, null);
     }
 
@@ -252,7 +253,7 @@ class CampaignServiceTest {
         assertThat(row.getValue().ttsVoice()).isEqualTo("nigora");
 
         assertThatThrownBy(() -> service.createCampaign(createRequest("nosuchvoice", 0)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("nigora");
     }
 
@@ -270,7 +271,7 @@ class CampaignServiceTest {
         // One 24-hour interval for every outcome spent most of a campaign's three retries
         // on the case least likely to change. NO_ANSWER should come back the same day.
         when(campaigns.find(CAMPAIGN_ID)).thenReturn(new Campaign(CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION,
-                CampaignStatus.ACTIVE, "", "uz-UZ", null, null, Set.of(), 3, 24, 5, null, 0, SCENARIO_ID, COMPANY_ID, true, null));
+                CampaignStatus.ACTIVE, "", "uz-UZ", null, null, Set.of(), 3, 0, 5, null, 0, SCENARIO_ID, COMPANY_ID, true, null));
         when(targets.find(TARGET_ID)).thenReturn(new CampaignTarget(
                 TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 1, false));
 
@@ -278,7 +279,7 @@ class CampaignServiceTest {
         assertThat(rescheduledTo(Disposition.FAILED)).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
         // Deliberately not a multiple of 24h: a machine answers at every hour equally.
         assertThat(rescheduledTo(Disposition.VOICEMAIL)).isEqualTo(NOW.plus(Duration.ofMinutes(1200)));
-        // Anything without special handling falls back to the campaign's own interval.
+        // Anything without special handling falls back to the default interval (24h).
         assertThat(rescheduledTo(Disposition.HUNG_UP)).isEqualTo(NOW.plus(Duration.ofHours(24)));
     }
 
@@ -290,7 +291,7 @@ class CampaignServiceTest {
         when(campaigns.find(CAMPAIGN_ID)).thenReturn(new Campaign(CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION,
                 CampaignStatus.ACTIVE, "", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(11, 0),
                 Set.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
-                3, 24, 5, null, 0, SCENARIO_ID, COMPANY_ID, true, null));
+                3, 0, 5, null, 0, SCENARIO_ID, COMPANY_ID, true, null));
         when(targets.find(TARGET_ID)).thenReturn(new CampaignTarget(
                 TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 1, false));
 
@@ -303,8 +304,9 @@ class CampaignServiceTest {
 
     /** Apply {@code disposition} and return the {@code next_attempt_at} it scheduled. */
     private Instant rescheduledTo(Disposition disposition) {
+        CampaignTarget target = targets.find(TARGET_ID);
         CampaignTargetRepository fresh = mock(CampaignTargetRepository.class);
-        when(fresh.find(TARGET_ID)).thenReturn(targets.find(TARGET_ID));
+        when(fresh.find(TARGET_ID)).thenReturn(target);
         CampaignService scoped = new CampaignService(campaigns, fresh, doNotCall,
                 voices, scenarios, users, companyConfig, currentCompany, dialerProps(), mock(AuditService.class),
                 mock(NotificationService.class), Clock.fixed(NOW, ZoneId.systemDefault()));

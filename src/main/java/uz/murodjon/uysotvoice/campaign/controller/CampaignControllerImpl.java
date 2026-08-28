@@ -14,7 +14,9 @@ import uz.murodjon.uysotvoice.campaign.dto.TargetCsvPreview;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.dto.TargetMemoryDto;
 import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
+import uz.murodjon.uysotvoice.campaign.dto.UpdateTargetMemoryRequest;
 import uz.murodjon.uysotvoice.campaign.service.CampaignService;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
@@ -94,5 +96,15 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<DoNotCallResponse>> doNotCall(long id) {
         return ResponseEntity.ok(ResponseData.ok(service.markDoNotCall(id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TargetMemoryDto>> getTargetMemory(long campaignId, long targetId) {
+        return ResponseEntity.ok(ResponseData.ok(service.getTargetMemory(targetId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TargetMemoryDto>> updateTargetMemory(long campaignId, long targetId, UpdateTargetMemoryRequest r) {
+        return ResponseEntity.ok(ResponseData.ok(service.updateTargetMemory(targetId, r)));
     }
 }

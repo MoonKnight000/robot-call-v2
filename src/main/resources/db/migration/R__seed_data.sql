@@ -46,6 +46,7 @@ INSERT INTO tts_voice (id, provider, language, name, label) VALUES
     -- Aisha (Toshkent) has one model, Gulnoza, whose speaker_id names a mood rather
     -- than a person (PROJECT.md §2.5) — name carries that mood exactly as
     -- AishaTtsProvider.speakerFor() sends it.
+    ('gulnoza',          'aisha', 'uz-UZ', 'neutral',  'Gulnoza — o''zbek, moslashuvchan (avto-hissiyot)'),
     ('gulnoza-neutral',  'aisha', 'uz-UZ', 'neutral',  'Gulnoza — o''zbek, neytral'),
     ('gulnoza-cheerful', 'aisha', 'uz-UZ', 'cheerful', 'Gulnoza — o''zbek, quvnoq'),
     ('gulnoza-happy',    'aisha', 'uz-UZ', 'happy',    'Gulnoza — o''zbek, xursand'),

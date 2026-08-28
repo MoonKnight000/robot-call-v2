@@ -1,6 +1,8 @@
 package uz.murodjon.uysotvoice.dialer.dto;
 
 import uz.murodjon.uysotvoice.agent.dialog.CallContext;
+import uz.murodjon.uysotvoice.campaign.enums.AmbientSound;
+import uz.murodjon.uysotvoice.campaign.enums.VoicemailAction;
 import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
 
 /**
@@ -19,6 +21,13 @@ import uz.murodjon.uysotvoice.dialer.service.OutboundCallRegistry;
  * @param scenarioId the campaign's bound scenario row (ROADMAP A.3)
  * @param disclosureEnabled whether this campaign's calls open with the §11.1
  *                   disclosure
+ * @param ambientSound ambient soundscape (OFF, OFFICE, CALL_CENTER, NATURAL_LINE, CAFE)
+ * @param midCallSmsEnabled whether mid-call SMS sending is enabled
+ * @param midCallSmsTemplate template for mid-call SMS messages
+ * @param voicemailAction action on AMD detection (HANGUP, LEAVE_MESSAGE, IGNORE)
+ * @param voicemailMessage message to speak if voicemailAction is LEAVE_MESSAGE
+ * @param dtmfInputEnabled whether keypad DTMF inputs (0-9) are forwarded to dialog engine
+ * @param emotionAdaptiveVoice whether voice adapts softer tone/speed upon customer frustration
  */
 public record OutboundCall(
         Long campaignId,
@@ -29,6 +38,18 @@ public record OutboundCall(
         String ttsVoice,
         CallContext context,
         Long scenarioId,
-        boolean disclosureEnabled
+        boolean disclosureEnabled,
+        AmbientSound ambientSound,
+        boolean midCallSmsEnabled,
+        String midCallSmsTemplate,
+        VoicemailAction voicemailAction,
+        String voicemailMessage,
+        boolean dtmfInputEnabled,
+        boolean emotionAdaptiveVoice
 ) {
+    public OutboundCall(Long campaignId, Long targetId, Long clientId, String phone, String language,
+                        String ttsVoice, CallContext context, Long scenarioId, boolean disclosureEnabled) {
+        this(campaignId, targetId, clientId, phone, language, ttsVoice, context, scenarioId, disclosureEnabled,
+                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true);
+    }
 }

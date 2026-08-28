@@ -10,6 +10,7 @@ import uz.murodjon.uysotvoice.company.service.CurrentCompany;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /** JPA-backed DAO for {@code campaign_target} (PROJECT.md §6). */
 @Repository
@@ -48,6 +49,18 @@ public class CampaignTargetRepository {
      */
     public CampaignTarget find(long id) {
         return jpa.findByIdAndCompanyId(id, company.id()).map(CampaignTargetRepository::toRow).orElse(null);
+    }
+
+    public Optional<CampaignTargetEntity> findEntity(long id) {
+        return jpa.findByIdAndCompanyId(id, company.id());
+    }
+
+    public void updateContextData(long id, String contextDataJson) {
+        jpa.updateContextData(id, company.id(), contextDataJson);
+    }
+
+    public void resetTargetsForRecurrence(long campaignId) {
+        jpa.resetTargetsForRecurrence(campaignId);
     }
 
     public List<CampaignTarget> findByCampaign(long campaignId, TargetFilter filter) {

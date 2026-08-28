@@ -2,6 +2,7 @@ package uz.murodjon.uysotvoice.agent.dialog;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.uysotvoice.agent.dialog.SentimentDetector.CustomerSentiment;
 import uz.murodjon.uysotvoice.scenario.dto.FactField;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
 import uz.murodjon.uysotvoice.scenario.dto.StageDef;
@@ -58,6 +59,16 @@ public class SystemPromptFactory {
             "contractNumber", "Shartnoma raqami"
     );
 
+    private final SentimentDetector sentimentDetector;
+
+    public SystemPromptFactory() {
+        this(new SentimentDetector());
+    }
+
+    public SystemPromptFactory(SentimentDetector sentimentDetector) {
+        this.sentimentDetector = sentimentDetector != null ? sentimentDetector : new SentimentDetector();
+    }
+
     /**
      * The unchanging half of the prompt: who the agent is, the facts it may state, and
      * the rules it must not break. Cache this per call ({@link DialogSession#systemPrefix()}) —
@@ -100,6 +111,23 @@ public class SystemPromptFactory {
         }
         if (c.goal() != null && !c.goal().isBlank()) {
             sb.append("- Kampaniya maqsadi: ").append(c.goal()).append('\n');
+        }
+
+        // Multi-call memory and operator notes
+        String prefName = strFact(c, "preferredName");
+        String opNotes = strFact(c, "operatorNotes");
+        String lastSummary = strFact(c, "lastCallSummary");
+        if (prefName != null || opNotes != null || lastSummary != null) {
+            sb.append("\nMULTI-CALL MEMORY & OPERATOR NOTES (Mijozning avvalgi suhbatlar xotirasi va eslatmalar):\n");
+            if (prefName != null) {
+                sb.append("- Mijozga qulay murojaat: ").append(prefName).append('\n');
+            }
+            if (opNotes != null) {
+                sb.append("- Operator eslatmasi: ").append(opNotes).append('\n');
+            }
+            if (lastSummary != null) {
+                sb.append("- Avvalgi qo'ng'iroq xulosasi: ").append(lastSummary).append('\n');
+            }
         }
 
         if (s.isDisclosureSpoken()) {
@@ -174,7 +202,7 @@ public class SystemPromptFactory {
         // fact guard compares digits against the facts. Both only work on digits, so the
         // model must not spell a sum out itself.
         sb.append("Summa, sana va raqamlarni FAKTLARdagidek raqam bilan yoz ")
-                .append("(masalan \"1500000 so'm\", \"2026-yil 1-iyul\") — so'z bilan yozma, ")
+                .append("(\"1500000 so'm\", \"2026-yil 1-iyul\") — so'z bilan yozma, ")
                 .append("ovozga aylantirilganda o'zi to'g'ri o'qiladi.\n");
         // Observed on real calls: the caller said only "allo" and the bot answered by
         // delivering the whole debt notice again — contract number, sum and due date. The
@@ -232,15 +260,23 @@ public class SystemPromptFactory {
                     .append(s.lastAgentText() == null ? "" : s.lastAgentText())
                     .append("\". Mijozning gapiga moslashing; butun gapni qaytadan boshlamang.]");
         }
+        if (s.lastCustomerSentiment() != null && s.lastCustomerSentiment() != CustomerSentiment.NEUTRAL) {
+            String directive = sentimentDetector.empathyDirective(s.lastCustomerSentiment(), s.language());
+            if (directive != null && !directive.isBlank()) {
+                sb.append('\n').append(directive);
+            }
+        }
         return sb.toString();
     }
 
-    /** The stage a given id names, or {@code null} if the scenario has none by that id. */
     static StageDef stageOf(ScenarioDefinition def, String stageId) {
-        if (def.stages() == null) {
+        if (def == null || def.stages() == null) {
             return null;
         }
-        return def.stages().stream().filter(st -> st.id().equals(stageId)).findFirst().orElse(null);
+        return def.stages().stream()
+                .filter(st -> st.id().equals(stageId))
+                .findFirst()
+                .orElse(null);
     }
 
     private static String allowedNext(StageDef stage) {
@@ -250,9 +286,26 @@ public class SystemPromptFactory {
         return String.join(", ", stage.allowedTransitions());
     }
 
-    /** Weekday in Uzbek — the JVM has no reliable uz locale, and "dushanba" is what a caller says. */
-    private static String weekdayUz(DayOfWeek day) {
-        return switch (day) {
+    private static String languageName(String bcp47) {
+        if (bcp47 == null) {
+            return "o'zbek";
+        }
+        String lower = bcp47.toLowerCase();
+        if (lower.startsWith("ru")) {
+            return "rus";
+        }
+        if (lower.startsWith("en")) {
+            return "ingliz";
+        }
+        return "o'zbek";
+    }
+
+    private static boolean isRussian(String bcp47) {
+        return bcp47 != null && bcp47.toLowerCase().startsWith("ru");
+    }
+
+    private static String weekdayUz(DayOfWeek dow) {
+        return switch (dow) {
             case MONDAY -> "dushanba";
             case TUESDAY -> "seshanba";
             case WEDNESDAY -> "chorshanba";
@@ -263,16 +316,12 @@ public class SystemPromptFactory {
         };
     }
 
-    private static String languageName(String bcp47) {
-        return isRussian(bcp47) ? "rus" : "o'zbek";
+    private static String orDash(Object s) {
+        return s != null && !s.toString().isBlank() ? s.toString() : "—";
     }
 
-    /** Uzbek is the default here, same as {@link #languageName} — only ru-RU opts out. */
-    private static boolean isRussian(String bcp47) {
-        return bcp47 != null && bcp47.startsWith("ru");
-    }
-
-    private static String orDash(Object value) {
-        return value == null ? "—" : value.toString();
+    private static String strFact(CallContext c, String key) {
+        Object v = c.fact(key);
+        return v != null && !v.toString().isBlank() ? v.toString() : null;
     }
 }

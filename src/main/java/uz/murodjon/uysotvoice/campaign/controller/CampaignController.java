@@ -22,7 +22,9 @@ import uz.murodjon.uysotvoice.campaign.dto.TargetCsvPreview;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.dto.TargetMemoryDto;
 import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
+import uz.murodjon.uysotvoice.campaign.dto.UpdateTargetMemoryRequest;
 import uz.murodjon.uysotvoice.donotcall.dto.DoNotCallResponse;
 import uz.murodjon.uysotvoice.shared.api.PageableData;
 import uz.murodjon.uysotvoice.shared.api.ResponseData;
@@ -102,4 +104,10 @@ public interface CampaignController {
 
     @PostMapping("/targets/{id}/do-not-call")
     ResponseEntity<ResponseData<DoNotCallResponse>> doNotCall(@PathVariable long id);
+
+    @GetMapping("/campaigns/{campaignId}/targets/{targetId}/memory")
+    ResponseEntity<ResponseData<TargetMemoryDto>> getTargetMemory(@PathVariable long campaignId, @PathVariable long targetId);
+
+    @PutMapping("/campaigns/{campaignId}/targets/{targetId}/memory")
+    ResponseEntity<ResponseData<TargetMemoryDto>> updateTargetMemory(@PathVariable long campaignId, @PathVariable long targetId, @Valid @RequestBody UpdateTargetMemoryRequest r);
 }

@@ -54,7 +54,7 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
      * removed ("Ro'yxatdan chiqarish", §10.8) opt-out no longer blocks either —
      * {@code removed_at IS NULL} is what makes the removal actually let dialling resume.
      */
-    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1 "
+    @Query(value = "UPDATE campaign_target SET status = 'PENDING', attempts = attempts + 1 "
             + "WHERE id IN ("
             + "  SELECT t.id FROM campaign_target t"
             + "  WHERE t.campaign_id = :campaignId AND t.status = 'PENDING' AND t.do_not_call = false"
@@ -79,4 +79,14 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Query("UPDATE CampaignTargetEntity t SET t.doNotCall = true, t.status = uz.murodjon.uysotvoice.campaign.enums.TargetStatus.DONE "
             + "WHERE t.id = :id AND t.companyId = :companyId")
     void setDoNotCall(@Param("id") long id, @Param("companyId") long companyId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE CampaignTargetEntity t SET t.contextData = :contextData WHERE t.id = :id AND t.companyId = :companyId")
+    void updateContextData(@Param("id") long id, @Param("companyId") long companyId, @Param("contextData") String contextData);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.uysotvoice.campaign.enums.TargetStatus.PENDING, t.attempts = 0, t.nextAttemptAt = null WHERE t.campaign.id = :campaignId AND t.doNotCall = false")
+    void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
 }

@@ -92,8 +92,8 @@ public final class DialogPhrases {
      */
     public static List<String> thinking(String language) {
         return russian(language)
-                ? List.of("Секунду.", "Сейчас скажу.")
-                : List.of("Bir soniya.", "Hozir aytaman.");
+                ? List.of("Секунду.", "Сейчас посмотрю.", "Понятно, один момент.", "Сейчас скажу.")
+                : List.of("Bir soniya.", "Hozir ko'rib chiqyapman.", "Tushunarli, bir lahza.", "Hozir aytaman.");
     }
 
     /**

@@ -19,13 +19,15 @@ import java.util.Map;
  * Builds a {@link CallContext} from a target's {@code context_data} JSON (PROJECT.md
  * §6, ROADMAP A.3). Lenient — a fact missing from the JSON, or one that fails to
  * coerce to its declared type, is simply left out. Only keys the bound scenario's
- * {@link FactField} list actually declares are read; anything else in
- * {@code context_data} is ignored.
+ * {@link FactField} list actually declares or well-known memory keys are read.
  */
 public final class CallContextMapper {
 
     private static final Logger log = LoggerFactory.getLogger(CallContextMapper.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final List<String> MEMORY_KEYS = List.of(
+            "operatorNotes", "lastCallSummary", "previousCallSummary", "memoryNotes", "preferredName");
 
     private CallContextMapper() {
     }
@@ -43,6 +45,11 @@ public final class CallContextMapper {
                         if (value != null) {
                             facts.put(f.name(), value);
                         }
+                    }
+                }
+                for (String memoryKey : MEMORY_KEYS) {
+                    if (n.hasNonNull(memoryKey)) {
+                        facts.put(memoryKey, n.get(memoryKey).asText());
                     }
                 }
                 String g = text(n, "goal");
@@ -74,20 +81,6 @@ public final class CallContextMapper {
 
     /**
      * Overlay what the CRM says over the imported facts (§9 step 4).
-     *
-     * <p>The CRM wins field by field, because it is the authoritative source and
-     * {@code context_data} is a snapshot taken when the campaign was built — a debt amount
-     * imported last month may already be paid. A field the CRM does not return keeps the
-     * imported value rather than becoming null: partial data is not a reason to drop facts
-     * the agent needs.
-     *
-     * <p>Special-cased to the 5 fixed fact names {@link CrmClientSnapshot} carries — a
-     * scenario whose {@code factSchema} happens to use these exact names (as
-     * {@code debt-collection} does) gets the overlay; other scenarios' facts are
-     * untouched. A fully generic CRM-to-facts mapping is a later ROADMAP B/A.4 concern,
-     * not required here.
-     *
-     * @param crm the CRM snapshot, or null when the lookup was off or failed
      */
     public static CallContext merge(CallContext imported, CrmClientSnapshot crm) {
         if (crm == null) {
@@ -99,7 +92,6 @@ public final class CallContextMapper {
         overlay(facts, "currency", crm.currency());
         overlay(facts, "dueDate", crm.dueDate());
         overlay(facts, "contractNumber", crm.contractNumber());
-        // The goal is the campaign's, not the client's — the CRM has no opinion.
         return new CallContext(facts, imported.goal());
     }
 

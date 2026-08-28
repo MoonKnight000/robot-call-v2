@@ -25,20 +25,18 @@ import java.util.Set;
 
 /**
  * Produces the structured {@link CallSummary} from a finished call's transcript
- * (PROJECT.md §4.3, ROADMAP A.3). A single LLM call with a stronger model (Sonnet —
- * quality matters, latency does not). The 4 fields every scenario always gets
- * ({@code summary}/{@code sentiment}/{@code needsFollowUp}/{@code followUpNote}) are
- * fixed; everything else asked for comes from the call's {@code ScenarioDefinition
- * .outcomeSchema()}, so a {@code survey} call gets asked for {@code answers}/{@code
- * score} instead of a debt-collection call's {@code reasonCode}/{@code promisedDate}.
- * Non-fatal: returns {@code null} if the LLM is unavailable or parsing fails.
+ * (PROJECT.md §4.3, ROADMAP A.3). A single LLM call with a stronger model.
+ * The fields every scenario gets ({@code summary}/{@code sentiment}/{@code needsFollowUp}/
+ * {@code followUpNote}/{@code callbackAt}) are fixed; everything else asked for comes from
+ * the call's {@code ScenarioDefinition.outcomeSchema()}.
  */
 @Service
 public class SummaryService {
 
     private static final Logger log = LoggerFactory.getLogger(SummaryService.class);
 
-    private static final Set<String> FIXED_FIELDS = Set.of("summary", "sentiment", "needsFollowUp", "followUpNote");
+    private static final Set<String> FIXED_FIELDS = Set.of(
+            "summary", "sentiment", "needsFollowUp", "followUpNote", "callbackAt");
 
     private static final String SYSTEM_PROMPT_HEADER = """
             Siz qo'ng'iroq transkriptini tahlil qiluvchi yordamchisiz.
@@ -48,6 +46,7 @@ public class SummaryService {
             - sentiment: mijoz kayfiyati (POSITIVE, NEUTRAL, NEGATIVE, HOSTILE).
             - needsFollowUp: qayta qo'ng'iroq kerakmi (true/false).
             - followUpNote: qayta qo'ng'iroq uchun izoh (bo'lmasa null).
+            - callbackAt: mijoz qayta qo'ng'iroq qilishni so'ragan aniq sana va vaqt (masalan: "kechki 5 da", "ertaga soat 14:00 da" -> ISO-8601 formatida YYYY-MM-DDTHH:mm:ss, bo'lmasa null).
             """;
 
     private final ObjectProvider<ChatModel> chatModelProvider;
@@ -60,7 +59,7 @@ public class SummaryService {
 
     public SummaryService(ObjectProvider<ChatModel> chatModelProvider,
                           @Value("${voice-agent.summary.enabled:true}") boolean enabled,
-                          @Value("${voice-agent.summary.model:gemini-2.5-flash}") String model,
+                          @Value("${voice-agent.summary.model:gemini-3.6-flash}") String model,
                           @Value("${voice-agent.summary.reasoning-effort:low}") String reasoningEffort,
                           @Value("${voice-agent.summary.max-tokens:2048}") int maxTokens) {
         this.chatModelProvider = chatModelProvider;
@@ -91,18 +90,13 @@ public class SummaryService {
             return null;
         }
         try {
-            // Every field left unset here falls back to spring.ai.google.genai.chat.options
-            // (Spring AI merges runtime over defaults), and those defaults are tuned for
-            // the live phone turn: 512 tokens, thinking MINIMAL. A structured summary wants
-            // the opposite — room for the JSON and some reasoning — so state both.
             Map<String, Object> raw = chatClient.prompt()
                     .options(GoogleGenAiChatOptions.builder()
                             .model(model)
                             .maxOutputTokens(maxTokens)
                             .thinkingLevel(thinkingLevel())
                             .build())
-                    // The transcript carries no year, so the date has to come from us.
-                    .system(systemPrompt(scenario) + "\nBUGUNGI SANA: " + LocalDate.now() + ".")
+                    .system(systemPrompt(scenario) + "\nBUGUNGI SANA VA VAQT: " + java.time.LocalDateTime.now() + ".")
                     .user(transcript)
                     .call()
                     .entity(new MapOutputConverter());
@@ -124,12 +118,12 @@ public class SummaryService {
             }
         }
         sb.append("Ma'lum bo'lmagan maydonni null qoldiring. Transkriptda nisbiy sana bo'lsa "
-                + "(\"ertaga\", \"kelasi oyning 5-sanasi\"), uni BUGUNGI SANAdan hisoblang — yilni "
+                + "(\"ertaga\", \"kelasi oyning 5-sanasi\"), uni BUGUNGI SANA VA VAQTdan hisoblang — yilni "
                 + "o'zingizdan to'qimang. Faktlarni o'ylab topmang — faqat transkriptdagi ma'lumotga tayaning.");
         return sb.toString();
     }
 
-    /** Splits the model's raw JSON map into the 4 fixed fields plus a scenario-shaped outcome map. */
+    /** Splits the model's raw JSON map into the 5 fixed fields plus a scenario-shaped outcome map. */
     private static CallSummary toCallSummary(Map<String, Object> raw, ScenarioDefinition scenario) {
         if (raw == null) {
             return null;
@@ -138,6 +132,7 @@ public class SummaryService {
         Sentiment sentiment = sentiment(raw.get("sentiment"));
         boolean needsFollowUp = Boolean.TRUE.equals(raw.get("needsFollowUp"));
         String followUpNote = str(raw.get("followUpNote"));
+        String callbackAt = str(raw.get("callbackAt"));
 
         Map<String, Object> outcome = new HashMap<>();
         List<OutcomeField> outcomeSchema = scenario.outcomeSchema();
@@ -149,7 +144,7 @@ public class SummaryService {
                 }
             }
         }
-        return new CallSummary(summary, outcome, sentiment, needsFollowUp, followUpNote);
+        return new CallSummary(summary, outcome, sentiment, needsFollowUp, followUpNote, callbackAt);
     }
 
     private static String str(Object value) {
@@ -168,20 +163,15 @@ public class SummaryService {
         }
     }
 
-    /**
-     * {@code voice-agent.summary.reasoning-effort} as a Gemini thinking level. The
-     * property keeps its name (and {@code SUMMARY_REASONING_EFFORT} its meaning) across
-     * the move off the OpenAI-compatible endpoint, where the same idea was spelled
-     * "reasoning effort" — the values MINIMAL/LOW/MEDIUM/HIGH line up. An unknown value
-     * falls back to LOW rather than failing the summary: this runs after the call is
-     * over, and losing the CRM note over a typo in an env var is the worse outcome.
-     */
     private GoogleGenAiThinkingLevel thinkingLevel() {
-        try {
-            return GoogleGenAiThinkingLevel.valueOf(reasoningEffort.trim().toUpperCase());
-        } catch (IllegalArgumentException | NullPointerException e) {
-            log.warn("Unknown summary reasoning-effort '{}', using LOW", reasoningEffort);
+        if (reasoningEffort == null) {
             return GoogleGenAiThinkingLevel.LOW;
         }
+        return switch (reasoningEffort.trim().toUpperCase()) {
+            case "MINIMAL", "OFF" -> GoogleGenAiThinkingLevel.MINIMAL;
+            case "MEDIUM" -> GoogleGenAiThinkingLevel.MEDIUM;
+            case "HIGH" -> GoogleGenAiThinkingLevel.HIGH;
+            default -> GoogleGenAiThinkingLevel.LOW;
+        };
     }
 }

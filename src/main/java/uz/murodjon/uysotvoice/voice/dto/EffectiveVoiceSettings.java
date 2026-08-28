@@ -20,4 +20,9 @@ public record EffectiveVoiceSettings(String provider, Double speed, Double pitch
     public EffectiveVoiceSettings withRole(String role) {
         return new EffectiveVoiceSettings(provider, speed, pitch, role);
     }
+
+    /** The same settings speaking with a modified speed (e.g. for emotion-adaptive pacing). */
+    public EffectiveVoiceSettings withSpeed(Double speed) {
+        return new EffectiveVoiceSettings(provider, speed, pitch, role);
+    }
 }

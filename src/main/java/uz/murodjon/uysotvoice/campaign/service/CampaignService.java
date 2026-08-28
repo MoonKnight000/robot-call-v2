@@ -1,6 +1,7 @@
 package uz.murodjon.uysotvoice.campaign.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,8 +23,11 @@ import uz.murodjon.uysotvoice.campaign.dto.TargetCsvPreview;
 import uz.murodjon.uysotvoice.campaign.dto.TargetFilter;
 import uz.murodjon.uysotvoice.campaign.dto.TargetImportResult;
 import uz.murodjon.uysotvoice.campaign.dto.CampaignTarget;
+import uz.murodjon.uysotvoice.campaign.dto.TargetMemoryDto;
 import uz.murodjon.uysotvoice.campaign.dto.UpdateCampaignRequest;
+import uz.murodjon.uysotvoice.campaign.dto.UpdateTargetMemoryRequest;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
+import uz.murodjon.uysotvoice.campaign.enums.RecurrenceType;
 import uz.murodjon.uysotvoice.campaign.enums.TargetStatus;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignTargetRepository;
@@ -54,9 +58,11 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -72,6 +78,7 @@ import java.util.stream.Collectors;
 public class CampaignService {
 
     private static final Logger log = LoggerFactory.getLogger(CampaignService.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
@@ -112,10 +119,7 @@ public class CampaignService {
     private static final Set<DayOfWeek> DEFAULT_DIAL_DAYS = EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
 
     public CreateCampaignResponse createCampaign(CreateCampaignRequest r) {
-        // 404s if the scenario is unknown or belongs to another company (ROADMAP A.3/B.2).
         scenarios.requireScenario(r.scenarioId());
-        // Validated against the company's supported-language list, or that list's own
-        // default when none was requested (ROADMAP B.1).
         String language = companyConfig.resolveLanguage(currentCompany.id(), r.defaultLanguage());
         int dailyCallCap = Math.max(0, r.dailyCallCap());
         LocalTime dialWindowStart = r.dialWindowStart() != null ? r.dialWindowStart() : LocalTime.of(9, 0);
@@ -132,8 +136,6 @@ public class CampaignService {
                 dialWindowEnd,
                 r.dialDays() != null && !r.dialDays().isEmpty() ? r.dialDays() : DEFAULT_DIAL_DAYS,
                 r.maxAttempts() > 0 ? r.maxAttempts() : 3,
-                // 0 is a real choice here, not a missing value: it means "no campaign
-                // preference", and the retry then follows the per-disposition defaults.
                 Math.max(0, r.retryIntervalMinutes()),
                 r.maxConcurrentCalls() > 0 ? r.maxConcurrentCalls() : 20,
                 requireKnownVoice(r.ttsVoice()),
@@ -141,10 +143,22 @@ public class CampaignService {
                 r.scenarioId(),
                 currentCompany.id(),
                 r.disclosureEnabled() == null || r.disclosureEnabled(),
-                null);
+                null,
+                r.recurrenceTypeOrDefault(),
+                r.recurringDayOfMonth(),
+                r.cronExpression(),
+                r.autoResetTargetsOrDefault(),
+                null,
+                r.ambientSoundOrDefault(),
+                r.midCallSmsEnabledOrDefault(),
+                r.midCallSmsTemplate(),
+                r.voicemailActionOrDefault(),
+                r.voicemailMessage(),
+                r.dtmfInputEnabledOrDefault(),
+                r.emotionAdaptiveVoiceOrDefault());
         long id = campaigns.create(row);
         audit.record("CAMPAIGN_CREATE", "campaign", String.valueOf(id),
-                r.name() + " (" + language + ", cap/day=" + dailyCallCap + ")");
+                r.name() + " (" + language + ", cap/day=" + dailyCallCap + ", recurrence=" + r.recurrenceTypeOrDefault() + ")");
         return new CreateCampaignResponse(id, CampaignStatus.DRAFT);
     }
 
@@ -173,18 +187,24 @@ public class CampaignService {
                 existing.scenarioId(),
                 existing.companyId(),
                 r.disclosureEnabled(),
-                existing.createdBy());
+                existing.createdBy(),
+                r.recurrenceTypeOrDefault(),
+                r.recurringDayOfMonth(),
+                r.cronExpression(),
+                r.autoResetTargetsOrDefault(),
+                existing.lastRunAt(),
+                r.ambientSoundOrDefault(),
+                r.midCallSmsEnabledOrDefault(),
+                r.midCallSmsTemplate(),
+                r.voicemailActionOrDefault(),
+                r.voicemailMessage(),
+                r.dtmfInputEnabledOrDefault(),
+                r.emotionAdaptiveVoiceOrDefault());
         campaigns.update(id, row);
         audit.record("CAMPAIGN_UPDATE", "campaign", String.valueOf(id), r.name());
         return campaignRow(id);
     }
 
-    /**
-     * "Nusxalash" (backend-uchun-talablar.md §3) — copies {@code id}'s configuration
-     * into a brand new {@code DRAFT} campaign via {@link CampaignRepository#create},
-     * which already forces {@code DRAFT}/current-company/empty-{@code scriptConfig}
-     * and never touches {@code campaign_target} — so targets are never copied.
-     */
     public CampaignRow clone(long id) {
         Campaign source = requireCampaign(id);
         Campaign row = new Campaign(
@@ -205,20 +225,24 @@ public class CampaignService {
                 source.scenarioId(),
                 source.companyId(),
                 source.disclosureEnabled(),
-                null);
+                null,
+                source.recurrenceType(),
+                source.recurringDayOfMonth(),
+                source.cronExpression(),
+                source.autoResetTargets(),
+                null,
+                source.ambientSound(),
+                source.midCallSmsEnabled(),
+                source.midCallSmsTemplate(),
+                source.voicemailAction(),
+                source.voicemailMessage(),
+                source.dtmfInputEnabled(),
+                source.emotionAdaptiveVoice());
         long newId = campaigns.create(row);
         audit.record("CAMPAIGN_CLONE", "campaign", String.valueOf(newId), "from " + id);
         return campaignRow(newId);
     }
 
-    /**
-     * Reject a campaign window that reaches outside the company's own dial window
-     * (ROADMAP B.3): {@code DialerService} enforces the company's window as a strict
-     * ceiling on top of the campaign's, so a campaign configured past it would never
-     * be told why it silently stops dialing at the company's cutoff instead of its
-     * own. A {@code null} campaign window (or a company with no config row) imposes
-     * no ceiling, matching the dialer's own null-is-unrestricted handling.
-     */
     private void requireWindowWithinCompany(long companyId, LocalTime start, LocalTime end) {
         if (start == null || end == null) {
             return;
@@ -233,15 +257,6 @@ public class CampaignService {
         }
     }
 
-    /**
-     * Validate the chosen voice against the catalog, or {@code null} for "use the
-     * configured routing".
-     *
-     * <p>Rejecting an unknown id here is the point of validating at all: the router
-     * falls back to default routing for a voice it cannot resolve, so a typo — or a voice
-     * whose provider has no credentials configured in this build — would otherwise
-     * surface as a whole campaign quietly dialled in the wrong voice.
-     */
     private String requireKnownVoice(String ttsVoice) {
         if (ttsVoice == null || ttsVoice.isBlank()) {
             return null;
@@ -255,8 +270,6 @@ public class CampaignService {
 
     public long addTarget(long campaignId, long clientId, String phone, String language, JsonNode contextData) {
         String json = contextData != null && !contextData.isNull() ? contextData.toString() : "{}";
-        // Reject a bad number at import time rather than at dial time: a target that
-        // can never be dialled would otherwise burn all its retries first.
         return targets.add(campaignId, clientId, PhoneNumbers.require(phone), language, json);
     }
 
@@ -267,14 +280,6 @@ public class CampaignService {
         return new AddTargetsResponse(campaignId, ids.size(), ids);
     }
 
-    /**
-     * Import targets from a CSV export (§10).
-     *
-     * <p>A row that cannot be used is reported and skipped rather than failing the file: a
-     * few thousand rows from a CRM export will contain a handful of bad numbers, and
-     * rejecting the whole import leaves the operator to find them by eye. The response
-     * carries the line numbers.
-     */
     public TargetImportResult importTargetsCsv(long campaignId, String csv) {
         TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
         List<Long> added = new ArrayList<>();
@@ -284,7 +289,6 @@ public class CampaignService {
                 added.add(targets.add(campaignId, t.clientId(), PhoneNumbers.require(t.phone()),
                         t.language(), t.contextJson()));
             } catch (Exception e) {
-                // Almost always an unusable phone number — the one error worth naming per row.
                 errors.add(new CsvRowError(t.line(), e.getMessage()));
             }
         }
@@ -295,32 +299,20 @@ public class CampaignService {
         return new TargetImportResult(campaignId, added.size(), added, errors, parsed.unknownColumns());
     }
 
-    /**
-     * "Ustunni moslashtirib, keyin tasdiqlash" wizard step (§10.6) — parses the file and
-     * reports the column mapping plus a sample of parsed rows, without inserting anything.
-     * The operator then confirms via {@link #importTargetsCsv}, which re-parses the same
-     * file for real.
-     */
     public TargetCsvPreview previewTargetsCsv(long campaignId, String csv) {
-        requireCampaign(campaignId); // 404s if unknown or another company's
+        requireCampaign(campaignId);
         List<CsvColumnMapping> columns = TargetCsvImporter.mapColumns(csv);
         TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
         List<ParsedTarget> sample = parsed.targets().stream().limit(10).toList();
         return new TargetCsvPreview(columns, sample, parsed.targets().size(), parsed.errors(), parsed.unknownColumns());
     }
 
-    /**
-     * API-facing list (backend-uchun-talablar.md §16) — enriches each row with
-     * {@code scenarioName}/{@code createdByName} via a batched lookup rather than one
-     * query per row.
-     */
     public PageableData<CampaignRow> listCampaigns(CampaignFilter filter) {
         List<Campaign> rows = campaigns.findAll(filter);
         long total = campaigns.count(filter);
         return PageableData.of(toRows(rows), filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
-    /** Batched {@code scenarioName}/{@code createdByName} enrichment for a page of campaigns. */
     private List<CampaignRow> toRows(List<Campaign> rows) {
         Map<Long, String> scenarioNames = scenarios.scenarioNamesByIds(
                 rows.stream().map(Campaign::scenarioId).collect(Collectors.toSet()));
@@ -332,7 +324,6 @@ public class CampaignService {
                 .toList();
     }
 
-    /** As {@link #listCampaigns}, for a single campaign — used by {@code get}/{@code update}/{@code clone}. */
     public CampaignRow campaignRow(long id) {
         Campaign c = requireCampaign(id);
         String scenarioName = scenarios.scenarioNamesByIds(List.of(c.scenarioId())).get(c.scenarioId());
@@ -342,16 +333,10 @@ public class CampaignService {
         return CampaignRow.of(c, scenarioName, createdByName);
     }
 
-    /**
-     * @return the campaign, or {@code null} if there is no such id.
-     */
     public Campaign getCampaign(long id) {
         return campaigns.find(id);
     }
 
-    /**
-     * As {@link #getCampaign(long)}, for internal callers — a missing campaign is a 404, not a null.
-     */
     public Campaign requireCampaign(long id) {
         Campaign campaign = getCampaign(id);
         if (campaign == null) {
@@ -381,24 +366,12 @@ public class CampaignService {
         return new CampaignStatusResponse(campaignId, CampaignStatus.PAUSED);
     }
 
-    /**
-     * "Arxivlash" (§10.6 kartochka {@code ⋯} menyusi) — {@code DELETE /api/campaigns/{id}}
-     * maps here rather than to a real row deletion, matching the codebase's soft-delete
-     * precedent ({@code DoNotCall.removedAt}): a campaign's targets/calls/transcripts must
-     * stay in the reports, so the row itself is never dropped, only marked terminal.
-     */
     public CampaignStatusResponse archive(long campaignId) {
         requireCampaign(campaignId);
         setStatus(campaignId, CampaignStatus.ARCHIVED);
         return new CampaignStatusResponse(campaignId, CampaignStatus.ARCHIVED);
     }
 
-    /**
-     * Opt a target out. The phone-level list is what makes it stick across future
-     * campaigns (§11.4); the per-target flag is kept so this campaign's own reporting
-     * still shows why the target stopped. Transactional: both writes describe one
-     * opt-out decision and must land together.
-     */
     @Transactional
     public void doNotCall(long targetId) {
         CampaignTarget t = targets.find(targetId);
@@ -415,12 +388,93 @@ public class CampaignService {
         return new DoNotCallResponse(targetId, true);
     }
 
+    public TargetMemoryDto getTargetMemory(long targetId) {
+        CampaignTarget t = targets.find(targetId);
+        if (t == null) {
+            throw new NotFoundException(ErrorCode.TARGET_NOT_FOUND, targetId);
+        }
+        Map<String, Object> map = parseContextMap(t.contextData());
+        String operatorNotes = map.get("operatorNotes") != null ? map.get("operatorNotes").toString() : null;
+        String lastCallSummary = map.get("lastCallSummary") != null ? map.get("lastCallSummary").toString() : null;
+        String preferredName = map.get("preferredName") != null ? map.get("preferredName").toString() : null;
+        return new TargetMemoryDto(targetId, operatorNotes, lastCallSummary, preferredName, map);
+    }
+
+    @Transactional
+    public TargetMemoryDto updateTargetMemory(long targetId, UpdateTargetMemoryRequest r) {
+        CampaignTarget t = targets.find(targetId);
+        if (t == null) {
+            throw new NotFoundException(ErrorCode.TARGET_NOT_FOUND, targetId);
+        }
+        Map<String, Object> map = parseContextMap(t.contextData());
+        if (r.operatorNotes() != null) {
+            if (r.operatorNotes().isBlank()) {
+                map.remove("operatorNotes");
+            } else {
+                map.put("operatorNotes", r.operatorNotes().trim());
+            }
+        }
+        if (r.lastCallSummary() != null) {
+            if (r.lastCallSummary().isBlank()) {
+                map.remove("lastCallSummary");
+            } else {
+                map.put("lastCallSummary", r.lastCallSummary().trim());
+            }
+        }
+        if (r.preferredName() != null) {
+            if (r.preferredName().isBlank()) {
+                map.remove("preferredName");
+            } else {
+                map.put("preferredName", r.preferredName().trim());
+            }
+        }
+        if (r.additionalContext() != null) {
+            map.putAll(r.additionalContext());
+        }
+        try {
+            String updatedJson = MAPPER.writeValueAsString(map);
+            targets.updateContextData(targetId, updatedJson);
+            audit.record("TARGET_MEMORY_UPDATE", "target", String.valueOf(targetId), "Memory updated by operator");
+            return new TargetMemoryDto(
+                    targetId,
+                    (String) map.get("operatorNotes"),
+                    (String) map.get("lastCallSummary"),
+                    (String) map.get("preferredName"),
+                    map
+            );
+        } catch (Exception e) {
+            throw new ValidationException(ErrorCode.INVALID_PARAMETER_VALUE, e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseContextMap(String json) {
+        if (json == null || json.isBlank()) {
+            return new HashMap<>();
+        }
+        try {
+            return MAPPER.readValue(json, Map.class);
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * Executes a recurrence iteration for a campaign across background scheduler.
+     */
+    @Transactional
+    public void triggerRecurrenceRun(long campaignId, boolean resetTargets) {
+        if (resetTargets) {
+            targets.resetTargetsForRecurrence(campaignId);
+            log.info("Reset targets for recurring campaign {}", campaignId);
+        }
+        campaigns.recordRecurrenceRun(campaignId, Instant.now(clock), CampaignStatus.ACTIVE);
+        log.info("Triggered recurring run for campaign {}", campaignId);
+    }
+
     /**
      * Apply a finished call's disposition to its target: mark it done, exhaust it, or
      * schedule the next attempt.
-     *
-     * <p>The retry time is chosen from the disposition and then pulled into the campaign's
-     * dial window — see {@link RetrySchedule} for why both halves matter.
      */
     public void applyOutcome(long targetId, Disposition disposition) {
         CampaignTarget t = targets.find(targetId);
@@ -448,6 +502,26 @@ public class CampaignService {
     }
 
     /**
+     * Dynamically schedules a target for a specific callback time requested by the client.
+     */
+    public void scheduleCallback(long targetId, Instant callbackAt) {
+        CampaignTarget t = targets.find(targetId);
+        if (t == null || callbackAt == null) {
+            return;
+        }
+        Campaign c = campaigns.find(t.campaignId());
+        ZonedDateTime candidate = callbackAt.atZone(ZoneId.of("Asia/Tashkent"));
+        RetryProperties retry = dialerProps.retry();
+        Instant finalInstant = candidate.toInstant();
+        if (c != null && retry != null && retry.respectDialWindow()) {
+            finalInstant = RetrySchedule.intoWindow(candidate, c.allowedDays(),
+                    c.dialWindowStart(), c.dialWindowEnd()).toInstant();
+        }
+        targets.updateStatus(targetId, TargetStatus.PENDING, finalInstant);
+        log.info("Target {} scheduled for smart callback at {}", targetId, finalInstant);
+    }
+
+    /**
      * When to dial this target again, honouring the campaign's window (§11.2).
      */
     private Instant nextAttemptAt(Disposition disposition, Campaign campaign) {
@@ -462,13 +536,6 @@ public class CampaignService {
                 campaign.dialWindowStart(), campaign.dialWindowEnd()).toInstant();
     }
 
-    /**
-     * Once a target lands on a terminal status (DONE/EXHAUSTED), check whether it was
-     * the campaign's last one still in the dial loop — if so the campaign is done
-     * (§10.6 "Tugadi" badge) and the topbar bell (§0.8 {@code CAMPAIGN_FINISHED}) is
-     * raised. Only an ACTIVE campaign can finish this way; PAUSED/ARCHIVED/DRAFT are
-     * left alone even if they happen to have zero active targets.
-     */
     private void checkCompletion(long campaignId) {
         Campaign c = campaigns.find(campaignId);
         if (c == null || c.status() != CampaignStatus.ACTIVE || targets.countActive(campaignId) > 0) {
@@ -484,10 +551,7 @@ public class CampaignService {
                 || d == Disposition.REFUSED
                 || d == Disposition.TRANSFERRED
                 || d == Disposition.WRONG_NUMBER
-                // A non-debt scenario ending normally (survey completed, message
-                // acknowledged...) — nothing to retry (ROADMAP A.3).
                 || d == Disposition.COMPLETED
-                // An opt-out must never be retried, whatever the attempt count (§11.4).
                 || d == Disposition.DO_NOT_CALL;
     }
 }

@@ -7,11 +7,19 @@ endpointlari. **Har biri real pul sarflaydi** (trunk daqiqasi, TTS belgilari)
 — faqat sinov/diagnostika uchun, ommaviy qo'ng'iroq uchun emas (buning uchun
 [campaigns.md](campaigns.md)).
 
+Ssenariylarni testlashning barcha usullari (veb simulyator, AI persona benchmark, jonli test qo'ng'iroq) uchun [scenario-testing.md](scenario-testing.md)ga qarang.
+
 Jonli (hozir davom etayotgan) qo'ng'iroqlar ro'yxati uchun
 [live.md](live.md)ga qarang — bu fayldagi `GET /live` o'sha bilan bir xil
 ma'lumotni beradi.
 
 Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
+
+---
+
+## 🎧 Ulanish signali (Connection Chime & Gudok)
+
+Qo'ng'iroq ulanishi bilan (`StasisStart` / go'shak ko'tarilganda), bot darhol gap boshlab yubormasdan, xuddi Telegram yoki zamonaviy VoIP ilovalaridagi kabi tabiiy ulanish ohangini (melodic connection chime C5→E5) chalar va suhbatga tayyorgarlik hissini beradi.
 
 ---
 
@@ -138,13 +146,4 @@ to'g'ridan-to'g'ri `<audio autoplay src="/api/calls/{channelId}/listen">`ga
 beriladi.
 
 Bir nechta operator bitta kanalni bir vaqtda tinglashi mumkin — har biri
-mustaqil ulanish, biri uzilganda qolganlarga ta'sir qilmaydi. Oqimning oldindan
-ma'lum uzunligi yo'q (WAV header'da o'rinbosar hajm bilan yoziladi); u faqat
-operator ulanishni uzganda yoki qo'ng'iroqning o'zi tugaganda tugaydi.
-
-| Parametr | Turi | Izoh |
-|---|---|---|
-| `channelId` | path | `GET /api/calls/live`dagi id |
-
-Kanal mavjud (jonli) bo'lmasa — `409`. Audit jurnaliga `CALL_LISTEN` sifatida
-oqim boshlangan zahoti (har bayt uchun emas, bitta marta) yoziladi.
+alohida oqim oladi.

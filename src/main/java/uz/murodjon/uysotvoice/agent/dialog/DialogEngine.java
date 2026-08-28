@@ -120,6 +120,12 @@ public class DialogEngine implements CallDialog {
     public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
                           ScenarioDefinition scenario, String language, String ttsVoice, boolean disclosureEnabled,
                           Runnable hangup, Runnable transfer, long callAttemptId) {
+        startCall(channelId, endpoint, context, scenario, language, ttsVoice, disclosureEnabled, hangup, transfer, callAttemptId, true);
+    }
+
+    public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
+                          ScenarioDefinition scenario, String language, String ttsVoice, boolean disclosureEnabled,
+                          Runnable hangup, Runnable transfer, long callAttemptId, boolean emotionAdaptiveVoice) {
         if (!available()) {
             log.debug("Dialog not started for {} (engine unavailable)", channelId);
             return;
@@ -142,7 +148,7 @@ public class DialogEngine implements CallDialog {
         String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
         DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
                 hangup, transfer, callAttemptId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
-                companyDisclosure, aiModel, voiceSettings);
+                companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
