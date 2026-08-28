@@ -189,11 +189,10 @@ services:
       TTS_PROVIDER: ${TTS_PROVIDER:-yandex}
       STT_YANDEX_API_KEY: ${STT_YANDEX_API_KEY:-}
       STT_YANDEX_FOLDER_ID: ${STT_YANDEX_FOLDER_ID:-}
-      # End-of-utterance tuning. Same reason as the thinking level above: these are the
-      # two knobs a recognition problem is diagnosed with, and they are worth nothing if
-      # changing .env needs an image rebuild to take effect.
       STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-DEFAULT}
       STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-0}
+      STT_VAD_GATING: ${STT_VAD_GATING:-false}
+      STT_ENDPOINTING: ${STT_ENDPOINTING:-false}
       # Aisha (STT_PROVIDER/TTS_PROVIDER=aisha). Passed through for the same reason as
       # the Yandex keys: selecting the provider in .env is pointless if its credentials
       # never reach the container.

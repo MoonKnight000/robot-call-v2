@@ -1,32 +1,10 @@
 package uz.murodjon.uysotvoice.agent.dialog;
 
-import io.micrometer.core.instrument.Timer;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
-import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.method.MethodToolCallbackProvider;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
-import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 
-import uz.murodjon.uysotvoice.agent.metrics.VoiceMetrics;
 import uz.murodjon.uysotvoice.agent.rtp.RtpEndpoint;
-import uz.murodjon.uysotvoice.agent.tts.PcmChunkListener;
-import uz.murodjon.uysotvoice.agent.tts.TtsProperties;
-import uz.murodjon.uysotvoice.agent.tts.TtsRouter;
 import uz.murodjon.uysotvoice.aimodel.domain.EffectiveAiModelConfig;
 import uz.murodjon.uysotvoice.aimodel.service.AiModelConfigService;
 import uz.murodjon.uysotvoice.callrecord.service.CallRecordService;
@@ -34,172 +12,95 @@ import uz.murodjon.uysotvoice.company.dto.Company;
 import uz.murodjon.uysotvoice.company.dto.CompanyConfig;
 import uz.murodjon.uysotvoice.company.service.CompanyConfigService;
 import uz.murodjon.uysotvoice.company.service.CompanyService;
-import uz.murodjon.uysotvoice.live.enums.LiveEventType;
-import uz.murodjon.uysotvoice.live.dto.LiveTranscriptEvent;
-import uz.murodjon.uysotvoice.live.service.LiveBroadcastService;
 import uz.murodjon.uysotvoice.scenario.dto.ScenarioDefinition;
-import uz.murodjon.uysotvoice.scenario.dto.StageDef;
-import uz.murodjon.uysotvoice.scenario.dto.ToolDef;
-import uz.murodjon.uysotvoice.shared.dialog.DialogPhrases;
-import uz.murodjon.uysotvoice.shared.dialog.Disclosure;
 import uz.murodjon.uysotvoice.shared.dialog.Disposition;
 import uz.murodjon.uysotvoice.voice.dto.EffectiveVoiceSettings;
 import uz.murodjon.uysotvoice.voice.service.VoiceSettingsService;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * The FSM + LLM dialog engine (PROJECT.md §4, §7.1, Stage 7). Owns one LLM
- * ChatClient (Spring AI Google GenAI starter → the Gemini Developer API) and a per-call
- * {@link DialogSession} registry. Each
- * client final transcript triggers a turn: take the call's stable system prefix, call
- * the LLM with the running history, the state annex and the tools this state may use
- * (which may advance the FSM or record outcomes), then synthesize the reply and stream
- * it to the caller.
+ * The cascade pipeline's conversation engine (PROJECT.md §4, §7.1, Stage 7): STT → LLM
+ * → TTS, one stage per collaborator.
  *
- * <p>The request is assembled to stay cacheable: system prefix, then the history, then
- * everything that changes per turn. Providers price a repeated prefix at a fraction of
- * a fresh one, and a 25-turn call resends its whole context every turn — see
- * {@link SystemPromptFactory}. {@code voice.llm.tokens.cached} is where that shows up.
+ * <pre>
+ *   RtpEndpoint ─audio→ SttStreamBridge ─text→ ClientInputGate ─turn→ TurnRunner
+ *                                                                        │
+ *   RtpEndpoint ←audio─ SpeechOutput ←──────────────sentences─────────────┘
+ * </pre>
  *
- * <p>Turns run on a virtual-thread worker so the blocking LLM/TTS calls never stall
- * the STT/RTP threads. A per-session {@code busy} flag serializes turns and drops
- * finals that arrive while a turn is still in flight. Barge-in, sentence-level TTS
- * streaming, and DB/CRM persistence come in later stages (§7.2, Stage 9).
+ * <p>What is left here is what belongs to the <em>call</em> rather than to any one stage:
+ * the {@link DialogSession} registry, the resources a session is opened with, the §11.1
+ * disclosure the call has to open with, and the read-only views the rest of the system
+ * takes of a live conversation ({@link CallDialog}).
+ *
+ * <ul>
+ *   <li>{@link ClientInputGate} — what the recognizer produced, and whether it is worth a turn
+ *   <li>{@link TurnRunner} — the LLM turn, its tools, and everything written before or after one
+ *   <li>{@link SpeechOutput} — text to audio the caller hears, and the guards on the way
+ *   <li>{@link SilenceWatchdogRunner} — a caller who has stopped answering
+ * </ul>
+ *
+ * <p>Every stage takes a {@link DialogSession} rather than a channel id: this class owns
+ * the registry, so a stage never has to resolve a call, and a call that has already been
+ * torn down is stopped here once instead of in four places.
  *
  * <p>Non-fatal without credentials: if no LLM ChatModel is available (no
- * {@code GEMINI_API_KEY}), the app still runs and dialog is disabled.
+ * {@code GEMINI_API_KEY}), the app still runs and dialog is simply disabled.
  */
 @Service
 public class DialogEngine implements CallDialog {
 
     private static final Logger log = LoggerFactory.getLogger(DialogEngine.class);
 
-    /** Bootstraps the opening turn — the bot speaks first (there is no client input yet). */
-    private static final String GREETING_BOOTSTRAP =
-            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Rejaga muvofiq salomlashing.]";
-
-    /**
-     * Shortest fragment worth cutting into its own TTS request. Below this a "sentence"
-     * sounds clipped and costs a round trip of its own.
-     */
-    private static final int MIN_SENTENCE_CHARS = 20;
-
-    /** Cap on waiting for queued audio to drain before hanging up anyway. */
-    private static final Duration MAX_DRAIN = Duration.ofSeconds(30);
-
-    /**
-     * How many messages to drop at once when the history cap is reached. Trimming in
-     * a block rather than one per turn keeps the request prefix stable for longer,
-     * which is what the provider's context cache is keyed on.
-     */
-    private static final int HISTORY_TRIM_BLOCK = 6;
-
-    /**
-     * Tools every stage needs regardless of scenario (ROADMAP A.1/A.3 — the fixed
-     * universal set every {@code ScenarioDefinition} gets on top of its own declared
-     * tools): the FSM has to be able to move, escalate, flag the wrong person, honour
-     * an opt-out, and hang up from anywhere in the call.
-     */
-    private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
-            Set.of("transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall");
-
-    /**
-     * How often the silence watchdog looks at a call. Finer than the idle threshold it
-     * enforces, so the prompt lands close to the moment the threshold is crossed rather
-     * than up to a whole threshold late.
-     */
-    private static final Duration WATCHDOG_TICK = Duration.ofSeconds(1);
-
-    /**
-     * Shortest caller transcript that may be dismissed as the bot's own echo. Long enough
-     * that a caller reading a figure back, or agreeing in the bot's own words, is never
-     * thrown away — only a verbatim stretch of the agent's last line reaches it.
-     */
-    private static final int MIN_ECHO_CHARS = 20;
-
     private final DialogProperties props;
-    private final SystemPromptFactory promptFactory;
-    private final TtsProperties ttsProps;
-    private final TtsRouter ttsRouter;
     private final CallRecordService records;
-    private final VoiceMetrics metrics;
-    private final ObjectProvider<ChatModel> chatModelProvider;
-    private final LiveBroadcastService broadcast;
     private final AiModelConfigService aiModelConfigService;
     private final VoiceSettingsService voiceSettingsService;
     private final CompanyService companyService;
     private final CompanyConfigService companyConfigService;
 
-    private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
-    private final ExecutorService worker = Executors.newVirtualThreadPerTaskExecutor();
-    /**
-     * Drives the per-call silence watchdogs and the mid-turn fillers. One platform thread
-     * is enough: both only read a few flags and a timestamp, and anything either decides
-     * to do is handed to the virtual-thread worker — the scheduler must never block on
-     * TTS or a hangup.
-     */
-    private final ScheduledExecutorService watchdogScheduler =
-            Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "dialog-watchdog");
-                t.setDaemon(true);
-                return t;
-            });
+    private final DialogTranscript transcript;
+    private final SpeechOutput speech;
+    private final TurnRunner turnRunner;
+    private final ClientInputGate inputGate;
+    private final SilenceWatchdogRunner watchdogRunner;
+    private final DialogExecutors executors;
 
-    private volatile ChatClient chatClient;
+    private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
     public DialogEngine(DialogProperties props,
-                        SystemPromptFactory promptFactory,
-                        TtsProperties ttsProps,
-                        TtsRouter ttsRouter,
                         CallRecordService records,
-                        VoiceMetrics metrics,
-                        ObjectProvider<ChatModel> chatModelProvider,
-                        LiveBroadcastService broadcast,
                         AiModelConfigService aiModelConfigService,
                         VoiceSettingsService voiceSettingsService,
                         CompanyService companyService,
-                        CompanyConfigService companyConfigService) {
+                        CompanyConfigService companyConfigService,
+                        DialogTranscript transcript,
+                        SpeechOutput speech,
+                        TurnRunner turnRunner,
+                        ClientInputGate inputGate,
+                        SilenceWatchdogRunner watchdogRunner,
+                        DialogExecutors executors) {
         this.props = props;
-        this.promptFactory = promptFactory;
-        this.ttsProps = ttsProps;
-        this.ttsRouter = ttsRouter;
         this.records = records;
-        this.metrics = metrics;
-        this.chatModelProvider = chatModelProvider;
-        this.broadcast = broadcast;
         this.aiModelConfigService = aiModelConfigService;
         this.voiceSettingsService = voiceSettingsService;
         this.companyService = companyService;
         this.companyConfigService = companyConfigService;
+        this.transcript = transcript;
+        this.speech = speech;
+        this.turnRunner = turnRunner;
+        this.inputGate = inputGate;
+        this.watchdogRunner = watchdogRunner;
+        this.executors = executors;
     }
 
-    @PostConstruct
-    public void init() {
-        ChatModel model = chatModelProvider.getIfAvailable();
-        if (model != null) {
-            chatClient = ChatClient.create(model);
-            log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
-        } else {
-            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY); dialog disabled");
-        }
-    }
-
+    @Override
     public boolean available() {
-        return props.enabled() && chatClient != null;
+        return turnRunner.available();
     }
 
     /**
@@ -240,13 +141,13 @@ public class DialogEngine implements CallDialog {
         CompanyConfig companyConfig = companyConfigService.find(companyId);
         String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
         DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
-                hangup, transfer, callAttemptId, newWatchdog(), disclosureEnabled, companyName, companyDisclosure,
-                aiModel, voiceSettings);
+                hangup, transfer, callAttemptId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
+                companyDisclosure, aiModel, voiceSettings);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
-        startWatchdog(session);
-        worker.submit(() -> {
+        watchdogRunner.start(session);
+        executors.submit(() -> {
             if (!awaitCallerReady(session)) {
                 return;
             }
@@ -258,11 +159,11 @@ public class DialogEngine implements CallDialog {
                 // turns out to have been noise, the resume below still opens the call.
                 log.info("[{}] caller spoke over the disclosure — greeting deferred to their turn",
                         channelId);
-                scheduleFalseInterruptionCheck(session, session.turnCount(),
-                        () -> advance(session, GREETING_BOOTSTRAP, false));
+                turnRunner.scheduleFalseInterruptionCheck(session, session.turnCount(),
+                        () -> turnRunner.startGreeting(session));
                 return;
             }
-            advance(session, GREETING_BOOTSTRAP, false);
+            turnRunner.startGreeting(session);
         });
     }
 
@@ -289,147 +190,6 @@ public class DialogEngine implements CallDialog {
         return !s.isEnded();
     }
 
-    /** A silence watchdog for a new call, or {@code null} when it is switched off. */
-    private NoInputWatchdog newWatchdog() {
-        if (props.noInputSeconds() <= 0) {
-            return null;
-        }
-        return new NoInputWatchdog(Duration.ofSeconds(props.noInputSeconds()),
-                props.noInputMaxPrompts(), Instant.now());
-    }
-
-    private void startWatchdog(DialogSession s) {
-        if (s.watchdog() == null) {
-            return;
-        }
-        ScheduledFuture<?> task = watchdogScheduler.scheduleWithFixedDelay(
-                () -> tickWatchdog(s), WATCHDOG_TICK.toMillis(), WATCHDOG_TICK.toMillis(),
-                TimeUnit.MILLISECONDS);
-        s.setWatchdogTask(task);
-    }
-
-    /**
-     * One watchdog tick. Runs on the scheduler thread, so it only decides — the prompt
-     * (TTS) and the close (which waits for audio to drain) go to the worker.
-     */
-    private void tickWatchdog(DialogSession s) {
-        try {
-            if (s.isEnded()) {
-                return;
-            }
-            NoInputAction action = s.watchdog()
-                    .check(Instant.now(), s.endpoint().isPlaying(), s.busy().get());
-            switch (action) {
-                case NONE -> {
-                }
-                case PROMPT -> worker.submit(() -> promptForInput(s));
-                case END -> worker.submit(() -> closeOnSilence(s));
-            }
-        } catch (Exception e) {
-            log.warn("[{}] watchdog tick failed: {}", s.channelId(), e.getMessage());
-        }
-    }
-
-    /**
-     * Ask whether the caller is still there, and put the unanswered question to them
-     * again. Spoken from code rather than through the model: there is no new client input
-     * to answer, so a turn would only ask the LLM to invent something, and the point is
-     * to break the silence quickly.
-     *
-     * <p>"Alo, eshityapsizmi?" on its own leaves the caller having to remember what they
-     * were asked — the question came a whole idle threshold ago, and the usual reason for
-     * the silence is that they did not catch it. Repeating it verbatim is usually free too:
-     * a reply is streamed sentence by sentence, so the question was normally synthesized
-     * on its own and comes straight back out of the TTS cache.
-     */
-    private void promptForInput(DialogSession s) {
-        if (s.isEnded() || !s.busy().compareAndSet(false, true)) {
-            return; // a real turn started in the meantime — it will speak anyway
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            // A barge-in that was never followed by speech leaves the cancel flag set,
-            // and that flag would silently swallow this prompt — the one moment the
-            // caller most needs to hear something.
-            s.setCancelled(false);
-            String line = DialogPhrases.stillThere(s.language());
-            String question = lastQuestion(s.lastAgentText());
-            log.info("[{}] no input for {}s — prompting ({}/{}){}", s.channelId(),
-                    props.noInputSeconds(), s.watchdog().prompts(), props.noInputMaxPrompts(),
-                    question != null ? ", repeating the question" : "");
-            boolean spoken = speakChunk(s, line);
-            // Two chunks rather than one string: each is a cache key of its own, and both
-            // have been spoken before.
-            if (question != null && speakChunk(s, question)) {
-                line = line + " " + question;
-                spoken = true;
-            }
-            if (spoken) {
-                // Recorded in the history so the model can see it asked, and in the
-                // transcript so the summary reflects a caller who went quiet.
-                s.history().add(new AssistantMessage(line));
-                s.setLastAgentText(line);
-                recordAgentLine(s, line);
-            }
-            metrics.noInputPrompt();
-        } finally {
-            s.busy().set(false);
-            MDC.remove("channelId");
-        }
-    }
-
-    /**
-     * The last question in what the agent said last, or {@code null} if it asked none —
-     * a statement is not worth repeating into a silence, and the closing lines are
-     * statements.
-     */
-    private static String lastQuestion(String agentText) {
-        if (agentText == null) {
-            return null;
-        }
-        int end = agentText.lastIndexOf('?');
-        if (end < 0) {
-            return null;
-        }
-        int start = 0;
-        for (int i = end - 1; i >= 0; i--) {
-            char c = agentText.charAt(i);
-            if (c == '.' || c == '!' || c == '?' || c == '\n') {
-                start = i + 1;
-                break;
-            }
-        }
-        String question = agentText.substring(start, end + 1).trim();
-        return question.isEmpty() ? null : question;
-    }
-
-    /** Give up on a call nobody is speaking on: say goodbye and hang up. */
-    private void closeOnSilence(DialogSession s) {
-        if (s.isEnded()) {
-            return;
-        }
-        log.info("[{}] closing dialog (no input after {} prompt(s))",
-                s.channelId(), s.watchdog().prompts());
-        // HUNG_UP rather than NO_ANSWER: the call was answered, so the number works and
-        // the target is worth retrying — but nothing was agreed.
-        s.end(Disposition.HUNG_UP);
-        metrics.noInputHangup();
-        if (!s.busy().compareAndSet(false, true)) {
-            // A turn claimed the session between the check and here. It sees isEnded()
-            // and finishes the call itself once it has spoken.
-            return;
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            s.setCancelled(false);
-            speakChunk(s, farewellLine(s));
-            finishWhenSpoken(s);
-        } finally {
-            s.busy().set(false);
-            MDC.remove("channelId");
-        }
-    }
-
     /**
      * Speak the mandatory disclosure — this is an automated system and the call is
      * being recorded (§11.1) — before the model gets a turn.
@@ -448,27 +208,11 @@ public class DialogEngine implements CallDialog {
         if (!props.mandatoryDisclosure() || !s.disclosureEnabled()) {
             return;
         }
-        String line = disclosureLine(s);
-        speakChunk(s, line);
+        String line = DialogLines.disclosure(s);
+        speech.speakChunk(s, line);
         s.setDisclosureSpoken(true);
-        recordAgentLine(s, line);
+        transcript.recordAgentLine(s, line);
         log.info("[{}] disclosure: {}", s.channelId(), line);
-    }
-
-    /**
-     * The §11.1 disclosure this call opens with, most specific wording first: the
-     * scenario's own, then the calling company's, then the platform's. Each configured
-     * text has to survive {@link Disclosure} to be used at all — that is what keeps the
-     * notice from being worded away, whichever level tries it.
-     */
-    private static String disclosureLine(DialogSession s) {
-        String scenarioLine = Disclosure.resolve(
-                s.scenario() != null ? s.scenario().disclosureText() : null, s.language(), s.companyName());
-        if (scenarioLine != null) {
-            return scenarioLine;
-        }
-        String companyLine = Disclosure.resolve(s.companyDisclosureText(), s.language(), s.companyName());
-        return companyLine != null ? companyLine : DialogPhrases.disclosure(s.language(), s.companyName());
     }
 
     /** Feeds a final client transcript into the conversation as the next turn. */
@@ -480,227 +224,29 @@ public class DialogEngine implements CallDialog {
         if (session == null || session.isEnded()) {
             return;
         }
-        if (isEchoOfBot(session, text)) {
-            // The far end has no echo cancellation and the recognizer has just handed us
-            // the bot's own sentence back. Answering it starts a loop the caller cannot
-            // get a word into — the bot replies to itself, at length, about nothing.
-            metrics.echoSuppressed();
-            log.warn("[{}] dropped a caller transcript that echoes the bot's own line: {}",
-                    channelId, text);
-            return;
-        }
-        // Said, so the operator watching the call should see it — whether or not the bot
-        // treats it as its cue to speak.
-        broadcast.publish(LiveEventType.TRANSCRIPT,
-                new LiveTranscriptEvent(channelId, "CLIENT", text, session.state()));
-        session.touchActivity();
-        if (isBackchannelOverTheBot(session, text)) {
-            metrics.backchannelIgnored();
-            log.info("[{}] caller agreed over the bot rather than answering it ({}) — "
-                    + "leaving the cut-off reply to resume", channelId, text);
-            // Deliberately not resumed from here. The barge-in that silenced the bot armed
-            // scheduleFalseInterruptionCheck already, and not starting a turn is exactly
-            // what lets it find the call where it left it and speak the rest.
-            return;
-        }
-        worker.submit(() -> advance(session, text, true));
+        inputGate.onFinal(session, text);
     }
 
     /**
      * An interim transcript: what the recognizer currently thinks the caller is saying,
-     * before it has committed to it. Nothing is ever spoken from one — it starts the LLM
-     * early, so the reply is already being written during the endpointing silence the
-     * turn would otherwise spend waiting (§1.3, {@link Speculation}).
+     * before it has committed to it.
      *
-     * <p>This is not the §7.4 warning about answering interim text. Nothing here reaches
-     * the caller unless the final says the same thing; a hypothesis the caller revises is
-     * cancelled and the turn runs exactly as it does today.
+     * <p>Straight to {@link TurnRunner#speculate} rather than through
+     * {@link ClientInputGate}, because an interim is never treated as something the
+     * caller said — nothing is spoken from one and no turn is started. All it does is
+     * begin writing a reply during the endpointing silence the turn would otherwise
+     * spend waiting (§1.3).
      */
     public void onClientInterim(String channelId, String text) {
-        if (!props.preemptive() || !props.streaming() || text == null) {
-            return;
-        }
         DialogSession session = sessions.get(channelId);
-        if (session == null || !readyToSpeculate(session, text)) {
+        if (session == null) {
             return;
         }
-        Speculation parked = session.speculation();
-        if (parked != null && saysTheSame(parked.inputText(), text)) {
-            return; // the same hypothesis, already being written
-        }
-        worker.submit(() -> startSpeculation(session, text));
+        turnRunner.speculate(session, text);
     }
 
     /**
-     * Whether this call is in a state where guessing at the reply is both possible and
-     * worth the tokens.
-     *
-     * <p>The interesting condition is {@code isInterrupted}: the turn annex tells the
-     * model where a barge-in cut it off, so a reply written before that note exists
-     * answers a different prompt than the turn would send. Everything else is either a
-     * turn already in progress, a call with no opening line yet, or a budget with too
-     * little left to spend on a guess.
-     */
-    private boolean readyToSpeculate(DialogSession s, String text) {
-        return !s.isEnded()
-                && !s.busy().get()
-                && !s.isInterrupted()
-                && s.turnCount() > 0
-                && text.length() >= props.preemptiveMinChars()
-                && withinSpeculationBudget(s);
-    }
-
-    /**
-     * Whether the call can afford a reply it may throw away. The last fifth of the budget
-     * is reserved for turns that are certain to be spoken — running out of tokens on a
-     * guess would close the call (§C14) over words the caller never said.
-     */
-    private boolean withinSpeculationBudget(DialogSession s) {
-        long cap = s.aiModel().maxTokensPerCall();
-        return cap <= 0 || s.tokensUsed() < cap / 5 * 4;
-    }
-
-    /**
-     * Start writing the reply to {@code text} without speaking any of it.
-     *
-     * <p>The prompt is built exactly as {@link #advance} would build it, but from a copy
-     * of the history: nothing here may leave a mark on the session, because the caller
-     * may yet say something else entirely.
-     */
-    private void startSpeculation(DialogSession s, String text) {
-        if (!readyToSpeculate(s, text)) {
-            return; // a turn claimed the call between the submit and here
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            int turn = s.turnCount();
-            List<Message> messages = new ArrayList<>(s.history());
-            if (s.turnCount() != turn || s.busy().get()) {
-                // A real turn claimed the call while the history was being copied, so the
-                // copy may be half of it. Nothing is lost by dropping the guess — the turn
-                // that took over sends the whole history itself.
-                return;
-            }
-            messages.add(new UserMessage(text));
-            messages.add(new UserMessage(promptFactory.turnAnnex(s)));
-            // cache() over an eager subscription is the whole mechanism: the request goes
-            // out now and every chunk is buffered, so the turn that adopts it is replayed
-            // all of them at once and then carries on with the live stream.
-            Flux<ChatResponse> responses = chatClient.prompt()
-                    .system(systemPrefix(s))
-                    .messages(messages)
-                    .options(manualToolOptions(s, toolsFor(s)))
-                    .stream()
-                    .chatResponse()
-                    .cache();
-            Disposable warmUp = responses.subscribe(
-                    ignored -> { },
-                    error -> log.debug("[{}] speculative reply failed: {}", s.channelId(), error.toString()));
-            s.setSpeculation(new Speculation(text, responses, warmUp));
-            metrics.speculationStarted();
-            log.debug("[{}] speculating on: {}", s.channelId(), text);
-        } catch (Exception e) {
-            // A guess that cannot be started costs the turn nothing — it runs as before.
-            log.debug("[{}] could not start a speculative reply: {}", s.channelId(), e.getMessage());
-        } finally {
-            MDC.remove("channelId");
-        }
-    }
-
-    /**
-     * The already-running reply stream for this turn, or {@code null} if there is none to
-     * use. A parked reply written for different words is cancelled here: it answers a
-     * sentence the caller turned out not to have said.
-     */
-    private Flux<ChatResponse> adoptSpeculation(DialogSession s, String clientText, boolean fromClient) {
-        Speculation parked = s.takeSpeculation();
-        if (parked == null) {
-            return null;
-        }
-        if (fromClient && saysTheSame(parked.inputText(), clientText)) {
-            metrics.speculationHit();
-            log.debug("[{}] adopted a reply started before the caller finished", s.channelId());
-            return parked.responses();
-        }
-        parked.discard();
-        metrics.speculationMiss();
-        return null;
-    }
-
-    /**
-     * Whether an interim and a final are the same utterance. Compared on letters and
-     * digits alone — a recognizer settling on its final routinely changes the casing and
-     * the punctuation of text it is otherwise no longer revising.
-     */
-    private static boolean saysTheSame(String interim, String finalText) {
-        return normalizeForEcho(interim).equals(normalizeForEcho(finalText));
-    }
-
-    /**
-     * Whether a caller transcript is agreement over the top of the bot rather than an
-     * answer to it (see {@link Backchannels}).
-     *
-     * <p>Scoped to a reply that was cut off part-way and still has a tail waiting: only
-     * there is ignoring the words the better of the two options, because only there is
-     * there something for the bot to go back to. A barge-in over already-queued audio
-     * leaves no text to resume — that playback is flushed and gone — so an "aha" there is
-     * answered, silence being worse than a non-sequitur.
-     */
-    private boolean isBackchannelOverTheBot(DialogSession s, String text) {
-        return s.isInterrupted()
-                && s.hasUnspokenText()
-                && Backchannels.matches(text, props.minInterruptionWords());
-    }
-
-    /**
-     * Whether a caller transcript is really the bot's own audio coming back.
-     *
-     * <p>On a speakerphone the handset's microphone hears its own earpiece, and the
-     * carrier has no acoustic echo cancellation to remove it — so the recognizer
-     * transcribes what the bot just said and attributes it to the caller. Twenty-odd
-     * characters of the agent's last line reproduced verbatim is not a coincidence; a
-     * caller confirming something back ("bir yarim million, to'g'rimi?") is far shorter
-     * than that and rarely a literal substring.
-     *
-     * <p>Only a symptom check. The real fix belongs on the Asterisk side; this stops the
-     * conversation looping while that is missing, and {@code voice.dialog.echo.suppressed}
-     * is what says it is happening.
-     */
-    private static boolean isEchoOfBot(DialogSession s, String text) {
-        String caller = normalizeForEcho(text);
-        return caller.length() >= MIN_ECHO_CHARS && normalizeForEcho(s.lastAgentText()).contains(caller);
-    }
-
-    /** Letters and digits only, lowercased, single-spaced — so punctuation cannot hide a match. */
-    private static String normalizeForEcho(String text) {
-        if (text == null) {
-            return "";
-        }
-        StringBuilder normalized = new StringBuilder(text.length());
-        for (int i = 0; i < text.length(); i++) {
-            char c = Character.toLowerCase(text.charAt(i));
-            if (Character.isLetterOrDigit(c)) {
-                normalized.append(c);
-            } else if (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) != ' ') {
-                normalized.append(' ');
-            }
-        }
-        return normalized.toString().trim();
-    }
-
-    /**
-     * Barge-in (PROJECT.md §7.2): the client started speaking. Silence the bot at once
-     * (flush the RTP playback) and cancel the turn still producing the reply, so the
-     * sentences the client talked over are never synthesized.
-     *
-     * <p>"Mid-utterance" is deliberately wider than "audio is on the wire right now".
-     * {@link RtpEndpoint#isPlaying()} is false in every gap between two streamed
-     * sentences — the next one is still being synthesized — and for the whole second or
-     * two a turn spends inside the LLM before any audio exists. Those gaps are precisely
-     * when a person interrupts: they wait for the end of a sentence and then speak. While
-     * this only looked at {@code isPlaying()}, such a barge-in set nothing at all, the
-     * turn carried on synthesizing, and the caller heard the bot answer a question they
-     * had already talked over — the "I said stop and it kept going" complaint.
+     * Barge-in (§7.2): the client started speaking, so silence the bot.
      *
      * @return whether there was in fact a reply to interrupt; the detector uses this to
      *         decide whether it has spent its arming (see {@code VadStream})
@@ -710,27 +256,7 @@ public class DialogEngine implements CallDialog {
         if (session == null || session.isEnded()) {
             return false;
         }
-        // Someone is talking, so the line is not silent — even if the recognizer never
-        // turns it into a final. Without this the watchdog would prompt over a caller
-        // whose speech simply failed to transcribe.
-        session.touchActivity();
-        boolean playing = session.endpoint().isPlaying();
-        if (!playing && !session.busy().get()) {
-            log.debug("[{}] barge-in ignored — the bot owed the caller nothing", channelId);
-            return false;
-        }
-        if (playing) {
-            session.endpoint().flushPlayback();
-        }
-        session.setCancelled(true);
-        session.setInterrupted(true);
-        // Any reply written ahead was written for a caller who had not interrupted, and
-        // the next turn's annex will say they did. Cancel it rather than answer with it.
-        session.discardSpeculation();
-        metrics.bargeIn();
-        log.info("[{}] barge-in: bot silenced ({})", channelId,
-                playing ? "mid-utterance" : "before its reply was spoken");
-        return true;
+        return inputGate.onBargeIn(session);
     }
 
     /** Whether this engine is the one running {@code channelId} — see {@link DialogRouter}. */
@@ -755,6 +281,7 @@ public class DialogEngine implements CallDialog {
      * What the dialog accumulated for {@code channelId}'s "Texnik" tab (§10.5). Read
      * before {@link #endCall} drops the session, same as {@link #outcome}.
      */
+    @Override
     public DialogTechnicalSnapshot technicalSnapshot(String channelId) {
         DialogSession session = sessions.get(channelId);
         if (session == null) {
@@ -778,6 +305,7 @@ public class DialogEngine implements CallDialog {
      *
      * @return whether a live conversation was actually ended here
      */
+    @Override
     public boolean notifyVoicemail(String channelId) {
         DialogSession session = sessions.get(channelId);
         if (session == null || session.isEnded()) {
@@ -793,6 +321,7 @@ public class DialogEngine implements CallDialog {
     }
 
     /** Drops the conversation state when the call tears down. */
+    @Override
     public void endCall(String channelId) {
         DialogSession session = sessions.remove(channelId);
         if (session == null) {
@@ -814,940 +343,11 @@ public class DialogEngine implements CallDialog {
     }
 
     /**
-     * Persists one agent-spoken line and publishes it to any live-transcript
-     * subscribers (§11.8) in one place, since every call site needs both and
-     * {@link uz.murodjon.uysotvoice.callrecord.service.CallRecordService#addTranscript} has
-     * no {@code channelId} to key a live event on — only {@code s} does.
-     */
-    private void recordAgentLine(DialogSession s, String line) {
-        records.addTranscript(s.callAttemptId(), "AGENT", line, s.state(), offsetMs(s), null);
-        broadcast.publish(LiveEventType.TRANSCRIPT,
-                new LiveTranscriptEvent(s.channelId(), "AGENT", line, s.state()));
-    }
-
-    /**
-     * @param fromClient whether {@code clientText} is something the caller actually said,
-     *                   as opposed to the greeting bootstrap. Only a caller is waiting on
-     *                   an answer, so only a caller's turn runs the §1.3 turnaround clock
-     *                   — and that clock is also what arms the filler and the streamed
-     *                   first sentence, neither of which belongs on the opening greeting
-     */
-    private void advance(DialogSession s, String clientText, boolean fromClient) {
-        if (s.isEnded()) {
-            return;
-        }
-        // Serialize turns. Speech that lands mid-turn is held rather than dropped —
-        // an LLM turn takes a second or two, and dropping it loses whole client
-        // utterances, after which the bot answers a question nobody asked (§7.2).
-        if (!s.busy().compareAndSet(false, true)) {
-            log.debug("[{}] turn in progress, deferring: {}", s.channelId(), clientText);
-            s.deferInput(clientText);
-            return;
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            if (fromClient) {
-                // The client has stopped talking — the <1s turnaround budget starts here
-                // (§1.3). Started once the turn is genuinely under way, not when the final
-                // arrived: a final that lands mid-turn is deferred, and restarting the
-                // clock from there used to reset the running turn's own measurement and
-                // hand the rest of its sentences to the streaming path meant for the first.
-                s.startTurnClock();
-            }
-            // Cleared before the caps below, not after they have been checked: those close
-            // the call with a spoken farewell, and a previous turn's barge-in flag left
-            // standing would swallow it — the caller's last experience of the call would
-            // be the line going dead.
-            s.setCancelled(false);
-            if (Duration.between(s.startedAt(), Instant.now()).getSeconds() > s.aiModel().maxCallSeconds()) {
-                closeOnLimit(s, "maksimal davomiylik");
-                return;
-            }
-            if (s.incrementTurn() > props.maxTurns()) {
-                closeOnLimit(s, "maksimal turn soni");
-                return;
-            }
-            // Cost cap (§C14). The turn and duration caps bound a call that behaves;
-            // this one bounds a call that does not — a model stuck in a loop resends the
-            // whole context every turn, and the bill grows even while the turn count
-            // looks reasonable.
-            if (s.aiModel().maxTokensPerCall() > 0 && s.tokensUsed() >= s.aiModel().maxTokensPerCall()) {
-                closeOnLimit(s, "token budjeti (" + s.tokensUsed() + " token)");
-                return;
-            }
-
-            s.history().add(new UserMessage(clientText));
-            int dropped = s.trimHistory(props.historyMaxMessages(), HISTORY_TRIM_BLOCK);
-            if (dropped > 0) {
-                log.debug("[{}] history trimmed by {} messages (cap {})",
-                        s.channelId(), dropped, props.historyMaxMessages());
-            }
-
-            String system = systemPrefix(s);
-            // The state block goes after the history, not into the system message, so
-            // the cached prefix stays append-only (see SystemPromptFactory).
-            List<Message> messages = new ArrayList<>(s.history());
-            messages.add(new UserMessage(promptFactory.turnAnnex(s)));
-            s.setInterrupted(false); // the annex has carried the barge-in note now
-
-            List<ToolCallback> tools = toolsFor(s);
-            s.clearToolReplies(); // the last turn's lines have been spoken or dropped
-            s.clearSpokenText();  // this turn's own account of what the caller hears
-            s.setUnspokenText(null); // a previous turn's cut-off tail is stale now
-
-            // A reply that was already being written while the caller finished speaking,
-            // if the final turned out to say what the interim did. Taken before the timer
-            // starts on purpose: the LLM latency this turn is charged with should be the
-            // part the caller actually waited through.
-            Flux<ChatResponse> speculated = adoptSpeculation(s, clientText, fromClient);
-
-            TurnResult result;
-            Timer.Sample llmSample = metrics.startTimer();
-            ScheduledFuture<?> filler = scheduleFiller(s);
-            try {
-                result = props.streaming()
-                        ? streamTurn(s, system, messages, tools, speculated)
-                        : blockingTurn(s, system, messages, tools);
-            } catch (Exception e) {
-                metrics.llmError();
-                log.warn("LLM turn failed [{}]: {}", s.channelId(), e.getMessage());
-                // Fall through with no reply rather than returning: the fallback below
-                // still has to speak. Returning here left the caller listening to
-                // silence, and in GREETING that is the whole call — the bot never
-                // says anything at all.
-                result = TurnResult.NOTHING;
-            } finally {
-                if (filler != null) {
-                    // The turn is over; anything still pending would land after the reply.
-                    // A filler already in flight is stopped by its own guards instead.
-                    filler.cancel(false);
-                }
-                long elapsedNanos = metrics.stopLlmTurn(llmSample);
-                s.recordLlmLatency(Duration.ofNanos(elapsedNanos).toMillis());
-            }
-
-            // A barge-in landed: the history, the transcript and the "where you stopped"
-            // note record what the caller HEARD, which is no longer what the model wrote.
-            // Told it delivered the whole reply, the model treats the sentences the caller
-            // never heard as said, and the sum and the due date never come up again.
-            boolean cutOff = s.isCancelled();
-            String reply = cutOff ? s.spokenText() : result.reply();
-            boolean haveText = reply != null && !reply.isBlank();
-            if (haveText) {
-                s.history().add(new AssistantMessage(reply));
-                s.setLastAgentText(reply); // remembered so barge-in can tell the model where it stopped
-                log.info("[{}] AGENT ({}{}): {}", s.channelId(), s.state(),
-                        cutOff ? ", cut off by the caller" : "", reply);
-                recordAgentLine(s, reply);
-            }
-            if (result.toolNote() != null && result.toolNote().contains("XATO")) {
-                // The model spoke and called a tool in the same breath, and the tool
-                // refused it (§4.4 — a promise dated in the past, say). There was no
-                // retry to show it the rejection, so the next turn carries it instead;
-                // otherwise the model believes a promise that was never recorded.
-                s.history().add(new UserMessage("[TIZIM: Tool natijasi: " + result.toolNote() + "]"));
-            }
-
-            if (cutOff) {
-                // Nothing more is spoken into a caller who is talking. Neither recovery
-                // below applies: both exist to break a silence, and there is none.
-                log.debug("[{}] turn cut off by the caller — no recovery line", s.channelId());
-            } else if (result.blocked() && !result.spoken()) {
-                // The whole reply was a figure the caller must not be told. Correct it
-                // once, then hand over to a person — never guess a sum aloud (§4.4).
-                recoverFromFactBlock(s, system, messages);
-            } else if (!result.spoken() && !s.isEnded()) {
-                // Nothing reached the caller and the call is not over: speak a neutral
-                // line rather than hand them silence.
-                if (!haveText) {
-                    metrics.llmError();
-                    log.warn("[{}] no speakable text from the LLM in {}; using the fallback line",
-                            s.channelId(), s.state());
-                }
-                speakChunk(s, fallbackLine(s));
-            }
-            if (s.isEnded()) {
-                finishWhenSpoken(s);
-            }
-        } finally {
-            boolean interrupted = s.isCancelled();
-            int turn = s.turnCount();
-            s.busy().set(false);
-            MDC.remove("channelId");
-            // Anything the client said during this turn becomes the next one. Submitted
-            // after busy is cleared so the new turn can actually claim the session.
-            String deferred = s.takeDeferredInput();
-            if (deferred != null && !deferred.isBlank() && !s.isEnded()) {
-                worker.submit(() -> advance(s, deferred, true));
-            } else if (interrupted && !s.isEnded()) {
-                // Silenced, but nothing came back to show for it. Give the words a moment
-                // to arrive before deciding the interruption was real.
-                scheduleFalseInterruptionCheck(s, turn, () -> resumeInterruptedReply(s, turn));
-            }
-        }
-    }
-
-    /**
-     * Arm the check that decides, after the fact, whether a barge-in was a real one.
-     *
-     * <p>A VAD fires on a cough, a chair, a voice in the room and the bot's own audio
-     * coming back off a speakerphone, exactly as it fires on the caller — and by the time
-     * anything can tell the difference the bot has already been silenced, which is the
-     * right order (waiting to be sure means talking over someone who really did speak).
-     * What separates the two afterwards is simple: a real interruption is followed by
-     * words, and words start a turn. So if the turn number has not moved by the time this
-     * runs, nobody spoke, and the caller is sitting in a silence the bot created.
-     *
-     * <p>Scheduled on the watchdog thread, which must never block, so it only hands the
-     * work to the virtual-thread worker.
-     */
-    private void scheduleFalseInterruptionCheck(DialogSession s, int turn, Runnable onFalseInterruption) {
-        if (props.falseInterruptionTimeoutMs() <= 0) {
-            return;
-        }
-        watchdogScheduler.schedule(
-                () -> worker.submit(() -> runIfFalseInterruption(s, turn, onFalseInterruption)),
-                props.falseInterruptionTimeoutMs(), TimeUnit.MILLISECONDS);
-    }
-
-    /** Carry out {@code onFalseInterruption} if the call is still where the barge-in left it. */
-    private void runIfFalseInterruption(DialogSession s, int turn, Runnable onFalseInterruption) {
-        if (s.isEnded() || s.turnCount() != turn || s.busy().get() || s.endpoint().isPlaying()) {
-            return; // the caller really was speaking, or something else is talking to them
-        }
-        metrics.falseBargeIn();
-        log.info("[{}] no speech followed the barge-in after {} ms — treating it as noise",
-                s.channelId(), props.falseInterruptionTimeoutMs());
-        // The model was never actually cut off, so the next turn must not be told it was.
-        s.setInterrupted(false);
-        s.setCancelled(false);
-        onFalseInterruption.run();
-    }
-
-    /**
-     * Speak the tail of a reply the barge-in stopped, once it has turned out that nobody
-     * was interrupting.
-     *
-     * <p>Resuming rather than re-asking is what a person does: the sentence was half out,
-     * the noise was not an answer, and starting over ("uzr, takrorlang") makes the caller
-     * repeat something they never said. It is also what the mature voice stacks default
-     * to. Only the unspoken remainder is played — the caller already heard the rest.
-     */
-    private void resumeInterruptedReply(DialogSession s, int turn) {
-        if (!s.busy().compareAndSet(false, true)) {
-            return; // a real turn claimed the call in the meantime; it will speak
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            String rest = s.takeUnspokenText();
-            if (rest == null || s.isEnded() || s.turnCount() != turn) {
-                return;
-            }
-            if (!speakChunk(s, rest)) {
-                return;
-            }
-            String merged = mergeResumedReply(s, rest);
-            s.setLastAgentText(merged);
-            recordAgentLine(s, rest);
-            log.info("[{}] AGENT ({}, resumed after a false barge-in): {}",
-                    s.channelId(), s.state(), rest);
-        } finally {
-            s.busy().set(false);
-            MDC.remove("channelId");
-        }
-    }
-
-    /**
-     * Fold a resumed tail back into the reply it belongs to, so the history holds the one
-     * line the model wrote rather than two consecutive assistant messages describing half
-     * a sentence each.
-     *
-     * @return the whole line as the caller ended up hearing it
-     */
-    private static String mergeResumedReply(DialogSession s, String rest) {
-        List<Message> history = s.history();
-        int last = history.size() - 1;
-        if (last >= 0 && history.get(last) instanceof AssistantMessage spoken
-                && spoken.getText() != null && !spoken.getText().isBlank()) {
-            String merged = spoken.getText().trim() + " " + rest;
-            history.set(last, new AssistantMessage(merged));
-            return merged;
-        }
-        history.add(new AssistantMessage(rest));
-        return rest;
-    }
-
-    /**
-     * One turn, streamed: sentences are synthesized and queued as the model produces
-     * them, so the caller hears the opening words while the rest is still generating.
-     * This is where the turnaround budget is won — the alternative serializes the full
-     * LLM latency and the full synthesis latency before any audio exists (§7.2, §1.3).
-     *
-     * @param speculated a reply already in flight for these exact words, or {@code null}
-     *                   to send the request now. Adopting one changes nothing below it:
-     *                   the stream replays what it generated during the endpointing wait
-     *                   and then continues live, so sentences are spoken, tools collected
-     *                   and tokens counted exactly as on any other turn
-     * @return the reply text plus whether any of it actually reached the caller
-     */
-    private TurnResult streamTurn(DialogSession s, String system, List<Message> messages,
-                                  List<ToolCallback> tools, Flux<ChatResponse> speculated) {
-        TokenUsage turnUsage = new TokenUsage();
-        List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
-
-        StreamedReply reply = consume(s, speculated != null ? speculated : chatClient.prompt()
-                .system(system)
-                .messages(messages)
-                .options(manualToolOptions(s, tools))
-                .stream()
-                .chatResponse(), turnUsage, toolCalls);
-        publishUsage(s, turnUsage);
-        String toolNote = runTools(s, tools, toolCalls);
-
-        if (!reply.text().isEmpty()) {
-            return new TurnResult(reply.text(), reply.spoken(), reply.blocked(), toolNote);
-        }
-        // Tool-only turn: the model called e.g. transitionTo and produced no text of its
-        // own, which is how this provider answers a tool-calling turn. The line it wrote
-        // into the tool's `reply` argument is the answer — speak that (DialogTools).
-        String carried = s.toolReplies();
-        if (carried != null) {
-            SpeechOutcome outcome = speak(s, carried);
-            return new TurnResult(carried, outcome == SpeechOutcome.SPOKEN,
-                    outcome == SpeechOutcome.BLOCKED, toolNote);
-        }
-        // Nothing spoken and nothing carried — ask once more for the line alone. A whole
-        // extra round trip inside the turnaround budget (§1.3), so it is the last resort.
-        metrics.spokenLineRetry();
-        log.warn("[{}] empty LLM reply in {} — asking again for the spoken line",
-                s.channelId(), s.state());
-        TokenUsage retryUsage = new TokenUsage();
-        StreamedReply retry = consume(s, chatClient.prompt()
-                .system(system)
-                .messages(spokenLineRetry(messages, toolNote))
-                .stream()
-                .chatResponse(), retryUsage, new ArrayList<>());
-        publishUsage(s, retryUsage);
-        // toolNote dropped: the retry has already shown it to the model.
-        return new TurnResult(retry.text(), retry.spoken(), retry.blocked(), null);
-    }
-
-    /**
-     * Drain one streamed reply: accumulate its text, collect the tool calls it carries,
-     * and speak each sentence as soon as it is complete.
-     *
-     * <p>The stream is drained to completion even after a barge-in — abandoning the
-     * iterator mid-way leaves the subscription open. Cancellation stops the synthesis,
-     * which is the part that costs money and airtime.
-     */
-    private StreamedReply consume(DialogSession s, Flux<ChatResponse> responses,
-                                  TokenUsage usage, List<AssistantMessage.ToolCall> toolCalls) {
-        StringBuilder full = new StringBuilder();
-        StringBuilder pending = new StringBuilder();
-        boolean spoken = false;
-        boolean blocked = false;
-
-        for (ChatResponse response : responses.toIterable()) {
-            usage.add(response);
-            // Collected, not run yet: a tool may end the call, and the sentences already
-            // in flight should still be spoken before that takes effect.
-            toolCalls.addAll(toolCallsOf(response));
-            String chunk = textOf(response);
-            if (chunk == null || chunk.isEmpty()) {
-                continue;
-            }
-            full.append(chunk);
-            pending.append(chunk);
-            if (s.isCancelled()) {
-                // Still accumulating, just no longer speaking: what is left in `pending`
-                // when the stream ends is exactly the part the caller did not hear, and
-                // that is what a false interruption resumes from.
-                continue;
-            }
-            for (String sentence = takeSentence(pending); sentence != null; sentence = takeSentence(pending)) {
-                SpeechOutcome outcome = speak(s, sentence);
-                spoken |= outcome == SpeechOutcome.SPOKEN;
-                blocked |= outcome == SpeechOutcome.BLOCKED;
-            }
-        }
-        if (s.isCancelled()) {
-            s.setUnspokenText(pending.toString());
-        } else if (!pending.isEmpty()) {
-            SpeechOutcome outcome = speak(s, pending.toString().trim());
-            spoken |= outcome == SpeechOutcome.SPOKEN;
-            blocked |= outcome == SpeechOutcome.BLOCKED;
-        }
-        return new StreamedReply(full.toString().trim(), spoken, blocked);
-    }
-
-    /** What one drained stream produced — the same three facts a {@link TurnResult} carries. */
-    private record StreamedReply(String text, boolean spoken, boolean blocked) {
-    }
-
-    /** One turn in a single blocking call — the pre-streaming path, kept as a fallback. */
-    private TurnResult blockingTurn(DialogSession s, String system, List<Message> messages,
-                                    List<ToolCallback> tools) {
-        ChatResponse response = chatClient.prompt()
-                .system(system)
-                .messages(messages)
-                .options(manualToolOptions(s, tools))
-                .call()
-                .chatResponse();
-        TokenUsage turnUsage = new TokenUsage();
-        turnUsage.add(response);
-        publishUsage(s, turnUsage);
-        String toolNote = runTools(s, tools, toolCallsOf(response));
-
-        String reply = textOf(response);
-        if (reply == null || reply.isBlank()) {
-            reply = s.toolReplies(); // the line the tools carried (see DialogTools)
-        }
-        if (reply == null || reply.isBlank()) {
-            metrics.spokenLineRetry();
-            log.warn("[{}] empty LLM reply in {} — asking again for the spoken line",
-                    s.channelId(), s.state());
-            reply = retryForSpokenLine(s, system, messages, toolNote);
-            toolNote = null; // the retry has already shown it to the model
-        }
-        SpeechOutcome outcome = speak(s, reply);
-        if (outcome == SpeechOutcome.SKIPPED && s.isCancelled()) {
-            // Blocking mode synthesizes the reply whole, so a barge-in costs all of it —
-            // which also makes all of it what a false interruption has to resume.
-            s.setUnspokenText(reply);
-        }
-        return new TurnResult(reply, outcome == SpeechOutcome.SPOKEN,
-                outcome == SpeechOutcome.BLOCKED, toolNote);
-    }
-
-    /** Second attempt when a turn produced only tool calls: text, no tools. */
-    private String retryForSpokenLine(DialogSession s, String system, List<Message> messages, String toolNote) {
-        ChatResponse response = chatClient.prompt()
-                .system(system)
-                .messages(spokenLineRetry(messages, toolNote))
-                .call()
-                .chatResponse();
-        TokenUsage retryUsage = new TokenUsage();
-        retryUsage.add(response);
-        publishUsage(s, retryUsage);
-        return textOf(response);
-    }
-
-    /**
-     * The turn's messages plus the instruction to answer with the spoken line alone.
-     *
-     * <p>Appended rather than folded into the system message: changing the system
-     * message would invalidate the cached prefix this whole design protects, and this
-     * extra round trip is exactly the one worth keeping cheap.
-     *
-     * @param toolNote what the tools returned, so the model can react to a guardrail
-     *                 that refused it (a promise dated in the past) — or null
-     */
-    private static List<Message> spokenLineRetry(List<Message> messages, String toolNote) {
-        List<Message> retryMessages = new ArrayList<>(messages);
-        if (toolNote != null) {
-            retryMessages.add(new UserMessage("[TIZIM: Tool natijasi: " + toolNote + "]"));
-        }
-        retryMessages.add(new UserMessage("[TIZIM: Endi faqat mijozga ovoz bilan aytiladigan "
-                + "matnni qaytaring. Tool chaqirmang, izoh yozmang.]"));
-        return retryMessages;
-    }
-
-    /**
-     * Recover from a reply the fact guard refused in full (§4.4).
-     *
-     * <p>Naming the mistake and asking again is usually enough — the model had the right
-     * figure in its prompt all along. If the second attempt is wrong too, the call goes
-     * to a person: a caller may be left waiting, but never told a sum that is not theirs.
-     */
-    private void recoverFromFactBlock(DialogSession s, String system, List<Message> messages) {
-        List<Message> retryMessages = new ArrayList<>(messages);
-        retryMessages.add(new UserMessage("[TIZIM: Oxirgi javobingizda kontekstda berilmagan pul "
-                + "summasi bor edi, shuning uchun u mijozga AYTILMADI. Javobni qaytadan yozing va "
-                + "faqat yuqorida berilgan qarz summasini ishlating. Tool chaqirmang.]"));
-        String second = null;
-        try {
-            ChatResponse response = chatClient.prompt()
-                    .system(system)
-                    .messages(retryMessages)
-                    .call()
-                    .chatResponse();
-            TokenUsage usage = new TokenUsage();
-            usage.add(response);
-            publishUsage(s, usage);
-            second = textOf(response);
-        } catch (Exception e) {
-            log.warn("[{}] fact-guard retry failed: {}", s.channelId(), e.getMessage());
-        }
-        if (second != null && !second.isBlank() && speak(s, second) == SpeechOutcome.SPOKEN) {
-            s.history().add(new AssistantMessage(second));
-            s.setLastAgentText(second);
-            recordAgentLine(s, second);
-            log.info("[{}] AGENT ({}, fact-guard retry): {}", s.channelId(), s.state(), second);
-            return;
-        }
-        log.error("[{}] fact guard blocked the reply twice in {} — escalating to an operator",
-                s.channelId(), s.state());
-        s.end(Disposition.TRANSFERRED);
-        speakChunk(s, DialogPhrases.transferring(s.language()));
-    }
-
-    /** Add a turn's tokens to the call total (for the budget) and publish the metrics. */
-    private void publishUsage(DialogSession s, TokenUsage usage) {
-        usage.publish(s, metrics);
-        s.addTokens(usage.total());
-    }
-
-    /** The stable, per-call half of the prompt — built once and then reused verbatim. */
-    private String systemPrefix(DialogSession s) {
-        String prefix = s.systemPrefix();
-        if (prefix == null) {
-            prefix = promptFactory.stablePrefix(s);
-            s.setSystemPrefix(prefix);
-        }
-        return prefix;
-    }
-
-    /**
-     * The tools this stage may use, built from the bound scenario (ROADMAP A.3). Every
-     * tool declaration is re-sent (and re-billed) on every turn, and the ones that
-     * cannot legitimately fire yet are also the ones a model is most likely to misfire.
-     *
-     * <p>Two of a scenario's tools — {@code recordPaymentPromise}/{@code
-     * recordRefusalReason} — are hardcoded {@link DialogTools} methods (they carry real
-     * code guardrails, e.g. rejecting a past promised date) and only appear when the
-     * scenario actually declares a matching {@link ToolDef} name; every other declared
-     * tool is built generically by {@link ScenarioToolCallbackFactory}.
-     *
-     * <p>The set only changes on a stage transition, so the request prefix — which
-     * includes the tool declarations — still holds still for several turns at a time.
-     * Set {@code voice-agent.dialog.state-scoped-tools=false} to send them all.
-     */
-    private List<ToolCallback> toolsFor(DialogSession s) {
-        Set<String> declared = declaredToolNames(s.scenario());
-        List<ToolCallback> callbacks = new ArrayList<>();
-        for (ToolCallback fixed : MethodToolCallbackProvider.builder()
-                .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
-            String name = fixed.getToolDefinition().name();
-            // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
-            // are universal and always included; recordPaymentPromise/recordRefusalReason
-            // only when this scenario actually declares them.
-            if (ALWAYS_AVAILABLE_TOOLS.contains(name) || declared.contains(name)) {
-                callbacks.add(fixed);
-            }
-        }
-        if (s.scenario().tools() != null) {
-            for (ToolDef toolDef : s.scenario().tools()) {
-                if (!DialogTools.HARDCODED_TOOL_NAMES.contains(toolDef.name())) {
-                    callbacks.add(ScenarioToolCallbackFactory.build(toolDef, s));
-                }
-            }
-        }
-        if (!props.stateScopedTools()) {
-            return callbacks;
-        }
-        Set<String> allowed = allowedTools(s);
-        return callbacks.stream()
-                .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
-                .toList();
-    }
-
-    private static Set<String> declaredToolNames(ScenarioDefinition def) {
-        if (def.tools() == null) {
-            return Set.of();
-        }
-        Set<String> names = new HashSet<>();
-        def.tools().forEach(t -> names.add(t.name()));
-        return names;
-    }
-
-    /**
-     * Tools callable from the session's current stage: the fixed universal set plus
-     * whatever the current {@link StageDef#allowedTools()} names — or, when a stage
-     * declares no restriction (the common case), every tool this scenario has.
-     */
-    private static Set<String> allowedTools(DialogSession s) {
-        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
-        Set<String> allowed = new HashSet<>(ALWAYS_AVAILABLE_TOOLS);
-        // null = not specified, every scenario tool is available here (the common case);
-        // an explicit (possibly empty) list means exactly those tools and no others —
-        // debt-collection's GREETING/CLOSING/etc. stages rely on the empty-list case to
-        // exclude recordPaymentPromise/recordRefusalReason.
-        List<String> perStage = stage != null ? stage.allowedTools() : null;
-        if (perStage == null) {
-            if (s.scenario().tools() != null) {
-                s.scenario().tools().forEach(t -> allowed.add(t.name()));
-            }
-        } else {
-            allowed.addAll(perStage);
-        }
-        return allowed;
-    }
-
-    /**
-     * This turn's tools, with Spring AI's built-in tool-calling loop switched off —
-     * {@link #runTools} executes them here instead.
-     *
-     * <p>That loop answers a tool call by replaying the model's own {@code functionCall}
-     * back to it alongside the result, and Gemini 3 rejects the replay unless every
-     * function call carries the opaque {@code thought_signature} it was issued with
-     * (HTTP 400, "Function call is missing a thought_signature in functionCall parts").
-     * Getting those signatures out of the provider means echoing the model's thinking
-     * back verbatim — which this engine cannot do, because the same parsing path would
-     * hand that reasoning to the TTS and speak it to the caller.
-     *
-     * <p>Running the tools here removes the round trip that needs a signature at all.
-     * Nothing is lost: the tools move the FSM and record outcomes, their return strings
-     * are confirmations, and the conversation history was already text-only. It is also
-     * one LLM call cheaper per tool-calling turn, which the &lt;1s budget (§1.3) notices.
-     *
-     * <p>A fresh options object every turn — the ChatClient merges the tool callbacks
-     * into the instance it is handed, so a shared one would accumulate them.
-     *
-     * <p>Also where the call's company AI-model overrides (§11 settings, {@link
-     * DialogSession#aiModel()}) are layered in — {@code GoogleGenAiChatOptions}
-     * implements {@code ToolCallingChatOptions}, so one options object carries both;
-     * a null override leaves the Spring AI auto-configured default in place (same
-     * runtime-merge-over-default Spring AI already does for every unset field).
-     */
-    private static ChatOptions manualToolOptions(DialogSession s, List<ToolCallback> tools) {
-        EffectiveAiModelConfig aiModel = s.aiModel();
-        return GoogleGenAiChatOptions.builder()
-                .toolCallbacks(tools)
-                .internalToolExecutionEnabled(false)
-                .model(aiModel.model())
-                .temperature(aiModel.temperature())
-                .maxOutputTokens(aiModel.maxOutputTokens())
-                .build();
-    }
-
-    /** Every tool call carried by one response (or one streamed chunk of it). */
-    private static List<AssistantMessage.ToolCall> toolCallsOf(ChatResponse response) {
-        if (response == null) {
-            return List.of();
-        }
-        return response.getResults().stream()
-                .map(Generation::getOutput)
-                .flatMap(output -> output.getToolCalls().stream())
-                .toList();
-    }
-
-    /**
-     * Run the tools the model asked for, in the order it asked for them.
-     *
-     * <p>A failure is logged and reported rather than thrown: a tool that did not run
-     * is a lost outcome, but an exception here would cost the caller the whole reply.
-     *
-     * @return what the tools returned, for the model to see — or null if it called none
-     */
-    private String runTools(DialogSession s, List<ToolCallback> tools,
-                            List<AssistantMessage.ToolCall> calls) {
-        if (calls.isEmpty()) {
-            return null;
-        }
-        List<String> results = new ArrayList<>();
-        for (AssistantMessage.ToolCall call : calls) {
-            ToolCallback callback = tools.stream()
-                    .filter(t -> t.getToolDefinition().name().equals(call.name()))
-                    .findFirst()
-                    .orElse(null);
-            if (callback == null) {
-                // A tool this state does not offer (see toolsFor) — the model invented
-                // the name, or is reaching for an outcome that is not on the table yet.
-                log.warn("[{}] model called unavailable tool {} in {}",
-                        s.channelId(), call.name(), s.state());
-                results.add("XATO: " + call.name() + " hozirgi bosqichda mavjud emas");
-                continue;
-            }
-            try {
-                String result = callback.call(call.arguments());
-                log.debug("[{}] tool {}({}) -> {}", s.channelId(), call.name(), call.arguments(), result);
-                if (!result.isBlank()) {
-                    results.add(result);
-                }
-            } catch (Exception e) {
-                log.warn("[{}] tool {} failed: {}", s.channelId(), call.name(), e.getMessage());
-                results.add("XATO: " + call.name() + " bajarilmadi");
-            }
-        }
-        return results.isEmpty() ? null : String.join(" ", results);
-    }
-
-    /** The assistant text carried by one response (or chunk), or {@code null}. */
-    private static String textOf(ChatResponse response) {
-        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
-            return null;
-        }
-        return response.getResult().getOutput().getText();
-    }
-
-    /**
-     * Cut the next complete sentence off the front of {@code pending}, or return
-     * {@code null} if there is not one yet.
-     *
-     * <p>A minimum length keeps the model's own abbreviations and decimals from being
-     * cut into fragments too small to synthesize naturally — a two-word "sentence"
-     * sounds clipped, and each cut costs a separate TTS round trip.
-     */
-    private static String takeSentence(StringBuilder pending) {
-        for (int i = MIN_SENTENCE_CHARS - 1; i < pending.length(); i++) {
-            char c = pending.charAt(i);
-            if (c == '.' || c == '!' || c == '?' || c == '\n' || c == '…') {
-                String sentence = pending.substring(0, i + 1).trim();
-                pending.delete(0, i + 1);
-                return sentence.isEmpty() ? null : sentence;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Last resort when the LLM returns no text at all: the caller must hear something.
-     * In GREETING that has to be the opening line (nobody has spoken yet); later on,
-     * asking the client to repeat keeps the conversation alive.
-     */
-    private static String fallbackLine(DialogSession s) {
-        if (s.state().equals(s.scenario().stages().get(0).id()) && !s.isDisclosureSpoken()) {
-            return disclosureLine(s);
-        }
-        return DialogPhrases.didNotCatch(s.language());
-    }
-
-    /** Closing line when a guardrail ends the call, in the caller's language. */
-    private static String farewellLine(DialogSession s) {
-        return DialogPhrases.farewell(s.language());
-    }
-
-    /** What became of one piece of speech handed to {@link #speak}. */
-    private enum SpeechOutcome {
-        /** Audio was synthesized and queued for the caller. */
-        SPOKEN,
-        /** The fact guard refused it — it stated a figure that is not in the facts. */
-        BLOCKED,
-        /** Nothing to say, TTS is off, TTS failed, or a barge-in overtook it. */
-        SKIPPED
-    }
-
-    /**
-     * One turn's outcome: the model's text, whether any of it reached the caller,
-     * whether the fact guard is the reason it did not, and anything the tools said back
-     * that the model has not been shown yet ({@code toolNote}, usually null).
-     *
-     * <p>Text and audio are tracked separately because they diverge in exactly the cases
-     * that matter — a guard block or a TTS failure produces a perfectly good reply that
-     * the caller never heard, and the caller's experience is silence.
-     */
-    private record TurnResult(String reply, boolean spoken, boolean blocked, String toolNote) {
-
-        static final TurnResult NOTHING = new TurnResult(null, false, false, null);
-    }
-
-    /**
-     * Arm the "bir soniya" filler for a turn that is about to call the LLM, or return
-     * {@code null} when this turn should not get one.
-     *
-     * <p>The filler does not make the reply arrive any sooner — it is queued <em>ahead</em>
-     * of it, so strictly it delays the content slightly. What it removes is the silence,
-     * and silence is what a caller reacts to: a second and a half of nothing on a phone
-     * line reads as a dropped call, and people say "alo?" into it or hang up. A person
-     * who needs a moment says so out loud.
-     *
-     * <p>Deliberately not free of charge to the clock, so it is rationed hard: only after
-     * {@code filler-delay-ms} of actual silence, only on a turn a caller is waiting on
-     * (never the greeting — {@link DialogSession#isFirstAudioPending()} is false there),
-     * and never twice in a row.
-     *
-     * <p>Scheduled on the watchdog thread, which must never block, so the thread only
-     * hands the work to the virtual-thread worker.
-     */
-    private ScheduledFuture<?> scheduleFiller(DialogSession s) {
-        int turn = s.turnCount();
-        if (props.fillerDelayMs() <= 0 || !ttsProps.enabled()
-                || !s.isFirstAudioPending() || !s.fillerAllowed(turn)) {
-            return null;
-        }
-        return watchdogScheduler.schedule(() -> worker.submit(() -> speakFiller(s, turn)),
-                props.fillerDelayMs(), TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * Play one short filler, if the turn is still silent by the time we get here.
-     *
-     * <p>Bypasses {@link #speak} on purpose. The fact guard has nothing to check (these
-     * are fixed lines with no figures in them), and — more importantly — the turnaround
-     * clock must not be stopped here. {@code voice.turnaround.latency} is meant to say
-     * how long the caller waited for a real answer, and a filler that "recorded" it would
-     * turn the §1.3 metric into a measure of how fast we can say "bir soniya".
-     * {@code voice.dialog.filler.played} is where this shows up instead.
-     *
-     * <p>The silence check is made twice: once on entry, and again after synthesis, since
-     * a cache miss puts a network round trip in between and the real reply may have
-     * started in that window. Queuing it then would put "bir soniya" in the middle of the
-     * answer.
-     */
-    private void speakFiller(DialogSession s, int turn) {
-        if (!fillerStillWanted(s)) {
-            return;
-        }
-        try {
-            List<String> options = DialogPhrases.thinking(s.language());
-            String line = options.get(Math.floorMod(turn, options.size()));
-            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), s.voiceSettings());
-            if (!fillerStillWanted(s)) {
-                return;
-            }
-            s.endpoint().enqueuePcm(pcm);
-            s.markFillerSpoken(turn);
-            metrics.fillerPlayed();
-            log.debug("[{}] filler played after {} ms of silence: {}",
-                    s.channelId(), props.fillerDelayMs(), line);
-        } catch (Exception e) {
-            // A filler is a comfort, never a requirement — losing one costs nothing.
-            log.debug("[{}] filler skipped: {}", s.channelId(), e.getMessage());
-        }
-    }
-
-    /** Whether the caller is still sitting in silence and would benefit from a filler. */
-    private static boolean fillerStillWanted(DialogSession s) {
-        return !s.isEnded() && !s.isCancelled() && s.isFirstAudioPending();
-    }
-
-    /**
-     * Synthesize one piece of the reply and queue it behind whatever is already playing.
-     * Called once per sentence while streaming, or once for the whole reply otherwise.
-     * Failures are logged, never thrown: a lost sentence is better than an aborted turn.
-     */
-    private SpeechOutcome speak(DialogSession s, String text) {
-        if (!ttsProps.enabled() || text == null || text.isBlank()) {
-            return SpeechOutcome.SKIPPED;
-        }
-        if (s.isCancelled()) {
-            // Checked before synthesis, not after: the caller is talking, and paying a TTS
-            // round trip for audio that is discarded on arrival delays whatever the next
-            // turn wants to say by exactly that round trip.
-            return SpeechOutcome.SKIPPED;
-        }
-        if (props.factGuard()) {
-            List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
-            if (!bad.isEmpty()) {
-                // Not spoken, not recorded as said: the caller must never hear a sum
-                // that is not in their file (§4.4). The caller-facing recovery is the
-                // caller's, not this method's — see recoverFromFactBlock.
-                s.recordFactViolation();
-                metrics.factGuardBlock();
-                log.error("[{}] fact guard BLOCKED a sentence in {}: figures {} are not in the "
-                                + "call facts ({}) — text was: {}",
-                        s.channelId(), s.state(), bad,
-                        s.context() != null ? s.context().facts() : null, text);
-                return SpeechOutcome.BLOCKED;
-            }
-        }
-        try {
-            // Only the turn's first sentence is still on the §1.3 turnaround clock — that
-            // is the one place shaving a TTS network round trip actually moves the number
-            // that matters (everything after it already overlaps LLM generation, §7.2).
-            if (s.isFirstAudioPending()) {
-                return speakStreaming(s, text);
-            }
-            short[] pcm = ttsRouter.synthesize(text, s.language(), s.ttsVoice(), s.voiceSettings());
-            if (s.isCancelled()) {
-                return SpeechOutcome.SKIPPED; // barge-in landed while we were synthesizing
-            }
-            s.endpoint().enqueuePcm(pcm);
-            s.appendSpokenText(text);
-            return SpeechOutcome.SPOKEN;
-        } catch (Exception e) {
-            log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
-            return SpeechOutcome.SKIPPED;
-        }
-    }
-
-    /**
-     * Chunk-streamed synthesis for the turn's first sentence: each PCM chunk is queued to
-     * the endpoint as Yandex's gRPC stream delivers it, instead of waiting for the whole
-     * sentence (TtsRouter.synthesizeStreaming). A cache hit or a Google-routed sentence
-     * still arrives as one chunk (TtsProvider's default), so this path is never worse than
-     * the blocking one — only potentially faster.
-     */
-    private SpeechOutcome speakStreaming(DialogSession s, String text) {
-        AtomicBoolean any = new AtomicBoolean(false);
-        PcmChunkListener onChunk = pcm -> {
-            if (s.isCancelled()) {
-                return; // barge-in landed mid-stream; drain without queuing more audio
-            }
-            if (any.compareAndSet(false, true)) {
-                // Before the enqueue, not after: this also clears isFirstAudioPending(),
-                // which is what tells a filler still in flight on another thread that the
-                // gap is closed. Doing it afterwards left a window where the filler could
-                // re-check, see silence, and queue "bir soniya" behind the real opening.
-                recordTurnaround(s); // first chunk of this turn's first sentence
-            }
-            s.endpoint().enqueuePcm(pcm);
-        };
-        try {
-            ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), s.voiceSettings(), onChunk);
-        } catch (Exception e) {
-            log.warn("TTS streaming failed during dialog [{}]: {}", s.channelId(), e.getMessage());
-        }
-        // Whatever reached the endpoint before a mid-stream barge-in still counts as
-        // spoken, same as any other sentence already queued when cancellation lands.
-        if (!any.get()) {
-            return SpeechOutcome.SKIPPED;
-        }
-        if (!s.isCancelled()) {
-            s.appendSpokenText(text);
-        }
-        // A cancellation that landed partway through the chunk stream leaves the sentence
-        // unrecorded on purpose. Where it was cut is inside the provider's stream and not
-        // knowable here, and of the two possible errors only one is cheap: a sentence
-        // recorded as unheard is simply said again, while one recorded as heard is a fact
-        // — a sum, a due date — the model now believes it delivered and never returns to.
-        return SpeechOutcome.SPOKEN;
-    }
-
-    private void recordTurnaround(DialogSession s) {
-        Duration turnaround = s.takeTurnaround();
-        if (turnaround != null) {
-            metrics.recordTurnaround(turnaround);
-            s.recordTurnLatency(turnaround.toMillis());
-            log.debug("[{}] turnaround {} ms", s.channelId(), turnaround.toMillis());
-        }
-    }
-
-    /** {@link #speak} for the fixed lines, where only "did the caller hear it" matters. */
-    private boolean speakChunk(DialogSession s, String text) {
-        return speak(s, text) == SpeechOutcome.SPOKEN;
-    }
-
-    /**
-     * Waits for the queued audio to drain, then ends the call: transfer to a human
-     * operator if the outcome is TRANSFERRED (§11.6), otherwise hang up.
-     *
-     * <p>Polls the endpoint rather than sleeping for a precomputed duration: with
-     * sentence streaming the total length is not known when the last sentence is
-     * queued, and hanging up early would cut off the goodbye.
-     */
-    private void finishWhenSpoken(DialogSession s) {
-        long deadline = System.nanoTime() + MAX_DRAIN.toNanos();
-        try {
-            while (s.endpoint().isPlaying() && System.nanoTime() < deadline) {
-                Thread.sleep(100);
-            }
-            Thread.sleep(500); // let the tail reach the caller before the channel drops
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        Runnable action = (s.disposition() == Disposition.TRANSFERRED && s.transfer() != null)
-                ? s.transfer() : s.hangup();
-        if (action != null) {
-            action.run();
-        }
-    }
-
-    /**
      * Every call still in conversation, for the "Jonli qo'ng'iroqlar" list
      * (§10.2/§10.3 UI-DESIGN.md). Excludes a session already marked {@code ended} —
      * such a session is draining its farewell audio and tearing down, not live.
      */
+    @Override
     public List<LiveDialogSnapshot> liveDialogs() {
         return sessions.values().stream()
                 .filter(s -> !s.isEnded())
@@ -1761,6 +361,7 @@ public class DialogEngine implements CallDialog {
     }
 
     /** Live context for the operator screen after a transfer (null if unknown). */
+    @Override
     public OperatorSnapshot operatorSnapshot(String channelId) {
         DialogSession s = sessions.get(channelId);
         if (s == null) {
@@ -1789,22 +390,5 @@ public class DialogEngine implements CallDialog {
         }
         Object value = c.fact(factName);
         return value == null ? null : value.toString();
-    }
-
-    private static int offsetMs(DialogSession s) {
-        return (int) Duration.between(s.startedAt(), Instant.now()).toMillis();
-    }
-
-    private void closeOnLimit(DialogSession s, String reason) {
-        log.info("[{}] closing dialog ({})", s.channelId(), reason);
-        s.end(null);
-        speakChunk(s, farewellLine(s));
-        finishWhenSpoken(s);
-    }
-
-    @PreDestroy
-    public void shutdown() {
-        watchdogScheduler.shutdownNow();
-        worker.shutdownNow();
     }
 }

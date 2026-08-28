@@ -1,6 +1,7 @@
 package uz.murodjon.uysotvoice.callrecord.repository;
 
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.uysotvoice.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.uysotvoice.callrecord.entity.CallAttemptEntity;
@@ -25,6 +26,7 @@ public class CallTechnicalRepository {
     }
 
     /** {@code false} if {@code callId} has no attempt row (nothing to attach to) — caller skips the write. */
+    @Transactional
     public boolean save(long callId, String channelName, String trunk, String amdResult, String sttProvider,
                         String ttsProvider, String ttsVoice, String llmModel, DialogTechnicalSnapshot technical) {
         // Loaded, not getReferenceById: call_technical derives its own id from this

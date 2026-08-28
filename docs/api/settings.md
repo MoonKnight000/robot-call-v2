@@ -73,8 +73,13 @@ etadi. Ilova baribir ko'tariladi: realtime dvigatelsiz deploy normal holat.
 
 Birinchi dvigatel — **`gemini-live`** (Gemini Live `BidiGenerateContent` WebSocket).
 U `GEMINI_API_KEY` o'rnatilgan bo'lsa o'zini ro'yxatga oladi, ya'ni LLM uchun
-ishlatilayotgan bir xil Gemini kaliti. Butun rejimni o'chirish uchun —
-`voice-agent.realtime.enabled=false` (u holda `options.realtime` bo'sh qaytadi).
+ishlatilayotgan bir xil Gemini kaliti.
+
+**Standart deploy'da rejim o'chirilgan:** `voice-agent.realtime.enabled=false`
+(`REALTIME_ENABLED`). Ya'ni `options.realtime` bo'sh qaytadi, `PUT mode=REALTIME`
+`400 ENGINE_REALTIME_NOT_AVAILABLE` beradi va har bir qo'ng'iroq — DB'da `REALTIME`
+saqlab qo'ygan kompaniyaniki ham — `CASCADE` orqali ketadi. Dvigatel kodi build'da
+qoladi; qaytarish uchun `REALTIME_ENABLED=true`.
 
 `REALTIME` tanlagan kompaniyaning qo'ng'irog'ida nima o'zgaradi:
 

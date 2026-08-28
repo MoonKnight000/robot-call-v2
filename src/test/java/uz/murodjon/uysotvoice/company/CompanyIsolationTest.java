@@ -12,8 +12,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import uz.murodjon.uysotvoice.campaign.dto.CampaignFilter;
 import uz.murodjon.uysotvoice.campaign.dto.Campaign;
+import uz.murodjon.uysotvoice.campaign.dto.CampaignFilter;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignStatus;
 import uz.murodjon.uysotvoice.campaign.enums.CampaignType;
 import uz.murodjon.uysotvoice.campaign.repository.CampaignRepository;
@@ -82,7 +82,7 @@ class CompanyIsolationTest {
     void anotherCompanysCampaignIsExcludedFromTheList() {
         long ownId = campaigns.create(new Campaign(0, "my-campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
                 "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
-                3, 24, 5, null, 0, scenarioId, 0, true));
+                3, 24, 5, null, 0, scenarioId, 0, true, null));
 
         var page = campaigns.findAll(new CampaignFilter(null, 500, null, null));
 
@@ -95,7 +95,7 @@ class CompanyIsolationTest {
 
         campaigns.create(new Campaign(0, "counted-campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
                 "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
-                3, 24, 5, null, 0, scenarioId, 0, true));
+                3, 24, 5, null, 0, scenarioId, 0, true, null));
 
         // +1 for the campaign just created in *this* company; otherCompanyCampaignId
         // (seeded in setUp under company 2) must not also be reflected here.

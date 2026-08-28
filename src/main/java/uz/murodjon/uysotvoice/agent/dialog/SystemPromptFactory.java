@@ -44,7 +44,7 @@ public class SystemPromptFactory {
             "Mijozning shaxsiy ma'lumotlarini begona odamga aytma.",
             "Savolga javobni bilmasang — requestHumanTransfer bilan operatorga o'tkaz, o'ylab topma.",
             "Mijoz asabiylashsa yoki haqorat qilsa — darhol requestHumanTransfer chaqir.",
-            "Suhbatdosh bu qo'ng'iroqning haqiqiy manzili emasligi aniqlansa — recordWrongPerson chaqiring.",
+            "Faqat va faqat suhbatdosh ochiqchasiga o'zi boshqa odam ekanini yoki adashgan raqam ekanini aytsa (masalan: 'men u emasman', 'adashdingiz', 'bunaqa odam yo'q') — recordWrongPerson chaqiring. Mijoz 'alo', 'eshitaman', 'ha', 'kim bu?' desa yoki javobi tushunarsiz bo'lsa — darhol adashgan raqam deb hisoblamang, o'zingizni tanishtirib, ssenariy bo'yicha davom eting.",
             "Mijoz \"boshqa qo'ng'iroq qilmang\" desa — bahslashma, darhol recordDoNotCall chaqir va "
                     + "uzr so'rab xayrlash."
     );
@@ -112,8 +112,12 @@ public class SystemPromptFactory {
                     .append("Shuning uchun birinchi javobingni salom bilan ham, o'zingni ")
                     .append("tanishtirish bilan ham BOSHLAMA (\"Assalomu alaykum\", \"Salom\", ")
                     .append("\"Men ... kompaniyasidanman\" — hech biri). Birinchi javobing ")
-                    .append("to'g'ridan-to'g'ri ish bilan boshlansin: suhbatdosh aynan o'sha ")
-                    .append("odam ekanini so'ra.]\n");
+                    .append("to'g'ridan-to'g'ri ssenariyning navbatdagi bosqichiga o'tib, ish bilan boshlansin: ")
+                    .append("suhbatdosh aynan o'sha odam ekanini so'ra yoki qarz xabarini yetkaz.]\n");
+        } else {
+            sb.append("\n[TIZIM: Birinchi javobingizda qisqa salomlashing, o'zingizni va kompaniyani tanishtiring ")
+                    .append("hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash yoki qarz xabarini aytishga) ")
+                    .append("o'ting (transitionTo chaqirib, gapni reply ga yozing). Shunchaki salomlashib to'xtab qolmang.]\n");
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
@@ -127,6 +131,11 @@ public class SystemPromptFactory {
             sb.append("- ").append(rule).append('\n');
         }
         sb.append('\n');
+
+        sb.append("SSENARIY BO'YICHA HARAKAT: Kampaniyaning tanlangan ssenariysi bo'yicha bosqichma-bosqich ketma-ket harakat qiling. ")
+                .append("Har bir bosqich maqsadini bajargach, transitionTo orqali keyingi ruxsat etilgan bosqichga o'ting va ")
+                .append("o'sha bosqich talab qiladigan xabarni (masalan: qarz miqdori, muddati yoki to'lov sanasini kelishish) mijozga ayting. ")
+                .append("Suhbatni sababsiz to'xtatib qo'ymang yoki yakunlamang.\n\n");
 
         sb.append("USLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")
                 .append("Ovozga aylantiriladi — qisqa gaplar tuz, ro'yxat yoki maxsus belgilar ishlatma.\n");
@@ -177,11 +186,11 @@ public class SystemPromptFactory {
                 .append("xabarni emas, faqat so'ralgan qismini qisqa ayt. Har bir javobing ")
                 .append("suhbatning davomi bo'lsin, uni boshidan boshlash emas. Istisno: ")
                 .append("kelishilgan sana va summani yakunda bir marta tasdiqlab o'tish kerak.\n");
-        // "JORIY BOSQICH" arrives every turn; without this it reads as a fresh instruction
+        // Stage purpose arrives every turn; without this it reads as a fresh instruction
         // to carry the stage out again, however far into the stage the conversation is.
-        sb.append("Quyida keladigan \"JORIY BOSQICH\" ostidagi matn — o'sha bosqichning MAQSADI, ")
+        sb.append("Quyida har bir qadamda keladigan matn — o'sha bosqichning umumiy MAQSADI, ")
                 .append("har bir javob uchun buyruq emas. Maqsadni allaqachon bajargan bo'lsang, ")
-                .append("takrorlama — suhbatni davom ettir.\n");
+                .append("takrorlama — suhbatni keyingi bosqichga o'tkazib davom ettir.\n");
         // Asking for plain text alongside the tool call (so it could be streamed and
         // spoken sentence by sentence) was tried and reverted — Gemini answered a
         // tool-calling turn with neither, and the retry round trip cost more than the
@@ -218,17 +227,10 @@ public class SystemPromptFactory {
                 .append("aytadigan gapingizni uning \"reply\" parametriga yozing — u bo'sh bo'lsa ")
                 .append("mijoz jimlikni eshitadi.]");
         if (s.isInterrupted()) {
-            // Tell the model it was cut off and where it stopped (§7.2 step 5). What the
-            // caller HEARD, not what the model wrote: a barge-in drops the rest of the
-            // reply unspoken, and a model told it delivered all of it treats the unheard
-            // half as said and never returns to it — the sum and the due date go missing
-            // from the call entirely.
-            sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Mijoz faqat shu qismini ")
-                    .append("eshitib ulgurdi: \"")
+            // Tell the model it was cut off and where it stopped (§7.2 step 5).
+            sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Siz shu yergacha aytgan edingiz: \"")
                     .append(s.lastAgentText() == null ? "" : s.lastAgentText())
-                    .append("\". Qolgan qismini mijoz ESHITMADI — kerak bo'lsa uni qaytadan ayting, ")
-                    .append("lekin avval mijozning gapiga javob bering va butun gapni boshidan ")
-                    .append("boshlamang.]");
+                    .append("\". Mijozning gapiga moslashing; butun gapni qaytadan boshlamang.]");
         }
         return sb.toString();
     }

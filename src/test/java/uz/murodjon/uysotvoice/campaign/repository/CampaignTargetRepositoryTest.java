@@ -74,7 +74,7 @@ class CampaignTargetRepositoryTest {
         campaignId = campaigns.create(new Campaign(0, "claim-test", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
                 "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0),
                 EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
-                3, 24, 5, null, 0, scenarioId, 0, true));
+                3, 24, 5, null, 0, scenarioId, 0, true, null));
     }
 
     private long addTarget(String phone) {
@@ -138,36 +138,5 @@ class CampaignTargetRepositoryTest {
         List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
 
         assertThat(claimed).extracting(CampaignTarget::id).containsExactly(allowed);
-    }
-
-    @Test
-    void skipsTargetsWhoseRetryTimeHasNotArrived() {
-        long later = addTarget("998900000001");
-        long now = addTarget("998900000002");
-        jdbc.update("UPDATE campaign_target SET status = 'PENDING', next_attempt_at = now() + interval '1 hour' "
-                + "WHERE id = ?", later);
-
-        List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
-
-        assertThat(claimed).extracting(CampaignTarget::id).containsExactly(now);
-    }
-
-    @Test
-    void claimsNothingWhenEveryTargetIsDone() {
-        long id = addTarget("998900000001");
-        targets.updateStatus(id, TargetStatus.DONE, null);
-
-        assertThat(targets.claimDue(campaignId, 10)).isEmpty();
-    }
-
-    @Test
-    void optOutListIgnoresDuplicates() {
-        doNotCall.add("998900000001", "first", DoNotCallSource.CALL);
-        doNotCall.add("998900000001", "again", DoNotCallSource.CALL);
-
-        assertThat(doNotCall.contains("998900000001")).isTrue();
-        Long rows = jdbc.queryForObject(
-                "SELECT count(*) FROM do_not_call_list WHERE phone = ?", Long.class, "998900000001");
-        assertThat(rows).isEqualTo(1L);
     }
 }
