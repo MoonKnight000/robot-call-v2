@@ -1,6 +1,6 @@
-# Kontaktlar API
+﻿# Kontaktlar API
 
-`uz.murodjon.uysotvoice.contact` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.robotcallv2.contact` · rol: **ADMIN** (barcha endpoint)
 
 Kontaktlar jadvali `campaign_target`dan mustaqil — kampaniyaga bog'liq emas.
 Qo'ng'iroqlar tarixi `contact_id` FK orqali emas, telefon raqami bo'yicha
@@ -73,7 +73,9 @@ Javob — `PageableData<Contact>` (`Contact` shakli yuqorida).
 ```
 
 `callHistory` — shu telefon raqamiga tegishli oxirgi 50 ta qo'ng'iroq, yangisi
-birinchi.
+birinchi. Kampaniya qo'ng'iroqlari bilan bir qatorda shu raqamga qilingan qo'lda
+test qo'ng'iroqlari va ulanmagan urinishlar (`NO_ANSWER`, `CARRIER_REJECTED`) ham
+kiradi; ulanmaganida `durationSec` — `null`.
 
 ---
 
@@ -87,6 +89,23 @@ birinchi.
 ```
 
 Javob — yangilangan `Contact`.
+
+---
+
+## `DELETE /api/contacts/{id}` — kontaktni o'chirish
+
+Body yo'q. Kontakt o'chiriladi.
+
+**Response**:
+
+```json
+{
+  "data": null,
+  "accept": true
+}
+```
+
+Mavjud bo'lmagan kontakt uchun — `404 Not Found`.
 
 ---
 

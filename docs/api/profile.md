@@ -1,6 +1,6 @@
-# Profilim (self-service) API
+﻿# Profilim (self-service) API
 
-`uz.murodjon.uysotvoice.profile` · rol: istalgan (kirgan bo'lsa yetarli) · API-REQUIREMENTS §15, UI-DESIGN §8.3
+`uz.murodjon.robotcallv2.profile` · rol: istalgan (kirgan bo'lsa yetarli) · API-REQUIREMENTS §15, UI-DESIGN §8.3
 
 Har bir endpoint faqat **chaqirgan foydalanuvchining o'z** `app_user`
 qatoriga ishlaydi — `CurrentUser` (JWT) orqali aniqlanadi, path'da `id`
@@ -18,10 +18,23 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 ```json
 {
-  "id": 1, "name": "Aziz Bekmurodov", "username": "aziz", "email": "aziz@uysot.uz",
-  "phone": "+998901234567", "position": "Operator", "avatarFileId": null,
-  "role": "OPERATOR", "companyId": 1,
-  "lastLoginAt": "2026-08-02T08:00:00Z", "createdAt": "2026-07-01T00:00:00Z"
+  "data": {
+    "id": 1,
+    "name": "Aziz Bekmurodov",
+    "username": "aziz",
+    "email": "aziz@uysot.uz",
+    "phone": "+998901234567",
+    "position": "Operator",
+    "avatarFileId": null,
+    "role": "OPERATOR",
+    "companyId": 1,
+    "lastLoginAt": "2026-08-02T08:00:00Z",
+    "createdAt": "2026-07-01T00:00:00Z"
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
 }
 ```
 
@@ -33,18 +46,20 @@ beriladigan id, xom MinIO URL emas.
 Body (`UpdateProfileRequest`):
 
 ```json
-{ "name": "Aziz Bekmurodov", "email": "aziz@uysot.uz", "phone": "+998901234567",
-  "position": "Operator" }
+{
+  "name": "Aziz Bekmurodov",
+  "email": "aziz@uysot.uz",
+  "phone": "+998901234567",
+  "position": "Operator"
+}
 ```
 
-`username` bu yerda yo'q — login identifikatori, o'zgarmaydi. `email`
-hozircha har doim tahrirlanadi: loyihada hali SSO provayder yo'q (Uysot
-OAuth, `POST /api/auth/uysot/callback`, hali stub), shuning uchun
-UI-DESIGN §8.3'dagi "email o'zgarmas, agar SSO bo'lsa" qoidasi hozircha
-qo'llanmaydi. Boshqa foydalanuvchining email'i band bo'lsa — `400`.
+`username` bu yerda yo'q — login identifikatori, o'zgarmaydi. Boshqa foydalanuvchining email'i band bo'lsa — `400`.
 **`avatarFileId` bu yerda yo'q** — avatar faqat pastdagi
 `POST /api/profile/avatar` orqali o'zgaradi, qo'lda arbitrar id sifatida
 yuborib bo'lmaydi.
+
+**Javob** — yangilangan `Profile`.
 
 ---
 
@@ -55,7 +70,7 @@ yuborib bo'lmaydi.
 ishlamasa `502`. Muvaffaqiyatli yuklangan fayl `Profile.avatarFileId`ni
 almashtiradi, boshqa hech qaysi maydonga tegmaydi.
 
-Javob — yangilangan `Profile` (yuqoridagi shakl, yangi `avatarFileId` bilan).
+**Javob** — yangilangan `Profile` (yangi `avatarFileId` bilan).
 
 ---
 
@@ -64,10 +79,13 @@ Javob — yangilangan `Profile` (yuqoridagi shakl, yangi `avatarFileId` bilan).
 Body (`ChangePasswordRequest`):
 
 ```json
-{ "currentPassword": "eski-parol", "newPassword": "kamida-8-belgi" }
+{
+  "currentPassword": "eski-parol",
+  "newPassword": "kamida-8-belgi"
+}
 ```
 
-`currentPassword` mos kelmasa — `400`. Muvaffaqiyatda `200`, boshqa
+`currentPassword` mos kelmasa — `400`. Muvaffaqiyatda `200` (`ResponseData<Void>`), boshqa
 sessiyalar (`user_session`) darhol bekor qilinmaydi — kerak bo'lsa
 foydalanuvchi ularni pastdagi endpoint bilan alohida tugatadi.
 
@@ -75,27 +93,36 @@ foydalanuvchi ularni pastdagi endpoint bilan alohida tugatadi.
 
 ## `GET /api/profile/sessions` — faol sessiyalar
 
-**Javob** (`List<UserSession>`):
+**Javob** (`List<UserSessionRow>`):
 
 ```json
-[
-  { "id": 5, "device": "Mozilla/5.0 (Windows NT 10.0...)", "ipAddress": "10.0.0.4",
-    "createdAt": "2026-08-01T09:00:00Z", "lastActivityAt": "2026-08-02T07:40:00Z" }
-]
+{
+  "data": [
+    {
+      "id": 5,
+      "device": "Mozilla/5.0 (Windows NT 10.0...)",
+      "ipAddress": "10.0.0.4",
+      "createdAt": "2026-08-01T09:00:00Z",
+      "lastActivityAt": "2026-08-02T07:40:00Z"
+    }
+  ],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
 Har bir qator — bitta qurilmadan qilingan login (`user_session`), hali
 bekor qilinmagan (`revoked_at IS NULL`) va muddati o'tmagan. `device` —
-o'sha login/refresh so'rovining `User-Agent` sarlavhasi (xom matn, klient
-kerak bo'lsa o'zi chiroyli formatga o'giradi).
+o'sha login/refresh so'rovining `User-Agent` sarlavhasi.
 
 ## `DELETE /api/profile/sessions/{id}` — sessiyani tugatish
 
 Berilgan `id` boshqa foydalanuvchiniki bo'lsa yoki mavjud bo'lmasa — jim
 tarzda hech narsa qilmaydi (`200`), boshqa revoke endpointlari bilan bir
 xil konventsiya. Tugatilgan sessiyaning `refreshToken`i endi
-`POST /api/auth/refresh`da ishlamaydi — o'sha qurilma qayta login qilishi
-kerak bo'ladi.
+`POST /api/auth/refresh`da ishlamaydi.
 
 ---
 
@@ -104,10 +131,16 @@ kerak bo'ladi.
 **Javob** (`List<PersonalNotificationMatrixEntry>`):
 
 ```json
-[
-  { "type": "OPERATOR_REQUEST", "channel": "EMAIL", "enabled": true },
-  { "type": "ERROR_OCCURRED", "channel": "TELEGRAM", "enabled": false }
-]
+{
+  "data": [
+    { "type": "OPERATOR_REQUEST", "channel": "EMAIL", "enabled": true },
+    { "type": "ERROR_OCCURRED", "channel": "TELEGRAM", "enabled": false }
+  ],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
 Yo'q qator — o'chirilgan degani (matritsa bo'sh bo'lsa, hammasi o'chiq).
@@ -120,10 +153,14 @@ mustaqil, ikkalasi ham parallel ishlaydi.
 Body (`UpdatePersonalNotificationSettingsRequest`):
 
 ```json
-{ "matrix": [ { "type": "OPERATOR_REQUEST", "channel": "EMAIL", "enabled": true } ] }
+{
+  "matrix": [
+    { "type": "OPERATOR_REQUEST", "channel": "EMAIL", "enabled": true }
+  ]
+}
 ```
 
-Butun matritsani almashtiradi (jo'natilmagan katak — o'chiq bo'lib qoladi).
+Butun matritsani almashtiradi.
 
 ---
 
@@ -132,53 +169,94 @@ Butun matritsani almashtiradi (jo'natilmagan katak — o'chiq bo'lib qoladi).
 **Javob** (`List<ScheduleSlot>`):
 
 ```json
-[ { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00" } ]
+{
+  "data": [
+    { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00" }
+  ],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
 Operator qaysi hafta kuni/soatlarda kiruvchi qo'ng'iroq qabul qilishga
-tayyor (inbound transfer uchun, ROADMAP C.4). Hozircha faqat saqlanadi —
-kiruvchi marshrutlash bu jadvalni hali o'qimaydi (kelgusi bosqich).
+tayyor (inbound transfer uchun).
 
 ## `PUT /api/profile/schedule` — jadvalni saqlash
 
 Body (`UpdateScheduleRequest`):
 
 ```json
-{ "slots": [ { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00" } ] }
+{
+  "slots": [
+    { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00" }
+  ]
+}
 ```
 
 `startTime >= endTime` bo'lgan slot — `400`. Butun jadvalni almashtiradi.
 
 ---
 
+## `PUT /api/profile/call-columns` — qo'ng'iroqlar jadvali ustunlari
+
+Qo'ng'iroqlar hisoboti jadvali uchun foydalanuvchi tanlagan ustunlar ro'yxatini saqlash.
+
+Body (`UpdateCallColumnsRequest`):
+
+```json
+{
+  "columns": ["phone", "campaign", "disposition", "duration", "startedAt"]
+}
+```
+
+**Javob** (`List<String>`):
+
+```json
+{
+  "data": ["phone", "campaign", "disposition", "duration", "startedAt"],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
+```
+
+---
+
 ## `GET /api/profile/table-config/{key}` — jadval sozlamasi
 
 Har qanday jadval uchun erkin, foydalanuvchiga xos UI sozlamasi
-(backend-uchun-talablar.md §1, API-REQUIREMENTS §4 "Ustunlar ⚙") —
-`app_user.call_columns`dan farqli, faqat qo'ng'iroqlar jadvaliga
-cheklanmagan. `key` — frontend o'zi tanlagan nom (masalan
+(API-REQUIREMENTS §4 "Ustunlar ⚙"). `key` — frontend o'zi tanlagan nom (masalan
 `"callsTableColumns"`, `"campaignsTableColumns"`); qiymatning JSON shakli
 ham frontendning o'z ixtiyorida, backend uni o'zgartirmasdan
 saqlaydi/qaytaradi.
 
-**Javob** — xom JSON qiymat (o'rab olinmagan), yoki hech qachon
+**Javob** — saqlangan JSON qiymat, yoki hech qachon
 saqlanmagan bo'lsa `null`:
 
 ```json
-{ "data": ["phone", "campaign", "disposition", "duration"], "message": null, "messageCode": null, "accept": true, "errors": null }
+{
+  "data": ["phone", "campaign", "disposition", "duration"],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
 ## `PUT /api/profile/table-config/{key}` — jadval sozlamasini saqlash
 
-Body — xom JSON qiymat (o'rab olinmagan), masalan:
+Body — ixtiyoriy JSON qiymat (masalan massiv yoki obyekt):
 
 ```json
 ["phone", "campaign", "disposition", "duration"]
 ```
 
-`null` yuborish (yoki body'ni umuman yubormaslik) shu `key` uchun
+`null` yuborish (yoki body'ni bo'sh qoldirish) shu `key` uchun
 saqlangan qiymatni o'chiradi — standart holatga qaytish. Javob — saqlangan
-qiymatning o'zi (yuqoridagi `GET` shakli).
+qiymatning o'zi.
 
 ---
 
@@ -187,13 +265,19 @@ qiymatning o'zi (yuqoridagi `GET` shakli).
 **Javob** (`TodayStats`):
 
 ```json
-{ "totalCalls": 24, "answeredCalls": 22, "onAirMinutes": 18.4, "qualityPct": 91.7 }
+{
+  "data": {
+    "totalCalls": 24,
+    "answeredCalls": 22,
+    "onAirMinutes": 18.4,
+    "qualityPct": 91.7
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
-Operator-scoped (backend-uchun-talablar.md §6, tuzatildi) — faqat shu
-foydalanuvchining o'z SIP extensioniga uzatilgan va javob berilgan
-qo'ng'iroqlar hisoblanadi (`call_attempt.operator_user_id`,
-`ReportRepository#operatorTotals`, UTC kun chegarasi). Faqat bot ishlagan
-qo'ng'iroqlar hech kimning shaxsiy hisobiga kirmaydi — shuning uchun hech
-qachon qo'ng'iroq qabul qilmagan operator uchun bu yerda hammasi `0`
-ko'rinishi kutilgan holat, xato emas.
+Operator-scoped — faqat shu foydalanuvchining o'z SIP extensioniga uzatilgan va javob berilgan
+qo'ng'iroqlar hisoblanadi (`call_attempt.operator_user_id`, UTC kun chegarasi).

@@ -4,23 +4,29 @@
 
 -- Bootstrap tenant every other row below belongs to. Explicit id=1 so it matches
 -- voice-agent.company.default-id's own default.
-INSERT INTO company (id, name) VALUES (1, 'Default')
+INSERT INTO company (id, name, status) VALUES (1, 'Default', 'ACTIVE')
 ON CONFLICT (id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('company', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM company), 1), true);
 
--- disclosure_text: the §11.1 notice this company's calls open with (V5). {company} is
+-- disclosure_text: the §11.1 notice this company's calls open with. {company} is
 -- filled in at call time, so the same wording serves every tenant; blank would fall back
 -- to the platform's own line, but every company is provisioned with it explicitly so an
 -- owner can see and edit what their callers hear.
-INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone, default_language,
+INSERT INTO company_config (id, company_id, dial_window_start, dial_window_end, timezone, default_language,
                             disclosure_text)
-VALUES (1, '07:00', '23:00', 'Asia/Tashkent', 'uz-UZ',
+VALUES (1, 1, '07:00:00', '23:00:00', 'Asia/Tashkent', 'uz-UZ',
         'Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.')
 ON CONFLICT (company_id) DO NOTHING;
+SELECT setval(pg_get_serial_sequence('company_config', 'id'),
+              GREATEST((SELECT COALESCE(MAX(id), 0) FROM company_config), 1), true);
 
 INSERT INTO company_config_language (company_config_id, ord, language)
 SELECT id, 0, 'uz-UZ' FROM company_config WHERE company_id = 1
+ON CONFLICT (company_config_id, ord) DO NOTHING;
+
+INSERT INTO company_config_language (company_config_id, ord, language)
+SELECT id, 1, 'ru-RU' FROM company_config WHERE company_id = 1
 ON CONFLICT (company_config_id, ord) DO NOTHING;
 
 -- First admin account (ROADMAP E.1) — without this nobody can call POST /api/auth/login
@@ -30,52 +36,40 @@ INSERT INTO app_user (company_id, name, email, username, password_hash, role, st
 VALUES (1, 'Murodjon', 'murodjon000@softex.uz', 'murodjon',
         '$2a$10$6cGgfpkqI8lHvRx7rlHJKuW7PhH1XttNnYBGhe.lc4rqSMORrizFO', 'ADMIN', 'ACTIVE')
 ON CONFLICT (username) DO NOTHING;
+SELECT setval(pg_get_serial_sequence('app_user', 'id'),
+              GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_user), 1), true);
 
--- zamira/yulduz are v3-only voices, so they became reachable when Yandex TTS moved from
--- the REST v1 endpoint to the v3 gRPC API. Uzbek was a single voice before that.
-INSERT INTO tts_voice (id, provider, language, name, label) VALUES
-    ('nigora', 'yandex', 'uz-UZ', 'nigora', 'Nigora — o''zbek, ayol'),
-    ('zamira', 'yandex', 'uz-UZ', 'zamira', 'Zamira — o''zbek, ayol'),
-    ('yulduz', 'yandex', 'uz-UZ', 'yulduz', 'Yulduz — o''zbek, ayol'),
-    ('alena',  'yandex', 'ru-RU', 'alena',  'Alena — rus, ayol'),
-    ('jane',   'yandex', 'ru-RU', 'jane',   'Jane — rus, ayol'),
-    ('omazh',  'yandex', 'ru-RU', 'omazh',  'Omazh — rus, ayol'),
-    ('filipp', 'yandex', 'ru-RU', 'filipp', 'Filipp — rus, erkak'),
-    ('ermil',  'yandex', 'ru-RU', 'ermil',  'Ermil — rus, erkak'),
-    ('zahar',  'yandex', 'ru-RU', 'zahar',  'Zahar — rus, erkak'),
-    -- Aisha (Toshkent) has one model, Gulnoza, whose speaker_id names a mood rather
-    -- than a person (PROJECT.md §2.5) — name carries that mood exactly as
-    -- AishaTtsProvider.speakerFor() sends it.
-    ('gulnoza',          'aisha', 'uz-UZ', 'neutral',  'Gulnoza — o''zbek, moslashuvchan (avto-hissiyot)'),
-    ('gulnoza-neutral',  'aisha', 'uz-UZ', 'neutral',  'Gulnoza — o''zbek, neytral'),
-    ('gulnoza-cheerful', 'aisha', 'uz-UZ', 'cheerful', 'Gulnoza — o''zbek, quvnoq'),
-    ('gulnoza-happy',    'aisha', 'uz-UZ', 'happy',    'Gulnoza — o''zbek, xursand'),
-    ('gulnoza-sad',      'aisha', 'uz-UZ', 'sad',      'Gulnoza — o''zbek, xafa')
+-- TTS Voice Catalog: Yandex, Aisha and Gemini Live voices
+INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
+    ('nigora',           'yandex',      'uz-UZ', 'nigora',   'Nigora — o''zbek, ayol', NULL),
+    ('zamira',           'yandex',      'uz-UZ', 'zamira',   'Zamira — o''zbek, ayol', NULL),
+    ('yulduz',           'yandex',      'uz-UZ', 'yulduz',   'Yulduz — o''zbek, ayol', NULL),
+    ('alena',            'yandex',      'ru-RU', 'alena',    'Alena — rus, ayol', NULL),
+    ('jane',             'yandex',      'ru-RU', 'jane',     'Jane — rus, ayol', NULL),
+    ('omazh',            'yandex',      'ru-RU', 'omazh',    'Omazh — rus, ayol', NULL),
+    ('filipp',           'yandex',      'ru-RU', 'filipp',   'Filipp — rus, erkak', NULL),
+    ('ermil',            'yandex',      'ru-RU', 'ermil',    'Ermil — rus, erkak', NULL),
+    ('zahar',            'yandex',      'ru-RU', 'zahar',    'Zahar — rus, erkak', NULL),
+    -- Aisha (Toshkent)
+    ('gulnoza',          'aisha',       'uz-UZ', 'neutral',  'Gulnoza — o''zbek, moslashuvchan (avto-hissiyot)', NULL),
+    ('gulnoza-neutral',  'aisha',       'uz-UZ', 'neutral',  'Gulnoza — o''zbek, neytral', NULL),
+    ('gulnoza-cheerful', 'aisha',       'uz-UZ', 'cheerful', 'Gulnoza — o''zbek, quvnoq', NULL),
+    ('gulnoza-happy',    'aisha',       'uz-UZ', 'happy',    'Gulnoza — o''zbek, xursand', NULL),
+    ('gulnoza-sad',      'aisha',       'uz-UZ', 'sad',      'Gulnoza — o''zbek, xafa', NULL),
+    -- Gemini Live
+    ('gemini-aoede-uz',  'gemini-live', 'uz-UZ', 'Aoede',    'Aoede (ayol)', NULL),
+    ('gemini-kore-uz',   'gemini-live', 'uz-UZ', 'Kore',     'Kore (ayol)', NULL),
+    ('gemini-puck-uz',   'gemini-live', 'uz-UZ', 'Puck',     'Puck (erkak)', NULL),
+    ('gemini-charon-uz', 'gemini-live', 'uz-UZ', 'Charon',   'Charon (erkak)', NULL),
+    ('gemini-fenrir-uz', 'gemini-live', 'uz-UZ', 'Fenrir',   'Fenrir (erkak)', NULL),
+    ('gemini-aoede-ru',  'gemini-live', 'ru-RU', 'Aoede',    'Aoede (женский)', NULL),
+    ('gemini-kore-ru',   'gemini-live', 'ru-RU', 'Kore',     'Kore (женский)', NULL),
+    ('gemini-puck-ru',   'gemini-live', 'ru-RU', 'Puck',     'Puck (мужской)', NULL),
+    ('gemini-charon-ru', 'gemini-live', 'ru-RU', 'Charon',   'Charon (мужской)', NULL),
+    ('gemini-fenrir-ru', 'gemini-live', 'ru-RU', 'Fenrir',   'Fenrir (мужской)', NULL)
 ON CONFLICT (id) DO NOTHING;
 
--- Built-in scenario templates (ROADMAP A.2, A.3, C.3). Dollar-quoted throughout — the
--- Uzbek text here is full of apostrophes (bo'ling, qo'ng'iroq...), and escaping every
--- one with '' would make these definitions unreadable and easy to break.
---
--- The JSON literal starts on its own line after the opening $def$ tag on purpose:
--- Flyway's placeholder scanner looks for the literal two-character sequence "${"
--- anywhere in the raw script, and a tag glued directly to a "{" (e.g. "$def${")
--- forms exactly that sequence — Flyway then reads everything up to the next "}" as
--- an undefined placeholder name and fails with "No value provided for placeholder:
--- ${...". Keeping a line break between the tag and the brace avoids the false match
--- regardless of the placeholder-replacement setting below.
---
--- ON CONFLICT targets idx_scenario_active_key (unique on scenario_key WHERE is_active)
--- so a rerun of this repeatable migration never duplicates a template.
---
--- debt-collection's definition below matches DialogEngine/SystemPromptFactory's
--- generic engine exactly (ROADMAP A.3): rolePrompt matches SystemPromptFactory's
--- hardcoded role line verbatim (the "which language" clause is appended by code at
--- runtime, not stored here); guardrails carries only the 5 debt-specific rules, the
--- other 5 (PII, unknown -> escalate, hostility -> escalate, wrong person, opt-out) are
--- platform-fixed in SystemPromptFactory.PLATFORM_GUARDRAILS and apply to every
--- scenario in code; stages carry an explicit allowedTools list (recordWrongPerson is
--- not listed since it is one of the fixed universal tools, callable from every stage).
+-- Built-in scenario templates
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
     'debt-collection', 1,
@@ -408,6 +402,94 @@ $def$
   "rolePrompt": "Siz hozir band bo'lgan operator o'rniga qo'ng'iroqni qabul qiladigan agentisiz. Mijozdan qachon qayta qo'ng'iroq qilish qulayligini so'rang va yozib oling.",
   "guardrails": [
     "Qachon operator qo'ng'iroq qilishini aniq va'da qilmang — faqat so'rovni yozib oling"
+  ]
+}
+$def$::jsonb,
+    NULL
+)
+ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+
+INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
+VALUES (
+    'order-confirmation', 1,
+    $$Buyurtma va yetkazib berishni tasdiqlash$$,
+    $$Mijoz joylagan buyurtmani, yetkazish manzili va qulay vaqtini tasdiqlash.$$,
+    true, true,
+$def$
+{
+  "stages": [
+    {"id": "GREETING", "purpose": "Salomlashish va yangi buyurtma kelib tushganini aytish", "allowedTransitions": ["ORDER_DETAILS", "END_CALL"]},
+    {"id": "ORDER_DETAILS", "purpose": "Buyurtma raqami, tovarlar va summani aytib tasdiqlash", "allowedTransitions": ["ADDRESS_TIME", "CANCEL_ORDER", "END_CALL"]},
+    {"id": "ADDRESS_TIME", "purpose": "Yetkazish manzili va qulay vaqtni aniqlash", "allowedTransitions": ["CLOSING", "CANCEL_ORDER", "END_CALL"]},
+    {"id": "CANCEL_ORDER", "purpose": "Buyurtmani bekor qilish sababini yozib olish", "allowedTransitions": ["CLOSING", "END_CALL"]},
+    {"id": "CLOSING", "purpose": "Rahmat aytish va buyurtma tez orada yetkazilishini bildirish", "allowedTransitions": ["END_CALL"]},
+    {"id": "END_CALL", "purpose": "Qo'ng'iroqni tugatish", "allowedTransitions": []}
+  ],
+  "factSchema": [
+    {"name": "clientName", "type": "string", "required": false},
+    {"name": "orderNumber", "type": "string", "required": true},
+    {"name": "orderAmount", "type": "number", "required": false},
+    {"name": "deliveryAddress", "type": "string", "required": false}
+  ],
+  "tools": [
+    {"name": "confirmOrder", "description": "Mijoz buyurtmani va yetkazish ma'lumotlarini tasdiqlaganda chaqiring", "params": [
+      {"name": "address", "type": "string", "required": false, "constraint": null},
+      {"name": "deliveryTime", "type": "string", "required": false, "constraint": null}
+    ]},
+    {"name": "cancelOrder", "description": "Mijoz buyurtmani bekor qilganda chaqiring", "params": [
+      {"name": "reason", "type": "string", "required": true, "constraint": null}
+    ]}
+  ],
+  "outcomeSchema": [
+    {"name": "isConfirmed", "type": "boolean", "description": "Buyurtma tasdiqlandimi"},
+    {"name": "deliveryAddress", "type": "string", "description": "Tasdiqlangan manzil"},
+    {"name": "deliveryTime", "type": "string", "description": "Yetkazish vaqti"},
+    {"name": "cancelReason", "type": "string", "description": "Bekor qilish sababi"}
+  ],
+  "rolePrompt": "Siz do'konning buyurtmalarni tasdiqlovchi xushmuomala ovozli agentisiz. Buyurtma tafsilotlarini, yetkazish manzili va vaqtini tasdiqlang.",
+  "guardrails": [
+    "Buyurtma summasini o'zboshimchalik bilan o'zgartirmang",
+    "Yetkazib berish xizmati narxi bo'yicha asossiz va'da bermang"
+  ]
+}
+$def$::jsonb,
+    NULL
+)
+ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+
+INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
+VALUES (
+    'welcome-onboarding', 1,
+    $$Yangi mijozni qutlash va yo'naltirish (Onboarding)$$,
+    $$Yangi ro'yxatdan o'tgan mijoz bilan aloqaga chiqib, tizimdan foydalanishda yordam taklif qilish.$$,
+    true, true,
+$def$
+{
+  "stages": [
+    {"id": "GREETING", "purpose": "Salomlashish va yangi a'zolik bilan tabriklash", "allowedTransitions": ["DISCOVERY", "END_CALL"]},
+    {"id": "DISCOVERY", "purpose": "Tizimdan foydalanishda savollari yoki qiyinchiliklari borligini so'rash", "allowedTransitions": ["ASSIST", "SCHEDULE_DEMO", "CLOSING", "END_CALL"]},
+    {"id": "ASSIST", "purpose": "Oddiy savollarga javob berish yoki video-qo'llanma SMS yuborishni taklif qilish", "allowedTransitions": ["CLOSING", "END_CALL"]},
+    {"id": "SCHEDULE_DEMO", "purpose": "Mutaxassis bilan demo uchrashuv vaqtini belgilash", "allowedTransitions": ["CLOSING", "END_CALL"]},
+    {"id": "CLOSING", "purpose": "Xayrlashish va muvaffaqiyat tilash", "allowedTransitions": ["END_CALL"]},
+    {"id": "END_CALL", "purpose": "Qo'ng'iroqni tugatish", "allowedTransitions": []}
+  ],
+  "factSchema": [
+    {"name": "clientName", "type": "string", "required": false},
+    {"name": "serviceName", "type": "string", "required": false}
+  ],
+  "tools": [
+    {"name": "recordOnboardingFeedback", "description": "Mijozning fikrini va kerakli yordam turini yozib oling", "params": [
+      {"name": "needsDemo", "type": "boolean", "required": true, "constraint": null},
+      {"name": "notes", "type": "string", "required": false, "constraint": null}
+    ]}
+  ],
+  "outcomeSchema": [
+    {"name": "needsDemo", "type": "boolean", "description": "Demo taqdimot kerakmi"},
+    {"name": "onboardingNotes", "type": "string", "description": "Mijoz xohishlari"}
+  ],
+  "rolePrompt": "Siz yangi ro'yxatdan o'tgan foydalanuvchilarga xizmatdan to'liq foydalanishda yordam beruvchi do'stona Customer Success agentisiz.",
+  "guardrails": [
+    "Mijozga bosim o'tkazmang, xushmuomala bo'ling"
   ]
 }
 $def$::jsonb,

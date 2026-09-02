@@ -1,6 +1,6 @@
-# Qidiruv (command palette) API
+﻿# Qidiruv (command palette) API
 
-`uz.murodjon.uysotvoice.search` · rol: istalgan (kirgan bo'lsa yetarli) ·
+`uz.murodjon.robotcallv2.search` · rol: istalgan (kirgan bo'lsa yetarli) ·
 UI-DESIGN §11.9, §9
 
 `⌘K` command palette'ning ma'lumot manbasi. "Sahifalar" va "Buyruqlar"

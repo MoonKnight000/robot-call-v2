@@ -1,0 +1,25 @@
+package uz.murodjon.robotcallv2.notification.presentation.controller;
+
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import uz.murodjon.robotcallv2.notification.application.dto.UpdateNotificationSettingsRequest;
+import uz.murodjon.robotcallv2.notification.domain.entity.NotificationSettings;
+import uz.murodjon.robotcallv2.shared.api.ResponseData;
+
+/**
+ * Company-level notification channel x event matrix (§11 settings).
+ */
+@RequestMapping("/api/settings/notifications")
+public interface NotificationSettingsController {
+
+    @GetMapping
+    ResponseEntity<ResponseData<NotificationSettings>> get();
+
+    @PutMapping
+    ResponseEntity<ResponseData<NotificationSettings>> update(@Valid @RequestBody UpdateNotificationSettingsRequest r);
+}

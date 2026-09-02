@@ -1,10 +1,10 @@
-# CLAUDE.md — Loyiha qoidalari
+﻿# CLAUDE.md — Loyiha qoidalari
 
 AI voice agent: SIP orqali mijozlarga qo'ng'iroq qilib, o'zbek/rus tilida suhbatlashadi
 va natijani CRM ga yozadi.
 
 **Stack:** Java 21 · Spring Boot 3.4.5 · Asterisk 20 · PostgreSQL · RabbitMQ · Redis · MinIO
-**Base paket:** `uz.murodjon.uysotvoice` · bitta Gradle moduli
+**Base paket:** `uz.murodjon.robotcallv2` · bitta Gradle moduli
 Batafsil topshiriq: `docs/PROJECT.md` · bosqichlar tarixi: `docs/claude/CLAUDE.md`
 
 ---
@@ -51,14 +51,14 @@ va `TtsVoice.java`.
 ## 2. Paket strukturasi — feature-first + qatlam
 
 ```
-uz.murodjon.uysotvoice.<feature>.controller   — REST interfeys + bitta Impl
-uz.murodjon.uysotvoice.<feature>.service      — BUTUN biznes logika
-uz.murodjon.uysotvoice.<feature>.repository   — DB kirish (DAO + Spring Data)
-uz.murodjon.uysotvoice.<feature>.domain       — ASOSIY model (service ↔ repository)
-uz.murodjon.uysotvoice.<feature>.entity       — JPA entity (faqat saqlash uchun)
-uz.murodjon.uysotvoice.<feature>.dto          — faqat HTTP uchun: request/response/row/filter
-uz.murodjon.uysotvoice.<feature>.enums        — shu feature'ga tegishli barcha enum'lar
-uz.murodjon.uysotvoice.<feature>.config       — @ConfigurationProperties, @Configuration
+uz.murodjon.robotcallv2.<feature>.controller   — REST interfeys + bitta Impl
+uz.murodjon.robotcallv2.<feature>.service      — BUTUN biznes logika
+uz.murodjon.robotcallv2.<feature>.repository   — DB kirish (DAO + Spring Data)
+uz.murodjon.robotcallv2.<feature>.domain       — ASOSIY model (service ↔ repository)
+uz.murodjon.robotcallv2.<feature>.entity       — JPA entity (faqat saqlash uchun)
+uz.murodjon.robotcallv2.<feature>.dto          — faqat HTTP uchun: request/response/row/filter
+uz.murodjon.robotcallv2.<feature>.enums        — shu feature'ga tegishli barcha enum'lar
+uz.murodjon.robotcallv2.<feature>.config       — @ConfigurationProperties, @Configuration
 ```
 
 **Enum'lar — har doim `<feature>.enums` da.** `dto` yoki `entity` ichiga enum

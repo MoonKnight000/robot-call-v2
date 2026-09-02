@@ -1,0 +1,54 @@
+### Login
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "superadmin",
+  "password": "admin"
+}
+
+### Activate
+POST http://localhost:8080/api/auth/activate
+Content-Type: application/json
+
+{
+  "token": "valid-invite-token",
+  "password": "newSecurePassword123"
+}
+
+### Forgot Password
+POST http://localhost:8080/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+
+### Reset Password
+POST http://localhost:8080/api/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "valid-reset-token",
+  "newPassword": "brandNewPassword123"
+}
+
+### Refresh Token
+POST http://localhost:8080/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "valid-refresh-token"
+}
+
+### Logout
+POST http://localhost:8080/api/auth/logout
+Authorization: Bearer {{auth_token}}
+
+### Current User (Me)
+GET http://localhost:8080/api/auth/me
+Authorization: Bearer {{auth_token}}
+
+### My Companies
+GET http://localhost:8080/api/companies
+Authorization: Bearer {{auth_token}}

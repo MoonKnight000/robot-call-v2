@@ -1,0 +1,16 @@
+### Get AI Model Settings
+GET http://localhost:8080/api/settings/ai-model
+Authorization: Bearer {{auth_token}}
+
+### Update AI Model Settings
+PUT http://localhost:8080/api/settings/ai-model
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "model": "gemini-2.5-flash",
+  "temperature": 0.7,
+  "maxOutputTokens": 1024,
+  "maxCallSeconds": 300,
+  "maxTokensPerCall": 10000
+}

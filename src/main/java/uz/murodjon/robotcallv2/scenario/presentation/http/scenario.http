@@ -1,0 +1,118 @@
+### Create Scenario
+POST http://localhost:8080/api/scenarios
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "scenarioKey": "debt-collection-v2",
+  "name": "Debt Collection Scenario",
+  "description": "Debt reminder workflow",
+  "definition": {
+    "rolePrompt": "You are a courteous debt collection representative.",
+    "disclosureText": "Assalomu alaykum, ushbu qo'ng'iroq avtomatlashtirilgan va sifat maqsadida yozib olinadi.",
+    "stages": [
+      {
+        "id": "GREETING",
+        "name": "Greeting",
+        "goal": "Greet customer and state purpose",
+        "allowedTransitions": ["OFFER_PAYMENT"],
+        "allowedTools": []
+      },
+      {
+        "id": "OFFER_PAYMENT",
+        "name": "Offer Payment",
+        "goal": "Agree on payment date",
+        "allowedTransitions": [],
+        "allowedTools": []
+      }
+    ],
+    "tools": [],
+    "outcomeSchema": [
+      {
+        "name": "promiseToPay",
+        "type": "BOOLEAN",
+        "description": "Customer agreed to pay",
+        "allowedValues": [],
+        "required": true
+      }
+    ],
+    "factSchema": [
+      {
+        "name": "clientName",
+        "type": "STRING",
+        "description": "Name of customer",
+        "required": true
+      }
+    ],
+    "guardrails": [
+      "Do not be aggressive."
+    ]
+  }
+}
+
+### List Scenarios
+POST http://localhost:8080/api/scenarios/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "builtinOnly": false
+}
+
+### Get Scenario
+GET http://localhost:8080/api/scenarios/1
+Authorization: Bearer {{auth_token}}
+
+### Clone Scenario
+POST http://localhost:8080/api/scenarios/1/clone
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "scenarioKey": "debt-collection-custom",
+  "name": "My Custom Debt Collection"
+}
+
+### Validate Scenario Definition
+POST http://localhost:8080/api/scenarios/validate
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "rolePrompt": "Test role",
+  "stages": [
+    {
+      "id": "GREETING",
+      "name": "Greeting",
+      "goal": "Greet",
+      "allowedTransitions": [],
+      "allowedTools": []
+    }
+  ],
+  "outcomeSchema": [
+    {
+      "name": "result",
+      "type": "STRING",
+      "description": "Result",
+      "allowedValues": [],
+      "required": false
+    }
+  ]
+}
+
+### Simulate Scenario Turn
+POST http://localhost:8080/api/scenarios/simulate
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "scenarioId": 1,
+  "userMessage": "Assalomu alaykum, kim bu?",
+  "currentState": "GREETING"
+}
+
+### Test Personas
+POST http://localhost:8080/api/scenarios/1/test-personas
+Authorization: Bearer {{auth_token}}

@@ -1,6 +1,6 @@
-# TTS ovozlar katalogi va Dinamik Hissiyotlar
+﻿# TTS ovozlar katalogi va Dinamik Hissiyotlar
 
-`uz.murodjon.uysotvoice.voice` · rol: **ADMIN**
+`uz.murodjon.robotcallv2.voice` · rol: **ADMIN**
 
 Kampaniya qaysi ovoz bilan yaratilishi mumkinligining katalogi — `tts_voice`
 jadvalida saqlanadi (migration bilan seed qilinadi), config fayl emas. Kampaniya
@@ -29,10 +29,23 @@ Javob shu build'da **yoqilgan** (kredensiali sozlangan, shuning uchun Spring
 kontekstiga registratsiya bo'lgan) provayderlarga tegishli ovozlar bilan
 cheklanadi — kredensiali yo'q provayderning ovozi umuman qaytmaydi, chunki
 `TtsRouter` baribir uni e'tiborsiz qoldirib standart provayderning o'z ovozida
-gapiradi (`settings.md`). Bu **kompaniyaning `engine_config.ttsProvider`
-tanlovidan mustaqil** — `TtsRouter` tanlangan ovozni to'g'ridan-to'g'ri o'zining
-provayderi orqali gapiradi, shuning uchun bitta kampaniya turli provayderlarning
-ovozlarini aralashtirib ishlata oladi.
+gapiradi (`settings.md`).
+
+Bundan tashqari ro'yxat **kompaniyaning `engine_config.mode` qiymati bo'yicha**
+toraytiriladi, chunki ovoz nomlari ikki oila o'rtasida o'tmaydi:
+
+| `engine_config.mode` | Qaytadigan ovozlar |
+|---|---|
+| `CASCADE` | TTS provayderlarining ovozlari (`yandex`, `aisha`, `google`) |
+| `REALTIME` | speech-to-speech engine'ining o'z ovozlari (`gemini-live`, `openai-realtime`, `qwen-omni`) |
+
+Oila **ichida** aralashtirish avvalgidek erkin: `TtsRouter` tanlangan ovozni
+to'g'ridan-to'g'ri o'zining provayderi orqali gapiradi, shuning uchun bitta
+kampaniya `yandex` va `aisha` ovozlarini yonma-yon ishlata oladi. Oiladan
+tashqari ovoz esa qabul qilinmaydi — `POST /api/campaigns` uni
+`TTS_VOICE_UNKNOWN` bilan rad etadi, va agar eski kampaniyada shunday ovoz qolib
+ketgan bo'lsa, qo'ng'iroq paytida u e'tiborsiz qoldirilib engine o'zining
+standart ovozida gapiradi (`RealtimeDialogEngine.voiceFor`).
 
 **Response** — `List<TtsVoice>`:
 
@@ -55,11 +68,29 @@ ovozlarini aralashtirib ishlata oladi.
 | Maydon | Izoh |
 |---|---|
 | `id` | kampaniyada saqlanadigan barqaror id (`CreateCampaignRequest.ttsVoice`ga shu qiymat yuboriladi) |
-| `provider` | `yandex` yoki `aisha` — ovozni qaysi provayder gapiradi |
+| `provider` | ovozni kim gapiradi: TTS provayderi (`yandex`, `aisha`, `google`) yoki realtime engine (`gemini-live`, `openai-realtime`, `qwen-omni`) |
 | `language` | BCP-47; boshqa tildagi qo'ng'iroq bu ovozni e'tiborsiz qoldirib standart marshrutlashga qaytadi |
 | `name` | provayder tomonidagi ovoz nomi (sintez so'roviga yuboriladi) |
 | `label` | UI'da ko'rsatiladigan inson-o'qiy oladigan nom |
 | `role` | ovozning boshlang'ich gapirish uslubi / roli |
+
+`REALTIME` rejimidagi kompaniya uchun xuddi shu endpoint engine ovozlarini
+qaytaradi (`V7__gemini_live_voices.sql` bilan seed qilinadi):
+
+```json
+{
+  "data": [
+    { "id": "gemini-aoede-uz", "provider": "gemini-live", "language": "uz-UZ", "name": "Aoede", "label": "Aoede (ayol)", "role": null },
+    { "id": "gemini-puck-uz", "provider": "gemini-live", "language": "uz-UZ", "name": "Puck", "label": "Puck (erkak)", "role": null }
+  ],
+  "message": null, "messageCode": null, "accept": true, "errors": null
+}
+```
+
+Kampaniya ovozni ikkala rejimda ham bir xil tanlaydi: `campaign.ttsVoice` —
+standart, `campaign_language_voice` — til bo'yicha ustuvor (`campaigns.md`).
+Ya'ni bitta kampaniya `uz-UZ` uchun `Aoede`, `ru-RU` uchun `Puck` bilan
+gapirishi mumkin.
 
 ---
 

@@ -1,0 +1,53 @@
+### Get User Notifications
+GET http://localhost:8080/api/notifications
+Authorization: Bearer {{auth_token}}
+
+### Mark Notification Read
+POST http://localhost:8080/api/notifications/1/read
+Authorization: Bearer {{auth_token}}
+
+### Update Notification Preference
+PUT http://localhost:8080/api/notifications/preferences
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "type": "CAMPAIGN_FINISHED",
+  "enabled": true
+}
+
+### Get Notification Settings (Admin)
+GET http://localhost:8080/api/settings/notifications
+Authorization: Bearer {{auth_token}}
+
+### Update Notification Settings (Admin)
+PUT http://localhost:8080/api/settings/notifications
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "channels": [
+    {
+      "channel": "EMAIL",
+      "target": "admin@example.com",
+      "enabled": true
+    },
+    {
+      "channel": "TELEGRAM",
+      "target": "-1001234567890",
+      "enabled": true
+    }
+  ],
+  "matrix": [
+    {
+      "type": "CAMPAIGN_FINISHED",
+      "channel": "EMAIL",
+      "enabled": true
+    },
+    {
+      "type": "ERROR_OCCURRED",
+      "channel": "TELEGRAM",
+      "enabled": true
+    }
+  ]
+}

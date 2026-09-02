@@ -1,11 +1,10 @@
-# Operator API
+﻿# Operator API
 
-`uz.murodjon.uysotvoice.operator` · rol: **ADMIN**
+`uz.murodjon.robotcallv2.operator` · rol: **ADMIN**
 
-Faqat o'qish uchun (read-only) — qo'ng'iroq operatorga uzatilgandan keyin
-operator ekrani shu endpointni poll qilib mijozning faktlarini, joriy dialog
-holatini va shu paytgacha bo'lgan suhbatni ko'radi. Hali ochiq bo'lgan dialog
-sessiyasidan jonli o'qiladi — DB emas.
+Qo'ng'iroq operatorga uzatilgandan keyin operator ekrani shu endpointlarni ishlatadi:
+mijoz kontekstini ko'rish, jonli qo'ng'iroqni o'z apparatiga qabul qilish (takeover) va
+supervisor orqali botga yo'naltirish (whisper) berish.
 
 Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 
@@ -31,11 +30,46 @@ Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 }
 ```
 
-| Maydon | Izoh |
-|---|---|
-| `debtAmount`/`dueDate` | matn sifatida keladi (aniq sonli/sana turi emas) — to'g'ridan-to'g'ri ko'rsatish uchun |
-| `dialogState` | uzatish sodir bo'lgan paytdagi FSM holati |
-| `transcript` | butun suhbat, bitta matn ichida `ROLE: matn` qatorlari bilan (strukturaviy massiv emas — agar UI har bir qatorni alohida render qilishi kerak bo'lsa, `\n` bo'yicha split qiling) |
+---
 
-Sessiya hali ochiq bo'lmasa (qo'ng'iroq allaqachon tugagan yoki
-`channelId` noto'g'ri) — `404`.
+## `POST /api/operator/calls/{channelId}/takeover` — qo'ng'iroqni operatorga qabul qilish (Takeover)
+
+**Query params:** `extension` (ixtiyoriy, standart `100`).
+
+**Response:**
+
+```json
+{
+  "data": {
+    "channelId": "PJSIP/trunk-00000012",
+    "status": "TRANSFERRED",
+    "operatorExtension": "101"
+  },
+  "message": null, "messageCode": null, "accept": true, "errors": null
+}
+```
+
+---
+
+## `POST /api/operator/calls/{channelId}/whisper` — supervisor yo'riqnomasi yuborish (Whisper)
+
+**Request body:**
+
+```json
+{
+  "message": "Mijozga 10 foiz chegirma taklif qiling"
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "channelId": "PJSIP/trunk-00000012",
+    "status": "DELIVERED",
+    "message": "Mijozga 10 foiz chegirma taklif qiling"
+  },
+  "message": null, "messageCode": null, "accept": true, "errors": null
+}
+```

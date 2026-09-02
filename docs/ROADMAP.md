@@ -1,4 +1,4 @@
-# ROADMAP — Kelajak rejasi
+﻿# ROADMAP — Kelajak rejasi
 
 > **Maqsad:** hozirgi "qarzdorlik bo'yicha outbound qo'ng'iroq" tizimini universal AI
 > qo'ng'iroq platformasiga aylantirish — Uysot bilan birga ham (OAuth orqali), mustaqil
@@ -214,7 +214,7 @@ ancha qimmatga tushadi.
   bog'langan — tarix yo'qolmagan; `company_config` migratsiyasi ham eski
   `company.default_language`/`timezone`/`dial_window_*` qiymatlarini ko'chirib
   o'tkazadi, xatti-harakat o'zgarmaydi.
-- **Company CRUD** (`uz.murodjon.uysotvoice.company`): `POST /api/companies`,
+- **Company CRUD** (`uz.murodjon.robotcallv2.company`): `POST /api/companies`,
   `POST /api/companies/list`, `GET/PUT /api/companies/{id}` (identifikatsiya) +
   `GET/PUT /api/companies/{id}/config` (sozlamalar) — yangi kompaniya yaratish va
   sozlamalarini tahrirlash endi API orqali mumkin (ilgari faqat SQL bilan seed
@@ -230,7 +230,7 @@ ancha qimmatga tushadi.
   `ReportRepository`, `AuditService`, `CallRecordService` — barchasida ishlatiladi.
   Qo'shimcha qatlam sifatida Postgres RLS hamon baholanmagan (ixtiyoriy).
 - **`X-Api-Key` → `company_id`: ✅ hal qilindi.** `api_key` jadvali (`V7__api_key.sql`,
-  `uz.murodjon.uysotvoice.apikey`) har kalitni bitta kompaniyaga bog'laydi; panel
+  `uz.murodjon.robotcallv2.apikey`) har kalitni bitta kompaniyaga bog'laydi; panel
   orqali yaratiladi/bekor qilinadi (`POST/DELETE /api/settings/api-keys`, [settings.md](api/settings.md)).
   `security.ApiKeyFilter` uchta manbani navbat bilan tekshiradi: global admin kalit,
   global read-only kalit, keyin DB'dagi kompaniyaga-scoped kalit — oxirgisi
@@ -265,7 +265,7 @@ ancha qimmatga tushadi.
   bo'yicha bitta default, `scenario`ning `idx_scenario_active_key`siga o'xshash
   qisman unique indeks). Bu API `pjsip.conf`ni o'zi boshqarmaydi — faqat Asterisk
   tomonda allaqachon sozlangan endpoint nomini kompaniyaga bog'laydi.
-- **CRUD** (`uz.murodjon.uysotvoice.siptrunk`): `POST /api/sip-trunks`,
+- **CRUD** (`uz.murodjon.robotcallv2.siptrunk`): `POST /api/sip-trunks`,
   `POST /api/sip-trunks/list`, `GET/PUT /api/sip-trunks/{id}`,
   `POST /api/sip-trunks/{id}/default` (default trunkni almashtirish),
   `DELETE /api/sip-trunks/{id}` (default trunk o'chirilmaydi — avval boshqasini
@@ -377,7 +377,7 @@ Implementatsiyalar: `UysotConnector`, `GenericRestConnector` (hozirgi CrmClient)
 
 **D.2 — Uysot OAuth2 — ⚠️ kod darajasida tayyor, Uysot'ning haqiqiy URL'lari kutilmoqda**
 
-- Authorization-code oqimi qo'shildi (`uz.murodjon.uysotvoice.integration`,
+- Authorization-code oqimi qo'shildi (`uz.murodjon.robotcallv2.integration`,
   `spring-security-oauth2-client` o'rniga qo'lda HTTP client bilan): har kompaniya
   o'z Uysot OAuth ilovasini (`client_id`/`client_secret`, shifrlangan saqlanadi)
   panel orqali ulaydi, `PUT/GET /api/settings/integrations/uysot*`,

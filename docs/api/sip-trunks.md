@@ -1,45 +1,38 @@
-# SIP trunklar API
+﻿# SIP trunklar API
 
-`uz.murodjon.uysotvoice.siptrunk` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.robotcallv2.siptrunk` · rol: **ADMIN** (barcha endpoint)
 
-Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin
-(ROADMAP B.3), ulardan aynan bittasi — **default**. `AriService` qo'ng'iroq
-boshlaganda (`PJSIP/<raqam>@<endpoint>`) o'sha kampaniyaning kompaniyasiga
-tegishli default trunkni ishlatadi; agar kompaniyada yoqilgan default trunk
-bo'lmasa — global `voice-agent.asterisk.trunk-endpoint`/`caller-id`ga qaytadi.
+Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin (ROADMAP B.3), ulardan aynan bittasi — **default** (standart).
 
-**Ikki rejim bor (report #7):**
+---
 
-- **Manual** — asl ROADMAP B.3 shakli. `pjsipEndpoint` — Asterisk tomonda
-  allaqachon qo'lda sozlangan endpoint nomi (masalan `pjsip.conf`dagi
-  `[trunk-endpoint]` bo'limi). Bu yerda faqat qaysi allaqachon-mavjud
-  endpoint qaysi kompaniyaning qaysi qo'ng'irog'ida ishlatilishi boshqariladi
-  — parol/login saqlanmaydi, konfiguratsiya generatsiya qilinmaydi.
-- **Managed** (yangi, report #7) — haqiqiy SIP account login/paroli shu yerda
-  kiritiladi (`host`/`sipUsername`/`sipPassword`). Backend o'zi
-  `pjsipEndpoint`ni generatsiya qiladi (`trunk_<companyId>_<id>`),
-  `siptrunk.service.PjsipConfigWriter` mos PJSIP bo'limlarini
-  (`auth`/`registration`/`endpoint`/`aor`) generatsiya qilingan faylga
-  yozadi (Asterisk uni `#tryinclude` bilan o'qiydi), va `agent.ami.AmiClient`
-  orqali Asterisk'ga `res_pjsip.so`ni qayta yuklashni buyuradi — trunk
-  darhol jonli bo'ladi, konteyner qayta ishga tushirilishi shart emas.
-  **Talab:** `voice-agent.siptrunk.enabled`/`voice-agent.asterisk.ami.enabled`
-  ikkalasi ham yoqilgan bo'lishi kerak (ikkalasi ham standart holatda
-  o'chiq) — aks holda trunk qatori saqlanadi, lekin Asterisk'da haqiqatan
-  ro'yxatdan o'tkazilmaydi.
+## 🔀 SIP Trunklarni taqsimlash va yo'naltirish qoidalari
+
+1. **Kampaniyalar (Ommaviy dialer)**:
+   - Kampaniya yaratishda yoki tahrirlashda `sipTrunkIds: [1, 2, 3]` orqali bir nechta trunklarni biriktirish mumkin.
+   - Agar `sipTrunkIds` bo'sh qoldirilsa (`null` yoki `[]`), tizim kompaniyaning **barcha yoqilgan (enabled) trunklari** bo'yicha qo'ng'iroqlarni navbatma-navbat (Round-Robin) teng taqsimlaydi.
+   - Agar bir nechta aniq trunklar tanlansa, qo'ng'iroqlar faqat o'sha tanlangan trunklar o'rtasida Round-Robin taqsimlanadi.
+   - Agar bitta trunk tanlansa, barcha nishonlarga faqat shu trunk orqali chiqiladi.
+2. **Qo'lda / Sinov qo'ng'iroqlari (`/api/calls` va `/api/calls/test`)**:
+   - So'rovda `sipTrunkId` parametri orqali qo'ng'iroq aynan qaysi SIP liniyadan chiqishi aniq ko'rsatilishi mumkin.
+   - Agar ko'rsatilmasa — kompaniyaning standart (default) trunki ishlatiladi.
+3. **Qo'ng'iroqlar tarixi va Audit**:
+   - Har bir qo'ng'iroq qaysi trunk orqali amalga oshirilgani `CallTechnical` jadvalida va hisobotlarda (`GET /api/reports/calls`, `GET /api/calls/live`) `trunk` maydoni orqali aniq ko'rinadi.
+
+---
+
+## Ikki rejim (Manual & Managed):
+
+- **Manual** — asl ROADMAP B.3 shakli. `pjsipEndpoint` — Asterisk tomonda allaqachon qo'lda sozlangan endpoint nomi (masalan `pjsip.conf`dagi `[trunk-endpoint]` yoki `[600]` bo'limi). Bu yerda faqat qaysi allaqachon-mavjud endpoint qaysi kompaniyaning qaysi qo'ng'irog'ida ishlatilishi boshqariladi — parol/login saqlanmaydi, konfiguratsiya generatsiya qilinmaydi.
+- **Managed** — haqiqiy SIP account login/paroli shu yerda kiritiladi (`host`/`sipUsername`/`sipPassword`). Backend o'zi `pjsipEndpoint`ni generatsiya qiladi (`trunk_<companyId>_<id>`), `siptrunk.service.PjsipConfigWriter` mos PJSIP bo'limlarini (`auth`/`registration`/`endpoint`/`aor`) generatsiya qilingan faylga yozadi (Asterisk uni `#tryinclude` bilan o'qiydi), va `agent.ami.AmiClient` orqali Asterisk'ga `res_pjsip.so`ni qayta yuklashni buyuradi — trunk darhol jonli bo'ladi, konteyner qayta ishga tushirilishi shart emas.
+  **HD Voice / Codec sozlash:** Har bir trunk uchun alohida audio kodeklar ro'yxati (List) belgilanishi mumkin (`codecs: ["g722", "opus", "ulaw", "alaw"]`).
+  **Talab:** `voice-agent.siptrunk.enabled`/`voice-agent.asterisk.ami.enabled` ikkalasi ham yoqilgan bo'lishi kerak — aks holda trunk qatori saqlanadi, lekin Asterisk'da haqiqatan ro'yxatdan o'tkazilmaydi.
 
 Har bir so'rovda **ikkalasidan faqat bittasi** yuborilishi kerak:
 `pjsipEndpoint` (manual) YOKI `host`+`sipUsername`+`sipPassword` (managed).
 Ikkalasi ham yuborilsa yoki ikkalasi ham bo'sh bo'lsa — `400`.
 
-Birinchi marta ishga tushirilganda (`SipTrunkBootstrap`), agar default
-kompaniyada hali sip_trunk yozuvi bo'lmasa, mavjud
-`voice-agent.asterisk.trunk-endpoint`/`caller-id` konfiguratsiyasidan avtomatik
-bitta **manual** default trunk yaratiladi — eski, konfiguratsiyaga asoslangan
-xatti-harakat o'zgarmaydi.
-
-Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
-[README.md](README.md)ga qarang.
+Birinchi marta ishga tushirilganda (`SipTrunkBootstrap`), agar default kompaniyada hali sip_trunk yozuvi bo'lmasa, mavjud `voice-agent.asterisk.trunk-endpoint`/`caller-id` konfiguratsiyasidan avtomatik bitta **manual** default trunk yaratiladi.
 
 ---
 
@@ -48,7 +41,12 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 **Request body** (`CreateSipTrunkRequest`) — manual misol:
 
 ```json
-{ "name": "Qo'lda sozlangan trunk", "pjsipEndpoint": "trunk-2", "callerId": "998712000001" }
+{
+  "name": "Qo'lda sozlangan trunk",
+  "pjsipEndpoint": "trunk-2",
+  "callerId": "998712000001",
+  "codecs": ["g722", "ulaw", "alaw"]
+}
 ```
 
 ...yoki managed misol:
@@ -61,6 +59,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "sipUsername": "998712000002",
   "sipPassword": "haqiqiy-parol",
   "transport": "UDP",
+  "codecs": ["g722", "opus", "ulaw", "alaw"],
   "callerId": "998712000001"
 }
 ```
@@ -73,13 +72,13 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `port` | managed | ❌ | bo'sh bo'lsa `5060` |
 | `sipUsername` | managed | ✅ (agar `host` berilsa) | — |
 | `sipPassword` | managed | ✅ (agar `host` berilsa) | **hech qachon javobda qaytmaydi**, faqat shifrlangan holda saqlanadi |
-| `transport` | managed | ❌ | bo'sh bo'lsa `UDP`. Hozircha faqat `UDP` qo'llab-quvvatlanadi — `TCP`/`TLS` `400` bilan rad etiladi (Asterisk tomonda mos transport hali yo'q) |
+| `transport` | managed | ❌ | bo'sh bo'lsa `UDP`. Hozircha faqat `UDP` qo'llab-quvvatlanadi |
+| `codecs` | ikkalasi | ❌ | `List<String>`. Bo'sh bo'lsa `["alaw", "ulaw"]`. HD voice uchun `["g722", "opus", "ulaw", "alaw"]` |
 | `callerId` | ikkalasi | ❌ | `null` bo'lsa global `voice-agent.asterisk.caller-id`ga qaytadi |
 
-Kompaniyaning **birinchi** trunki avtomatik default bo'ladi (`isDefault: true`),
-qolganlari boshida `isDefault: false` bilan yaratiladi.
+Kompaniyaning **birinchi** trunki avtomatik default bo'ladi (`isDefault: true`), qolganlari boshida `isDefault: false` bilan yaratiladi.
 
-**Response** (`SipTrunk`) — managed misolga javob:
+**Response** (`SipTrunk`):
 
 ```json
 {
@@ -92,24 +91,25 @@ qolganlari boshida `isDefault: false` bilan yaratiladi.
   "port": 5060,
   "sipUsername": "998712000002",
   "transport": "UDP",
+  "codecs": [
+    "g722",
+    "opus",
+    "ulaw",
+    "alaw"
+  ],
   "isDefault": false,
   "enabled": true,
   "createdAt": "2026-08-01T09:00:00Z"
 }
 ```
 
-Manual trunk uchun `managed: false`, `host`/`sipUsername`/`transport` —
-`null`. `sipPassword` javobda **hech qachon** yo'q.
-
 ---
 
 ## `POST /api/sip-trunks/list` — ro'yxat
 
-Body — `SipTrunkFilter` (`page`/`size`/`orders` — README §3ga qarang, qo'shimcha
-filtr maydoni yo'q). Saralanadigan ustunlar: `ID`, `NAME`, `IS_DEFAULT`,
-`ENABLED`, `CREATED_AT`. Standart: `NAME ASC`.
+Body — `SipTrunkFilter` (`page`/`size`/`orders`). Saralanadigan ustunlar: `ID`, `NAME`, `IS_DEFAULT`, `ENABLED`, `CREATED_AT`. Standart: `NAME ASC`.
 
-Javob — `PageableData<SipTrunk>` (`SipTrunk` shakli yuqorida).
+Javob — `PageableData<SipTrunk>`.
 
 ---
 
@@ -119,53 +119,69 @@ Javob — `PageableData<SipTrunk>` (`SipTrunk` shakli yuqorida).
 
 ---
 
-## `PUT /api/sip-trunks/{id}` — yangilash
+## `GET /api/sip-trunks/{id}/status` — bitta trunkning jonli holati
 
-**Request body** (`UpdateSipTrunkRequest`) — `POST /api/sip-trunks` bilan bir
-xil maydonlar (manual/managed rejim tanlovi bilan birga), plus `enabled`.
-**`isDefault` bu yerda yo'q** — default holatni almashtirish uchun pastdagi
-alohida endpointdan foydalaning.
+Asterisk AMI / PJSIP orqali ro'yxatdan o'tish (registration) va endpoint faolligini jonli tekshiradi.
+
+**Response** (`SipTrunkStatus`):
 
 ```json
-{ "name": "Ikkinchi provayder", "host": "sip.provider.uz", "sipUsername": "998712000002",
-  "callerId": "998712000001", "enabled": true }
+{
+  "id": 2,
+  "name": "Ikkinchi provayder",
+  "pjsipEndpoint": "trunk_1_2",
+  "managed": true,
+  "enabled": true,
+  "isDefault": false,
+  "status": "REGISTERED",
+  "isOnline": true,
+  "details": "Muvaffaqiyatli ro'yxatdan o'tgan (sip.provider.uz:5060)",
+  "checkedAt": "2026-09-01T11:00:00Z"
+}
 ```
 
-`sipPassword` — managed rejimda ham **ixtiyoriy**: bo'sh/berilmagan bo'lsa
-trunkning joriy shifrlangan paroli saqlanib qoladi (nomini o'zgartirish yoki
-`enabled`ni almashtirish uchun parolni qayta kiritish shart emas). Trunk
-birinchi marta manual'dan managed'ga o'tkazilayotganda esa `sipPassword`
-majburiy — saqlanadigan avvalgi parol yo'q.
+Holatlar (`status`):
+- `REGISTERED` / `ONLINE` — Asteriskda faol va ro'yxatdan o'tgan (`isOnline: true`);
+- `UNREGISTERED` / `TRYING` — Ro'yxatdan o'tish kutilmoqda;
+- `REJECTED` — Login yoki parol noto'g'ri;
+- `UNAVAILABLE` / `NOT_FOUND` — Endpoint oflayn yoki mavjud emas;
+- `DISABLED` — Trunk tizimda o'chirilgan (`isOnline: false`).
 
-Javob — yangilangan `SipTrunk`.
+---
+
+## `GET /api/sip-trunks/status` — barcha trunklarning jonli holati
+
+Kompaniyaning barcha SIP trunk/telefonlari uchun jonli ro'yxatdan o'tish va ulanish holatlarini qaytaradi (`List<SipTrunkStatus>`).
+
+---
+
+## `PUT /api/sip-trunks/{id}` — yangilash
+
+**Request body** (`UpdateSipTrunkRequest`):
+```json
+{
+  "name": "Ikkinchi provayder",
+  "host": "sip.provider.uz",
+  "sipUsername": "998712000002",
+  "callerId": "998712000001",
+  "codecs": [
+    "g722",
+    "opus",
+    "ulaw",
+    "alaw"
+  ],
+  "enabled": true
+}
+```
 
 ---
 
 ## `POST /api/sip-trunks/{id}/default` — default qilib belgilash
 
-Body yo'q. `id`ni kompaniyaning default trunkiga aylantiradi, avvalgi default
-trunkni avtomatik oddiy holatga qaytaradi (bir vaqtda faqat bitta default
-bo'lishi bazada `UNIQUE INDEX` bilan ta'minlangan).
-
-**Response** — yangilangan `SipTrunk` (`isDefault: true`).
+Body yo'q. `id`ni kompaniyaning default trunkiga aylantiradi, avvalgi default trunkni avtomatik oddiy holatga qaytaradi.
 
 ---
 
 ## `DELETE /api/sip-trunks/{id}` — o'chirish
 
-Default trunk **o'chirilmaydi** — avval boshqa trunkni default qilib
-belgilang, keyin o'chiring:
-
-```json
-{ "data": null, "message": "Cannot delete the default trunk — set another one as default first", "messageCode": "SIP_TRUNK_DEFAULT_DELETE_FORBIDDEN", "accept": false, "errors": null }
-```
-(`409`)
-
-**Response** (muvaffaqiyatda, `SipTrunkDeleteResponse`):
-
-```json
-{ "id": 2, "deleted": true }
-```
-
-Managed trunk o'chirilsa, generatsiya qilingan PJSIP konfiguratsiyasidan ham
-olib tashlanadi va Asterisk qayta yuklanadi (`PjsipConfigWriter`).
+Default trunk o'chirilmaydi — avval boshqa trunkni default qilib belgilang, keyin o'chiring.

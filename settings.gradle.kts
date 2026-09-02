@@ -1,1 +1,1 @@
-rootProject.name = "uysot-voice"
+rootProject.name = "robot-call-v2"

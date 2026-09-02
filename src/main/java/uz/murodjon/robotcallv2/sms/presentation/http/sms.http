@@ -1,0 +1,9 @@
+### Send SMS Test
+POST http://localhost:8080/api/sms/send
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "phone": "998901234567",
+  "message": "Test xabar"
+}

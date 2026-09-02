@@ -1,0 +1,13 @@
+### List DNC entries
+POST http://localhost:8080/api/do-not-call/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Remove phone from DNC
+POST http://localhost:8080/api/do-not-call/998901234567/remove
+Authorization: Bearer {{auth_token}}

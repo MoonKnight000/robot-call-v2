@@ -1,0 +1,59 @@
+### Create Company
+POST http://localhost:8080/api/companies
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Super Real Estate LLC"
+}
+
+### List Companies
+POST http://localhost:8080/api/companies/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Get Company
+GET http://localhost:8080/api/companies/1
+Authorization: Bearer {{auth_token}}
+
+### Update Company
+PUT http://localhost:8080/api/companies/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Super Real Estate Global",
+  "address": "Tashkent, Amir Temur 1"
+}
+
+### Update Company Status
+PUT http://localhost:8080/api/companies/1/status
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "status": "ACTIVE"
+}
+
+### Get Company Config
+GET http://localhost:8080/api/companies/1/config
+Authorization: Bearer {{auth_token}}
+
+### Update Company Config
+PUT http://localhost:8080/api/companies/1/config
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "dialWindowStart": "09:00:00",
+  "dialWindowEnd": "20:00:00",
+  "timezone": "Asia/Tashkent",
+  "defaultLanguage": "uz-UZ",
+  "supportedLanguages": ["uz-UZ", "ru-RU"],
+  "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda."
+}

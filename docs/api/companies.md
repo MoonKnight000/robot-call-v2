@@ -1,6 +1,6 @@
-# Kompaniyalar API
+﻿# Kompaniyalar API
 
-`uz.murodjon.uysotvoice.company` · rol: **ADMIN** yoki **SUPERADMIN**, endpointga qarab (pastga qarang)
+`uz.murodjon.robotcallv2.company` · rol: **ADMIN** yoki **SUPERADMIN**, endpointga qarab (pastga qarang)
 
 Kompaniya — platformadagi tenant chegarasi (ROADMAP Bosqich B): kampaniya,
 ssenariy, kontakt, DNC, audit va h.k. hammasi `company_id` bilan shu qatorga

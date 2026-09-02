@@ -1,0 +1,34 @@
+### Get CRM Catalog
+GET http://localhost:8080/api/settings/integrations/catalog
+Authorization: Bearer {{auth_token}}
+
+### Get Current Integration
+GET http://localhost:8080/api/settings/integrations
+Authorization: Bearer {{auth_token}}
+
+### Save App Info and Grants
+PUT http://localhost:8080/api/settings/integrations/uysot
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "appName": "Uysot Voice Platform",
+  "grants": [
+    {
+      "permission": "LEAD",
+      "scope": "SAVE"
+    },
+    {
+      "permission": "CALL",
+      "scope": "SAVE"
+    }
+  ]
+}
+
+### Get Authorize URL
+GET http://localhost:8080/api/settings/integrations/uysot/authorize-url
+Authorization: Bearer {{auth_token}}
+
+### Disconnect Integration
+DELETE http://localhost:8080/api/settings/integrations/uysot
+Authorization: Bearer {{auth_token}}

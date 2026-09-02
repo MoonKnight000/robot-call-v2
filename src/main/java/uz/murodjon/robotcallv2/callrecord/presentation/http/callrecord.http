@@ -1,0 +1,29 @@
+### Get Live Calls
+GET http://localhost:8080/api/calls/live
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+
+### Originate Call
+POST http://localhost:8080/api/calls?number=+998901234567&scenarioId=1
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+
+### Play Audio in Call
+POST http://localhost:8080/api/calls/channel-123/play?file=greeting.wav
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+
+### Say Text in Call
+POST http://localhost:8080/api/calls/channel-123/say?text=Assalomu%20alaykum&language=uz-UZ
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+
+### Hangup Call
+POST http://localhost:8080/api/calls/channel-123/hangup
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+
+### Transfer Call to Human Operator
+POST http://localhost:8080/api/calls/channel-123/transfer
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1

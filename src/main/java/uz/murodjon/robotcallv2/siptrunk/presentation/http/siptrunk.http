@@ -1,0 +1,52 @@
+### Create SIP Trunk (Managed)
+POST http://localhost:8080/api/sip-trunks
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Uztelecom Trunk",
+  "host": "sip.uztelecom.uz",
+  "port": 5060,
+  "sipUsername": "user123",
+  "sipPassword": "secretpassword",
+  "transport": "UDP",
+  "callerId": "+998712000000"
+}
+
+### List SIP Trunks
+POST http://localhost:8080/api/sip-trunks/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Get SIP Trunk
+GET http://localhost:8080/api/sip-trunks/1
+Authorization: Bearer {{auth_token}}
+
+### Update SIP Trunk
+PUT http://localhost:8080/api/sip-trunks/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Uztelecom Trunk Updated",
+  "host": "sip.uztelecom.uz",
+  "port": 5060,
+  "sipUsername": "user123",
+  "sipPassword": "newpassword",
+  "transport": "UDP",
+  "callerId": "+998712000000",
+  "enabled": true
+}
+
+### Set SIP Trunk as Default
+POST http://localhost:8080/api/sip-trunks/1/default
+Authorization: Bearer {{auth_token}}
+
+### Delete SIP Trunk
+DELETE http://localhost:8080/api/sip-trunks/1
+Authorization: Bearer {{auth_token}}

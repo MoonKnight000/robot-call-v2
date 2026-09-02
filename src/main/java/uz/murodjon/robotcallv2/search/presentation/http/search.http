@@ -1,0 +1,3 @@
+### Command palette search
+GET http://localhost:8080/api/search?q=99890
+Authorization: Bearer {{auth_token}}

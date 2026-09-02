@@ -3,11 +3,11 @@
 services:
   postgres:
     image: postgres:18-alpine
-    container_name: uysot-postgres
+    container_name: robot-call-postgres
     environment:
-      POSTGRES_DB: ${DB_NAME:-uysot_voice}
-      POSTGRES_USER: ${DB_USER:-uysot}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-uysot}
+      POSTGRES_DB: ${DB_NAME:-robot_call}
+      POSTGRES_USER: ${DB_USER:-robot_call}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-robot_call}
     ports:
       - "5432:5432"
     volumes:
@@ -16,14 +16,14 @@ services:
       # `pg_upgrade --link` works. Mounting .../data makes the entrypoint abort.
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-uysot} -d ${DB_NAME:-uysot_voice}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-robot_call} -d ${DB_NAME:-robot_call}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: uysot-redis
+    container_name: robot-call-redis
     ports:
       - "6379:6379"
     volumes:
@@ -36,10 +36,10 @@ services:
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
-    container_name: uysot-rabbitmq
+    container_name: robot-call-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-uysot}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-uysot}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-robot_call}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-robot_call}
     ports:
       - "5672:5672"     # AMQP
       - "15672:15672"   # management UI
@@ -53,11 +53,11 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: uysot-minio
+    container_name: robot-call-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:-uysot}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-uysot-secret}
+      MINIO_ROOT_USER: ${MINIO_USER:-robot_call}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-robot_call}
     ports:
       - "9000:9000"     # S3 API
       - "9001:9001"     # console
@@ -75,7 +75,7 @@ services:
   # the next start without a manual check or a mid-session restart.
   asterisk-ip-sync:
     image: curlimages/curl:8.11.0
-    container_name: uysot-asterisk-ip-sync
+    container_name: robot-call-asterisk-ip-sync
     environment:
       PJSIP_CONF: /etc/asterisk/pjsip.conf
     volumes:
@@ -93,7 +93,7 @@ services:
   # for local ARI development even where host mode is unavailable.
   asterisk:
     image: andrius/asterisk:20
-    container_name: uysot-asterisk
+    container_name: robot-call-asterisk
     depends_on:
       asterisk-ip-sync:
         condition: service_completed_successfully
@@ -118,7 +118,7 @@ services:
   # no host networking required. Provide credentials via .env / the mounts below.
   app:
     build: .
-    container_name: uysot-app
+    container_name: robot-call-app
     depends_on:
       postgres:
         condition: service_healthy
@@ -126,6 +126,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_started
       asterisk:
         condition: service_started
     environment:
@@ -142,15 +144,15 @@ services:
       # same fail-closed reasoning as API_KEY above.
       JWT_SECRET: ${JWT_SECRET:-}
       # In-network service hostnames (override the localhost defaults).
-      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-uysot_voice}
-      DB_USER: ${DB_USER:-uysot}
-      DB_PASSWORD: ${DB_PASSWORD:-uysot}
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-robot_call}
+      DB_USER: ${DB_USER:-robot_call}
+      DB_PASSWORD: ${DB_PASSWORD:-robot_call}
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-uysot}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-uysot}
+      RABBITMQ_USER: ${RABBITMQ_USER:-robot_call}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-robot_call}
       ARI_URL: http://asterisk:8088/
-      ARI_USER: ${ARI_USER:-uysot}
+      ARI_USER: ${ARI_USER:-robot_call}
       ARI_PASSWORD: ${ARI_PASSWORD:-CHANGE_ME_ARI_PASSWORD}
       # AMI (report #7) — reloads res_pjsip.so after a managed SIP trunk changes.
       # Off by default (AMI_ENABLED unset); needs manager.conf configured on the
@@ -158,7 +160,7 @@ services:
       AMI_ENABLED: ${AMI_ENABLED:-false}
       AMI_HOST: asterisk
       AMI_PORT: ${AMI_PORT:-5038}
-      AMI_USER: ${AMI_USER:-uysot-ami}
+      AMI_USER: ${AMI_USER:-robot_call-ami}
       AMI_PASSWORD: ${AMI_PASSWORD:-CHANGE_ME_AMI_PASSWORD}
       # Where PjsipConfigWriter writes the generated trunk config — the SAME directory
       # the asterisk service mounts pjsip.conf from (the volume below), so both
@@ -168,7 +170,10 @@ services:
       # Asterisk sends the caller's audio (externalMedia RTP) to this address.
       RTP_LOCAL_IP: app
       MINIO_ENDPOINT: http://minio:9000
-      STORAGE_ENABLED: ${STORAGE_ENABLED:-false}
+      MINIO_USER: ${MINIO_USER:-robot_call}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:-robot_call}
+      MINIO_BUCKET: ${MINIO_BUCKET:-files}
+      STORAGE_ENABLED: ${STORAGE_ENABLED:-true}
       # Credentials (see .env.example). Default provider is Yandex (no Google file
       # needed). For Google STT/TTS, uncomment GOOGLE_APPLICATION_CREDENTIALS below
       # AND the gcp.json mount.

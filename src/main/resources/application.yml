@@ -1,6 +1,6 @@
 spring:
   application:
-    name: uysot-voice
+    name: robot-call-v2
 
   autoconfigure:
     exclude:
@@ -93,7 +93,7 @@ management:
       show-details: when-authorized
   metrics:
     tags:
-      application: uysot-voice
+      application: robot-call-v2
 
 logging:
   level:

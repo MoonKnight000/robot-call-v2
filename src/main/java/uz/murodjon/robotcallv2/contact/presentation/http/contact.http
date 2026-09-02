@@ -1,0 +1,55 @@
+### Create Contact
+POST http://localhost:8080/api/contacts
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Aziz Karimov",
+  "phone": "+998901234567",
+  "address": "Tashkent",
+  "tags": "vip,client",
+  "notes": "Regular client"
+}
+
+### List Contacts
+POST http://localhost:8080/api/contacts/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "search": "Aziz"
+}
+
+### Get Contact Detail
+GET http://localhost:8080/api/contacts/1
+Authorization: Bearer {{auth_token}}
+
+### Update Contact
+PUT http://localhost:8080/api/contacts/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Aziz Karimov Updated",
+  "address": "Samarkand",
+  "tags": "vip",
+  "notes": "VIP Client"
+}
+
+### Delete Contact
+DELETE http://localhost:8080/api/contacts/1
+Authorization: Bearer {{auth_token}}
+
+### Import Contacts CSV
+POST http://localhost:8080/api/contacts/csv
+Content-Type: text/csv
+Authorization: Bearer {{auth_token}}
+
+name,phone,address,tags,notes
+Aziz Karimov,+998901234567,Toshkent,vip,Doimiy mijoz
+
+### Add Contact to DNC
+POST http://localhost:8080/api/contacts/1/dnc
+Authorization: Bearer {{auth_token}}

@@ -1,4 +1,4 @@
-# Bosqichlar tarixi
+﻿# Bosqichlar tarixi
 
 > **Diqqat:** arxitektura va kod qoidalari bu faylda EMAS — ular loyiha ildizidagi
 > `../../CLAUDE.md` da. Bu fayl faqat bosqichlar tarixini saqlaydi.
@@ -34,7 +34,7 @@ haqida suhbatlashadi va natijani CRM ga yozadi.
 ## Modul strukturasi
 
 > **QAROR (foydalanuvchi):** Bitta Gradle moduli, bitta source. Hamma kod
-> `uz.murodjon.uysotvoice` paketi ostida. Multi-module (shared/voice-agent/dialer
+> `uz.murodjon.robotcallv2` paketi ostida. Multi-module (shared/voice-agent/dialer
 > alohida modul) ISHLATILMAYDI. Base paket `uz.softex.voice` EMAS.
 > Build/`gradlew`/RUN ni Claude qilmaydi — foydalanuvchi o'zi ishga tushiradi.
 
@@ -45,7 +45,7 @@ uysot-voice/  (dir: robot-call-v2)
 ├── docker-compose.yml               # postgres, redis, rabbitmq, minio (+ asterisk Bosqich 1)
 ├── .env.example
 └── src/main/java/uz/murodjon/uysotvoice/
-    ├── UysotVoiceApplication.java
+    ├── RobotCallV2Application.java
     ├── shared/                       # DTO, enum, contract
     │   └── dialog/                   # DialogState, ReasonCode, Disposition, Sentiment
     ├── agent/                        # STATEFUL — ARI + RTP + AI pipeline (keyingi bosqichlar)
@@ -208,8 +208,8 @@ Yaratilgan:
 - ✅ `../../docker-compose.yml` — PostgreSQL, Redis, RabbitMQ, MinIO (Asterisk kommentda, Bosqich 1)
 - ✅ `.env.example`
 - ✅ Flyway migratsiya `V1__initial_schema.sql` — §6 dagi 5 jadval
-- ✅ `UysotVoiceApplication.java` + shared enumlar (DialogState, ReasonCode, Disposition, Sentiment)
-- ✅ `UysotVoiceApplicationTests` — Testcontainers Postgres, Flyway migratsiya tekshiruvi
+- ✅ `RobotCallV2Application.java` + shared enumlar (DialogState, ReasonCode, Disposition, Sentiment)
+- ✅ `RobotCallV2ApplicationTests` — Testcontainers Postgres, Flyway migratsiya tekshiruvi
 
 **Foydalanuvchi tekshiruvi (Claude RUN qilmaydi):**
 - `docker compose up -d`

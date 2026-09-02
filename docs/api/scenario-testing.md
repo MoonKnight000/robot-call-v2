@@ -1,6 +1,6 @@
-# Ssenariylarni Testlash va Simulyatsiya API
+﻿# Ssenariylarni Testlash va Simulyatsiya API
 
-`uz.murodjon.uysotvoice.scenario` va `uz.murodjon.uysotvoice.call` · rol: **OPERATOR / ADMIN**
+`uz.murodjon.robotcallv2.scenario` va `uz.murodjon.robotcallv2.callrecord` · rol: **OPERATOR / ADMIN**
 
 Ssenariy yaratish va tahrirlashda uni xatosiz ishlashiga ishonch hosil qilish uchun tizimda **3 xil testlash mexanizmi** mavjud:
 

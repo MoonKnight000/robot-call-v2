@@ -1,0 +1,50 @@
+### Create Inbound Route
+POST http://localhost:8080/api/inbound-routes
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "didNumber": "+998712000000",
+  "scenarioId": 1,
+  "language": "uz",
+  "businessHoursStart": "09:00:00",
+  "businessHoursEnd": "18:00:00",
+  "fallbackMessage": "Ish vaqti tugagan. Ertaga qo'ng'iroq qiling."
+}
+
+### List Inbound Routes
+POST http://localhost:8080/api/inbound-routes/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Get Inbound Route
+GET http://localhost:8080/api/inbound-routes/1
+Authorization: Bearer {{auth_token}}
+
+### Update Inbound Route
+PUT http://localhost:8080/api/inbound-routes/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "didNumber": "+998712000000",
+  "scenarioId": 1,
+  "language": "uz",
+  "businessHoursStart": "09:00:00",
+  "businessHoursEnd": "19:00:00",
+  "fallbackMessage": "Ish vaqti tugagan.",
+  "enabled": true
+}
+
+### Disable (Soft-delete) Inbound Route
+DELETE http://localhost:8080/api/inbound-routes/1
+Authorization: Bearer {{auth_token}}
+
+### Get Inbound Route Stats
+GET http://localhost:8080/api/inbound-routes/1/stats
+Authorization: Bearer {{auth_token}}

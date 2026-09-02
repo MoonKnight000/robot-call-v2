@@ -1,0 +1,98 @@
+### Get Profile
+GET http://localhost:8080/api/profile
+Authorization: Bearer {{auth_token}}
+
+### Update Profile
+PUT http://localhost:8080/api/profile
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Operator Ali",
+  "email": "ali@example.com",
+  "phone": "+998901234567",
+  "position": "Senior Operator"
+}
+
+### Change Password
+PUT http://localhost:8080/api/profile/password
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "currentPassword": "oldPassword123",
+  "newPassword": "newSecurePassword456"
+}
+
+### List Sessions
+GET http://localhost:8080/api/profile/sessions
+Authorization: Bearer {{auth_token}}
+
+### Revoke Session
+DELETE http://localhost:8080/api/profile/sessions/1
+Authorization: Bearer {{auth_token}}
+
+### Get Notifications
+GET http://localhost:8080/api/profile/notifications
+Authorization: Bearer {{auth_token}}
+
+### Update Notifications
+PUT http://localhost:8080/api/profile/notifications
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "matrix": [
+    {
+      "type": "CALL_FAILED",
+      "channel": "TELEGRAM",
+      "enabled": true
+    }
+  ]
+}
+
+### Get Schedule
+GET http://localhost:8080/api/profile/schedule
+Authorization: Bearer {{auth_token}}
+
+### Update Schedule
+PUT http://localhost:8080/api/profile/schedule
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "slots": [
+    {
+      "dayOfWeek": "MONDAY",
+      "startTime": "09:00:00",
+      "endTime": "18:00:00"
+    }
+  ]
+}
+
+### Today Stats
+GET http://localhost:8080/api/profile/today-stats
+Authorization: Bearer {{auth_token}}
+
+### Update Call Columns
+PUT http://localhost:8080/api/profile/call-columns
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "columns": ["id", "phone", "status", "duration", "createdAt"]
+}
+
+### Get Table Config
+GET http://localhost:8080/api/profile/table-config/callsTableColumns
+Authorization: Bearer {{auth_token}}
+
+### Update Table Config
+PUT http://localhost:8080/api/profile/table-config/callsTableColumns
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "visible": ["phone", "status"],
+  "widths": {"phone": 120}
+}

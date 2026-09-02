@@ -1,6 +1,6 @@
-# Webhook va SMS API integratsiyasi
+﻿# Webhook va SMS API integratsiyasi
 
-`uz.murodjon.uysotvoice.webhook` va `uz.murodjon.uysotvoice.sms` · rol: **ADMIN / SYSTEM**
+`uz.murodjon.robotcallv2.webhook` va `uz.murodjon.robotcallv2.sms` · rol: **ADMIN / SYSTEM**
 
 Qo'ng'iroq jarayoni (life-cycle) hodisalarini tashqi CRM, ERP yoki xabarnoma tizimlariga real vaqtda HTTP Webhook orqali yetkazish hamda suhbat davomida AI agent orqali avtomatik SMS xabarnomalar (to'lov havolasi, tasdiq kodlari) jo'natish mexanizmi.
 

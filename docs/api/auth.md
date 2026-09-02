@@ -1,6 +1,6 @@
-# Autentifikatsiya (login) API
+﻿# Autentifikatsiya (login) API
 
-`uz.murodjon.uysotvoice.auth` · rol: aralash (pastga qarang) · ROADMAP E.1
+`uz.murodjon.robotcallv2.auth` · rol: aralash (pastga qarang) · ROADMAP E.1
 
 Panel uchun real foydalanuvchi login — `X-Api-Key` (machine-to-machine)ga
 qo'shimcha, uni almashtirmaydi. Ikkalasi ham bir vaqtda ishlaydi:
@@ -25,13 +25,27 @@ Body (`LoginRequest`):
 
 ```json
 {
-  "accessToken": "eyJhbGciOi...",
-  "accessTokenExpiresAt": "2026-08-03T08:00:00Z",
-  "refreshToken": "xY9-base64url...",
-  "refreshTokenExpiresAt": "2026-09-01T08:00:00Z",
-  "me": { "id": 1, "companyId": 1, "name": "Admin", "username": "admin",
-          "email": "admin@example.com", "role": "ADMIN", "status": "ACTIVE",
-          "lastLoginAt": "2026-08-02T08:00:00Z", "createdAt": "2026-07-01T00:00:00Z" }
+  "data": {
+    "accessToken": "eyJhbGciOi...",
+    "accessTokenExpiresAt": "2026-08-03T08:00:00Z",
+    "refreshToken": "xY9-base64url...",
+    "refreshTokenExpiresAt": "2026-09-01T08:00:00Z",
+    "user": {
+      "id": 1,
+      "companyId": 1,
+      "name": "Admin",
+      "username": "admin",
+      "email": "admin@example.com",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "lastLoginAt": "2026-08-02T08:00:00Z",
+      "createdAt": "2026-07-01T00:00:00Z"
+    }
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
 }
 ```
 
@@ -152,8 +166,19 @@ Rol: istalgan (kirgan bo'lsa yetarli).
 
 ```json
 {
-  "userId": 1, "name": "Admin", "username": "admin", "email": "admin@example.com",
-  "role": "ADMIN", "companyId": 1, "companyName": "Default"
+  "data": {
+    "id": 1,
+    "name": "Admin",
+    "username": "admin",
+    "email": "admin@example.com",
+    "role": "ADMIN",
+    "companyId": 1,
+    "companyName": "Default"
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
 }
 ```
 
@@ -178,7 +203,22 @@ qaytaradi — MVP'da har doim bitta elementli ro'yxat (bitta foydalanuvchi =
 bitta kompaniya). Ko'p kompaniyaga a'zolik ROADMAP E.2'da kengaytiriladi.
 
 ```json
-{ "data": [ { "id": 1, "name": "Default", "status": "ACTIVE", "createdAt": "..." } ], ... }
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Default",
+      "status": "ACTIVE",
+      "createdAt": "2026-07-01T00:00:00Z",
+      "logoFileId": null,
+      "address": null
+    }
+  ],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
 Sidebar kompaniya tanlagichi (UI-DESIGN §7.3) ro'yxat 1 tadan ko'p bo'lganda

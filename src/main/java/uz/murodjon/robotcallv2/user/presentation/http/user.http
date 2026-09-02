@@ -1,0 +1,36 @@
+### List Users
+GET http://localhost:8080/api/users
+Authorization: Bearer {{auth_token}}
+
+### Get User
+GET http://localhost:8080/api/users/1
+Authorization: Bearer {{auth_token}}
+
+### Invite User
+POST http://localhost:8080/api/users/invite
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "John Doe",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "role": "OPERATOR"
+}
+
+### Change Role
+PUT http://localhost:8080/api/users/1/role
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "role": "ADMIN"
+}
+
+### Block User
+PUT http://localhost:8080/api/users/1/block
+Authorization: Bearer {{auth_token}}
+
+### Unblock User
+PUT http://localhost:8080/api/users/1/unblock
+Authorization: Bearer {{auth_token}}

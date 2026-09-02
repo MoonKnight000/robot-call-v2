@@ -1,3 +1,6 @@
+# ==============================================================================
+# Speech Recognition (STT), Synthesis (TTS), and Voice Activity Detection (VAD)
+# ==============================================================================
 voice-agent:
   # Speech-to-speech engines (PipelineMode.REALTIME) — one vendor does recognition,
   # reasoning and speech, replacing the stt/tts/dialog chain below rather than sitting
@@ -9,15 +12,36 @@ voice-agent:
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
       url: ${REALTIME_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
-      model: ${GEMINI_LIVE_MODEL:gemini-2.0-flash-exp}
+      model: ${GEMINI_LIVE_MODEL:gemini-3.1-flash-live-preview}
       voice: ${GEMINI_LIVE_VOICE:Aoede}
       connect-timeout-seconds: ${REALTIME_GEMINI_CONNECT_TIMEOUT_SECONDS:15}
+    open-ai:
+      api-key: ${OPENAI_API_KEY:}
+      url: ${REALTIME_OPENAI_URL:wss://api.openai.com/v1/realtime}
+      model: ${REALTIME_OPENAI_MODEL:gpt-4o-realtime-preview}
+      voice: ${REALTIME_OPENAI_VOICE:alloy}
+      connect-timeout-seconds: ${REALTIME_OPENAI_CONNECT_TIMEOUT_SECONDS:10}
+      temperature: ${REALTIME_OPENAI_TEMPERATURE:0.7}
+    moshi:
+      api-key: ${REALTIME_MOSHI_API_KEY:}
+      url: ${REALTIME_MOSHI_URL:ws://localhost:8998/api/chat}
+      model: ${REALTIME_MOSHI_MODEL:moshi}
+      sample-rate: 24000
+      connect-timeout-seconds: ${REALTIME_MOSHI_CONNECT_TIMEOUT_SECONDS:10}
+    qwen-omni:
+      api-key: ${REALTIME_QWEN_API_KEY:}
+      url: ${REALTIME_QWEN_URL:wss://dashscope.aliyuncs.com/api-ws/v1/realtime}
+      model: ${REALTIME_QWEN_MODEL:qwen-omni-turbo}
+      voice: ${REALTIME_QWEN_VOICE:cherry}
+      connect-timeout-seconds: ${REALTIME_QWEN_CONNECT_TIMEOUT_SECONDS:10}
+
   stt:
     enabled: ${STT_ENABLED:true}
-    # Default STT provider: yandex (default), aisha or google.
+    # Default STT provider: yandex (default), aisha, google, or deepgram.
     # Individual calls pick provider from Company Engine Config.
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
+    detect-languages: ${STT_DETECT_LANGUAGES:uz-UZ,ru-RU}
     # VAD gating: disabled by default so all audio frames stream directly to the STT provider
     # without cutting utterance beginnings or dropping speech.
     vad-gating:
@@ -49,6 +73,9 @@ voice-agent:
       port: ${STT_YANDEX_PORT:443}
       sample-rate: 8000
       model: ${STT_YANDEX_MODEL:general}
+      # Model used instead of the one above when a call may be spoken in more than one language.
+      # In SpeechKit v3, multilingual recognition uses the language restriction whitelist with the general model.
+      auto-detect-model: ${STT_YANDEX_AUTO_DETECT_MODEL:general}
       interim-results: ${STT_YANDEX_INTERIM:true}
       eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:HIGH}
       eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:700}
@@ -57,6 +84,14 @@ voice-agent:
       api-key: ${STT_AISHA_API_KEY:}
       url: ${STT_AISHA_URL:wss://back.aisha.group/api/v1/stt/realtime}
       interim-results: ${STT_AISHA_INTERIM:true}
+    deepgram:
+      api-key: ${STT_DEEPGRAM_API_KEY:}
+      url: ${STT_DEEPGRAM_URL:wss://api.deepgram.com/v1/listen}
+      model: ${STT_DEEPGRAM_MODEL:nova-3}
+      sample-rate: 8000
+      interim-results: ${STT_DEEPGRAM_INTERIM:true}
+      connect-timeout-seconds: ${STT_DEEPGRAM_TIMEOUT_SECONDS:5}
+
   turn:
     enabled: ${TURN_DETECTOR:false}
     model-path: ${TURN_MODEL_PATH:}
@@ -67,6 +102,7 @@ voice-agent:
     hop-samples: ${TURN_HOP_SAMPLES:256}
     mels: ${TURN_MELS:128}
     frames: ${TURN_FRAMES:500}
+
   tts:
     enabled: ${TTS_ENABLED:true}
     provider: ${TTS_PROVIDER:yandex}
@@ -76,18 +112,25 @@ voice-agent:
       max-chars: ${TTS_CACHE_MAX_CHARS:200}
       redis: ${TTS_CACHE_REDIS:true}
       ttl-days: ${TTS_CACHE_TTL_DAYS:30}
-      prewarm: ${TTS_CACHE_PREWARM:true}
+      prewarm: ${TTS_CACHE_PREWARM:false}
     google:
       sample-rate: 8000
       speaking-rate: ${TTS_GOOGLE_RATE:1.0}
       pitch: ${TTS_GOOGLE_PITCH:0.0}
-      voices: {}
+      voices:
+        uz-UZ: ${TTS_GOOGLE_VOICE_UZ:uz-UZ-Standard-A}
+        ru-RU: ${TTS_GOOGLE_VOICE_RU:ru-RU-Standard-A}
     yandex:
       api-key: ${TTS_YANDEX_API_KEY:}
       folder-id: ${TTS_YANDEX_FOLDER_ID:}
       voice: ${TTS_YANDEX_VOICE:alena}
       voices:
         uz-UZ: ${TTS_YANDEX_VOICE_UZ:nigora}
+        ru-RU: ${TTS_YANDEX_VOICE_RU:alena}
+      voice-roles:
+        nigora: []
+        alena: [neutral, good]
+        omazh: [neutral, evil]
       host: ${TTS_YANDEX_HOST:tts.api.cloud.yandex.net}
       port: ${TTS_YANDEX_PORT:443}
       sample-rate: 8000
@@ -97,7 +140,16 @@ voice-agent:
       url: ${TTS_AISHA_URL:wss://back.aisha.group/api/v1/tts/realtime}
       speaker: ${TTS_AISHA_SPEAKER:neutral}
       speakers: {}
+      moods: []
       request-timeout-ms: ${TTS_AISHA_TIMEOUT_MS:10000}
+    cartesia:
+      api-key: ${TTS_CARTESIA_API_KEY:}
+      url: ${TTS_CARTESIA_URL:https://api.cartesia.ai/tts/bytes}
+      model: ${TTS_CARTESIA_MODEL:sonic-multilingual}
+      voice: ${TTS_CARTESIA_VOICE:79a125e8-cd45-4c13-8a67-188112f4dd22}
+      sample-rate: 8000
+      connect-timeout-seconds: ${TTS_CARTESIA_TIMEOUT_SECONDS:5}
+
   vad:
     enabled: ${VAD_ENABLED:true}
     model-path: ${VAD_MODEL_PATH:}

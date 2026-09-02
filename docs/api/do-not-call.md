@@ -1,6 +1,6 @@
-# "Qo'ng'iroq qilinmasin" (DNC) API
+﻿# "Qo'ng'iroq qilinmasin" (DNC) API
 
-`uz.murodjon.uysotvoice.donotcall` · rol: **OPERATOR** (barcha endpoint — ADMIN ham kiradi, rol ierarxiyasi bo'yicha)
+`uz.murodjon.robotcallv2.donotcall` · rol: **ADMIN** (barcha endpoint)
 
 Kompaniya darajasidagi opt-out ro'yxati — kampaniyaga bog'liq emas, shuning
 uchun alohida API. Kontakt yoki nishondan qo'shish uchun
@@ -18,7 +18,12 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 Body — `DoNotCallFilter`:
 
 ```json
-{ "page": 0, "size": 20, "orders": { "CREATED_AT": "DESC" } }
+{
+  "page": 0,
+  "size": 20,
+  "orders": { "CREATED_AT": "DESC" },
+  "search": "998901234567"
+}
 ```
 
 Saralanadigan ustunlar: `ID`, `PHONE`, `CREATED_AT`. Standart:
@@ -29,19 +34,34 @@ yozuvlarni qaytaradi.
 
 ```json
 {
-  "id": 3,
-  "phone": "998901234567",
-  "contactName": "Aziz Karimov",
-  "reason": "Mijoz so'rovi",
-  "source": "contact",
-  "createdAt": "2026-07-10T08:00:00Z"
+  "data": {
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "data": [
+      {
+        "id": 3,
+        "phone": "998901234567",
+        "contactName": "Aziz Karimov",
+        "reason": "Mijoz so'rovi",
+        "source": "MANUAL",
+        "createdAt": "2026-07-10T08:00:00Z"
+      }
+    ]
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
 }
 ```
 
-`source` — qaysi joydan qo'shilgani (masalan `contact`, `target`, `manual`).
-`contactName` — shu telefon raqami bo'yicha `contact` jadvalidan hal qilingan
-(backend-uchun-talablar.md §15); shu raqamli kontakt umuman mavjud bo'lmasa `null`
-(opt-out hech qachon kontakt sifatida qo'shilmagan raqam uchun ham yozilishi mumkin).
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `source` | `DoNotCallSource` enum | `CALL` (AI qo'ng'iroq davomida mijoz rad etganda), `CRM` (tashqi CRM sinxronizatsiyasi), `MANUAL` (panel orqali kiritilgan) |
+| `contactName` | string | Shu telefon raqami bo'yicha `contact` jadvalidan topilgan ism; kontakt mavjud bo'lmasa `null` |
+| `reason` | string | Qo'shilish sababi / izoh |
 
 ---
 
@@ -54,7 +74,16 @@ Body yo'q, `phone` — path parametr. Soft-delete qiladi (`removed_at`/
 **Response** (`DoNotCallRemoveResponse`):
 
 ```json
-{ "phone": "998901234567", "removed": true }
+{
+  "data": {
+    "phone": "998901234567",
+    "removed": true
+  },
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
 ```
 
 Hech qachon opt-out bo'lmagan yoki allaqachon olib tashlangan raqam uchun —

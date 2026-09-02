@@ -1,0 +1,116 @@
+### Create Campaign
+POST http://localhost:8080/api/campaigns
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qarzdorlik eslatmasi - May 2026",
+  "type": "DEBT_COLLECTION",
+  "goalPrompt": "Mijozga qarzdorlikni to'lash muddatini eslatish va to'lov sanasini kelishish",
+  "defaultLanguage": "uz-UZ",
+  "dialWindowStart": "09:00:00",
+  "dialWindowEnd": "19:00:00",
+  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+  "maxAttempts": 3,
+  "retryIntervalMinutes": 60,
+  "maxConcurrentCalls": 10,
+  "dailyCallCap": 500,
+  "scenarioId": 1,
+  "disclosureEnabled": true
+}
+
+### Filter Campaigns
+POST http://localhost:8080/api/campaigns/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "status": "ACTIVE"
+}
+
+### Get Campaign
+GET http://localhost:8080/api/campaigns/1
+Authorization: Bearer {{auth_token}}
+
+### Update Campaign
+PUT http://localhost:8080/api/campaigns/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qarzdorlik eslatmasi - May 2026 (Updated)",
+  "goalPrompt": "Mijoz bilan yangilangan qarz eslatmasi dialogi",
+  "defaultLanguage": "uz-UZ",
+  "dialWindowStart": "09:30:00",
+  "dialWindowEnd": "18:30:00",
+  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"],
+  "maxAttempts": 4,
+  "retryIntervalMinutes": 45,
+  "maxConcurrentCalls": 15,
+  "dailyCallCap": 600,
+  "disclosureEnabled": true
+}
+
+### Clone Campaign
+POST http://localhost:8080/api/campaigns/1/clone
+Authorization: Bearer {{auth_token}}
+
+### Start Campaign
+POST http://localhost:8080/api/campaigns/1/start
+Authorization: Bearer {{auth_token}}
+
+### Pause Campaign
+POST http://localhost:8080/api/campaigns/1/pause
+Authorization: Bearer {{auth_token}}
+
+### Archive Campaign
+DELETE http://localhost:8080/api/campaigns/1
+Authorization: Bearer {{auth_token}}
+
+### Add Targets
+POST http://localhost:8080/api/campaigns/1/targets
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+[
+  {
+    "clientId": 101,
+    "phone": "+998901234567",
+    "language": "uz-UZ",
+    "contextData": {
+      "clientName": "Anvar Aliyev",
+      "debtAmount": "500000",
+      "dueDate": "2026-06-01"
+    }
+  }
+]
+
+### List Targets
+POST http://localhost:8080/api/campaigns/1/targets/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Mark Target Do Not Call
+POST http://localhost:8080/api/targets/1/do-not-call
+Authorization: Bearer {{auth_token}}
+
+### Get Target Memory
+GET http://localhost:8080/api/campaigns/1/targets/1/memory
+Authorization: Bearer {{auth_token}}
+
+### Update Target Memory
+PUT http://localhost:8080/api/campaigns/1/targets/1/memory
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "operatorNotes": "Mijoz to'lovni ertaga qilaman dedi",
+  "preferredName": "Anvar aka"
+}

@@ -3,8 +3,8 @@ voice-agent:
     enabled: ${ASTERISK_ENABLED:true}
     # ari4java needs the HTTP base URL (not ws://). It derives the WebSocket itself.
     ari-url: ${ARI_URL:http://localhost:8088/}
-    # Must match asterisk/etc/asterisk/ari.conf [uysot] password.
-    ari-user: ${ARI_USER:uysot}
+    # Must match asterisk/etc/asterisk/ari.conf [robot_call] password.
+    ari-user: ${ARI_USER:robot_call}
     ari-password: ${ARI_PASSWORD:CHANGE_ME_ARI_PASSWORD}
     app-name: ${ARI_APP:uysot-voice-agent}
     trunk-endpoint: ${TRUNK_ENDPOINT:trunk-endpoint}
@@ -18,6 +18,12 @@ voice-agent:
     # 3-4 digits = internal extension. Written without {n,m} on purpose: a closing
     # brace inside a ${...:default} would terminate the placeholder early.
     local-number-pattern: ${LOCAL_NUMBER_PATTERN:\d\d\d\d?}
+    # MUST stay blank unless a real DID in E.164 is available. Blank leaves the caller
+    # id unset, so PJSIP marks the presentation restricted and sends From: "Anonymous"
+    # — Skyline then stamps the account's own valid number as the A-number and the call
+    # completes. Filling this with the account login (781137492) is what broke outbound
+    # dialling on 2026-09-01: the login is not a subscriber number, so it was passed
+    # through as the A-number and the terminating network answered 603 Declined ~7s in.
     caller-id: ${CALLER_ID:}
     answer-timeout-sec: 30
     ami:

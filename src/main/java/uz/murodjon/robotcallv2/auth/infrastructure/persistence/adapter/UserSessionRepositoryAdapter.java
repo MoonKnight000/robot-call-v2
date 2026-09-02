@@ -1,0 +1,102 @@
+package uz.murodjon.robotcallv2.auth.infrastructure.persistence.adapter;
+
+import org.springframework.stereotype.Component;
+
+import uz.murodjon.robotcallv2.auth.application.mapper.UserSessionMapper;
+import uz.murodjon.robotcallv2.auth.application.port.output.UserSessionRepository;
+import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
+import uz.murodjon.robotcallv2.auth.infrastructure.persistence.entity.UserSessionEntity;
+import uz.murodjon.robotcallv2.auth.infrastructure.persistence.repository.UserSessionJpaRepository;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+@Component
+public class UserSessionRepositoryAdapter implements UserSessionRepository {
+
+    private final UserSessionJpaRepository jpa;
+    private final UserJpaRepository userJpa;
+    private final CompanyJpaRepository companyJpa;
+    private final UserSessionMapper mapper;
+
+    public UserSessionRepositoryAdapter(UserSessionJpaRepository jpa, UserJpaRepository userJpa,
+                                        CompanyJpaRepository companyJpa, UserSessionMapper mapper) {
+        this.jpa = jpa;
+        this.userJpa = userJpa;
+        this.companyJpa = companyJpa;
+        this.mapper = mapper;
+    }
+
+    @Override
+    public long create(long companyId, long userId, String tokenHash, Instant expiresAt,
+                       String device, String ipAddress) {
+        UserEntity user = userJpa.findById(userId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
+        CompanyEntity company = companyJpa.findById(companyId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+
+        UserSessionEntity entity = new UserSessionEntity();
+        entity.setCompany(company);
+        entity.setUser(user);
+        entity.setRefreshTokenHash(tokenHash);
+        entity.setDevice(device);
+        entity.setIpAddress(ipAddress);
+        Instant now = Instant.now();
+        entity.setCreatedAt(now);
+        entity.setLastActivityAt(now);
+        entity.setExpiresAt(expiresAt);
+        return jpa.save(entity).getId();
+    }
+
+    @Override
+    public Optional<UserSession> findActiveByHash(String tokenHash) {
+        return jpa.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash).map(mapper::entityToDomain);
+    }
+
+    @Override
+    public void rotate(long id, String newTokenHash, Instant newExpiresAt, String device, String ipAddress) {
+        jpa.findById(id).ifPresent(entity -> {
+            entity.setRefreshTokenHash(newTokenHash);
+            entity.setExpiresAt(newExpiresAt);
+            entity.setLastActivityAt(Instant.now());
+            if (device != null) {
+                entity.setDevice(device);
+            }
+            if (ipAddress != null) {
+                entity.setIpAddress(ipAddress);
+            }
+            jpa.save(entity);
+        });
+    }
+
+    @Override
+    public void revoke(long id, long userId) {
+        jpa.findByIdAndUserId(id, userId).ifPresent(entity -> {
+            entity.setRevokedAt(Instant.now());
+            jpa.save(entity);
+        });
+    }
+
+    @Override
+    public void revokeAllForUser(long userId) {
+        jpa.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId)
+                .forEach(entity -> {
+                    entity.setRevokedAt(Instant.now());
+                    jpa.save(entity);
+                });
+    }
+
+    @Override
+    public List<UserSession> listActiveForUser(long userId) {
+        return jpa.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId).stream()
+                .map(mapper::entityToDomain)
+                .toList();
+    }
+}

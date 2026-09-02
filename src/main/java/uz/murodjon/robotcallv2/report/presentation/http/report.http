@@ -1,0 +1,60 @@
+### Get Campaign Stats
+GET {{host}}/api/reports/campaigns/1
+Authorization: Bearer {{token}}
+
+### List Calls for Campaign
+POST {{host}}/api/reports/campaigns/1/calls/list
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### List All Calls
+POST {{host}}/api/reports/calls/list
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Get Call Detail
+GET {{host}}/api/reports/calls/1
+Authorization: Bearer {{token}}
+
+### Dashboard KPI
+GET {{host}}/api/reports/dashboard/kpi
+Authorization: Bearer {{token}}
+
+### Dashboard Timeseries
+GET {{host}}/api/reports/dashboard/timeseries
+Authorization: Bearer {{token}}
+
+### Dashboard Outcomes
+GET {{host}}/api/reports/dashboard/outcomes
+Authorization: Bearer {{token}}
+
+### Create Report Schedule
+POST {{host}}/api/reports/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "email": "reports@example.com",
+  "periodicity": "DAILY",
+  "format": "pdf"
+}
+
+### List Report Schedules
+POST {{host}}/api/reports/schedule/list
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "page": 0,
+  "size": 10
+}

@@ -1,6 +1,6 @@
-# Bildirishnomalar API
+﻿# Bildirishnomalar API
 
-`uz.murodjon.uysotvoice.notification` · rol: istalgan (kirgan bo'lsa yetarli)
+`uz.murodjon.robotcallv2.notification` · rol: istalgan (kirgan bo'lsa yetarli)
 · UI-DESIGN §0.8/§8.2/§9
 
 Topbar qo'ng'iroq ikonkasi va uning popover'idagi toggle'lar. Har bir

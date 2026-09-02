@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Uysot Voice — Test Paneli</title>
+<title>Robot Call v2 — Test Paneli</title>
 <style>
   :root{
     --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --border:#2b3441;
@@ -42,7 +42,7 @@
 
   .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
     padding:18px;margin-bottom:16px}
-  .card h2{font-size:14px;margin:0 0 4px;font-weight:600}
+  .card h2{font-size:14px;margin:0 0 4px;font-weight:600;display:flex;align-items:center;justify-content:space-between}
   .card h2 .num{display:inline-flex;width:22px;height:22px;border-radius:50%;
     background:var(--accent);color:#fff;font-size:12px;align-items:center;
     justify-content:center;margin-right:8px}
@@ -57,13 +57,18 @@
   .row>div{flex:1;min-width:120px}
 
   button.btn{background:var(--accent);color:#fff;border:none;border-radius:6px;
-    padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;margin-top:14px}
+    padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;margin-top:14px;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:.15s}
   button.btn:hover{background:var(--accent2)}
   button.btn.sec{background:var(--panel2);border:1px solid var(--border);color:var(--txt)}
   button.btn.sec:hover{border-color:var(--accent)}
   button.btn.danger{background:var(--red)}
+  button.btn.danger:hover{background:#b92522}
   button.btn.green{background:var(--green)}
-  button.btn.sm{padding:5px 10px;font-size:12px;margin-top:0}
+  button.btn.green:hover{background:#238636}
+  button.btn.purple{background:var(--purple)}
+  button.btn.purple:hover{background:#733edb}
+  button.btn.sm{padding:4px 9px;font-size:12px;margin-top:0}
   button:disabled{opacity:.5;cursor:not-allowed}
 
   table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:12px}
@@ -74,12 +79,13 @@
 
   .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
   .pill.DRAFT{background:#30363d;color:var(--muted)}
-  .pill.ACTIVE{background:rgba(46,160,67,.18);color:#3fb950}
-  .pill.PAUSED{background:rgba(210,153,34,.18);color:#d29922}
+  .pill.ACTIVE,.pill.REGISTERED,.pill.ONLINE{background:rgba(46,160,67,.18);color:#3fb950}
+  .pill.PAUSED,.pill.TRYING,.pill.UNREGISTERED{background:rgba(210,153,34,.18);color:#d29922}
   .pill.PENDING{background:#30363d;color:var(--muted)}
   .pill.IN_PROGRESS{background:rgba(59,130,246,.18);color:#58a6ff}
   .pill.DONE{background:rgba(46,160,67,.18);color:#3fb950}
-  .pill.FAILED,.pill.EXHAUSTED{background:rgba(218,54,51,.18);color:#f85149}
+  .pill.FAILED,.pill.EXHAUSTED,.pill.REJECTED,.pill.UNAVAILABLE,.pill.NOT_FOUND{background:rgba(218,54,51,.18);color:#f85149}
+  .pill.DISABLED{background:#30363d;color:var(--muted)}
 
   /* response viewer */
   .resp{margin-top:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
@@ -91,8 +97,7 @@
 
   /* FSM diagram */
   .fsm{display:flex;flex-direction:column;align-items:center;gap:0;padding:10px 0}
-  .fnode{border:1.5px solid var(--border);background:var(--panel2);border-radius:8px;
-    padding:10px 18px;font-size:13px;font-weight:600;min-width:210px;text-align:center;
+  .fnode{border:1.5px solid var(--border);background:var(--panel2);border-radius:8px;\n    padding:10px 18px;font-size:13px;font-weight:600;min-width:210px;text-align:center;
     transition:.25s}
   .fnode .d{font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
   .fnode.active{border-color:var(--accent);background:rgba(59,130,246,.14);
@@ -104,11 +109,19 @@
 
   /* transcript / chat */
   .chat{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;padding:4px}
-  .msg{max-width:78%;padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap}
+  .msg{max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap;line-height:1.4}
   .msg.AGENT{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);border-bottom-left-radius:3px}
   .msg.CLIENT{align-self:flex-end;background:var(--accent2);border-bottom-right-radius:3px}
-  .msg .who{font-size:10px;color:var(--muted);margin-bottom:2px}
+  .msg .who{font-size:10px;color:var(--muted);margin-bottom:3px}
   .msg.CLIENT .who{color:#cfe0ff}
+
+  /* audio visualizer */
+  .audio-wave{display:inline-flex;align-items:center;gap:3px;height:14px;margin-left:8px;vertical-align:middle}
+  .audio-wave span{display:block;width:3px;height:100%;background:var(--green);border-radius:2px;animation:wave 0.8s ease-in-out infinite}
+  .audio-wave span:nth-child(2){animation-delay:0.15s}
+  .audio-wave span:nth-child(3){animation-delay:0.3s}
+  .audio-wave span:nth-child(4){animation-delay:0.45s}
+  @keyframes wave{0%,100%{height:3px}50%{height:14px}}
 
   /* event log */
   .log{font-family:var(--mono);font-size:12px;background:#0a0e14;border:1px solid var(--border);
@@ -126,11 +139,16 @@
   .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center}
   .inline{display:flex;gap:8px;align-items:flex-end}
   .inline>div{flex:1}
+  .btn-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .btn-group button{margin-top:0}
+  .tab-subnav{display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px}
+  .tab-subnav button{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer}
+  .tab-subnav button.active{background:var(--panel2);color:var(--txt);border-color:var(--accent)}
 </style>
 </head>
 <body>
 <header>
-  <h1>🎙️ Uysot Voice</h1>
+  <h1>🎙️ Robot Call v2</h1>
   <span class="tag">Test Paneli</span>
   <div class="conn">
     <span>API:</span>
@@ -199,8 +217,8 @@
         <select id="c_voice"><option value="">(standart sozlama)</option></select>
         <p class="hint">GET /api/tts/voices — tanlangan til uchun mavjud ovozlar</p>
         <label>Ssenariy (scenarioId)</label>
-        <input id="c_scenario" type="number" placeholder="masalan: 1">
-        <p class="hint">POST /api/scenarios/list — kampaniya ishlaydigan ssenariy ID'si (majburiy, ROADMAP A.3)</p>
+        <select id="c_scenario"><option value="">(standart ssenariy)</option></select>
+        <p class="hint">POST /api/scenarios/list — kampaniya ishlaydigan ssenariy (majburiy, ROADMAP A.3)</p>
         <label>Maqsad / skript (goalPrompt)</label>
         <textarea id="c_goal">Mijozdan qarzni to'lash sanasini aniqlang. Muloyim va professional bo'ling.</textarea>
         <div class="row">
@@ -276,40 +294,230 @@
     </div>
   </section>
 
-  <!-- ===================== CALL ===================== -->
+  <!-- ===================== CALL (TEST QO'NG'IROQ) ===================== -->
   <section class="view" data-view="call">
     <div class="grid cols2">
+      <!-- 1. Test Qo'ng'iroq Boshlash -->
       <div class="card">
-        <h2><span class="num">3</span>Qo'ng'iroq (originate)</h2>
-        <p class="hint">POST /api/calls?number= — Asterisk orqali qo'ng'iroq. Trunk-siz test uchun softphone raqami <b>600</b>.</p>
-        <label>Raqam</label><input id="ca_num" value="600">
+        <h2>
+          <span><span class="num">3</span>Test Qo'ng'iroq (Originate)</span>
+          <button class="btn sec sm" onclick="loadScenarios()">🔄 Ssenariylarni yangilash</button>
+        </h2>
+        <p class="hint">POST /api/calls yoki POST /api/calls/test — Asterisk orqali test qo'ng'iroq. Softphone: <b>600</b>.</p>
+
+        <label>Telefon raqam</label>
+        <input id="ca_num" value="600" placeholder="600 yoki 998901234567">
+
+        <label>Ssenariy tanlash (Scenario)</label>
+        <select id="ca_scenario">
+          <option value="">(Standart ssenariy — sozlamadagi)</option>
+        </select>
+
+        <div style="margin-top:12px">
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--txt);font-size:12.5px">
+            <input type="checkbox" id="ca_useDraft" style="width:auto" onchange="toggleDraftJson()">
+            Qorama ssenariy (Draft Scenario JSON) bilan test qilish
+          </label>
+        </div>
+
+        <div id="ca_draft_wrap" style="display:none;margin-top:10px">
+          <label>ScenarioDefinition (JSON)</label>
+          <textarea id="ca_draft" rows="7">{
+  "stages": [
+    { "id": "GREETING", "purpose": "Salomlashish", "allowedTransitions": ["DEBT_NOTICE", "CLOSING"] },
+    { "id": "DEBT_NOTICE", "purpose": "Qarzni eslatish", "allowedTransitions": ["CLOSING"] },
+    { "id": "CLOSING", "purpose": "Xayrlashuv", "allowedTransitions": [] }
+  ],
+  "factSchema": [
+    { "name": "clientName", "type": "string", "required": true },
+    { "name": "debtAmount", "type": "number", "required": true }
+  ],
+  "tools": [],
+  "outcomeSchema": [],
+  "rolePrompt": "Siz UySot kompaniyasining muloyim ovozli operatorisiz.",
+  "guardrails": []
+}</textarea>
+        </div>
+
         <button class="btn green" onclick="originate()">📞 Qo'ng'iroq qilish</button>
         <div id="ca_resp"></div>
+
         <div id="ca_channel" style="display:none;margin-top:14px">
-          <div class="kv"><span>Faol channelId</span><span class="mono" id="ca_chid"></span></div>
+          <div class="kv">
+            <span>Faol channelId</span>
+            <span class="mono" id="ca_chid" style="color:var(--green)"></span>
+          </div>
         </div>
       </div>
 
+      <!-- 2. Jonli Boshqaruv & Eshitish (Listen, Hangup, Transfer) -->
       <div class="card">
-        <h2>Audio yuborish</h2>
-        <p class="hint">Faol qo'ng'iroqqa WAV ijro etish yoki matnni TTS bilan aytish</p>
-        <label>channelId</label><input id="ca_chinput" placeholder="originate javobidan avtomatik to'ladi">
+        <h2>
+          <span>Jonli Qo'ng'iroq Boshqaruvi</span>
+          <span id="ca_listenWave" class="audio-wave" style="display:none">
+            <span></span><span></span><span></span><span></span>
+          </span>
+        </h2>
+        <p class="hint">Tinglash (Listen stream), go'shakni qo'yish (Hangup), operatorga o'tkazish (Transfer)</p>
 
-        <label style="margin-top:16px">WAV fayl yo'li (server tomonda)</label>
-        <div class="inline">
-          <div><input id="ca_wav" placeholder="/app/audio/greeting.wav"></div>
-          <button class="btn sec" onclick="playWav()">▶ Play</button>
-        </div>
+        <label>Boshqarilayotgan channelId</label>
+        <input id="ca_chinput" placeholder="Qo'ng'iroq boshlanganda avtomatik to'ladi">
 
-        <label style="margin-top:16px">Matn (TTS bilan aytish)</label>
-        <textarea id="ca_text">Assalomu alaykum. Bu Uysot kompaniyasining avtomatik tizimi.</textarea>
-        <div class="inline">
-          <div><select id="ca_saylang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
-          <div><select id="ca_sayvoice"><option value="">(standart ovoz)</option></select></div>
-          <button class="btn" onclick="sayText()">🗣 Say</button>
+        <div class="btn-group">
+          <button class="btn green" id="ca_listenBtn" onclick="toggleListen()">🎧 Tinglash (Listen)</button>
+          <button class="btn danger" onclick="hangupCall()">🔴 Go'shakni qo'yish (Hangup)</button>
+          <button class="btn purple" onclick="transferCall()">👤 Operatorga uzatish (Transfer)</button>
         </div>
-        <div id="ca_resp2"></div>
+        <div id="ca_ctrlResp"></div>
+
+        <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:10px">
+          <label>WAV fayl ijro etish (serverda mavjud bo'lsa)</label>
+          <div class="inline">
+            <div><input id="ca_wav" placeholder="/app/audio/greeting.wav"></div>
+            <button class="btn sec sm" onclick="playWav()">▶ Play</button>
+          </div>
+
+          <label style="margin-top:12px">Matnni TTS bilan aytish</label>
+          <textarea id="ca_text" rows="2">Assalomu alaykum. Bu Uysot kompaniyasining avtomatlashtirilgan ovozli tizimi.</textarea>
+          <div class="inline" style="margin-top:8px">
+            <div><select id="ca_saylang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
+            <div><select id="ca_sayvoice"><option value="">(standart ovoz)</option></select></div>
+            <button class="btn sec sm" onclick="sayText()">🗣️ Say</button>
+          </div>
+          <div id="ca_resp2"></div>
+        </div>
       </div>
+    </div>
+
+    <!-- 3. Jonli Qo'ng'iroqlar Jadvali & 4. Jonli Transkript -->
+    <div class="grid cols2">
+      <!-- Live Calls Table -->
+      <div class="card">
+        <h2>
+          <span>Jonli Qo'ng'iroqlar (Live Calls)</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn sec sm" onclick="loadLiveCalls()">🔄 Yangilash</button>
+            <button class="btn sec sm" id="ca_livePollBtn" onclick="toggleLiveCallsPoll()">⏱️ Auto: OFF</button>
+          </div>
+        </h2>
+        <p class="hint">GET /api/calls/live — hozirda suhbatlashayotgan barcha kanallar</p>
+        <div id="ca_liveBox"><div class="empty">Yuklanmoqda...</div></div>
+      </div>
+
+      <!-- Live Transcript & Context -->
+      <div class="card">
+        <h2>
+          <span>Jonli Suhbat (Transkript)</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="pill IN_PROGRESS" id="ca_liveState">—</span>
+            <button class="btn sec sm" id="ca_trPollBtn" onclick="toggleTrPoll()">⏱️ Transkript: ON</button>
+          </div>
+        </h2>
+        <p class="hint">GET /api/operator/calls/{channelId} — real vaqtdagi bot va mijoz suhbati</p>
+        <div id="ca_liveFacts" style="margin-bottom:10px"></div>
+        <div class="chat" id="ca_liveChat"><div class="empty">Hozircha suhbat yo'q. Qo'ng'iroq boshlanganda xabarlar shu yerda paydo bo'ladi.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SIP TRUNKS & PHONES (SIP BOSHQARUV) ===================== -->
+  <section class="view" data-view="siptrunk">
+    <div class="grid cols2">
+      <!-- 1. SIP Telefon / Trunk qo'shish yoki tahrirlash -->
+      <div class="card">
+        <h2>
+          <span id="sip_formTitle"><span class="num">4</span>SIP Telefon / Trunk qo'shish</span>
+          <button class="btn sec sm" id="sip_resetBtn" style="display:none" onclick="resetSipForm()">➕ Yangi qo'shish</button>
+        </h2>
+        <p class="hint">POST /api/sip-trunks — kompaniyangiz uchun tayyor SIP telefon yoki tashqi SIP provayder akkaunti.</p>
+
+        <input type="hidden" id="sip_editId" value="">
+
+        <div class="tab-subnav">
+          <button id="sip_modeManual" class="active" onclick="switchSipMode('manual')">📱 Tayyor SIP Telefon / Endpoint</button>
+          <button id="sip_modeManaged" onclick="switchSipMode('managed')">🌐 SIP Provayder Akkaunti</button>
+        </div>
+
+        <label>Trunk / Telefon nomi</label>
+        <input id="sip_name" placeholder="Masalan: Ofis telefoni #600 yoki Uztelecom Asosiy">
+
+        <!-- Manual Mode Fields -->
+        <div id="sip_manualFields">
+          <label>Asterisk Endpoint / Softphone raqami</label>
+          <input id="sip_pjsipEndpoint" value="600" placeholder="600, 601 yoki trunk-endpoint">
+          <p class="hint">Asterisk pjsip.conf da sozlangan tayyor endpoint yoki softphone ichki raqami.</p>
+        </div>
+
+        <!-- Managed Mode Fields -->
+        <div id="sip_managedFields" style="display:none">
+          <div class="row">
+            <div>
+              <label>SIP Host / Provayder IP yoki domen</label>
+              <input id="sip_host" placeholder="sip.provider.uz yoki 192.168.1.50">
+            </div>
+            <div>
+              <label>Port</label>
+              <input id="sip_port" type="number" value="5060" placeholder="5060">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>SIP Login / Username</label>
+              <input id="sip_username" placeholder="998712000001">
+            </div>
+            <div>
+              <label>SIP Parol (Secret Password)</label>
+              <input id="sip_password" type="password" placeholder="Parol">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Transport</label>
+              <select id="sip_transport"><option value="UDP">UDP</option></select>
+            </div>
+          </div>
+        </div>
+
+        <label>Caller ID (Chiquvchi raqam — ixtiyoriy)</label>
+        <input id="sip_callerId" placeholder="998712000000">
+
+        <div id="sip_enabledWrap" style="display:none;margin-top:10px">
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--txt)">
+            <input type="checkbox" id="sip_enabled" checked style="width:auto">
+            Trunk yoqilgan (Enabled)
+          </label>
+        </div>
+
+        <div class="btn-group">
+          <button class="btn green" id="sip_saveBtn" onclick="saveSipTrunk()">💾 Saqlash</button>
+        </div>
+        <div id="sip_resp"></div>
+      </div>
+
+      <!-- 2. Status Tafsiloti & Ma'lumot -->
+      <div class="card">
+        <h2>
+          <span>SIP Status va Bog'lanish Ma'lumoti</span>
+          <button class="btn sec sm" onclick="checkAllSipStatus()">⚡ Hammasini tekshirish</button>
+        </h2>
+        <p class="hint">GET /api/sip-trunks/{id}/status — Asterisk PJSIP ro'yxatdan o'tish va ulanish holati.</p>
+        <div id="sip_statusDetail">
+          <div class="empty">Statusni ko'rish uchun quyidagi jadvaldan biror trunkni tanlang yoki "Statusni tekshirish" tugmasini bosing.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Barcha SIP Trunklar va Telefonlar Jadvali -->
+    <div class="card">
+      <h2>
+        <span>Kompaniyangizning SIP Telefonlari va Trunklari</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn sec sm" onclick="loadSipTrunks()">🔄 Yangilash</button>
+          <button class="btn sec sm" onclick="checkAllSipStatus()">⚡ Statuslarni tekshirish</button>
+        </div>
+      </h2>
+      <p class="hint">POST /api/sip-trunks/list — har bir kompaniyaning o'ziga tegishli ajratilgan SIP konfiguratsiyasi.</p>
+      <div id="sip_tableBox"><div class="empty">Yuklanmoqda...</div></div>
     </div>
   </section>
 
@@ -321,7 +529,7 @@
       <div class="inline">
         <div><label>channelId</label><input id="op_chid" placeholder="faol qo'ng'iroq channelId"></div>
         <button class="btn" onclick="opFetch()">Yuklash</button>
-        <button class="btn sec" id="op_pollBtn" onclick="opTogglePoll()">⏱ Auto-poll: OFF</button>
+        <button class="btn sec" id="op_pollBtn" onclick="opTogglePoll()">⏱️ Auto-poll: OFF</button>
       </div>
     </div>
 
@@ -406,9 +614,10 @@ $('apiKey').value = localStorage.getItem(KEY_STORE) || '';
 $('apiKey').addEventListener('change', () => {
   localStorage.setItem(KEY_STORE, $('apiKey').value.trim());
   checkConn();
-  // Ovozlar ro'yxati ham kalit talab qiladi: kalitsiz yuklanganda u bo'sh qolgan.
   loadVoices('c_voice',$('c_lang').value,true);
   loadVoices('ca_sayvoice',$('ca_saylang').value,true);
+  loadScenarios();
+  loadSipTrunks();
 });
 function authHeaders(){
   const k = $('apiKey').value.trim();
@@ -418,7 +627,7 @@ function authHeaders(){
 /* ---------- tabs ---------- */
 const TABS = [
   ['flow','Umumiy oqim'],['campaign','1 · Kampaniya'],['targets','2 · Nishonlar'],
-  ['call','3 · Qo\'ng\'iroq'],['operator','5 · Operator'],['reports','6 · Natijalar'],
+  ['call','3 · Test Qo\'ng\'iroq'],['siptrunk','4 · SIP Telefon / Trunk'],['operator','5 · Operator'],['reports','6 · Natijalar'],
   ['log','Log']
 ];
 const nav = $('nav');
@@ -430,6 +639,8 @@ TABS.forEach(([v,label],i)=>{
     document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     document.querySelector(`.view[data-view="${v}"]`).classList.add('active');
+    if(v==='call'){ loadLiveCalls(); }
+    if(v==='siptrunk'){ loadSipTrunks(); }
   };
   nav.appendChild(b);
 });
@@ -446,7 +657,14 @@ function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
 /* ---------- fetch wrapper + response viewer ---------- */
 async function api(method,path,{body,query}={}){
   let url=base()+path;
-  if(query){const q=new URLSearchParams(query).toString(); url+=(url.includes('?')?'&':'?')+q;}
+  if(query){
+    const cleanQ = {};
+    for(const [k,v] of Object.entries(query)){
+      if(v!==undefined && v!==null && v!=='') cleanQ[k]=v;
+    }
+    const q=new URLSearchParams(cleanQ).toString();
+    if(q) url+=(url.includes('?')?'&':'?')+q;
+  }
   const opts={method,headers:authHeaders()};
   if(body!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
   log(`${method} ${path}`,'info');
@@ -473,8 +691,6 @@ function errResp(elId,e){
 /* ---------- connection check ---------- */
 async function checkConn(){
   try{
-    // A read endpoint, so a read-only key (READ_API_KEY) also shows as connected —
-    // /api/campaigns needs the admin role and would report a valid viewer key as broken.
     const res=await fetch(base()+'/api/reports/audit?limit=1',{headers:authHeaders()});
     setConn(res.ok, res.status);
   }catch{ setConn(false); }
@@ -485,9 +701,7 @@ function setConn(ok, status){
 }
 $('baseUrl').addEventListener('change',checkConn);
 
-/* ================= TTS VOICES ================= */
-/* Ovozlar ro'yxati serverdagi katalogdan keladi, shuning uchun tanlovda faqat
-   POST /api/campaigns qabul qiladigan id lar bo'ladi (noto'g'ri id 400 qaytaradi). */
+/* ================= TTS VOICES & SCENARIOS ================= */
 async function loadVoices(selectId, language, keepValue){
   const sel=$(selectId); if(!sel) return;
   const previous = keepValue ? sel.value : '';
@@ -498,6 +712,25 @@ async function loadVoices(selectId, language, keepValue){
       voices.map(v=>`<option value="${esc(v.id)}">${esc(v.label||v.id)}</option>`).join('');
     if(previous && voices.some(v=>v.id===previous)) sel.value=previous;
   }catch(e){ log('Ovozlarni yuklab bo\'lmadi: '+e.message,'bad'); }
+}
+
+async function loadScenarios(){
+  try{
+    const r=await api('POST','/api/scenarios/list',{body:{page:0,size:50}});
+    const items = (r.ok && r.data?.items) ? r.data.items : [];
+    const buildOptions = (includeDefault) => {
+      let html = includeDefault ? '<option value="">(Standart ssenariy — sozlamadagi)</option>' : '<option value="">(Tanlang)</option>';
+      return html + items.map(s=>`<option value="${s.id}">${esc(s.name)} [ID: ${s.id}, ${esc(s.scenarioKey)}]</option>`).join('');
+    };
+    if($('ca_scenario')) $('ca_scenario').innerHTML = buildOptions(true);
+    if($('c_scenario')) $('c_scenario').innerHTML = buildOptions(false);
+    log(`Ssenariylar yuklandi (${items.length} ta)`,'ok');
+  }catch(e){ log('Ssenariylarni yuklab bo\'lmadi: '+e.message,'bad'); }
+}
+
+function toggleDraftJson(){
+  const checked = $('ca_useDraft').checked;
+  $('ca_draft_wrap').style.display = checked ? 'block' : 'none';
 }
 
 /* ================= CAMPAIGN ================= */
@@ -518,72 +751,73 @@ async function createCampaign(){
 async function loadCampaigns(){
   try{
     const r=await api('GET','/api/campaigns');
-    const list=$('campList');
-    if(!r.ok){list.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
-    if(!r.data||!r.data.length){list.innerHTML='<div class="empty">Kampaniya yo\'q</div>';return;}
-    list.innerHTML=`<table><thead><tr><th>ID</th><th>Nomi</th><th>Til</th><th>Ovoz</th><th>Holat</th><th>Amal</th></tr></thead><tbody>${
+    const box=$('campList');
+    if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    if(!r.data||!r.data.length){box.innerHTML='<div class="empty">Kampaniya yo\'q</div>';return;}
+    box.innerHTML=`<table><thead><tr><th>ID</th><th>Nomi</th><th>Holat</th><th>Nishonlar</th><th>Amallar</th></tr></thead><tbody>${
       r.data.map(c=>`<tr>
-        <td class="mono">${c.id}</td><td>${esc(c.name)}</td><td class="mono">${c.defaultLanguage}</td>
-        <td class="mono">${esc(c.ttsVoice||'—')}</td>
+        <td class="mono">${c.id}</td><td><b>${esc(c.name)}</b></td>
         <td><span class="pill ${c.status}">${c.status}</span></td>
+        <td class="mono">${c.pendingTargets}/${c.totalTargets}</td>
         <td>
-          <button class="btn green sm" onclick="campAction(${c.id},'start')">Start</button>
-          <button class="btn sec sm" onclick="campAction(${c.id},'pause')">Pause</button>
+          <button class="btn sec sm" onclick="campAction(${c.id},'start')">▶ Start</button>
+          <button class="btn sec sm" onclick="campAction(${c.id},'pause')">⏸ Pause</button>
+          <button class="btn sec sm" onclick="campAction(${c.id},'resume')">⏯ Resume</button>
+          <button class="btn sec sm" onclick="campAction(${c.id},'stop')">⏹ Stop</button>
         </td></tr>`).join('')}</tbody></table>`;
-  }catch(e){errResp('c_resp',e);}
+  }catch(e){$('campList').innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
 }
 async function campAction(id,act){
-  try{ await api('POST',`/api/campaigns/${id}/${act}`); loadCampaigns(); }
-  catch(e){log('Xato: '+e.message,'bad');}
+  try{ const r=await api('POST',`/api/campaigns/${id}/${act}`); showResp('c_resp',r); loadCampaigns(); }
+  catch(e){errResp('c_resp',e);}
 }
 
 /* ================= TARGETS ================= */
 async function addTarget(){
-  const camp=$('t_camp').value;
-  if(!camp){alert('Kampaniya ID kiriting');return;}
-  let ctx;
-  try{ctx=JSON.parse($('t_ctx').value);}catch{alert('contextData JSON xato');return;}
-  const body=[{clientId:+$('t_client').value, phone:$('t_phone').value,
-    language:$('t_lang').value||null, contextData:ctx}];
+  const camp=$('t_camp').value; if(!camp){alert('Kampaniya ID kerak');return;}
+  let ctx=null;
+  if($('t_ctx').value.trim()){
+    try{ctx=JSON.parse($('t_ctx').value);}
+    catch(e){alert('contextData noto\'g\'ri JSON: '+e.message);return;}
+  }
+  const body={clientId:+$('t_client').value,phone:$('t_phone').value,
+    language:$('t_lang').value||null,contextData:ctx};
   try{
-    const r=await api('POST',`/api/campaigns/${camp}/targets`,{body}); showResp('t_resp',r);
-    if(r.ok){$('t_listId').value=camp; loadTargets();}
+    const r=await api('POST',`/api/campaigns/${camp}/targets`,{body});
+    showResp('t_resp',r); $('t_listId').value=camp; loadTargets();
   }catch(e){errResp('t_resp',e);}
 }
 async function loadTargets(){
-  const id=$('t_listId').value; if(!id){alert('Kampaniya ID kiriting');return;}
+  const camp=$('t_listId').value; if(!camp){alert('Kampaniya ID kerak');return;}
+  const box=$('targetList');
   try{
-    const r=await api('GET',`/api/campaigns/${id}/targets`);
-    const list=$('targetList');
-    if(!r.ok){list.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
-    if(!r.data||!r.data.length){list.innerHTML='<div class="empty">Nishon yo\'q</div>';return;}
-    list.innerHTML=`<table><thead><tr><th>ID</th><th>Telefon</th><th>Til</th><th>Holat</th><th>Urinish</th><th>DNC</th><th></th></tr></thead><tbody>${
+    const r=await api('GET',`/api/campaigns/${camp}/targets`);
+    if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
+    if(!r.data||!r.data.length){box.innerHTML='<div class="empty">Nishonlar yo\'q</div>';return;}
+    box.innerHTML=`<table><thead><tr><th>ID</th><th>Client</th><th>Telefon</th><th>Urinish</th><th>Holat</th><th>DNC</th></tr></thead><tbody>${
       r.data.map(t=>`<tr>
-        <td class="mono">${t.id}</td><td class="mono">${esc(t.phone)}</td>
-        <td class="mono">${t.language||'—'}</td>
+        <td class="mono">${t.id}</td><td class="mono">${t.clientId}</td>
+        <td class="mono">${esc(t.phone)}</td><td class="mono">${t.attemptsCount}</td>
         <td><span class="pill ${t.status}">${t.status}</span></td>
-        <td class="mono">${t.attempts}</td>
-        <td>${t.doNotCall?'🚫':'—'}</td>
-        <td><button class="btn danger sm" onclick="dnc(${t.id})">Do-not-call</button></td>
-      </tr>`).join('')}</tbody></table>`;
-  }catch(e){log('Xato: '+e.message,'bad');}
+        <td><button class="btn sec sm" onclick="dnc(${t.id})">🚫 DNC</button></td></tr>`).join('')}</tbody></table>`;
+  }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
 }
 async function dnc(id){
-  try{ await api('POST',`/api/targets/${id}/do-not-call`); loadTargets(); }
-  catch(e){log('Xato: '+e.message,'bad');}
+  const reason=prompt('Sabab:','Mijoz qo\'ng\'iroq qilmaslikni so\'radi'); if(!reason)return;
+  try{const r=await api('POST',`/api/campaigns/targets/${id}/do-not-call`,{body:{reason}});
+    log(`DNC ga olindi: ${id}`,'ok'); loadTargets();}catch(e){log('Xato: '+e.message,'bad');}
 }
-
-/* The CSV endpoint takes the file body as-is, so it cannot go through api(), which
-   JSON-encodes everything it sends. */
 async function importCsv(){
-  const camp=$('csv_camp').value; if(!camp){alert('Kampaniya ID kiriting');return;}
+  const camp=$('csv_camp').value; if(!camp){alert('Kampaniya ID kerak');return;}
   const csv=$('csv_body').value;
   try{
     log(`POST /api/campaigns/${camp}/targets/csv`,'info');
     const res=await fetch(`${base()}/api/campaigns/${camp}/targets/csv`,{
-      method:'POST', headers:{...authHeaders(),'Content-Type':'text/csv'}, body:csv});
-    const txt=await res.text(); let data; try{data=txt?JSON.parse(txt):null;}catch{data=txt;}
-    log(`← ${res.status} CSV import`, res.ok?'ok':'bad');
+      method:'POST',
+      headers:{...authHeaders(),'Content-Type':'text/csv; charset=UTF-8'},
+      body:csv
+    });
+    const data=await res.json().catch(()=>null);
     showResp('csv_resp',{ok:res.ok,status:res.status,data});
     if(res.ok){ $('t_listId').value=camp; loadTargets(); }
   }catch(e){errResp('csv_resp',e);}
@@ -591,10 +825,10 @@ async function importCsv(){
 
 /* ================= REPORTS ================= */
 async function loadStats(){
-  const id=$('r_camp').value; if(!id){alert('Kampaniya ID kiriting');return;}
+  const camp=$('r_camp').value; if(!camp){alert('Kampaniya ID kiriting');return;}
   const box=$('r_stats');
   try{
-    const r=await api('GET',`/api/reports/campaigns/${id}`);
+    const r=await api('GET',`/api/reports/campaigns/${camp}`);
     if(!r.ok){box.innerHTML=`<div class="empty">Xato: ${r.status}</div>`;return;}
     const d=r.data;
     const rows=o=>Object.entries(o||{}).map(([k,v])=>
@@ -661,8 +895,6 @@ async function loadCallDetail(){
   }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
 }
 
-/* The browser cannot send X-Api-Key on a plain link, so the audio is fetched and handed
-   to the page as a blob. */
 async function openRecording(){
   const id=$('r_callId').value; if(!id){alert('Call ID kiriting');return;}
   try{
@@ -691,18 +923,267 @@ async function loadAudit(){
   }catch(e){box.innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
 }
 
-/* ================= CALL ================= */
+/* ================= CALL (TEST QO'NG'IROQ & LIVE CONTROL) ================= */
+let activeListenChannel = null;
+let audioCtx = null;
+let audioReader = null;
+let isListening = false;
+let nextPlayTime = 0;
+
+let liveCallsTimer = null;
+let trPollTimer = null;
+
 async function originate(){
+  const num = $('ca_num').value.trim();
+  if(!num){ alert('Telefon raqam kiriting'); return; }
+
+  const useDraft = $('ca_useDraft').checked;
   try{
-    const r=await api('POST','/api/calls',{query:{number:$('ca_num').value}});
-    showResp('ca_resp',r);
-    if(r.ok&&r.data?.channelId){
-      const ch=r.data.channelId;
-      $('ca_chid').textContent=ch; $('ca_channel').style.display='block';
-      $('ca_chinput').value=ch; $('op_chid').value=ch;
+    let r;
+    if(useDraft){
+      let draftObj;
+      try{
+        draftObj = JSON.parse($('ca_draft').value);
+      }catch(err){
+        alert('Qorama ssenariy JSON formati xato: '+err.message);
+        return;
+      }
+      r = await api('POST', `/api/calls/test`, { query:{ number: num }, body: draftObj });
+    } else {
+      const scenId = $('ca_scenario').value;
+      r = await api('POST', '/api/calls', { query:{ number: num, scenarioId: scenId || undefined } });
     }
-  }catch(e){errResp('ca_resp',e);}
+
+    showResp('ca_resp', r);
+    if(r.ok && r.data?.channelId){
+      const ch = r.data.channelId;
+      selectActiveChannel(ch);
+      loadLiveCalls();
+    }
+  }catch(e){ errResp('ca_resp', e); }
 }
+
+function selectActiveChannel(ch){
+  if(!ch) return;
+  $('ca_chid').textContent = ch;
+  $('ca_channel').style.display = 'block';
+  $('ca_chinput').value = ch;
+  $('op_chid').value = ch;
+  fetchLiveTranscript(ch);
+  ensureTranscriptPolling(ch);
+}
+
+/* --- Live Calls Monitor --- */
+async function loadLiveCalls(){
+  const box = $('ca_liveBox');
+  try{
+    const r = await api('GET', '/api/calls/live');
+    if(!r.ok){ box.innerHTML = `<div class="empty">Xato: ${r.status}</div>`; return; }
+    const calls = r.data || [];
+    if(!calls.length){
+      box.innerHTML = '<div class="empty">Hozirda faol jonli qo\'ng\'iroqlar yo\'q</div>';
+      return;
+    }
+    box.innerHTML = `<table>
+      <thead>
+        <tr>
+          <th>Channel ID</th>
+          <th>Raqam</th>
+          <th>Mijoz</th>
+          <th>Holat</th>
+          <th>Amallar</th>
+        </tr>
+      </thead>
+      <tbody>${
+        calls.map(c=>`<tr>
+          <td class="mono" style="cursor:pointer;color:var(--accent)" onclick="selectActiveChannel('${esc(c.channelId)}')"><b>${esc(c.channelId)}</b></td>
+          <td class="mono">${esc(c.phone||'—')}</td>
+          <td>${esc(c.clientName||'—')}</td>
+          <td><span class="pill ${c.dialogState==='END_CALL'?'FAILED':'IN_PROGRESS'}">${esc(c.dialogState||'IN_PROGRESS')}</span></td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="btn sec sm" onclick="selectActiveChannel('${esc(c.channelId)}')">⚡ Tanlash</button>
+              <button class="btn green sm" onclick="quickListen('${esc(c.channelId)}')">🎧</button>
+              <button class="btn danger sm" onclick="hangupCall('${esc(c.channelId)}')">🔴</button>
+              <button class="btn purple sm" onclick="transferCall('${esc(c.channelId)}')">👤</button>
+            </div>
+          </td>
+        </tr>`).join('')
+      }</tbody>
+    </table>`;
+  }catch(e){ box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+function toggleLiveCallsPoll(){
+  const btn = $('ca_livePollBtn');
+  if(liveCallsTimer){
+    clearInterval(liveCallsTimer);
+    liveCallsTimer = null;
+    btn.textContent = '⏱️ Auto: OFF';
+    btn.classList.add('sec');
+  }else{
+    loadLiveCalls();
+    liveCallsTimer = setInterval(loadLiveCalls, 2000);
+    btn.textContent = '⏱️ Auto: ON';
+    btn.classList.remove('sec');
+  }
+}
+
+/* --- Live Call Actions: Listen, Hangup, Transfer --- */
+function quickListen(channelId){
+  selectActiveChannel(channelId);
+  if(!isListening || activeListenChannel !== channelId){
+    startListening(channelId);
+  }
+}
+
+async function toggleListen(){
+  const ch = $('ca_chinput').value.trim();
+  if(!ch){ alert('Avval channelId kiriting yoki ro\'yxatdan tanlang'); return; }
+  if(isListening && activeListenChannel === ch){
+    stopListening();
+  } else {
+    startListening(ch);
+  }
+}
+
+async function startListening(channelId){
+  stopListening();
+  try{
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
+    await audioCtx.resume();
+    nextPlayTime = audioCtx.currentTime + 0.05;
+
+    const url = `${base()}/api/calls/${encodeURIComponent(channelId)}/listen`;
+    log(`GET /api/calls/${channelId}/listen (jonli audio oqimi)`, 'info');
+    const res = await fetch(url, { headers: authHeaders() });
+    if(!res.ok){
+      throw new Error(`Audio oqimiga ulanib bo'lmadi (HTTP ${res.status})`);
+    }
+
+    isListening = true;
+    activeListenChannel = channelId;
+    updateListenUi(true);
+    log(`[${channelId}] Jonli audio eshitilmoqda 🎧`, 'ok');
+
+    audioReader = res.body.getReader();
+    let headerSkipped = false;
+    let byteRemainder = new Uint8Array(0);
+
+    while(isListening){
+      const { value, done } = await audioReader.read();
+      if(done) break;
+      if(!value || value.length === 0) continue;
+
+      let chunk = value;
+      if(byteRemainder.length > 0){
+        const combined = new Uint8Array(byteRemainder.length + chunk.length);
+        combined.set(byteRemainder);
+        combined.set(chunk, byteRemainder.length);
+        chunk = combined;
+        byteRemainder = new Uint8Array(0);
+      }
+
+      if(!headerSkipped){
+        if(chunk.length < 44){
+          byteRemainder = chunk;
+          continue;
+        }
+        chunk = chunk.subarray(44); // 44-bayt WAV sarlavhasini o'tkazib yuborish
+        headerSkipped = true;
+      }
+
+      const sampleCount = Math.floor(chunk.length / 2);
+      if(chunk.length % 2 !== 0){
+        byteRemainder = chunk.subarray(sampleCount * 2);
+        chunk = chunk.subarray(0, sampleCount * 2);
+      }
+
+      if(sampleCount === 0) continue;
+
+      const int16 = new Int16Array(chunk.buffer, chunk.byteOffset, sampleCount);
+      const float32 = new Float32Array(sampleCount);
+      for(let i = 0; i < sampleCount; i++){
+        float32[i] = int16[i] / 32768.0;
+      }
+
+      const audioBuffer = audioCtx.createBuffer(1, sampleCount, 8000);
+      audioBuffer.getChannelData(0).set(float32);
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+
+      const now = audioCtx.currentTime;
+      if(nextPlayTime < now){
+        nextPlayTime = now + 0.02;
+      }
+      source.start(nextPlayTime);
+      nextPlayTime += audioBuffer.duration;
+    }
+  }catch(e){
+    if(isListening){
+      log(`Tinglash to'xtadi: ${e.message}`, 'bad');
+    }
+  }finally{
+    stopListening();
+  }
+}
+
+function stopListening(){
+  if(isListening){
+    log('Jonli tinglash to\'xtatildi', 'info');
+  }
+  isListening = false;
+  activeListenChannel = null;
+  if(audioReader){
+    try{ audioReader.cancel(); }catch(e){}
+    audioReader = null;
+  }
+  if(audioCtx){
+    try{ audioCtx.close(); }catch(e){}
+    audioCtx = null;
+  }
+  updateListenUi(false);
+}
+
+function updateListenUi(active){
+  const btn = $('ca_listenBtn');
+  const wave = $('ca_listenWave');
+  if(active){
+    btn.textContent = '⏹️ Tinglashni to\'xtatish';
+    btn.className = 'btn danger';
+    if(wave) wave.style.display = 'inline-flex';
+  }else{
+    btn.textContent = '🎧 Tinglash (Listen)';
+    btn.className = 'btn green';
+    if(wave) wave.style.display = 'none';
+  }
+}
+
+async function hangupCall(specificCh){
+  const ch = specificCh || $('ca_chinput').value.trim();
+  if(!ch){ alert('channelId kerak'); return; }
+  try{
+    const r = await api('POST', `/api/calls/${encodeURIComponent(ch)}/hangup`);
+    showResp('ca_ctrlResp', r);
+    if(activeListenChannel === ch) stopListening();
+    loadLiveCalls();
+    fetchLiveTranscript(ch);
+  }catch(e){ errResp('ca_ctrlResp', e); }
+}
+
+async function transferCall(specificCh){
+  const ch = specificCh || $('ca_chinput').value.trim();
+  if(!ch){ alert('channelId kerak'); return; }
+  try{
+    const r = await api('POST', `/api/calls/${encodeURIComponent(ch)}/transfer`);
+    showResp('ca_ctrlResp', r);
+    loadLiveCalls();
+    fetchLiveTranscript(ch);
+  }catch(e){ errResp('ca_ctrlResp', e); }
+}
+
 async function playWav(){
   const ch=$('ca_chinput').value; if(!ch){alert('channelId kerak');return;}
   try{const r=await api('POST',`/api/calls/${encodeURIComponent(ch)}/play`,{query:{file:$('ca_wav').value}});
@@ -714,6 +1195,288 @@ async function sayText(){
   const voice=$('ca_sayvoice').value; if(voice) query.voice=voice;
   try{const r=await api('POST',`/api/calls/${encodeURIComponent(ch)}/say`,{query});
     showResp('ca_resp2',r);}catch(e){errResp('ca_resp2',e);}
+}
+
+/* --- Live Transcript & Facts View --- */
+async function fetchLiveTranscript(ch){
+  if(!ch) ch = $('ca_chinput').value.trim();
+  if(!ch) return;
+  try{
+    const r = await api('GET', `/api/operator/calls/${encodeURIComponent(ch)}`);
+    if(r.status === 404){
+      $('ca_liveState').textContent = 'CALL_ENDED';
+      $('ca_liveState').className = 'pill DRAFT';
+      return;
+    }
+    if(!r.ok) return;
+    const s = r.data;
+    $('ca_liveState').textContent = s.dialogState || 'ACTIVE';
+    $('ca_liveState').className = `pill ${s.dialogState==='END_CALL'?'FAILED':'IN_PROGRESS'}`;
+
+    $('ca_liveFacts').innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;background:var(--panel2);padding:8px 12px;border-radius:6px;border:1px solid var(--border)">
+        <div><span class="muted">Mijoz:</span> <b>${esc(s.clientName||'—')}</b></div>
+        <div><span class="muted">Qarz:</span> <b class="mono">${esc(s.debtAmount||'—')} ${esc(s.currency||'')}</b></div>
+        <div><span class="muted">Muddat:</span> <b class="mono">${esc(s.dueDate||'—')}</b></div>
+        <div><span class="muted">Shartnoma:</span> <b class="mono">${esc(s.contractNumber||'—')}</b></div>
+      </div>`;
+
+    renderLiveChat(s.transcript);
+    highlightFsm(s.dialogState);
+  }catch(e){}
+}
+
+function renderLiveChat(tr){
+  const chat = $('ca_liveChat');
+  if(!tr || !tr.trim()){
+    chat.innerHTML = '<div class="empty">Suhbat hali boshlanmadi...</div>';
+    return;
+  }
+  const lines = tr.split('\n').filter(x=>x.trim());
+  chat.innerHTML = lines.map(l=>{
+    const m = l.match(/^\s*(AGENT|CLIENT)\s*:\s*(.*)$/i);
+    if(!m) return `<div class="msg AGENT"><div class="who">?</div>${esc(l)}</div>`;
+    const role = m[1].toUpperCase();
+    return `<div class="msg ${role}"><div class="who">${role==='AGENT'?'🤖 Bot':'👤 Mijoz'}</div>${esc(m[2])}</div>`;
+  }).join('');
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function ensureTranscriptPolling(ch){
+  if(trPollTimer) clearInterval(trPollTimer);
+  trPollTimer = setInterval(()=>{
+    const curCh = $('ca_chinput').value.trim();
+    if(curCh) fetchLiveTranscript(curCh);
+  }, 1500);
+  $('ca_trPollBtn').textContent = '⏱️ Transkript: ON';
+  $('ca_trPollBtn').classList.remove('sec');
+}
+
+function toggleTrPoll(){
+  const btn = $('ca_trPollBtn');
+  if(trPollTimer){
+    clearInterval(trPollTimer);
+    trPollTimer = null;
+    btn.textContent = '⏱️ Transkript: OFF';
+    btn.classList.add('sec');
+  } else {
+    const ch = $('ca_chinput').value.trim();
+    if(ch) fetchLiveTranscript(ch);
+    ensureTranscriptPolling(ch);
+  }
+}
+
+/* ================= SIP TRUNKS & PHONES ================= */
+let currentSipMode = 'manual';
+
+function switchSipMode(mode){
+  currentSipMode = mode;
+  $('sip_modeManual').classList.toggle('active', mode==='manual');
+  $('sip_modeManaged').classList.toggle('active', mode==='managed');
+  $('sip_manualFields').style.display = mode==='manual' ? 'block' : 'none';
+  $('sip_managedFields').style.display = mode==='managed' ? 'block' : 'none';
+}
+
+function resetSipForm(){
+  $('sip_editId').value = '';
+  $('sip_name').value = '';
+  $('sip_pjsipEndpoint').value = '600';
+  $('sip_host').value = '';
+  $('sip_port').value = '5060';
+  $('sip_username').value = '';
+  $('sip_password').value = '';
+  $('sip_callerId').value = '';
+  $('sip_enabled').checked = true;
+  $('sip_enabledWrap').style.display = 'none';
+  $('sip_formTitle').innerHTML = '<span class="num">4</span>SIP Telefon / Trunk qo\'shish';
+  $('sip_resetBtn').style.display = 'none';
+  $('sip_saveBtn').textContent = '💾 Saqlash';
+  switchSipMode('manual');
+}
+
+async function saveSipTrunk(){
+  const id = $('sip_editId').value;
+  const name = $('sip_name').value.trim();
+  if(!name){ alert('Trunk yoki telefon nomini kiriting'); return; }
+
+  const callerId = $('sip_callerId').value.trim() || null;
+  let body = { name, callerId };
+
+  if(currentSipMode === 'manual'){
+    const pjsipEndpoint = $('sip_pjsipEndpoint').value.trim();
+    if(!pjsipEndpoint){ alert('PJSIP endpoint (masalan 600) kiriting'); return; }
+    body.pjsipEndpoint = pjsipEndpoint;
+  } else {
+    const host = $('sip_host').value.trim();
+    const sipUsername = $('sip_username').value.trim();
+    const sipPassword = $('sip_password').value;
+    const port = +$('sip_port').value || 5060;
+    const transport = $('sip_transport').value;
+
+    if(!host){ alert('SIP Host / Provayder IP manzilini kiriting'); return; }
+    if(!sipUsername){ alert('SIP Login (username) kiriting'); return; }
+    if(!id && !sipPassword){ alert('Yangi managed trunk uchun parol kiritish majburiy'); return; }
+
+    body.host = host;
+    body.port = port;
+    body.sipUsername = sipUsername;
+    if(sipPassword) body.sipPassword = sipPassword;
+    body.transport = transport;
+  }
+
+  try{
+    let r;
+    if(id){
+      body.enabled = $('sip_enabled').checked;
+      r = await api('PUT', `/api/sip-trunks/${id}`, { body });
+    } else {
+      r = await api('POST', '/api/sip-trunks', { body });
+    }
+
+    showResp('sip_resp', r);
+    if(r.ok){
+      resetSipForm();
+      loadSipTrunks();
+    }
+  }catch(e){ errResp('sip_resp', e); }
+}
+
+async function loadSipTrunks(){
+  const box = $('sip_tableBox');
+  try{
+    const r = await api('POST', '/api/sip-trunks/list', { body:{ page:0, size:50 } });
+    if(!r.ok){ box.innerHTML = `<div class="empty">Xato: ${r.status}</div>`; return; }
+    const items = r.data?.items || [];
+    if(!items.length){
+      box.innerHTML = '<div class="empty">Hozircha SIP trunk yoki telefonlar mavjud emas. Yuqoridagi formadan qo\'shishingiz mumkin.</div>';
+      return;
+    }
+
+    box.innerHTML = `<table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nomi</th>
+          <th>Endpoint / Host</th>
+          <th>Caller ID</th>
+          <th>Turi</th>
+          <th>Default</th>
+          <th>Holat</th>
+          <th>Jonli Status</th>
+          <th>Amallar</th>
+        </tr>
+      </thead>
+      <tbody>${
+        items.map(t=>`<tr>
+          <td class="mono">${t.id}</td>
+          <td><b>${esc(t.name)}</b></td>
+          <td class="mono">${t.managed ? esc(t.host + ':' + t.port + ' (' + t.sipUsername + ')') : esc(t.pjsipEndpoint)}</td>
+          <td class="mono">${esc(t.callerId || '—')}</td>
+          <td><span class="pill ${t.managed?'IN_PROGRESS':'DRAFT'}">${t.managed ? '🌐 Managed' : '📱 Manual'}</span></td>
+          <td>${t.isDefault ? '<span class="pill ACTIVE">⭐ ASOSIY</span>' : '<button class="btn sec sm" onclick="makeDefaultSipTrunk('+t.id+')">Default qilish</button>'}</td>
+          <td><span class="pill ${t.enabled?'ACTIVE':'DISABLED'}">${t.enabled ? 'Yoqilgan' : 'O\'chirilgan'}</span></td>
+          <td id="sip_status_${t.id}"><span class="pill PENDING">Tekshirilmagan</span></td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="btn green sm" onclick="checkSipTrunkStatus(${t.id})">🔄 Status</button>
+              <button class="btn sec sm" onclick='editSipTrunk(${JSON.stringify(t)})'>✏️</button>
+              ${!t.isDefault ? `<button class="btn danger sm" onclick="deleteSipTrunk(${t.id})">🗑️</button>` : ''}
+            </div>
+          </td>
+        </tr>`).join('')
+      }</tbody>
+    </table>`;
+
+    checkAllSipStatus();
+  }catch(e){ box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+async function checkSipTrunkStatus(id){
+  const el = $(`sip_status_${id}`);
+  if(el) el.innerHTML = '<span class="pill PENDING">Tekshirilmoqda...</span>';
+  try{
+    const r = await api('GET', `/api/sip-trunks/${id}/status`);
+    if(!r.ok){
+      if(el) el.innerHTML = `<span class="pill FAILED">Xato: ${r.status}</span>`;
+      return;
+    }
+    const st = r.data;
+    if(el){
+      el.innerHTML = `<span class="pill ${st.isOnline?'ACTIVE':'FAILED'}">${esc(st.status)}</span>`;
+    }
+    renderSipStatusDetail(st);
+  }catch(e){
+    if(el) el.innerHTML = `<span class="pill FAILED">ERR</span>`;
+  }
+}
+
+async function checkAllSipStatus(){
+  try{
+    const r = await api('GET', '/api/sip-trunks/status');
+    if(!r.ok || !r.data) return;
+    for(const st of r.data){
+      const el = $(`sip_status_${st.id}`);
+      if(el){
+        el.innerHTML = `<span class="pill ${st.isOnline?'ACTIVE':'FAILED'}">${esc(st.status)}</span>`;
+      }
+    }
+    if(r.data.length > 0){
+      renderSipStatusDetail(r.data[0]);
+    }
+  }catch(e){}
+}
+
+function renderSipStatusDetail(st){
+  const box = $('sip_statusDetail');
+  if(!box || !st) return;
+  box.innerHTML = `
+    <div class="kv"><span>Trunk / Telefon:</span> <b>${esc(st.name)} (ID: ${st.id})</b></div>
+    <div class="kv"><span>Endpoint:</span> <span class="mono">${esc(st.pjsipEndpoint)}</span></div>
+    <div class="kv"><span>Turi:</span> <span class="mono">${st.managed ? 'Managed (SIP Provider)' : 'Manual (Asterisk Endpoint)'}</span></div>
+    <div class="kv"><span>Holat:</span> <span class="pill ${st.isOnline?'ACTIVE':'FAILED'}">${esc(st.status)}</span></div>
+    <div class="kv"><span>Tafsilot:</span> <span>${esc(st.details || '—')}</span></div>
+    <div class="kv"><span>Tekshirilgan vaqt:</span> <span class="mono">${st.checkedAt ? esc(st.checkedAt.replace('T',' ').slice(0,19)) : '—'}</span></div>
+  `;
+}
+
+function editSipTrunk(t){
+  $('sip_editId').value = t.id;
+  $('sip_name').value = t.name;
+  $('sip_callerId').value = t.callerId || '';
+  $('sip_enabled').checked = t.enabled;
+  $('sip_enabledWrap').style.display = 'block';
+  $('sip_formTitle').innerHTML = `<span class="num">4</span>Trunkni tahrirlash (#${t.id})`;
+  $('sip_resetBtn').style.display = 'inline-flex';
+  $('sip_saveBtn').textContent = '💾 Yangilash';
+
+  if(t.managed){
+    switchSipMode('managed');
+    $('sip_host').value = t.host || '';
+    $('sip_port').value = t.port || 5060;
+    $('sip_username').value = t.sipUsername || '';
+    $('sip_password').value = '';
+    $('sip_transport').value = t.transport || 'UDP';
+  } else {
+    switchSipMode('manual');
+    $('sip_pjsipEndpoint').value = t.pjsipEndpoint || '';
+  }
+}
+
+async function makeDefaultSipTrunk(id){
+  try{
+    const r = await api('POST', `/api/sip-trunks/${id}/default`);
+    showResp('sip_resp', r);
+    if(r.ok) loadSipTrunks();
+  }catch(e){ errResp('sip_resp', e); }
+}
+
+async function deleteSipTrunk(id){
+  if(!confirm(`Rostdan ham #${id} trunkni o'chirmoqchimisiz?`)) return;
+  try{
+    const r = await api('DELETE', `/api/sip-trunks/${id}`);
+    showResp('sip_resp', r);
+    if(r.ok) loadSipTrunks();
+  }catch(e){ errResp('sip_resp', e); }
 }
 
 /* ================= OPERATOR ================= */
@@ -750,8 +1513,8 @@ function renderTranscript(tr){
 }
 function opTogglePoll(){
   const btn=$('op_pollBtn');
-  if(opTimer){clearInterval(opTimer);opTimer=null;btn.textContent='⏱ Auto-poll: OFF';btn.classList.add('sec');}
-  else{opFetch();opTimer=setInterval(opFetch,2000);btn.textContent='⏱ Auto-poll: ON';btn.classList.remove('sec');}
+  if(opTimer){clearInterval(opTimer);opTimer=null;btn.textContent='⏱️ Auto-poll: OFF';btn.classList.add('sec');}
+  else{opFetch();opTimer=setInterval(opFetch,2000);btn.textContent='⏱️ Auto-poll: ON';btn.classList.remove('sec');}
 }
 function highlightFsm(state){
   document.querySelectorAll('#fsm .fnode').forEach(n=>
@@ -759,11 +1522,11 @@ function highlightFsm(state){
 }
 
 /* ---------- init ---------- */
-// Ovoz tilga bog'liq: til o'zgarsa, ro'yxat ham qayta yuklanadi.
 $('c_lang').addEventListener('change',()=>loadVoices('c_voice',$('c_lang').value,true));
 $('ca_saylang').addEventListener('change',()=>loadVoices('ca_sayvoice',$('ca_saylang').value,true));
 loadVoices('c_voice',$('c_lang').value);
 loadVoices('ca_sayvoice',$('ca_saylang').value);
+loadScenarios();
 checkConn();
 log('Test paneli yuklandi','ok');
 </script>

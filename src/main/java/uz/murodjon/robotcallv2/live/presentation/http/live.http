@@ -1,0 +1,4 @@
+### Subscribe to Live SSE Stream
+GET {{host}}/api/live/stream
+Authorization: Bearer {{token}}
+Accept: text/event-stream

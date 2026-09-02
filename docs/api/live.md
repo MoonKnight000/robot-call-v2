@@ -1,6 +1,6 @@
-# Jonli monitoring API
+﻿# Jonli monitoring API
 
-`uz.murodjon.uysotvoice.live` (SSE oqimi) + `uz.murodjon.uysotvoice.call`
+`uz.murodjon.robotcallv2.live` (SSE oqimi) + `uz.murodjon.robotcallv2.callrecord`
 (`/live` ro'yxati) · rol: **VIEWER** (`GET /api/live/stream`) yoki **ADMIN**
 (`GET /api/calls/live` — bu `/api/reports/**`/`/api/live/**` ostida emas,
 shuning uchun standart ADMIN qoidasiga tushadi).

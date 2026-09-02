@@ -1,0 +1,17 @@
+### Get selectable TTS voices
+GET http://localhost:8080/api/tts/voices
+Authorization: Bearer {{auth_token}}
+
+### Get company voice settings
+GET http://localhost:8080/api/settings/voice
+Authorization: Bearer {{auth_token}}
+
+### Update voice settings
+PUT http://localhost:8080/api/settings/voice
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "speed": 1.0,
+  "pitch": 0.0
+}

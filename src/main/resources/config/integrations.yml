@@ -1,75 +1,41 @@
 voice-agent:
   storage:
-    # Upload files (call recordings, company logos, user avatars) to MinIO/S3. Off by
-    # default (recordings stay local; image uploads fail — see ImageUploadService).
-    enabled: ${STORAGE_ENABLED:false}
+    # Upload files (call recordings, company logos, user avatars) to MinIO/S3.
+    # When enabled, recordings are uploaded to MinIO and accessible in the UI.
+    enabled: ${STORAGE_ENABLED:true}
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-    access-key: ${MINIO_USER:uysot}
-    secret-key: ${MINIO_PASSWORD:uysot-secret}
-    # One shared bucket for every stored_file — object keys are namespaced per company/
-    # category (com-{companyId}/{images,audio,documents}/...) so a single bucket is
-    # enough; see FileStorageService. Every file is served back through
-    # GET /api/files/{id}, never a raw MinIO URL.
+    access-key: ${MINIO_USER:robot_call}
+    secret-key: ${MINIO_PASSWORD:robot_call}
     bucket: ${MINIO_BUCKET:files}
-    # Drop the on-disk WAV once it is in object storage. Off while storage is off —
-    # deleting then would throw the only copy away.
     delete-local-after-upload: ${STORAGE_DELETE_LOCAL:true}
-    # §11.3: recordings are evidence in a dispute, and the retention period has to be
-    # configurable. Recordings and their transcripts are purged after this many days;
-    # call_attempt/call_result metadata is kept for reporting. 0 = keep forever.
     retention-days: ${STORAGE_RETENTION_DAYS:90}
-    # Nightly, outside the 07:00-23:00 dial window.
     retention-cron: ${STORAGE_RETENTION_CRON:0 30 3 * * *}
   crm:
-    # Write the summary back to Uysot CRM as a note. Off until configured.
-    enabled: ${CRM_ENABLED:false}
-    base-url: ${CRM_BASE_URL:}
+    # Write the summary and call history back to Uysot CRM.
+    enabled: ${CRM_ENABLED:true}
+    base-url: ${CRM_BASE_URL:https://api.service.app.uysot.uz}
     api-token: ${CRM_API_TOKEN:}
-    note-path: ${CRM_NOTE_PATH:api/notes}
-    # Read one client before dialling ({id} = client id): refreshes the debtor facts and
-    # picks up preferred_language (§3.1 priority 1, §9 step 4). The imported context_data
-    # is a snapshot from when the campaign was built — for a debt amount that means
-    # stating a figure the client may already have paid down. Blank = no lookup, keep the
-    # imported values. A failed lookup never blocks the call.
-    client-path: ${CRM_CLIENT_PATH:api/clients/{id}}
+    note-path: ${CRM_NOTE_PATH:v1/open-api/lead/{id}/note}
+    client-path: ${CRM_CLIENT_PATH:v1/open-api/lead/{id}}
+    client-by-phone-path: ${CRM_CLIENT_BY_PHONE_PATH:v1/open-api/lead?phone={phone}}
+    call-history-path: ${CRM_CALL_HISTORY_PATH:v1/open-api/call-history}
   integration:
     uysot:
-      # Uysot's OAuth2 endpoints (§11 settings, authorization-code flow — verified
-      # against Uysot's real Open API docs, report #10). Endpoint URLs are the same for
-      # every deployment (defaulted below); client-id/client-secret are this platform's
-      # own registered Uysot app — global, not per-company (report #10 design
-      # correction — see UysotOAuthProperties) — and genuinely secret, so no default.
-      # Blank client-id/client-secret/redirect-uri = the whole feature stays inert
-      # (CrmIntegrationService refuses to build an authorize URL) until an operator
-      # registers an app with Uysot and supplies its credentials.
-      authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:https://app.uysotdev.aws.softex.uz/oauth/authorize}
-      token-url: ${UYSOT_OAUTH_TOKEN_URL:https://serv.app.uysotdev.aws.softex.uz/v1/open-api/oauth/token}
-      revoke-url: ${UYSOT_OAUTH_REVOKE_URL:https://serv.app.uysotdev.aws.softex.uz/v1/open-api/oauth/revoke}
-      redirect-uri: ${UYSOT_OAUTH_REDIRECT_URI:}
+      # Uysot's OAuth2 endpoints (§11 settings, verified against official Uysot Open API docs).
+      authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:https://app.uysot.uz/oauth/authorize}
+      token-url: ${UYSOT_OAUTH_TOKEN_URL:https://service.app.uysot.uz/v1/open-api/oauth/token}
+      revoke-url: ${UYSOT_OAUTH_REVOKE_URL:https://service.app.uysot.uz/v1/open-api/oauth/revoke}
+      redirect-uri: ${UYSOT_OAUTH_REDIRECT_URI:https://voice.app.uysot.uz/oauth/callback}
       client-id: ${UYSOT_OAUTH_CLIENT_ID:}
       client-secret: ${UYSOT_OAUTH_CLIENT_SECRET:}
   notification:
-    # One Telegram bot for the whole deployment (§11 settings) — a company only supplies
-    # its own destination chat_id as its notification_channel.target. Blank = the
-    # Telegram channel is skipped deployment-wide (NotificationTelegramSender logs why).
     telegram-bot-token: ${TELEGRAM_BOT_TOKEN:}
-    # Email/webhook channels reuse the SMTP settings already used for scheduled reports
-    # (spring.mail.* — SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD, root application.yml)
-    # and need no config here.
   outbox:
-    # Retries the post-call work that failed the first time (§4.3). A CRM outage or an LLM
-    # quota error used to mean a WARN log and a permanently lost note — for a call whose
-    # whole purpose is a CRM note, that loses the call. Two sweeps: ended attempts with a
-    # transcript but no call_result get summarized again; results with no crm_note_id get
-    # re-posted from the stored summary (no LLM call needed).
     enabled: ${OUTBOX_ENABLED:true}
     interval-minutes: ${OUTBOX_INTERVAL_MINUTES:5}
-    # Attempts per row before it is left alone, so a permanently broken row stops retrying.
     max-attempts: ${OUTBOX_MAX_ATTEMPTS:5}
     batch: ${OUTBOX_BATCH:20}
   report-schedule:
-    # §10.10 "Jadval bo'yicha yuborish" — off by default: turning it on with no
-    # spring.mail.host configured would just fail every send. Enable once SMTP is set.
     enabled: ${REPORT_SCHEDULE_ENABLED:false}
     check-minutes: ${REPORT_SCHEDULE_CHECK_MINUTES:60}
     from: ${REPORT_SCHEDULE_FROM:no-reply@uysot.uz}

@@ -1,11 +1,9 @@
-# Kiruvchi qo'ng'iroq marshrutlash API
+﻿# Kiruvchi qo'ng'iroq va Virtual PBX (OnlinePBX) marshrutlash API
 
-`uz.murodjon.uysotvoice.inbound` · rol: **OPERATOR** (barcha endpoint — ADMIN ham kiradi, rol ierarxiyasi bo'yicha)
+`uz.murodjon.robotcallv2.inbound` · rol: **OPERATOR** (barcha endpoint — ADMIN ham kiradi, rol ierarxiyasi bo'yicha)
 
-Qaysi DID (dialangan) raqamga qo'ng'iroq qilinsa, qaysi ssenariy va tilda javob
-berilishini belgilaydi (ROADMAP C.1). `DialogEngine` marshrut topilgan har bir
-kiruvchi qo'ng'iroqda shu ssenariyni ishga tushiradi — batafsil:
-[scenarios.md](scenarios.md).
+Virtual PBX / OnlinePBX darajasidagi to'liq kiruvchi qo'ng'iroqlarni boshqarish:
+DID raqamiga tushgan qo'ng'iroqni AI Ovozli agentga, operatorlar navbatiga, ichki SIP raqamiga (extension), tashqi mobil raqamga yoki CRM dagi mas'ul shaxsiy menejerga yo'naltirish.
 
 Do-not-call ro'yxati kiruvchi qo'ng'iroqlarga **qo'llanilmaydi** — bir marta
 "qo'ng'iroq qilmang" degan mijoz, o'zi qo'ng'iroq qilsa, baribir javob oladi
@@ -13,6 +11,43 @@ Do-not-call ro'yxati kiruvchi qo'ng'iroqlarga **qo'llanilmaydi** — bir marta
 
 Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 [README.md](README.md)ga qarang.
+
+---
+
+## 🎯 Marshrutlash turlari (`InboundRouteType`)
+
+| Turi | Izoh |
+|---|---|
+| `SCENARIO` | AI Ovozli Agent (belgilangan `scenarioId` bo'yicha muloqot qiladi) |
+| `OPERATOR_QUEUE` | Operatorlar guruhi / navbatiga yo'naltirish |
+| `EXTENSION` | Aniq ichki SIP raqamiga yo'naltirish (masalan: `101`, `102`) |
+| `EXTERNAL_NUMBER` | Tashqi mobil yoki shahar raqamiga yo'naltirish (masalan: `+998901234567`) |
+| `STICKY_AGENT` | CRM dagi mijozga biriktirilgan shaxsiy mas'ul menejeriga to'g'ridan-to'g'ri ulash |
+| `IVR_MENU` | Ovozli/DTMF menyu (1 - Sotuv, 2 - AI Bot va h.k.) |
+| `VOICEMAIL` | To'g'ridan-to'g'ri ovozli pochta xabari yozib olish |
+
+---
+
+## 🔄 Navbat strategiyalari (`QueueStrategy`)
+
+| Strategiya | Izoh |
+|---|---|
+| `RING_ALL` | Barcha bo'sh operatorlarga birdaniga jiringlaydi |
+| `ROUND_ROBIN` | Operatorlar bo'ylab navbatma-navbat taqsimlaydi |
+| `FEWEST_CALLS` | Bugun eng kam qo'ng'iroq qabul qilgan operatorga yo'naltiradi |
+| `LEAST_RECENT` | Eng uzoq vaqt kutib turgan bo'sh operatorga yo'naltiradi |
+| `RANDOM` | Tasodifiy bo'sh operatorga |
+
+---
+
+## ⏰ Ish vaqtidan tashqari amallar (`InboundAfterHoursAction`)
+
+| Amal | Izoh |
+|---|---|
+| `PLAY_MESSAGE_AND_HANGUP` | `fallbackMessage` matnini o'qib berib, qo'ng'iroqni tugatadi |
+| `AI_AGENT` | Tungi AI Ovozli yordamchi ssenariysiga ulaydi |
+| `VOICEMAIL` | Mijozga audio xabar qoldirish imkonini beradi |
+| `FORWARD_EXTERNAL` | Navbatchi xodim mobil raqamiga (`afterHoursDestination`) yo'naltiradi |
 
 ---
 
@@ -24,20 +59,37 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 {
   "didNumber": "998712345678",
   "scenarioId": 6,
+  "routeType": "SCENARIO",
+  "targetDestination": null,
+  "queueStrategy": "RING_ALL",
+  "ringTimeoutSec": 20,
+  "failoverAction": "SCENARIO",
+  "failoverDestination": null,
+  "afterHoursAction": "PLAY_MESSAGE_AND_HANGUP",
+  "afterHoursDestination": "+998909998877",
+  "ivrMenuConfig": "{\"1\": {\"action\": \"OPERATOR_QUEUE\", \"target\": \"sales\"}, \"2\": {\"action\": \"SCENARIO\", \"scenarioId\": 6}}",
   "language": "uz-UZ",
-  "businessHoursStart": "09:00",
-  "businessHoursEnd": "20:00",
-  "fallbackMessage": null
+  "businessHoursStart": "09:00:00",
+  "businessHoursEnd": "18:00:00",
+  "fallbackMessage": "Assalomu alaykum! Ish vaqtimiz 9:00 dan 18:00 gacha. Iltimos ish vaqtida qo'ng'iroq qiling."
 }
 ```
 
 | Maydon | Turi | Majburiymi | Izoh |
 |---|---|---|---|
-| `didNumber` | string | ✅ (`@NotBlank`) | dialangan raqam (3-15 raqam, `+` bilan/bepul); bitta faol raqam uchun faqat bitta yoqilgan marshrut bo'lishi mumkin — dublikat `409` |
-| `scenarioId` | long | ✅ (`@NotNull`) | `GET/POST /api/scenarios/list`dagi `id`; noma'lum yoki boshqa kompaniyaniki bo'lsa `404` |
-| `language` | string | ❌ | BCP-47; bo'sh bo'lsa `uz-UZ` |
-| `businessHoursStart` / `businessHoursEnd` | `LocalTime` (`HH:mm`) | ❌ | ikkalasidan biri bo'lmasa — cheklovsiz (doim ochiq) |
-| `fallbackMessage` | string | ❌ | ish vaqtidan tashqari kelgan qo'ng'iroqda TTS orqali aytiladi, so'ng qo'ng'iroq tugatiladi (`AriService.playFallbackAndHangup`) — dialog/ssenariy ishga tushmaydi, `call_attempt` yozuvi ham ochilmaydi. Bo'sh bo'lsa — jim tarzda tugatiladi. Marshrut umuman topilmagan (noma'lum DID) holatda hech qachon aytilmaydi — aytadigan marshrut yo'q |
+| `didNumber` | string | ✅ (`@NotBlank`) | dialangan DID raqam (E.164); bitta faol raqam uchun bitta yoqilgan marshrut |
+| `scenarioId` | long | ❌ | `routeType == SCENARIO` bo'lsa ssenariy ID; boshqa turlarda ixtiyoriy |
+| `routeType` | enum | ❌ | Standart: `SCENARIO`. Variantlar: `SCENARIO`, `OPERATOR_QUEUE`, `EXTENSION`, `EXTERNAL_NUMBER`, `STICKY_AGENT`, `IVR_MENU`, `VOICEMAIL` |
+| `targetDestination` | string | ❌ | Extension raqami (`101`) yoki guruh nomi (`sales_queue`) |
+| `queueStrategy` | enum | ❌ | Standart: `RING_ALL`. Variantlar: `RING_ALL`, `ROUND_ROBIN`, `FEWEST_CALLS`, `LEAST_RECENT`, `RANDOM` |
+| `ringTimeoutSec` | integer | ❌ | Operator jiringlash kutish vaqti (soniyalarda, standart: 20) |
+| `failoverAction` | enum | ❌ | Javob bo'lmaganda: `SCENARIO`, `VOICEMAIL`, `EXTERNAL_FORWARD`, `HANGUP` |
+| `afterHoursAction` | enum | ❌ | Ish vaqtidan tashqari: `PLAY_MESSAGE_AND_HANGUP`, `AI_AGENT`, `VOICEMAIL`, `FORWARD_EXTERNAL` |
+| `afterHoursDestination` | string | ❌ | Tungi navbatchi mobil raqami |
+| `ivrMenuConfig` | string (JSON) | ❌ | DTMF tugmalar konfiguratsiyasi |
+| `language` | string | ❌ | BCP-47; standart: `uz-UZ` |
+| `businessHoursStart` / `businessHoursEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | Ish vaqti oralig'i (berilmasa — 24/7 ochiq) |
+| `fallbackMessage` | string | ❌ | Ish vaqtidan tashqari o'qib beriladigan TTS xabari |
 
 **Response** (`InboundRouteRow`):
 
@@ -47,98 +99,53 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "didNumber": "998712345678",
   "scenarioId": 6,
   "scenarioName": "Kirish so'rovlari",
+  "routeType": "SCENARIO",
+  "targetDestination": null,
+  "queueStrategy": "RING_ALL",
+  "ringTimeoutSec": 20,
+  "failoverAction": "SCENARIO",
+  "failoverDestination": null,
+  "afterHoursAction": "PLAY_MESSAGE_AND_HANGUP",
+  "afterHoursDestination": "+998909998877",
+  "ivrMenuConfig": "...",
   "language": "uz-UZ",
-  "businessHoursStart": "09:00",
-  "businessHoursEnd": "20:00",
-  "fallbackMessage": null,
+  "businessHoursStart": "09:00:00",
+  "businessHoursEnd": "18:00:00",
+  "fallbackMessage": "Assalomu alaykum! Ish vaqtimiz 9:00 dan 18:00 gacha.",
   "enabled": true,
-  "createdAt": "2026-08-01T09:00:00Z"
+  "createdAt": "2026-09-01T09:00:00Z"
 }
 ```
-
-`scenarioName` — `scenarioId`dan hal qilingan (backend-uchun-talablar.md §3), ssenariy
-o'chirilgan bo'lsa `null`.
 
 ---
 
 ## `POST /api/inbound-routes/list` — ro'yxat
 
-Body — `InboundRouteFilter` (`page`/`size`/`orders`, [README §3](README.md#3-royxatfiltr-endpointlari-pagination)ga qarang).
-Saralanadigan ustunlar: `ID`, `DID_NUMBER`, `LANGUAGE`, `ENABLED`, `CREATED_AT`.
-Standart: `ID ASC`.
+Body — `InboundRouteFilter` (`page`/`size`/`orders`).
+Saralash: `ID`, `DID_NUMBER`, `LANGUAGE`, `ENABLED`, `CREATED_AT`.
 
-Javob — `PageableData<InboundRouteRow>` (`InboundRouteRow` shakli yuqorida).
+Javob — `PageableData<InboundRouteRow>`.
 
 ---
 
 ## `GET /api/inbound-routes/{id}` — bitta marshrut
 
-Javob — bitta `InboundRouteRow`. Topilmasa (yoki boshqa kompaniyaniki bo'lsa) —
-`404`.
+Javob — `InboundRouteRow`.
 
 ---
 
 ## `PUT /api/inbound-routes/{id}` — tahrirlash
 
-**Request body** (`UpdateInboundRouteRequest`) — `POST /api/inbound-routes`
-bilan bir xil maydonlar, plus `enabled`:
-
-```json
-{
-  "didNumber": "998712345678",
-  "scenarioId": 6,
-  "language": "uz-UZ",
-  "businessHoursStart": "09:00",
-  "businessHoursEnd": "20:00",
-  "fallbackMessage": null,
-  "enabled": true
-}
-```
-
-`didNumber`/`scenarioId` ham shu yerda o'zgartirilishi mumkin (kampaniyaning
-`scenarioId`sidan farqli o'laroq — marshrutga bog'liq davom etayotgan holat
-yo'q, shuning uchun erkin tahrirlanadi). Javob — yangilangan `InboundRouteRow`.
+**Request body** (`UpdateInboundRouteRequest`) — `POST /api/inbound-routes` bilan bir xil maydonlar, plus `enabled`.
 
 ---
 
-## `DELETE /api/inbound-routes/{id}` — o'chirish (yoqilmagan holatga o'tkazish)
+## `DELETE /api/inbound-routes/{id}` — o'chirish (arxivlash)
 
-Qatorni **o'chirmaydi** — `campaigns`ning arxivlash konventsiyasiga mos
-ravishda `enabled=false` qiladi, shu raqamga marshrut endi topilmaydi. Body
-yo'q. Javob — yangilangan `InboundRouteRow` (`enabled: false`).
+Qatorni o'chirmaydi, `enabled=false` qiladi.
 
 ---
 
-## `GET /api/inbound-routes/{id}/stats` — qo'ng'iroqlar statistikasi {#get-apiinbound-routesidstats}
+## `GET /api/inbound-routes/{id}/stats` — statistika
 
-Drawer'dagi "shu raqamga tushgan qo'ng'iroqlar statistikasi" (§10.9). Har bir
-kiruvchi qo'ng'iroq javob berilgan zahoti qaysi marshrutga tegishli ekanligi
-yozib boriladi (`call_attempt.inbound_route_id`), shu ustunga qarab hisoblanadi
-— kampaniya qo'ng'iroqlariga aralashmaydi.
-
-**Response** (`InboundRouteStats`):
-
-```json
-{
-  "inboundRouteId": 3,
-  "didNumber": "998712345678",
-  "totalCalls": 142,
-  "answeredCalls": 118,
-  "answerRate": 0.831,
-  "avgDurationSec": 96.4,
-  "lastCallAt": "2026-08-02T14:05:00Z",
-  "dispositions": { "COMPLETED": 80, "TRANSFERRED": 20, "HUNG_UP": 18 },
-  "statsAvailableFrom": "2026-06-15T00:00:00Z"
-}
-```
-
-`answerRate` — `answeredCalls / totalCalls` (0..1), qo'ng'iroq bo'lmasa `0`.
-`dispositions` — tugagan suhbatlar bo'yicha natija taqsimoti (`CampaignStats`
-bilan bir xil shakl, [reports.md](reports.md)ga qarang). Marshrutga bog'lanish
-(`inbound_route_id`) yozib borilishidan oldin tushgan qo'ng'iroqlar hisobga
-kirmaydi (backend-uchun-talablar.md §8) — `statsAvailableFrom` shu kompaniyada
-`inbound_route_id` birinchi marta yozilgan `started_at` vaqti; hech qanday
-kiruvchi qo'ng'iroq hali bog'lanmagan bo'lsa `null`. Frontend `totalCalls`ni
-"barcha vaqt" emas, **"`statsAvailableFrom`dan beri"** deb ko'rsatishi kerak —
-undan oldingi tarixiy ma'lumot butunlay yo'q, nolga teng emas.
-Marshrut topilmasa (yoki boshqa kompaniyaniki bo'lsa) — `404`.
+Qo'ng'iroqlar soni, qabul qilish foizi va dispositionlar taqsimoti.

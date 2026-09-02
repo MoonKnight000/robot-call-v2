@@ -1,0 +1,3 @@
+### Get Operator Call Snapshot
+GET {{host}}/api/operator/calls/PJSIP-trunk-0000001
+Authorization: Bearer {{token}}
