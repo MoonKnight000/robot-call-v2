@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.campaign.application.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
@@ -51,10 +52,19 @@ public record CampaignRow(
         boolean dtmfInputEnabled,
         boolean emotionAdaptiveVoice,
         Map<String, String> languageVoices,
-        Set<Long> sipTrunkIds
+        Set<Long> sipTrunkIds,
+        long totalTargets,
+        long calledTargets,
+        long pendingTargets,
+        long completedTargets
 ) {
 
     public static CampaignRow of(Campaign c, String scenarioName, String createdByName) {
+        return of(c, scenarioName, createdByName, CampaignTargetStats.ZERO);
+    }
+
+    public static CampaignRow of(Campaign c, String scenarioName, String createdByName, CampaignTargetStats stats) {
+        CampaignTargetStats s = stats != null ? stats : CampaignTargetStats.ZERO;
         return new CampaignRow(
                 c.id(), c.name(), c.type(), c.status(), c.goalPrompt(), c.defaultLanguage(),
                 c.dialWindowStart(), c.dialWindowEnd(), c.dialDays(), c.maxAttempts(),
@@ -71,6 +81,10 @@ public record CampaignRow(
                 c.dtmfInputEnabled(),
                 c.emotionAdaptiveVoice(),
                 c.languageVoices(),
-                c.sipTrunkIdsOrEmpty());
+                c.sipTrunkIdsOrEmpty(),
+                s.totalTargets(),
+                s.calledTargets(),
+                s.pendingTargets(),
+                s.completedTargets());
     }
 }

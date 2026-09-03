@@ -79,4 +79,8 @@ public class RealtimeFactTools {
         }
         return names;
     }
+
+    static String factDescription(String name) {
+        return SystemPromptFactory.FACT_LABELS.getOrDefault(name, name);
+    }
 }

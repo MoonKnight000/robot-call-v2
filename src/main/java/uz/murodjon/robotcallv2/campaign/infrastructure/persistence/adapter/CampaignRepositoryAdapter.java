@@ -115,8 +115,8 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
 
     @Override
     @Transactional
-    public void updateStatus(long id, CampaignStatus status) {
-        jpa.updateStatus(id, status, currentCompany.id());
+    public void updateStatus(long companyId, long id, CampaignStatus status) {
+        jpa.updateStatus(id, status, companyId);
     }
 
     @Override

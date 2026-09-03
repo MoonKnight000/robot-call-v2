@@ -80,9 +80,9 @@ public class RealtimeSystemPromptFactory {
 
         if (disclosureText != null && !disclosureText.isBlank()) {
             String renderedDisclosure = PromptTemplateEngine.render(disclosureText.trim(), facts);
-            sb.append("\n[TIZIM: Suhbat boshlanganda dastlab salom berib, quyidagi qonuniy ogohlantirishni ayting: \"")
+            sb.append("\n[TIZIM: Suhbat boshlanganda dastlab qisqa salom berib, quyidagi qonuniy ogohlantirishni ayting: \"")
                     .append(renderedDisclosure)
-                    .append("\". Shundan so'ng darhol suhbat maqsadiga o'ting.]\n");
+                    .append("\". Shundan so'ng darhol ssenariyning keyingi bosqichiga o'ting.]\n");
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
@@ -99,11 +99,33 @@ public class RealtimeSystemPromptFactory {
             sb.append("- ").append(rule).append('\n');
         }
 
+        boolean russian = s.language() != null && s.language().toLowerCase().startsWith("ru");
         sb.append("\nUSLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")
                 .append("Mijoz gapiga avval bir og'iz munosabat bildir, keyin davom et — lekin ")
-                .append("har safar har xil. Suhbatda allaqachon aytgan faktingni (shartnoma ")
+                .append("har safar har xil. HECH QACHON \"suhbatdoshim\", \"suhbatdosh\", \"mijoz\" deb murojaat qilma. \n");
+        if (!russian) {
+            sb.append("MUROJAAT VA SHAXSNI ANIQLASH (QAT'IY): \n")
+                    .append("QAT'IYAN TAQIQLANGAN: \"Siz [Ism]misiz?\", \"Siz falonchimisiz?\" deb so'rash. Bu robotdek va qo'pol. \n")
+                    .append("TO'G'RI SHAKL: Shaxsni aniqlash bosqichida xuddi tirik operator kabi faqat: ")
+                    .append("\"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra (ayol kishi bo'lsa \"opa\", erkak kishi bo'lsa \"aka\" qo'sh). \n")
+                    .append("Ism bilan murojaat qilganda doim o'zbekona hurmat bilan \"aka\"/\"opa\" qo'shib gapir (masalan: \"Murodjon aka\"), familiyani aytma.\n");
+        }
+        sb.append("Suhbatda allaqachon aytgan faktingni (shartnoma ")
                 .append("raqami, summa, muddat) qayta aytma; mijoz eshitmagan bo'lsa faqat ")
-                .append("so'ralgan qismini takrorla.");
+                .append("so'ralgan qismini takrorla.\n");
+
+        sb.append("OG'ZAKI SHAKL: \"to'lovni amalga oshirasiz\" emas — \"to'laysiz\"; ")
+                .append("\"qarzdorligingiz mavjud\" emas — \"qarzingiz bor ekan\"; ")
+                .append("\"ma'lumot beraman\" emas — \"aytaman\"; ")
+                .append("\"to'lanishi kerak bo'lgan summa\" emas — \"qarz\".\n");
+        sb.append("QISQA GAP: bir javobda ko'pi bilan ikki-uch qisqa gap va bitta savol. ")
+                .append("Shartnoma, summa va muddatni bitta uzun gapga tiqma — alohida gaplarga ")
+                .append("bo'l. O'zingni va kompaniyani bir marta tanishtirasan, keyingi ")
+                .append("javoblarda kompaniya nomini qayta aytma.\n");
+        sb.append("SANA: joriy yildagi sanada yilni aytma — \"3-sentabr\" yetarli, ")
+                .append("\"2026-yil 3-sentabr kuni\" emas. Mijoz \"ertaga\", \"dushanba\" desa, ")
+                .append("tasdiqlaganda ham o'sha tabiiy shaklni saqla (\"ertaga, 3-sentabrda\"); ")
+                .append("to'liq yyyy-MM-dd sana faqat tool parametriga yoziladi.");
 
         return sb.toString();
     }
@@ -125,21 +147,20 @@ public class RealtimeSystemPromptFactory {
         List<String> available = RealtimeFactTools.availableFactNames(s);
         sb.append("MIJOZ MA'LUMOTLARI: sizda mijoz haqidagi hech qanday raqam, summa yoki sana YO'Q.\n");
         if (available.isEmpty()) {
-            sb.append("Bu qo'ng'iroqda umuman ma'lumot yo'q — raqam yoki sana aytmang.\n");
+            sb.append("Mijozga hech qanday raqam aytmang.\n");
             return;
         }
-        sb.append("Quyidagilarni getCallFact tool'i orqali olishingiz mumkin: ")
-                .append(String.join(", ", available)).append(".\n")
-                .append("Har qanday summa, sana, shartnoma raqami yoki ismni aytishdan OLDIN ")
-                .append("getCallFact ni chaqiring va qaytgan qiymatni aynan o'sha holda ayting. ")
-                .append("Xotirangizdan yoki taxmin bilan raqam aytish qat'iyan taqiqlanadi — ")
-                .append("noto'g'ri summa aytilsa qo'ng'iroq operatorga o'tkaziladi.\n");
+        sb.append("Quyidagi ma'lumotlar kerak bo'lganda getFact tool'i bilan oling va KEYIN mijozga ayting:\n");
+        for (String name : available) {
+            sb.append("- ").append(name).append(": ")
+                    .append(RealtimeFactTools.factDescription(name)).append('\n');
+        }
+        sb.append("O'zingizdan raqam, summa yoki sana to'qimang — faqat getFact qaytargan ma'lumotni ayting.\n");
     }
 
-    private static String languageName(String bcp47) {
-        if (bcp47 == null) {
-            return "o'zbek";
-        }
-        return bcp47.toLowerCase().startsWith("ru") ? "rus" : "o'zbek";
+    private static String languageName(String code) {
+        if (code != null && code.toLowerCase().startsWith("ru")) return "rus";
+        if (code != null && code.toLowerCase().startsWith("en")) return "ingliz";
+        return "o'zbek";
     }
 }

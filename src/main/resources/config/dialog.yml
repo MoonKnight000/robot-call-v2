@@ -19,11 +19,11 @@ voice-agent:
     auto-start: ${DIALOG_AUTO_START:true}
     language: ${DIALOG_LANGUAGE:uz-UZ}
     tts-voice: ${DIALOG_TTS_VOICE:}
-    greeting-delay-ms: ${DIALOG_GREETING_DELAY_MS:800}
+    greeting-delay-ms: ${DIALOG_GREETING_DELAY_MS:400}
     max-turns: ${DIALOG_MAX_TURNS:25}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
     streaming: ${DIALOG_STREAMING:true}
-    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:1100}
+    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:900}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
     preemptive: ${DIALOG_PREEMPTIVE:true}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:2}

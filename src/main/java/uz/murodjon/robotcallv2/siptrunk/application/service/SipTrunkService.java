@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.siptrunk.application.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.ami.AmiClient;
@@ -24,6 +26,8 @@ import java.util.List;
  */
 @Service
 public class SipTrunkService implements SipTrunkUseCase {
+
+    private static final Logger log = LoggerFactory.getLogger(SipTrunkService.class);
 
     private final SipTrunkRepository repo;
     private final PjsipConfigWriter pjsipConfig;
@@ -136,15 +140,30 @@ public class SipTrunkService implements SipTrunkUseCase {
         return trunk == null ? null : SipTrunkRow.of(trunk);
     }
 
+    /**
+     * The trunks a caller may dial through: the ones it picked, or every enabled trunk of
+     * the company when it picked none.
+     *
+     * <p>A picked set that resolves to nothing — every one of them disabled, deleted, or
+     * belonging to another company — is an error, not a reason to fall back. Falling back
+     * quietly sent a campaign's calls out over trunks its owner had deliberately excluded,
+     * which is the one outcome picking trunks exists to prevent. Some of the picked set
+     * still missing is only logged: the rest were chosen too, and they can carry the call.
+     */
     @Override
     public List<SipTrunkRow> findTrunksForCall(long companyId, Collection<Long> candidateTrunkIds) {
-        if (candidateTrunkIds != null && !candidateTrunkIds.isEmpty()) {
-            List<SipTrunk> matched = repo.findEnabledByIdsAndCompany(candidateTrunkIds, companyId);
-            if (!matched.isEmpty()) {
-                return matched.stream().map(SipTrunkRow::of).toList();
-            }
+        if (candidateTrunkIds == null || candidateTrunkIds.isEmpty()) {
+            return findAllEnabledForCompany(companyId);
         }
-        return findAllEnabledForCompany(companyId);
+        List<SipTrunk> matched = repo.findEnabledByIdsAndCompany(candidateTrunkIds, companyId);
+        if (matched.isEmpty()) {
+            throw new ConflictException(ErrorCode.SIP_TRUNK_SELECTION_UNAVAILABLE, candidateTrunkIds);
+        }
+        if (matched.size() < candidateTrunkIds.size()) {
+            log.warn("Company {}: {} of the {} selected SIP trunks are unavailable, dialling over the rest",
+                    companyId, candidateTrunkIds.size() - matched.size(), candidateTrunkIds.size());
+        }
+        return matched.stream().map(SipTrunkRow::of).toList();
     }
 
     @Override

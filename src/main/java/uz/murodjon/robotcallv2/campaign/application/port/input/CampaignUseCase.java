@@ -23,7 +23,7 @@ public interface CampaignUseCase {
 
     PageableData<CampaignRow> listCampaigns(CampaignFilter filter);
 
-    CampaignStatusResponse start(long campaignId);
+    CampaignStatusResponse start(long campaignId, boolean immediate);
 
     CampaignStatusResponse pause(long campaignId);
 

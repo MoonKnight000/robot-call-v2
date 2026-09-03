@@ -1,11 +1,14 @@
 package uz.murodjon.robotcallv2.campaign.application.port.output;
 
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface CampaignTargetRepository {
 
@@ -25,7 +28,18 @@ public interface CampaignTargetRepository {
 
     List<CampaignTarget> claimDue(long campaignId, int limit);
 
+    /**
+     * Drops the booked next-attempt time of every waiting target, making them due at once.
+     *
+     * @return how many targets were released
+     */
+    int clearSchedule(long campaignId);
+
     void updateStatus(long id, TargetStatus status, Instant nextAttemptAt);
 
     void setDoNotCall(long id);
+
+    Map<Long, CampaignTargetStats> statsByCampaignIds(Collection<Long> campaignIds);
+
+    CampaignTargetStats statsByCampaignId(long campaignId);
 }

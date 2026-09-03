@@ -17,8 +17,8 @@ public interface LiveController {
     @Operation(
             summary = "Subscribe to live SSE event stream",
             description = "Subscribes the client to real-time Server-Sent Events (SSE). Receives live system events including: "
-                    + "connected (initial handshake), CALL_STARTED, CALL_ENDED, CALL_STATUS_CHANGED, "
-                    + "TRANSCRIPT_UPDATED, AUDIO_LEVEL, KPI_UPDATED, and heartbeat pings (:ping)."
+                    + "connected (initial handshake), KPI, LIVE_CALLS, TRANSCRIPT, AUDIO_LEVEL, "
+                    + "NOTIFICATION, and heartbeat pings (:ping)."
     )
     @GetMapping(value = "/live/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     SseEmitter stream();

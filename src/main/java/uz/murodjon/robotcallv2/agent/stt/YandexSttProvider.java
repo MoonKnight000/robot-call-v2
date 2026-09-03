@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
+import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.PostConstruct;
@@ -112,7 +113,11 @@ public class YandexSttProvider implements SttProvider {
         AtomicBoolean alive = new AtomicBoolean(true);
         StreamObserver<Stt.StreamingResponse> responseObserver =
                 new ResponseHandler(languageCode, listener, alive);
-        StreamObserver<Stt.StreamingRequest> requestObserver = stub.recognizeStreaming(responseObserver);
+        // The async stub's request side is always flow-control aware; the interface it is
+        // declared as just hides it. Held as the wider type so the session can ask whether
+        // the transport will actually carry the next frame (SttSession#isReady).
+        ClientCallStreamObserver<Stt.StreamingRequest> requestObserver =
+                (ClientCallStreamObserver<Stt.StreamingRequest>) stub.recognizeStreaming(responseObserver);
 
         // First message on the stream: the session options (model, audio format, language).
         requestObserver.onNext(sessionOptions(languageCode, alternativeLanguages, y, externalEndpointing));
@@ -270,13 +275,23 @@ public class YandexSttProvider implements SttProvider {
     /** Pushes audio chunks into the request stream; completes it on close. */
     private static final class YandexSttSession implements SttSession {
 
-        private final StreamObserver<Stt.StreamingRequest> requestObserver;
+        private final ClientCallStreamObserver<Stt.StreamingRequest> requestObserver;
         private final AtomicBoolean alive;
         private boolean closed;
 
-        private YandexSttSession(StreamObserver<Stt.StreamingRequest> requestObserver, AtomicBoolean alive) {
+        private YandexSttSession(ClientCallStreamObserver<Stt.StreamingRequest> requestObserver, AtomicBoolean alive) {
             this.requestObserver = requestObserver;
             this.alive = alive;
+        }
+
+        /**
+         * Whether the HTTP/2 stream has room for another frame. False means grpc-java
+         * would hold the frame in memory instead of writing it — for live audio that is
+         * not a delay, it is a loss dressed up as one.
+         */
+        @Override
+        public boolean isReady() {
+            return requestObserver.isReady();
         }
 
         @Override

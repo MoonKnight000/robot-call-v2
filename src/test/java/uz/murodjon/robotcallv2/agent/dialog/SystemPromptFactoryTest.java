@@ -148,6 +148,16 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void instructsNaturalIdentityCheckAndForbidsRoboticPhrasing() {
+        String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+
+        assertThat(prompt)
+                .contains("MUROJAAT VA SHAXSNI ANIQLASH")
+                .contains("Men Murodjon aka bilan gaplashayapmanmi?")
+                .contains("suhbatdoshim");
+    }
+
+    @Test
     void tellsTheModelNotToRestateFactsItHasAlreadySpoken() {
         // Asked "allo", the bot re-delivered the whole debt notice. The stage purpose is
         // re-sent every turn and reads as an order to state it again, so the counter-rule

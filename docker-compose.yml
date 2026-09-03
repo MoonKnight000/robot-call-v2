@@ -154,6 +154,13 @@ services:
       ARI_URL: http://asterisk:8088/
       ARI_USER: ${ARI_USER:-robot_call}
       ARI_PASSWORD: ${ARI_PASSWORD:-CHANGE_ME_ARI_PASSWORD}
+      # A-number the callee sees. Left blank the app sets nothing, and PJSIP falls back
+      # to the endpoint's from_user — the Skyline account login, which is why a callee's
+      # phone shows "+781137492": a login is not a subscriber number, so the handset
+      # renders it as an international number with no country code. Set it to a real DID
+      # the account owns (E.164 without "+", e.g. 998712001122); a number it does not own
+      # comes back 603 Declined. Per-trunk sip_trunk.caller_id overrides this.
+      CALLER_ID: ${CALLER_ID:-}
       # AMI (report #7) — reloads res_pjsip.so after a managed SIP trunk changes.
       # Off by default (AMI_ENABLED unset); needs manager.conf configured on the
       # Asterisk side too (asterisk/etc/asterisk/manager.conf).

@@ -30,7 +30,9 @@ import java.util.List;
  *
  * <p>Also owns the stream's lifetime, not just its contents: a recognizer torn down
  * mid-call is replaced (see {@link #reopen()}) rather than left to swallow the rest of
- * the call's audio.
+ * the call's audio. A stream that fails without saying so is caught the same way — one
+ * that cannot flush has its frames dropped instead of queued, and one that answers
+ * nothing at all is replaced (see {@link #dropStalledStream()}).
  */
 public class SttStreamBridge implements AudioListener, Closeable {
 
@@ -56,6 +58,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
     /** Whether this call ends its own utterances rather than letting the provider do it. */
     private final boolean externalEndpointing;
     private final long maxUtteranceSamples;
+    /** How long a stream may take audio without answering before it counts as stalled; 0 = never. */
+    private final long responseTimeoutMs;
 
     /** Audio sent since the current utterance began — 0 while the caller is silent. */
     private long utteranceSamples;
@@ -64,19 +68,26 @@ public class SttStreamBridge implements AudioListener, Closeable {
     /** Set by {@link #close()} — a call that has ended must not reopen anything. */
     private volatile boolean closed;
     private long lastReopenAttemptAt;
+    /** When the provider last said anything at all — written from its own thread. */
+    private volatile long lastResponseAt;
+    /** Frames thrown away since the transport last accepted one. */
+    private long droppedFrames;
 
     /** Whether the previous frame was sent — only used to log gate transitions. */
     private boolean streaming = true;
 
     /**
-     * @param endpointing when enabled <em>and</em> a gate is installed, this call decides
-     *                    when the caller has finished and tells the provider. Without a
-     *                    gate there is nothing to decide it with, so the provider's own
-     *                    detector stays in charge whatever the setting says
+     * @param endpointing       when enabled <em>and</em> a gate is installed, this call decides
+     *                          when the caller has finished and tells the provider. Without a
+     *                          gate there is nothing to decide it with, so the provider's own
+     *                          detector stays in charge whatever the setting says
+     * @param responseTimeoutMs how long a stream may swallow audio without answering before
+     *                          it is replaced ({@code voice-agent.stt.response-timeout-ms})
      */
     public SttStreamBridge(SttProvider provider, int targetSampleRate, int sourceSampleRate, String channelId,
                            String language, List<String> alternativeLanguages, TranscriptListener listener,
-                           SpeechGate gate, VoiceMetrics metrics, EndpointingProperties endpointing) {
+                           SpeechGate gate, VoiceMetrics metrics, EndpointingProperties endpointing,
+                           int responseTimeoutMs) {
         this.channelId = channelId;
         this.targetSampleRate = targetSampleRate;
         this.sourceSampleRate = sourceSampleRate;
@@ -86,6 +97,16 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.language = language;
         this.alternativeLanguages = alternativeLanguages == null ? List.of() : List.copyOf(alternativeLanguages);
         this.listener = (text, isFinal, confidence) -> {
+            lastResponseAt = System.currentTimeMillis();
+            if (closed) {
+                // A stream that was holding audio back delivers all of it the moment it
+                // finally flushes, which can be after the hangup. By then the dialog is
+                // over and the call record is written; forwarding these would answer a
+                // question nobody is waiting for and file transcript rows at an offset
+                // past the end of the call.
+                log.warn("[{}] transcript arrived after the call ended, ignored: {}", channelId, text);
+                return;
+            }
             if (!isFinal && gate != null) {
                 gate.onInterimTranscript(text);
             }
@@ -97,6 +118,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.maxUtteranceSamples = externalEndpointing
                 ? (long) Math.max(1000, endpointing.maxUtteranceMs()) * sourceSampleRate / 1000
                 : Long.MAX_VALUE;
+        this.responseTimeoutMs = Math.max(0, responseTimeoutMs);
+        this.lastResponseAt = System.currentTimeMillis();
         this.session = provider.startStream(language, this.alternativeLanguages, this.listener, externalEndpointing);
     }
 
@@ -139,6 +162,23 @@ public class SttStreamBridge implements AudioListener, Closeable {
             // would only hand the recognizer speech from the wrong part of the call.
             return;
         }
+        if (!session.isReady()) {
+            // The same rule, one layer down: the transport is alive but cannot flush, and
+            // it would queue this frame rather than refuse it. A call's worth of audio
+            // buffered that way arrives at the recognizer after the hangup — meanwhile the
+            // bot hears nothing, the silence watchdog fires and it hangs up on someone who
+            // is talking. Dropping keeps the loss where it happens, and visible.
+            metrics.sttAudioSkipped(seconds(length));
+            if (droppedFrames++ == 0) {
+                log.warn("[{}] STT transport is not accepting audio — dropping frames "
+                        + "(the caller cannot be heard until it recovers)", channelId);
+            }
+            return;
+        }
+        if (droppedFrames > 0) {
+            log.warn("[{}] STT transport accepting audio again — {} frame(s) dropped", channelId, droppedFrames);
+            droppedFrames = 0;
+        }
         short[] samples;
         int len;
         if (targetSampleRate == 16000) {
@@ -160,6 +200,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
                         channelId, maxUtteranceSamples * 1000 / sourceSampleRate);
                 endUtterance();
             }
+            dropStalledStream();
         } catch (Exception e) {
             log.warn("STT send failed [{}]: {}", channelId, e.getMessage());
         }
@@ -186,6 +227,39 @@ public class SttStreamBridge implements AudioListener, Closeable {
             metrics.sttEndpointingHangover(gate.hangoverMs());
         } catch (Exception e) {
             log.warn("[{}] end-of-utterance signal failed: {}", channelId, e.getMessage());
+        }
+    }
+
+    /**
+     * Give up on a stream that takes audio but never answers.
+     *
+     * <p>{@link SttSession#isReady()} covers a transport that admits it cannot write.
+     * A stream can also accept every frame and simply go quiet — the far side stopped
+     * reading, or the socket is half-open and the kernel is still swallowing bytes. The
+     * session is alive by every measure available to us, so nothing else notices; from
+     * the call's point of view the caller has gone silent.
+     *
+     * <p>Only the response side is timed, never speech: on a call with no VAD gate the
+     * caller's silence is streamed too, so a recognizer with nothing to say is normal.
+     * The timeout therefore has to outlast the longest stretch a caller can reasonably
+     * stay quiet — and a stream replaced during real silence costs nothing, because no
+     * speech was in flight to lose.
+     *
+     * <p>Marks the session dead rather than reopening here; the next frame goes through
+     * {@link #reopen()} like any other dead stream.
+     */
+    private void dropStalledStream() {
+        if (responseTimeoutMs == 0 || System.currentTimeMillis() - lastResponseAt < responseTimeoutMs) {
+            return;
+        }
+        lastResponseAt = System.currentTimeMillis();
+        log.warn("[{}] {} took audio for {} ms without a single transcript — dropping the stream",
+                channelId, provider.name(), responseTimeoutMs);
+        metrics.sttError();
+        try {
+            session.close();
+        } catch (Exception e) {
+            log.debug("[{}] closing the stalled STT session failed: {}", channelId, e.getMessage());
         }
     }
 
@@ -224,6 +298,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
         try {
             utteranceSamples = 0; // whatever was mid-utterance died with the old stream
             session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing);
+            lastResponseAt = now; // a fresh stream has not had a chance to answer yet
+            droppedFrames = 0;
             log.warn("[{}] STT stream had died — reopened", channelId);
             return true;
         } catch (Exception e) {

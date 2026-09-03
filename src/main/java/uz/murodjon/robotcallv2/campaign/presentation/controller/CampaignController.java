@@ -50,8 +50,19 @@ public interface CampaignController {
     @PostMapping("/campaigns/{id:\\d+}/targets/list")
     ResponseEntity<ResponseData<PageableData<CampaignTarget>>> targets(@PathVariable long id, @Valid @RequestBody TargetFilter filter);
 
+    /**
+     * Starts (or resumes) a campaign.
+     *
+     * @param id        campaign to activate
+     * @param immediate {@code true} to dial the waiting targets as soon as the campaign is
+     *                  active, clearing the retry schedule they are holding; {@code false}
+     *                  (the default) leaves every target on the time it is already booked
+     *                  for. The dial window and the allowed days apply either way.
+     */
     @PostMapping("/campaigns/{id:\\d+}/start")
-    ResponseEntity<ResponseData<CampaignStatusResponse>> start(@PathVariable long id);
+    ResponseEntity<ResponseData<CampaignStatusResponse>> start(
+            @PathVariable long id,
+            @RequestParam(defaultValue = "false") boolean immediate);
 
     @PostMapping("/campaigns/{id:\\d+}/pause")
     ResponseEntity<ResponseData<CampaignStatusResponse>> pause(@PathVariable long id);

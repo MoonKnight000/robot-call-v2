@@ -65,9 +65,9 @@ class SystemPromptRegressionTest {
     void everyStagePurposeAndTransitionMatchesTheSeed() {
         Map<String, String> expectedPurpose = Map.ofEntries(
                 Map.entry("GREETING", "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring."),
-                Map.entry("IDENTITY_CHECK", "Suhbatdosh aynan qarzdor ekanini tasdiqla."),
+                Map.entry("IDENTITY_CHECK", "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?')."),
                 Map.entry("DEBT_NOTICE", "Qarz miqdori va muddatini xushmuomala yetkaz."),
-                Map.entry("REASON_INQUIRY", "To'lov nega amalga oshmayotgan sababini aniqla."),
+                Map.entry("REASON_INQUIRY", "To'lov nega kechikayotganini bilib ol."),
                 Map.entry("PAYMENT_DATE", "Mijozdan aniq to'lov sanasini ol."),
                 Map.entry("CONFIRMATION", "Kelishuvni takrorlab tasdiqla."),
                 Map.entry("CLOSING", "Xushmuomala xayrlash."),

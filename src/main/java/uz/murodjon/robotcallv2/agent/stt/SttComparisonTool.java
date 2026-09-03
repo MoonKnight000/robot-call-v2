@@ -215,15 +215,16 @@ public final class SttComparisonTool {
     }
 
     /**
-     * The provider-facing slice of {@link SttProperties}. Gating/endpointing are the
-     * live pipeline's concern and stay null — the providers never read them.
+     * The provider-facing slice of {@link SttProperties}. Gating, endpointing and the
+     * stall timeout are the live pipeline's concern and stay empty — the providers never
+     * read them.
      */
     private static SttProperties buildSttProperties(String language, GoogleSttProperties google,
                                                     YandexSttProperties yandex, AishaSttProperties aisha) {
         String provider = yandex != null ? "yandex" : (aisha != null ? "aisha" : "google");
         // One language per run: the tool compares transcription quality, and detection
         // would let two providers answer about different languages.
-        return new SttProperties(true, provider, language, List.of(), null, null, google, yandex, aisha, null);
+        return new SttProperties(true, provider, language, List.of(), null, null, 0, google, yandex, aisha, null);
     }
 
     private static void collectWavFiles(Path path, List<Path> into) {

@@ -42,12 +42,16 @@ voice-agent:
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
     detect-languages: ${STT_DETECT_LANGUAGES:uz-UZ,ru-RU}
+    # A stream that takes audio for this long without returning a single transcript is
+    # treated as broken and replaced. Without VAD gating the caller's silence is streamed
+    # too, so this must stay longer than any silence a caller can produce. 0 disables it.
+    response-timeout-ms: ${STT_RESPONSE_TIMEOUT_MS:30000}
     # VAD gating: disabled by default so all audio frames stream directly to the STT provider
     # without cutting utterance beginnings or dropping speech.
     vad-gating:
       enabled: ${STT_VAD_GATING:false}
       pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:800}
-      post-roll-ms: ${STT_VAD_POST_ROLL_MS:1500}
+      post-roll-ms: ${STT_VAD_POST_ROLL_MS:1000}
       min-speech-ms: ${STT_VAD_MIN_SPEECH_MS:80}
     # External endpointing: disabled so the provider (Yandex SpeechKit / Aisha) handles
     # end-of-utterance detection cleanly.
@@ -65,7 +69,7 @@ voice-agent:
       model: ${STT_MODEL:}
       sample-rate: 8000
       enable-punctuation: true
-      endpointing-silence-ms: 600
+      endpointing-silence-ms: 500
     yandex:
       api-key: ${STT_YANDEX_API_KEY:}
       folder-id: ${STT_YANDEX_FOLDER_ID:}
@@ -78,7 +82,7 @@ voice-agent:
       auto-detect-model: ${STT_YANDEX_AUTO_DETECT_MODEL:general}
       interim-results: ${STT_YANDEX_INTERIM:true}
       eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:HIGH}
-      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:700}
+      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:450}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
     aisha:
       api-key: ${STT_AISHA_API_KEY:}
@@ -97,7 +101,7 @@ voice-agent:
     model-path: ${TURN_MODEL_PATH:}
     languages: ${TURN_LANGUAGES:ru-RU}
     threshold: ${TURN_THRESHOLD:0.5}
-    max-extend-ms: ${TURN_MAX_EXTEND_MS:800}
+    max-extend-ms: ${TURN_MAX_EXTEND_MS:500}
     n-fft: ${TURN_N_FFT:512}
     hop-samples: ${TURN_HOP_SAMPLES:256}
     mels: ${TURN_MELS:128}
@@ -156,8 +160,8 @@ voice-agent:
     sample-rate: 8000
     window-samples: 256
     threshold: ${VAD_THRESHOLD:0.5}
-    min-speech-ms: ${VAD_MIN_SPEECH_MS:200}
-    silence-reset-ms: ${VAD_SILENCE_RESET_MS:300}
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:180}
+    silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}

@@ -42,6 +42,11 @@ public class LiveBroadcastService implements LiveUseCase {
         return emitter;
     }
 
+    /** Id of the most recent subscription, so {@link LiveKpiPublisher} can notice a new client. */
+    public long lastSubscriptionId() {
+        return nextId.get();
+    }
+
     public void publish(LiveEventType type, Object payload) {
         if (sessions.isEmpty()) {
             return;

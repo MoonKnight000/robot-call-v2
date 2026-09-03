@@ -4,12 +4,14 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.campaign.application.mapper.CampaignTargetMapper;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetJpaRepository;
+import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetSummaryProjection;
 import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
@@ -17,7 +19,10 @@ import uz.murodjon.robotcallv2.contact.infrastructure.persistence.entity.Contact
 import uz.murodjon.robotcallv2.contact.infrastructure.persistence.repository.ContactJpaRepository;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository {
@@ -101,6 +106,11 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     }
 
     @Override
+    public int clearSchedule(long campaignId) {
+        return jpa.clearSchedule(campaignId);
+    }
+
+    @Override
     public void updateStatus(long id, TargetStatus status, Instant nextAttemptAt) {
         jpa.updateStatus(id, status, nextAttemptAt);
     }
@@ -108,5 +118,38 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     @Override
     public void setDoNotCall(long id) {
         jpa.setDoNotCall(id, company.id());
+    }
+
+    @Override
+    public Map<Long, CampaignTargetStats> statsByCampaignIds(Collection<Long> campaignIds) {
+        if (campaignIds == null || campaignIds.isEmpty()) {
+            return Map.of();
+        }
+        List<CampaignTargetSummaryProjection> summaries =
+                jpa.summarizeByCampaignIdsAndCompanyId(campaignIds, company.id());
+        Map<Long, CampaignTargetStats> result = new HashMap<>();
+        for (CampaignTargetSummaryProjection s : summaries) {
+            if (s.getCampaignId() != null) {
+                result.put(s.getCampaignId(), new CampaignTargetStats(
+                        s.getTotalTargets(),
+                        s.getCalledTargets(),
+                        s.getPendingTargets(),
+                        s.getCompletedTargets()
+                ));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public CampaignTargetStats statsByCampaignId(long campaignId) {
+        return jpa.summarizeByCampaignIdAndCompanyId(campaignId, company.id())
+                .map(s -> new CampaignTargetStats(
+                        s.getTotalTargets(),
+                        s.getCalledTargets(),
+                        s.getPendingTargets(),
+                        s.getCompletedTargets()
+                ))
+                .orElse(CampaignTargetStats.ZERO);
     }
 }

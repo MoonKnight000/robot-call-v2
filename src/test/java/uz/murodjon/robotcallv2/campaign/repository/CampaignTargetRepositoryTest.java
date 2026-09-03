@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignReposito
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
@@ -26,6 +27,7 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -56,6 +58,7 @@ class CampaignTargetRepositoryTest {
         registry.add("voice-agent.stt.enabled", () -> "false");
         // The scheduled dialer would race this test for the very rows it claims.
         registry.add("voice-agent.dialer.enabled", () -> "false");
+        registry.add("spring.ai.google.genai.api-key", () -> "test-key");
     }
 
     @Autowired
@@ -141,5 +144,31 @@ class CampaignTargetRepositoryTest {
         List<CampaignTarget> claimed = targets.claimDue(campaignId, 10);
 
         assertThat(claimed).extracting(CampaignTarget::id).containsExactly(allowed);
+    }
+
+    @Test
+    void aggregatesTargetStatsCorrectly() {
+        long t1 = addTarget("998900000001");
+        long t2 = addTarget("998900000002");
+        long t3 = addTarget("998900000003");
+
+        // t1 is called & completed
+        targets.updateStatus(t1, TargetStatus.DONE, null);
+        // t2 is claimed (in progress)
+        targets.claimDue(campaignId, 1);
+        // t3 stays pending
+
+        CampaignTargetStats stats = targets.statsByCampaignId(campaignId);
+        assertThat(stats.totalTargets()).isEqualTo(3L);
+        assertThat(stats.calledTargets()).isEqualTo(2L);
+        assertThat(stats.pendingTargets()).isEqualTo(1L);
+        assertThat(stats.completedTargets()).isEqualTo(1L);
+
+        Map<Long, CampaignTargetStats> map = targets.statsByCampaignIds(List.of(campaignId));
+        assertThat(map).containsKey(campaignId);
+        assertThat(map.get(campaignId).totalTargets()).isEqualTo(3L);
+        assertThat(map.get(campaignId).calledTargets()).isEqualTo(2L);
+        assertThat(map.get(campaignId).pendingTargets()).isEqualTo(1L);
+        assertThat(map.get(campaignId).completedTargets()).isEqualTo(1L);
     }
 }

@@ -76,8 +76,8 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<CampaignStatusResponse>> start(long id) {
-        return ResponseEntity.ok(ResponseData.ok(campaigns.start(id)));
+    public ResponseEntity<ResponseData<CampaignStatusResponse>> start(long id, boolean immediate) {
+        return ResponseEntity.ok(ResponseData.ok(campaigns.start(id, immediate)));
     }
 
     @Override

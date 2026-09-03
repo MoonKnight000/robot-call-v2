@@ -87,8 +87,8 @@ fetchEventSource('/api/live/stream', {
 
 | `event:` | Payload turi | Qachon yuboriladi |
 |---|---|---|
-| `KPI` | `LiveKpiSnapshot` | davriy — hozir liniyadagi qo'ng'iroqlar soni |
-| `LIVE_CALLS` | `LiveCallRow[]` | jonli qo'ng'iroqlar ro'yxati o'zgarganda (yuqoridagi `GET /api/calls/live` bilan bir xil shakl) |
+| `KPI` | `LiveKpiSnapshot` | ulanish ochilganda bir marta, keyin qiymat o'zgarganda — hozir liniyadagi qo'ng'iroqlar soni |
+| `LIVE_CALLS` | `LiveCallRow[]` | ulanish ochilganda bir marta, keyin ro'yxat o'zgarganda (yuqoridagi `GET /api/calls/live` bilan bir xil shakl) |
 | `TRANSCRIPT` | `LiveTranscriptEvent` | har bir gap tanilgan/aytilgan zahoti (CLIENT yoki AGENT) |
 | `AUDIO_LEVEL` | `AudioLevelEvent` | ~5/sek, faqat `voice-agent.live.audio-level-enabled=true` bo'lsa (standart holatda o'chiq) |
 | `NOTIFICATION` | `LiveNotification` | bir martalik hodisa (kampaniya boshlandi/pauza qilindi va h.k.), topbar bell uchun |

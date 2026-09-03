@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRe
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
@@ -20,6 +21,7 @@ import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RabbitConfig;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
@@ -113,13 +115,32 @@ public class DialerService {
             if (batch <= 0) {
                 continue; // campaign has spent its day (§C14)
             }
+            // Before the targets are claimed, not after: a campaign whose selected trunks
+            // are all disabled has nothing to dial with, and claiming first would leave
+            // the batch marked as taken with no call ever placed for it.
+            List<SipTrunkRow> candidateTrunks;
+            try {
+                candidateTrunks = sipTrunks.findTrunksForCall(campaign.companyId(), campaign.sipTrunkIdsOrEmpty());
+            } catch (ConflictException e) {
+                // Paused, not skipped. With no usable trunk the campaign cannot place a
+                // single call, and leaving it ACTIVE shows an owner a running campaign
+                // that silently dials nothing — while this loop repeats the same error
+                // every few seconds. PAUSED states it once, and an operator restarts it
+                // when the trunk is back, choosing then whether to dial at once.
+                log.error("Campaign {} ({}) paused: {}", campaign.id(), campaign.name(), e.getMessage());
+                // setStatus, not pause(): this thread serves every tenant's campaigns and
+                // pause() scopes the update to the request's company, which here is the
+                // platform default — another tenant's campaign would stay ACTIVE.
+                campaignService.setStatus(campaign.companyId(), campaign.id(), CampaignStatus.PAUSED);
+                continue;
+            }
+
             List<CampaignTarget> due = targets.claimDue(campaign.id(), batch);
             if (due.isEmpty()) {
                 log.debug("Campaign {} has no due targets to claim", campaign.id());
                 continue;
             }
 
-            List<SipTrunkRow> candidateTrunks = sipTrunks.findTrunksForCall(campaign.companyId(), campaign.sipTrunkIdsOrEmpty());
             AtomicInteger counter = campaignTrunkCounters.computeIfAbsent(campaign.id(), k -> new AtomicInteger(0));
 
             for (CampaignTarget t : due) {

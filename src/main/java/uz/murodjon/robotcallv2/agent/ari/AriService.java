@@ -896,7 +896,8 @@ public class AriService {
                             ? sttProps.defaultLanguage() : language;
                     List<String> detectLangs = sttProps.detectLanguages() != null ? sttProps.detectLanguages() : List.of();
                     listeners.add(new SttStreamBridge(stt, stt.sampleRate(), SAMPLE_RATE,
-                            channelId, sttLanguage, detectLangs, listener, speechGate, metrics, sttProps.endpointing()));
+                            channelId, sttLanguage, detectLangs, listener, speechGate, metrics,
+                            sttProps.endpointing(), sttProps.responseTimeoutMs()));
                 } catch (Exception e) {
                     log.warn("STT not started for {}: {}", channelId, e.getMessage());
                 }

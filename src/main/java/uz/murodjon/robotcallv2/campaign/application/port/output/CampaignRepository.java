@@ -25,7 +25,12 @@ public interface CampaignRepository {
 
     List<Campaign> findRecurring();
 
-    void updateStatus(long id, CampaignStatus status);
+    /**
+     * The company is an argument, not ambient state: the dialer changes a campaign's
+     * status from a scheduled thread, where the request-scoped current company resolves
+     * to the platform default and would scope the update to the wrong tenant.
+     */
+    void updateStatus(long companyId, long id, CampaignStatus status);
 
     void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status);
 

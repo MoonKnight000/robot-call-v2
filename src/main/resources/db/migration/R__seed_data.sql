@@ -69,7 +69,9 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('gemini-fenrir-ru', 'gemini-live', 'ru-RU', 'Fenrir',   'Fenrir (мужской)', NULL)
 ON CONFLICT (id) DO NOTHING;
 
--- Built-in scenario templates
+-- Built-in scenario templates. They are read-only through the API
+-- (SCENARIO_BUILTIN_READONLY), so this file owns their text: an already-seeded row has
+-- its definition refreshed instead of being left on the wording it first got.
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
     'debt-collection', 1,
@@ -80,9 +82,9 @@ $def$
 {
   "stages": [
     {"id": "GREETING", "purpose": "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.", "allowedTransitions": ["IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
-    {"id": "IDENTITY_CHECK", "purpose": "Suhbatdosh aynan qarzdor ekanini tasdiqla.", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
+    {"id": "IDENTITY_CHECK", "purpose": "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?').", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
     {"id": "DEBT_NOTICE", "purpose": "Qarz miqdori va muddatini xushmuomala yetkaz.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
-    {"id": "REASON_INQUIRY", "purpose": "To'lov nega amalga oshmayotgan sababini aniqla.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
+    {"id": "REASON_INQUIRY", "purpose": "To'lov nega kechikayotganini bilib ol.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "PAYMENT_DATE", "purpose": "Mijozdan aniq to'lov sanasini ol.", "allowedTransitions": ["CONFIRMATION", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "CONFIRMATION", "purpose": "Kelishuvni takrorlab tasdiqla.", "allowedTransitions": ["CLOSING", "PAYMENT_DATE", "ESCALATE_TO_HUMAN"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "CLOSING", "purpose": "Xushmuomala xayrlash.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
@@ -117,13 +119,15 @@ $def$
     "Chegirma, imtiyoz yoki qarz kechirishni HECH QACHON taklif qilma.",
     "To'lov muddatini o'zing uzaytirma — faqat mijoz aytgan sanani yozib ol.",
     "Mijoz nisbiy sana aytsa (\"ertaga\", \"dushanba\", \"kelasi oyning 5-sanasi\") — uni BUGUNGI SANAdan hisoblab yyyy-MM-dd ko'rinishida recordPaymentPromise'ga ber. Yilni o'zingdan to'qima.",
-    "Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma."
+    "Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma.",
+    "Mijozga 'suhbatdoshim' yoki 'mijoz' deb gapirma. 'Siz [Ism]misiz?' deb so'rama — xuddi tirik operatordek: 'Men [Ism] aka bilan gaplashayapmanmi?' yoki '[Ism] aka, sizmisiz?' deb so'ra."
   ]
 }
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -170,7 +174,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -206,7 +211,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -249,7 +255,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -290,7 +297,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -327,7 +335,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -372,7 +381,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -407,7 +417,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -455,7 +466,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -495,7 +507,8 @@ $def$
 $def$::jsonb,
     NULL
 )
-ON CONFLICT (scenario_key) WHERE is_active DO NOTHING;
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 -- Placeholder campaign + target so manually/auto-started calls (Stages 7-9) have a
 -- call_attempt parent before a real campaign exists. Looked up by phone = 'MANUAL'.

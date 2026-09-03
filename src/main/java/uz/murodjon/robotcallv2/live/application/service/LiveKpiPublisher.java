@@ -23,6 +23,7 @@ public class LiveKpiPublisher {
 
     private volatile LiveKpiSnapshot lastKpi;
     private volatile List<LiveCallRow> lastCalls = List.of();
+    private volatile long lastSubscriptionId;
 
     public LiveKpiPublisher(AriService ariService, VoiceMetrics metrics, LiveBroadcastService broadcast) {
         this.ariService = ariService;
@@ -32,6 +33,16 @@ public class LiveKpiPublisher {
 
     @Scheduled(fixedRateString = "${voice-agent.live.kpi-poll-ms:2000}")
     void tick() {
+        // Only changes are published, so a client that subscribed after the last change
+        // would sit on an empty screen until the next one — which, with no call running,
+        // never comes. Forget the diff baseline whenever someone new connects.
+        long subscriptionId = broadcast.lastSubscriptionId();
+        if (subscriptionId != lastSubscriptionId) {
+            lastSubscriptionId = subscriptionId;
+            lastKpi = null;
+            lastCalls = null;
+        }
+
         LiveKpiSnapshot kpi = new LiveKpiSnapshot(metrics.activeCalls());
         if (!kpi.equals(lastKpi)) {
             lastKpi = kpi;

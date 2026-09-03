@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,6 +37,30 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
 
     @Query("SELECT count(t) FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.status IN :statuses")
     long countByCampaignIdAndStatusIn(@Param("campaignId") long campaignId, @Param("statuses") List<TargetStatus> statuses);
+
+    @Query("SELECT t.campaign.id AS campaignId, "
+            + "COUNT(t) AS totalTargets, "
+            + "COALESCE(SUM(CASE WHEN t.attempts > 0 OR t.status != uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING THEN 1L ELSE 0L END), 0L) AS calledTargets, "
+            + "COALESCE(SUM(CASE WHEN t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING THEN 1L ELSE 0L END), 0L) AS pendingTargets, "
+            + "COALESCE(SUM(CASE WHEN t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.DONE THEN 1L ELSE 0L END), 0L) AS completedTargets "
+            + "FROM CampaignTargetEntity t "
+            + "WHERE t.campaign.id IN :campaignIds AND t.company.id = :companyId "
+            + "GROUP BY t.campaign.id")
+    List<CampaignTargetSummaryProjection> summarizeByCampaignIdsAndCompanyId(
+            @Param("campaignIds") Collection<Long> campaignIds,
+            @Param("companyId") long companyId);
+
+    @Query("SELECT t.campaign.id AS campaignId, "
+            + "COUNT(t) AS totalTargets, "
+            + "COALESCE(SUM(CASE WHEN t.attempts > 0 OR t.status != uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING THEN 1L ELSE 0L END), 0L) AS calledTargets, "
+            + "COALESCE(SUM(CASE WHEN t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING THEN 1L ELSE 0L END), 0L) AS pendingTargets, "
+            + "COALESCE(SUM(CASE WHEN t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.DONE THEN 1L ELSE 0L END), 0L) AS completedTargets "
+            + "FROM CampaignTargetEntity t "
+            + "WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "GROUP BY t.campaign.id")
+    Optional<CampaignTargetSummaryProjection> summarizeByCampaignIdAndCompanyId(
+            @Param("campaignId") long campaignId,
+            @Param("companyId") long companyId);
 
     @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, next_attempt_at = now() + INTERVAL '5 minute' "
             + "WHERE id IN ("
@@ -71,4 +96,16 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Transactional
     @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING, t.attempts = 0, t.nextAttemptAt = null WHERE t.campaign.id = :campaignId AND t.doNotCall = false")
     void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
+
+    /**
+     * Unlike {@link #resetTargetsForRecurrence} this only drops the waiting time: the
+     * attempt count stays, so a target that already used up its attempts is not called
+     * again, and a target already dialled or finished is left alone.
+     */
+    @Modifying
+    @Transactional
+    @Query("UPDATE CampaignTargetEntity t SET t.nextAttemptAt = null "
+            + "WHERE t.campaign.id = :campaignId AND t.doNotCall = false AND t.nextAttemptAt IS NOT NULL "
+            + "AND t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING")
+    int clearSchedule(@Param("campaignId") long campaignId);
 }

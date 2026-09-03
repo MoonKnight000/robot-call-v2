@@ -52,6 +52,7 @@ class CompanyIsolationTest {
         registry.add("voice-agent.asterisk.enabled", () -> "false");
         registry.add("voice-agent.stt.enabled", () -> "false");
         registry.add("voice-agent.dialer.enabled", () -> "false");
+        registry.add("spring.ai.google.genai.api-key", () -> "test-key");
     }
 
     @Autowired
@@ -105,7 +106,7 @@ class CompanyIsolationTest {
 
     @Test
     void updatingAnotherCompanysCampaignIsANoOp() {
-        campaigns.updateStatus(otherCompanyCampaignId, CampaignStatus.PAUSED);
+        campaigns.updateStatus(1L, otherCompanyCampaignId, CampaignStatus.PAUSED);
 
         String status = jdbc.queryForObject(
                 "SELECT status FROM campaign WHERE id = ?", String.class, otherCompanyCampaignId);

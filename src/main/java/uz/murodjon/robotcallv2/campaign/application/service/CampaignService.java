@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRe
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
@@ -323,13 +324,16 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     private List<CampaignRow> toRows(List<Campaign> rows) {
+        Set<Long> campaignIds = rows.stream().map(Campaign::id).collect(Collectors.toSet());
+        Map<Long, CampaignTargetStats> statsMap = targets.statsByCampaignIds(campaignIds);
         Map<Long, String> scenarioNames = scenarios.scenarioNamesByIds(
                 rows.stream().map(Campaign::scenarioId).collect(Collectors.toSet()));
         Map<Long, String> creatorNames = users.namesByIds(
                 rows.stream().map(Campaign::createdBy).filter(Objects::nonNull).collect(Collectors.toSet()));
         return rows.stream()
                 .map(c -> CampaignRow.of(c, scenarioNames.get(c.scenarioId()),
-                        c.createdBy() != null ? creatorNames.get(c.createdBy()) : null))
+                        c.createdBy() != null ? creatorNames.get(c.createdBy()) : null,
+                        statsMap.getOrDefault(c.id(), CampaignTargetStats.ZERO)))
                 .toList();
     }
 
@@ -340,7 +344,8 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         String createdByName = c.createdBy() != null
                 ? users.namesByIds(List.of(c.createdBy())).get(c.createdBy())
                 : null;
-        return CampaignRow.of(c, scenarioName, createdByName);
+        CampaignTargetStats stats = targets.statsByCampaignId(id);
+        return CampaignRow.of(c, scenarioName, createdByName, stats);
     }
 
     @Override
@@ -364,28 +369,38 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
-    public void setStatus(long campaignId, CampaignStatus status) {
-        campaigns.updateStatus(campaignId, status);
+    public void setStatus(long companyId, long campaignId, CampaignStatus status) {
+        campaigns.updateStatus(companyId, campaignId, status);
         audit.record("CAMPAIGN_" + status.name(), "campaign", String.valueOf(campaignId), null);
     }
 
     @Override
-    public CampaignStatusResponse start(long campaignId) {
-        setStatus(campaignId, CampaignStatus.ACTIVE);
+    public CampaignStatusResponse start(long campaignId, boolean immediate) {
+        setStatus(currentCompany.id(), campaignId, CampaignStatus.ACTIVE);
+        if (immediate) {
+            // A target waiting on a retry interval — or on a pause that lasted past its
+            // slot — stays unclaimable until its own time comes, so a resumed campaign can
+            // look active and dial nothing for hours. Clearing the booked time makes the
+            // waiting targets due at the next tick. The dial window still governs: this
+            // says "as soon as calling is allowed", never "call outside the window".
+            int released = targets.clearSchedule(campaignId);
+            audit.record("CAMPAIGN_START_IMMEDIATE", "campaign", String.valueOf(campaignId),
+                    released + " targets released");
+        }
         ttsWarmup.warmUpForCampaign(campaignId);
         return new CampaignStatusResponse(campaignId, CampaignStatus.ACTIVE);
     }
 
     @Override
     public CampaignStatusResponse pause(long campaignId) {
-        setStatus(campaignId, CampaignStatus.PAUSED);
+        setStatus(currentCompany.id(), campaignId, CampaignStatus.PAUSED);
         return new CampaignStatusResponse(campaignId, CampaignStatus.PAUSED);
     }
 
     @Override
     public CampaignStatusResponse archive(long campaignId) {
         requireCampaign(campaignId);
-        setStatus(campaignId, CampaignStatus.ARCHIVED);
+        setStatus(currentCompany.id(), campaignId, CampaignStatus.ARCHIVED);
         return new CampaignStatusResponse(campaignId, CampaignStatus.ARCHIVED);
     }
 
@@ -553,7 +568,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         if (c == null || c.status() != CampaignStatus.ACTIVE || targets.countActive(campaignId) > 0) {
             return;
         }
-        setStatus(campaignId, CampaignStatus.COMPLETED);
+        setStatus(c.companyId(), campaignId, CampaignStatus.COMPLETED);
         notifications.notify(c.companyId(), NotificationType.CAMPAIGN_FINISHED,
                 "Kampaniya tugadi", "\"" + c.name() + "\" kampaniyasi barcha nishonlarni yakunladi", null);
     }

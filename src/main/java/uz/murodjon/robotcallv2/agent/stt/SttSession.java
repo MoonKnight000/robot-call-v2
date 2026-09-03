@@ -39,4 +39,19 @@ public interface SttSession extends Closeable {
      * must flip it as soon as its stream reports an error or completes on its own.
      */
     boolean isAlive();
+
+    /**
+     * Whether the transport can take another frame right now.
+     *
+     * <p>Separate from {@link #isAlive()}: a session stays perfectly alive while it is
+     * unable to flush, and every transport underneath queues what it cannot write
+     * instead of refusing it — without a bound and without an error. A stalled uplink
+     * therefore looks exactly like a caller who says nothing, until the whole call's
+     * audio reaches the recognizer at once after the hangup.
+     *
+     * <p>A provider that cannot tell leaves this {@code true} and behaves as before.
+     */
+    default boolean isReady() {
+        return true;
+    }
 }

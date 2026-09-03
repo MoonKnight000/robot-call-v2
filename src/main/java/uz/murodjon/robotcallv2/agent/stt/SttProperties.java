@@ -15,6 +15,10 @@ import java.util.List;
  * @param vadGating       withhold non-speech audio from the provider's (per-second
  *                        billed) stream
  * @param endpointing     decide end-of-utterance here instead of at the provider
+ * @param responseTimeoutMs how long a stream may take audio without returning a single
+ *                        transcript before it is treated as broken and replaced. Has to
+ *                        outlast the longest silence a caller can produce, because
+ *                        without VAD gating that silence is streamed too; 0 disables it
  * @param google          Google-specific settings
  * @param yandex          Yandex-specific settings
  * @param aisha           Aisha-specific settings
@@ -28,6 +32,7 @@ public record SttProperties(
         List<String> detectLanguages,
         VadGatingProperties vadGating,
         EndpointingProperties endpointing,
+        int responseTimeoutMs,
         GoogleSttProperties google,
         YandexSttProperties yandex,
         AishaSttProperties aisha,

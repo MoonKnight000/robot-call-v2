@@ -21,12 +21,12 @@ final class ScenarioFixtures {
                 List.of(
                         new StageDef("GREETING", "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.",
                                 List.of("IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"), List.of()),
-                        new StageDef("IDENTITY_CHECK", "Suhbatdosh aynan qarzdor ekanini tasdiqla.",
+                        new StageDef("IDENTITY_CHECK", "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?').",
                                 List.of("DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"), List.of()),
                         new StageDef("DEBT_NOTICE", "Qarz miqdori va muddatini xushmuomala yetkaz.",
                                 List.of("REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"),
                                 List.of("recordPaymentPromise", "recordRefusalReason")),
-                        new StageDef("REASON_INQUIRY", "To'lov nega amalga oshmayotgan sababini aniqla.",
+                        new StageDef("REASON_INQUIRY", "To'lov nega kechikayotganini bilib ol.",
                                 List.of("PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"),
                                 List.of("recordPaymentPromise", "recordRefusalReason")),
                         new StageDef("PAYMENT_DATE", "Mijozdan aniq to'lov sanasini ol.",
@@ -68,7 +68,9 @@ final class ScenarioFixtures {
                         "Mijoz nisbiy sana aytsa (\"ertaga\", \"dushanba\", \"kelasi oyning 5-sanasi\") — uni "
                                 + "BUGUNGI SANAdan hisoblab yyyy-MM-dd ko'rinishida recordPaymentPromise'ga ber. "
                                 + "Yilni o'zingdan to'qima.",
-                        "Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma."
+                        "Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma.",
+                        "Mijozga 'suhbatdoshim' yoki 'mijoz' deb gapirma — ismini aytganda hurmat "
+                                + "bilan aka/opa qo'shib gapir (masalan: 'Murodjon aka')."
                 ),
                 "Bu qo'ng'iroq avtomatik tizim tomonidan amalga oshirilmoqda va yozib olinmoqda."
         );

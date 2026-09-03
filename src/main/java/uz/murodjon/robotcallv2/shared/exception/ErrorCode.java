@@ -110,6 +110,7 @@ public enum ErrorCode {
     LAST_ADMIN_ACTION_FORBIDDEN("cannot %s the last admin"),
     SCENARIO_KEY_EXISTS("Scenario key '%s' already exists"),
     SIP_TRUNK_DEFAULT_DELETE_FORBIDDEN("Cannot delete the default trunk — set another one as default first"),
+    SIP_TRUNK_SELECTION_UNAVAILABLE("None of the selected SIP trunks %s is enabled"),
     CALL_NOT_ACTIVE("No active call for channel %s"),
     TTS_DISABLED("TTS is disabled (voice-agent.tts.enabled=false)"),
 
