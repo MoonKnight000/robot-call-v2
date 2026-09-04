@@ -10,8 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Picks the {@link SttProvider} one call recognizes with (PROJECT.md §2.4). Every
- * implemented provider is registered here; which one a call uses comes from its
+ * Resolves the {@link SttProvider} to transcribe a call with. Provider choice lives in a
  * company's {@code engine_config}, and {@code voice-agent.stt.provider} is the default
  * for a company that has not chosen — a misconfigured default fails the app at startup
  * here instead of silently leaving speech recognition off until the first call
@@ -41,6 +40,12 @@ public class SttProviderSelector {
             return null;
         }
         if (configured != null && !configured.isBlank()) {
+            String target = "google".equalsIgnoreCase(configured) ? "gemini" : configured;
+            for (SttProvider provider : providers) {
+                if (provider.name().equalsIgnoreCase(target)) {
+                    return provider;
+                }
+            }
             for (SttProvider provider : providers) {
                 if (provider.name().equalsIgnoreCase(configured)) {
                     return provider;
@@ -63,7 +68,14 @@ public class SttProviderSelector {
 
     /** Whether {@code providerName} is implemented in this build — the check behind a {@code PUT}. */
     public boolean exists(String providerName) {
-        return providerName != null && byName.containsKey(providerName.toLowerCase());
+        if (providerName == null) {
+            return false;
+        }
+        String key = providerName.toLowerCase();
+        if ("google".equals(key) && byName.containsKey("gemini")) {
+            return true;
+        }
+        return byName.containsKey(key);
     }
 
     /**
@@ -79,7 +91,11 @@ public class SttProviderSelector {
         if (providerName == null || providerName.isBlank()) {
             return defaultProvider;
         }
-        SttProvider provider = byName.get(providerName.toLowerCase());
+        String key = providerName.toLowerCase();
+        if ("google".equals(key) && byName.containsKey("gemini")) {
+            return byName.get("gemini");
+        }
+        SttProvider provider = byName.get(key);
         if (provider == null) {
             log.warn("STT provider '{}' is not implemented in this build — using {}",
                     providerName, defaultProvider != null ? defaultProvider.name() : "none");

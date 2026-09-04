@@ -1,0 +1,296 @@
+package uz.murodjon.robotcallv2.agent.tts;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.audio.Resampler;
+import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
+import uz.murodjon.robotcallv2.agent.rtp.WavReader;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.time.Duration;
+import java.util.*;
+import java.util.stream.Stream;
+
+/**
+ * Gemini Text-to-Speech provider ({@code gemini-3.1-flash-tts-preview}).
+ *
+ * <p>Synthesizes expressive, controllable speech streaming chunk-by-chunk via SSE
+ * ({@code streamGenerateContent?alt=sse}) and resamples audio to 8 kHz mono linear PCM
+ * for real-time telephone playback.
+ */
+@Component
+@ConditionalOnExpression("!'${voice-agent.tts.gemini.api-key:}'.isBlank() || !'${GEMINI_API_KEY:}'.isBlank()")
+public class GeminiTtsProvider implements TtsProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiTtsProvider.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final String DEFAULT_MODEL = "gemini-3.1-flash-tts-preview";
+    private static final String DEFAULT_VOICE = "Aoede";
+    private static final int DEFAULT_SAMPLE_RATE = 24000;
+
+    private static final Map<String, String> KNOWN_VOICES = Map.of(
+            "aoede", "Aoede",
+            "kore", "Kore",
+            "puck", "Puck",
+            "charon", "Charon",
+            "fenrir", "Fenrir"
+    );
+
+    private final TtsProperties props;
+    private volatile HttpClient client;
+
+    public GeminiTtsProvider(TtsProperties props) {
+        this.props = props;
+    }
+
+    @PostConstruct
+    public void init() {
+        String apiKey = resolveApiKey();
+        if (apiKey.isBlank()) {
+            log.warn("Gemini TTS selected but no API key is available (voice-agent.tts.gemini.api-key or GEMINI_API_KEY)");
+            return;
+        }
+        int timeoutSeconds = props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10;
+        client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(timeoutSeconds))
+                .build();
+        log.info("Gemini TTS provider ready (model={}, defaultVoice={}, rate={}Hz)",
+                resolveModel(), resolveDefaultVoice(), resolveSampleRate());
+    }
+
+    @Override
+    public String name() {
+        return "gemini";
+    }
+
+    @Override
+    public boolean supports(String language) {
+        return true;
+    }
+
+    @Override
+    public short[] synthesize(String text, String language, String voice) {
+        return synthesize(text, language, voice, EffectiveVoiceSettings.NONE);
+    }
+
+    @Override
+    public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
+        List<short[]> chunks = new ArrayList<>();
+        synthesizeStreaming(text, language, voice, style, chunks::add);
+
+        int totalLen = 0;
+        for (short[] chunk : chunks) {
+            totalLen += chunk.length;
+        }
+        short[] fullPcm = new short[totalLen];
+        int offset = 0;
+        for (short[] chunk : chunks) {
+            System.arraycopy(chunk, 0, fullPcm, offset, chunk.length);
+            offset += chunk.length;
+        }
+        return fullPcm;
+    }
+
+    @Override
+    public void synthesizeStreaming(String text, String language, String requestedVoice,
+                                   EffectiveVoiceSettings style, PcmChunkListener onChunk) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+
+        HttpClient current = client;
+        if (current == null) {
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_CLIENT_UNAVAILABLE, "gemini-tts");
+        }
+
+        String apiKey = resolveApiKey();
+        if (apiKey.isBlank()) {
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_CLIENT_UNAVAILABLE, "gemini-tts");
+        }
+
+        String voiceName = resolveVoice(language, requestedVoice);
+        String endpoint = buildEndpointUri(apiKey);
+        String requestBody = buildRequestBody(text, voiceName);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .timeout(Duration.ofSeconds(props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10))
+                .build();
+
+        try {
+            HttpResponse<Stream<String>> response = current.send(request, HttpResponse.BodyHandlers.ofLines());
+            if (response.statusCode() != 200) {
+                throw new ExternalServiceException(ErrorCode.TTS_GEMINI_SYNTH_FAILED, "gemini-tts",
+                        "HTTP " + response.statusCode());
+            }
+
+            int sourceRate = resolveSampleRate();
+            try (Stream<String> lines = response.body()) {
+                lines.forEach(line -> {
+                    if (line == null || !line.contains("data:")) {
+                        return;
+                    }
+                    String json = line.substring(line.indexOf("data:") + 5).trim();
+                    if (json.isEmpty()) {
+                        return;
+                    }
+                    try {
+                        JsonNode root = MAPPER.readTree(json);
+                        JsonNode candidates = root.path("candidates");
+                        if (!candidates.isArray() || candidates.isEmpty()) {
+                            return;
+                        }
+                        JsonNode parts = candidates.get(0).path("content").path("parts");
+                        if (!parts.isArray()) {
+                            return;
+                        }
+                        for (JsonNode part : parts) {
+                            JsonNode inline = part.path("inlineData");
+                            if (!inline.isMissingNode() && inline.hasNonNull("data")) {
+                                String b64 = inline.get("data").asText();
+                                byte[] audioData = Base64.getDecoder().decode(b64);
+                                short[] pcm8k = convertTo8kPcm(audioData, sourceRate);
+                                if (pcm8k.length > 0 && onChunk != null) {
+                                    onChunk.onChunk(pcm8k);
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to parse Gemini TTS chunk: {}", e.getMessage());
+                    }
+                });
+            }
+        } catch (ExternalServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_SYNTH_FAILED, "gemini-tts", e, e.getMessage());
+        }
+    }
+
+    private String resolveApiKey() {
+        if (props.gemini() != null && props.gemini().apiKey() != null && !props.gemini().apiKey().isBlank()) {
+            return props.gemini().apiKey().trim();
+        }
+        String env = System.getenv("GEMINI_API_KEY");
+        return env != null ? env.trim() : "";
+    }
+
+    private String resolveModel() {
+        if (props.gemini() != null && props.gemini().model() != null && !props.gemini().model().isBlank()) {
+            String m = props.gemini().model().trim();
+            return m.startsWith("models/") ? m.substring("models/".length()) : m;
+        }
+        return DEFAULT_MODEL;
+    }
+
+    private String resolveDefaultVoice() {
+        if (props.gemini() != null && props.gemini().voice() != null && !props.gemini().voice().isBlank()) {
+            return props.gemini().voice().trim();
+        }
+        return DEFAULT_VOICE;
+    }
+
+    private int resolveSampleRate() {
+        return (props.gemini() != null && props.gemini().sampleRate() > 0)
+                ? props.gemini().sampleRate()
+                : DEFAULT_SAMPLE_RATE;
+    }
+
+    private String resolveVoice(String language, String requestedVoice) {
+        if (requestedVoice != null && !requestedVoice.isBlank()) {
+            String trimmed = requestedVoice.trim();
+            String matched = KNOWN_VOICES.get(trimmed.toLowerCase());
+            return matched != null ? matched : trimmed;
+        }
+        if (props.gemini() != null && props.gemini().voices() != null && language != null) {
+            String v = props.gemini().voices().get(language);
+            if (v != null && !v.isBlank()) {
+                return v.trim();
+            }
+        }
+        return resolveDefaultVoice();
+    }
+
+    private String buildEndpointUri(String apiKey) {
+        String base = (props.gemini() != null && props.gemini().url() != null && !props.gemini().url().isBlank())
+                ? props.gemini().url().trim()
+                : "https://generativelanguage.googleapis.com/v1beta/models";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/" + resolveModel() + ":streamGenerateContent?alt=sse&key=" + apiKey;
+    }
+
+    private String buildRequestBody(String text, String voiceName) {
+        ObjectNode root = MAPPER.createObjectNode();
+        root.putArray("contents")
+                .addObject()
+                .put("role", "user")
+                .putArray("parts")
+                .addObject()
+                .put("text", text);
+
+        ObjectNode genConfig = root.putObject("generationConfig");
+        genConfig.putArray("responseModalities").add("AUDIO");
+        genConfig.putObject("speechConfig")
+                .putObject("voiceConfig")
+                .putObject("prebuiltVoiceConfig")
+                .put("voiceName", voiceName);
+
+        return root.toString();
+    }
+
+    /**
+     * Converts audio bytes (WAV container or raw PCM s16le) to 8 kHz mono linear PCM.
+     */
+    static short[] convertTo8kPcm(byte[] audioData, int sourceRate) {
+        if (audioData == null || audioData.length == 0) {
+            return new short[0];
+        }
+
+        // Check for RIFF/WAVE container header
+        if (audioData.length >= 12 && audioData[0] == 'R' && audioData[1] == 'I' && audioData[2] == 'F' && audioData[3] == 'F') {
+            try {
+                WavAudio wav = WavReader.read(audioData);
+                if (wav.sampleRate() == 24000) {
+                    return Resampler.downsample24kTo8k(wav.samples(), wav.samples().length);
+                } else if (wav.sampleRate() == 16000) {
+                    return Resampler.downsample16kTo8k(wav.samples(), wav.samples().length);
+                } else {
+                    return wav.samples();
+                }
+            } catch (Exception e) {
+                log.debug("WAV parsing skipped, interpreting as raw PCM: {}", e.getMessage());
+            }
+        }
+
+        // Raw 16-bit little-endian PCM
+        int frames = audioData.length / 2;
+        short[] pcm = new short[frames];
+        ByteBuffer.wrap(audioData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm);
+
+        if (sourceRate == 24000) {
+            return Resampler.downsample24kTo8k(pcm, pcm.length);
+        } else if (sourceRate == 16000) {
+            return Resampler.downsample16kTo8k(pcm, pcm.length);
+        }
+        return pcm;
+    }
+}

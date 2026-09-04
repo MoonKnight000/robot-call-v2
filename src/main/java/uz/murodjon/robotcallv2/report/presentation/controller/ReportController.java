@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.report.presentation.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.audit.application.dto.AuditFilter;
@@ -39,8 +40,14 @@ public interface ReportController {
     @GetMapping("/calls/{callId}/transcript.txt")
     ResponseEntity<Resource> transcript(@PathVariable long callId);
 
+    /**
+     * The call's audio, served here rather than redirected to {@code /api/files/{id}}:
+     * the hop cost a player its credentials and left the recording unplayable. Comes
+     * back {@code inline} with a length, and answers a {@code Range} with {@code 206}.
+     */
     @GetMapping("/calls/{callId}/recording")
-    ResponseEntity<Resource> recording(@PathVariable long callId);
+    ResponseEntity<Resource> recording(@PathVariable long callId,
+                                       @RequestHeader(value = HttpHeaders.RANGE, required = false) String range);
 
     @PostMapping("/audit/list")
     ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(@Valid @RequestBody AuditFilter filter);

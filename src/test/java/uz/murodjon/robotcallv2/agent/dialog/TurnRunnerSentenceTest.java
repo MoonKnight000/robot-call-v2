@@ -63,4 +63,31 @@ class TurnRunnerSentenceTest {
         assertThat(TurnRunner.isSpeculationCompatible("yo'q", "ha albatta")).isFalse();
         assertThat(TurnRunner.isSpeculationCompatible("salom", "xayr")).isFalse();
     }
+
+    @Test
+    void doesNotSplitOnAbbreviations() {
+        StringBuilder pending = new StringBuilder("Sizning 1.5 mln. so'm qarzingiz bor.");
+        String sentence = TurnRunner.takeSentence(pending);
+
+        assertThat(sentence).isEqualTo("Sizning 1.5 mln. so'm qarzingiz bor.");
+        assertThat(pending.toString()).isEmpty();
+    }
+
+    @Test
+    void doesNotSplitOnCityAbbreviation() {
+        StringBuilder pending = new StringBuilder("Idora Toshkent sh. Chilonzor tumanida joylashgan.");
+        String sentence = TurnRunner.takeSentence(pending);
+
+        assertThat(sentence).isEqualTo("Idora Toshkent sh. Chilonzor tumanida joylashgan.");
+        assertThat(pending.toString()).isEmpty();
+    }
+
+    @Test
+    void doesNotSplitOnDomainName() {
+        StringBuilder pending = new StringBuilder("Iltimos, uysot.uz saytiga kiring.");
+        String sentence = TurnRunner.takeSentence(pending);
+
+        assertThat(sentence).isEqualTo("Iltimos, uysot.uz saytiga kiring.");
+        assertThat(pending.toString()).isEmpty();
+    }
 }

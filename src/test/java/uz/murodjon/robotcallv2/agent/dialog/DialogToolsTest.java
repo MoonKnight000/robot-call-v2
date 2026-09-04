@@ -37,6 +37,22 @@ class DialogToolsTest {
     }
 
     @Test
+    void dropsUnspeakableReplyInTransitionTo() {
+        tools.transitionTo("dynamic_thought_or_fallback", "REASON_INQUIRY");
+
+        assertThat(session.state()).isEqualTo("REASON_INQUIRY");
+        assertThat(session.toolReplies()).isNull();
+    }
+
+    @Test
+    void keepsValidReplyInTransitionTo() {
+        tools.transitionTo("Tushunarli. Sabab nimada?", "REASON_INQUIRY");
+
+        assertThat(session.state()).isEqualTo("REASON_INQUIRY");
+        assertThat(session.toolReplies()).isEqualTo("Tushunarli. Sabab nimada?");
+    }
+
+    @Test
     void rejectsAPromiseInThePast() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
 

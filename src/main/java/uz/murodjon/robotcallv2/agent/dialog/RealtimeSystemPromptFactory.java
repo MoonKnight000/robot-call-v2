@@ -115,9 +115,13 @@ public class RealtimeSystemPromptFactory {
                 .append("so'ralgan qismini takrorla.\n");
 
         sb.append("OG'ZAKI SHAKL: \"to'lovni amalga oshirasiz\" emas — \"to'laysiz\"; ")
-                .append("\"qarzdorligingiz mavjud\" emas — \"qarzingiz bor ekan\"; ")
+                .append("\"qarzdorligingiz mavjud\" emas — \"qarzingiz bor\"; ")
                 .append("\"ma'lumot beraman\" emas — \"aytaman\"; ")
                 .append("\"to'lanishi kerak bo'lgan summa\" emas — \"qarz\".\n");
+        sb.append("HAR JAVOB SAVOL BILAN TUGASIN: quruq xabar aytib jim qolma. Faktni aytdingmi, ")
+                .append("darhol savol qo'sh — tasdiqlovchi (\"bu haqda xabaringiz bormidi?\") yoki ishni ")
+                .append("oldinga suradigan (\"nima uchun to'lanmayapti?\", \"qachon to'lay olasiz?\"). ")
+                .append("Yagona istisno — endCall bilan xayrlashish.\n");
         sb.append("QISQA GAP: bir javobda ko'pi bilan ikki-uch qisqa gap va bitta savol. ")
                 .append("Shartnoma, summa va muddatni bitta uzun gapga tiqma — alohida gaplarga ")
                 .append("bo'l. O'zingni va kompaniyani bir marta tanishtirasan, keyingi ")

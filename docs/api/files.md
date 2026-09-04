@@ -73,8 +73,14 @@ xuddi `GET /api/reports/calls/{id}/recording` uchun qilingani kabi.
 | Kategoriya | `Content-Disposition` | Qayerdan kelgan |
 |---|---|---|
 | Rasm (`IMAGE`) | `inline` | `POST /api/files/upload`, `POST /api/companies/{id}/logo`, `POST /api/profile/avatar` |
-| Audio (`AUDIO`) | `attachment` | `CallFinalizer`, `POST /api/files/upload` |
+| Audio (`AUDIO`) | `inline` | `CallFinalizer`, `POST /api/files/upload` |
 | Hujjat (`DOCUMENT`) | `attachment` | `POST /api/files/upload` |
+
+Javobda doim `Content-Length` va `Accept-Ranges: bytes` bo'ladi. So'rovda
+`Range: bytes=<start>-<end>` bo'lsa javob `206 Partial Content` va
+`Content-Range: bytes <start>-<end>/<total>` bo'ladi — audio pleyer seek
+qilganda aynan shuni yuboradi. Bir nechta diapazon so'ralsa faqat
+birinchisi beriladi.
 
 **Kompaniya izolyatsiyasi**: `id` boshqa kompaniyaniki bo'lsa (yoki umuman
 mavjud bo'lmasa) — `404`, mavjudligini oshkor qilmaslik uchun bir xil xabar

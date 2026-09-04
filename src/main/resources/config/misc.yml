@@ -6,6 +6,30 @@ voice-agent:
   shutdown:
     # Seconds to let active calls finish before the app stops (§12).
     drain-timeout-sec: ${SHUTDOWN_DRAIN_TIMEOUT:60}
+  quality:
+    # Automated QA: a second model reads each finished call's transcript and marks it
+    # against a rubric (guardrail broken, wrong language, talked over the caller, wrong
+    # disposition). Results go to voice.qa.score / voice.qa.flags and the log — nothing is
+    # written to the customer's record. Off by default: it is one more LLM call per call,
+    # and it is only worth paying for around a change you want to watch.
+    enabled: ${QUALITY_ENABLED:false}
+    # Share of finished calls scored, 0..1. Turn it down once a change has settled.
+    sample-rate: ${QUALITY_SAMPLE_RATE:1.0}
+    model: ${QUALITY_MODEL:gemini-3.8-flash}
+    max-tokens: ${QUALITY_MAX_TOKENS:512}
+  simulation:
+    # Persona simulation (docs/VOICE-QUALITY-PLAN.md D.2): runs scripted callers against
+    # the real prompt, tools and guardrails at startup, then reports. No audio and no
+    # telephony — TurnReplayTool covers that side. Never leave this on in production: it
+    # spends LLM tokens on every boot.
+    enabled: ${SIMULATION_ENABLED:false}
+    personas-path: ${SIMULATION_PERSONAS:}
+    scenario-id: ${SIMULATION_SCENARIO_ID:0}
+    language: ${SIMULATION_LANGUAGE:uz-UZ}
+    max-turns: ${SIMULATION_MAX_TURNS:12}
+    # The model playing the caller. A different one from the agent's is the point: two
+    # copies of the same model agree with each other far too easily.
+    persona-model: ${SIMULATION_PERSONA_MODEL:gemini-3.8-flash}
   alerting:
     # Alert when the recent call success rate (promise-to-pay) drops below threshold.
     enabled: ${ALERTING_ENABLED:true}
@@ -19,6 +43,10 @@ voice-agent:
     turnaround-budget-ms: ${ALERTING_TURNAROUND_BUDGET_MS:1000}
     # Turns the window must hold before its p95 is judged; a handful of turns says nothing.
     turnaround-min-turns: ${ALERTING_TURNAROUND_MIN_TURNS:30}
+    # Share of speculative replies (dialog.preemptive) the final transcript has to confirm.
+    # A miss is billed and thrown away, so below this the guesses cost more than the
+    # latency they buy — raise preemptive-min-chars, or turn preemptive off.
+    speculation-min-hit-rate: ${ALERTING_SPECULATION_MIN_HIT_RATE:0.5}
   live:
     # Live SSE channel (§0.7): KPI ticks, live-call list, transcript lines, notifications.
     # Audio-level events are opt-in — they run on the RTP thread of every active call.

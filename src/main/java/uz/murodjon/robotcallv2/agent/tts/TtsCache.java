@@ -179,7 +179,7 @@ public class TtsCache {
     }
 
     /**
-     * Everything that changes how a line sounds, hashed into eight characters. Both
+     * Everything that changes how a line sounds, hashed into eight characters. All
      * providers are folded into one fingerprint: a voice change is rare, and having it
      * strand a few of the other provider's entries costs one re-synthesis each.
      */
@@ -189,6 +189,12 @@ public class TtsCache {
         if (yandex != null) {
             sb.append(yandex.voice()).append('|').append(sorted(yandex.voices()))
                     .append('|').append(yandex.sampleRate());
+        }
+        sb.append("//");
+        GeminiTtsProperties gemini = props.gemini();
+        if (gemini != null) {
+            sb.append(gemini.model()).append('|').append(gemini.voice()).append('|')
+                    .append(sorted(gemini.voices())).append('|').append(gemini.sampleRate());
         }
         sb.append("//");
         GoogleTtsProperties google = props.google();

@@ -20,7 +20,7 @@ public class DialogTools {
 
     static final String REPLY_PARAM = "reply";
     static final String REPLY_DESCRIPTION =
-            "shu tool bilan birga mijozga ovoz bilan aytiladigan gap — bo'sh qoldirmang";
+            "shu tool bilan birga mijozga ovoz bilan aytiladigan tabiiy gap — bo'sh qoldirmang, inglizcha texnik so'zlar yoki placeholderlar (masalan dynamic_thought_or_fallback) yozish QAT'IYAN TAQIQLANADI";
 
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
             "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
@@ -34,10 +34,18 @@ public class DialogTools {
         this.session = session;
     }
 
+    private void recordReply(String reply) {
+        if (!SpeechSanitizer.isUnspeakable(reply)) {
+            session.addToolReply(reply);
+        } else {
+            log.warn("[{}] tool dropped unspeakable reply: '{}'", session.channelId(), reply);
+        }
+    }
+
     @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
     public String transitionTo(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                                @ToolParam(description = "keyingi bosqich id'si") String nextStage) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.setState(nextStage);
         log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
         return "Holat " + nextStage + " ga o'tkazildi";
@@ -53,7 +61,7 @@ public class DialogTools {
             return "XATO: " + promisedDate + " o'tmishda. Bugun " + LocalDate.now()
                     + ". Sanani shundan hisoblab qaytadan yuboring yoki mijozdan aniq sanani so'rang.";
         }
-        session.addToolReply(reply);
+        recordReply(reply);
         session.recordOutcome("promisedDate", promisedDate);
         session.recordOutcome("promisedAmount", amount);
         session.setDisposition(Disposition.PROMISE_TO_PAY);
@@ -67,7 +75,7 @@ public class DialogTools {
             @ToolParam(description = REPLY_DESCRIPTION) String reply,
             @ToolParam(description = "to'lamaslik sababi") String reason,
             @ToolParam(description = "sabab tafsiloti", required = false) String detail) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.recordOutcome("reasonCode", reason);
         session.setDisposition(Disposition.REFUSED);
         log.info("[{}] refusal reason: {} ({})", session.channelId(), reason, detail);
@@ -79,7 +87,7 @@ public class DialogTools {
             @ToolParam(description = REPLY_DESCRIPTION) String reply,
             @ToolParam(description = "qayta qo'ng'iroq sanasi va vaqti (masalan 2026-09-02T16:00:00 yoki ertaga soat 16:00)") String callbackTime,
             @ToolParam(description = "sababi yoki izoh", required = false) String reason) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.recordOutcome("callbackTime", callbackTime);
         session.recordOutcome("callbackReason", reason);
         session.setDisposition(Disposition.CALLBACK_REQUESTED);
@@ -90,7 +98,7 @@ public class DialogTools {
     @Tool(description = "Mijoz operator bilan gaplashishni so'raganda yoki janjal qilganda operatorga o'tkazadi")
     public String requestHumanTransfer(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                                        @ToolParam(description = "o'tkazish sababi") String reason) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.end(Disposition.TRANSFERRED);
         log.info("[{}] human transfer requested: {}", session.channelId(), reason);
         return "Operatorga o'tkazish so'raldi. Mijoz bilan xayrlashing.";
@@ -99,7 +107,7 @@ public class DialogTools {
     @Tool(description = "Telefonni ko'targan odam qarzdor emasligi aniqlanganda chaqiriladi")
     public String recordWrongPerson(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                                     @ToolParam(description = "tafsilot") String detail) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.end(Disposition.WRONG_NUMBER);
         log.info("[{}] wrong person: {}", session.channelId(), detail);
         return "Noto'g'ri odam belgilandi. Uzr so'rab xayrlashing.";
@@ -108,7 +116,7 @@ public class DialogTools {
     @Tool(description = "Mijoz boshqa qo'ng'iroq qilmaslikni, raqamini o'chirishni qat'iy talab qilganda chaqiriladi")
     public String recordDoNotCall(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                                   @ToolParam(description = "talab sababi") String reason) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.setDoNotCallReason(reason);
         session.end(Disposition.DO_NOT_CALL);
         log.info("[{}] do not call registered: reason={}", session.channelId(), reason);
@@ -118,7 +126,7 @@ public class DialogTools {
     @Tool(description = "Mijoz to'lov havolasini yoki rekvizitlarni SMS orqali yuborishni so'raganda chaqiriladi")
     public String sendSmsPaymentLink(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                                      @ToolParam(description = "SMS xabar turi yoki qo'shimcha matn", required = false) String note) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.recordOutcome("sendSmsRequested", true);
         session.recordOutcome("smsNote", note);
         log.info("[{}] SMS payment link requested: note={}", session.channelId(), note);
@@ -129,7 +137,7 @@ public class DialogTools {
     public String requestPaymentExtension(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                                           @ToolParam(description = "necha kunga uzaytirish so'ralmoqda") int extensionDays,
                                           @ToolParam(description = "kechiktirish sababi") String reason) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.recordOutcome("extensionRequestedDays", extensionDays);
         session.recordOutcome("extensionReason", reason);
         log.info("[{}] payment extension requested: {} days, reason: {}", session.channelId(), extensionDays, reason);
@@ -139,7 +147,7 @@ public class DialogTools {
     @Tool(description = "Suhbatni yakunlaydi va natijani belgilaydi")
     public String endCall(@ToolParam(description = REPLY_DESCRIPTION) String reply,
                           @ToolParam(description = "qo'ng'iroq yakunlash sababi/natijasi") Disposition disposition) {
-        session.addToolReply(reply);
+        recordReply(reply);
         session.end(disposition);
         log.info("[{}] call ended with disposition: {}", session.channelId(), disposition);
         return "Qo'ng'iroq yakunlandi: " + disposition;

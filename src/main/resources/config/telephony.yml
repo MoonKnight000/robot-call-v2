@@ -54,6 +54,8 @@ voice-agent:
     port-range-start: 20000
     port-range-end: 20500
     recording-dir: ${RTP_RECORDING_DIR:recordings}
+    # Channel mixing for recordings: SPATIAL_STEREO (default, both ears hear speech), STEREO (hard isolation), or DUAL_MONO.
+    recording-mode: ${RTP_RECORDING_MODE:SPATIAL_STEREO}
     # Optional: 8 kHz mono 16-bit WAV auto-played to the caller on answer (Stage 4 test).
     test-playback-file: ${RTP_TEST_PLAYBACK_FILE:}
     # Netty threads shared by every call's RTP socket. 0 = one per processor (min 2).
@@ -66,7 +68,15 @@ voice-agent:
     enabled: ${DIALER_ENABLED:true}
     tick-seconds: ${DIALER_TICK_SECONDS:5}
     dispatch-batch: ${DIALER_DISPATCH_BATCH:3}
+    # Platform-wide ceiling. The RTP port range caps it in turn: past that a call is
+    # answered and then dropped for want of a port, so raising this without widening
+    # voice-agent.rtp.port-range-* buys nothing.
     max-concurrent-calls: ${DIALER_MAX_CONCURRENT:5}
+    # One company's share of the above. Without it the first campaign the sweep reaches
+    # takes every free slot and the other tenants' campaigns sit ACTIVE dialling nothing —
+    # data isolation does not help a company whose calls are never placed. 0 = no
+    # per-company limit (the old behaviour).
+    max-concurrent-calls-per-company: ${DIALER_MAX_CONCURRENT_PER_COMPANY:3}
     reclaim-after-sec: ${DIALER_RECLAIM_AFTER_SEC:60}
     # How long before a target is dialled again, by why the last attempt failed. One
     # 24-hour interval for everything spent most of a campaign's three retries on the

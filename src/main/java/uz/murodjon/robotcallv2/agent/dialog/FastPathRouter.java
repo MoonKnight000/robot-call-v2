@@ -35,7 +35,7 @@ public class FastPathRouter {
 
     private static final Set<String> DO_NOT_CALL_UZ = Set.of(
             "boshqa telefon qilmang", "telefon qilmang", "qaytib qilmang", "raqamimni o'chiring",
-            "bezovta qilmang", "spam", "bloklayman"
+            "bezovta qilmang", "spam", "bloklayman", "o'chirib tashlang", "telefon qilmanglar"
     );
 
     private static final Set<String> DO_NOT_CALL_RU = Set.of(
@@ -44,7 +44,7 @@ public class FastPathRouter {
 
     private static final Set<String> TRANSFER_UZ = Set.of(
             "operatorga ula", "operatorga ulang", "operator bilan gaplashmoqchiman",
-            "operator chaqir", "odam bilan gaplashay", "tirik odam bormi", "mutaxassisga ulang"
+            "operator chaqir", "odam bilan gaplashay", "tirik odam bormi", "mutaxassisga ulang", "operator"
     );
 
     private static final Set<String> TRANSFER_RU = Set.of(
@@ -99,7 +99,10 @@ public class FastPathRouter {
 
     private static String normalize(String text) {
         return text.toLowerCase(Locale.ROOT)
-                .replaceAll("[.,!?\\-–—'\"]", " ")
+                .replace('`', '\'')
+                .replace('‘', '\'')
+                .replace('’', '\'')
+                .replaceAll("[.,!?\\-–—\"«»]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
     }

@@ -11,6 +11,10 @@ import java.math.BigDecimal;
  * @param currency       currency label spoken alongside the amount
  * @param dueDate        original due date, ISO {@code yyyy-MM-dd} (blank to omit)
  * @param contractNumber contract reference
+ * @param penaltyAmount  penalty accrued on the overdue amount (blank to omit — the agent
+ *                       then says nothing about a penalty at all)
+ * @param contractCancelDays days of further non-payment before the contract is cancelled
+ *                       under its own terms (blank to omit)
  * @param goal           campaign goal appended to the system prompt
  * @param scenarioKey    scenario a manual/inbound test call without a {@code scenarioId}
  *                       runs (ROADMAP A.3); defaults to {@code debt-collection} so
@@ -22,6 +26,8 @@ public record TestContextProperties(
         String currency,
         String dueDate,
         String contractNumber,
+        BigDecimal penaltyAmount,
+        BigDecimal contractCancelDays,
         String goal,
         String scenarioKey
 ) {

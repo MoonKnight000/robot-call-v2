@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.report.presentation.controller;
 
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.audit.application.dto.AuditFilter;
@@ -16,8 +15,8 @@ import uz.murodjon.robotcallv2.report.application.service.TranscriptResponseFact
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.storage.presentation.controller.FileResponseFactory;
 
-import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -27,15 +26,18 @@ public class ReportControllerImpl implements ReportController {
     private final ReportExportFactory exportFactory;
     private final CsvResponseFactory csvResponseFactory;
     private final TranscriptResponseFactory transcriptResponseFactory;
+    private final FileResponseFactory fileResponseFactory;
 
     public ReportControllerImpl(ReportUseCase reportService,
                                 ReportExportFactory exportFactory,
                                 CsvResponseFactory csvResponseFactory,
-                                TranscriptResponseFactory transcriptResponseFactory) {
+                                TranscriptResponseFactory transcriptResponseFactory,
+                                FileResponseFactory fileResponseFactory) {
         this.reportService = reportService;
         this.exportFactory = exportFactory;
         this.csvResponseFactory = csvResponseFactory;
         this.transcriptResponseFactory = transcriptResponseFactory;
+        this.fileResponseFactory = fileResponseFactory;
     }
 
     @Override
@@ -76,11 +78,8 @@ public class ReportControllerImpl implements ReportController {
     }
 
     @Override
-    public ResponseEntity<Resource> recording(long callId) {
-        long fileId = reportService.resolveRecording(callId);
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create("/api/files/" + fileId))
-                .build();
+    public ResponseEntity<Resource> recording(long callId, String range) {
+        return fileResponseFactory.toResponse(reportService.recording(callId), range);
     }
 
     @Override

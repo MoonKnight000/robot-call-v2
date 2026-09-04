@@ -42,6 +42,16 @@ final class DialogLines {
         if (s.state().equals(s.scenario().stages().get(0).id()) && !s.isDisclosureSpoken()) {
             return disclosure(s);
         }
+        if ("REASON_INQUIRY".equalsIgnoreCase(s.state())) {
+            return s.language() != null && s.language().startsWith("ru")
+                    ? "Понятно. Скажите, пожалуйста, по какой причине задерживается оплата?"
+                    : "Tushunarli. To'lov kechikishining sababi nimada ekanligini ayta olasizmi?";
+        }
+        if ("PAYMENT_DATE".equalsIgnoreCase(s.state())) {
+            return s.language() != null && s.language().startsWith("ru")
+                    ? "Понятно. Назовите, пожалуйста, точную дату оплаты."
+                    : "Tushunarli. Qaysi sanada to'lov qila olasiz?";
+        }
         return DialogPhrases.didNotCatch(s.language());
     }
 

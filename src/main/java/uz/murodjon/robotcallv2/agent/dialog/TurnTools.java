@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
 import org.springframework.ai.tool.ToolCallback;
@@ -145,29 +144,53 @@ public class TurnTools {
      *
      * <p>Running the tools ourselves removes the round trip that needs a signature at
      * all. Nothing is lost: the tools move the FSM and record outcomes, their return
-     * strings are confirmations, and the conversation history was already text-only. It
-     * is also one LLM call cheaper per tool-calling turn, which the &lt;1s budget (§1.3)
-     * notices.
+     * strings are confirmations, and the conversation history was already text-only.
      *
-     * <p>A fresh options object every turn — the ChatClient merges the tool callbacks
+     * <p>A fresh options builder every turn — the ChatClient merges the tool callbacks
      * into the instance it is handed, so a shared one would accumulate them.
-     *
-     * <p>{@code GoogleGenAiChatOptions} implements {@code ToolCallingChatOptions}, so one
-     * object carries both the tools and the §11 model settings ({@link
-     * DialogSession#aiModel()}); a null override leaves the Spring AI auto-configured
-     * default in place, the same runtime-merge-over-default Spring AI already does for
-     * every unset field.
      */
-    public ChatOptions buildOptions(DialogSession s, List<ToolCallback> tools) {
+    public GoogleGenAiChatOptions buildOptions(DialogSession s, List<ToolCallback> tools) {
+        return buildOptions(s, tools, null);
+    }
+
+    /**
+     * The same, on a different model for this one turn.
+     *
+     * @param model the model to use instead of the company's configured one, or
+     *              {@code null} to keep it. A one-word acknowledgement does not need the
+     *              model an objection does, and the difference is paid in time-to-first
+     *              -token on every turn ({@code DialogProperties#fastModel})
+     */
+    public GoogleGenAiChatOptions buildOptions(DialogSession s, List<ToolCallback> tools, String model) {
         EffectiveAiModelConfig aiModel = s.aiModel();
-        return GoogleGenAiChatOptions.builder()
+        String selectedModel = model != null && !model.isBlank() ? model : aiModel.model();
+        var builder = GoogleGenAiChatOptions.builder()
                 .toolCallbacks(tools)
+                // Declarations only (see above). Left at Spring AI's default of true, a
+                // real call ran every tool twice — once in the framework's loop, once in
+                // run() — and paid an LLM round trip for each: 35 tool executions and an
+                // 11s reply on a seven-line call. Worse, a speculative request
+                // (TurnRunner#startSpeculation) carries these same live callbacks, so the
+                // framework was moving the FSM and recording payment promises from a guess
+                // at what the caller was still in the middle of saying.
                 .internalToolExecutionEnabled(false)
-                .model(aiModel.model())
-                .temperature(aiModel.temperature())
+                .model(selectedModel)
                 .maxOutputTokens(aiModel.maxOutputTokens())
-                .thinkingLevel(GoogleGenAiThinkingLevel.MINIMAL)
-                .build();
+                .thinkingLevel(GoogleGenAiThinkingLevel.LOW);
+
+        // Gemini 3.8 Flash (and Gemini 3+) deprecates sampling parameters (temperature, top_p, top_k).
+        // Must strip temperature from generation configs for Gemini 3+.
+        if (!isGemini3OrLater(selectedModel) && aiModel.temperature() != null) {
+            builder.temperature(aiModel.temperature());
+        }
+        return builder.build();
+    }
+
+    private static boolean isGemini3OrLater(String model) {
+        if (model == null || model.isBlank()) {
+            return true; // default model is gemini-3.8-flash
+        }
+        return model.toLowerCase().contains("gemini-3");
     }
 
     /** Every tool call carried by one response (or one streamed chunk of it). */
@@ -200,7 +223,7 @@ public class TurnTools {
                     .findFirst()
                     .orElse(null);
             if (callback == null) {
-                // A tool this state does not offer (see build) — the model invented the
+                // A tool this stage does not offer (see build) — the model invented the
                 // name, or is reaching for an outcome that is not on the table yet.
                 log.warn("[{}] model called unavailable tool {} in {}",
                         s.channelId(), call.name(), s.state());

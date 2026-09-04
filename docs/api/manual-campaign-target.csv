@@ -1,2 +1,2 @@
-clientId,phone,language,clientName,debtAmount,currency,dueDate,contractNumber
-1,998953692029,uz-UZ,Murodjon,1500000,so'm,2026-07-01,A56
+clientId,phone,language,clientName,debtAmount,currency,dueDate,contractNumber,penaltyAmount,contractCancelDays
+1,998953692029,uz-UZ,Murodjon,1500000,so'm,2026-07-01,A56,75000,30

@@ -42,6 +42,8 @@ class FastPathRouterTest {
             "adashdingiz",
             "boshqa odam bu",
             "notogri tushdingiz",
+            "noto'g'ri tushdingiz",
+            "noto’g’ri tushdingiz",
             "bu yerda yashamaydi"
     })
     void matchesWrongPersonUzbek(String phrase) {

@@ -25,7 +25,7 @@
     "sttProvider": "yandex",
     "ttsProvider": "yandex",
     "ttsVoice": "alena",
-    "llmModel": "gemini-3.6-flash",
+    "llmModel": "gemini-3.8-flash",
     "promptTokens": 1840,
     "completionTokens": 320,
     "cachedTokens": 1200,
@@ -44,3 +44,33 @@
 | `commitmentScore` | int (0–100) | Mijozning to'lov/kelishuvga rozilik va sodiqlik darajasi |
 | `sentiment` | enum | `POSITIVE`, `NEUTRAL`, `NEGATIVE`, `ANGRY` |
 | `callbackAt` | ISO timestamp | Mijoz so'ragan qayta qo'ng'iroq vaqti |
+
+---
+
+## `GET /api/reports/calls/{callId}/recording` — Qo'ng'iroq audiosi
+
+**`ResponseData`ga o'ralmagan** — xom WAV baytlarini qaytaradi
+(`ResponseEntity<Resource>`). Ilgari bu endpoint `302` bilan
+`/api/files/{id}` ga yuborardi; endi baytlarni o'zi qaytaradi, chunki
+redirect pleyerdan `Authorization` sarlavhasini yo'qotib, yozuvni
+ijro etib bo'lmaydigan qilib qo'yardi.
+
+**Sarlavhalar**:
+
+| Sarlavha | Qiymat |
+|---|---|
+| `Content-Type` | `audio/wav` |
+| `Content-Disposition` | `inline; filename="<asl nom>"` |
+| `Content-Length` | fayl hajmi (pleyer davomiylikni shundan chizadi) |
+| `Accept-Ranges` | `bytes` |
+
+**Seek**: so'rovda `Range: bytes=<start>-<end>` bo'lsa javob `206 Partial
+Content` bo'ladi va `Content-Range: bytes <start>-<end>/<total>` qaytadi.
+Bir nechta diapazon so'ralsa faqat birinchisi beriladi.
+
+Autentifikatsiya boshqa `/api/**` kabi — ya'ni `<audio src="...">`
+to'g'ridan-to'g'ri ishlamaydi; frontend `fetch` bilan blob olib
+`URL.createObjectURL` ga o'raydi.
+
+**Xatolar**: bu qo'ng'iroqda yozuv bo'lmasa (`recording_file_id` bo'sh) —
+`404` `CALL_RECORDING_NOT_FOUND`. MinIO ishlamasa — `502`.

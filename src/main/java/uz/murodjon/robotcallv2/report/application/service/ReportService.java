@@ -20,6 +20,8 @@ import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
+import uz.murodjon.robotcallv2.storage.application.service.FileStorageService;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,15 +35,17 @@ public class ReportService implements ReportUseCase {
     private final CampaignTargetRepository targets;
     private final DoNotCallRepository doNotCall;
     private final CurrentCompany currentCompany;
+    private final FileStorageService fileStorageService;
 
     public ReportService(ReportRepository reports, AuditService audit,
                          CampaignTargetRepository targets, DoNotCallRepository doNotCall,
-                         CurrentCompany currentCompany) {
+                         CurrentCompany currentCompany, FileStorageService fileStorageService) {
         this.reports = reports;
         this.audit = audit;
         this.targets = targets;
         this.doNotCall = doNotCall;
         this.currentCompany = currentCompany;
+        this.fileStorageService = fileStorageService;
     }
 
     @Override
@@ -124,13 +128,13 @@ public class ReportService implements ReportUseCase {
     }
 
     @Override
-    public long resolveRecording(long callId) {
+    public DownloadableFile recording(long callId) {
         Long fileId = reports.recordingFileId(callId);
         if (fileId == null) {
             throw new NotFoundException(ErrorCode.CALL_RECORDING_NOT_FOUND, callId);
         }
         audit.record("RECORDING_DOWNLOAD", "call", String.valueOf(callId), String.valueOf(fileId));
-        return fileId;
+        return fileStorageService.download(fileId);
     }
 
     @Override

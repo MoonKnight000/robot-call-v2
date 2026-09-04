@@ -148,6 +148,16 @@ public class DialogEngine implements CallDialog {
     }
 
     public void onClientFinal(String channelId, String text) {
+        onClientFinal(channelId, text, 1f);
+    }
+
+    /**
+     * @param confidence what the recognizer thought of its own answer, 0..1 — {@code 0}
+     *                   from a provider that reports none. Below
+     *                   {@code low-confidence-threshold} the turn is told to confirm what
+     *                   it heard before acting on it
+     */
+    public void onClientFinal(String channelId, String text, float confidence) {
         if (text == null || text.isBlank()) {
             return;
         }
@@ -155,13 +165,48 @@ public class DialogEngine implements CallDialog {
         if (session == null || session.isEnded()) {
             return;
         }
+        session.latency().clientFinal();
+        session.clientAnswerEnded();
+        float floor = props.lowConfidenceThreshold();
+        // Zero means the provider does not report confidence at all; treating that as
+        // "unsure" would put the confirmation on every single turn.
+        session.setLowConfidenceInput(floor > 0 && confidence > 0 && confidence < floor);
         inputGate.onFinal(session, text);
+    }
+
+    /**
+     * The recognizer has been told the caller finished, after {@code eouWaitMs} of silence.
+     * The turn has not started yet — this is the moment the caller stopped talking, which
+     * is where the wait they actually experience begins ({@code TurnLatency}).
+     */
+    public void notifyUtteranceEnd(String channelId, int eouWaitMs) {
+        DialogSession session = sessions.get(channelId);
+        if (session == null || session.isEnded()) {
+            return;
+        }
+        session.latency().utteranceEnded(eouWaitMs);
     }
 
     public void onClientInterim(String channelId, String text) {
         DialogSession session = sessions.get(channelId);
         if (session == null) {
             return;
+        }
+        // An interim is the caller mid-sentence, which is the one thing the silence
+        // watchdog could not see: it only knew about bot audio, a turn in flight, and
+        // finals. A caller explaining something for longer than no-input-seconds was
+        // therefore prompted with "Alo, eshityapsizmi?" over the top of their own
+        // sentence — on a real call, 370ms before their final arrived.
+        session.touchActivity();
+        session.noteInterim();
+        if (session.claimBackchannel(props.backchannelAfterMs())) {
+            // Off the recognizer's thread: synthesis can take a network round trip, and
+            // this one is holding the rest of the caller's audio behind it.
+            int turn = session.turnCount();
+            executors.submit(() -> speech.speakBackchannel(session, turn));
+        }
+        if (session.claimInterjection(props.interjectAfterMs())) {
+            executors.submit(() -> speech.interject(session));
         }
         turnRunner.speculate(session, text);
     }

@@ -2,7 +2,6 @@ package uz.murodjon.robotcallv2.agent.alerting;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
@@ -16,9 +15,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Periodically checks two things a degrading deployment shows up in first: the recent
- * call success rate ("success" = a promise to pay) and the §1.3 turnaround budget.
- * Both are logged as an alert when they cross their threshold (PROJECT.md §10 Bosqich 12).
+ * Periodically checks what a degrading deployment shows up in first: the recent
+ * call success rate ("success" = a promise to pay), the §1.3 turnaround budget, and
+ * whether the pipeline's own optimizations are still paying for themselves.
+ * Each is logged as an alert when it crosses its threshold (PROJECT.md §10 Bosqich 12).
  * Log-based by design — wire the WARN log to your alerting sink (e.g. Loki/Alertmanager).
  * Best-effort: a DB or metric error is logged and skipped.
  */
@@ -27,66 +27,59 @@ public class AlertingService {
 
     private static final Logger log = LoggerFactory.getLogger(AlertingService.class);
 
-    private final CallAttemptJpaRepository callAttempts;
+    private final CallAttemptJpaRepository callAttemptJpaRepository;
     private final NotificationService notificationService;
-    private final CompanyProperties companyProps;
-    private final VoiceMetrics metrics;
-    private final boolean enabled;
-    private final int windowMinutes;
-    private final int minSample;
-    private final double threshold;
-    private final int turnaroundBudgetMs;
-    private final int turnaroundMinTurns;
+    private final CompanyProperties companyProperties;
+    private final VoiceMetrics voiceMetrics;
+    private final AlertingProperties alertingProperties;
 
     /** Turns already counted when {@link #checkTurnaround} last ran — the window is the delta. */
     private long lastTurnaroundCount;
-// todo buni propertyga olish kerak buncha yamlda oqildigan fieldlarni
-    public AlertingService(CallAttemptJpaRepository callAttempts,
+
+    /** Counters as {@link #checkEfficiency} last saw them; every ratio below is a delta. */
+    private long lastSpeculationsStarted;
+    private long lastSpeculationsHit;
+    private long lastTtsCacheHits;
+    private long lastTtsCacheMisses;
+    private long lastPromptTokens;
+    private long lastCachedTokens;
+
+    public AlertingService(CallAttemptJpaRepository callAttemptJpaRepository,
                            NotificationService notificationService,
-                           CompanyProperties companyProps,
-                           VoiceMetrics metrics,
-                           @Value("${voice-agent.alerting.enabled:true}") boolean enabled,
-                           @Value("${voice-agent.alerting.window-minutes:30}") int windowMinutes,
-                           @Value("${voice-agent.alerting.min-sample:20}") int minSample,
-                           @Value("${voice-agent.alerting.success-threshold:0.3}") double threshold,
-                           @Value("${voice-agent.alerting.turnaround-budget-ms:1000}") int turnaroundBudgetMs,
-                           @Value("${voice-agent.alerting.turnaround-min-turns:30}") int turnaroundMinTurns) {
-        this.callAttempts = callAttempts;
+                           CompanyProperties companyProperties,
+                           VoiceMetrics voiceMetrics,
+                           AlertingProperties alertingProperties) {
+        this.callAttemptJpaRepository = callAttemptJpaRepository;
         this.notificationService = notificationService;
-        this.companyProps = companyProps;
-        this.metrics = metrics;
-        this.enabled = enabled;
-        this.windowMinutes = windowMinutes;
-        this.minSample = minSample;
-        this.threshold = threshold;
-        this.turnaroundBudgetMs = turnaroundBudgetMs;
-        this.turnaroundMinTurns = turnaroundMinTurns;
+        this.companyProperties = companyProperties;
+        this.voiceMetrics = voiceMetrics;
+        this.alertingProperties = alertingProperties;
     }
 
     @Scheduled(fixedDelayString = "#{${voice-agent.alerting.check-minutes:5} * 60 * 1000}")
     public void checkSuccessRate() {
-        if (!enabled) {
+        if (!alertingProperties.enabled()) {
             return;
         }
         try {
-            Instant since = Instant.now().minus(windowMinutes, ChronoUnit.MINUTES);
-            long total = callAttempts.countByEndedAtGreaterThanEqual(since);
-            if (total < minSample) {
+            Instant since = Instant.now().minus(alertingProperties.windowMinutes(), ChronoUnit.MINUTES);
+            long total = callAttemptJpaRepository.countByEndedAtGreaterThanEqual(since);
+            if (total < alertingProperties.minSample()) {
                 return; // not enough data to judge
             }
-            long success = callAttempts.countByEndedAtGreaterThanEqualAndDisposition(since, Disposition.PROMISE_TO_PAY);
+            long success = callAttemptJpaRepository.countByEndedAtGreaterThanEqualAndDisposition(since, Disposition.PROMISE_TO_PAY);
             double rate = success / (double) total;
-            if (rate < threshold) {
+            if (rate < alertingProperties.successThreshold()) {
                 log.error("ALERT: call success rate {}% over last {}min ({}/{}) below threshold {}%",
-                        Math.round(rate * 100), windowMinutes, success, total, Math.round(threshold * 100));
+                        Math.round(rate * 100), alertingProperties.windowMinutes(), success, total, Math.round(alertingProperties.successThreshold() * 100));
                 // Not company-scoped (this check runs across every call, not per-tenant) —
                 // notifies the default company same as the rest of this best-effort check.
-                notificationService.notify(companyProps.defaultId(), NotificationType.ERROR_OCCURRED,
+                notificationService.notify(companyProperties.defaultId(), NotificationType.ERROR_OCCURRED,
                         "Xato yuz berdi", "Qo'ng'iroq muvaffaqiyat darajasi " + Math.round(rate * 100)
-                                + "% ga tushdi (oxirgi " + windowMinutes + " daqiqada)", null);
+                                + "% ga tushdi (oxirgi " + alertingProperties.windowMinutes() + " daqiqada)", null);
             } else {
                 log.info("Success rate {}% over last {}min ({}/{})",
-                        Math.round(rate * 100), windowMinutes, success, total);
+                        Math.round(rate * 100), alertingProperties.windowMinutes(), success, total);
             }
         } catch (Exception e) {
             log.warn("Success-rate check failed: {}", e.getMessage());
@@ -105,28 +98,89 @@ public class AlertingService {
      */
     @Scheduled(fixedDelayString = "#{${voice-agent.alerting.check-minutes:5} * 60 * 1000}")
     public void checkTurnaround() {
-        if (!enabled) {
+        if (!alertingProperties.enabled()) {
             return;
         }
         try {
-            long count = metrics.turnaroundCount();
+            long count = voiceMetrics.turnaroundCount();
             long turns = count - lastTurnaroundCount;
             lastTurnaroundCount = count;
-            if (turns < turnaroundMinTurns) {
+            if (turns < alertingProperties.turnaroundMinTurns()) {
                 return;
             }
-            long p95 = Math.round(metrics.turnaroundP95Millis());
-            if (p95 > turnaroundBudgetMs) {
+            long p95 = Math.round(voiceMetrics.turnaroundP95Millis());
+            if (p95 > alertingProperties.turnaroundBudgetMs()) {
                 log.error("ALERT: turnaround p95 {}ms over the last {} turns exceeds the {}ms budget (§1.3)",
-                        p95, turns, turnaroundBudgetMs);
-                notificationService.notify(companyProps.defaultId(), NotificationType.ERROR_OCCURRED,
+                        p95, turns, alertingProperties.turnaroundBudgetMs());
+                notificationService.notify(companyProperties.defaultId(), NotificationType.ERROR_OCCURRED,
                         "Javob kechikmoqda", "Bot javobining kechikishi (p95) " + p95
-                                + " ms — belgilangan " + turnaroundBudgetMs + " ms dan yuqori", null);
+                                + " ms — belgilangan " + alertingProperties.turnaroundBudgetMs() + " ms dan yuqori", null);
             } else {
                 log.info("Turnaround p95 {}ms over the last {} turns", p95, turns);
             }
         } catch (Exception e) {
             log.warn("Turnaround check failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The three ratios that say whether the latency work is paying for itself: how often a
+     * reply started before the caller finished turned out to be the right one, how much
+     * synthesis the cache spared, and what share of each prompt the provider served from
+     * its own cache.
+     *
+     * <p>Only the first can lose money. A speculative reply the caller invalidates is
+     * billed and thrown away, so a hit rate under the threshold means preemptive
+     * generation is buying latency with tokens at a bad exchange rate — either
+     * {@code preemptive-min-chars} is too low or the recognizer's interims are unstable.
+     * The other two are free either way and are logged for the same window.
+     */
+    @Scheduled(fixedDelayString = "#{${voice-agent.alerting.check-minutes:5} * 60 * 1000}")
+    public void checkEfficiency() {
+        if (!alertingProperties.enabled()) {
+            return;
+        }
+        try {
+            long started = voiceMetrics.speculationStartedCount();
+            long hit = voiceMetrics.speculationHitCount();
+            long cacheHits = voiceMetrics.ttsCacheHitCount();
+            long cacheMisses = voiceMetrics.ttsCacheMissCount();
+            long promptTokens = voiceMetrics.llmPromptTokenCount();
+            long cachedTokens = voiceMetrics.llmCachedTokenCount();
+
+            long speculations = started - lastSpeculationsStarted;
+            long hits = hit - lastSpeculationsHit;
+            long ttsHits = cacheHits - lastTtsCacheHits;
+            long ttsLookups = ttsHits + (cacheMisses - lastTtsCacheMisses);
+            long prompt = promptTokens - lastPromptTokens;
+            long cached = cachedTokens - lastCachedTokens;
+
+            lastSpeculationsStarted = started;
+            lastSpeculationsHit = hit;
+            lastTtsCacheHits = cacheHits;
+            lastTtsCacheMisses = cacheMisses;
+            lastPromptTokens = promptTokens;
+            lastCachedTokens = cachedTokens;
+
+            if (speculations < alertingProperties.minSample()) {
+                return; // a handful of turns says nothing about a rate
+            }
+            long hitRate = hits * 100 / speculations;
+            log.info("Pipeline efficiency over the last {} speculations: hit {}% ({}/{}), "
+                            + "TTS cache {}%, prompt served from cache {}%",
+                    speculations, hitRate, hits, speculations,
+                    percent(ttsHits, ttsLookups), percent(cached, prompt));
+            if (hitRate < Math.round(alertingProperties.speculationMinHitRate() * 100)) {
+                log.warn("ALERT: speculative replies confirmed only {}% of the time ({}/{}) — "
+                                + "the misses are billed and thrown away",
+                        hitRate, hits, speculations);
+            }
+        } catch (Exception e) {
+            log.warn("Efficiency check failed: {}", e.getMessage());
+        }
+    }
+
+    private static long percent(long part, long whole) {
+        return whole > 0 ? part * 100 / whole : 0;
     }
 }

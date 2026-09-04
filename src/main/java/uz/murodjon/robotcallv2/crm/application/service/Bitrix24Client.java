@@ -75,7 +75,9 @@ public class Bitrix24Client {
                     null,
                     null,
                     String.valueOf(id),
-                    "uz-UZ"
+                    "uz-UZ",
+                    null,
+                    null
             ));
         } catch (Exception e) {
             log.warn("Bitrix24 findContactByPhone failed: {}", e.getMessage());

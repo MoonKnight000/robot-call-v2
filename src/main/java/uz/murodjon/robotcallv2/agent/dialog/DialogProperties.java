@@ -34,6 +34,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       caller actually reacts to. Only ever fires when the turn is
  *                       genuinely slow, never on the greeting, and never on consecutive
  *                       turns. 0 disables it
+ * @param backchannelAfterMs how long a caller may talk before the bot says "aha" under
+ *                       them to show it is still listening. A person does this every few
+ *                       seconds; a line that stays silent through a long explanation reads
+ *                       as nobody being there, and callers stop and say "alo?". It is not
+ *                       a turn and never enters the history — see
+ *                       {@code SpeechOutput#speakBackchannel}. 0 disables it
+ * @param backchannelVolumePercent how loud that is, as a share of the normal speaking
+ *                       level. At full volume it is not a backchannel, it is the bot
+ *                       talking over the caller
+ * @param interjectAfterMs how long a caller may talk before the bot steps in with an
+ *                       apology and a check. A caller who has been explaining for half a
+ *                       minute has usually stopped answering the question, and a recognizer
+ *                       cannot close an utterance that never pauses — the turn simply waits.
+ *                       Spoken at full volume, unlike a backchannel: it is meant to take the
+ *                       floor. 0 disables it
  * @param falseInterruptionTimeoutMs how long a barge-in waits for the caller's words
  *                       before it is judged to have been noise. A VAD fires on a cough,
  *                       a door, or the bot's own audio coming back off a speakerphone
@@ -53,6 +68,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       did — but a cancelled guess is still billed, so it is only worth
  *                       having while most of them land. Watch
  *                       voice.llm.speculation.hit against .started. Streaming only
+ * @param preemptiveTts  carry the guess one stage further: synthesize its first sentence
+ *                       into the TTS cache while the caller is still finishing, so a turn
+ *                       that adopts it speaks from a cache hit instead of paying a
+ *                       synthesis round trip after the caller has stopped. Nothing is ever
+ *                       spoken from here — the audio only sits in the cache, and the turn's
+ *                       own fact guard still sees the sentence. Costs characters on a
+ *                       miss, so it is only worth having on top of a healthy speculation
+ *                       hit rate. Requires {@code preemptive}
  * @param preemptiveMinChars how much interim text is worth guessing from. The first
  *                       syllables of an utterance are revised constantly and are almost
  *                       never what the final says, so guessing there buys a cancelled
@@ -71,6 +94,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       call is recorded") from code before the model's first turn.
  *                       The requirement is legal; leaving it to the prompt means a
  *                       model that skips it puts the call on the wrong side of §11
+ * @param fastModel      model id for turns where the caller said almost nothing ("ha",
+ *                       "to'ladim"). Those are most of a call and are answered the same
+ *                       way by any model, while the time-to-first-token is paid on every
+ *                       one of them. Blank keeps every turn on the company's configured
+ *                       model
+ * @param fastModelMaxWords how short "almost nothing" is. Above this the caller is saying
+ *                       something, and something is what the larger model is for
  * @param stateScopedTools send only the tools the current FSM state can legitimately
  *                       use, instead of all of them on every turn. Tool declarations
  *                       are re-billed with each request, and a tool that cannot fire
@@ -86,6 +116,24 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       emits no final) leaves the call mute until
  *                       {@code maxCallSeconds}. 0 disables the watchdog
  * @param noInputMaxPrompts how many times to ask before ending the call as unanswered
+ * @param fastPath       settle the turns whose meaning is not in doubt ("adashibsiz",
+ *                       "boshqa telefon qilmang", "operatorga ulang") from code, without a
+ *                       model round trip ({@link FastPathRouter}). The model reaches the
+ *                       same tool anyway, a turnaround and a prompt later. Matching is on
+ *                       substrings, so a sentence that merely contains one of those phrases
+ *                       ends a call that was going fine — this is the switch that stops it
+ * @param knowledgeBase  answer questions this system already knows the answer to ("how do
+ *                       I pay?", "which branch?") from a fixed line instead of the model.
+ *                       The answer is policy and never varies, so a paraphrase costs a full
+ *                       turnaround and is the part most likely to be wrong. Off by default:
+ *                       it takes the turn away from the scenario, so the wording has to be
+ *                       checked against the company that is actually running
+ * @param lowConfidenceThreshold recognition confidence below which the turn is told to
+ *                       repeat what it heard back before acting on it. A misheard date
+ *                       that reaches {@code recordPaymentPromise} is a promise filed for a
+ *                       day the caller never named, and nothing downstream can tell the
+ *                       difference. Providers that report no confidence at all (0) are
+ *                       never treated as unsure; 0 disables the check
  * @param factGuard      verify money figures in the model's reply against the injected
  *                       facts before speaking them (§4.4). A hallucinated debt amount
  *                       is the worst output this system has; the prompt forbids it, and
@@ -115,15 +163,24 @@ public record DialogProperties(
         int maxCallSeconds,
         boolean streaming,
         int fillerDelayMs,
+        int backchannelAfterMs,
+        int backchannelVolumePercent,
+        int interjectAfterMs,
         int falseInterruptionTimeoutMs,
         boolean preemptive,
+        boolean preemptiveTts,
         int preemptiveMinChars,
         int minInterruptionWords,
         boolean mandatoryDisclosure,
+        String fastModel,
+        int fastModelMaxWords,
         boolean stateScopedTools,
         int historyMaxMessages,
         int noInputSeconds,
         int noInputMaxPrompts,
+        boolean fastPath,
+        boolean knowledgeBase,
+        float lowConfidenceThreshold,
         boolean factGuard,
         int factViolationEscalateAfter,
         long maxTokensPerCall,

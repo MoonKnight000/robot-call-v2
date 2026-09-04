@@ -60,15 +60,15 @@ public class SentimentDetector {
     public String empathyDirective(CustomerSentiment sentiment, String language) {
         if (sentiment == CustomerSentiment.FRUSTRATED) {
             if ("ru-RU".equalsIgnoreCase(language)) {
-                return "\n\n[EMPATHY & DE-ESCALATION DIRECTIVE]: Клиент раздражен или взволнован! "
-                        + "Проявите максимальное сочувствие и вежливость. Начните ответ с теплой эмпатии "
-                        + "('Я вас прекрасно понимаю, давайте спокойно разберемся...'). "
-                        + "Говорите мягче, не повторяйте роботизированных фраз и не давите.";
+                return "\n\n[EMPATHY & DE-ESCALATION DIRECTIVE]: Клиент раздражен. "
+                        + "Признайте это одним коротким словом ('Понимаю.') и спокойно вернитесь к делу. "
+                        + "Не давите и не растягивайте сочувствие: разыгранная эмпатия звучит фальшиво "
+                        + "и раздражает сильнее молчания.";
             } else {
-                return "\n\n[HAMDARDLIK VA TINCHLANTIRISH QOIDASI]: Mijoz asabiylashgan yoki norozi! "
-                        + "Maksimal darajada xushmuomala va hamdard bo'ling. Javobni vaziyatni tushunishingizni "
-                        + "bildiruvchi iliq gap bilan boshlang ('Sizni juda yaxshi tushunib turibman, keling, birgalikda xotirjam ko'rib chiqamiz...'). "
-                        + "Bosim qilmang, robotdek bir xil gapni takrorlamang.";
+                return "\n\n[HAMDARDLIK VA TINCHLANTIRISH QOIDASI]: Mijoz asabiylashgan. "
+                        + "Buni bitta qisqa so'z bilan tan oling ('Tushunaman.') va xotirjam ohangda ishga qayting. "
+                        + "Bosim qilmang, hamdardlikni cho'zmang: o'ynalgan hamdardlik samimiy emas va "
+                        + "mijozni jimlikdan ko'ra ko'proq asabiylashtiradi.";
             }
         } else if (sentiment == CustomerSentiment.CONFUSED) {
             if ("ru-RU".equalsIgnoreCase(language)) {

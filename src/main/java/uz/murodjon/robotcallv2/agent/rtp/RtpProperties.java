@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                         both the inbound packets and the 20ms playback pacer of
  *                         every concurrent call, so a single thread jitters at the
  *                         ~20 concurrent calls the MVP targets (PROJECT.md §1.3).
+ * @param recordingMode    channel mixing mode for recordings (STEREO, SPATIAL_STEREO, DUAL_MONO)
  */
 @ConfigurationProperties(prefix = "voice-agent.rtp")
 public record RtpProperties(
@@ -23,13 +24,31 @@ public record RtpProperties(
         int portRangeEnd,
         String recordingDir,
         String testPlaybackFile,
-        int eventLoopThreads
+        int eventLoopThreads,
+        WavRecorder.RecordingMode recordingMode
 ) {
+
+    public RtpProperties {
+        if (recordingMode == null) {
+            recordingMode = WavRecorder.RecordingMode.SPATIAL_STEREO;
+        }
+    }
 
     /** Effective thread count: the configured value, or one per processor (min 2). */
     public int effectiveEventLoopThreads() {
         return eventLoopThreads > 0
                 ? eventLoopThreads
                 : Math.max(2, Runtime.getRuntime().availableProcessors());
+    }
+
+    /**
+     * How many calls can hold media at once — one even port each ({@code RtpPortAllocator}).
+     *
+     * <p>This is the platform's real ceiling, not a preference: past it
+     * {@code setupMedia} answers a call it has no port for and drops it. The dialer reads
+     * it so that per-company limits, added up, cannot promise more than the machine has.
+     */
+    public int mediaCapacity() {
+        return Math.max(0, (portRangeEnd - portRangeStart) / 2 + 1);
     }
 }

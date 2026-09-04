@@ -13,10 +13,11 @@ import java.util.List;
  * halfway through a contract number. Smart Turn v3 listens to the utterance itself and
  * scores how likely it is to be complete, which is the one signal a timer cannot carry.
  *
- * <p>It is used only to <em>extend</em> the wait, never to shorten it: an utterance the
- * model calls unfinished gets {@link #maxExtendMs()} more silence before the turn is
- * closed. Cutting early on its say-so would put a model with no Uzbek in its training set
- * in charge of when a caller is interrupted, and it is not paid for by anything.
+ * <p>By default it only ever <em>extends</em> the wait: an utterance the model calls
+ * unfinished gets {@link #maxExtendMs()} more silence before the turn is closed. Cutting
+ * early on its say-so puts a model in charge of when a caller is interrupted, so it is a
+ * separate, off-by-default setting ({@link #earlyWaitMs()}) with its own, much higher
+ * confidence bar — and it is what actually buys back the post-roll second.
  *
  * <p><b>Which is also why {@link #languages()} exists.</b> The published model covers 23
  * languages and uz-UZ is not among them; ru-RU is. A call in a language not listed here
@@ -33,6 +34,15 @@ import java.util.List;
  *                    finished. Lower waits more often
  * @param maxExtendMs how much extra silence an utterance scored unfinished earns. Bounded
  *                    because the model is sometimes wrong and the caller is waiting
+ * @param earlyWaitMs silence after which a <em>confidently</em> finished utterance is
+ *                    closed without waiting out the rest of the timer's hangover. This is
+ *                    the only place the model shortens anything, and it is where most of
+ *                    the turnaround budget is: a second of post-roll is a second the
+ *                    caller spends listening to nothing. 0 disables early closing and
+ *                    leaves the model extending only
+ * @param earlyThreshold probability required for that. Deliberately far above
+ *                    {@link #threshold()}: extending a wait on a wrong answer costs a few
+ *                    hundred milliseconds, cutting one costs the caller their sentence
  * @param nFft        STFT size for the log-mel features the graph expects. Must be a power
  *                    of two
  * @param hopSamples  STFT hop. With {@code nFft} and {@code frames} it has to reproduce the
@@ -48,6 +58,8 @@ public record SmartTurnProperties(
         List<String> languages,
         float threshold,
         int maxExtendMs,
+        int earlyWaitMs,
+        float earlyThreshold,
         int nFft,
         int hopSamples,
         int mels,

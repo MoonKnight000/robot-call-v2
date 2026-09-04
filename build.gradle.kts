@@ -2,7 +2,7 @@ import com.google.protobuf.gradle.id
 
 plugins {
     java
-    id("org.springframework.boot") version "3.5.16"
+    id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.google.protobuf") version "0.10.0"
 }
@@ -19,21 +19,23 @@ java {
 
 repositories {
     mavenCentral()
+    maven { url = uri("https://repo.spring.io/milestone") }
 }
 
-extra["flyway.version"] = "11.20.2"
-
+extra["flyway.version"] = "13.4.0"
 extra["netty.version"] = "4.2.0.Final"
+extra["springAiVersion"] = "2.0.0-M2"
 
 dependencyManagement {
     imports {
-        mavenBom("org.springframework.ai:spring-ai-bom:1.1.8")
+        mavenBom("org.springframework.ai:spring-ai-bom:${property("springAiVersion")}")
         mavenBom("io.grpc:grpc-bom:1.62.2")
+        mavenBom("org.testcontainers:testcontainers-bom:1.20.4")
     }
 }
 
 dependencies {
-    // Spring
+    // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
@@ -45,10 +47,13 @@ dependencies {
     // from voice-agent.report-schedule.* (env-var placeholders, like every other
     // external credential in this project).
     implementation("org.springframework.boot:spring-boot-starter-mail")
+
     // JWT for user login (ROADMAP E.1) — X-Api-Key stays for machine-to-machine callers.
-    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+    // Versions for api, impl, and jackson are kept 100% in sync via jjwtVersion.
+    val jjwtVersion = "0.13.0"
+    implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:$jjwtVersion")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:$jjwtVersion")
 
     // Asterisk ARI (bundles its own Netty-based HTTP/WebSocket client)
     // 0.18.0 is built against Netty 4.2 (NettyHttpClient needs
@@ -59,13 +64,6 @@ dependencies {
     // fat netty-all artifact so the vulnerable HTTP/HTTP2/SMTP codecs are not pulled in.
     implementation("io.netty:netty-transport")
 
-    // STT — Google Cloud Speech-to-Text (streaming). Uses Application Default
-    // Credentials (GOOGLE_APPLICATION_CREDENTIALS). Abstracted behind SttProvider.
-    implementation("com.google.cloud:google-cloud-speech:4.36.0")
-
-    // TTS — Google Cloud Text-to-Speech (uz-UZ, and ru-RU fallback). Same ADC as STT.
-    implementation("com.google.cloud:google-cloud-texttospeech:2.44.0")
-
     // STT + TTS — Yandex SpeechKit v3 streaming (gRPC: RecognizeStreaming / UtteranceSynthesis).
     // Stubs (yandex.cloud.api.ai.{stt,tts}.v3.*) are generated at build time from the
     // .proto files vendored under src/main/proto (pulled from yandex-cloud/cloudapi) —
@@ -74,8 +72,6 @@ dependencies {
     implementation("io.grpc:grpc-netty-shaded")
     implementation("io.grpc:grpc-protobuf")
     implementation("io.grpc:grpc-stub")
-    // @Generated is used by protoc-gen-grpc-java's output but was dropped from the JDK in 9+.
-    compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 
     // LLM dialog — Spring AI's native Google GenAI starter, talking to the Gemini
     implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
@@ -92,23 +88,17 @@ dependencies {
 
     // Report export (§10.10 "Hisobotni yuklab olish") — PDF and XLSX, alongside the
     // existing plain-CSV path.
-    implementation("com.github.librepdf:openpdf:1.3.30")
-    implementation("org.apache.poi:poi-ooxml:5.2.5")
+    implementation("com.github.librepdf:openpdf:1.4.2")
+    implementation("org.apache.poi:poi-ooxml:5.4.0")
 
-    // Database
+    // Database — Flyway migrations and PostgreSQL
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-core")
-    // Flyway 10+ ships per-database support in separate modules; without this one
-    // Flyway cannot identify a PostgreSQL connection at all.
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 
-    // Utils
-    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
-    compileOnly("org.projectlombok:lombok")
-    annotationProcessor("org.projectlombok:lombok")
-
     //Doc
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
@@ -137,7 +127,7 @@ protobuf {
     generateProtoTasks {
         all().forEach { task ->
             task.plugins {
-                id("grpc")
+                maybeCreate("grpc")
             }
         }
     }

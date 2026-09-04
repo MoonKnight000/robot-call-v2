@@ -71,7 +71,9 @@ public class AmoCrmClient {
                     null,
                     null,
                     String.valueOf(id),
-                    "uz-UZ"
+                    "uz-UZ",
+                    null,
+                    null
             ));
         } catch (Exception e) {
             log.warn("amoCRM findByPhone failed: {}", e.getMessage());

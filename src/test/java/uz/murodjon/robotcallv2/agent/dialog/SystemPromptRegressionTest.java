@@ -45,9 +45,13 @@ class SystemPromptRegressionTest {
                 "Chegirma, imtiyoz yoki qarz kechirishni HECH QACHON taklif qilma",
                 "To'lov muddatini o'zing uzaytirma",
                 "recordPaymentPromise'ga ber",
-                "Huquqiy oqibatlar",
+                "Peniya va shartnoma bekor bo'lish muddatini",
+                "Sud, ijro, qora ro'yxat",
                 "shaxsiy ma'lumotlarini begona odamga aytma",
-                "requestHumanTransfer bilan operatorga o'tkaz",
+                // Not "requestHumanTransfer bilan operatorga o'tkaz": the penalty
+                // guardrail above routes to the same tool, so that fragment no longer
+                // identifies the platform rule this line is checking the order of.
+                "Savolga javobni bilmasang",
                 "asabiylashsa yoki haqorat qilsa",
                 "recordWrongPerson chaqiring",
                 "recordDoNotCall chaqir"
@@ -66,13 +70,26 @@ class SystemPromptRegressionTest {
         Map<String, String> expectedPurpose = Map.ofEntries(
                 Map.entry("GREETING", "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring."),
                 Map.entry("IDENTITY_CHECK", "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?')."),
-                Map.entry("DEBT_NOTICE", "Qarz miqdori va muddatini xushmuomala yetkaz."),
-                Map.entry("REASON_INQUIRY", "To'lov nega kechikayotganini bilib ol."),
-                Map.entry("PAYMENT_DATE", "Mijozdan aniq to'lov sanasini ol."),
+                Map.entry("DEBT_NOTICE", "Qarz miqdori va muddatini xushmuomala, lekin QAT'IY yetkaz — "
+                        + "summani bir qisqa gapda, muddatni boshqasida ayt, ikkalasini bitta uzun gapga tiqma. "
+                        + "Bu tasdiqlatish emas, xabar berish: 'qarzingiz bor ekanmi?', 'to'g'rimi?' deb so'rama. "
+                        + "FAKTLARda Peniya berilgan bo'lsa uni ham shu yerda bir gapda ayt (berilmagan bo'lsa "
+                        + "peniya haqida umuman gapirma). Shartnoma raqamini mijoz o'zi so'ramasa umuman aytma. "
+                        + "Javobing ALBATTA savol bilan tugasin — summani aytib jim qolma; bu bosqichda "
+                        + "tasdiqlovchi savol ber ('bu haqda xabaringiz bormidi?', 'eshitib turibsizmi?'), "
+                        + "sababni keyingi bosqichda so'raysan."),
+                Map.entry("REASON_INQUIRY", "Bu bosqichdagi BIRINCHI savoling aynan sabab haqida bo'lsin: "
+                        + "'Nima uchun to'lanmayapti?' yoki 'Sabab nimada?'. SANA so'rash bu bosqichda "
+                        + "QAT'IYAN taqiqlanadi — sanani keyingi bosqichda so'raysan. Mijoz sababni "
+                        + "aytmaguncha PAYMENT_DATE ga o'tma."),
+                Map.entry("PAYMENT_DATE", "Mijozdan aniq to'lov sanasini ol. FAKTLARda 'Shartnoma bekor "
+                        + "bo'lishiga qolgan kun' berilgan bo'lsa — sanani so'rashdan oldin uni bir qisqa "
+                        + "gapda, tahdidsiz, xotirjam ayt (masalan: 'Yana 30 kun to'lanmasa, shartnoma "
+                        + "shartlariga ko'ra bekor qilinadi'). Berilmagan bo'lsa bu haqda umuman gapirma."),
                 Map.entry("CONFIRMATION", "Kelishuvni takrorlab tasdiqla."),
-                Map.entry("CLOSING", "Xushmuomala xayrlash."),
+                Map.entry("CLOSING", "Bitta qisqa gap bilan xushmuomala xayrlash va shu gapni endCall tool'ining reply parametrida yuborish — xayrlashuv boshqa tool orqali aytilsa qo'ng'iroq uzilmay ochiq qoladi."),
                 Map.entry("ESCALATE_TO_HUMAN", "Operatorga o'tkazishni bildirib xayrlash."),
-                Map.entry("END_CALL", "Qo'ng'iroqni yakunlash.")
+                Map.entry("END_CALL", "Qo'ng'iroqni yakunlash: endCall tool'ini chaqir, boshqa hech narsa aytma.")
         );
         for (StageDef stage : ScenarioFixtures.debtCollection().stages()) {
             String annex = factory.turnAnnex(session(stage.id()));
@@ -94,7 +111,9 @@ class SystemPromptRegressionTest {
                 .contains("Summa: 1500000")
                 .contains("Valyuta: so'm")
                 .contains("Muddat: 2026-07-01")
-                .contains("Shartnoma raqami: UY-2026-00123");
+                .contains("Shartnoma raqami: UY-2026-00123")
+                .contains("Peniya: 75000")
+                .contains("Shartnoma bekor bo'lishiga qolgan kun: 30");
     }
 
     @Test

@@ -1,0 +1,108 @@
+# Every push and pull request: compile, unit tests, and the turn-boundary regression
+# net over the recorded corpus (docs/REGRESSION.md).
+#
+# Deliberately NOT here: the persona simulation. It calls a real LLM for every turn of
+# every persona, so running it per push spends tokens on pushes that changed a README
+# and makes the build depend on a provider being up. It has its own workflow
+# (simulation.yml) on a schedule and on demand.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile
+        run: ./gradlew classes testClasses --no-daemon
+
+      - name: Unit tests
+        run: ./gradlew unitTest --no-daemon
+
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: build/reports/tests/unitTest
+          if-no-files-found: ignore
+
+  turn-replay:
+    name: Turn-boundary regression
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The corpus is real customer audio and never lives in git. It is pulled from the
+      # project's own object storage; without those secrets the job says so and passes,
+      # so a fork or a fresh clone is not blocked by data it cannot have.
+      - name: Check for corpus credentials
+        id: corpus
+        env:
+          ENDPOINT: ${{ secrets.REPLAY_CORPUS_ENDPOINT }}
+        run: |
+          if [ -z "$ENDPOINT" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::REPLAY_CORPUS_ENDPOINT is not set — turn-boundary regression skipped. See docs/REGRESSION.md."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch the VAD model
+        if: steps.corpus.outputs.available == 'true'
+        run: |
+          mkdir -p models
+          curl -fsSL -o models/silero_vad.onnx "${{ secrets.VAD_MODEL_URL }}"
+
+      - name: Fetch the corpus
+        if: steps.corpus.outputs.available == 'true'
+        env:
+          MC_HOST_corpus: ${{ secrets.REPLAY_CORPUS_ENDPOINT }}
+        run: |
+          curl -fsSL -o mc https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+          ./mc mirror --quiet "corpus/${{ secrets.REPLAY_CORPUS_BUCKET }}" corpus
+          echo "Recordings: $(find corpus -name '*.wav' | wc -l)"
+
+      - name: Replay
+        if: steps.corpus.outputs.available == 'true'
+        run: |
+          ./gradlew turnReplay --no-daemon --args="corpus \
+            --vad-model=models/silero_vad.onnx \
+            --manifest=corpus/manifest.tsv"
+
+      - name: Publish the replay log
+        if: always() && steps.corpus.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: turn-replay-log
+          path: corpus/manifest.tsv
+          if-no-files-found: ignore

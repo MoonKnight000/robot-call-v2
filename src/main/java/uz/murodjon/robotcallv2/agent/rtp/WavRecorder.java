@@ -29,6 +29,15 @@ import java.util.concurrent.BlockingQueue;
  */
 public class WavRecorder implements Closeable {
 
+    public enum RecordingMode {
+        /** Hard channel separation: Left = Caller, Right = Bot. */
+        STEREO,
+        /** Natural spatial cross-feed: Left = Caller + 0.35*Bot, Right = Bot + 0.35*Caller. Eliminates dead-ear silence. */
+        SPATIAL_STEREO,
+        /** Mixed into both channels: (Caller + Bot) / 2. */
+        DUAL_MONO
+    }
+
     private static final int CHANNELS = 2;
     private static final int BYTES_PER_FRAME = CHANNELS * 2;
 
@@ -41,6 +50,7 @@ public class WavRecorder implements Closeable {
 
     private final RandomAccessFile raf;
     private final int sampleRate;
+    private final RecordingMode mode;
     private final BlockingQueue<short[]> botFrames = new ArrayBlockingQueue<>(MAX_PENDING_BOT_FRAMES);
     private int dataBytes;
 
@@ -49,7 +59,12 @@ public class WavRecorder implements Closeable {
     private int botOffset;
 
     public WavRecorder(Path path, int sampleRate) throws IOException {
+        this(path, sampleRate, RecordingMode.STEREO);
+    }
+
+    public WavRecorder(Path path, int sampleRate, RecordingMode mode) throws IOException {
         this.sampleRate = sampleRate;
+        this.mode = mode != null ? mode : RecordingMode.STEREO;
         this.raf = new RandomAccessFile(path.toFile(), "rw");
         raf.setLength(0);
         raf.write(new byte[WavHeader.SIZE]);
@@ -62,8 +77,27 @@ public class WavRecorder implements Closeable {
     public synchronized void writeCaller(short[] pcm, int len) throws IOException {
         byte[] buf = new byte[len * BYTES_PER_FRAME];
         for (int i = 0; i < len; i++) {
-            putLE(buf, i * BYTES_PER_FRAME, pcm[i]);
-            putLE(buf, i * BYTES_PER_FRAME + 2, nextBotSample());
+            short caller = pcm[i];
+            short bot = nextBotSample();
+            short left;
+            short right;
+            switch (mode) {
+                case SPATIAL_STEREO -> {
+                    left = clamp16((int) (caller + bot * 0.35));
+                    right = clamp16((int) (bot + caller * 0.35));
+                }
+                case DUAL_MONO -> {
+                    short mixed = clamp16((caller + bot) / 2);
+                    left = mixed;
+                    right = mixed;
+                }
+                default -> {
+                    left = caller;
+                    right = bot;
+                }
+            }
+            putLE(buf, i * BYTES_PER_FRAME, left);
+            putLE(buf, i * BYTES_PER_FRAME + 2, right);
         }
         raf.write(buf);
         dataBytes += buf.length;
@@ -117,8 +151,26 @@ public class WavRecorder implements Closeable {
         }
         byte[] buf = new byte[pending * BYTES_PER_FRAME];
         for (int i = 0; i < pending; i++) {
-            putLE(buf, i * BYTES_PER_FRAME, (short) 0);
-            putLE(buf, i * BYTES_PER_FRAME + 2, nextBotSample());
+            short bot = nextBotSample();
+            short left;
+            short right;
+            switch (mode) {
+                case SPATIAL_STEREO -> {
+                    left = clamp16((int) (bot * 0.35));
+                    right = bot;
+                }
+                case DUAL_MONO -> {
+                    short mixed = clamp16(bot / 2);
+                    left = mixed;
+                    right = mixed;
+                }
+                default -> {
+                    left = 0;
+                    right = bot;
+                }
+            }
+            putLE(buf, i * BYTES_PER_FRAME, left);
+            putLE(buf, i * BYTES_PER_FRAME + 2, right);
         }
         raf.write(buf);
         dataBytes += buf.length;
@@ -130,6 +182,16 @@ public class WavRecorder implements Closeable {
             pending += frame.length;
         }
         return pending;
+    }
+
+    private static short clamp16(int val) {
+        if (val > Short.MAX_VALUE) {
+            return Short.MAX_VALUE;
+        }
+        if (val < Short.MIN_VALUE) {
+            return Short.MIN_VALUE;
+        }
+        return (short) val;
     }
 
     private static void putLE(byte[] buf, int offset, short sample) {

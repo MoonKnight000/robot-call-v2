@@ -1,0 +1,95 @@
+# Persona simulation (docs/VOICE-QUALITY-PLAN.md D.2): scripted callers against the real
+# prompt, the real tools and the real guardrails.
+#
+# Nightly and on demand, not per push. Every persona is a full conversation and every turn
+# is two LLM calls — one for the agent, one for the caller — so a per-push run would bill
+# for README edits, and a provider outage would fail builds that changed nothing. What it
+# catches (the agent stopping recording refusals, answering Uzbek in Russian, forgetting to
+# ask the date) shows up in a nightly run just as well.
+#
+# Needs a database: the scenario under test is a row, not a file.
+name: Persona simulation
+
+on:
+  schedule:
+    # 02:00 UTC = 07:00 Asia/Tashkent — the result is on screen before the working day.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      scenario-id:
+        description: Scenario row to run the personas against
+        required: false
+        default: '1'
+
+jobs:
+  simulate:
+    name: Run the personas
+    runs-on: ubuntu-latest
+    # A fork's pull request has no secrets, and a run without an API key would fail for a
+    # reason that has nothing to do with the change.
+    if: github.repository_owner != ''
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: uysot_voice
+          POSTGRES_USER: uysot
+          POSTGRES_PASSWORD: uysot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check for an API key
+        id: key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GEMINI_API_KEY is not set — persona simulation skipped."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Simulate
+        if: steps.key.outputs.available == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DB_URL: jdbc:postgresql://localhost:5432/uysot_voice
+          DB_USER: uysot
+          DB_PASSWORD: uysot
+          # Everything the personas do not need, off: no telephony, no audio, no dialer,
+          # no object storage, no CRM. Flyway still runs, which is what seeds the
+          # built-in scenarios the personas are measured against.
+          ASTERISK_ENABLED: 'false'
+          DIALER_ENABLED: 'false'
+          STT_ENABLED: 'false'
+          TTS_ENABLED: 'false'
+          VAD_ENABLED: 'false'
+          REALTIME_ENABLED: 'false'
+          STORAGE_ENABLED: 'false'
+          CRM_ENABLED: 'false'
+          ALERTING_ENABLED: 'false'
+          SIMULATION_ENABLED: 'true'
+          SIMULATION_PERSONAS: docs/simulation-personas.json
+          SIMULATION_SCENARIO_ID: ${{ inputs.scenario-id || '1' }}
+        # DialogSimulationRunner exits 1 when a persona misses its expected outcome, so
+        # the step's own exit code is the verdict — no log scraping.
+        run: ./gradlew bootRun --no-daemon

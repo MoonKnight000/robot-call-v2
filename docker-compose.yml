@@ -192,12 +192,12 @@ services:
       LLM_CHAT_PROVIDER: ${LLM_CHAT_PROVIDER:-google-genai}
       # Plain Gemini model ids — no provider prefix. The pro models need a billed key,
       # and gemini-2.5-flash 404s for keys that never used it.
-      LLM_DIALOG_MODEL: ${LLM_DIALOG_MODEL:-gemini-3.6-flash}
-      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemini-3.6-flash}
+      LLM_DIALOG_MODEL: ${LLM_DIALOG_MODEL:-gemini-3.8-flash}
+      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemini-3.8-flash}
       # Thinking level (MINIMAL/LOW/MEDIUM/HIGH — bound case-insensitively). Must reach
       # the container: without these lines a value set in .env never arrives and
-      # application.yml's default silently wins. MINIMAL keeps a phone turn fast.
-      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-minimal}
+      # application.yml's default silently wins. Low keeps a phone turn fast while supported by 3.8.
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-low}
       SUMMARY_REASONING_EFFORT: ${SUMMARY_REASONING_EFFORT:-low}
       STT_PROVIDER: ${STT_PROVIDER:-yandex}
       TTS_PROVIDER: ${TTS_PROVIDER:-yandex}

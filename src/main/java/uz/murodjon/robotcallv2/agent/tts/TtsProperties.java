@@ -9,10 +9,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@code tts_voice} table (PROJECT.md §2.5), read via {@code voice.service.TtsVoiceService}.
  *
  * @param enabled         master switch; when false no TTS is synthesized
- * @param provider        active provider id ({@code google}, {@code yandex}, {@code aisha}, {@code cartesia})
+ * @param provider        active provider id ({@code gemini}, {@code yandex}, {@code aisha}, {@code cartesia})
  * @param defaultLanguage BCP-47 language used when a call/turn does not specify one
  * @param cache           synthesized-audio cache settings
- * @param google          Google TTS settings
+ * @param gemini          Gemini TTS settings (gemini-3.1-flash-tts-preview)
+ * @param google          Google TTS settings (legacy)
  * @param yandex          Yandex SpeechKit settings
  * @param aisha           Aisha settings
  * @param cartesia        Cartesia Sonic ultra-low latency TTS settings
@@ -23,6 +24,7 @@ public record TtsProperties(
         String provider,
         String defaultLanguage,
         TtsCacheProperties cache,
+        GeminiTtsProperties gemini,
         GoogleTtsProperties google,
         YandexTtsProperties yandex,
         AishaTtsProperties aisha,

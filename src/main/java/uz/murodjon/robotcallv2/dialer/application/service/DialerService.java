@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
+import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
@@ -49,6 +50,7 @@ public class DialerService {
     private static final Logger log = LoggerFactory.getLogger(DialerService.class);
 
     private final DialerProperties props;
+    private final RtpProperties rtpProps;
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
     private final CampaignService campaignService;
@@ -64,13 +66,14 @@ public class DialerService {
 
     private final Map<Long, AtomicInteger> campaignTrunkCounters = new ConcurrentHashMap<>();
 
-    public DialerService(DialerProperties props, CampaignRepository campaigns,
+    public DialerService(DialerProperties props, RtpProperties rtpProps, CampaignRepository campaigns,
                          CampaignTargetRepository targets, CampaignService campaignService,
                          CompanyConfigService companyConfig, SipTrunkUseCase sipTrunks,
                          RabbitTemplate rabbit, DialerState state,
                          OutboundCallRegistry registry, AriService ariService,
                          GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock) {
         this.props = props;
+        this.rtpProps = rtpProps;
         this.campaigns = campaigns;
         this.targets = targets;
         this.campaignService = campaignService;
@@ -105,11 +108,25 @@ public class DialerService {
             // Pre-warm campaign phrases on-demand if not already done
             ttsWarmup.warmUpForCampaign(campaign);
 
-            int free = props.maxConcurrentCalls() - state.active();
-            if (free <= 0) {
-                log.debug("Dialer concurrency saturated (active={}/max={})", state.active(), props.maxConcurrentCalls());
-                return; // saturated — try again next tick
+            // The platform's ceiling is physical: past the RTP port range a call is
+            // answered and then dropped for want of a port, which costs the subscriber a
+            // ring and us a connected minute.
+            int freePlatform = Math.min(props.maxConcurrentCalls(), rtpProps.mediaCapacity())
+                    - state.activeTotal();
+            if (freePlatform <= 0) {
+                log.debug("Platform concurrency saturated (active={}/max={})",
+                        state.activeTotal(), props.maxConcurrentCalls());
+                return; // nothing can be dialled this tick, by anyone
             }
+            // The company's own share. `continue`, not `return`: one tenant filling its
+            // quota is not a reason for the next tenant in this sweep to dial nothing.
+            int freeCompany = props.maxConcurrentCallsPerCompany() - state.active(campaign.companyId());
+            if (freeCompany <= 0) {
+                log.debug("Company {} concurrency saturated (active={}/max={})", campaign.companyId(),
+                        state.active(campaign.companyId()), props.maxConcurrentCallsPerCompany());
+                continue;
+            }
+            int free = Math.min(freePlatform, freeCompany);
             int batch = Math.min(free, perCampaign);
             batch = Math.min(batch, remainingToday(campaign, today));
             if (batch <= 0) {
@@ -144,7 +161,7 @@ public class DialerService {
             AtomicInteger counter = campaignTrunkCounters.computeIfAbsent(campaign.id(), k -> new AtomicInteger(0));
 
             for (CampaignTarget t : due) {
-                state.reserve();
+                state.reserve(campaign.companyId());
                 state.countDispatch(campaign.id(), today);
                 String language = t.language() != null ? t.language() : campaign.defaultLanguage();
 
@@ -185,7 +202,7 @@ public class DialerService {
         for (String channelId : registry.staleUnanswered(Duration.ofSeconds(props.reclaimAfterSec()))) {
             OutboundCall oc = registry.remove(channelId);
             if (oc != null) {
-                state.release();
+                state.release(oc.companyId());
                 campaignService.applyOutcome(oc.targetId(), Disposition.NO_ANSWER);
                 ariService.hangupChannel(channelId);
                 log.info("Reclaimed unanswered call {} (target {})", channelId, oc.targetId());

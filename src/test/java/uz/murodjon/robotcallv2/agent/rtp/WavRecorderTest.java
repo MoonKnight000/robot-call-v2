@@ -48,6 +48,18 @@ class WavRecorderTest {
     }
 
     @Test
+    void spatialStereoCrossFeedsChannels(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("call.wav");
+        try (WavRecorder recorder = new WavRecorder(file, RATE, WavRecorder.RecordingMode.SPATIAL_STEREO)) {
+            recorder.writeBot(shorts(100), 1);
+            recorder.writeCaller(shorts(1000), 1);
+        }
+
+        short[] samples = samplesOf(file);
+        assertThat(samples).containsExactly(shorts(1035, 450));
+    }
+
+    @Test
     void declaresItselfStereo(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("call.wav");
         try (WavRecorder recorder = new WavRecorder(file, RATE)) {

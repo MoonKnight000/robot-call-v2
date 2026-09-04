@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.security;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -106,12 +105,7 @@ public class SecurityConfig {
                     // credentials); it must clear the filter chain before the real request.
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // Probes carry no data and must work without a secret.
-                    auth.requestMatchers(EndpointRequest.to("health")).permitAll();
-                    if (props.publicUi()) {
-                        // The panel is a static page; the API calls it makes still need the key.
-                        auth.requestMatchers("/", "/index.html", "/favicon.ico",
-                                "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
-                    }
+                    auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
                     // Logging in, activating an invite, refreshing an expired access token, or
                     // recovering a forgotten password all happen without a currently-valid
                     // Bearer token.
@@ -147,7 +141,7 @@ public class SecurityConfig {
                     // the self-service profile page — same reasoning, every method resolves
                     // the target row via CurrentUser, not a path id.
                     auth.requestMatchers("/api/auth/me", "/api/auth/logout", "/api/search",
-                            "/api/notifications/**", "/api/profile/**").authenticated();
+                            "/api/notifications/**", "/api/profile/**", "/api/billing/**").authenticated();
                     // Admin-only (ROADMAP E.1 / UI-DESIGN §8.2 "faqat admin uchun"): user
                     // management, and tenant-level settings (company identity/config, SIP
                     // trunks) — checked before the general operator bar below so neither is
@@ -164,7 +158,7 @@ public class SecurityConfig {
                     // FileStorageService#download enforces the own-company/SUPERADMIN
                     // boundary itself, same as every other cross-tenant lookup.
                     auth.requestMatchers(HttpMethod.GET, "/api/files/**").authenticated();
-                    auth.requestMatchers(EndpointRequest.toAnyEndpoint()).hasRole(VIEWER);
+                    auth.requestMatchers("/actuator/**").hasRole(VIEWER);
                     // Every remaining route either changes state or places a call — day-to-day
                     // operational work (campaigns, calls, contacts, scenarios, inbound routes),
                     // open to OPERATOR and ADMIN alike (ROADMAP E.1 role tier). Note this covers

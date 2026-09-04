@@ -92,6 +92,8 @@ public final class CallContextMapper {
         overlay(facts, "currency", crm.currency());
         overlay(facts, "dueDate", crm.dueDate());
         overlay(facts, "contractNumber", crm.contractNumber());
+        overlay(facts, "penaltyAmount", crm.penaltyAmount());
+        overlay(facts, "contractCancelDays", crm.contractCancelDays());
         return new CallContext(facts, imported.goal());
     }
 

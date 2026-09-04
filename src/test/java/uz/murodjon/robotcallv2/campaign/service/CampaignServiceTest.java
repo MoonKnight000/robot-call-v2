@@ -70,7 +70,7 @@ class CampaignServiceTest {
         users = mock(UserService.class);
         companyConfig = mock(CompanyConfigService.class);
         currentCompany = mock(CurrentCompany.class);
-        dialerProps = new DialerProperties(true, 5, 10, 5, 60, new RetryProperties(180, 15, 1200, true));
+        dialerProps = new DialerProperties(true, 5, 10, 5, 3, 60, new RetryProperties(180, 15, 1200, true));
         audit = mock(AuditService.class);
         notifications = mock(NotificationService.class);
         ttsWarmup = mock(TtsWarmup.class);

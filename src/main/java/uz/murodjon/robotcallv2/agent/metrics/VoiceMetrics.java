@@ -45,10 +45,15 @@ public class VoiceMetrics {
     private final Counter factGuardSpokenFigures;
     private final Counter voicemailsDetected;
     private final Counter spokenLineRetries;
+    private final Counter llmRetries;
     private final Counter fillersPlayed;
     private final Counter bargeIns;
     private final Counter falseBargeIns;
     private final Counter backchannels;
+    private final Counter backchannelsPlayed;
+    private final Counter knowledgeBaseAnswers;
+    private final Counter interjections;
+    private final Counter fastPathTurns;
     private final Counter echoSuppressed;
     private final Counter ttsFailovers;
     private final Counter rtpPacketsReceived;
@@ -58,8 +63,10 @@ public class VoiceMetrics {
     private final DistributionSummary rtpJitter;
     private final DistributionSummary rtpLoss;
     private final DistributionSummary endpointingHangover;
+    private final DistributionSummary qualityScore;
     private final Counter turnsExtended;
     private final Counter turnsComplete;
+    private final Counter turnsClosedEarly;
     private final Timer llmTurn;
     private final Timer ttsSynth;
     private final Timer turnaround;
@@ -127,12 +134,19 @@ public class VoiceMetrics {
                 .baseUnit("milliseconds")
                 .publishPercentileHistogram()
                 .register(registry);
+        this.qualityScore = DistributionSummary.builder("voice.qa.score")
+                .description("automated quality review of a finished call, 0-100")
+                .publishPercentileHistogram()
+                .register(registry);
         // Utterances Smart Turn said were not finished when the timer wanted to close
         // them. All of them means the model disagrees with the timer on every turn, which
         // is a threshold problem, not a caller problem; none of them means it is adding
         // latency to load a model that changes nothing.
         this.turnsExtended = Counter.builder("voice.stt.turn.extended")
                 .description("utterances given extra silence because they sounded unfinished")
+                .register(registry);
+        this.turnsClosedEarly = Counter.builder("voice.stt.turn.closed.early")
+                .description("utterances closed before their hangover ran out, on the detector's say-so")
                 .register(registry);
         this.turnsComplete = Counter.builder("voice.stt.turn.complete")
                 .description("utterances the turn detector agreed were finished")
@@ -166,6 +180,12 @@ public class VoiceMetrics {
         this.spokenLineRetries = Counter.builder("voice.llm.spoken.line.retries")
                 .description("turns the model answered with tool calls only, forcing a second request")
                 .register(registry);
+        // Requests that failed outright and were sent again. Against voice.llm.errors this
+        // says how much of the provider's flakiness the caller never heard: a retry that
+        // lands costs a few hundred milliseconds, a turn lost to a 503 costs the answer.
+        this.llmRetries = Counter.builder("voice.llm.retries")
+                .description("turns whose request failed transiently and was attempted once more")
+                .register(registry);
         // How often a turn was slow enough that the caller was given something to listen
         // to. Read as a share of voice.llm.turn.latency's count: a few percent is the
         // feature working, most turns means the pipeline is slow and this is papering
@@ -190,6 +210,18 @@ public class VoiceMetrics {
         // top of the bot, not an answer to it. Counted separately from the false ones
         // because the cause is different: these are not noise, and no amount of VAD
         // tuning removes them.
+        this.fastPathTurns = Counter.builder("voice.dialog.fastpath.turns")
+                .description("turns settled deterministically, without a model call")
+                .register(registry);
+        this.interjections = Counter.builder("voice.dialog.interjections")
+                .description("times the bot stepped into an answer that would not end")
+                .register(registry);
+        this.knowledgeBaseAnswers = Counter.builder("voice.dialog.knowledge.answers")
+                .description("turns answered from the fixed knowledge base instead of the model")
+                .register(registry);
+        this.backchannelsPlayed = Counter.builder("voice.dialog.backchannel.played")
+                .description("times the bot said \"aha\" under a caller who was still talking")
+                .register(registry);
         this.backchannels = Counter.builder("voice.dialog.backchannel.ignored")
                 .description("caller agreement over the bot's line that did not start a turn")
                 .register(registry);
@@ -308,6 +340,11 @@ public class VoiceMetrics {
         spokenLineRetries.increment();
     }
 
+    /** A turn's request failed transiently and was sent once more. */
+    public void llmRetry() {
+        llmRetries.increment();
+    }
+
     /** A short filler was played because the turn was leaving the caller in silence. */
     public void fillerPlayed() {
         fillersPlayed.increment();
@@ -359,6 +396,16 @@ public class VoiceMetrics {
         (complete ? turnsComplete : turnsExtended).increment();
     }
 
+    /**
+     * An utterance the detector was sure of, closed before its hangover had run out. The
+     * saving is only real while callers are not talking through these closes, so read it
+     * against the turn count and against how often callers get a second turn they did not
+     * mean to start.
+     */
+    public void turnClosedEarly() {
+        turnsClosedEarly.increment();
+    }
+
     /** The bot asked whether the caller was still there. */
     public void noInputPrompt() {
         noInputPrompts.increment();
@@ -400,6 +447,48 @@ public class VoiceMetrics {
     /** A caller transcript was agreement over the bot's line, so it did not start a turn. */
     public void backchannelIgnored() {
         backchannels.increment();
+    }
+
+    /** The bot said "aha" under a caller who was still explaining something. */
+    public void backchannelPlayed() {
+        backchannelsPlayed.increment();
+    }
+
+    /**
+     * One finished call's quality score, as judged by a second model
+     * ({@code CallQualityJudge}). A distribution rather than an average: what matters is
+     * the tail, and a handful of very bad calls is exactly what an average hides.
+     */
+    public void recordQualityScore(int score) {
+        qualityScore.record(score);
+    }
+
+    /**
+     * One thing the judge found wrong with a call. Tagged so a regression reads as one
+     * flag rising — a prompt change that starts answering in the wrong language moves
+     * {@code language} and nothing else.
+     */
+    public void qualityFlag(String flag) {
+        Counter.builder("voice.qa.flags")
+                .description("findings from the automated call-quality review")
+                .tag("flag", flag)
+                .register(registry)
+                .increment();
+    }
+
+    /** A turn settled by the deterministic router — no model call, no tokens. */
+    public void fastPathHandled() {
+        fastPathTurns.increment();
+    }
+
+    /** The bot stepped into an answer that had run past interject-after-ms. */
+    public void interjected() {
+        interjections.increment();
+    }
+
+    /** A turn answered from the fixed knowledge base — no model call, no tokens. */
+    public void knowledgeBaseAnswer() {
+        knowledgeBaseAnswers.increment();
     }
 
     /** A reply was begun on an interim transcript, before the caller had finished. */
@@ -448,6 +537,36 @@ public class VoiceMetrics {
         rtpLoss.record(lost * 100.0 / (received + lost));
     }
 
+    /**
+     * Running totals behind the efficiency ratios — speculations begun and confirmed, TTS
+     * characters bought and saved, prompt tokens sent and served from the provider's
+     * cache. Read as deltas between two checks: each one is the numerator or the
+     * denominator of a ratio that says whether an optimization is paying for itself.
+     */
+    public long speculationStartedCount() {
+        return (long) speculationsStarted.count();
+    }
+
+    public long speculationHitCount() {
+        return (long) speculationsHit.count();
+    }
+
+    public long ttsCacheHitCount() {
+        return (long) ttsCacheHits.count();
+    }
+
+    public long ttsCacheMissCount() {
+        return (long) ttsCacheMisses.count();
+    }
+
+    public long llmPromptTokenCount() {
+        return (long) llmPromptTokens.count();
+    }
+
+    public long llmCachedTokenCount() {
+        return (long) llmCachedTokens.count();
+    }
+
     public Timer.Sample startTimer() {
         return Timer.start(registry);
     }
@@ -464,6 +583,21 @@ public class VoiceMetrics {
     /** Record how long the caller waited between finishing their turn and hearing the bot. */
     public void recordTurnaround(Duration elapsed) {
         turnaround.record(elapsed);
+    }
+
+    /**
+     * One stage of one turn's wait ({@link TurnLatency}). Tagged rather than one meter per
+     * stage so the breakdown can be read as a single stacked distribution — which stage
+     * dominates is the only question this answers, and it is the one worth asking before
+     * anything in the pipeline is tuned.
+     */
+    public void recordTurnStage(String stage, long millis) {
+        Timer.builder("voice.turn.stage.latency")
+                .description("one stage of the wait between the caller finishing and hearing the bot")
+                .tag("stage", stage)
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(millis, TimeUnit.MILLISECONDS);
     }
 
     /**

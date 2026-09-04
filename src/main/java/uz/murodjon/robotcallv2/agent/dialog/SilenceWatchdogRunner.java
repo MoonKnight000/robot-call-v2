@@ -80,6 +80,15 @@ public class SilenceWatchdogRunner {
             if (s.isEnded()) {
                 return;
             }
+            long elapsedSec = java.time.Duration.between(s.startedAt(), Instant.now()).getSeconds();
+            int maxSec = s.aiModel() != null ? s.aiModel().maxCallSeconds() : props.maxCallSeconds();
+            if (maxSec > 0 && elapsedSec >= maxSec) {
+                log.warn("[{}] hard max call duration exceeded ({}s >= {}s) - force closing call",
+                        s.channelId(), elapsedSec, maxSec);
+                executors.submit(() -> closeOnLimit(s, "maksimal davomiylik (" + elapsedSec + "s)"));
+                return;
+            }
+
             NoInputAction action = s.watchdog()
                     .check(Instant.now(), s.endpoint().isPlaying(), s.busy().get());
             switch (action) {
@@ -135,6 +144,26 @@ public class SilenceWatchdogRunner {
                 transcript.recordAgentLine(s, line);
             }
             metrics.noInputPrompt();
+        } finally {
+            s.busy().set(false);
+            MDC.remove("channelId");
+        }
+    }
+
+    private void closeOnLimit(DialogSession s, String reason) {
+        if (s.isEnded()) {
+            return;
+        }
+        log.info("[{}] closing dialog ({})", s.channelId(), reason);
+        s.end(Disposition.HUNG_UP);
+        if (!s.busy().compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            MDC.put("channelId", s.channelId());
+            s.setCancelled(false);
+            speech.speakChunk(s, DialogLines.farewell(s));
+            speech.finishWhenSpoken(s);
         } finally {
             s.busy().set(false);
             MDC.remove("channelId");

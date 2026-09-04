@@ -23,8 +23,8 @@ public class FileControllerImpl implements FileController {
     }
 
     @Override
-    public ResponseEntity<Resource> download(long id) {
-        return responseFactory.toResponse(files.download(id));
+    public ResponseEntity<Resource> download(long id, String range) {
+        return responseFactory.toResponse(files.download(id), range);
     }
 
     @Override

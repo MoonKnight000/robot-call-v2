@@ -25,7 +25,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * One turn of the conversation, end to end (PROJECT.md §4, §7.1): take what the caller
@@ -63,6 +66,13 @@ public class TurnRunner {
      */
     private static final int HISTORY_TRIM_BLOCK = 6;
 
+    /**
+     * Pause before a retried request. Long enough that a provider shedding load has a
+     * moment to recover, short enough to stay inside the silence the filler covers —
+     * an immediate resend usually just collects the same 429.
+     */
+    private static final long RETRY_BACKOFF_MS = 200;
+
     private final DialogProperties props;
     private final SystemPromptFactory promptFactory;
     private final VoiceMetrics metrics;
@@ -72,6 +82,8 @@ public class TurnRunner {
     private final DialogTranscript transcript;
     private final DialogExecutors executors;
     private final SentimentDetector sentimentDetector;
+    private final KnowledgeBaseService knowledgeBase;
+    private final FastPathRouter fastPathRouter;
 
     private volatile ChatClient chatClient;
 
@@ -83,7 +95,9 @@ public class TurnRunner {
                       SpeechOutput speech,
                       DialogTranscript transcript,
                       DialogExecutors executors,
-                      SentimentDetector sentimentDetector) {
+                      SentimentDetector sentimentDetector,
+                      KnowledgeBaseService knowledgeBase,
+                      FastPathRouter fastPathRouter) {
         this.props = props;
         this.promptFactory = promptFactory;
         this.metrics = metrics;
@@ -93,12 +107,28 @@ public class TurnRunner {
         this.transcript = transcript;
         this.executors = executors;
         this.sentimentDetector = sentimentDetector;
+        this.knowledgeBase = knowledgeBase;
+        this.fastPathRouter = fastPathRouter;
     }
 
     @PostConstruct
     public void init() {
         ChatModel model = chatModelProvider.getIfAvailable();
         if (model != null) {
+            // Spring AI's own tool-calling loop stays off — {@link TurnTools#run} executes
+            // the calls here instead. (Spring AI 2.0 moved that loop out of the chat model
+            // and into an advisor the ChatClient registers for you, which is why this is no
+            // longer the options flag it used to be.)
+            //
+            // That loop answers a tool call by replaying the model's own functionCall back
+            // to it alongside the result, and Gemini 3 rejects the replay unless every call
+            // carries the opaque thought_signature it was issued with. It also costs a
+            // second round trip per tool-calling turn, and that round trip is where the
+            // caller was read the stage annex out loud.
+            //
+            // Nothing is lost by running them ourselves: the tools move the FSM and record
+            // outcomes, their return strings are confirmations, and the line for the caller
+            // travels in the tool's own `reply` argument.
             chatClient = ChatClient.create(model);
             log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
         } else {
@@ -169,6 +199,24 @@ public class TurnRunner {
                 closeOnLimit(s, "token budjeti (" + s.tokensUsed() + " token)");
                 return;
             }
+            // The outcome is recorded and the model has had a turn to say goodbye with it
+            // (the annex tells it to) and did not. Everything worth agreeing has been
+            // agreed, so the call is over whatever the model thinks: on a real call it
+            // recorded the promise, confirmed it out loud, and then simply kept the line
+            // open until the caller hung up. end(null) keeps the outcome that was recorded.
+            if (s.turnsSinceOutcome() >= 2) {
+                closeOnLimit(s, "outcome recorded and the model did not close the call");
+                return;
+            }
+
+            int stageAttempts = s.recordStageAttempt(s.state());
+            if (stageAttempts >= 4) {
+                log.warn("[{}] FSM infinite loop detected: 4 turns stuck in state '{}' - escalating to operator",
+                        s.channelId(), s.state());
+                s.end(Disposition.TRANSFERRED);
+                speech.speakChunk(s, DialogPhrases.transferring(s.language()));
+                return;
+            }
 
             s.history().add(new UserMessage(clientText));
             int dropped = s.trimHistory(props.historyMaxMessages(), HISTORY_TRIM_BLOCK);
@@ -189,6 +237,10 @@ public class TurnRunner {
             s.clearSpokenText();  // this turn's own account of what the caller hears
             s.setUnspokenText(null); // a previous turn's cut-off tail is stale now
 
+            if (answerFromFastPath(s, clientText, fromClient) || answerFromKnowledgeBase(s, clientText, fromClient)) {
+                return;
+            }
+
             // A reply that was already being written while the caller finished speaking,
             // if the final turned out to say what the interim did. Taken before the timer
             // starts on purpose: the LLM latency this turn is charged with should be the
@@ -196,12 +248,14 @@ public class TurnRunner {
             Flux<ChatResponse> speculated = adoptSpeculation(s, clientText, fromClient);
 
             TurnResult result;
+            String model = modelFor(clientText, fromClient);
+            s.latency().llmRequested();
             Timer.Sample llmSample = metrics.startTimer();
             ScheduledFuture<?> filler = speech.scheduleFiller(s);
             try {
                 result = props.streaming()
-                        ? streamTurn(s, system, messages, tools, speculated)
-                        : blockingTurn(s, system, messages, tools);
+                        ? streamTurn(s, system, messages, tools, speculated, model)
+                        : blockingTurn(s, system, messages, tools, model);
             } catch (Exception e) {
                 metrics.llmError();
                 log.warn("LLM turn failed [{}]: {}", s.channelId(), e.getMessage());
@@ -209,7 +263,7 @@ public class TurnRunner {
                 // still has to speak. Returning here left the caller listening to
                 // silence, and in GREETING that is the whole call — the bot never
                 // says anything at all.
-                result = TurnResult.NOTHING;
+                result = retryTurn(s, system, messages, tools, model, e);
             } finally {
                 if (filler != null) {
                     // The turn is over; anything still pending would land after the reply.
@@ -226,6 +280,14 @@ public class TurnRunner {
             // never heard as said, and the sum and the due date never come up again.
             boolean cutOff = s.isCancelled();
             String reply = cutOff ? s.spokenText() : result.reply();
+            if (SystemPromptFactory.isSystemNote(reply) || SpeechSanitizer.isUnspeakable(reply)) {
+                // Not spoken (SpeechOutput refused it) and not remembered either: an
+                // assistant turn made of the annex teaches the model that reciting it is
+                // an answer, and the next turn recites it again.
+                log.warn("[{}] model produced unspeakable/code token '{}' in {} — dropped",
+                        s.channelId(), reply, s.state());
+                reply = null;
+            }
             boolean haveText = reply != null && !reply.isBlank();
             if (haveText) {
                 s.history().add(new AssistantMessage(reply));
@@ -260,6 +322,15 @@ public class TurnRunner {
                 }
                 speech.speakChunk(s, DialogLines.fallback(s));
             }
+            if (!s.isEnded() && !cutOff && haveText && Farewells.saidByAgent(reply)) {
+                // The model wrote a goodbye and reached for some other tool to say it with.
+                // endCall is what sets the flag the hangup hangs off, so without this the
+                // farewell goes out into a line that stays open until the caller drops it —
+                // which is how a 65-second call ends with the bot saying goodbye twice.
+                log.info("[{}] agent said goodbye without calling endCall — closing the call",
+                        s.channelId());
+                s.end(null);
+            }
             if (s.isEnded()) {
                 speech.finishWhenSpoken(s);
             }
@@ -278,6 +349,33 @@ public class TurnRunner {
                 // to arrive before deciding the interruption was real.
                 scheduleFalseInterruptionCheck(s, turn, () -> resumeInterruptedReply(s, turn));
             }
+        }
+    }
+
+    /**
+     * Answer a caller who is signing off with a goodbye and hang up, instead of running a
+     * turn on it.
+     *
+     * <p>"Rahmat" after the outcome is recorded asks for nothing. Put through {@link
+     * #advance} it buys a "bir soniya" filler over the LLM's own thinking time, a fresh
+     * model turn that has no question to answer, and a second farewell — and on the call
+     * this came from, a duplicate payment promise, because the model reached for a
+     * recording tool as the only way to say goodbye again.
+     */
+    public void closeOnCallerFarewell(DialogSession s) {
+        if (s.isEnded() || !s.busy().compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            MDC.put("channelId", s.channelId());
+            s.end(null);
+            String farewell = DialogLines.farewell(s);
+            transcript.recordAgentLine(s, farewell);
+            speech.speakChunk(s, farewell);
+            speech.finishWhenSpoken(s);
+        } finally {
+            s.busy().set(false);
+            MDC.remove("channelId");
         }
     }
 
@@ -303,10 +401,19 @@ public class TurnRunner {
      * cancelled and the turn runs exactly as it does today.
      */
     public void speculate(DialogSession s, String text) {
-        if (!props.preemptive() || !props.streaming() || text == null) {
+        if (text == null) {
             return;
         }
-        if (!readyToSpeculate(s, text)) {
+        if (!props.preemptive() || !props.streaming()) {
+            s.setSpeculationBlocker("preemptive or streaming switched off in config");
+            return;
+        }
+        String blocker = speculationBlocker(s, text);
+        if (blocker != null) {
+            // Kept for the one summary line this turn gets (see adoptSpeculation) rather
+            // than logged here: an utterance produces a dozen interims and every one of
+            // them would say the same thing.
+            s.setSpeculationBlocker(blocker);
             return;
         }
         Speculation parked = s.speculation();
@@ -326,13 +433,26 @@ public class TurnRunner {
      * turn already in progress, a call with no opening line yet, or a budget with too
      * little left to spend on a guess.
      */
-    private boolean readyToSpeculate(DialogSession s, String text) {
-        return !s.isEnded()
-                && !s.busy().get()
-                && !s.isInterrupted()
-                && s.turnCount() > 0
-                && text.length() >= props.preemptiveMinChars()
-                && withinSpeculationBudget(s);
+    private String speculationBlocker(DialogSession s, String text) {
+        if (s.isEnded()) {
+            return "call ended";
+        }
+        if (s.busy().get()) {
+            return "a turn is already running";
+        }
+        if (s.isInterrupted()) {
+            return "the caller interrupted the bot";
+        }
+        if (s.turnCount() == 0) {
+            return "the bot has not spoken yet";
+        }
+        if (text.length() < props.preemptiveMinChars()) {
+            return "interim shorter than preemptive-min-chars=" + props.preemptiveMinChars();
+        }
+        if (!withinSpeculationBudget(s)) {
+            return "call token budget nearly spent";
+        }
+        return null;
     }
 
     /**
@@ -353,8 +473,10 @@ public class TurnRunner {
      * may yet say something else entirely.
      */
     private void startSpeculation(DialogSession s, String text) {
-        if (!readyToSpeculate(s, text)) {
-            return; // a turn claimed the call between the submit and here
+        String blocker = speculationBlocker(s, text);
+        if (blocker != null) {
+            s.setSpeculationBlocker(blocker); // a turn claimed the call between the submit and here
+            return;
         }
         try {
             MDC.put("channelId", s.channelId());
@@ -374,12 +496,14 @@ public class TurnRunner {
             Flux<ChatResponse> responses = chatClient.prompt()
                     .system(systemPrefix(s))
                     .messages(messages)
-                    .options(turnTools.buildOptions(s, turnTools.build(s)))
+                    .options(turnTools.buildOptions(s, turnTools.build(s), modelFor(text, true)))
                     .stream()
                     .chatResponse()
                     .cache();
+            StringBuilder guessed = new StringBuilder();
+            AtomicBoolean firstSentenceWarmed = new AtomicBoolean();
             Disposable warmUp = responses.subscribe(
-                    ignored -> { },
+                    response -> warmFirstSentence(s, response, guessed, firstSentenceWarmed),
                     error -> log.debug("[{}] speculative reply failed: {}", s.channelId(), error.toString()));
             s.setSpeculation(new Speculation(text, responses, warmUp));
             metrics.speculationStarted();
@@ -389,6 +513,139 @@ public class TurnRunner {
             log.debug("[{}] could not start a speculative reply: {}", s.channelId(), e.getMessage());
         } finally {
             MDC.remove("channelId");
+        }
+    }
+
+    /**
+     * Settle a turn whose meaning is not in doubt, without asking the model.
+     *
+     * <p>"Adashibsiz", "boshqa telefon qilmang", "operatorga ulang" — three things a caller
+     * says that end the call the same way every time, and that the model currently answers
+     * with a full turnaround and a prompt's worth of tokens before calling the tool that
+     * was always going to be called ({@link FastPathRouter}).
+     *
+     * <p>Everything the equivalent tool does is done here, in the same order: the stage or
+     * the disposition first, then the line the caller hears, then the transcript and the
+     * history. A do-not-call keeps the caller's own words as its reason, which is what the
+     * tool records too. Ending is left to the same {@code finishWhenSpoken} every other
+     * ending goes through, so the goodbye is heard before the channel drops.
+     *
+     * <p><b>The risk is a wrong match.</b> The router matches on substrings, so a sentence
+     * that merely contains one of its phrases ends a call that was going fine —
+     * {@code fast-path: false} turns the whole thing off without a deploy, and every match
+     * is logged with the words that caused it.
+     *
+     * @return whether the turn was settled here and the LLM should be skipped
+     */
+    private boolean answerFromFastPath(DialogSession s, String clientText, boolean fromClient) {
+        if (!props.fastPath() || !fromClient) {
+            return false;
+        }
+        FastPathResult fastPath = fastPathRouter.evaluate(s, clientText);
+        if (!fastPath.handled() || fastPath.reply() == null) {
+            return false;
+        }
+        if (fastPath.nextStage() != null) {
+            s.setState(fastPath.nextStage());
+        }
+        if (fastPath.disposition() == Disposition.DO_NOT_CALL) {
+            s.setDoNotCallReason(clientText);
+        }
+        if (fastPath.endCall()) {
+            s.end(fastPath.disposition());
+        }
+        s.history().add(new AssistantMessage(fastPath.reply()));
+        s.setLastAgentText(fastPath.reply());
+        speech.speak(s, fastPath.reply());
+        transcript.recordAgentLine(s, fastPath.reply());
+        metrics.fastPathHandled();
+        log.info("[{}] AGENT ({}, fast path -> {}): {}", s.channelId(), s.state(),
+                fastPath.disposition(), fastPath.reply());
+        if (s.isEnded()) {
+            speech.finishWhenSpoken(s);
+        }
+        return true;
+    }
+
+    /**
+     * Answer a question this system already knows the answer to, without asking the model.
+     *
+     * <p>"How do I pay?", "which branch?", "what happens if I don't?" come up on a large
+     * share of calls, and the answer never varies — it is policy, not conversation. Sending
+     * them to the LLM buys a paraphrase for a full turnaround and a prompt's worth of
+     * tokens, and the paraphrase is the part most likely to be wrong.
+     *
+     * <p>Answered as a proper turn: the line goes through {@link SpeechOutput#speak} (so
+     * the fact guard and the spoken-audio accounting still apply), into the transcript, and
+     * into the history — the model has to know what the caller was told, or it will answer
+     * the follow-up as if the exchange never happened.
+     *
+     * @return whether the turn was answered here and the LLM should be skipped
+     */
+    private boolean answerFromKnowledgeBase(DialogSession s, String clientText, boolean fromClient) {
+        if (!props.knowledgeBase() || !fromClient) {
+            return false;
+        }
+        String answer = knowledgeBase.findRelevantKnowledge(clientText, s.language());
+        if (answer == null) {
+            return false;
+        }
+        s.history().add(new AssistantMessage(answer));
+        s.setLastAgentText(answer);
+        speech.speak(s, answer);
+        transcript.recordAgentLine(s, answer);
+        metrics.knowledgeBaseAnswer();
+        log.info("[{}] AGENT ({}, from the knowledge base): {}", s.channelId(), s.state(), answer);
+        return true;
+    }
+
+    /**
+     * The model this turn runs on: the small one when the caller said almost nothing, the
+     * company's configured one otherwise.
+     *
+     * <p>Most turns of a collections call are "ha", "to'ladim", "kim bo'lasiz" — an
+     * acknowledgement or a one-line question, answered the same way by any model, and paid
+     * for in time-to-first-token on every single one of them. The turns that actually need
+     * the larger model are the ones where the caller argues, and those are not short.
+     *
+     * <p>Word count rather than intent on purpose: an intent classifier is another model
+     * call in front of the model call it was supposed to save. Blank
+     * {@code fast-model} disables the whole thing, and the greeting never uses it.
+     */
+    private String modelFor(String clientText, boolean fromClient) {
+        String fast = props.fastModel();
+        if (fast == null || fast.isBlank() || !fromClient || clientText == null) {
+            return null;
+        }
+        String trimmed = clientText.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.split("\\s+").length <= props.fastModelMaxWords() ? fast : null;
+    }
+
+    /**
+     * Send the guess's first sentence to synthesis as soon as it is complete, so the audio
+     * is already made if the turn adopts it ({@code SpeechOutput#warmSentence}).
+     *
+     * <p>Only the first: everything after it is generated while the caller is already
+     * listening to that one, which is the overlap streaming exists for. Runs on the
+     * reactor's thread, so the synthesis itself is handed to a worker — blocking here
+     * would stall the very stream it is trying to get ahead of.
+     */
+    private void warmFirstSentence(DialogSession s, ChatResponse response,
+                                   StringBuilder guessed, AtomicBoolean warmed) {
+        if (!props.preemptiveTts() || warmed.get()) {
+            return;
+        }
+        String chunk = textOf(response);
+        if (chunk == null || chunk.isEmpty()) {
+            return;
+        }
+        guessed.append(chunk);
+        String sentence = takeSentence(guessed);
+        if (sentence != null && warmed.compareAndSet(false, true)) {
+            executors.submit(() -> speech.warmSentence(s, sentence));
         }
     }
 
@@ -411,17 +668,35 @@ public class TurnRunner {
      */
     private Flux<ChatResponse> adoptSpeculation(DialogSession s, String clientText, boolean fromClient) {
         Speculation parked = s.takeSpeculation();
-        if (parked == null) {
+        try {
+            if (parked == null) {
+                // Nothing was written ahead, and which of the two reasons it was decides
+                // where to look: no interims at all is a recognizer or wiring problem,
+                // interims that were all turned away is a condition in speculationBlocker.
+                log.info("[{}] speculation: none — {} interim(s) this turn{}", s.channelId(),
+                        s.interimsThisTurn(),
+                        s.speculationBlocker() != null ? ", last one blocked: " + s.speculationBlocker() : "");
+                return null;
+            }
+            if (fromClient && isSpeculationCompatible(parked.inputText(), clientText)) {
+                metrics.speculationHit();
+                s.latency().speculationAdopted();
+                log.info("[{}] speculation: hit after {} interim(s) — the reply was already written",
+                        s.channelId(), s.interimsThisTurn());
+                return parked.responses();
+            }
+            parked.discard();
+            metrics.speculationMiss();
+            // Both texts, because the fix depends on how far apart they are: a final that
+            // merely adds the last few words is a min-chars/timing question, one that
+            // rewrites the whole sentence means this recognizer's interims are not worth
+            // guessing on at all.
+            log.info("[{}] speculation: miss after {} interim(s) — guessed on '{}', final said '{}'",
+                    s.channelId(), s.interimsThisTurn(), parked.inputText(), clientText);
             return null;
+        } finally {
+            s.resetSpeculationDiagnostics();
         }
-        if (fromClient && isSpeculationCompatible(parked.inputText(), clientText)) {
-            metrics.speculationHit();
-            log.debug("[{}] adopted a reply started before the caller finished", s.channelId());
-            return parked.responses();
-        }
-        parked.discard();
-        metrics.speculationMiss();
-        return null;
     }
 
     // ------------------------------------------------------------------
@@ -531,28 +806,92 @@ public class TurnRunner {
      *                   and tokens counted exactly as on any other turn
      * @return the reply text plus whether any of it actually reached the caller
      */
+    /**
+     * One more attempt at a turn whose request failed before it produced anything.
+     *
+     * <p>A rate limit or a 503 costs the caller the whole answer — they get the fallback
+     * line, and whatever they just said goes unanswered. One retry recovers most of them
+     * for a few hundred milliseconds, which the filler already covers.
+     *
+     * <p>Three conditions, all of them about not making it worse. The failure has to look
+     * transient, or the retry is a second round trip to the same wall. Nothing may have
+     * been spoken yet, or the caller would hear the first sentences twice. And the caller
+     * must not have started talking in the meantime, because then the answer is stale
+     * before it arrives.
+     */
+    private TurnResult retryTurn(DialogSession s, String system, List<Message> messages,
+                                 List<ToolCallback> tools, String model, Exception failure) {
+        // spokenText() is null, not empty, when this turn has put nothing on the wire.
+        if (!isTransient(failure) || s.spokenText() != null || s.isCancelled() || s.isEnded()) {
+            return TurnResult.NOTHING;
+        }
+        try {
+            Thread.sleep(RETRY_BACKOFF_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return TurnResult.NOTHING;
+        }
+        metrics.llmRetry();
+        log.info("[{}] retrying the turn after a transient LLM failure", s.channelId());
+        try {
+            // No speculation this time: the guess was consumed by the attempt that failed.
+            return props.streaming()
+                    ? streamTurn(s, system, messages, tools, null, model)
+                    : blockingTurn(s, system, messages, tools, model);
+        } catch (Exception e) {
+            metrics.llmError();
+            log.warn("[{}] the retry failed too: {}", s.channelId(), e.getMessage());
+            return TurnResult.NOTHING;
+        }
+    }
+
+    /**
+     * Whether a failure is worth a second attempt: the provider was busy, unavailable or
+     * slow, rather than refusing the request. Judged on the message text because the
+     * provider's HTTP status does not survive the client's exception hierarchy intact —
+     * a wrong guess here costs one extra request, so the list stays on the clear cases.
+     */
+    private static boolean isTransient(Throwable failure) {
+        for (Throwable t = failure; t != null && t != t.getCause(); t = t.getCause()) {
+            String message = t.getMessage();
+            if (message == null) {
+                continue;
+            }
+            String lower = message.toLowerCase();
+            if (lower.contains("429") || lower.contains("rate limit") || lower.contains("quota")
+                    || lower.contains("500") || lower.contains("502") || lower.contains("503")
+                    || lower.contains("504") || lower.contains("overloaded") || lower.contains("unavailable")
+                    || lower.contains("timeout") || lower.contains("timed out")
+                    || lower.contains("connection reset") || lower.contains("connection closed")
+                    || lower.contains("resource_exhausted") || lower.contains("deadline exceeded")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private TurnResult streamTurn(DialogSession s, String system, List<Message> messages,
-                                  List<ToolCallback> tools, Flux<ChatResponse> speculated) {
+                                  List<ToolCallback> tools, Flux<ChatResponse> speculated, String model) {
         TokenUsage turnUsage = new TokenUsage();
         List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
 
         StreamedReply reply = consume(s, speculated != null ? speculated : chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(turnTools.buildOptions(s, tools))
+                .options(turnTools.buildOptions(s, tools, model))
                 .stream()
                 .chatResponse(), turnUsage, toolCalls);
         publishUsage(s, turnUsage);
         String toolNote = turnTools.run(s, tools, toolCalls);
 
-        if (!reply.text().isEmpty()) {
+        if (!reply.text().isEmpty() && !SpeechSanitizer.isUnspeakable(reply.text())) {
             return new TurnResult(reply.text(), reply.spoken(), reply.blocked(), toolNote);
         }
         // Tool-only turn: the model called e.g. transitionTo and produced no text of its
         // own, which is how this provider answers a tool-calling turn. The line it wrote
         // into the tool's `reply` argument is the answer — speak that (DialogTools).
         String carried = s.toolReplies();
-        if (carried != null) {
+        if (carried != null && !SpeechSanitizer.isUnspeakable(carried)) {
             SpeechOutcome outcome = speech.speak(s, carried);
             return new TurnResult(carried, outcome == SpeechOutcome.SPOKEN,
                     outcome == SpeechOutcome.BLOCKED, toolNote);
@@ -589,10 +928,17 @@ public class TurnRunner {
         boolean blocked = false;
 
         for (ChatResponse response : responses.toIterable()) {
+            s.latency().llmFirstToken();
             usage.add(response);
             // Collected, not run yet: a tool may end the call, and the sentences already
             // in flight should still be spoken before that takes effect.
-            toolCalls.addAll(turnTools.extractCalls(response));
+            for (AssistantMessage.ToolCall call : turnTools.extractCalls(response)) {
+                if (toolCalls.stream().noneMatch(existing ->
+                        Objects.equals(existing.id(), call.id()) ||
+                        (existing.name().equals(call.name()) && Objects.equals(existing.arguments(), call.arguments())))) {
+                    toolCalls.add(call);
+                }
+            }
             String chunk = textOf(response);
             if (chunk == null || chunk.isEmpty()) {
                 continue;
@@ -623,11 +969,11 @@ public class TurnRunner {
 
     /** One turn in a single blocking call — the pre-streaming path, kept as a fallback. */
     private TurnResult blockingTurn(DialogSession s, String system, List<Message> messages,
-                                    List<ToolCallback> tools) {
+                                    List<ToolCallback> tools, String model) {
         ChatResponse response = chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(turnTools.buildOptions(s, tools))
+                .options(turnTools.buildOptions(s, tools, model))
                 .call()
                 .chatResponse();
         TokenUsage turnUsage = new TokenUsage();
@@ -636,8 +982,11 @@ public class TurnRunner {
         String toolNote = turnTools.run(s, tools, turnTools.extractCalls(response));
 
         String reply = textOf(response);
-        if (reply == null || reply.isBlank()) {
+        if (reply == null || reply.isBlank() || SpeechSanitizer.isUnspeakable(reply)) {
             reply = s.toolReplies(); // the line the tools carried (see DialogTools)
+        }
+        if (reply != null && SpeechSanitizer.isUnspeakable(reply)) {
+            reply = null;
         }
         if (reply == null || reply.isBlank()) {
             metrics.spokenLineRetry();
@@ -725,7 +1074,10 @@ public class TurnRunner {
         log.error("[{}] fact guard blocked the reply twice in {} — escalating to an operator",
                 s.channelId(), s.state());
         s.end(Disposition.TRANSFERRED);
-        speech.speakChunk(s, DialogPhrases.transferring(s.language()));
+        boolean spoken = speech.speakChunk(s, DialogPhrases.transferring(s.language()));
+        if (!spoken) {
+            speech.speakChunk(s, DialogLines.fallback(s));
+        }
     }
 
     /** Add a turn's tokens to the call total (for the budget) and publish the metrics. */
@@ -752,6 +1104,15 @@ public class TurnRunner {
         return response.getResult().getOutput().getText();
     }
 
+    private static final Set<String> ABBREVIATIONS = Set.of(
+            // Uzbek
+            "mln", "mlrd", "ming", "so'm", "som", "vil", "sh", "t", "prof", "dots", "mas", "kabi",
+            // Russian
+            "млн", "млрд", "тыс", "руб", "коп", "г", "ул", "д", "кв", "тел", "стр",
+            // English
+            "mr", "mrs", "ms", "dr", "etc", "vs"
+    );
+
     /**
      * Cut the next complete sentence off the front of {@code pending}, or return
      * {@code null} if there is not one yet.
@@ -764,19 +1125,55 @@ public class TurnRunner {
                     && i + 1 < pending.length() && Character.isDigit(pending.charAt(i + 1))) {
                 continue;
             }
-            if (c == '.' || c == '!' || c == '?' || c == '\n' || c == '…') {
+            if (c == '.') {
+                if (!isDotSentenceEnd(pending, i)) {
+                    continue;
+                }
+                String sentence = pending.substring(0, i + 1).trim();
+                pending.delete(0, i + 1);
+                return sentence.isEmpty() ? null : sentence;
+            }
+            if (c == '!' || c == '?' || c == '\n' || c == '…') {
                 String sentence = pending.substring(0, i + 1).trim();
                 pending.delete(0, i + 1);
                 return sentence.isEmpty() ? null : sentence;
             }
             // Long comma clause split (e.g. >= 30 chars) for early TTS streaming
             if (c == ',' && i >= 30) {
+                if (i + 1 < pending.length() && !Character.isWhitespace(pending.charAt(i + 1))) {
+                    continue;
+                }
                 String sentence = pending.substring(0, i + 1).trim();
                 pending.delete(0, i + 1);
                 return sentence.isEmpty() ? null : sentence;
             }
         }
         return null;
+    }
+
+    private static boolean isDotSentenceEnd(StringBuilder sb, int dotIndex) {
+        int start = dotIndex - 1;
+        while (start >= 0 && (Character.isLetterOrDigit(sb.charAt(start)) || sb.charAt(start) == '\'' || sb.charAt(start) == '‘' || sb.charAt(start) == '’')) {
+            start--;
+        }
+        String token = sb.substring(start + 1, dotIndex).toLowerCase();
+        if (ABBREVIATIONS.contains(token)) {
+            return false;
+        }
+        if (dotIndex + 1 < sb.length()) {
+            char next = sb.charAt(dotIndex + 1);
+            if (Character.isLetterOrDigit(next)) {
+                return false;
+            }
+            int nextNonWs = dotIndex + 1;
+            while (nextNonWs < sb.length() && Character.isWhitespace(sb.charAt(nextNonWs))) {
+                nextNonWs++;
+            }
+            if (nextNonWs < sb.length() && Character.isLowerCase(sb.charAt(nextNonWs))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** What one drained stream produced — the same three facts a {@link TurnResult} carries. */

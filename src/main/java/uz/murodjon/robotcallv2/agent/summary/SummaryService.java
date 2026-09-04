@@ -59,7 +59,7 @@ public class SummaryService {
 
     public SummaryService(ObjectProvider<ChatModel> chatModelProvider,
                           @Value("${voice-agent.summary.enabled:true}") boolean enabled,
-                          @Value("${voice-agent.summary.model:gemini-3.6-flash}") String model,
+                          @Value("${voice-agent.summary.model:gemini-3.8-flash}") String model,
                           @Value("${voice-agent.summary.reasoning-effort:low}") String reasoningEffort,
                           @Value("${voice-agent.summary.max-tokens:2048}") int maxTokens) {
         this.chatModelProvider = chatModelProvider;
@@ -184,10 +184,9 @@ public class SummaryService {
             return GoogleGenAiThinkingLevel.LOW;
         }
         return switch (reasoningEffort.trim().toUpperCase()) {
-            case "MINIMAL", "OFF" -> GoogleGenAiThinkingLevel.MINIMAL;
-            case "MEDIUM" -> GoogleGenAiThinkingLevel.MEDIUM;
             case "HIGH" -> GoogleGenAiThinkingLevel.HIGH;
-            default -> GoogleGenAiThinkingLevel.LOW;
+            case "LOW" -> GoogleGenAiThinkingLevel.LOW;
+            default -> GoogleGenAiThinkingLevel.THINKING_LEVEL_UNSPECIFIED;
         };
     }
 }

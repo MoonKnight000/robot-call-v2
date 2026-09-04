@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.List;
@@ -20,7 +21,9 @@ import java.util.Locale;
  *   <li>Echo suppression (caller repeating the bot verbatim over speakerphone)
  *   <li>Answering Machine / Voicemail phrase detection on initial turns
  *   <li>Backchannel agreements ("ha", "aha") while cut-off replies resume
+ *   <li>Sign-offs ("rahmat", "спасибо") once the outcome is recorded — closed, not answered
  *   <li>Barge-in / fast playback flush
+ *   <li>Answering the caller in the language they actually speak (LanguageDetector)
  * </ul>
  */
 @Component
@@ -36,26 +39,41 @@ public class ClientInputGate {
     private static final int MIN_ECHO_CHARS = 20;
 
     /**
+     * Finals in a row in the other language before the call turns over to it. Two, because
+     * one is a misrecognition and three is a caller who has already given up.
+     */
+    private static final int LANGUAGE_SWITCH_FINALS = 2;
+
+    /**
      * Common Uzbek and Russian carrier voicemail/answering machine phrases.
      */
     private static final List<String> VOICEMAIL_PHRASES = List.of(
             "apparati o'chirilgan", "xizmat doirasidan tashqarida", "ovozli xabar",
             "ovozli xabar qoldiring", "signal ovozidan so'ng", "signal ovozidan keyin",
-            "telefon o'chirilgan", "boshqa raqamga yo'naltirilgan",
+            "telefon o'chirilgan", "boshqa raqamga yo'naltirilgan", "chaqirilayotgan abonent",
+            "vaqtincha javob bermayapti", "iltimos, keyinroq qo'ng'iroq qiling",
+            "keyinroq qo'ng'iroq qiling", "javob bermayapti",
             "абонент недоступен", "аппарат абонента выключен", "находится вне зоны",
             "оставьте сообщение", "после сигнала", "после звукового сигнала",
-            "автоответчик", "перезвоните позже", "линия занята", "номер не существует"
+            "автоответчик", "перезвоните позже", "линия занята", "номер не существует",
+            "вызываемый абонент занят", "данный вид связи недоступен", "номер временно заблокирован",
+            "not in service", "currently unavailable", "switched off"
     );
 
     private final DialogProperties props;
+    private final SttProperties sttProperties;
+    private final LanguageDetector languageDetector;
     private final VoiceMetrics metrics;
     private final DialogTranscript transcript;
     private final TurnRunner turnRunner;
     private final DialogExecutors executors;
 
-    public ClientInputGate(DialogProperties props, VoiceMetrics metrics, DialogTranscript transcript,
+    public ClientInputGate(DialogProperties props, SttProperties sttProperties, LanguageDetector languageDetector,
+                           VoiceMetrics metrics, DialogTranscript transcript,
                            TurnRunner turnRunner, DialogExecutors executors) {
         this.props = props;
+        this.sttProperties = sttProperties;
+        this.languageDetector = languageDetector;
         this.metrics = metrics;
         this.transcript = transcript;
         this.turnRunner = turnRunner;
@@ -91,6 +109,18 @@ public class ClientInputGate {
             return;
         }
 
+        adaptLanguage(s, text);
+
+        if (s.disposition() != null && Farewells.saidByCaller(text)) {
+            // The outcome is already on the record and the caller is closing, not asking.
+            // A turn here would open with "Bir lahza" over a two-syllable
+            // "rahmat" and end with a goodbye the caller has already been given.
+            log.info("[{}] caller signed off ({}) — answering with a goodbye, not a turn",
+                    s.channelId(), text);
+            executors.submit(() -> turnRunner.closeOnCallerFarewell(s));
+            return;
+        }
+
         if (isBackchannelOverTheBot(s, text)) {
             metrics.backchannelIgnored();
             log.info("[{}] caller agreed over the bot rather than answering it ({}) — "
@@ -118,9 +148,7 @@ public class ClientInputGate {
             log.debug("[{}] barge-in ignored — the bot owed the caller nothing", s.channelId());
             return false;
         }
-        if (playing) {
-            s.endpoint().flushPlayback();
-        }
+        s.endpoint().flushPlayback();
         s.setCancelled(true);
         s.setInterrupted(true);
         // Any reply written ahead was written for a caller who had not interrupted, and
@@ -130,6 +158,53 @@ public class ClientInputGate {
         log.info("[{}] barge-in: bot silenced ({})", s.channelId(),
                 playing ? "mid-utterance" : "before its reply was spoken");
         return true;
+    }
+
+    /**
+     * Answer the caller in the language they are actually speaking.
+     *
+     * <p>A campaign dials one list in two languages and the language on the CRM row is
+     * often a default nobody checked, so the call opens in the wrong one more often than
+     * anyone would like. Two ways out of it, with deliberately different bars:
+     *
+     * <ul>
+     *   <li><b>Asked for</b> ("ruscha gapiring") — switched on the spot. The caller said
+     *       what they want; making them say it twice is worse than a misrecognition.
+     *   <li><b>Answered in</b> — the detector has to say the same thing on
+     *       {@link #LANGUAGE_SWITCH_FINALS} finals in a row. One sentence can be
+     *       misrecognized, and switching on it answers an Uzbek caller in Russian.
+     * </ul>
+     *
+     * <p>Switching changes the voice and drops the cached prompt prefix
+     * ({@link DialogSession#switchLanguage}), which is why it is not done lightly — but a
+     * caller being answered in a language they do not speak ends the call either way.
+     */
+    private void adaptLanguage(DialogSession s, String text) {
+        List<String> candidates = sttProperties.detectLanguages();
+        if (candidates == null || candidates.size() < 2) {
+            return; // a single-language deployment has nothing to switch to
+        }
+        String requested = DialogLanguageSwitcher.detectLanguageSwitch(text, s.language()).orElse(null);
+        if (requested != null) {
+            log.info("[{}] caller asked to be spoken to in {} — switching from {}",
+                    s.channelId(), requested, s.language());
+            s.switchLanguage(requested);
+            return;
+        }
+        String spoken = languageDetector.detect(text, candidates);
+        if (spoken == null) {
+            return; // too short, or a word both languages share
+        }
+        if (spoken.equalsIgnoreCase(s.language())) {
+            s.resetLanguageCandidate();
+            return;
+        }
+        int finals = s.noteLanguageCandidate(spoken);
+        if (finals >= LANGUAGE_SWITCH_FINALS) {
+            log.info("[{}] caller has answered in {} {} times running — switching from {}",
+                    s.channelId(), spoken, finals, s.language());
+            s.switchLanguage(spoken);
+        }
     }
 
     /**

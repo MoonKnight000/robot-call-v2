@@ -6,6 +6,7 @@ import ch.loway.oss.ari4java.generated.AriWSHelper;
 import ch.loway.oss.ari4java.generated.models.Bridge;
 import ch.loway.oss.ari4java.generated.models.Channel;
 import ch.loway.oss.ari4java.generated.models.ChannelDestroyed;
+import ch.loway.oss.ari4java.generated.models.ChannelDtmfReceived;
 import ch.loway.oss.ari4java.generated.models.ChannelHangupRequest;
 import ch.loway.oss.ari4java.generated.models.StasisEnd;
 import ch.loway.oss.ari4java.generated.models.StasisStart;
@@ -51,6 +52,7 @@ import uz.murodjon.robotcallv2.agent.turn.SmartTurnProperties;
 import uz.murodjon.robotcallv2.agent.turn.UtteranceBuffer;
 import uz.murodjon.robotcallv2.agent.stt.DynamicEndpointingProperties;
 import uz.murodjon.robotcallv2.agent.stt.EndpointingProperties;
+import uz.murodjon.robotcallv2.agent.stt.SttHints;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.stt.SttProvider;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
@@ -119,6 +121,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -296,6 +299,38 @@ public class AriService {
         this.notificationService = notificationService;
     }
 
+    /**
+     * Say out loud, once, when a turn-taking setting is switched on that cannot reach a
+     * call.
+     *
+     * <p>Every one of them works through {@link SpeechGate}, and the gate is only built
+     * when {@code stt.vad-gating.enabled} is on — so with the recognizer endpointing for
+     * itself (the default) they are configured, reported as enabled, and inert. That is
+     * worth a line at startup: the alternative is a tuning session spent moving numbers
+     * nothing reads.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void warnAboutInertTurnSettings() {
+        boolean gated = vadProps.enabled() && sttProps.enabled()
+                && sttProps.vadGating() != null && sttProps.vadGating().enabled();
+        if (gated) {
+            return;
+        }
+        if (turnProps.enabled()) {
+            log.warn("voice-agent.turn.enabled is on but no speech gate is installed — Smart Turn "
+                    + "(extend and early close) will not run. It needs voice-agent.stt.vad-gating.enabled=true.");
+        }
+        EndpointingProperties endpointing = sttProps.endpointing();
+        if (endpointing != null && endpointing.enabled()) {
+            log.warn("voice-agent.stt.endpointing.enabled is on but no speech gate is installed — "
+                    + "the recognizer keeps deciding end-of-utterance. It needs voice-agent.stt.vad-gating.enabled=true.");
+        }
+        if (endpointing != null && endpointing.dynamic() != null && endpointing.dynamic().enabled()) {
+            log.warn("voice-agent.stt.endpointing.dynamic.enabled is on but no speech gate is installed — "
+                    + "the wait will not adapt. It needs voice-agent.stt.vad-gating.enabled=true.");
+        }
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     public void connect() {
         if (!props.enabled()) {
@@ -325,6 +360,11 @@ public class AriService {
                 @Override
                 public void onChannelDestroyed(ChannelDestroyed event) {
                     handleChannelDestroyed(event);
+                }
+
+                @Override
+                public void onChannelDtmfReceived(ChannelDtmfReceived event) {
+                    handleDtmf(event);
                 }
             });
             log.info("Connected to Asterisk ARI at {} as app '{}'", props.ariUrl(), props.appName());
@@ -613,6 +653,44 @@ public class AriService {
         }
     }
 
+    /**
+     * A keypad digit on a call whose campaign asked for them
+     * ({@code campaign.dtmf_input_enabled}). Asterisk decodes RFC2833 itself, so the digit
+     * arrives as a character on the event stream and never touches the RTP path.
+     *
+     * <p>Handled exactly like a spoken answer: it silences a bot that was mid-sentence and
+     * becomes the caller's turn. Only {@code 0-9} — {@code *}, {@code #} and the A-D tones
+     * mean nothing in any scenario here, and handing one to the model as an utterance
+     * would only buy a puzzled reply.
+     */
+    private void handleDtmf(ChannelDtmfReceived event) {
+        Channel channel = event.getChannel();
+        String digit = event.getDigit();
+        if (channel == null || digit == null || digit.length() != 1
+                || digit.charAt(0) < '0' || digit.charAt(0) > '9') {
+            return;
+        }
+        String channelId = channel.getId();
+        CallSession session = sessions.get(channelId);
+        if (session == null || !session.dtmfInputEnabled()) {
+            return;
+        }
+        if (!dialogEngine.owns(channelId)) {
+            // A speech-to-speech engine takes audio and nothing else; there is no turn to
+            // hand a digit to. Said out loud rather than dropped, because a campaign that
+            // switched on keypad input is expecting it to do something.
+            log.warn("[{}] DTMF '{}' ignored — keypad input needs the cascade pipeline", channelId, digit);
+            return;
+        }
+        callExecutor.execute(() -> withMdc(channelId, () -> {
+            log.info("[{}] DTMF: {}", channelId, digit);
+            int offsetMs = (int) (Instant.now().toEpochMilli() - session.startedAt().toEpochMilli());
+            callRecordService.addTranscript(session.callAttemptId(), "CLIENT", digit, null, offsetMs, 1f);
+            dialogEngine.notifyBargeIn(channelId);
+            dialogEngine.onClientFinal(channelId, digit);
+        }));
+    }
+
     public void transferToOperator(String channelId) {
         CallSession session = sessions.get(channelId);
         if (!operatorProps.enabled() || operatorProps.endpoint() == null || operatorProps.endpoint().isBlank()
@@ -691,7 +769,7 @@ public class AriService {
 
             Files.createDirectories(Path.of(rtpProps.recordingDir()));
             Path wav = Path.of(rtpProps.recordingDir(), channelId.replace('/', '_') + ".wav");
-            WavRecorder recorder = new WavRecorder(wav, SAMPLE_RATE);
+            WavRecorder recorder = new WavRecorder(wav, SAMPLE_RATE, rtpProps.recordingMode());
 
             long targetId;
             String language;
@@ -753,7 +831,7 @@ public class AriService {
 
             LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
             List<AudioListener> audioListeners = buildAudioListeners(channelId, attemptId, startedAt, language,
-                    engineConfig, realtimeBridge);
+                    engineConfig, realtimeBridge, context);
             audioListeners.add(audioMonitor);
             endpoint = new RtpEndpoint(port, recorder, audioListeners, audioMonitor::onBotAudio);
             endpoint.bind(rtpEventLoopGroup);
@@ -770,7 +848,7 @@ public class AriService {
 
             sessions.put(channelId, new CallSession(channelId, extMedia.getId(), bridge.getId(),
                     port, endpoint, attemptId, startedAt, wav.toString(), channelName, trunkOf(channelName),
-                    scenarioRow.id(), audioMonitor));
+                    scenarioRow.id(), audioMonitor, outbound != null && outbound.dtmfInputEnabled()));
             log.info("Media ready for {}: rtpPort={}, extMedia={}, bridge={}, wav={}, attempt={}",
                     channelId, port, extMedia.getId(), bridge.getId(), wav, attemptId);
 
@@ -805,10 +883,18 @@ public class AriService {
         } catch (Exception e) {
             log.error("Failed to set up media for {}: {}", channelId, e.getMessage(), e);
             callRecordService.recordError(attemptId, e.toString());
-            if (endpoint != null) {
-                endpoint.close();
+            // Whoever holds the session owns the cleanup. Once it is registered, the
+            // hangup below produces a StasisEnd and teardown does all of this; doing it
+            // here as well handed the same RTP port back twice. Between the two releases
+            // that port can be allocated to another call, and the second release puts a
+            // port that call is bound to back in the free set — the next call to draw it
+            // then fails to bind. So: clean up only what teardown will never see.
+            if (!sessions.containsKey(channelId)) {
+                if (endpoint != null) {
+                    endpoint.close();
+                }
+                portAllocator.release(port);
             }
-            portAllocator.release(port);
             hangup(channelId);
         }
     }
@@ -832,7 +918,7 @@ public class AriService {
 
     private List<AudioListener> buildAudioListeners(String channelId, long callAttemptId, Instant startedAt,
                                                     String language, EffectiveEngineConfig engineConfig,
-                                                    RealtimeAudioBridge realtimeBridge) {
+                                                    RealtimeAudioBridge realtimeBridge, CallContext context) {
         List<AudioListener> listeners = new ArrayList<>();
         boolean realtime = realtimeBridge != null;
 
@@ -859,9 +945,17 @@ public class AriService {
                             learning ? dynamic.reopenGraceMs() : 0);
                     installTurnDetector(listeners, speechGate, language);
                 }
+                // Who knows the caller stopped talking. With a gate installed it is the
+                // gate's close, and SttStreamBridge reports that. Without one — the
+                // default, where the recognizer endpoints for itself — nothing did, and
+                // the silence in front of the final sat outside every latency number the
+                // app reports (VOICE-QUALITY-PLAN 0.1). The VAD is already scoring every
+                // window for barge-in, so it can say so at no extra cost.
+                IntConsumer onSpeechEnd = realtime || speechGate != null ? null
+                        : waitMs -> dialogEngine.notifyUtteranceEnd(channelId, waitMs);
                 listeners.add(new VadStream(vad, vadProps, channelId,
                         realtime ? () -> false : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
-                        buildAmd(channelId)));
+                        buildAmd(channelId), onSpeechEnd));
             } else if (!realtime && sttProps.vadGating() != null && sttProps.vadGating().enabled()) {
                 log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }
@@ -882,7 +976,7 @@ public class AriService {
                         int offsetMs = (int) (Instant.now().toEpochMilli() - startedAt.toEpochMilli());
                         callRecordService.addTranscript(callAttemptId, "CLIENT", text, null, offsetMs, confidence);
                         if (dialog) {
-                            dialogEngine.onClientFinal(channelId, text);
+                            dialogEngine.onClientFinal(channelId, text, confidence);
                         }
                     } else {
                         log.debug("[{}] interim: {}", channelId, text);
@@ -897,7 +991,9 @@ public class AriService {
                     List<String> detectLangs = sttProps.detectLanguages() != null ? sttProps.detectLanguages() : List.of();
                     listeners.add(new SttStreamBridge(stt, stt.sampleRate(), SAMPLE_RATE,
                             channelId, sttLanguage, detectLangs, listener, speechGate, metrics,
-                            sttProps.endpointing(), sttProps.responseTimeoutMs()));
+                            sttProps.endpointing(), sttProps.responseTimeoutMs(),
+                            dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null,
+                            SttHints.of(context)));
                 } catch (Exception e) {
                     log.warn("STT not started for {}: {}", channelId, e.getMessage());
                 }
@@ -927,6 +1023,15 @@ public class AriService {
             metrics.turnScored(complete);
             return complete;
         }, turnProps.maxExtendMs());
+        if (turnProps.earlyWaitMs() > 0) {
+            gate.setEarlyClose(() -> {
+                boolean confident = detector.isConfidentlyComplete(buffer.recent(), buffer.length());
+                if (confident) {
+                    metrics.turnClosedEarly();
+                }
+                return confident;
+            }, turnProps.earlyWaitMs());
+        }
     }
 
     private AnsweringMachineDetector buildAmd(String channelId) {
@@ -992,7 +1097,7 @@ public class AriService {
 
             Files.createDirectories(Path.of(rtpProps.recordingDir()));
             Path wav = Path.of(rtpProps.recordingDir(), channelId.replace('/', '_') + "-fallback.wav");
-            endpoint = new RtpEndpoint(port, new WavRecorder(wav, SAMPLE_RATE), List.of());
+            endpoint = new RtpEndpoint(port, new WavRecorder(wav, SAMPLE_RATE, rtpProps.recordingMode()), List.of());
             endpoint.bind(rtpEventLoopGroup);
 
             Channel extMedia = current.channels()
@@ -1057,6 +1162,8 @@ public class AriService {
         putIfDeclared(facts, scenario, "debtAmount", t.debtAmount());
         putIfDeclared(facts, scenario, "currency", t.currency());
         putIfDeclared(facts, scenario, "contractNumber", t.contractNumber());
+        putIfDeclared(facts, scenario, "penaltyAmount", t.penaltyAmount());
+        putIfDeclared(facts, scenario, "contractCancelDays", t.contractCancelDays());
         if (t.dueDate() != null && !t.dueDate().isBlank()) {
             try {
                 putIfDeclared(facts, scenario, "dueDate", LocalDate.parse(t.dueDate()));
@@ -1116,7 +1223,7 @@ public class AriService {
         if (outbound == null) {
             return;
         }
-        dialerState.release();
+        dialerState.release(outbound.companyId());
         campaignService.applyOutcome(outbound.targetId(), disposition);
         metrics.disposition(disposition);
         log.info("Unanswered call {} to {} settled as {} (cause {})",
@@ -1172,17 +1279,22 @@ public class AriService {
         long clientId = 0L;
         if (outbound != null) {
             clientId = outbound.clientId() != null ? outbound.clientId() : 0L;
-            dialerState.release();
+            dialerState.release(outbound.companyId());
             if (disposition == Disposition.DO_NOT_CALL) {
                 doNotCallRepository.add(outbound.companyId(), outbound.phone(), outcome.doNotCallReason(), DoNotCallSource.CALL);
             }
-            campaignService.applyOutcome(outbound.targetId(), disposition);
         }
 
         if (session.callAttemptId() != 0) {
-            callFinalizer.finalizeCall(session.callAttemptId(), clientId, session.scenarioId(),
+            // Finalization has the last word on the disposition: it runs the summary,
+            // which can recognise an outcome the caller hung up before a tool could
+            // record. Applying the target's outcome first rescheduled such a call.
+            disposition = callFinalizer.finalizeCall(session.callAttemptId(), clientId, session.scenarioId(),
                     Path.of(session.wavPath()), session.startedAt(), disposition,
                     session.channelName(), session.trunk(), technical);
+        }
+        if (outbound != null) {
+            campaignService.applyOutcome(outbound.targetId(), disposition);
         }
     }
 
@@ -1204,6 +1316,41 @@ public class AriService {
         } else {
             log.info("[{}] inbound RTP: {} packets, {}% loss, jitter {}ms",
                     session.channelId(), received, Math.round(loss), Math.round(stats.jitterMillis()));
+        }
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30_000)
+    public void reapGhostCalls() {
+        if (sessions.isEmpty()) {
+            return;
+        }
+        Instant now = clock.instant();
+        int maxCallSeconds = dialogProps != null && dialogProps.maxCallSeconds() > 0
+                ? dialogProps.maxCallSeconds()
+                : 300;
+        int ghostTimeoutSeconds = maxCallSeconds + 60;
+
+        for (CallSession session : sessions.values()) {
+            if (session.startedAt() != null) {
+                long elapsed = java.time.Duration.between(session.startedAt(), now).getSeconds();
+                if (elapsed > ghostTimeoutSeconds) {
+                    log.error("[{}] GHOST CALL DETECTED: call active for {}s (limit {}s) without StasisEnd. Forcing teardown.",
+                            session.channelId(), elapsed, ghostTimeoutSeconds);
+                    try {
+                        hangup(session.channelId());
+                    } catch (Exception e) {
+                        log.debug("[{}] Ghost call hangup attempt failed: {}", session.channelId(), e.getMessage());
+                    }
+                    DialogOutcome outcome = dialogRouter.outcome(session.channelId());
+                    DialogTechnicalSnapshot technical = dialogRouter.technicalSnapshot(session.channelId());
+                    dialogRouter.endCall(session.channelId());
+                    CallSession removed = sessions.remove(session.channelId());
+                    if (removed != null) {
+                        Integer cause = hangupCauses.get(session.channelId());
+                        callExecutor.execute(() -> withMdc(session.channelId(), () -> teardown(removed, outcome, cause, technical)));
+                    }
+                }
+            }
         }
     }
 

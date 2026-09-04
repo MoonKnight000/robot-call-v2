@@ -79,12 +79,19 @@ public class SpeechGate {
     private int silenceSamples;
     /** Speech in the utterance being gated — what decides which hangover applies. */
     private int speechSamples;
+    /** The silence the last closed utterance waited out, hangover plus extension. */
+    private volatile int lastCloseWaitMs;
 
     /** Set when VAD is unusable — the gate then passes everything, as before gating. */
     private boolean bypassed;
 
     // Semantic end-of-turn check (SmartTurnDetector).
     private BooleanSupplier turnComplete;
+    /** Asked whether the utterance is finished beyond doubt; null leaves the wait alone. */
+    private BooleanSupplier confidentlyComplete;
+    private int earlyCloseSamples;
+    /** Whether this utterance has already been offered an early close. */
+    private boolean earlyCloseDecided;
     private int maxExtendSamples;
 
     /** Whether this utterance has already been scored, and what it earned. */
@@ -154,6 +161,7 @@ public class SpeechGate {
             // pause after their next words is a different question.
             extensionDecided = false;
             extensionSamples = 0;
+            earlyCloseDecided = false;
             speechSamples += samples;
             if (!open && speechSamples >= openSamples) {
                 open = true;
@@ -172,7 +180,14 @@ public class SpeechGate {
         silenceSamples += samples;
         int wait = hangoverForCurrentUtterance();
         if (silenceSamples < wait) {
-            return;
+            if (!earlyClose(wait)) {
+                return;
+            }
+            // Scored finished beyond doubt: the rest of the hangover is silence the caller
+            // spends waiting for a verdict that is already in.
+            wait = silenceSamples;
+            extensionDecided = true;
+            extensionSamples = 0;
         }
         if (!extensionDecided) {
             // Asked once, at the moment the timer would have closed the utterance: the
@@ -190,10 +205,12 @@ public class SpeechGate {
             return;
         }
         open = false;
+        lastCloseWaitMs = (int) Math.round((wait + extensionSamples) * 1000d / sampleRate);
         silenceSamples = 0;
         speechSamples = 0;
         extensionDecided = false;
         extensionSamples = 0;
+        earlyCloseDecided = false;
         continuationClause = false;
         confirmedQuickAnswer = false;
         // Start judging this close: whether the caller carries on is what says the
@@ -213,6 +230,39 @@ public class SpeechGate {
     public void setTurnDetector(BooleanSupplier turnComplete, int maxExtendMs) {
         this.turnComplete = turnComplete;
         this.maxExtendSamples = Math.max(0, maxExtendMs) * sampleRate / 1000;
+    }
+
+    /**
+     * Let the same detector also <em>shorten</em> the wait: once {@code earlyWaitMs} of
+     * silence have passed, an utterance it is confident is finished closes there instead
+     * of waiting out the rest of the hangover.
+     *
+     * <p>This is where the turnaround budget is actually won — the hangover has to be long
+     * enough for the caller who pauses to think, and every caller who does not pays it on
+     * every turn. Asked once per utterance, and only above the earliest wait: a verdict
+     * taken while the caller is drawing breath is a verdict on half a sentence.
+     *
+     * @param confidentlyComplete must answer {@code false} when it does not know — this
+     *                            decides whether a caller is cut off
+     * @param earlyWaitMs         silence before the question is worth asking; 0 disables
+     */
+    public void setEarlyClose(BooleanSupplier confidentlyComplete, int earlyWaitMs) {
+        this.confidentlyComplete = confidentlyComplete;
+        this.earlyCloseSamples = Math.max(0, earlyWaitMs) * sampleRate / 1000;
+    }
+
+    /**
+     * Whether the utterance in hand can be closed on this window, before its hangover has
+     * run out. Asked at most once per utterance, and never on a short answer — those are
+     * already on the aggressive wait and have nothing left to give.
+     */
+    private boolean earlyClose(int wait) {
+        if (confidentlyComplete == null || earlyCloseSamples <= 0 || earlyCloseDecided
+                || silenceSamples < earlyCloseSamples || earlyCloseSamples >= wait) {
+            return false;
+        }
+        earlyCloseDecided = true;
+        return !continuationClause && confidentlyComplete.getAsBoolean();
     }
 
     /**
@@ -269,6 +319,16 @@ public class SpeechGate {
             return shortHangoverSamples;
         }
         return dynamic ? (int) Math.round(emaHangoverSamples) : hangoverSamples;
+    }
+
+    /**
+     * The silence the utterance that just closed actually had to wait out — its own
+     * hangover plus whatever the turn detector added, not the long-utterance figure
+     * {@link #hangoverMs()} reports. This is the caller's wait: they had finished
+     * speaking for all of it.
+     */
+    public int lastCloseWaitMs() {
+        return lastCloseWaitMs;
     }
 
     /**

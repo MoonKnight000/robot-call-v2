@@ -37,7 +37,7 @@ voice-agent:
 
   stt:
     enabled: ${STT_ENABLED:true}
-    # Default STT provider: yandex (default), aisha, google, or deepgram.
+    # Default STT provider: yandex (default), aisha, gemini, or deepgram.
     # Individual calls pick provider from Company Engine Config.
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
@@ -60,16 +60,19 @@ voice-agent:
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
       short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:500}
       max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:20000}
+      # Only reaches SpeechGate when vad-gating above is on as well — with the provider
+      # doing its own endpointing there is no gate for these to adapt (AriService#buildAudioListeners).
       dynamic:
         enabled: ${STT_ENDPOINTING_DYNAMIC:false}
         min-post-roll-ms: ${STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS:600}
         ema-alpha: ${STT_ENDPOINTING_DYNAMIC_EMA_ALPHA:0.2}
         reopen-grace-ms: ${STT_ENDPOINTING_DYNAMIC_REOPEN_GRACE_MS:900}
-    google:
-      model: ${STT_MODEL:}
-      sample-rate: 8000
-      enable-punctuation: true
-      endpointing-silence-ms: 500
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      url: ${STT_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
+      model: ${STT_GEMINI_MODEL:gemini-3.5-transcribe}
+      sample-rate: 16000
+      connect-timeout-seconds: ${STT_GEMINI_CONNECT_TIMEOUT_SECONDS:10}
     yandex:
       api-key: ${STT_YANDEX_API_KEY:}
       folder-id: ${STT_YANDEX_FOLDER_ID:}
@@ -82,7 +85,12 @@ voice-agent:
       auto-detect-model: ${STT_YANDEX_AUTO_DETECT_MODEL:general}
       interim-results: ${STT_YANDEX_INTERIM:true}
       eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:HIGH}
-      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:450}
+      # The pause SpeechKit may treat as the end of the utterance rather than a gap
+      # between words. This is the whole endpointing budget on the default path — no
+      # gate runs on our side — and a recording of a real call put 1.5 s between the
+      # caller's last word and the final transcript, over half of a 2.5 s silence.
+      # Raise it back towards 450 if callers start getting cut mid-sentence.
+      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:300}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
     aisha:
       api-key: ${STT_AISHA_API_KEY:}
@@ -97,11 +105,23 @@ voice-agent:
       connect-timeout-seconds: ${STT_DEEPGRAM_TIMEOUT_SECONDS:5}
 
   turn:
+    # Everything under here works by changing how long the speech gate waits, so it only
+    # runs when there IS a gate: stt.vad-gating.enabled above must be true as well. With
+    # the recognizer endpointing for itself there is no wait to lengthen or shorten, and
+    # this whole block is inert — the app says so at startup rather than leaving it to be
+    # discovered during a tuning session.
     enabled: ${TURN_DETECTOR:false}
     model-path: ${TURN_MODEL_PATH:}
     languages: ${TURN_LANGUAGES:ru-RU}
     threshold: ${TURN_THRESHOLD:0.5}
     max-extend-ms: ${TURN_MAX_EXTEND_MS:500}
+    # Early close: silence after which an utterance the model is SURE is finished is closed
+    # without waiting out the rest of post-roll-ms. This is where the turnaround budget is
+    # won — but it also puts the model in charge of interrupting people, so it is off (0)
+    # until a replay run (TurnReplayTool) over real recordings says the turn boundaries
+    # hold. Only ever applies to the languages listed above.
+    early-wait-ms: ${TURN_EARLY_WAIT_MS:0}
+    early-threshold: ${TURN_EARLY_THRESHOLD:0.9}
     n-fft: ${TURN_N_FFT:512}
     hop-samples: ${TURN_HOP_SAMPLES:256}
     mels: ${TURN_MELS:128}
@@ -117,13 +137,16 @@ voice-agent:
       redis: ${TTS_CACHE_REDIS:true}
       ttl-days: ${TTS_CACHE_TTL_DAYS:30}
       prewarm: ${TTS_CACHE_PREWARM:false}
-    google:
-      sample-rate: 8000
-      speaking-rate: ${TTS_GOOGLE_RATE:1.0}
-      pitch: ${TTS_GOOGLE_PITCH:0.0}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      url: ${TTS_GEMINI_URL:https://generativelanguage.googleapis.com/v1beta/models}
+      model: ${TTS_GEMINI_MODEL:gemini-3.1-flash-tts-preview}
+      voice: ${TTS_GEMINI_VOICE:Aoede}
       voices:
-        uz-UZ: ${TTS_GOOGLE_VOICE_UZ:uz-UZ-Standard-A}
-        ru-RU: ${TTS_GOOGLE_VOICE_RU:ru-RU-Standard-A}
+        uz-UZ: ${TTS_GEMINI_VOICE_UZ:Aoede}
+        ru-RU: ${TTS_GEMINI_VOICE_RU:Kore}
+      sample-rate: 24000
+      connect-timeout-seconds: ${TTS_GEMINI_TIMEOUT_SECONDS:10}
     yandex:
       api-key: ${TTS_YANDEX_API_KEY:}
       folder-id: ${TTS_YANDEX_FOLDER_ID:}
@@ -160,7 +183,9 @@ voice-agent:
     sample-rate: 8000
     window-samples: 256
     threshold: ${VAD_THRESHOLD:0.5}
-    min-speech-ms: ${VAD_MIN_SPEECH_MS:180}
+    listening-threshold: ${VAD_LISTENING_THRESHOLD:0.35}
+    min-energy-rms: ${VAD_MIN_ENERGY_RMS:150.0}
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:250}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}

@@ -29,6 +29,12 @@ import java.time.Instant;
  * @param audioMonitor      mixes this call's caller+bot audio for operator "listen in"
  *                          (§10.3); closed alongside {@code endpoint} at teardown, which
  *                          disconnects any operator still listening
+ * @param dtmfInputEnabled  whether keypad digits reach the dialog as caller turns
+ *                          ({@code campaign.dtmf_input_enabled}). Carried here rather
+ *                          than looked up per keypress: the digit arrives on the ARI
+ *                          event thread, which has no business touching the campaign
+ *                          registry. False for inbound and manual test calls, which
+ *                          belong to no campaign
  */
 public record CallSession(
         String channelId,
@@ -42,6 +48,7 @@ public record CallSession(
         String channelName,
         String trunk,
         long scenarioId,
-        LiveAudioMonitor audioMonitor
+        LiveAudioMonitor audioMonitor,
+        boolean dtmfInputEnabled
 ) {
 }

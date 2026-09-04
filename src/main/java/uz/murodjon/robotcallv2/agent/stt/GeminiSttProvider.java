@@ -1,0 +1,379 @@
+package uz.murodjon.robotcallv2.agent.stt;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Gemini streaming Speech-to-Text provider ({@code gemini-3.5-transcribe}).
+ *
+ * <p>Streams 16 kHz PCM audio into Gemini's bidirectional streaming WebSocket
+ * endpoint ({@code BidiGenerateContent}) and delivers live incremental and finalized
+ * transcripts to {@link TranscriptListener}.
+ */
+@Component
+@ConditionalOnExpression("!'${voice-agent.stt.gemini.api-key:}'.isBlank() || !'${GEMINI_API_KEY:}'.isBlank()")
+public class GeminiSttProvider implements SttProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiSttProvider.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final int DEFAULT_SAMPLE_RATE = 16000;
+    private static final String DEFAULT_MODEL = "gemini-3.5-transcribe";
+
+    private final SttProperties props;
+    private final VoiceMetrics metrics;
+    private volatile HttpClient client;
+
+    public GeminiSttProvider(SttProperties props, VoiceMetrics metrics) {
+        this.props = props;
+        this.metrics = metrics;
+    }
+
+    @PostConstruct
+    public void init() {
+        String apiKey = resolveApiKey();
+        if (apiKey.isBlank()) {
+            log.warn("Gemini STT selected but no API key is available (voice-agent.stt.gemini.api-key or GEMINI_API_KEY)");
+            return;
+        }
+        int timeoutSeconds = props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10;
+        client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(timeoutSeconds))
+                .build();
+        log.info("Gemini STT provider ready (model={}, sampleRate={}Hz)",
+                resolveModel(), sampleRate());
+    }
+
+    @Override
+    public String name() {
+        return "gemini";
+    }
+
+    @Override
+    public int sampleRate() {
+        return (props.gemini() != null && props.gemini().sampleRate() > 0)
+                ? props.gemini().sampleRate()
+                : DEFAULT_SAMPLE_RATE;
+    }
+
+    @Override
+    public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                  TranscriptListener listener, boolean externalEndpointing) {
+        return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, List.of());
+    }
+
+    @Override
+    public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                  TranscriptListener listener, boolean externalEndpointing,
+                                  List<String> hints) {
+        HttpClient current = client;
+        if (current == null) {
+            throw new ExternalServiceException(ErrorCode.STT_GEMINI_CLIENT_UNAVAILABLE, "gemini-stt");
+        }
+
+        String apiKey = resolveApiKey();
+        if (apiKey.isBlank()) {
+            throw new ExternalServiceException(ErrorCode.STT_GEMINI_CLIENT_UNAVAILABLE, "gemini-stt");
+        }
+
+        URI uri = buildWebSocketUri(apiKey);
+        AtomicBoolean alive = new AtomicBoolean(false);
+        CountDownLatch ready = new CountDownLatch(1);
+
+        ResponseHandler handler = new ResponseHandler(languageCode, listener, alive, ready);
+        int timeoutSeconds = props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10;
+
+        try {
+            WebSocket webSocket = current.newWebSocketBuilder()
+                    .connectTimeout(Duration.ofSeconds(timeoutSeconds))
+                    .buildAsync(uri, handler)
+                    .get(timeoutSeconds, TimeUnit.SECONDS);
+
+            alive.set(true);
+
+            // Send session setup message
+            String setupPayload = buildSetupMessage(hints, languageCode);
+            webSocket.sendText(setupPayload, true).get(timeoutSeconds, TimeUnit.SECONDS);
+
+            // Wait for setup acknowledgement
+            if (!ready.await(timeoutSeconds, TimeUnit.SECONDS)) {
+                alive.set(false);
+                webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "setup-timeout");
+                throw new ExternalServiceException(ErrorCode.STT_GEMINI_CONNECT_FAILED,
+                        "gemini-stt", "session setup was not acknowledged within " + timeoutSeconds + "s");
+            }
+
+            log.info("Gemini STT streaming session open (lang={}, model={})", languageCode, resolveModel());
+            return new GeminiSttSession(webSocket, alive, metrics);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            metrics.sttError();
+            throw new ExternalServiceException(ErrorCode.STT_GEMINI_CONNECT_FAILED, "gemini-stt", e, e.getMessage());
+        } catch (ExternalServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            metrics.sttError();
+            throw new ExternalServiceException(ErrorCode.STT_GEMINI_CONNECT_FAILED, "gemini-stt", e, e.getMessage());
+        }
+    }
+
+    private String resolveApiKey() {
+        if (props.gemini() != null && props.gemini().apiKey() != null && !props.gemini().apiKey().isBlank()) {
+            return props.gemini().apiKey().trim();
+        }
+        String env = System.getenv("GEMINI_API_KEY");
+        return env != null ? env.trim() : "";
+    }
+
+    private String resolveModel() {
+        if (props.gemini() != null && props.gemini().model() != null && !props.gemini().model().isBlank()) {
+            String m = props.gemini().model().trim();
+            return m.startsWith("models/") ? m.substring("models/".length()) : m;
+        }
+        return DEFAULT_MODEL;
+    }
+
+    private URI buildWebSocketUri(String apiKey) {
+        String base = (props.gemini() != null && props.gemini().url() != null && !props.gemini().url().isBlank())
+                ? props.gemini().url().trim()
+                : "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+        String separator = base.contains("?") ? "&" : "?";
+        return URI.create(base + separator + "key=" + apiKey);
+    }
+
+    private String buildSetupMessage(List<String> hints, String languageCode) {
+        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode setup = root.putObject("setup");
+        setup.put("model", "models/" + resolveModel());
+
+        ObjectNode genConfig = setup.putObject("generationConfig");
+        genConfig.putArray("responseModalities").add("TEXT");
+
+        if (hints != null && !hints.isEmpty()) {
+            ArrayNode vocab = setup.putArray("customVocabulary");
+            for (String hint : hints) {
+                if (hint != null && !hint.isBlank()) {
+                    vocab.add(hint.trim());
+                }
+            }
+        }
+        return root.toString();
+    }
+
+    /**
+     * Handles incoming WebSocket messages from Gemini Bidi streaming endpoint.
+     */
+    private final class ResponseHandler implements WebSocket.Listener {
+
+        private final String languageCode;
+        private final TranscriptListener listener;
+        private final AtomicBoolean alive;
+        private final CountDownLatch ready;
+
+        private final StringBuilder messageBuffer = new StringBuilder();
+        private final StringBuilder accumulatedTranscript = new StringBuilder();
+
+        private ResponseHandler(String languageCode, TranscriptListener listener,
+                                AtomicBoolean alive, CountDownLatch ready) {
+            this.languageCode = languageCode;
+            this.listener = listener;
+            this.alive = alive;
+            this.ready = ready;
+        }
+
+        @Override
+        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+            messageBuffer.append(data);
+            if (last) {
+                String fullMessage = messageBuffer.toString();
+                messageBuffer.setLength(0);
+                handleMessage(fullMessage);
+            }
+            webSocket.request(1);
+            return null;
+        }
+
+        @Override
+        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+            messageBuffer.append(StandardCharsets.UTF_8.decode(data));
+            if (last) {
+                String fullMessage = messageBuffer.toString();
+                messageBuffer.setLength(0);
+                handleMessage(fullMessage);
+            }
+            webSocket.request(1);
+            return null;
+        }
+
+        private void handleMessage(String json) {
+            try {
+                JsonNode node = MAPPER.readTree(json);
+                if (node.has("setupComplete")) {
+                    ready.countDown();
+                    return;
+                }
+                if (node.has("serverContent")) {
+                    handleServerContent(node.get("serverContent"));
+                    return;
+                }
+                if (node.has("goAway")) {
+                    log.info("Gemini STT received goAway: {}", node.get("goAway"));
+                    alive.set(false);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse Gemini STT message: {}", e.getMessage());
+            }
+        }
+
+        private void handleServerContent(JsonNode content) {
+            JsonNode modelTurn = content.path("modelTurn");
+            if (!modelTurn.isMissingNode()) {
+                for (JsonNode part : modelTurn.path("parts")) {
+                    String text = part.path("text").asText("");
+                    if (!text.isEmpty()) {
+                        accumulatedTranscript.append(text);
+                    }
+                }
+            }
+
+            String interim = content.path("interimInputTranscription").path("text").asText("");
+            if (interim.isEmpty()) {
+                interim = content.path("inputTranscription").path("text").asText("");
+            }
+            if (!interim.isEmpty()) {
+                listener.onTranscript(interim, false, 0.0f);
+            }
+
+            boolean turnComplete = content.path("turnComplete").asBoolean(false);
+            if (turnComplete) {
+                String finalResult = accumulatedTranscript.toString().trim();
+                if (!finalResult.isEmpty()) {
+                    listener.onTranscript(finalResult, true, 1.0f);
+                    accumulatedTranscript.setLength(0);
+                }
+            }
+
+            if (content.path("interrupted").asBoolean(false)) {
+                accumulatedTranscript.setLength(0);
+            }
+        }
+
+        @Override
+        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+            alive.set(false);
+            ready.countDown();
+            log.debug("Gemini STT stream closed ({}: {})", statusCode, reason);
+            return null;
+        }
+
+        @Override
+        public void onError(WebSocket webSocket, Throwable error) {
+            alive.set(false);
+            ready.countDown();
+            metrics.sttError();
+            log.warn("Gemini STT stream error: {}", error.getMessage());
+        }
+    }
+
+    /**
+     * Active Gemini streaming STT session sending raw PCM audio.
+     */
+    private static final class GeminiSttSession implements SttSession {
+
+        private final WebSocket webSocket;
+        private final AtomicBoolean alive;
+        private final VoiceMetrics metrics;
+        private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
+        private volatile boolean closed;
+
+        private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics) {
+            this.webSocket = webSocket;
+            this.alive = alive;
+            this.metrics = metrics;
+        }
+
+        @Override
+        public synchronized void sendAudio(byte[] pcm16le) {
+            if (closed || !alive.get() || pcm16le == null || pcm16le.length == 0) {
+                return;
+            }
+
+            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode mediaChunk = root.putObject("realtimeInput")
+                    .putArray("mediaChunks")
+                    .addObject();
+            mediaChunk.put("mimeType", "audio/pcm;rate=16000");
+            mediaChunk.put("data", Base64.getEncoder().encodeToString(pcm16le));
+
+            String payload = root.toString();
+            sendChain = sendChain
+                    .thenCompose(ignored -> webSocket.sendText(payload, true))
+                    .thenAccept(sent -> {
+                    })
+                    .exceptionally(e -> {
+                        alive.set(false);
+                        metrics.sttError();
+                        log.warn("Gemini STT send failed: {}", e.getMessage());
+                        return null;
+                    });
+        }
+
+        @Override
+        public synchronized void endUtterance() {
+            if (closed || !alive.get()) {
+                return;
+            }
+            ObjectNode root = MAPPER.createObjectNode();
+            root.putObject("clientContent").put("turnComplete", true);
+            String payload = root.toString();
+            sendChain = sendChain
+                    .thenCompose(ignored -> webSocket.sendText(payload, true))
+                    .thenAccept(sent -> {
+                    })
+                    .exceptionally(e -> null);
+        }
+
+        @Override
+        public boolean isAlive() {
+            return alive.get() && !closed;
+        }
+
+        @Override
+        public synchronized void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            alive.set(false);
+            try {
+                webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "session closed");
+            } catch (Exception e) {
+                log.debug("Gemini STT close ignored: {}", e.getMessage());
+            }
+        }
+    }
+}

@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
 import uz.murodjon.robotcallv2.report.application.dto.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
 
 import java.util.List;
 
@@ -24,7 +25,7 @@ public interface ReportUseCase {
 
     CallDetail call(long callId);
 
-    long resolveRecording(long callId);
+    DownloadableFile recording(long callId);
 
     PageableData<AuditLog> auditLog(AuditFilter filter);
 

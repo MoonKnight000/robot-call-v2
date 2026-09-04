@@ -286,8 +286,14 @@ ancha qimmatga tushadi.
   trunk API orqali qayta kiritilmasdan o'z-o'zidan default bo'lib qoladi.
 - **Qat'iy dial-window** (B.1 dagi asl "kompaniya darajasida cap" niyatining bir qismi)
   `company_config.dialWindowStart/End` orqali amalga oshirilgan — B.1'ga qarang.
-  **Qoldiq:** kunlik qo'ng'iroq soni/parallel limit hamon faqat campaign darajasida,
-  kompaniya darajasida yo'q (E.3 billing bilan birga kelishi mumkin). Trunk holatini
+  **Parallel limit — ✅ qo'shildi (2026-09-04):** `DialerState` endi qo'ng'iroqlarni
+  kompaniya kesimida ham sanaydi (`dialer:active:company:{id}`), `DialerService`
+  `voice-agent.dialer.max-concurrent-calls-per-company` bo'yicha tekshiradi va limitga
+  yetgan kompaniyada `continue` qiladi — ilgari birinchi kampaniya barcha slotlarni olib,
+  qolgan ijarachilar hech narsa termasdi. Platforma shifti RTP port diapazoni bilan ham
+  cheklanadi (`RtpProperties.mediaCapacity()`). **Qoldiq:** limit hamon konfiguratsiyada,
+  `company_config` da emas — har kompaniyaga alohida qiymat E.3 billing bilan keladi.
+  Kunlik qo'ng'iroq soni hamon faqat campaign darajasida. Trunk holatini
   (registered/unregistered) Asterisk'dan real-time tekshirish yo'q — CRUD faqat
   qaysi endpoint ishlatilishini biladi, uning tirikligini bilmaydi.
 

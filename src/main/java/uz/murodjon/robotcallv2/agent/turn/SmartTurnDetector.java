@@ -159,20 +159,48 @@ public class SmartTurnDetector {
      *
      * @param pcm    16 kHz mono PCM, most recent samples last
      * @param length how much of {@code pcm} is populated
+     * @see #isConfidentlyComplete(short[], int) for the question asked in the other direction
      */
     public boolean isComplete(short[] pcm, int length) {
+        float probability = completion(pcm, length);
+        return probability < 0 || probability >= props.threshold();
+    }
+
+    /**
+     * Whether the utterance is finished beyond the doubt it takes to close the turn
+     * <em>early</em>, before the timer's wait has run out.
+     *
+     * <p>The opposite default to {@link #isComplete}, and for the same reason. That one
+     * decides whether to add silence, so an unknown answer is harmless; this one decides
+     * whether to cut a caller off mid-breath, so an unknown answer must never say yes. A
+     * model that is unavailable, failing, or merely unsure leaves the caller the wait they
+     * would have had.
+     */
+    public boolean isConfidentlyComplete(short[] pcm, int length) {
+        float probability = completion(pcm, length);
+        return probability >= 0 && probability >= props.earlyThreshold();
+    }
+
+    /**
+     * The model's probability that the utterance ending at the end of {@code pcm} is
+     * finished, or {@code -1} when it could not be scored at all.
+     *
+     * @param pcm    16 kHz mono PCM, most recent samples last
+     * @param length how much of {@code pcm} is populated
+     */
+    private float completion(short[] pcm, int length) {
         OrtSession current = session;
         if (current == null || pcm == null || length <= 0) {
-            return true;
+            return -1f;
         }
         try (OnnxTensor input = tensor(pcm, length);
              OrtSession.Result result = current.run(Map.of(inputName, input))) {
             float probability = firstFloat(result.get(0).getValue());
             log.debug("Smart Turn: p(complete)={}", probability);
-            return probability >= props.threshold();
+            return probability;
         } catch (Exception e) {
             log.warn("Smart Turn inference failed: {}", e.getMessage());
-            return true;
+            return -1f;
         }
     }
 

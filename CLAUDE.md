@@ -3,7 +3,8 @@
 AI voice agent: SIP orqali mijozlarga qo'ng'iroq qilib, o'zbek/rus tilida suhbatlashadi
 va natijani CRM ga yozadi.
 
-**Stack:** Java 21 · Spring Boot 3.4.5 · Asterisk 20 · PostgreSQL · RabbitMQ · Redis · MinIO
+**Stack:** Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Asterisk 20 (ari4java) ·
+PostgreSQL + Flyway · RabbitMQ · Redis · MinIO · Netty (RTP) · ONNX Runtime (VAD, turn)
 **Base paket:** `uz.murodjon.robotcallv2` · bitta Gradle moduli
 Batafsil topshiriq: `docs/PROJECT.md` · bosqichlar tarixi: `docs/claude/CLAUDE.md`
 
@@ -48,51 +49,72 @@ detali. **`public` nested type taqiqlanadi:** u API'ning bir qismi, alohida fayl
 chiqariladi — `TtsProperties` ichida `public record Voice` emas, balki `TtsProperties.java`
 va `TtsVoice.java`.
 
-## 2. Paket strukturasi — feature-first + qatlam
+## 2. Paket strukturasi — feature-first + hexagonal
+
+Har bir feature to'rt qatlamga bo'linadi. Bog'liqlik **faqat ichkariga qaraydi**:
+`presentation → application → domain`, `infrastructure → application`. Teskarisi yo'q.
 
 ```
-uz.murodjon.robotcallv2.<feature>.controller   — REST interfeys + bitta Impl
-uz.murodjon.robotcallv2.<feature>.service      — BUTUN biznes logika
-uz.murodjon.robotcallv2.<feature>.repository   — DB kirish (DAO + Spring Data)
-uz.murodjon.robotcallv2.<feature>.domain       — ASOSIY model (service ↔ repository)
-uz.murodjon.robotcallv2.<feature>.entity       — JPA entity (faqat saqlash uchun)
-uz.murodjon.robotcallv2.<feature>.dto          — faqat HTTP uchun: request/response/row/filter
-uz.murodjon.robotcallv2.<feature>.enums        — shu feature'ga tegishli barcha enum'lar
-uz.murodjon.robotcallv2.<feature>.config       — @ConfigurationProperties, @Configuration
+uz.murodjon.robotcallv2.<feature>
+├── presentation
+│   ├── controller                 — REST interfeys + bitta Impl (§3)
+│   └── http                       — <feature>.http, qo'lda sinash uchun
+├── application
+│   ├── port/input                 — <Feature>UseCase: tashqi dunyo service'dan nima so'raydi
+│   ├── port/output                — <Feature>Repository (INTERFEYS): service tashqaridan nima so'raydi
+│   ├── service                    — BUTUN biznes logika, `implements <Feature>UseCase`
+│   ├── mapper                     — entity ↔ domain ↔ dto ko'chirish
+│   └── dto                        — faqat HTTP uchun: *Request, *Response, *Row, *Detail
+├── domain
+│   ├── entity                     — ASOSIY model: Campaign, AiModelConfig, *Filter
+│   ├── enums                      — shu feature'ga tegishli BARCHA enum'lar
+│   └── service                    — sof qoidalar: <Feature>Validator (Spring'siz)
+└── infrastructure
+    ├── persistence/entity         — JPA entity: <Domain>Entity
+    ├── persistence/repository     — Spring Data: <Entity>JpaRepository
+    ├── persistence/adapter        — <Feature>RepositoryAdapter implements port/output
+    └── config                     — @ConfigurationProperties, @Configuration
 ```
 
-**Enum'lar — har doim `<feature>.enums` da.** `dto` yoki `entity` ichiga enum
-qo'shilmaydi (`CampaignStatus`, `CampaignTableField` ham shu qoidaga bo'ysunadi).
+**Etalon: `aimodel`.** Yangi feature yozganda yoki eskisiga qo'shganda shu paketga
+qarab tekshiriladi — u to'liq skeletni eng kichik hajmda ko'rsatadi.
 
-### 2.1. `domain` vs `entity` vs `dto`
+Qatlam bo'sh bo'lsa — **subpaketni umuman yaratmang** (`search` da `infrastructure` yo'q,
+`live` da `persistence` yo'q). Bo'sh papka qoida emas, shovqin.
 
-| Paket    | Nima uchun                                                                                                                                                       | Kim ko'radi                   |
-|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------|
-| `domain` | **Asosiy model.** Service ↔ repository o'rtasida ikki tomonga yuradigan type; undan olingan hosila qiymatlar ham (`EffectiveAiModelConfig`, `CallTask`).         | service, repository, `agent/` |
-| `entity` | **Faqat saqlash.** JPA detali — `domain`ga aylanmasdan repository'dan chiqmaydi.                                                                                 | faqat repository              |
-| `dto`    | **Faqat HTTP borligi uchun mavjud.** `*Request`, `*Response`, `*Filter`, bitta endpoint javobiga moslangan proyeksiya (`*Row`, `*Detail`, dashboard bo'laklari). | controller, service cheti     |
+**Enum'lar — har doim `<feature>.domain.enums` da.** `dto` yoki `entity` ichiga enum
+qo'shilmaydi (`CampaignStatus`, `CampaignTableField`, `PipelineMode` ham shunga bo'ysunadi).
 
-Ajratish testi: **service uni o'qiydi ham, yozadi ham → `domain`; faqat bitta endpoint
-javobi uchun yasalgan → `dto`.** Entity hech qachon controller'ga chiqmaydi, DTO hech
-qachon repository'ga kirmaydi.
+### 2.1. `domain.entity` vs `infrastructure.persistence.entity` vs `application.dto`
 
-Mavjud feature'lar:
-`aimodel` · `audit` · `auth` · `callrecord` · `campaign` · `company` · `contact` · `crm` ·
-`dialer` · `donotcall` · `inbound` · `integration` · `live` · `notification` · `operator` ·
-`profile` · `report` · `scenario` · `search` · `siptrunk` · `storage` · `user` · `voice`
+| Paket                           | Nima uchun                                                                                                                                                             | Kim ko'radi                       |
+|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------|
+| `domain.entity`                 | **Asosiy model.** Service ↔ port/output o'rtasida ikki tomonga yuradigan type; hosila qiymatlar (`EffectiveAiModelConfig`) va filtrlar (`CampaignFilter`) ham shu yerda. | service, adapter, `agent/`        |
+| `infrastructure.persistence.entity` | **Faqat saqlash.** JPA detali — `domain`ga aylanmasdan adapter'dan chiqmaydi.                                                                                        | faqat persistence ichida          |
+| `application.dto`               | **Faqat HTTP borligi uchun mavjud.** `*Request`, `*Response`, bitta endpoint javobiga moslangan proyeksiya (`*Row`, `*Detail`).                                          | controller, service cheti         |
 
-**Istisno — `agent/`.** Voice pipeline infratuzilmasi, CRUD emas, shuning uchun texnik
-tamoyil bo'yicha bo'linadi: `agent/ari`, `agent/rtp`, `agent/codec`, `agent/vad`,
-`agent/stt`, `agent/tts`, `agent/dialog`, `agent/audio`, `agent/session`, `agent/routing`,
-`agent/metrics`, `agent/lifecycle`, `agent/alerting`, `agent/summary`.
+Ajratish testi: **service uni o'qiydi ham, yozadi ham → `domain.entity`; faqat bitta
+endpoint javobi uchun yasalgan → `application.dto`.** JPA entity hech qachon
+controller'ga chiqmaydi, DTO hech qachon `port/output` ga kirmaydi.
+
+Mavjud feature'lar (27 ta):
+`aimodel` · `audit` · `auth` · `billing` · `callrecord` · `campaign` · `company` ·
+`contact` · `crm` · `dialer` · `donotcall` · `engine` · `inbound` · `integration` ·
+`live` · `notification` · `operator` · `profile` · `report` · `scenario` · `search` ·
+`siptrunk` · `sms` · `storage` · `user` · `voice` · `webhook`
+
+**Istisno — `agent/`.** Voice pipeline infratuzilmasi, CRUD emas, shuning uchun hexagonal
+emas, **texnik tamoyil** bo'yicha bo'linadi: `agent/ari`, `agent/ami`, `agent/rtp`,
+`agent/codec`, `agent/vad`, `agent/turn`, `agent/stt`, `agent/tts`, `agent/realtime`,
+`agent/dialog`, `agent/audio`, `agent/session`, `agent/routing`, `agent/metrics`,
+`agent/lifecycle`, `agent/alerting`, `agent/summary`. Bu ataylab shunday va
+refactor qilinmaydi (`docs/VOICE-QUALITY-PLAN.md` §8).
 
 **`shared/`** — feature'lardan mustaqil umumiy kod: `shared/api` (ResponseData,
 PageableData, FilterInterface, TableField), `shared/dialog`, `shared/exception`,
-`shared/csv`, `shared/util`. **`config/`** — ilova darajasidagi konfiguratsiya: security,
-executor, netty, clock, global exception handler.
-
-Yangi feature qo'shganda skeletni to'liq takrorlang. Qatlam bo'sh bo'lsa — subpaketni
-umuman yaratmang (masalan `live` da `entity` yo'q).
+`shared/csv`, `shared/converter`, `shared/util`. **`config/`** — ilova darajasidagi
+konfiguratsiya: executor, netty, clock, encryption, global exception handler.
+**`security/`** — ApiKeyFilter, JwtAuthFilter, SecurityConfig.
 
 ## 3. Controller — interfeys + bitta Impl, logikasiz
 
@@ -101,29 +123,36 @@ umuman yaratmang (masalan `live` da `entity` yo'q).
   Javadoc — **interfeysda**.
 - Implementatsiya bitta: `<Name>ControllerImpl`, faqat `@RestController` bilan
   belgilanadi, `implements <Name>Controller`.
-- **Impl'da logika bo'lmaydi.** Har bir metod bitta qator: service'ni chaqirish va
+- **Impl'da logika bo'lmaydi.** Har bir metod bitta qator: use case'ni chaqirish va
   javobni o'rash. `if`, `for`, `try`, `instanceof`, hisob-kitob, tekshiruv,
   transformatsiya — hech biri controller'da bo'lmaydi.
-- Controller **faqat o'z paketining service'iga** murojaat qiladi; boshqa feature'ning
-  service'iga yoki `agent/` ga to'g'ridan-to'g'ri emas.
+- Controller **`application.port.input.<Feature>UseCase` ga bog'lanadi**, service klassiga
+  emas — bu `presentation → application` yo'nalishini saqlaydi. Boshqa feature'ning
+  service'iga yoki `agent/` ga to'g'ridan-to'g'ri murojaat qilmaydi.
 
 ## 4. Logika — service'da
 
-- **Butun** biznes logikasi `<feature>.service` da. Service repository'ga, boshqa
-  service'larga va `agent/` ga murojaat qilishi mumkin.
+- **Butun** biznes logikasi `<feature>.application.service` da, `implements
+  <Feature>UseCase`. Service `port/output` ga, boshqa feature'ning UseCase/service'iga va
+  `agent/` ga murojaat qilishi mumkin.
 - Service HTTP haqida bilmaydi: `ResponseEntity`, `HttpStatus`, `ResponseStatusException`,
   `HttpServletRequest` — service'da **taqiqlangan**.
-- Repository'da biznes logikasi bo'lmaydi — faqat DB kirish va entity↔domain mapping.
-- **Repository domain qabul qiladi, domain qaytaradi.** Yozish metodlariga yoyilgan
-  parametrlar berilmaydi. Identifikator, `company_id`, `created_at` kabi repository'niki
-  bo'lgan maydonlar kirishda e'tiborga olinmaydi (repository o'zi shtamplaydi), chiqishda
-  esa doim to'ldirilgan bo'ladi; faqat yozish uchun mo'ljallangan qiymatni domain
-  record'dagi nomlangan factory yasaydi (`AiModelConfig.overrides(...)`).
-- **`CurrentCompany` faqat service'da.** Repository yashirin kontekst bilmaydi —
+- **Service JPA haqida ham bilmaydi.** `*Entity`, `EntityManager`, `*JpaRepository` —
+  service'da taqiqlangan; u faqat `port/output` interfeysini ko'radi. JPA butunlay
+  `infrastructure/persistence` ichida qoladi.
+- **Adapter'da biznes logikasi bo'lmaydi** — faqat DB kirish va entity↔domain mapping.
+- **Port domain qabul qiladi, domain qaytaradi.** Yozish metodlariga yoyilgan
+  parametrlar berilmaydi. Identifikator, `company_id`, `created_at` kabi saqlash
+  qatlaminiki bo'lgan maydonlar kirishda e'tiborga olinmaydi (adapter o'zi shtamplaydi),
+  chiqishda esa doim to'ldirilgan bo'ladi; faqat yozish uchun mo'ljallangan qiymatni
+  domain record'dagi nomlangan factory yasaydi (`AiModelConfig.overrides(...)`).
+- **Spring'siz sof qoidalar `domain.service` da** (`<Feature>Validator`): bog'liqliksiz,
+  shuning uchun eng arzon test qilinadigan joy.
+- **`CurrentCompany` faqat service'da.** Port yashirin kontekst bilmaydi —
   `companyId` unga har doim argument bo'lib beriladi.
 
 ```java
-// ✗ yoyilgan parametrlar + repository ichida yashirin kompaniya
+// ✗ yoyilgan parametrlar + adapter ichida yashirin kompaniya
 public AiModelConfig save(String model, Double temperature, Integer maxOutputTokens) {
     long companyId = company.id();
     ...
@@ -152,9 +181,9 @@ Kutilgan har qanday xato `shared/exception` dagi `AppException` avlodi bo'ladi:
   **matnni o'zgartirish erkin, enum nomini o'zgartirish breaking change.**
 - **Taqiqlangan:** biznes xatosi uchun `IllegalArgumentException`, `IllegalStateException`,
   `RuntimeException`, `ResponseStatusException` tashlash.
-- **Exception faqat service va `agent/` da tashlanadi.** Repository topilmasa `null`/
-  `Optional.empty()` qaytaradi — bu 404 mi yoki normal holat mi, service hal qiladi.
-  Controller'da `throw` ham, `try/catch` ham bo'lmaydi.
+- **Exception faqat `application.service`, `domain.service` va `agent/` da tashlanadi.**
+  Adapter topilmasa `null`/`Optional.empty()` qaytaradi — bu 404 mi yoki normal holat mi,
+  service hal qiladi. Controller'da `throw` ham, `try/catch` ham bo'lmaydi.
 - Hamma xatoni `config/ApiExceptionHandler` (`@RestControllerAdvice`) ushlaydi va yagona
   `ResponseData` konvertiga o'raydi. U `AppException`dan tashqari `@Valid`
   (`VALIDATION_FAILED`), buzuq JSON, yetishmagan/noto'g'ri tipdagi parametr va noma'lum
@@ -175,25 +204,32 @@ throw new ExternalServiceException(ErrorCode.ARI_ORIGINATE_FAILED, "asterisk", c
 
 ## 6. Nomlash
 
-| Type                           | Qoida                                           | Misol                                 |
-|--------------------------------|-------------------------------------------------|---------------------------------------|
-| JPA entity                     | `<Domain>Entity` — doim `Entity` suffiksi bilan | `CampaignEntity`, `CallAttemptEntity` |
-| Spring Data interfeys          | `<Entity>JpaRepository`                         | `CampaignJpaRepository`               |
-| DAO klass                      | `<Entity>Repository`                            | `CampaignRepository`                  |
-| Service                        | `<Feature>Service`                              | `CampaignService`                     |
-| Controller                     | `<Feature>Controller` + `...Impl`               | `CampaignController`                  |
-| Domain model                   | Suffikssiz sof domain nomi                      | `Campaign`, `AiModelConfig`           |
-| Request DTO                    | `<Verb><Noun>Request`                           | `CreateCampaignRequest`               |
-| Response DTO                   | `<Noun>Response`                                | `CreateCampaignResponse`              |
-| Endpoint javobidagi proyeksiya | `<Noun>Row` / `<Noun>Detail`                    | `CallRow`, `CallDetail`               |
-| Filtr                          | `<Noun>Filter`                                  | `CampaignFilter`                      |
-| Sort ustunlari                 | `<Noun>TableField`                              | `CampaignTableField`                  |
-| Properties                     | `<Noun>Properties`                              | `DialerProperties`                    |
+| Type                           | Paket                                 | Qoida                                | Misol                          |
+|--------------------------------|---------------------------------------|---------------------------------------|--------------------------------|
+| Domain model                   | `domain.entity`                       | Suffikssiz sof domain nomi            | `Campaign`, `AiModelConfig`    |
+| Filtr                          | `domain.entity`                       | `<Noun>Filter`                        | `CampaignFilter`               |
+| Sort ustunlari                 | `domain.enums`                        | `<Noun>TableField`                    | `CampaignTableField`           |
+| Sof qoidalar                   | `domain.service`                      | `<Feature>Validator`                  | `ScenarioValidator`            |
+| Kirish porti                   | `application.port.input`              | `<Feature>UseCase` (interfeys)        | `CampaignUseCase`              |
+| Chiqish porti                  | `application.port.output`             | `<Feature>Repository` (INTERFEYS)     | `CampaignRepository`           |
+| Service                        | `application.service`                 | `<Feature>Service implements ...UseCase` | `CampaignService`           |
+| Mapper                         | `application.mapper`                  | `<Feature>Mapper`                     | `CampaignMapper`               |
+| Request DTO                    | `application.dto`                     | `<Verb><Noun>Request`                 | `CreateCampaignRequest`        |
+| Response DTO                   | `application.dto`                     | `<Noun>Response`                      | `CreateCampaignResponse`       |
+| Endpoint javobidagi proyeksiya | `application.dto`                     | `<Noun>Row` / `<Noun>Detail`          | `CallRow`, `CallDetail`        |
+| Controller                     | `presentation.controller`             | `<Feature>Controller` + `...Impl`     | `CampaignController`           |
+| JPA entity                     | `infrastructure.persistence.entity`   | `<Domain>Entity`                      | `CampaignEntity`               |
+| Spring Data interfeys          | `infrastructure.persistence.repository` | `<Entity>JpaRepository`             | `CampaignJpaRepository`        |
+| Port implementatsiyasi         | `infrastructure.persistence.adapter`  | `<Feature>RepositoryAdapter`          | `CampaignRepositoryAdapter`    |
+| Properties                     | `infrastructure.config` yoki `agent/` | `<Noun>Properties`                    | `DialerProperties`             |
 
-- Suffikssiz nom — **`domain` paketiniki**; `Row`/`Detail` esa faqat bitta endpoint
-  javobi uchun yasalgan `dto` proyeksiyasi (`CallRow` = `call_attempt` + target +
-  disposition). Shuning uchun `domain.Campaign` va `dto.CampaignRow` yonma-yon turishi
-  normal.
+- **`<Feature>Repository` — interfeys, klass emas.** Uni implement qiladigan klass doim
+  `...RepositoryAdapter`. Bu eski `repository` paketidagi DAO klassidan asosiy farq:
+  service faqat interfeysni ko'radi.
+- Suffikssiz nom — **`domain.entity` paketiniki**; `Row`/`Detail` esa faqat bitta endpoint
+  javobi uchun yasalgan `application.dto` proyeksiyasi (`CallRow` = `call_attempt` +
+  target + disposition). Shuning uchun `domain.entity.Campaign` va
+  `application.dto.CampaignRow` yonma-yon turishi normal.
 - Bitta simple name butun loyihada **faqat bir marta** uchraydi — aks holda import
   chalkashadi. Domain/entity juftligi mustasno: `Campaign` va `CampaignEntity` ikkalasi
   ham bo'lishi joiz, ular `Entity` suffiksi bilan ajraladi.
@@ -220,8 +256,9 @@ bir nechta bo'lsa **nima bilan ishlashi prefiks bo'ladi** (`aiModelConfigService
   turmaydi — birinchisi qaysi kompaniya ekanini yashiradi.
 - Entity→domain mapping metodi `to<Domain>`: `toAiModelConfig(entity)`. `toRow`/`toDto` emas.
 
-**Etalon:** `aimodel` feature'i — yangi kod yozishda yoki eski feature'ni ko'chirishda
-`AiModelConfigRepository` va `AiModelConfigService` ga qarab tekshiriladi.
+**Etalon:** `aimodel` feature'i — yangi kod yozishda `AiModelConfigUseCase`,
+`AiModelConfigService`, `AiModelConfigRepository` (port) va
+`AiModelConfigRepositoryAdapter` ga qarab tekshiriladi.
 
 ## 7. API konvert
 
@@ -256,6 +293,12 @@ bir nechta bo'lsa **nima bilan ishlashi prefiks bo'ladi** (`aiModelConfigService
    qiladi. Production kod o'zgarganda ular compile bo'lmay qolsa ham **tuzatishga urinma**;
    foydalanuvchi o'zi moslashtiradi. Faqat mock asosidagi sof unit testlar (Spring
    context'siz) yangi signaturaga moslanadi.
+9. **Properties vs `@Value`:** YAML (`application.yml` yoki `config/*.yml`) dan o'qiladigan
+   parametrlar soni bitta guruh/prefiks bo'yicha **3 tadan ko'p bo'lsa**, ularni
+   alohida `@Value` bilan inject qilish taqiqlanadi. Ular uchun alohida
+   `@ConfigurationProperties(prefix = "...")` record/klass yaratilishi shart (masalan,
+   `AlertingProperties`). Nomlash: `<Prefix/Feature>Properties`, maydonda to'liq
+   nom ishlatiladi (`alertingProperties`, qisqartmasiz).
 
 ---
 

@@ -90,8 +90,21 @@ public class TtsRouter {
         try {
             pcm = r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style());
         } catch (RuntimeException e) {
-            metrics.ttsError();
-            throw e;
+            TtsProvider fallback = selector.findFallback(r.provider());
+            if (fallback != null) {
+                log.warn("TTS provider '{}' failed ({}), attempting fallback to '{}'",
+                        r.provider().name(), e.getMessage(), fallback.name());
+                try {
+                    pcm = fallback.synthesize(speech, r.lang(), null, EffectiveVoiceSettings.NONE);
+                } catch (RuntimeException fallbackEx) {
+                    metrics.ttsError();
+                    log.error("TTS fallback provider '{}' also failed: {}", fallback.name(), fallbackEx.getMessage());
+                    throw fallbackEx;
+                }
+            } else {
+                metrics.ttsError();
+                throw e;
+            }
         } finally {
             metrics.stopTtsSynth(sample);
         }
@@ -133,8 +146,23 @@ public class TtsRouter {
                 onChunk.onChunk(pcm);
             });
         } catch (RuntimeException e) {
-            metrics.ttsError();
-            throw e;
+            TtsProvider fallback = selector.findFallback(r.provider());
+            if (fallback != null) {
+                log.warn("TTS streaming provider '{}' failed ({}), falling back to '{}' (batch)",
+                        r.provider().name(), e.getMessage(), fallback.name());
+                try {
+                    short[] fallbackPcm = fallback.synthesize(speech, r.lang(), null, EffectiveVoiceSettings.NONE);
+                    chunks.add(fallbackPcm);
+                    onChunk.onChunk(fallbackPcm);
+                } catch (RuntimeException fallbackEx) {
+                    metrics.ttsError();
+                    log.error("TTS fallback provider '{}' also failed: {}", fallback.name(), fallbackEx.getMessage());
+                    throw fallbackEx;
+                }
+            } else {
+                metrics.ttsError();
+                throw e;
+            }
         } finally {
             metrics.stopTtsSynth(sample);
         }

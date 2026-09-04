@@ -73,18 +73,18 @@ class VoiceEmotionResolverTest {
     }
 
     @Test
-    void defaultStageRoleFallbackWorksCorrectly() {
-        // GREETING without explicit emotion should fallback to cheerful
+    void aStageThatNamesNoEmotionIsSpokenNeutrally() {
+        // The stage name is not a mood. Inferring one from it swung a single call through
+        // cheerful (GREETING), strict (DEBT_NOTICE) and back to cheerful (CLOSING), which
+        // is heard as acting rather than as a person.
         DialogSession greetingSession = createSession("GREETING", null, "gulnoza", EffectiveVoiceSettings.NONE, true);
-        assertThat(resolver.determineEmotion(greetingSession)).isEqualTo(VoiceEmotion.CHEERFUL);
+        assertThat(resolver.determineEmotion(greetingSession)).isEqualTo(VoiceEmotion.NEUTRAL);
 
-        // DEBT_NOTICE without explicit emotion should fallback to strict
         DialogSession debtSession = createSession("DEBT_NOTICE", null, "zamira", EffectiveVoiceSettings.NONE, true);
-        assertThat(resolver.determineEmotion(debtSession)).isEqualTo(VoiceEmotion.STRICT);
+        assertThat(resolver.determineEmotion(debtSession)).isEqualTo(VoiceEmotion.NEUTRAL);
 
-        // ESCALATE without explicit emotion should fallback to friendly
         DialogSession escalateSession = createSession("ESCALATE", null, "zamira", EffectiveVoiceSettings.NONE, true);
-        assertThat(resolver.determineEmotion(escalateSession)).isEqualTo(VoiceEmotion.FRIENDLY);
+        assertThat(resolver.determineEmotion(escalateSession)).isEqualTo(VoiceEmotion.NEUTRAL);
     }
 
     @Test

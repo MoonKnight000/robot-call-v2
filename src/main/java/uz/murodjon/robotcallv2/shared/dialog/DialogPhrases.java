@@ -79,14 +79,20 @@ public final class DialogPhrases {
     /**
      * Short "I heard you, I'm working on it" fillers, spoken over the gap while the LLM
      * is still generating (§1.3).
+     *
+     * <p>"Wait a moment", never "I understand". The reply that lands behind one of these
+     * opens with an acknowledgement of its own, so a filler that also acknowledges is
+     * heard as the bot saying the same thing twice — "Tushunarli, bir lahza." followed a
+     * second later by "Aha, tushunarli. Murodjon aka, ...". Keep every line here about the
+     * waiting and nothing else.
      */
     public static List<String> thinking(String language) {
         if (english(language)) {
             return List.of("One moment.", "Let me check.", "Looking into this.", "Just a second.");
         }
         return russian(language)
-                ? List.of("Секунду.", "Сейчас посмотрю.", "Понятно, один момент.", "Сейчас скажу.")
-                : List.of("Bir soniya.", "Hozir ko'rib chiqyapman.", "Tushunarli, bir lahza.", "Hozir aytaman.");
+                ? List.of("Секунду.", "Сейчас посмотрю.", "Один момент.", "Сейчас скажу.")
+                : List.of("Bir soniya.", "Hozir ko'rib chiqyapman.", "Bir lahza.", "Hozir aytaman.");
     }
 
     /**
@@ -99,6 +105,36 @@ public final class DialogPhrases {
         return russian(language)
                 ? List.of("Хорошо.", "Понятно.", "Да, конечно.", "Спасибо.")
                 : List.of("Aha, tushundim.", "Xo'p bo'ladi.", "Yaxshi.", "Tushunarli.", "Rahmat.");
+    }
+
+    /**
+     * The noises a listener makes while somebody else is talking — "keep going", not
+     * "my turn". Said quietly over a long answer, they are the difference between a line
+     * that is being listened to and one that has gone dead.
+     *
+     * <p>One or two syllables on purpose: anything longer stops being a backchannel and
+     * becomes an interruption, which is the opposite of what it is for.
+     */
+    public static List<String> backchannels(String language) {
+        if (english(language)) {
+            return List.of("Mm-hmm.", "Right.", "I see.");
+        }
+        return russian(language)
+                ? List.of("Ага.", "Понятно.", "Да-да.")
+                : List.of("Aha.", "Tushunarli.", "Ha-ha.");
+    }
+
+    /**
+     * The line the bot cuts in with when a caller has been talking long past the point
+     * where an operator would have stepped in — an apology and a check, never a demand.
+     * The caller stops, the recognizer finally gets its silence, and the turn that follows
+     * has something to answer.
+     */
+    public static String interjection(String language) {
+        if (english(language)) return "Sorry to cut in — can I just check I've understood?";
+        return russian(language)
+                ? "Извините, что перебиваю — можно уточнить, правильно ли я понял?"
+                : "Kechirasiz, bo'lganim uchun — to'g'ri tushundimmi, aniqlashtirsam bo'ladimi?";
     }
 
     /**
@@ -123,6 +159,8 @@ public final class DialogPhrases {
         ));
         lines.addAll(thinking(language));
         lines.addAll(confirmations(language));
+        lines.addAll(backchannels(language));
+        lines.add(interjection(language));
         return List.copyOf(lines);
     }
 

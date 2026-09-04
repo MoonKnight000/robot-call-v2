@@ -58,6 +58,14 @@ public final class TargetCsvImporter {
         List.of("contractnumber", "contract", "contractno", "shartnoma", "shartnomanomeri", "shartnomaraqami", "dogovor", "nomerdogovora")
                 .forEach(k -> KNOWN_ALIASES.put(k, "contractNumber"));
 
+        // Penalty aliases
+        List.of("penaltyamount", "penalty", "peniya", "penya", "jarima", "shtraf", "peni")
+                .forEach(k -> KNOWN_ALIASES.put(k, "penaltyAmount"));
+
+        // Days of further non-payment before the contract is cancelled
+        List.of("contractcanceldays", "canceldays", "bekorkun", "bekorqilishkuni", "shartnomabekor", "raskhoreniedney")
+                .forEach(k -> KNOWN_ALIASES.put(k, "contractCancelDays"));
+
         // Currency
         List.of("currency", "valyuta", "valyutanomi").forEach(k -> KNOWN_ALIASES.put(k, "currency"));
 

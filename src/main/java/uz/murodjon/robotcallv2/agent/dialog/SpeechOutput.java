@@ -16,6 +16,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The speech end of the pipeline: everything between a line of text and the caller
@@ -77,6 +79,13 @@ public class SpeechOutput {
             // turn wants to say by exactly that round trip.
             return SpeechOutcome.SKIPPED;
         }
+        if (SystemPromptFactory.isSystemNote(text) || SpeechSanitizer.isUnspeakable(text)) {
+            // The model recited a note addressed to it or a technical/code token instead of answering.
+            // Nothing in it is for the caller. The turn's own fallback line covers it.
+            log.warn("[{}] refused to speak unspeakable or system note token in {}: {}",
+                    s.channelId(), s.state(), text);
+            return SpeechOutcome.SKIPPED;
+        }
         if (props.factGuard()) {
             List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
             if (!bad.isEmpty()) {
@@ -92,20 +101,26 @@ public class SpeechOutput {
                 return SpeechOutcome.BLOCKED;
             }
         }
+        // After the fact guard, which matches the figures as the model wrote them, and
+        // before anything reaches a synthesizer: a yyyy-MM-dd date read aloud is a run of
+        // digits, and the prompt asking the model not to write one is not a guarantee.
+        String spoken = SpokenDates.humanize(text, s.language());
         try {
             EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
             // Only the turn's first sentence is still on the §1.3 turnaround clock — that
             // is the one place shaving a TTS network round trip actually moves the number
             // that matters (everything after it already overlaps LLM generation, §7.2).
             if (s.isFirstAudioPending()) {
-                return speakStreaming(s, text, dynamicSettings);
+                s.latency().ttsRequested();
+                return speakStreaming(s, spoken, dynamicSettings);
             }
-            short[] pcm = ttsRouter.synthesize(text, s.language(), s.ttsVoice(), dynamicSettings);
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings);
             if (s.isCancelled()) {
                 return SpeechOutcome.SKIPPED; // barge-in landed while we were synthesizing
             }
+            long startSample = s.endpoint().queuedSamples();
             s.endpoint().enqueuePcm(pcm);
-            s.appendSpokenText(text);
+            s.appendSpokenAudio(spoken, startSample, pcm.length);
             return SpeechOutcome.SPOKEN;
         } catch (Exception e) {
             log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
@@ -127,11 +142,14 @@ public class SpeechOutput {
      */
     private SpeechOutcome speakStreaming(DialogSession s, String text, EffectiveVoiceSettings dynamicSettings) {
         AtomicBoolean any = new AtomicBoolean(false);
+        AtomicLong startSample = new AtomicLong();
+        AtomicInteger queued = new AtomicInteger();
         PcmChunkListener onChunk = pcm -> {
             if (s.isCancelled()) {
                 return; // barge-in landed mid-stream; drain without queuing more audio
             }
             if (any.compareAndSet(false, true)) {
+                startSample.set(s.endpoint().queuedSamples());
                 // Before the enqueue, not after: this also clears isFirstAudioPending(),
                 // which is what tells a filler still in flight on another thread that the
                 // gap is closed. Doing it afterwards left a window where the filler could
@@ -139,6 +157,7 @@ public class SpeechOutput {
                 recordTurnaround(s); // first chunk of this turn's first sentence
             }
             s.endpoint().enqueuePcm(pcm);
+            queued.addAndGet(pcm.length);
         };
         try {
             ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), dynamicSettings, onChunk);
@@ -150,22 +169,148 @@ public class SpeechOutput {
         if (!any.get()) {
             return SpeechOutcome.SKIPPED;
         }
-        if (!s.isCancelled()) {
-            s.appendSpokenText(text);
-        }
-        // A cancellation that landed partway through the chunk stream leaves the sentence
-        // unrecorded on purpose. Where it was cut is inside the provider's stream and not
-        // knowable here, and of the two possible errors only one is cheap: a sentence
-        // recorded as unheard is simply said again, while one recorded as heard is a fact
-        // — a sum, a due date — the model now believes it delivered and never returns to.
+        // Recorded with the audio it occupies rather than as "said": a barge-in three words
+        // in queued the whole sentence and the caller heard three words of it, and which is
+        // true is settled by the endpoint's playback position, not here (DialogSession
+        // .spokenText). The distinction matters because the difference is a fact — a sum, a
+        // due date — the model either believes it delivered or comes back to.
+        s.appendSpokenAudio(text, startSample.get(), queued.get());
         return SpeechOutcome.SPOKEN;
     }
 
     private void recordTurnaround(DialogSession s) {
         Duration turnaround = s.takeTurnaround();
-        if (turnaround != null) {
-            metrics.recordTurnaround(turnaround);
+        if (turnaround == null) {
+            return;
         }
+        metrics.recordTurnaround(turnaround);
+        // The same moment, broken down: the budget number says how long the caller waited,
+        // this says what for (TurnLatency). One line per turn, at INFO, because reading it
+        // off a live call is the point — a histogram only answers the question afterwards.
+        String stages = s.latency().finish(metrics);
+        if (stages != null) {
+            log.info("[{}] {}", s.channelId(), stages);
+        }
+    }
+
+    /**
+     * Synthesize a sentence into the TTS cache before any turn has asked for it.
+     *
+     * <p>Speculation ({@link Speculation}) buys back the endpointing silence for the LLM
+     * but stops at the text: the first sentence still pays a full synthesis round trip
+     * after the caller has finished, and that round trip is the last thing standing
+     * between them and the first word. Synthesizing it early puts the audio in
+     * {@link uz.murodjon.robotcallv2.agent.tts.TtsCache}, where the turn's own
+     * {@link #speak} finds it as an ordinary cache hit — no second audio path, and nothing
+     * can be spoken from here, so the fact guard still sees every sentence before the
+     * caller does.
+     *
+     * <p>Two ways it is wasted, both costing characters and nothing else: the caller says
+     * something the guess did not expect, or their tone shifts between now and the turn
+     * (the voice settings are part of the cache key, and
+     * {@link VoiceEmotionResolver} reads a sentiment this turn has not recorded yet).
+     * Watch {@code voice.tts.chars.synthesized} against {@code voice.tts.chars.saved}.
+     */
+    public void warmSentence(DialogSession s, String text) {
+        if (!ttsProps.enabled() || text == null || text.isBlank() || s.isEnded() || s.isCancelled()
+                || SpeechSanitizer.isUnspeakable(text)) {
+            return;
+        }
+        try {
+            // Warmed in the form speak() will ask for, or the cache key would not match
+            // and the round trip this exists to save is paid anyway.
+            String spoken = SpokenDates.humanize(text, s.language());
+            ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            log.debug("[{}] pre-synthesized a speculative first sentence: {}", s.channelId(), spoken);
+        } catch (Exception e) {
+            log.debug("[{}] speculative synthesis failed: {}", s.channelId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Say "I'm listening" over a caller who has been talking for a while — quietly, and
+     * without taking the floor.
+     *
+     * <p>A person listening to a long answer says "aha" into it every few seconds, and a
+     * line that stays perfectly silent while somebody explains their situation reads as
+     * nobody being there. This is the one thing the bot says that is not a turn: it is not
+     * synthesized as a reply, not recorded as spoken, and never enters the history — the
+     * model must not learn that it said anything here, because it did not.
+     *
+     * <p>Played at a fraction of the normal amplitude. At full volume it stops being a
+     * backchannel and starts being the bot talking over the caller, which is precisely the
+     * behaviour {@link Backchannels} exists to keep the caller from doing to us.
+     *
+     * @param turn which of this call's turns the caller is in the middle of — also what
+     *             picks the phrase, so the same one is not repeated twice running
+     */
+    public void speakBackchannel(DialogSession s, int turn) {
+        if (props.backchannelAfterMs() <= 0 || !ttsProps.enabled() || !backchannelStillWanted(s)) {
+            return;
+        }
+        try {
+            List<String> options = DialogPhrases.backchannels(s.language());
+            String line = options.get(Math.floorMod(turn, options.size()));
+            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            if (!backchannelStillWanted(s)) {
+                return; // the caller finished while this was being synthesized
+            }
+            s.endpoint().enqueuePcm(attenuate(pcm, props.backchannelVolumePercent()));
+            metrics.backchannelPlayed();
+            log.debug("[{}] backchannel over a long answer: {}", s.channelId(), line);
+        } catch (Exception e) {
+            log.debug("[{}] backchannel failed: {}", s.channelId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Step into an answer that has run long past the point where an operator would have.
+     *
+     * <p>Not the same act as a backchannel, and deliberately not quiet: this one is meant
+     * to take the floor. A caller who has been explaining for half a minute has usually
+     * stopped answering the question, and the recognizer cannot close an utterance that
+     * never pauses — the turn sits waiting, the call clock runs, and nothing happens. An
+     * apology and a check is how a person gets out of it.
+     *
+     * <p>Like a backchannel it is not recorded as a turn: what the caller says next is what
+     * the model will answer, and it will answer it in full.
+     */
+    public void interject(DialogSession s) {
+        if (props.interjectAfterMs() <= 0 || !ttsProps.enabled() || !backchannelStillWanted(s)) {
+            return;
+        }
+        try {
+            String line = DialogPhrases.interjection(s.language());
+            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            if (!backchannelStillWanted(s)) {
+                return;
+            }
+            s.endpoint().enqueuePcm(pcm);
+            metrics.interjected();
+            log.info("[{}] caller has been talking for over {} ms — cutting in: {}",
+                    s.channelId(), props.interjectAfterMs(), line);
+        } catch (Exception e) {
+            log.debug("[{}] interjection failed: {}", s.channelId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Whether the caller is still in the middle of the answer this backchannel was meant
+     * for. Anything the bot is already saying wins: a backchannel queued behind a real
+     * line lands after it, where it makes no sense at all.
+     */
+    private boolean backchannelStillWanted(DialogSession s) {
+        return !s.isEnded() && !s.busy().get() && !s.isCancelled() && !s.endpoint().isPlaying();
+    }
+
+    /** Quieten a line so it sits under the caller's voice instead of over it. */
+    private static short[] attenuate(short[] pcm, int percent) {
+        int level = Math.min(Math.max(percent, 1), 100);
+        short[] quiet = new short[pcm.length];
+        for (int i = 0; i < pcm.length; i++) {
+            quiet[i] = (short) (pcm[i] * level / 100);
+        }
+        return quiet;
     }
 
     /**
@@ -178,15 +323,20 @@ public class SpeechOutput {
      * line reads as a dropped call, and people say "alo?" into it or hang up. A person
      * who needs a moment says so out loud.
      *
-     * <p>Deliberately not free of charge to the clock, so it is rationed hard: only after
-     * {@code filler-delay-ms} of actual silence, only on a turn a caller is waiting on
-     * (never the greeting — {@link DialogSession#isFirstAudioPending()} is false there),
-     * and never twice in a row.
+     * <p>Deliberately not free of charge to the clock, so it is rationed: only after
+     * {@code filler-delay-ms} of actual silence, and only on a turn a caller is waiting on
+     * (never the greeting — {@link DialogSession#isFirstAudioPending()} is false there).
+     *
+     * <p>Consecutive turns are no longer ruled out. They were, and that is what left the
+     * middle of a four-turn call in three and a half seconds of silence: the wait is that
+     * long on <em>every</em> turn here, so a turn's right to cover it cannot depend on what
+     * the previous turn happened to need. Repetition is handled where it actually lives —
+     * {@link #speakFiller} indexes the phrase by turn number, so consecutive fillers are
+     * never the same words.
      */
     public ScheduledFuture<?> scheduleFiller(DialogSession s) {
         int turn = s.turnCount();
-        if (props.fillerDelayMs() <= 0 || !ttsProps.enabled()
-                || !s.isFirstAudioPending() || !s.fillerAllowed(turn)) {
+        if (props.fillerDelayMs() <= 0 || !ttsProps.enabled() || !s.isFirstAudioPending()) {
             return null;
         }
         return executors.scheduleOnWorker(() -> speakFiller(s, turn), props.fillerDelayMs());
@@ -220,7 +370,6 @@ public class SpeechOutput {
                 return;
             }
             s.endpoint().enqueuePcm(pcm);
-            s.markFillerSpoken(turn);
             metrics.fillerPlayed();
             log.debug("[{}] filler played after {} ms of silence: {}",
                     s.channelId(), props.fillerDelayMs(), line);

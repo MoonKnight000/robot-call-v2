@@ -10,12 +10,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Picks the {@link TtsProvider} one utterance is spoken by (PROJECT.md §2.5). Every
- * implemented provider is registered here; which one a call uses comes from its
- * company's {@code engine_config} via {@link TtsRouter}, and {@code
- * voice-agent.tts.provider} is the default for a company that has not chosen — a
- * misconfigured default fails the app at startup here rather than on the first
- * synthesized line.
+ * Resolves the {@link TtsProvider} to speak an utterance with. Follows the same pattern
+ * as {@link uz.murodjon.robotcallv2.agent.stt.SttProviderSelector} — multi-tenant
+ * deployments let each company pick its own provider in {@code engine_config}, and the
+ * app-wide {@code voice-agent.tts.provider} is the default when none is picked.
  */
 @Component
 public class TtsProviderSelector {
@@ -37,6 +35,12 @@ public class TtsProviderSelector {
             return null;
         }
         if (configured != null && !configured.isBlank()) {
+            String target = "google".equalsIgnoreCase(configured) ? "gemini" : configured;
+            for (TtsProvider provider : providers) {
+                if (provider.name().equalsIgnoreCase(target)) {
+                    return provider;
+                }
+            }
             for (TtsProvider provider : providers) {
                 if (provider.name().equalsIgnoreCase(configured)) {
                     return provider;
@@ -59,7 +63,14 @@ public class TtsProviderSelector {
 
     /** Whether {@code providerName} is implemented in this build — the check behind a {@code PUT}. */
     public boolean exists(String providerName) {
-        return providerName != null && byName.containsKey(providerName.toLowerCase());
+        if (providerName == null) {
+            return false;
+        }
+        String key = providerName.toLowerCase();
+        if ("google".equals(key) && byName.containsKey("gemini")) {
+            return true;
+        }
+        return byName.containsKey(key);
     }
 
     /**
@@ -69,7 +80,14 @@ public class TtsProviderSelector {
      * warning-and-default behaviour.
      */
     public TtsProvider tryFind(String providerName) {
-        return providerName == null ? null : byName.get(providerName.toLowerCase());
+        if (providerName == null) {
+            return null;
+        }
+        String key = providerName.toLowerCase();
+        if ("google".equals(key) && byName.containsKey("gemini")) {
+            return byName.get("gemini");
+        }
+        return byName.get(key);
     }
 
     /**
@@ -85,12 +103,28 @@ public class TtsProviderSelector {
         if (providerName == null || providerName.isBlank()) {
             return defaultProvider;
         }
-        TtsProvider provider = byName.get(providerName.toLowerCase());
+        String key = providerName.toLowerCase();
+        if ("google".equals(key) && byName.containsKey("gemini")) {
+            return byName.get("gemini");
+        }
+        TtsProvider provider = byName.get(key);
         if (provider == null) {
             log.warn("TTS provider '{}' is not implemented in this build — using {}",
                     providerName, defaultProvider != null ? defaultProvider.name() : "none");
             return defaultProvider;
         }
         return provider;
+    }
+
+    /**
+     * When a provider fails during synthesis, find an alternate provider if available.
+     */
+    public TtsProvider findFallback(TtsProvider failed) {
+        for (TtsProvider provider : byName.values()) {
+            if (provider != failed && (failed == null || !provider.name().equalsIgnoreCase(failed.name()))) {
+                return provider;
+            }
+        }
+        return null;
     }
 }

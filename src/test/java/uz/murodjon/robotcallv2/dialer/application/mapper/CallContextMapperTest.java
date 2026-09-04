@@ -27,7 +27,7 @@ class CallContextMapperTest {
     @Test
     void crmValuesWinOverTheImportedSnapshot() {
         CrmClientSnapshot crm = new CrmClientSnapshot("Aziz K.", new BigDecimal("900000"),
-                "so'm", LocalDate.of(2026, 8, 1), "UY-2026-00123", "ru-RU");
+                "so'm", LocalDate.of(2026, 8, 1), "UY-2026-00123", "ru-RU", null, null);
 
         CallContext merged = CallContextMapper.merge(IMPORTED, crm);
 
@@ -38,7 +38,7 @@ class CallContextMapperTest {
 
     @Test
     void fieldsTheCrmOmitsKeepTheImportedValue() {
-        CrmClientSnapshot sparse = new CrmClientSnapshot(null, null, null, null, null, "ru-RU");
+        CrmClientSnapshot sparse = new CrmClientSnapshot(null, null, null, null, null, "ru-RU", null, null);
 
         CallContext merged = CallContextMapper.merge(IMPORTED, sparse);
 
@@ -49,7 +49,7 @@ class CallContextMapperTest {
 
     @Test
     void theGoalAlwaysStaysWithTheCampaign() {
-        CrmClientSnapshot crm = new CrmClientSnapshot("X", null, null, null, null, null);
+        CrmClientSnapshot crm = new CrmClientSnapshot("X", null, null, null, null, null, null, null);
 
         assertThat(CallContextMapper.merge(IMPORTED, crm).goal()).isEqualTo("kampaniya maqsadi");
     }

@@ -23,8 +23,10 @@ import java.util.Set;
 final class Backchannels {
 
     private static final Set<String> WORDS = Set.of(
-            "ha", "aha", "ahan", "uhu", "uhum", "xop", "mayli", "yaxshi", "tushunarli", "tushundim",
-            "да", "ага", "угу", "так", "ясно", "понятно", "хорошо", "ладно");
+            "ha", "aha", "ahan", "uhu", "uhum", "hm", "hmm", "mm", "xop", "xo'p", "bo'pti", "bopti",
+            "mayli", "yaxshi", "tushunarli", "tushundim", "shundaymi", "shunaqami",
+            "да", "ага", "угу", "мм", "так", "ясно", "понятно", "хорошо", "ладно", "давай",
+            "понял", "поняла");
 
     private Backchannels() {
     }
@@ -54,8 +56,11 @@ final class Backchannels {
     /**
      * Lowercased words, with the apostrophes of {@code xo'p} and {@code o'ldi} dropped
      * rather than treated as breaks — otherwise a single Uzbek word arrives here as two.
+     *
+     * <p>Shared with {@link Farewells}, which reads caller transcripts under the same
+     * contract and has to split them exactly the same way.
      */
-    private static String[] words(String text) {
+    static String[] words(String text) {
         StringBuilder normalized = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = Character.toLowerCase(text.charAt(i));

@@ -71,7 +71,7 @@ class YandexTtsProviderTest {
                         "omazh", List.of("neutral", "evil")),
                 "tts.api.cloud.yandex.net", 443, 8000, 0);
         return new YandexTtsProvider(new TtsProperties(
-                true, "yandex", "uz-UZ", null, null, yandex, null, null));
+                true, "yandex", "uz-UZ", null, null, null, yandex, null, null));
     }
 
     @Test

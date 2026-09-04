@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.summary.CallQualityJudge;
 import uz.murodjon.robotcallv2.agent.summary.SummaryService;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
@@ -37,6 +38,7 @@ public class CallFinalizer {
 
     private final CallRecordService records;
     private final SummaryService summaryService;
+    private final CallQualityJudge qualityJudge;
     private final AudioStorageService storage;
     private final CrmClient crmClient;
     private final ScenarioService scenarioService;
@@ -48,7 +50,7 @@ public class CallFinalizer {
     private final VadProperties vadProps;
     private final String llmModel;
 
-    public CallFinalizer(CallRecordService records, SummaryService summaryService,
+    public CallFinalizer(CallRecordService records, SummaryService summaryService, CallQualityJudge qualityJudge,
                          AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
                          CampaignService campaignService, NotificationService notificationService,
                          VoiceMetrics metrics, EngineConfigService engineConfigService, TtsVoiceService voices,
@@ -56,6 +58,7 @@ public class CallFinalizer {
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
         this.summaryService = summaryService;
+        this.qualityJudge = qualityJudge;
         this.storage = storage;
         this.crmClient = crmClient;
         this.scenarioService = scenarioService;
@@ -68,49 +71,102 @@ public class CallFinalizer {
         this.llmModel = llmModel;
     }
 
-    public void finalizeCall(long callAttemptId, long clientId, long scenarioId, Path wav, Instant startedAt,
-                             Disposition disposition, String channelName, String trunk,
-                             DialogTechnicalSnapshot technical) {
+    /**
+     * @return the disposition the call actually settled on — the one passed in, unless
+     *         the summary found an outcome the dialog never got to record
+     *         ({@link #promised}). The caller applies it to the campaign target, so this
+     *         has to be the final word rather than the one the hangup produced.
+     */
+    public Disposition finalizeCall(long callAttemptId, long clientId, long scenarioId, Path wav, Instant startedAt,
+                                    Disposition disposition, String channelName, String trunk,
+                                    DialogTechnicalSnapshot technical) {
         if (callAttemptId == 0) {
-            return;
+            return disposition;
         }
         try {
             int durationSec = (int) Duration.between(startedAt, Instant.now()).getSeconds();
             boolean escalated = disposition == Disposition.TRANSFERRED;
             metrics.recordCallDuration(durationSec);
-            metrics.disposition(disposition);
 
-            long companyId = records.companyIdOf(callAttemptId);
-            StoredFile stored = storage.upload(wav, companyId, wav.getFileName().toString());
-            records.finishAttempt(callAttemptId, disposition, stored != null ? stored.id() : null, durationSec);
-            if (stored != null) {
-                storage.deleteLocalCopy(wav);
+            long companyId = 0L;
+            try {
+                companyId = records.companyIdOf(callAttemptId);
+            } catch (Exception e) {
+                log.warn("[{}] could not resolve companyId: {}", callAttemptId, e.getMessage());
             }
 
-            String transcript = records.transcriptText(callAttemptId);
-            ScenarioDefinition scenario = scenarioService.requireScenario(scenarioId).definition();
-            CallSummary summary = summaryService.summarize(transcript, scenario);
-            if (summary != null) {
-                Long crmNoteId = crmClient.postNote(companyId, clientId, summary);
-                records.writeResult(callAttemptId, summary, escalated, crmNoteId);
+            StoredFile stored = null;
+            Long recordingFileId = null;
+            try {
+                stored = storage.upload(wav, companyId, wav.getFileName().toString());
+                if (stored != null) {
+                    recordingFileId = stored.id();
+                    storage.deleteLocalCopy(wav);
+                }
+            } catch (Exception e) {
+                log.warn("[{}] audio upload to storage failed, continuing call finalization: {}", callAttemptId, e.getMessage());
+            }
 
-                // Smart Callback Rescheduling: If the customer asked to be called at a specific time
-                if (summary.callbackAt() != null && !summary.callbackAt().isBlank()) {
-                    long targetId = records.targetIdOf(callAttemptId);
-                    if (targetId != 0L) {
-                        Instant callbackInstant = parseCallbackInstant(summary.callbackAt());
-                        if (callbackInstant != null && callbackInstant.isAfter(Instant.now())) {
-                            campaignService.scheduleCallback(targetId, callbackInstant);
-                        }
-                    }
+            try {
+                records.finishAttempt(callAttemptId, disposition, recordingFileId, durationSec);
+            } catch (Exception e) {
+                log.error("[{}] initial finishAttempt failed: {}", callAttemptId, e.getMessage());
+            }
+
+            CallSummary summary = null;
+            try {
+                String transcript = records.transcriptText(callAttemptId);
+                ScenarioDefinition scenario = scenarioService.requireScenario(scenarioId).definition();
+                summary = summaryService.summarize(transcript, scenario);
+                if (disposition == null && promised(summary)) {
+                    disposition = Disposition.PROMISE_TO_PAY;
+                    records.finishAttempt(callAttemptId, disposition, recordingFileId, durationSec);
+                    log.info("Call {} left no disposition; summary found a payment promise -> {}",
+                            callAttemptId, disposition);
+                }
+                metrics.disposition(disposition);
+                qualityJudge.judge(transcript, scenario, disposition);
+            } catch (Exception e) {
+                log.warn("[{}] summary or quality scoring failed: {}", callAttemptId, e.getMessage());
+            }
+
+            if (summary != null) {
+                Long crmNoteId = null;
+                try {
+                    crmNoteId = crmClient.postNote(companyId, clientId, summary);
+                } catch (Exception e) {
+                    log.warn("[{}] CRM postNote failed (call record still saved): {}", callAttemptId, e.getMessage());
                 }
 
-                // Hostile Sentiment Alert
-                if (summary.sentiment() == Sentiment.HOSTILE) {
-                    notificationService.notify(companyId, NotificationType.OPERATOR_REQUEST,
-                            "Salbiy muloqot aniqlandi",
-                            "Qo'ng'iroqda (ID: " + callAttemptId + ") mijoz keskin norozilik bildirdi: " + summary.summary(),
-                            null);
+                try {
+                    records.writeResult(callAttemptId, summary, escalated, crmNoteId);
+                } catch (Exception e) {
+                    log.error("[{}] writeResult failed: {}", callAttemptId, e.getMessage());
+                }
+
+                try {
+                    if (summary.callbackAt() != null && !summary.callbackAt().isBlank()) {
+                        long targetId = records.targetIdOf(callAttemptId);
+                        if (targetId != 0L) {
+                            Instant callbackInstant = parseCallbackInstant(summary.callbackAt());
+                            if (callbackInstant != null && callbackInstant.isAfter(Instant.now())) {
+                                campaignService.scheduleCallback(targetId, callbackInstant);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] callback schedule failed: {}", callAttemptId, e.getMessage());
+                }
+
+                try {
+                    if (summary.sentiment() == Sentiment.HOSTILE) {
+                        notificationService.notify(companyId, NotificationType.OPERATOR_REQUEST,
+                                "Salbiy muloqot aniqlandi",
+                                "Qo'ng'iroqda (ID: " + callAttemptId + ") mijoz keskin norozilik bildirdi: " + summary.summary(),
+                                null);
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] hostile notification failed: {}", callAttemptId, e.getMessage());
                 }
 
                 log.info("Finalized call {} (dur={}s, disposition={}, sentiment={})",
@@ -119,10 +175,24 @@ public class CallFinalizer {
                 log.info("Finalized call {} without summary (LLM unavailable or empty transcript)", callAttemptId);
             }
 
-            writeTechnicalDetail(callAttemptId, companyId, disposition, channelName, trunk, technical);
+            try {
+                writeTechnicalDetail(callAttemptId, companyId, disposition, channelName, trunk, technical);
+            } catch (Exception e) {
+                log.warn("[{}] writeTechnicalDetail failed: {}", callAttemptId, e.getMessage());
+            }
         } catch (Exception e) {
             log.warn("Finalization failed for call {}: {}", callAttemptId, e.getMessage());
         }
+        return disposition;
+    }
+
+    /** Whether the summary read a payment date off the conversation. */
+    private static boolean promised(CallSummary summary) {
+        if (summary == null) {
+            return false;
+        }
+        Object promisedDate = summary.outcome().get("promisedDate");
+        return promisedDate != null && !promisedDate.toString().isBlank();
     }
 
     private Instant parseCallbackInstant(String callbackAt) {

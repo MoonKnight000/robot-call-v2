@@ -16,6 +16,12 @@ import java.time.LocalDate;
  * @param dueDate           original due date
  * @param contractNumber    contract reference
  * @param preferredLanguage BCP-47 language this client prefers.
+ * @param penaltyAmount     penalty accrued on the overdue amount, or {@code null} when
+ *                          the CRM does not track one — the agent states this figure and
+ *                          never computes one of its own
+ * @param contractCancelDays days of further non-payment before the contract is cancelled
+ *                          under its own terms, or {@code null} when there is no such
+ *                          clause to state
  */
 public record CrmClientSnapshot(
         String name,
@@ -23,14 +29,16 @@ public record CrmClientSnapshot(
         String currency,
         LocalDate dueDate,
         String contractNumber,
-        String preferredLanguage
+        String preferredLanguage,
+        BigDecimal penaltyAmount,
+        BigDecimal contractCancelDays
 ) {
 
     private static final Logger log = LoggerFactory.getLogger(CrmClientSnapshot.class);
 
     public static CrmClientSnapshot fromJson(JsonNode root) {
         if (root == null || root.isNull()) {
-            return new CrmClientSnapshot(null, null, null, null, null, null);
+            return new CrmClientSnapshot(null, null, null, null, null, null, null, null);
         }
         JsonNode n = root.hasNonNull("data") && root.get("data").isObject() ? root.get("data") : root;
         return new CrmClientSnapshot(
@@ -39,7 +47,9 @@ public record CrmClientSnapshot(
                 text(n, "currency"),
                 date(n, "dueDate", "due_date"),
                 text(n, "contractNumber", "contract_number", "contract"),
-                text(n, "preferredLanguage", "preferred_language", "language"));
+                text(n, "preferredLanguage", "preferred_language", "language"),
+                decimal(n, "penaltyAmount", "penalty_amount", "penalty", "peniya"),
+                decimal(n, "contractCancelDays", "contract_cancel_days", "cancel_days"));
     }
 
     private static String text(JsonNode n, String... names) {

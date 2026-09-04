@@ -92,7 +92,12 @@ public class VoiceEmotionResolver {
             }
         }
 
-        return inferStageEmotion(stageId);
+        // Neutral unless the scenario asked for something else. Guessing the mood from
+        // the stage's name used to swing one call through cheerful (GREETING), strict
+        // (DEBT_NOTICE) and back to cheerful (CLOSING) — a voice that changes character
+        // three times in two minutes is heard as acting, not as a person, and a debt
+        // notice read "strict" is the worst possible moment for it.
+        return VoiceEmotion.NEUTRAL;
     }
 
     public VoiceEmotion parseEmotion(String text) {
@@ -108,30 +113,6 @@ public class VoiceEmotionResolver {
             case "sad", "xafa", "hamdard" -> VoiceEmotion.SAD;
             default -> VoiceEmotion.NEUTRAL;
         };
-    }
-
-    public VoiceEmotion inferStageEmotion(String stageId) {
-        if (stageId == null) {
-            return VoiceEmotion.NEUTRAL;
-        }
-        String upper = stageId.toUpperCase(Locale.ROOT);
-        if (upper.contains("GREETING") || upper.contains("SALOM")
-                || upper.contains("CLOSING") || upper.contains("XAYR")
-                || upper.contains("SUCCESS") || upper.contains("OFFER")
-                || upper.contains("INTEREST")) {
-            return VoiceEmotion.CHEERFUL;
-        }
-        if (upper.contains("DEBT") || upper.contains("OVERDUE")
-                || upper.contains("WARNING") || upper.contains("STRICT")
-                || upper.contains("DEMAND") || upper.contains("PENALTY")) {
-            return VoiceEmotion.STRICT;
-        }
-        if (upper.contains("ESCALATE") || upper.contains("HUMAN")
-                || upper.contains("TRANSFER") || upper.contains("APOLOGY")
-                || upper.contains("EMPATHY")) {
-            return VoiceEmotion.FRIENDLY;
-        }
-        return VoiceEmotion.NEUTRAL;
     }
 
     /**

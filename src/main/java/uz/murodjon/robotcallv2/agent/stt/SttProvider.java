@@ -36,6 +36,21 @@ public interface SttProvider {
     SttSession startStream(String languageCode, List<String> alternativeLanguages,
                            TranscriptListener listener, boolean externalEndpointing);
 
+    /**
+     * The same, told what this call is likely to contain ({@link SttHints}) — the client's
+     * name, the payment services they will be pointed at.
+     *
+     * <p>Default is to ignore them, because most of these APIs have nowhere to put them:
+     * Deepgram's keyterm prompting is Nova-3 English only, and the Yandex and Aisha
+     * endpoints used here take no phrase list at all. A provider that <em>can</em> be
+     * biased overrides this; nothing else changes for the ones that cannot.
+     */
+    default SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                   TranscriptListener listener, boolean externalEndpointing,
+                                   List<String> hints) {
+        return startStream(languageCode, alternativeLanguages, listener, externalEndpointing);
+    }
+
     /** Recognize {@code languageCode} only — no other language is expected on this call. */
     default SttSession startStream(String languageCode, TranscriptListener listener,
                                    boolean externalEndpointing) {

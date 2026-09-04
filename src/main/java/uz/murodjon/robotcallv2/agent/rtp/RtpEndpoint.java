@@ -51,6 +51,12 @@ public class RtpEndpoint implements Closeable {
     /** Grace underflow frames (5 frames = 100ms) before stopping pacer to avoid jitter on streaming chunk boundaries. */
     private static final int MAX_IDLE_FRAMES = 5;
 
+    /**
+     * Half the 16-bit sequence space. A modular distance above this is the short way
+     * backwards, i.e. the packet is late rather than the stream having jumped forward.
+     */
+    private static final int SEQ_HALF = 0x8000;
+
     private final int port;
     private final WavRecorder recorder;
     /**
@@ -70,6 +76,9 @@ public class RtpEndpoint implements Closeable {
     private short[] currentChunk;   // guarded by playLock
     private int currentOffset;      // guarded by playLock
     private int idleFrames;         // guarded by playLock
+    /** Samples ever queued, and samples ever sent — the two ends of "did they hear it". */
+    private long queuedSamples;     // guarded by playLock
+    private long playedSamples;     // guarded by playLock
 
     private volatile AmbientSound ambientSound = AmbientSound.OFF;
 
@@ -197,6 +206,7 @@ public class RtpEndpoint implements Closeable {
         }
         synchronized (playLock) {
             playQueue.addLast(pcm);
+            queuedSamples += pcm.length;
             idleFrames = 0;
         }
         startPacer();
@@ -207,9 +217,33 @@ public class RtpEndpoint implements Closeable {
             playQueue.clear();
             currentChunk = null;
             currentOffset = 0;
+            // Everything still queued was thrown away, so it was never heard and must not
+            // count as position: the next line starts where the wire actually got to.
+            queuedSamples = playedSamples;
             idleFrames = 0;
         }
         stopPacer();
+    }
+
+    /**
+     * Samples handed to this endpoint since the call began — the position the next line
+     * queued will start at.
+     *
+     * <p>Together with {@link #playedSamples()} this is what says how much of a given line
+     * the caller actually heard, which is the only honest answer after a barge-in: the
+     * queue holds whole sentences, and one cut halfway through was half heard.
+     */
+    public long queuedSamples() {
+        synchronized (playLock) {
+            return queuedSamples;
+        }
+    }
+
+    /** Samples this endpoint has actually put on the wire. */
+    public long playedSamples() {
+        synchronized (playLock) {
+            return playedSamples;
+        }
     }
 
     public boolean isPlaying() {
@@ -232,8 +266,9 @@ public class RtpEndpoint implements Closeable {
     private void startPacer() {
         if (pacerRunning.compareAndSet(false, true)) {
             if (channel != null && channel.eventLoop() != null) {
+                // Pre-buffer 60-80ms (3-4 frames) to smooth out streaming jitter and prevent underrun
                 pacer = channel.eventLoop().scheduleAtFixedRate(
-                        this::sendFrame, 0, FRAME_MS, TimeUnit.MILLISECONDS);
+                        this::sendFrame, FRAME_MS * 3, FRAME_MS, TimeUnit.MILLISECONDS);
             }
         }
     }
@@ -276,6 +311,7 @@ public class RtpEndpoint implements Closeable {
                 filled += n;
                 currentOffset += n;
             }
+            playedSamples += filled;
             if (filled == 0) {
                 idleFrames++;
                 if (idleFrames >= MAX_IDLE_FRAMES && ambientSound == AmbientSound.OFF) {
@@ -338,9 +374,26 @@ public class RtpEndpoint implements Closeable {
                 int seq = p.sequenceNumber();
                 stats.onPacket(seq, p.timestamp(), received.arrivalNanos());
 
+                // Sequence numbers are 16-bit and wrap, and packets can arrive late or
+                // twice. Compared with plain arithmetic ("seq > lastSeq + 1") a wrap read
+                // as a 65 000-packet gap and a late packet read as none, after which the
+                // next packet in order looked like a gap and had PLC invented for it — so
+                // one reordered packet produced a burst of made-up audio. Distance is
+                // measured modulo the sequence space instead, and only a genuine forward
+                // gap can conceal anything.
+                int gap = lastSeq < 0 ? 1 : (seq - lastSeq) & 0xFFFF;
+                if (lastSeq >= 0 && (gap == 0 || gap > SEQ_HALF)) {
+                    // A duplicate, or a packet whose successor already went through. There
+                    // is no jitter buffer to re-order it into, and inserting it now would
+                    // put those 20 ms in the wrong place in the recognizer's stream —
+                    // which is worse than the gap PLC has already covered. RtpStats counts
+                    // it either way, so the loss stays visible.
+                    continue;
+                }
+
                 // Packet Loss Concealment (PLC): interpolate missing 1-2 frames using decaying energy
-                if (lastSeq >= 0 && seq > lastSeq + 1 && (seq - lastSeq) <= 3) {
-                    int lostCount = seq - lastSeq - 1;
+                if (lastSeq >= 0 && gap > 1 && gap <= 3) {
+                    int lostCount = gap - 1;
                     short[] plcFrame = new short[SAMPLES_PER_FRAME];
                     for (int k = 0; k < lostCount; k++) {
                         float decay = (float) Math.pow(0.65, k + 1);

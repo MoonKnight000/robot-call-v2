@@ -41,3 +41,12 @@ Ushbu papka va fayl foydalanuvchi tomonidan berilgan barcha doimiy qoidalar, arx
 * Lombok ishlatilmaydi.
 * Java 21, Spring Boot 3.4.5, Asterisk 20.
 * Gradle build/testlarni sun'iy intellekt o'zi ishga tushirmaydi (foydalanuvchi qo'lda yurgizadi).
+
+---
+
+## 7. ⚙️ Konfiguratsiya va Properties Qoidasi (@Value vs @ConfigurationProperties)
+* **YAML dan qiymat o'qish qoidasi**: Agar biror guruh/prefiks bo'yicha YAML fayldan (`application.yml` yoki `config/*.yml`) o'qilayotgan parametrlar soni **3 tadan ko'p bo'lsa** (`> 3`), konstruktorda har birini alohida `@Value("${...}")` bilan inject qilish **taqiqlanadi**.
+* Buning o'rniga barcha tegishli sozlamalar uchun alohida `@ConfigurationProperties(prefix = "...")` record yoki klassi yaratilishi shart (masalan, `voice-agent.alerting.*` uchun `AlertingProperties.java`).
+* **Nomlash**: `<Prefix/Feature>Properties.java` (masalan, `AlertingProperties`, `DialogProperties`, `DialerProperties`).
+* **Joylashuvi**: Feature uchun `infrastructure/config` paketida, agent pipeline uchun `agent/<subsystem>/` paketida bo'ladi.
+* **Inject qilinishi**: Konstruktorda to'liq nom bilan inject qilinadi (`AlertingProperties alertingProperties`). `props`, `cfg` kabi qisqartmalar taqiqlanadi.

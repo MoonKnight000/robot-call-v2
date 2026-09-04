@@ -6,6 +6,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
+import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
+import uz.murodjon.robotcallv2.agent.rtp.WavRecorder;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
@@ -46,6 +48,10 @@ class DialerServiceTest {
     private static final long CAMPAIGN_ID = 3L;
     private static final ZoneId ZONE = ZoneId.systemDefault();
 
+    /** 51 even ports — well clear of the limits under test, so only those are exercised. */
+    private static final RtpProperties RTP_PROPS =
+            new RtpProperties("127.0.0.1", 10000, 10100, "recordings", "", 2, WavRecorder.RecordingMode.SPATIAL_STEREO);
+
     private CampaignRepository campaigns;
     private CampaignTargetRepository targets;
     private SipTrunkUseCase sipTrunks;
@@ -61,16 +67,17 @@ class DialerServiceTest {
         rabbit = mock(RabbitTemplate.class);
         state = mock(DialerState.class);
         ttsWarmup = mock(TtsWarmup.class);
-        when(state.active()).thenReturn(0);
+        when(state.active(anyLong())).thenReturn(0);
+        when(state.activeTotal()).thenReturn(0);
         when(sipTrunks.findTrunksForCall(anyLong(), any())).thenReturn(List.of());
     }
 
     private DialerService dialerAt(int hour) {
         ZonedDateTime now = ZonedDateTime.of(LocalDate.of(2026, 7, 1), LocalTime.of(hour, 0), ZONE);
         return new DialerService(
-                new DialerProperties(true, 5, 10, 5, 60,
+                new DialerProperties(true, 5, 10, 5, 5, 60,
                         new RetryProperties(180, 15, 1200, true)),
-                campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class),
+                RTP_PROPS, campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class),
                 mock(GracefulShutdownManager.class), ttsWarmup,
@@ -166,7 +173,7 @@ class DialerServiceTest {
         dialerAt(10).dispatch();
 
         verify(state, times(2)).countDispatch(eq(CAMPAIGN_ID), any(LocalDate.class));
-        verify(state, times(2)).reserve();
+        verify(state, times(2)).reserve(anyLong());
     }
 
     @Test
@@ -176,9 +183,9 @@ class DialerServiceTest {
         GracefulShutdownManager shutdown = mock(GracefulShutdownManager.class);
         when(shutdown.isDraining()).thenReturn(true);
         DialerService dialer = new DialerService(
-                new DialerProperties(true, 5, 10, 5, 60,
+                new DialerProperties(true, 5, 10, 5, 5, 60,
                         new RetryProperties(180, 15, 1200, true)),
-                campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class),
+                RTP_PROPS, campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class), shutdown, ttsWarmup,
                 Clock.systemDefaultZone());

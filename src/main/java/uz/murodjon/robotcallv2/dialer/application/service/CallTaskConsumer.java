@@ -69,7 +69,7 @@ public class CallTaskConsumer {
             if (doNotCallRepository.isBlocked(task.companyId(), task.phone())) {
                 log.info("Target {} ({}) is in Do-Not-Call list — skipping call origination",
                         task.targetId(), task.phone());
-                state.release();
+                state.release(task.companyId());
                 callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.DO_NOT_CALL, "number is in the do-not-call list");
                 campaignService.applyOutcome(task.targetId(), Disposition.DO_NOT_CALL);
@@ -100,7 +100,7 @@ public class CallTaskConsumer {
                     task.targetId(), channelId, language, task.sipTrunkId());
         } catch (Exception e) {
             log.warn("Originate failed for target {} ({}): {}", task.targetId(), task.phone(), e.getMessage());
-            state.release();
+            state.release(task.companyId());
             if (!originateReached) {
                 callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.FAILED, "call preparation failed: " + e.getMessage());

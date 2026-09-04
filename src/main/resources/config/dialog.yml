@@ -8,12 +8,26 @@ spring:
         api-key: ${GEMINI_API_KEY:}
         chat:
           options:
-            model: ${LLM_DIALOG_MODEL:gemini-3.6-flash}
-            max-output-tokens: 256
-            temperature: 0.2
-            thinking-level: ${LLM_REASONING_EFFORT:MINIMAL}
+            # Gemini 3.8 Flash: sampling parameters (temperature, top_p, top_k) and candidate_count are deprecated/stripped.
+            # Thinking level: LOW / MEDIUM / HIGH (MINIMAL is unsupported on 3.8 Flash). Default for low latency voice is LOW.
+            model: ${LLM_DIALOG_MODEL:gemini-3.8-flash}
+            # Thinking tokens are billed against this budget too, so it bounds the model's
+            # reasoning, not just the sentence it speaks. At 256 a turn that thought for a
+            # moment hit the cap before writing anything and came back empty — the log said
+            # "empty LLM reply in REASON_INQUIRY", and the retry that follows costs a whole
+            # extra round trip inside the turnaround budget. Reply length is held down by
+            # the speech rules in the prompt ("ko'pi bilan ikki qisqa gap"), not by this;
+            # raising it costs nothing, since only tokens actually generated are billed.
+            max-output-tokens: 1024
+            thinking-level: ${LLM_REASONING_EFFORT:LOW}
 
 voice-agent:
+  summary:
+    enabled: ${SUMMARY_ENABLED:true}
+    model: ${SUMMARY_MODEL:gemini-3.8-flash}
+    reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
+    max-tokens: ${SUMMARY_MAX_TOKENS:2048}
+
   dialog:
     enabled: ${DIALOG_ENABLED:true}
     auto-start: ${DIALOG_AUTO_START:true}
@@ -23,14 +37,49 @@ voice-agent:
     max-turns: ${DIALOG_MAX_TURNS:25}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
     streaming: ${DIALOG_STREAMING:true}
-    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:900}
+    # Off. The filler was covering a wait that should not have existed: with the framework
+    # running tools in its own loop a turn took 5-11s, so five of seven turns crossed 1800ms
+    # and the caller heard "Bir soniya." before nearly every reply — a canned line ahead of
+    # every answer is worse than the silence it hides. Set a value again only if the
+    # turnaround metric shows a genuinely slow turn.
+    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:0}
+    # Backchannel: after this long of the caller still talking, say "aha" quietly under
+    # them so the line does not read as dead. Not a turn — never recorded, never in the
+    # history. Off (0) until it has been listened to on real recordings: on a speakerphone
+    # it can come back through the caller's mic and look like a barge-in.
+    backchannel-after-ms: ${DIALOG_BACKCHANNEL_AFTER_MS:0}
+    backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
+    # After this long of one unbroken answer the bot cuts in politely, at full volume. A
+    # recognizer cannot end an utterance that never pauses, so without this the turn waits
+    # out the whole monologue. 0 disables it.
+    interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:0}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
     preemptive: ${DIALOG_PREEMPTIVE:true}
+    # Also pre-synthesize the guess's first sentence into the TTS cache. Saves the whole
+    # synthesis round trip when the guess lands, buys nothing (and is billed) when it does
+    # not — so turn it on only once voice.llm.speculation.hit/started is comfortably high.
+    preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:false}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:2}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:2}
     mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}
+    # Route one-word turns ("ha", "to'ladim") to a smaller, faster model. Blank keeps every
+    # turn on the company's configured model — switch it on only with the outcome checks of
+    # Blok D in place, since a smaller model also calls tools less reliably.
+    fast-model: ${DIALOG_FAST_MODEL:}
+    fast-model-max-words: ${DIALOG_FAST_MODEL_MAX_WORDS:3}
     state-scoped-tools: ${DIALOG_STATE_SCOPED_TOOLS:true}
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
     no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
+    # Settle "adashibsiz" / "telefon qilmang" / "operatorga ulang" from code instead of the
+    # model — same tool, one turnaround earlier. Matching is on substrings, so watch the
+    # "fast path ->" log lines: a wrong match ends a call that was going fine.
+    fast-path: ${DIALOG_FAST_PATH:true}
+    # Answer known policy questions ("qanday to'layman", "qaysi filial") from a fixed line
+    # instead of the model. Off by default — the wording is company policy and has to be
+    # checked against the company actually running before it speaks for them.
+    knowledge-base: ${DIALOG_KNOWLEDGE_BASE:false}
+    # Below this recognition confidence the turn repeats what it heard back before acting
+    # on it. Providers that report no confidence (0) are never treated as unsure.
+    low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.55}
     fact-guard: ${DIALOG_FACT_GUARD:true}

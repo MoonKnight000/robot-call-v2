@@ -82,7 +82,7 @@ class CallTaskConsumerTest {
 
         consumer.process(task, dialerState);
 
-        verify(dialerState).release();
+        verify(dialerState).release(1L);
         verify(campaignService).applyOutcome(100L, Disposition.DO_NOT_CALL);
         verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
     }
@@ -97,7 +97,7 @@ class CallTaskConsumerTest {
         ScenarioDefinition def = new ScenarioDefinition(List.of(), List.of(), List.of(), List.of(), "system prompt", List.of(), "disclosure");
         Scenario scenario = new Scenario(10L, "test-scenario", 1, "Test", "Desc", false, true, def, Instant.now(), 1L);
         when(scenarioService.requireScenario(10L)).thenReturn(scenario);
-        when(crmClient.fetchClient(1L, 200L)).thenReturn(new CrmClientSnapshot("Ali", new BigDecimal("500000"), "UZS", LocalDate.now(), "CTR-1", "uz"));
+        when(crmClient.fetchClient(1L, 200L)).thenReturn(new CrmClientSnapshot("Ali", new BigDecimal("500000"), "UZS", LocalDate.now(), "CTR-1", "uz", null, null));
         when(ariService.originate(eq("998901234567"), eq(1L), any(OutboundCall.class))).thenReturn("chan-123");
 
         consumer.process(task, dialerState);

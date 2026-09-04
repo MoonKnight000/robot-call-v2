@@ -3,159 +3,112 @@ package uz.murodjon.robotcallv2.agent.stt;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import uz.murodjon.robotcallv2.agent.audio.Resampler;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavReader;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 /**
- * Side-by-side transcription accuracy comparison CLI tool.
- *
- * <p>Feeds a directory of reference WAV audio files to Google, Yandex and Aisha STT
- * providers simultaneously, evaluates Word Error Rate (WER) and Character Error Rate (CER),
- * and prints a markdown report matrix.
- *
- * <p>Usage:
- * <pre>
- *   java -cp ... uz.murodjon.robotcallv2.agent.stt.SttComparisonTool &lt;wav-directory&gt; [--language=uz-UZ] [--ground-truth=truth.csv]
- * </pre>
+ * CLI tool for comparing STT providers side-by-side on real recordings.
  */
-public final class SttComparisonTool {
+public class SttComparisonTool {
 
     private static final Logger log = LoggerFactory.getLogger(SttComparisonTool.class);
 
-    private SttComparisonTool() {
-    }
-
     public static void main(String[] args) throws Exception {
-        if (args.length < 1) {
-            System.err.println("Usage: SttComparisonTool <wav-directory> [--language=uz-UZ]");
+        if (args.length < 2) {
+            System.err.println("Usage: SttComparisonTool <wav-file-or-dir> <language-code> [truth-file]");
             System.exit(1);
         }
 
-        Path wavDir = Path.of(args[0]);
-        if (!Files.exists(wavDir)) {
-            System.err.println("Directory does not exist: " + wavDir);
-            System.exit(1);
-        }
-
-        String language = "uz-UZ";
-        for (String arg : args) {
-            if (arg.startsWith("--language=")) {
-                language = arg.substring("--language=".length());
-            }
-        }
-
-        System.out.println("===============================================================");
-        System.out.println("  VOICE AGENT — STT PROVIDER COMPARISON BENCHMARK");
-        System.out.println("===============================================================");
-        System.out.printf("Scanning: %s (Language: %s)%n%n", wavDir.toAbsolutePath(), language);
+        Path inputPath = Path.of(args[0]);
+        String language = args[1];
+        Path truthPath = args.length > 2 ? Path.of(args[2]) : null;
 
         List<Path> wavFiles = new ArrayList<>();
-        collectWavFiles(wavDir, wavFiles);
+        collectWavFiles(inputPath, wavFiles);
 
         if (wavFiles.isEmpty()) {
-            System.out.println("No .wav files found in " + wavDir);
-            return;
+            System.err.println("No .wav files found at " + inputPath);
+            System.exit(1);
         }
-
-        System.out.printf("Found %d audio files for evaluation.%n%n", wavFiles.size());
 
         List<SttProvider> providers = initProviders(language);
         if (providers.isEmpty()) {
-            System.err.println("No STT providers could be initialized (check API keys in environment).");
+            System.err.println("No STT providers available. Check environment variables.");
             System.exit(1);
         }
 
-        System.out.println("Active Providers:");
-        for (SttProvider p : providers) {
-            System.out.println(" - " + p.name() + " (" + p.sampleRate() + " Hz)");
-        }
-        System.out.println();
+        System.out.printf("Comparing %d providers on %d files (language: %s)%n",
+                providers.size(), wavFiles.size(), language);
 
-        for (Path file : wavFiles) {
-            evaluateFile(file, language, providers);
-        }
-    }
+        for (Path wavFile : wavFiles) {
+            System.out.println("\n========================================");
+            System.out.println("File: " + wavFile.getFileName());
 
-    private static void evaluateFile(Path wavFile, String language, List<SttProvider> providers) {
-        System.out.println("---------------------------------------------------------------");
-        System.out.printf("File: %s%n", wavFile.getFileName());
-        WavAudio audio;
-        try {
-            audio = WavReader.read(wavFile);
-        } catch (IOException e) {
-            System.err.printf("  Error reading %s: %s%n", wavFile.getFileName(), e.getMessage());
-            return;
-        }
+            WavAudio audio = WavReader.read(wavFile);
+            short[] samples = audio.samples();
+            int sampleRate = audio.sampleRate();
 
-        double durationSec = (double) audio.samples().length / audio.sampleRate();
-        System.out.printf("  Duration: %.2fs | Sample Rate: %d Hz%n", durationSec, audio.sampleRate());
-
-        for (SttProvider provider : providers) {
-            runRecognition(provider, audio, language);
+            for (SttProvider provider : providers) {
+                runProvider(provider, language, samples, sampleRate);
+            }
         }
     }
 
-    private static void runRecognition(SttProvider provider, WavAudio audio, String language) {
-        CountDownLatch latch = new CountDownLatch(1);
-        StringBuilder transcript = new StringBuilder();
-        AtomicReference<Float> finalConfidence = new AtomicReference<>(0.0f);
-        AtomicInteger interimCount = new AtomicInteger(0);
-        Instant start = Instant.now();
+    private static void runProvider(SttProvider provider, String language,
+                                    short[] samples, int sourceRate) {
+        System.out.printf("--- %s ---%n", provider.name());
+
+        StringBuilder fullTranscript = new StringBuilder();
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicBoolean errored = new AtomicBoolean(false);
 
         TranscriptListener listener = (text, isFinal, confidence) -> {
             if (isFinal) {
-                transcript.append(text);
-                finalConfidence.set(confidence);
-                latch.countDown();
-            } else {
-                interimCount.incrementAndGet();
+                fullTranscript.append(text).append(" ");
             }
         };
 
         try {
             SttSession session = provider.startStream(language, List.of(), listener, false);
-            short[] samples = audio.samples();
-            int chunkSize = provider.sampleRate() / 50; // 20ms chunks
 
-            for (int offset = 0; offset < samples.length; offset += chunkSize) {
-                int len = Math.min(chunkSize, samples.length - offset);
-                byte[] bytes = new byte[len * 2];
-                for (int i = 0; i < len; i++) {
-                    short s = samples[offset + i];
-                    bytes[i * 2] = (byte) (s & 0xff);
-                    bytes[i * 2 + 1] = (byte) ((s >> 8) & 0xff);
+            short[] targetSamples;
+            if (provider.sampleRate() == 16000 && sourceRate == 8000) {
+                targetSamples = Resampler.upsample8kTo16k(samples, samples.length);
+            } else {
+                targetSamples = samples;
+            }
+
+            int chunkSize = provider.sampleRate() / 50; // 20ms
+            byte[] buffer = new byte[chunkSize * 2];
+
+            for (int i = 0; i < targetSamples.length; i += chunkSize) {
+                int len = Math.min(chunkSize, targetSamples.length - i);
+                for (int j = 0; j < len; j++) {
+                    short s = targetSamples[i + j];
+                    buffer[j * 2] = (byte) (s & 0xFF);
+                    buffer[j * 2 + 1] = (byte) ((s >> 8) & 0xFF);
                 }
-                session.sendAudio(bytes);
+                session.sendAudio(buffer);
                 Thread.sleep(20);
             }
 
+            session.endUtterance();
+            done.await(5, TimeUnit.SECONDS);
             session.close();
-            boolean finished = latch.await(10, TimeUnit.SECONDS);
-            long elapsedMs = Duration.between(start, Instant.now()).toMillis();
 
-            System.out.printf("  [%s]%n", provider.name().toUpperCase(Locale.ROOT));
-            if (finished || transcript.length() > 0) {
-                System.out.printf("    Result: \"%s\"%n", transcript.toString().trim());
-                System.out.printf("    Confidence: %.2f | Interim Events: %d | Latency: %d ms%n",
-                        finalConfidence.get(), interimCount.get(), elapsedMs);
-            } else {
-                System.out.println("    Result: <TIMEOUT / NO TRANSCRIPT>");
-            }
+            System.out.printf("    Result: %s%n", fullTranscript.toString().trim());
         } catch (Exception e) {
             System.out.printf("    Error: %s%n", e.getMessage());
         }
@@ -165,17 +118,18 @@ public final class SttComparisonTool {
         List<SttProvider> list = new ArrayList<>();
         VoiceMetrics metrics = new VoiceMetrics(new SimpleMeterRegistry());
 
-        // Google
-        String googleKey = System.getenv("GOOGLE_APPLICATION_CREDENTIALS");
-        if (googleKey != null && !googleKey.isBlank()) {
+        // Gemini
+        String geminiKey = System.getenv("GEMINI_API_KEY");
+        if (geminiKey != null && !geminiKey.isBlank()) {
             try {
-                GoogleSttProperties googleProps = new GoogleSttProperties("phone_call", 8000, true, 500);
-                SttProperties props = buildSttProperties(language, googleProps, null, null);
-                GoogleSttProvider google = new GoogleSttProvider(props, metrics);
-                google.init();
-                list.add(google);
+                GeminiSttProperties geminiProps = new GeminiSttProperties(geminiKey, null, "gemini-3.5-transcribe", 16000, 10);
+                SttProperties props = new SttProperties(true, "gemini", language, List.of(), null, null, 0,
+                        geminiProps, null, null, null, null);
+                GeminiSttProvider gemini = new GeminiSttProvider(props, metrics);
+                gemini.init();
+                list.add(gemini);
             } catch (Exception e) {
-                log.warn("Failed to init Google STT: {}", e.getMessage());
+                log.warn("Failed to init Gemini STT: {}", e.getMessage());
             }
         }
 
@@ -187,7 +141,8 @@ public final class SttComparisonTool {
                 YandexSttProperties yandexProps = new YandexSttProperties(
                         yandexKey, yandexFolder, "stt.api.cloud.yandex.net", 443, 8000, "general",
                         null, true, EouSensitivity.DEFAULT, 0, 0);
-                SttProperties props = buildSttProperties(language, null, yandexProps, null);
+                SttProperties props = new SttProperties(true, "yandex", language, List.of(), null, null, 0,
+                        null, null, yandexProps, null, null);
                 YandexSttProvider yandex = new YandexSttProvider(props, metrics);
                 yandex.init();
                 list.add(yandex);
@@ -202,7 +157,8 @@ public final class SttComparisonTool {
             try {
                 AishaSttProperties aishaProps = new AishaSttProperties(
                         aishaKey, "https://back.aisha.group/api/v1/stt/realtime", true);
-                SttProperties props = buildSttProperties(language, null, null, aishaProps);
+                SttProperties props = new SttProperties(true, "aisha", language, List.of(), null, null, 0,
+                        null, null, null, aishaProps, null);
                 AishaSttProvider aisha = new AishaSttProvider(props, metrics);
                 aisha.init();
                 list.add(aisha);
@@ -214,32 +170,17 @@ public final class SttComparisonTool {
         return list;
     }
 
-    /**
-     * The provider-facing slice of {@link SttProperties}. Gating, endpointing and the
-     * stall timeout are the live pipeline's concern and stay empty — the providers never
-     * read them.
-     */
-    private static SttProperties buildSttProperties(String language, GoogleSttProperties google,
-                                                    YandexSttProperties yandex, AishaSttProperties aisha) {
-        String provider = yandex != null ? "yandex" : (aisha != null ? "aisha" : "google");
-        // One language per run: the tool compares transcription quality, and detection
-        // would let two providers answer about different languages.
-        return new SttProperties(true, provider, language, List.of(), null, null, 0, google, yandex, aisha, null);
-    }
-
     private static void collectWavFiles(Path path, List<Path> into) {
         if (Files.isDirectory(path)) {
             try (Stream<Path> children = Files.list(path)) {
                 children.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".wav"))
                         .sorted()
                         .forEach(into::add);
-            } catch (IOException e) {
-                System.err.printf("cannot list %s: %s%n", path, e.getMessage());
+            } catch (Exception e) {
+                log.warn("Failed to list files in {}: {}", path, e.getMessage());
             }
-        } else if (Files.isRegularFile(path)) {
+        } else if (path.toString().toLowerCase().endsWith(".wav")) {
             into.add(path);
-        } else {
-            System.err.printf("invalid audio path: %s%n", path);
         }
     }
 }

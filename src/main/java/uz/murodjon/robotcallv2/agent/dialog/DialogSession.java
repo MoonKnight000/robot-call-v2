@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.ai.chat.messages.Message;
 
+import uz.murodjon.robotcallv2.agent.metrics.TurnLatency;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -92,19 +93,29 @@ public class DialogSession implements DialogOutcomeSink {
     private int turnCount;
 
     /**
-     * Turn number the last "bir soniya" filler was played on, or 0 for none. A filler
-     * every turn is worse than none at all — it stops reading as thinking and starts
-     * reading as a tic — so a turn only gets one if the previous turn did not.
-     */
-    private volatile int lastFillerTurn;
-
-    /**
      * Set when the client's turn ends, cleared once the bot's first audio for that
      * turn is queued — the two ends of the &lt;1s turnaround budget (§1.3). Null for
      * the opening greeting, where nobody was waiting.
      */
     private volatile Instant turnStartedAt;
     private final AtomicBoolean turnaroundRecorded = new AtomicBoolean(true);
+
+    /** Where this turn's wait went, stage by stage — the breakdown behind that budget. */
+    private final TurnLatency latency = new TurnLatency();
+
+    /** When the answer the caller is currently giving began, or null between answers. */
+    private Instant clientSpeechStartedAt;
+    /** Whether that answer has already had its one "aha" (§ backchannel-after-ms). */
+    private boolean backchannelSpoken;
+    /** Whether the bot has already stepped into that answer (§ interject-after-ms). */
+    private boolean interjected;
+
+    /**
+     * Whether the recognizer said it was unsure of the words this turn is answering. The
+     * turn annex then tells the model to confirm before it acts on them — a misheard date
+     * that reaches a tool is a promise recorded for a day nobody named.
+     */
+    private volatile boolean lowConfidenceInput;
 
     /**
      * Raised by barge-in. A streaming turn checks it between chunks so the sentences
@@ -132,6 +143,14 @@ public class DialogSession implements DialogOutcomeSink {
     private final StringBuilder spokenText = new StringBuilder();
 
     /**
+     * This turn's lines that went out as audio, with where each one sits in the playback
+     * stream. What the caller heard of them depends on how far the wire got before a
+     * barge-in flushed the queue, so it is worked out when it is asked for, not when the
+     * audio was handed over.
+     */
+    private final List<SpokenAudio> spokenAudio = new ArrayList<>();
+
+    /**
      * The tail of a reply a barge-in stopped before it could be spoken, kept in case the
      * interruption turns out to have been noise. Cleared as soon as it is resumed or a
      * real turn makes it stale.
@@ -143,6 +162,15 @@ public class DialogSession implements DialogOutcomeSink {
      * they said what the recognizer guessed they were saying ({@link Speculation}).
      */
     private final AtomicReference<Speculation> speculation = new AtomicReference<>();
+
+    /**
+     * What happened to this turn's guessing, for the one summary line the turn logs
+     * ({@code TurnRunner#adoptSpeculation}). An utterance produces a dozen interims and
+     * logging each of them buries the call; a count and the last reason one was turned
+     * away answer the same question in a line.
+     */
+    private final AtomicInteger interimsThisTurn = new AtomicInteger();
+    private volatile String speculationBlocker;
 
     /**
      * What this turn's tool calls said should be spoken, in the order they were called.
@@ -160,6 +188,8 @@ public class DialogSession implements DialogOutcomeSink {
     // persisted call_result.outcome comes from SummaryService's independent post-call pass
     // over the transcript, not from what fired live (ROADMAP A.3).
     private Disposition disposition;
+    /** {@link #turnCount} when the first outcome was recorded; -1 until one is. */
+    private volatile int outcomeTurn = -1;
     private final Map<String, Object> outcome = new ConcurrentHashMap<>();
     /** Why the client asked not to be called again (§11.4); null unless they did. */
     private volatile String doNotCallReason;
@@ -470,12 +500,27 @@ public class DialogSession implements DialogOutcomeSink {
         return busy;
     }
 
+    private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
+
     public String state() {
         return state;
     }
 
     public void setState(String state) {
         this.state = state;
+        if (state != null) {
+            stageAttempts.putIfAbsent(state, 0);
+        }
+    }
+
+    public int recordStageAttempt(String stage) {
+        String key = stage != null ? stage : this.state;
+        return stageAttempts.merge(key, 1, Integer::sum);
+    }
+
+    public int stageAttempts(String stage) {
+        String key = stage != null ? stage : this.state;
+        return stageAttempts.getOrDefault(key, 0);
     }
 
     public boolean isEnded() {
@@ -521,23 +566,72 @@ public class DialogSession implements DialogOutcomeSink {
         return ++turnCount;
     }
 
-    /**
-     * Whether a filler may be played on {@code turn} — i.e. the previous turn did not
-     * already get one.
-     */
-    public boolean fillerAllowed(int turn) {
-        return turn - lastFillerTurn >= 2;
-    }
-
-    /** Note that {@code turn} used its filler, so the next turn does not. */
-    public void markFillerSpoken(int turn) {
-        lastFillerTurn = turn;
-    }
-
     /** Start the turnaround clock — the client just stopped speaking. */
     public void startTurnClock() {
         turnStartedAt = Instant.now();
         turnaroundRecorded.set(false);
+        latency.turnStarted();
+    }
+
+    /** This turn's stage-by-stage stamps (§1.3 breakdown). */
+    public TurnLatency latency() {
+        return latency;
+    }
+
+    /** Whether the recognizer was unsure of the words the current turn is answering. */
+    public boolean isLowConfidenceInput() {
+        return lowConfidenceInput;
+    }
+
+    public void setLowConfidenceInput(boolean lowConfidenceInput) {
+        this.lowConfidenceInput = lowConfidenceInput;
+    }
+
+    /**
+     * Whether the caller has now been talking for {@code afterMs} without a backchannel,
+     * and claims the right to one if so — at most one per answer, so a long explanation
+     * gets an "aha" rather than a chorus.
+     *
+     * <p>Timed from the first interim of the answer, which is the only signal this side
+     * has that somebody is still mid-sentence. Reset by the final that ends it.
+     */
+    public synchronized boolean claimBackchannel(int afterMs) {
+        if (afterMs <= 0) {
+            return false;
+        }
+        Instant since = clientSpeechStartedAt;
+        if (since == null) {
+            clientSpeechStartedAt = Instant.now();
+            return false;
+        }
+        if (backchannelSpoken || Duration.between(since, Instant.now()).toMillis() < afterMs) {
+            return false;
+        }
+        backchannelSpoken = true;
+        return true;
+    }
+
+    /**
+     * Whether the caller has now been talking for {@code afterMs} — long past a backchannel
+     * — and the bot should step in ({@code SpeechOutput#interject}). Once per answer.
+     */
+    public synchronized boolean claimInterjection(int afterMs) {
+        Instant since = clientSpeechStartedAt;
+        if (afterMs <= 0 || since == null || interjected) {
+            return false;
+        }
+        if (Duration.between(since, Instant.now()).toMillis() < afterMs) {
+            return false;
+        }
+        interjected = true;
+        return true;
+    }
+
+    /** The caller finished: the next answer starts its own clock and earns its own "aha". */
+    public synchronized void clientAnswerEnded() {
+        clientSpeechStartedAt = null;
+        backchannelSpoken = false;
+        interjected = false;
     }
 
     /**
@@ -577,6 +671,7 @@ public class DialogSession implements DialogOutcomeSink {
     /** Drop the previous turn's spoken text before a new turn starts producing its own. */
     public synchronized void clearSpokenText() {
         spokenText.setLength(0);
+        spokenAudio.clear();
     }
 
     /** Note that {@code text} was queued for the caller and is therefore heard. */
@@ -590,9 +685,49 @@ public class DialogSession implements DialogOutcomeSink {
         spokenText.append(text.trim());
     }
 
-    /** What the caller has heard of this turn so far, or {@code null} if nothing. */
+    /**
+     * Note that {@code text} was queued as audio occupying {@code samples} samples starting
+     * at {@code startSample} of this call's playback stream.
+     *
+     * <p>Queued is not heard. A sentence sits in the endpoint's queue for as long as it
+     * takes to say, and a barge-in three words in throws away the rest — so what the caller
+     * heard of it is decided later, by how far the wire actually got ({@link #spokenText()}).
+     * Recorded even when the turn is already cancelled: the words that did go out were
+     * still heard, and the model has to know that they were.
+     */
+    public synchronized void appendSpokenAudio(String text, long startSample, int samples) {
+        if (text == null || text.isBlank() || samples <= 0) {
+            appendSpokenText(text);
+            return;
+        }
+        spokenAudio.add(new SpokenAudio(text.trim(), startSample, samples));
+    }
+
+    /**
+     * What the caller has heard of this turn, or {@code null} if nothing.
+     *
+     * <p>Lines queued without audio accounting count whole. Lines that were queued as audio
+     * are measured against the endpoint's playback position: one fully played is whole, one
+     * cut partway through is truncated at the last word the caller can have heard, and
+     * anything behind that in the queue never reached them at all.
+     */
     public synchronized String spokenText() {
-        return spokenText.isEmpty() ? null : spokenText.toString();
+        StringBuilder heard = new StringBuilder(spokenText);
+        long played = endpoint != null ? endpoint.playedSamples() : Long.MAX_VALUE;
+        for (SpokenAudio line : spokenAudio) {
+            String part = line.heardPart(played);
+            if (part == null) {
+                break; // this line never started; nothing behind it did either
+            }
+            if (!heard.isEmpty()) {
+                heard.append(' ');
+            }
+            heard.append(part);
+            if (part.length() < line.text().length()) {
+                break; // cut off inside this line
+            }
+        }
+        return heard.isEmpty() ? null : heard.toString();
     }
 
     /** Hold the tail of a reply a barge-in cut off, in case the interruption was noise. */
@@ -633,6 +768,30 @@ public class DialogSession implements DialogOutcomeSink {
     /** Take the parked speculative reply, leaving none behind. */
     public Speculation takeSpeculation() {
         return speculation.getAndSet(null);
+    }
+
+    /** The recognizer delivered another interim hypothesis for the utterance in progress. */
+    public void noteInterim() {
+        interimsThisTurn.incrementAndGet();
+    }
+
+    public int interimsThisTurn() {
+        return interimsThisTurn.get();
+    }
+
+    /** Why the last interim was not worth guessing on, or {@code null} if none was turned away. */
+    public String speculationBlocker() {
+        return speculationBlocker;
+    }
+
+    public void setSpeculationBlocker(String speculationBlocker) {
+        this.speculationBlocker = speculationBlocker;
+    }
+
+    /** Start the next turn's count; called once the turn has reported what this one did. */
+    public void resetSpeculationDiagnostics() {
+        interimsThisTurn.set(0);
+        speculationBlocker = null;
     }
 
     /** Cancel and drop any parked speculative reply. */
@@ -678,6 +837,20 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setDisposition(Disposition disposition) {
         this.disposition = disposition;
+        if (disposition != null && outcomeTurn < 0) {
+            outcomeTurn = turnCount;
+        }
+    }
+
+    /**
+     * Turns the call has taken since an outcome was first recorded, or {@code -1} while
+     * none has been. The outcome tools that do not end the call themselves
+     * (recordPaymentPromise, recordRefusalReason, scheduleCallback) leave a conversation
+     * with nothing left to agree, and the model does not always notice — this is what
+     * bounds how long it may go on not noticing.
+     */
+    public int turnsSinceOutcome() {
+        return outcomeTurn < 0 ? -1 : turnCount - outcomeTurn;
     }
 
     /** Record one outcome field a tool call produced (e.g. {@code "promisedDate"}). */
@@ -698,5 +871,34 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setDoNotCallReason(String doNotCallReason) {
         this.doNotCallReason = doNotCallReason;
+    }
+
+    /**
+     * One line of this turn as it sits in the playback stream: the words, and the samples
+     * they occupy.
+     *
+     * @param startSample where the line begins in the endpoint's playback stream
+     * @param samples     how long it is — i.e. where it ends
+     */
+    private record SpokenAudio(String text, long startSample, int samples) {
+
+        /**
+         * The part of this line the caller can have heard by the time the endpoint had
+         * sent {@code played} samples, or {@code null} if none of it was.
+         */
+        String heardPart(long played) {
+            if (played <= startSample) {
+                return null;
+            }
+            if (played - startSample >= samples) {
+                return text;
+            }
+            // Synthesis paces a sentence roughly evenly, so the share of its audio that
+            // went out is the share of its words that were heard — give or take a word,
+            // which is why the cut lands on a word boundary and never mid-word.
+            int chars = (int) ((played - startSample) * text.length() / samples);
+            int cut = text.lastIndexOf(' ', Math.min(chars, text.length() - 1));
+            return cut <= 0 ? null : text.substring(0, cut);
+        }
     }
 }

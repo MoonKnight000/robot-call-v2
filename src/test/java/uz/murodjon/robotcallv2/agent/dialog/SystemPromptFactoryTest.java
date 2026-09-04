@@ -108,6 +108,27 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void theAnnexRepeatsTheQuestionTheAgentJustAsked() {
+        // Call 9 asked "qachon to'lay olasiz?" in REASON_INQUIRY and asked it again, in
+        // other words, in PAYMENT_DATE. The history held both; the model still repeated
+        // itself, so the last question is put next to the generation point.
+        DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
+        s.setLastAgentText("Tushunarli. Bu to'lovni qachon to'lab bera olasiz?");
+
+        assertThat(factory.turnAnnex(s))
+                .contains("Bu to'lovni qachon to'lab bera olasiz?")
+                .doesNotContain("Tushunarli.");
+    }
+
+    @Test
+    void theAnnexSaysNothingWhenTheLastReplyAskedNothing() {
+        DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
+        s.setLastAgentText("Yaxshi, belgilab qo'ydim.");
+
+        assertThat(factory.turnAnnex(s)).doesNotContain("so'ragan edingiz");
+    }
+
+    @Test
     void aBargeInIsReportedInTheAnnexOnly() {
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
         s.setLastAgentText("Qarzingiz bo'yicha");
@@ -138,13 +159,26 @@ class SystemPromptFactoryTest {
         // The rule itself is always there; its example words must follow the call's
         // language, or the model drops Uzbek back-channels into a Russian call.
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
-                .contains("INSONDEK GAPIR")
+                .contains("munosabat bilan boshlang")
                 .contains("Tushunarli")
                 .doesNotContain("Понятно");
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
-                .contains("INSONDEK GAPIR")
+                .contains("munosabat bilan boshlang")
                 .contains("Понятно")
                 .doesNotContain("Tushunarli");
+    }
+
+    @Test
+    void requiresEveryReplyToEndOnAQuestion() {
+        // A real DEBT_NOTICE turn stated the sum and the missed due date and then stopped.
+        // The caller had nothing to answer, said one unintelligible word, and the call
+        // never recovered — so "always end on a question" is a rule, not a stage's hope.
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
+                .contains("ALBATTA savol bilan tugasin")
+                .contains("bu haqda xabaringiz bormidi?");
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
+                .contains("ALBATTA savol bilan tugasin")
+                .contains("вы в курсе?");
     }
 
     @Test
@@ -152,7 +186,7 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
         assertThat(prompt)
-                .contains("MUROJAAT VA SHAXSNI ANIQLASH")
+                .contains("Siz [Ism]misiz?")
                 .contains("Men Murodjon aka bilan gaplashayapmanmi?")
                 .contains("suhbatdoshim");
     }
@@ -164,7 +198,7 @@ class SystemPromptFactoryTest {
         // has to be present — and it must not forbid the closing confirmation.
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
-        assertThat(prompt).contains("TAKRORLAMA").contains("Istisno");
+        assertThat(prompt).contains("qayta aytmang").contains("Istisno");
     }
 
     @Test
@@ -180,8 +214,8 @@ class SystemPromptFactoryTest {
     @Test
     void tellsTheModelNotToRepeatASpokenDisclosure() {
         // §11.1: the disclosure is spoken from code; repeating it sounds broken. Keyed on
-        // the block's own wording rather than a word like "TAKRORLAMA", which the
-        // anti-repetition rule further down now carries on every call.
+        // the block's own wording rather than on the anti-repetition rule further down,
+        // which every call carries anyway.
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
         assertThat(factory.stablePrefix(s)).doesNotContain("allaqachon aytildi");
 
