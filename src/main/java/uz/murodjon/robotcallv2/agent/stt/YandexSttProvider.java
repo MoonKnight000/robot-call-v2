@@ -44,6 +44,10 @@ public class YandexSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(YandexSttProvider.class);
 
+    /** The range SpeechKit accepts for the end-of-utterance pause hint (see {@link #clampPauseHint}). */
+    private static final int MIN_PAUSE_HINT_MS = 500;
+    private static final int MAX_PAUSE_HINT_MS = 5000;
+
     private final SttProperties props;
     private final VoiceMetrics metrics;
     private volatile ManagedChannel channel;
@@ -196,9 +200,28 @@ public class YandexSttProvider implements SttProvider {
                         ? Stt.DefaultEouClassifier.EouSensitivity.HIGH
                         : Stt.DefaultEouClassifier.EouSensitivity.DEFAULT);
         if (y.eouMaxPauseHintMs() > 0) {
-            classifier.setMaxPauseBetweenWordsHintMs(y.eouMaxPauseHintMs());
+            classifier.setMaxPauseBetweenWordsHintMs(clampPauseHint(y.eouMaxPauseHintMs()));
         }
         return Stt.EouClassifierOptions.newBuilder().setDefaultClassifier(classifier).build();
+    }
+
+    /**
+     * The pause hint SpeechKit will actually accept. Outside {@code [500, 5000]} it does
+     * not clamp the value or ignore it — it fails the session with {@code
+     * INVALID_ARGUMENT: pause between words hint should be in [500, 5000] millisecond
+     * range}, and since the options are sent when the stream opens, the failure lands on
+     * every call rather than at startup: the stream dies, reopens, and dies again while a
+     * caller is on the line. A tuning value that is one step too aggressive should cost
+     * nothing more than the tuning.
+     */
+    static int clampPauseHint(int hintMs) {
+        if (hintMs < MIN_PAUSE_HINT_MS || hintMs > MAX_PAUSE_HINT_MS) {
+            int clamped = Math.min(Math.max(hintMs, MIN_PAUSE_HINT_MS), MAX_PAUSE_HINT_MS);
+            log.warn("Yandex STT eou-max-pause-hint-ms={} is outside the accepted [{}, {}] range — using {}",
+                    hintMs, MIN_PAUSE_HINT_MS, MAX_PAUSE_HINT_MS, clamped);
+            return clamped;
+        }
+        return hintMs;
     }
 
     @PreDestroy

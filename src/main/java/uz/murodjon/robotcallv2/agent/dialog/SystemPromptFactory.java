@@ -118,7 +118,8 @@ public class SystemPromptFactory {
 
         LocalDate today = LocalDate.now();
         sb.append("BUGUNGI SANA: ").append(today).append(" (").append(weekdayUz(today.getDayOfWeek()))
-                .append(").\n\n");
+                .append(").\n");
+        sb.append(dateAnchors(today)).append('\n');
 
         List<FactField> factSchema = def.factSchema();
         if (factSchema != null && !factSchema.isEmpty()) {
@@ -161,7 +162,8 @@ public class SystemPromptFactory {
         } else {
             sb.append("\n[TIZIM: Birinchi javobingizda qisqa salomlashing, o'zingizni va kompaniyani tanishtiring ")
                     .append("hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki asosiy maqsadga) ")
-                    .append("o'ting (transitionTo chaqirib, gapni reply ga yozing). Shunchaki salomlashib to'xtab qolmang. QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\" deb so'rash.]\n");
+                    .append("o'ting: gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. ")
+                    .append("Shunchaki salomlashib to'xtab qolmang. QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\" deb so'rash.]\n");
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
@@ -193,6 +195,33 @@ public class SystemPromptFactory {
         sb.append('\n').append(examples(isRussian(s.language()))).append('\n');
 
         return sb.toString();
+    }
+
+    /**
+     * The relative dates a caller actually names, worked out in advance.
+     *
+     * <p>The scenario asks the model to turn "keyingi oyning 20-sanasi" into a
+     * {@code yyyy-MM-dd} tool argument, and calendar arithmetic is what it then spends its
+     * thinking budget on. On a real call the turn that recorded the payment promise — the
+     * one turn the whole call exists for — took 5.2s to its first token, against 1.1s for
+     * the turns either side of it. Handing it the answers makes that a lookup.
+     *
+     * <p>Part of the stable prefix, so it is written once per call and cached with the
+     * rest of it (the prefix is already rebuilt per call, which is what keeps it right
+     * across midnight).
+     */
+    private static String dateAnchors(LocalDate today) {
+        LocalDate nextMonth = today.plusMonths(1);
+        LocalDate nextMonthEnd = nextMonth.withDayOfMonth(nextMonth.lengthOfMonth());
+        return "SANALAR (tayyor hisoblangan — o'zingiz hisoblab o'tirmang):\n"
+                + "- ertaga: " + today.plusDays(1) + "\n"
+                + "- indinga: " + today.plusDays(2) + "\n"
+                + "- kelasi hafta shu kun: " + today.plusWeeks(1) + "\n"
+                + "- shu oyning oxiri: " + today.withDayOfMonth(today.lengthOfMonth()) + "\n"
+                + "- keyingi oy: " + nextMonth.withDayOfMonth(1) + " dan " + nextMonthEnd + " gacha. "
+                + "Ya'ni \"keyingi oyning N-sanasi\" = " + nextMonth.withDayOfMonth(1).toString().substring(0, 8)
+                + "N (masalan 20-sanasi = " + nextMonth.withDayOfMonth(Math.min(20, nextMonth.lengthOfMonth())) + "). "
+                + "N ni mijoz aytadi — o'zingiz tanlamaysiz.\n";
     }
 
     /**
@@ -268,6 +297,22 @@ public class SystemPromptFactory {
                 + "FAQAT endCall tool'i orqali ayting. Natijani yozib bo'lganingizdan keyin mijoz "
                 + "\"rahmat\" desa — javob bermang, boshqa tool chaqirmang: endCall bilan xayrlashing. "
                 + "Bir suhbatda ikki marta xayrlashish robotdek eshitiladi.");
+        // "Aniq sana" had to be spelled out: on a real call the caller answered "keyingi
+        // oy", the model read that as an exact date, recorded 2026-10-05 — a day nobody
+        // named — and closed the call in the same turn. A promise the caller never made is
+        // worse than one extra question.
+        rules.add("ANIQ SANA = kun raqami aytilgan ("
+                + (russian ? "\"20 октября\", \"завтра\", \"5-го\"" : "\"20-oktabr\", \"ertaga\", \"oyning 5-si\"")
+                + "). Faqat oy yoki noaniq muddat aytilsa ("
+                + (russian ? "\"в следующем месяце\", \"в октябре\", \"в конце месяца\"" : "\"keyingi oy\", \"oktabrda\", \"oy oxirida\"")
+                + ") bu ANIQ SANA EMAS: kun raqamini O'ZINGIZ TANLAMANG va recordPaymentPromise "
+                + "chaqirmang — qaysi kun ekanini bir marta so'rang.");
+        rules.add("Mijoz aniq to'lov sanasini aytgan zahoti SHU javobning o'zida recordPaymentPromise "
+                + "va endCall'ni birga chaqiring. Sanani qayta tasdiqlatuvchi savol bermang "
+                + (russian ? "(\"20 октября сможете оплатить 1500000?\")" : "(\"20-oktabrda 1500000 so'm to'lay olasizmi?\")")
+                + " — mijoz sanani allaqachon aytdi, uni qayta so'rash bitta ortiqcha savol-javob "
+                + "qo'shadi. Yakuniy gap savol emas, XABAR bo'lsin: sana va summani takrorlab, "
+                + "to'lovni kutayotganingizni ayting va xayrlashing.");
         rules.add("O'zingizni va kompaniyani bir marta tanishtirasiz — keyingi javoblarda kompaniya "
                 + "nomini qayta aytmang.");
         rules.add("Mijoz viloyat shevalarida (Surxondaryo, Xorazm, Samarqand, Farg'ona va boshqalar) yoki "
@@ -303,6 +348,8 @@ public class SystemPromptFactory {
                   → ✓ "Qachon to'lay olasiz?"
                 ✗ (o'tgan javobda "qachon to'laysiz?" so'ralgan) "Bu to'lovni qachon to'lab bera olasiz?"
                   → ✓ "Tushunarli. Sabab nimada — vaqtinchalik qiyinchilikmi?"
+                ✗ (mijoz "20-sanada" dedi, endi tasdiqlatyapti) "Aha. 20-oktabrda 1500000 so'm to'lay olasizmi?"
+                  → ✓ "Kelishdik. 20-oktabr kuni 1500000 so'mni kutib qolamiz. Salomat bo'ling!"
                 """;
     }
 
@@ -316,9 +363,19 @@ public class SystemPromptFactory {
         sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
         sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(stage)).append('\n');
-        sb.append("Bosqichni o'zgartirish kerak bo'lsa transitionTo tool'ini chaqiring va mijozga ")
-                .append("aytadigan gapingizni uning \"reply\" parametriga yozing — u bo'sh bo'lsa ")
-                .append("mijoz jimlikni eshitadi. (DIQQAT: reply parametriga inglizcha kod yoki placeholder yozish qat'iyan man etiladi).]");
+        // Text first, tool second — this is a latency rule, not a style one. A line carried
+        // in a tool argument arrives in one chunk when the whole reply is finished (this
+        // provider does not stream tool arguments), so synthesis cannot start until
+        // generation ends: on a recorded call the caller's first audio came 59ms after the
+        // first token, i.e. the whole 2.4-6.2s of generation was dead air. Plain text
+        // streams, and TurnRunner#consume speaks each sentence as it completes. A model
+        // that ignores this and fills "reply" anyway still works — that path is the
+        // fallback in TurnRunner#streamTurn, only slower.
+        sb.append("Mijozga aytadigan gapingizni AVVAL oddiy matn qilib yozing — u yozilishi bilanoq ")
+                .append("ovozga beriladi. Bosqichni o'zgartirish kerak bo'lsa, shu matndan KEYIN ")
+                .append("transitionTo tool'ini chaqiring va gapni uning \"reply\" parametrida QAYTA ")
+                .append("YOZMANG. Na matn, na reply bo'lsa — mijoz jimlikni eshitadi. ")
+                .append("(DIQQAT: inglizcha kod yoki placeholder yozish qat'iyan man etiladi).]");
         String asked = lastQuestion(s.lastAgentText());
         if (asked != null) {
             // The history already holds this, and the model still asked "qachon to'lay

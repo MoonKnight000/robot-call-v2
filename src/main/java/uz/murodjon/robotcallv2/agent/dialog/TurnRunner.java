@@ -669,6 +669,15 @@ public class TurnRunner {
     private Flux<ChatResponse> adoptSpeculation(DialogSession s, String clientText, boolean fromClient) {
         Speculation parked = s.takeSpeculation();
         try {
+            if (!fromClient || !props.preemptive() || !props.streaming()) {
+                // Nothing was guessed at and nothing was meant to be: the greeting has no
+                // caller utterance in front of it, and a switched-off feature reporting
+                // itself every turn is noise, not a diagnostic.
+                if (parked != null) {
+                    parked.discard();
+                }
+                return null;
+            }
             if (parked == null) {
                 // Nothing was written ahead, and which of the two reasons it was decides
                 // where to look: no interims at all is a recognizer or wiring problem,
@@ -821,8 +830,16 @@ public class TurnRunner {
      */
     private TurnResult retryTurn(DialogSession s, String system, List<Message> messages,
                                  List<ToolCallback> tools, String model, Exception failure) {
+        // A turn that ran on the fast model is retried whatever went wrong, and always on
+        // the company's own model. The override is an optimisation, and its most likely
+        // failure is a model id this API key cannot reach — which 404s identically every
+        // time, so retrying it against itself would only lose the caller the turn twice.
+        boolean fastModelFailed = model != null;
+        if (!fastModelFailed && !isTransient(failure)) {
+            return TurnResult.NOTHING;
+        }
         // spokenText() is null, not empty, when this turn has put nothing on the wire.
-        if (!isTransient(failure) || s.spokenText() != null || s.isCancelled() || s.isEnded()) {
+        if (s.spokenText() != null || s.isCancelled() || s.isEnded()) {
             return TurnResult.NOTHING;
         }
         try {
@@ -832,12 +849,18 @@ public class TurnRunner {
             return TurnResult.NOTHING;
         }
         metrics.llmRetry();
-        log.info("[{}] retrying the turn after a transient LLM failure", s.channelId());
+        if (fastModelFailed) {
+            log.warn("[{}] fast model '{}' failed ({}) — retrying on the configured model",
+                    s.channelId(), model, failure.getMessage());
+        } else {
+            log.info("[{}] retrying the turn after a transient LLM failure", s.channelId());
+        }
         try {
             // No speculation this time: the guess was consumed by the attempt that failed.
+            // No model override either — see above.
             return props.streaming()
-                    ? streamTurn(s, system, messages, tools, null, model)
-                    : blockingTurn(s, system, messages, tools, model);
+                    ? streamTurn(s, system, messages, tools, null, null)
+                    : blockingTurn(s, system, messages, tools, null);
         } catch (Exception e) {
             metrics.llmError();
             log.warn("[{}] the retry failed too: {}", s.channelId(), e.getMessage());

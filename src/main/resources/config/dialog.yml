@@ -54,6 +54,13 @@ voice-agent:
     # out the whole monologue. 0 disables it.
     interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:0}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
+    # On since the recognizer went single-language (stt.detect-languages: uz-UZ). It was
+    # off because a multilingual (uz-UZ + ru-RU) stream came back with Russian interims
+    # against an Uzbek final — "распутай" guessed against "yahshi bo'lsa keyingi oydan
+    # to'la boshlayman" — so no guess was ever a prefix of what the caller said.
+    # What it buys is the endpointing silence: on a recorded call 1.1-2.3s passed between
+    # the caller's last word and the final, and none of it was being used.
+    # Watch the "speculation: hit/miss" lines — a miss is a billed request for nothing.
     preemptive: ${DIALOG_PREEMPTIVE:true}
     # Also pre-synthesize the guess's first sentence into the TTS cache. Saves the whole
     # synthesis round trip when the guess lands, buys nothing (and is billed) when it does
@@ -62,11 +69,20 @@ voice-agent:
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:2}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:2}
     mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}
-    # Route one-word turns ("ha", "to'ladim") to a smaller, faster model. Blank keeps every
-    # turn on the company's configured model — switch it on only with the outcome checks of
-    # Blok D in place, since a smaller model also calls tools less reliably.
-    fast-model: ${DIALOG_FAST_MODEL:}
-    fast-model-max-words: ${DIALOG_FAST_MODEL_MAX_WORDS:3}
+    # Route short turns ("aha", "ha, to'layman") to a smaller, faster model: they are most
+    # of a call and pay time-to-first-token like any other, while any model answers them
+    # the same way. Blank keeps every turn on the company's configured model.
+    #
+    # What to watch: a smaller model calls tools less reliably, and these turns still have
+    # to fire transitionTo — a call that stops moving through its stages is this setting.
+    # A model id the API key cannot reach fails safely: the turn is retried on the
+    # configured model and logs "fast model '...' failed" (TurnRunner#retryTurn).
+    fast-model: ${DIALOG_FAST_MODEL:gemini-3.5-flash-lite}
+    # 12, not 3: on a measured call the single turn that fell under three words answered in
+    # 1.1s and the three that did not took 2.4-6.2s on the full model. Real caller turns run
+    # 4-7 words ("keyingi oyda oktabrdan atib to'layman"), so a 3-word cut applied the
+    # optimisation to almost nothing. Raise or lower it by what the turns actually contain.
+    fast-model-max-words: ${DIALOG_FAST_MODEL_MAX_WORDS:5}
     state-scoped-tools: ${DIALOG_STATE_SCOPED_TOOLS:true}
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}

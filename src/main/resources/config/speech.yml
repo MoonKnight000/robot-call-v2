@@ -41,7 +41,15 @@ voice-agent:
     # Individual calls pick provider from Company Engine Config.
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
-    detect-languages: ${STT_DETECT_LANGUAGES:uz-UZ,ru-RU}
+    # Languages the recognizer may return, as a SpeechKit whitelist. More than one turns
+    # on per-sentence detection — and on a uz-UZ + ru-RU stream that cost more than it
+    # bought: the interims came back decoded as Russian and the final was re-decoded as
+    # Uzbek ("распутай" and "yahshi bo'lsa keyingi oydan to'la boshlayman" were the same
+    # audio), which is dead weight in the finalization the caller waits through.
+    # A single language also disables answering the caller in the other one
+    # (ClientInputGate#adaptLanguage needs two candidates) — put ru-RU back if calls are
+    # genuinely bilingual.
+    detect-languages: ${STT_DETECT_LANGUAGES:uz-UZ}
     # A stream that takes audio for this long without returning a single transcript is
     # treated as broken and replaced. Without VAD gating the caller's silence is streamed
     # too, so this must stay longer than any silence a caller can produce. 0 disables it.
@@ -84,13 +92,25 @@ voice-agent:
       # In SpeechKit v3, multilingual recognition uses the language restriction whitelist with the general model.
       auto-detect-model: ${STT_YANDEX_AUTO_DETECT_MODEL:general}
       interim-results: ${STT_YANDEX_INTERIM:true}
-      eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:HIGH}
+      # DEFAULT, not HIGH: HIGH ends the utterance at the first opportunity, and paired
+      # with a 500 ms pause hint it cut callers off mid-sentence — see below.
+      eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:DEFAULT}
       # The pause SpeechKit may treat as the end of the utterance rather than a gap
-      # between words. This is the whole endpointing budget on the default path — no
-      # gate runs on our side — and a recording of a real call put 1.5 s between the
-      # caller's last word and the final transcript, over half of a 2.5 s silence.
-      # Raise it back towards 450 if callers start getting cut mid-sentence.
-      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:300}
+      # between words. This is the whole endpointing budget on the default path — no gate
+      # runs on our side.
+      #
+      # 1200, raised back off the 500 floor because 500 does not survive real speech: on a
+      # recorded call it ended the turn on a 0.60 s pause and again on a 0.78 s one, and
+      # both times the caller was mid-sentence. The second cost the call — "keyingi oy"
+      # was finalized, the bot answered and hung up, and "to'layman oktyabrda" arrived
+      # 0.2 s later with nobody left to hear it. Thinking pauses in Uzbek run past a
+      # second; a turnaround saved by talking over the caller is not saved.
+      # What pays for it is speculation (dialog.preemptive): the reply is being written
+      # during this pause, so most of it is no longer dead time.
+      #
+      # SpeechKit accepts [500, 5000] and nothing else: below 500 it does not clamp or
+      # ignore the hint, it kills the session with INVALID_ARGUMENT on every call.
+      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:1200}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
     aisha:
       api-key: ${STT_AISHA_API_KEY:}

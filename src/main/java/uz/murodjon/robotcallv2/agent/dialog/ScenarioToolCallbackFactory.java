@@ -88,12 +88,12 @@ final class ScenarioToolCallbackFactory {
         ObjectNode properties = schema.putObject("properties");
         ArrayNode required = schema.putArray("required");
         // The line to speak, on every tool a scenario declares just as on the hardcoded
-        // ones — a tool-only turn must never leave the caller waiting for a second LLM
-        // round trip (see DialogTools).
+        // ones — offered, not required: the model is asked to write the line as plain text
+        // so synthesis can start before generation ends, and this stays as the fallback for
+        // a tool-only turn, which must never cost a second LLM round trip (see DialogTools).
         properties.putObject(DialogTools.REPLY_PARAM)
                 .put("type", "string")
                 .put("description", DialogTools.REPLY_DESCRIPTION);
-        required.add(DialogTools.REPLY_PARAM);
         List<ToolParamDef> params = toolDef.params();
         if (params != null) {
             for (ToolParamDef p : params) {

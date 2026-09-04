@@ -203,15 +203,44 @@ services:
       TTS_PROVIDER: ${TTS_PROVIDER:-yandex}
       STT_YANDEX_API_KEY: ${STT_YANDEX_API_KEY:-}
       STT_YANDEX_FOLDER_ID: ${STT_YANDEX_FOLDER_ID:-}
-      # End-of-utterance tuning for Yandex STT v3:
-      # HIGH sensitivity + 700ms max pause cuts ~1.5 seconds off the turn latency.
-      STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-HIGH}
-      STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-700}
+      # End-of-utterance tuning for Yandex STT v3. The pause is the whole endpointing
+      # budget on this path — no gate runs on our side — so it is paid on every turn.
+      # SpeechKit only accepts [500, 5000].
+      #
+      # 500 + HIGH was measured cutting callers off: it ended one turn on a 0.60s pause
+      # and the next on a 0.78s one, mid-sentence both times. On the second the bot
+      # answered "keyingi oy" and hung up, and the rest of the sentence — "to'layman
+      # oktyabrda" — arrived 0.2s later with the call already closing.
+      # If turns feel slow again, put SENSITIVITY back to HIGH before touching the pause:
+      # it is the cheaper half, and the pause is what protects a mid-sentence caller.
+      STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-DEFAULT}
+      STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-1200}
+      # Which languages SpeechKit may return. One is faster and more accurate; two turns
+      # on per-sentence detection and lets the bot answer in the language the caller
+      # actually speaks. See config/speech.yml.
+      STT_DETECT_LANGUAGES: ${STT_DETECT_LANGUAGES:-uz-UZ}
       STT_VAD_GATING: ${STT_VAD_GATING:-false}
       STT_ENDPOINTING: ${STT_ENDPOINTING:-false}
-      # Preemptive LLM Speculation (starts generating while interim speech is arriving)
+      # Preemptive LLM speculation (starts generating while interim speech is arriving).
+      # On: the stream is single-language now (STT_DETECT_LANGUAGES=uz-UZ), which is what
+      # broke it before — the interims of a uz+ru stream came back decoded as Russian and
+      # never matched the final. What it buys is the endpointing silence: a recording of a
+      # real call measured 1.1-2.3s between the caller's last word and the final transcript,
+      # and that whole block is time the guess is already being written in.
+      # Watch the "speculation: hit/miss" log lines — a miss is a billed request for nothing.
       DIALOG_PREEMPTIVE: ${DIALOG_PREEMPTIVE:-true}
       DIALOG_STREAMING: ${DIALOG_STREAMING:-true}
+      # Route turns of at most DIALOG_FAST_MODEL_MAX_WORDS words ("aha", "ha, to'layman")
+      # to a smaller model — those are most of a call and pay time-to-first-token like any
+      # other. Blank keeps every turn on the company's configured model. A model id this
+      # API key cannot reach 404s, so a failed fast-model turn is retried on the normal
+      # model (TurnRunner#retryTurn) rather than lost.
+      DIALOG_FAST_MODEL: ${DIALOG_FAST_MODEL:-gemini-3.5-flash-lite}
+      # 12, not 3: on a measured call the one turn that fell under 3 words answered in
+      # 1.1s and the three that did not took 2.4-6.2s on the full model. Caller turns are
+      # 4-7 words ("keyingi oyda oktabrdan atib to'layman"), so a 3-word cut let the
+      # optimisation apply to almost nothing.
+      DIALOG_FAST_MODEL_MAX_WORDS: ${DIALOG_FAST_MODEL_MAX_WORDS:-5}
       # Aisha (STT_PROVIDER/TTS_PROVIDER=aisha).
       STT_AISHA_API_KEY: ${STT_AISHA_API_KEY:-}
       TTS_AISHA_API_KEY: ${TTS_AISHA_API_KEY:-}
