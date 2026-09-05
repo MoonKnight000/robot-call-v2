@@ -88,7 +88,7 @@ public class CallTaskConsumer {
                     language, voice, context, task.scenarioId(), task.companyId(), task.disclosureEnabled(),
                     task.ambientSound(), task.midCallSmsEnabled(), task.midCallSmsTemplate(),
                     task.voicemailAction(), task.voicemailMessage(), task.dtmfInputEnabled(),
-                    task.emotionAdaptiveVoice(), task.languageVoices(), task.sipTrunkId());
+                    task.emotionAdaptiveVoice(), task.agentPersona(), task.languageVoices(), task.sipTrunkId());
 
             // Originate with atomic registry pre-arming to eliminate StasisStart race condition
             originateReached = true;

@@ -45,14 +45,14 @@ Pipecat agentingiz Claude, Gemini, Deepgram yoki Cartesia orqali gaplashishi uch
 1. Chap menyudan **"Secrets"** (yoki **"Integrations / Environment Variables"**) bo'limiga kiring.
 2. Quyidagi kalitlarni qo'shing:
 
-| Kalit nomi | Qaysi xizmat | Nima vazifani bajaradi? |
-| :--- | :--- | :--- |
+| Kalit nomi              | Qaysi xizmat     | Nima vazifani bajaradi?                           |
+|:------------------------|:-----------------|:--------------------------------------------------|
 | **`ANTHROPIC_API_KEY`** | Anthropic Claude | Fikrlash aqli (LLM) — masalan: `claude-3-5-haiku` |
-| **`DEEPGRAM_API_KEY`** | Deepgram | Mijoz ovozini bir zumda matnga o'girish (STT) |
-| **`CARTESIA_API_KEY`** | Cartesia Sonic | Javobni tabiiy va ultra-tez ovozda gapirish (TTS) |
-| **`GROQ_API_KEY`** | Groq (Llama 3.3) | Arzon va chaqmoqdek tezkor LLM |
-| **`OPENAI_API_KEY`** | OpenAI (GPT-4o) | OpenAI modellari uchun |
-| **`GEMINI_API_KEY`** | Google Gemini | Google Gemini va Gemini Live uchun |
+| **`DEEPGRAM_API_KEY`**  | Deepgram         | Mijoz ovozini bir zumda matnga o'girish (STT)     |
+| **`CARTESIA_API_KEY`**  | Cartesia Sonic   | Javobni tabiiy va ultra-tez ovozda gapirish (TTS) |
+| **`GROQ_API_KEY`**      | Groq (Llama 3.3) | Arzon va chaqmoqdek tezkor LLM                    |
+| **`OPENAI_API_KEY`**    | OpenAI (GPT-4o)  | OpenAI modellari uchun                            |
+| **`GEMINI_API_KEY`**    | Google Gemini    | Google Gemini va Gemini Live uchun                |
 
 > [!TIP]
 > **Tavsiya etilgan eng tezkor kombinatsiya:**  

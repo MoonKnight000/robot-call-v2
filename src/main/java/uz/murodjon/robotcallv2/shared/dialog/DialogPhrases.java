@@ -24,16 +24,16 @@ public final class DialogPhrases {
         boolean ru = russian(language);
         boolean en = english(language);
         if (companyName == null || companyName.isBlank()) {
-            if (en) return "Hello! This is an automated voice assistant. This call is being recorded.";
+            if (en) return "Hello! I am an AI voice robot. This call is being recorded.";
             return ru
-                    ? "Здравствуйте! Это автоматический голосовой сервис. Разговор записывается."
-                    : "Assalomu alaykum! Bu avtomatik ovozli xizmat. Suhbat yozib olinmoqda.";
+                    ? "Здравствуйте! Я голосовой робот. Разговор записывается."
+                    : "Assalomu alaykum! Men sun'iy intellekt ovozli robotiman. Suhbat yozib olinmoqda.";
         }
         String company = companyName.trim();
-        if (en) return "Hello! This is the automated voice assistant for " + company + ". This call is being recorded.";
+        if (en) return "Hello! I am an AI robot of " + company + ". This call is being recorded.";
         return ru
-                ? "Здравствуйте! Это автоматический голосовой сервис компании " + company + ". Разговор записывается."
-                : "Assalomu alaykum! Bu " + company + " kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.";
+                ? "Здравствуйте! Я робот компании " + company + ". Разговор записывается."
+                : "Assalomu alaykum! Men " + company + " kompaniyasining robotiman. Suhbat yozib olinmoqda.";
     }
 
     /** Closing line when a guardrail (turn cap, duration cap) ends the call. */

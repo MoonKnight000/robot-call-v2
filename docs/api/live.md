@@ -127,3 +127,57 @@ animatsiyasi uchun).
 ```
 
 `level` — `"info"` / `"warning"` / `"danger"`.
+
+---
+
+## 2. Jonli Suhbatni Boshqarish (Whisper & Takeover)
+
+Operator jonli qo'ng'iroqni eshitib turgan paytda botga ko'rinmas ko'rsatma yuborishi (`whisper`) yoki qo'ng'iroqni o'zining ichki SIP raqamiga o'tkazib olishi (`takeover`) mumkin.
+
+### `POST /api/calls/live/{channelId}/whisper` — Botga yashirin yo'l-yo'riq berish (Whisper Injection)
+
+Operator kiritgan matn mijozga eshitilmaydi. Bot keyingi javobni shakllantirishda ushbu ko'rsatmani inobatga oladi (masalan, qo'shimcha chegirma taklif qilish, mijoz nomini aniqlashtirish va h.k.).
+
+**Request Body:**
+```json
+{
+  "instruction": "Mijozga muddatli to'lov uchun 10% chegirma taklif qil"
+}
+```
+
+**Response:**
+```json
+{
+  "accept": true,
+  "data": {
+    "channelId": "1710000000.12",
+    "status": "WHISPER_INJECTED"
+  },
+  "messageCode": "SUCCESS",
+  "errors": null
+}
+```
+
+### `POST /api/calls/live/{channelId}/takeover` — Qo'ng'iroqni tirik operatorga olish (Human Takeover)
+
+AI bot darhol ovozni to'xtatadi va qo'ng'iroq ko'rsatilgan operator ichki raqamiga (SIP extension) yoki navbatga uzatiladi.
+
+**Request Body** (ixtiyoriy):
+```json
+{
+  "extension": "105"
+}
+```
+
+**Response:**
+```json
+{
+  "accept": true,
+  "data": {
+    "channelId": "1710000000.12",
+    "status": "TAKEOVER_TRIGGERED"
+  },
+  "messageCode": "SUCCESS",
+  "errors": null
+}
+```

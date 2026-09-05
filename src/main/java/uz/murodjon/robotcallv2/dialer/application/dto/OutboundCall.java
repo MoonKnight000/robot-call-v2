@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.dialer.application.dto;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.campaign.domain.enums.AmbientSound;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.campaign.domain.enums.VoicemailAction;
 
 import java.util.Map;
@@ -28,6 +29,7 @@ public record OutboundCall(
         String voicemailMessage,
         boolean dtmfInputEnabled,
         boolean emotionAdaptiveVoice,
+        AgentPersona agentPersona,
         /**
          * The campaign's voice per call language (§2.5) — the dialog keeps it for the
          * whole call, because the language it speaks can still change when the caller
@@ -39,6 +41,6 @@ public record OutboundCall(
     public OutboundCall(Long campaignId, Long targetId, Long clientId, String phone, String language,
                         String ttsVoice, CallContext context, Long scenarioId, Long companyId, boolean disclosureEnabled) {
         this(campaignId, targetId, clientId, phone, language, ttsVoice, context, scenarioId, companyId, disclosureEnabled,
-                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true, Map.of(), null);
+                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true, AgentPersona.AI_ASSISTANT, Map.of(), null);
     }
 }

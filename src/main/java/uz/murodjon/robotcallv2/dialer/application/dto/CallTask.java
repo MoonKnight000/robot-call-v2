@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.dialer.application.dto;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.AmbientSound;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.campaign.domain.enums.VoicemailAction;
 
 import java.util.Map;
@@ -27,6 +28,7 @@ public record CallTask(
         String voicemailMessage,
         boolean dtmfInputEnabled,
         boolean emotionAdaptiveVoice,
+        AgentPersona agentPersona,
         /**
          * The campaign's voice per call language (§2.5). Carried whole rather than
          * resolved here because the language can still change twice: the CRM's preferred
@@ -40,7 +42,7 @@ public record CallTask(
                     String ttsVoice, String contextData, Long scenarioId, long companyId, boolean disclosureEnabled) {
         this(campaignId, targetId, clientId, phone, language, ttsVoice, contextData, scenarioId, companyId,
                 disclosureEnabled, AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
-                Map.of(), null);
+                AgentPersona.AI_ASSISTANT, Map.of(), null);
     }
 
     /** The voice this task's campaign speaks {@code language} with; its default otherwise. */

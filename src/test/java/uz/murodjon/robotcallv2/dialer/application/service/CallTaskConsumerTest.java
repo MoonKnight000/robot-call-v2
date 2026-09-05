@@ -11,6 +11,7 @@ import org.mockito.quality.Strictness;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
@@ -75,7 +76,7 @@ class CallTaskConsumerTest {
     void dropsBlockedNumberAndReleasesDialerState() {
         CallTask task = new CallTask(
                 1L, 100L, 200L, "998901234567", "uz", "dilfuza", "{}", 10L, 1L,
-                true, null, false, null, null, null, false, false, Map.of("uz", "dilfuza"), null
+                true, null, false, null, null, null, false, false, AgentPersona.AI_ASSISTANT, Map.of("uz", "dilfuza"), null
         );
 
         when(doNotCallRepository.isBlocked(1L, "998901234567")).thenReturn(true);
@@ -91,7 +92,7 @@ class CallTaskConsumerTest {
     void successfullyOriginatesAndPassesOutboundCallAtomically() {
         CallTask task = new CallTask(
                 1L, 100L, 200L, "998901234567", "uz", "dilfuza", "{}", 10L, 1L,
-                true, null, false, null, null, null, false, false, Map.of("uz", "dilfuza"), null
+                true, null, false, null, null, null, false, false, AgentPersona.AI_ASSISTANT, Map.of("uz", "dilfuza"), null
         );
 
         ScenarioDefinition def = new ScenarioDefinition(List.of(), List.of(), List.of(), List.of(), "system prompt", List.of(), "disclosure");

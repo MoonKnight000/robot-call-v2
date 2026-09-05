@@ -32,7 +32,6 @@ public class CampaignMapper {
                 e.getDailyCallCap(),
                 e.getScenarioId(),
                 e.getCompanyId(),
-                e.isDisclosureEnabled(),
                 e.getCreatedById(),
                 e.getRecurrenceType(),
                 e.getRecurringDayOfMonth(),
@@ -46,6 +45,7 @@ public class CampaignMapper {
                 e.getVoicemailMessage(),
                 e.isDtmfInputEnabled(),
                 e.isEmotionAdaptiveVoice(),
+                e.getAgentPersona(),
                 Map.copyOf(e.getLanguageVoices()),
                 Set.copyOf(e.getSipTrunkIds())
         );
@@ -71,7 +71,6 @@ public class CampaignMapper {
         e.setDailyCallCap(d.dailyCallCap());
         e.setCompany(company);
         e.setScenario(scenario);
-        e.setDisclosureEnabled(d.disclosureEnabled());
         e.setCreatedBy(createdBy);
         e.setRecurrenceType(d.recurrenceType());
         e.setRecurringDayOfMonth(d.recurringDayOfMonth());
@@ -85,6 +84,7 @@ public class CampaignMapper {
         e.setVoicemailMessage(d.voicemailMessage());
         e.setDtmfInputEnabled(d.dtmfInputEnabled());
         e.setEmotionAdaptiveVoice(d.emotionAdaptiveVoice());
+        e.setAgentPersona(d.agentPersona());
         e.setLanguageVoices(d.languageVoices());
         e.setSipTrunkIds(d.sipTrunkIds());
         return e;

@@ -122,6 +122,9 @@ public class RtpEndpoint implements Closeable {
 
     public void setAmbientSound(AmbientSound ambientSound) {
         this.ambientSound = ambientSound != null ? ambientSound : AmbientSound.OFF;
+        if (this.ambientSound != AmbientSound.OFF && remoteAddress != null) {
+            startPacer();
+        }
     }
 
     public int port() {
@@ -139,6 +142,9 @@ public class RtpEndpoint implements Closeable {
                             remoteAddress = msg.sender();
                             remoteLatched = true;
                             log.info("RTP peer for port {} latched to {} (from inbound traffic)", port, remoteAddress);
+                            if (ambientSound != AmbientSound.OFF) {
+                                startPacer();
+                            }
                         }
                         ByteBuf content = msg.content();
                         byte[] bytes = new byte[content.readableBytes()];
@@ -158,6 +164,9 @@ public class RtpEndpoint implements Closeable {
         try {
             channel = b.bind(port).sync().channel();
             log.info("RTP endpoint bound to UDP port {}", port);
+            if (ambientSound != AmbientSound.OFF && remoteAddress != null) {
+                startPacer();
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to bind RTP port " + port, e);
         }
@@ -178,6 +187,9 @@ public class RtpEndpoint implements Closeable {
         }
         remoteAddress = remote;
         log.info("RTP peer for port {} set to {} (from Asterisk)", port, remote);
+        if (ambientSound != AmbientSound.OFF) {
+            startPacer();
+        }
     }
 
     public void setRemoteAddress(String ip, int port) {
@@ -222,7 +234,9 @@ public class RtpEndpoint implements Closeable {
             queuedSamples = playedSamples;
             idleFrames = 0;
         }
-        stopPacer();
+        if (ambientSound == AmbientSound.OFF) {
+            stopPacer();
+        }
     }
 
     /**
@@ -231,7 +245,7 @@ public class RtpEndpoint implements Closeable {
      *
      * <p>Together with {@link #playedSamples()} this is what says how much of a given line
      * the caller actually heard, which is the only honest answer after a barge-in: the
-     * queue holds whole sentences, and one cut halfway through was half heard.
+     * queue holds whole sentences, and one cut halfway through was half heard.</p>
      */
     public long queuedSamples() {
         synchronized (playLock) {
@@ -264,12 +278,13 @@ public class RtpEndpoint implements Closeable {
     }
 
     private void startPacer() {
+        if (channel == null || channel.eventLoop() == null) {
+            return;
+        }
         if (pacerRunning.compareAndSet(false, true)) {
-            if (channel != null && channel.eventLoop() != null) {
-                // Pre-buffer 60-80ms (3-4 frames) to smooth out streaming jitter and prevent underrun
-                pacer = channel.eventLoop().scheduleAtFixedRate(
-                        this::sendFrame, FRAME_MS * 3, FRAME_MS, TimeUnit.MILLISECONDS);
-            }
+            // Pre-buffer 60-80ms (3-4 frames) to smooth out streaming jitter and prevent underrun
+            pacer = channel.eventLoop().scheduleAtFixedRate(
+                    this::sendFrame, FRAME_MS * 3, FRAME_MS, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -436,6 +451,7 @@ public class RtpEndpoint implements Closeable {
     @Override
     public void close() {
         running = false;
+        stopPacer();
         flushPlayback();
         if (consumer != null) {
             try {

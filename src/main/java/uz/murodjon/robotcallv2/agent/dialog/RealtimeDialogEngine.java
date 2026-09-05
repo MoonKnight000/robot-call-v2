@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.agent.audio.Resampler;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.*;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
@@ -122,6 +123,16 @@ public class RealtimeDialogEngine implements CallDialog {
                              boolean disclosureEnabled,
                              Runnable hangup, Runnable transfer, long callAttemptId,
                              RealtimeAudioBridge bridge, Runnable fallback) {
+        return startCall(channelId, endpoint, context, scenario, language, voice, disclosureEnabled,
+                hangup, transfer, callAttemptId, bridge, fallback, AgentPersona.AI_ASSISTANT);
+    }
+
+    public boolean startCall(String channelId, RtpEndpoint endpoint, CallContext context,
+                             ScenarioDefinition scenario, String language, String voice,
+                             boolean disclosureEnabled,
+                             Runnable hangup, Runnable transfer, long callAttemptId,
+                             RealtimeAudioBridge bridge, Runnable fallback,
+                             AgentPersona agentPersona) {
         long companyId = records.companyIdOf(callAttemptId);
         EffectiveEngineConfig effective = engineConfigService.findEffectiveByCompanyId(companyId);
         RealtimeProvider provider = registry.findForCall(effective.realtimeProvider());
@@ -136,12 +147,12 @@ public class RealtimeDialogEngine implements CallDialog {
         String companyName = company != null ? company.name() : null;
 
         String disclosureText = null;
-        if (props.mandatoryDisclosure() && disclosureEnabled) {
+        if (props.mandatoryDisclosure() && disclosureEnabled && agentPersona != AgentPersona.HUMAN_LIKE) {
             CompanyConfig companyConfig = companyConfigService.find(companyId);
             disclosureText = disclosureLine(session, companyConfig != null ? companyConfig.disclosureText() : null, companyName);
         }
 
-        String prompt = promptFactory.build(session, companyName, disclosureText);
+        String prompt = promptFactory.build(session, companyName, disclosureText, voice, agentPersona);
         session.setTools(toolsFor(session));
         try {
             RealtimeSession engine = provider.startSession(

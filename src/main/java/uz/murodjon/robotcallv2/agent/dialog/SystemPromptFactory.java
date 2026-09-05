@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 
@@ -116,6 +117,26 @@ public class SystemPromptFactory {
                     .append("faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
         }
 
+        if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
+            String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
+            sb.append("SHAXSIYAT VA ROL (HAQIQIY INSON MUTAXASSIS):\n")
+                    .append("- Siz ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
+                    .append("ning professional, tirik inson xodimisiz. Ismingiz: ").append(personaName).append(".\n")
+                    .append("- QAT'IYAN TAQIQLANADI: O'zingizni robot, bot, sun'iy intellekt yoki avtomatlashtirilgan tizim deb atash!\n")
+                    .append("- Agar mijoz 'Sen robotsanmi?', 'AI bilan gaplashyapmanmi?', 'Tirik odammisan?' deb so'rasa: ")
+                    .append("\"Yo'q, men ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
+                    .append(" mutaxassisi ").append(personaName).append("man, siz bilan jonli gaplashyapman. Sizga qanday yordam bera olaman?\" deb samimiy va ishonarli javob bering.\n")
+                    .append("- BARCHA SAVOLLARGA JAVOB BERISH: Mijoz qanday savol bermasin, o'zingiz bilgan ma'lumotlar va ssenariy doirasida imkon qadar mustaqil, to'liq va odamdek samimiy javob berishga harakat qiling. Qisqa 'bilmayman' deb to'xtab qolmang.\n\n");
+        } else {
+            sb.append("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT):\n")
+                    .append("- Siz ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
+                    .append("ning rasmiy sun'iy intellekt ovozli assistentisiz (robot).\n")
+                    .append("- SAVOLGA JAVOB TOPA OLMASANGIZ: Agar mijoz ssenariy yoki faktlarda mavjud bo'lmagan, siz bilmaydigan yoki tushunarsiz savol bersa, aslo yolg'on ma'lumot to'qimang. To'g'ridan-to'g'ri o'zingizning sun'iy intellekt ekanligingizni ayting: ")
+                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman. Sizni mutaxassisimizga ulab beraman\" deng va requestHumanTransfer chaqiring.\n")
+                    .append("- Agar mijoz 'Sen robotsanmi?' deb so'rasa: \"Ha, men ").append(s.companyName() != null ? s.companyName().trim() : "")
+                    .append(" kompaniyasining sun'iy intellekt yordamchisiman\" deb ochiq ayting.\n\n");
+        }
+
         LocalDate today = LocalDate.now();
         sb.append("BUGUNGI SANA: ").append(today).append(" (").append(weekdayUz(today.getDayOfWeek()))
                 .append(").\n");
@@ -160,10 +181,19 @@ public class SystemPromptFactory {
                     .append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra ")
                     .append("(QAT'IYAN TAQIQLANADI: \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" yoki \"mijoz\" deb aytish). Agar shaxsni so'rash kerak bo'lmasa, muloyimlik bilan maqsadga o't.]\n");
         } else {
+            if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
+                String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
+                sb.append("\n[TIZIM: Birinchi javobingizda salomlashing, o'zingizni odamdek tanishtiring: \"Salom, mening ismim ")
+                        .append(personaName).append(". ")
+                        .append(s.companyName() != null ? s.companyName().trim() + " kompaniyasidan qo'ng'iroq qilyapman. " : "")
+                        .append("\" hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki asosiy maqsadga) o'ting: ")
+                        .append("gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. Shunchaki salomlashib to'xtab qolmang.]\n");
+            } else {
             sb.append("\n[TIZIM: Birinchi javobingizda qisqa salomlashing, o'zingizni va kompaniyani tanishtiring ")
                     .append("hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki asosiy maqsadga) ")
                     .append("o'ting: gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. ")
                     .append("Shunchaki salomlashib to'xtab qolmang. QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\" deb so'rash.]\n");
+            }
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
@@ -235,7 +265,7 @@ public class SystemPromptFactory {
                 + (russian ? "ruscha" : "o'zbekcha") + " gaplar bilan gapiring.");
         rules.add("Ko'pi bilan ikki qisqa gap va bitta savol. Shartnoma, summa va muddatni bitta "
                 + "uzun gapga tiqmang — alohida gaplarga bo'ling.");
-        rules.add("Har bir javobingiz bitta savol bilan tugasin, va u FAQAT ishni oldinga "
+        rules.add("Har bir javobingiz ALBATTA savol bilan tugasin, va u FAQAT ishni oldinga "
                 + "suradigan savol bo'lsin "
                 + (russian ? "(\"почему не оплачено?\", \"когда сможете оплатить?\")" : "(\"nima uchun to'lanmayapti?\", \"qachon to'lay olasiz?\")")
                 + " — ya'ni javobi sizga kerak bo'lgan savol. Bo'sh, tasdiqlovchi savollar "
@@ -499,5 +529,30 @@ public class SystemPromptFactory {
             return s.trim();
         }
         return null;
+    }
+
+    public static String resolveVoicePersonaName(String voice, String language) {
+        if (voice != null && !voice.isBlank()) {
+            String v = voice.trim().toLowerCase(java.util.Locale.ROOT);
+            if (v.contains("dilnavoz")) return "Dilnavoz";
+            if (v.contains("gulnoza")) return "Gulnoza";
+            if (v.contains("zamira")) return "Zamira";
+            if (v.contains("yulduz")) return "Yulduz";
+            if (v.contains("nigora")) return "Nigora";
+            if (v.contains("anvar")) return "Anvar";
+            if (v.contains("filipp")) return "Filipp";
+            if (v.contains("alena") || v.contains("alyona")) return "Alyona";
+            if (v.contains("jane")) return "Jane";
+            if (v.contains("puck")) return "Puck";
+            if (v.contains("aoede")) return "Aoede";
+            String clean = v.replaceAll("^(gemini|elevenlabs|openai|tts|voice)[-_]", "")
+                    .replaceAll("[-_](uz|ru|en|standard|neural|wavenet)$", "");
+            if (!clean.isBlank()) {
+                return Character.toUpperCase(clean.charAt(0)) + clean.substring(1);
+            }
+        }
+        if (isRussian(language)) return "Анна";
+        if (language != null && language.toLowerCase(java.util.Locale.ROOT).startsWith("en")) return "Alex";
+        return "Dilnoza";
     }
 }

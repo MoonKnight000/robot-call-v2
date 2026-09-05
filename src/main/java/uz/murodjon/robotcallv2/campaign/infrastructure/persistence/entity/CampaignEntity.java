@@ -107,9 +107,6 @@ public class CampaignEntity {
     @JoinColumn(name = "scenario_id", nullable = false)
     private ScenarioEntity scenario;
 
-    @Column(name = "disclosure_enabled", nullable = false)
-    private boolean disclosureEnabled;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "recurrence_type", nullable = false)
     private RecurrenceType recurrenceType = RecurrenceType.ONCE;
@@ -148,6 +145,10 @@ public class CampaignEntity {
 
     @Column(name = "emotion_adaptive_voice", nullable = false)
     private boolean emotionAdaptiveVoice = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "agent_persona", nullable = false)
+    private AgentPersona agentPersona = AgentPersona.AI_ASSISTANT;
 
     public Long getId() {
         return id;
@@ -336,11 +337,7 @@ public class CampaignEntity {
     }
 
     public boolean isDisclosureEnabled() {
-        return disclosureEnabled;
-    }
-
-    public void setDisclosureEnabled(boolean disclosureEnabled) {
-        this.disclosureEnabled = disclosureEnabled;
+        return getAgentPersona() == AgentPersona.AI_ASSISTANT;
     }
 
     public RecurrenceType getRecurrenceType() {
@@ -437,5 +434,13 @@ public class CampaignEntity {
 
     public void setEmotionAdaptiveVoice(boolean emotionAdaptiveVoice) {
         this.emotionAdaptiveVoice = emotionAdaptiveVoice;
+    }
+
+    public AgentPersona getAgentPersona() {
+        return agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
+    }
+
+    public void setAgentPersona(AgentPersona agentPersona) {
+        this.agentPersona = agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
     }
 }

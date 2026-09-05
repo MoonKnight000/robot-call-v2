@@ -25,7 +25,7 @@ Yangi chiquvchi qo'ng'iroq kampaniyasini yaratadi.
     "en-US": "jennifer"
   },
   "sipTrunkIds": [1, 2],
-  "disclosureEnabled": true,
+  "agentPersona": "AI_ASSISTANT",
   "ambientSound": "OFFICE_BACKGROUND",
   "midCallSmsEnabled": true,
   "midCallSmsTemplate": "To'lov havolasi: https://pay.uysot.uz/bill/{{orderNumber}}",
@@ -47,8 +47,8 @@ Yangi chiquvchi qo'ng'iroq kampaniyasini yaratadi.
 | `defaultVoice` | `string` | ❌ | Standart TTS ovoz |
 | `languageVoices` | `Map<string, string>` | ❌ | Har bir til uchun alohida TTS ovoz xaritasi |
 | `sipTrunkIds` | `array<number>` | ❌ | **Chiquvchi SIP trunklar ID ro'yxati**. Agar tanlanmasa (`null` yoki `[]`), kompaniyaning barcha faol trunklari bo'yicha Round-Robin yuklama taqsimlanadi. Bir yoki bir nechta trunk tanlansa, qo'ng'iroqlar faqat o'sha tanlangan trunklar bo'yicha navbatma-navbat amalga oshiriladi. Tanlanganlarning bir qismi o'chirilgan bo'lsa, qolganlari ishlatiladi (warn log); **hammasi o'chirilgan yoki o'chirib tashlangan bo'lsa, dialer kampaniyani avtomatik `PAUSED` ga o'tkazadi** va `SIP_TRUNK_SELECTION_UNAVAILABLE` xatosini logga yozadi. Trunk qayta yoqilgach, kampaniya `POST /start` bilan qo'lda qayta ishga tushiriladi. |
-| `disclosureEnabled` | `boolean` | ❌ | Sun'iy intellekt ekanligini oshkor qilish (Disclosure) |
-| `ambientSound` | `string` | ❌ | Fon shovqini (`OFF`, `OFFICE_BACKGROUND`, `CALL_CENTER_AMBIENCE`) |
+| `agentPersona` | `string` | ❌ | **Agent shaxsiyati**: `AI_ASSISTANT` (sukut bo'yicha) yoki `HUMAN_LIKE`. `AI_ASSISTANT` — suhbat boshida *"Men [Kompaniya] kompaniyasining robotiman..."* deb boshlaydi va bilmagan savollariga AI ekanligini bildirib operatorga ulaydi. `HUMAN_LIKE` — suhbatni ovoz nomidagi inson ismi bilan boshlaydi (*"Salom, mening ismim Dilnavoz. [Kompaniya] kompaniyasidan qo'ng'iroq qilyapman..."*), robot disclosure'ni aytmaydi, o'zini robot/AI deb tanishtirishi mutlaqo taqiqlanadi va barcha savollarga tirik xodim kabi samimiy javob berishga harakat qiladi. |
+| `ambientSound` | `string` | ❌ | Fon shovqini: `OFF`, `CALL_CENTER` (Call center g'ovuri va klaviatura chertilishi), `OFFICE` (Ofis havosi va mayin bosilishlar), `NATURAL_LINE` (50Hz analog telefon liniyasi shiti), `CAFE` (Qahvaxona g'ovuri). Qabul qilinadigan aliaslar: `CALL_CENTER_AMBIENCE`, `call_center`, `OFFICE_BACKGROUND`. |
 | `midCallSmsEnabled` | `boolean` | ❌ | Suhbat davomida SMS yuborish imkoniyati |
 | `midCallSmsTemplate` | `string` | ❌ | SMS shabloni (`{{varName}}` dinamik parametrlar bilan) |
 | `voicemailAction` | `string` | ❌ | Avtootvetchik aniqlangandagi amal (`HANGUP`, `LEAVE_MESSAGE`, `IGNORE`) |
@@ -76,7 +76,7 @@ Mavjud kampaniya ma'lumotlarini (jumladan `sipTrunkIds` tanlovini) yangilaydi.
     "uz-UZ": "dilnavoz"
   },
   "sipTrunkIds": [2, 3],
-  "disclosureEnabled": true,
+  "agentPersona": "HUMAN_LIKE",
   "ambientSound": "OFF",
   "midCallSmsEnabled": false,
   "midCallSmsTemplate": null,
@@ -113,7 +113,7 @@ Bitta kampaniya ma'lumotlarini, unga biriktirilgan `sipTrunkIds`, nishonlar stat
     "calledTargets": 750,
     "pendingTargets": 450,
     "completedTargets": 700,
-    "disclosureEnabled": true,
+    "agentPersona": "AI_ASSISTANT",
     "ambientSound": "OFFICE_BACKGROUND",
     "cronExpression": "0 0 9 ? * MON-FRI",
     "createdAt": "2026-03-01T08:30:00Z"

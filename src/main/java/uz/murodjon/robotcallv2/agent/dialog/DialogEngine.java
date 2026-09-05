@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.application.service.AiModelConfigService;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
@@ -89,6 +90,15 @@ public class DialogEngine implements CallDialog {
                           ScenarioDefinition scenario, String language, String ttsVoice,
                           Map<String, String> languageVoices, boolean disclosureEnabled,
                           Runnable hangup, Runnable transfer, long callAttemptId, boolean emotionAdaptiveVoice) {
+        startCall(channelId, endpoint, context, scenario, language, ttsVoice, languageVoices,
+                disclosureEnabled, hangup, transfer, callAttemptId, emotionAdaptiveVoice, AgentPersona.AI_ASSISTANT);
+    }
+
+    public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
+                          ScenarioDefinition scenario, String language, String ttsVoice,
+                          Map<String, String> languageVoices, boolean disclosureEnabled,
+                          Runnable hangup, Runnable transfer, long callAttemptId, boolean emotionAdaptiveVoice,
+                          AgentPersona agentPersona) {
         if (!available()) {
             log.debug("Dialog not started for {} (engine unavailable)", channelId);
             return;
@@ -102,7 +112,7 @@ public class DialogEngine implements CallDialog {
         String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
         DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
                 hangup, transfer, callAttemptId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
-                companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, languageVoices);
+                companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
@@ -137,7 +147,7 @@ public class DialogEngine implements CallDialog {
     }
 
     private void speakDisclosure(DialogSession s) {
-        if (!props.mandatoryDisclosure() || !s.disclosureEnabled()) {
+        if (!props.mandatoryDisclosure() || !s.disclosureEnabled() || s.agentPersona() == AgentPersona.HUMAN_LIKE) {
             return;
         }
         String line = DialogLines.disclosure(s);

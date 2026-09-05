@@ -26,7 +26,6 @@ public record Campaign(
         int dailyCallCap,
         long scenarioId,
         long companyId,
-        boolean disclosureEnabled,
         Long createdBy,
         RecurrenceType recurrenceType,
         Integer recurringDayOfMonth,
@@ -40,6 +39,7 @@ public record Campaign(
         String voicemailMessage,
         boolean dtmfInputEnabled,
         boolean emotionAdaptiveVoice,
+        AgentPersona agentPersona,
         /**
          * Voice per call language for a campaign that dials more than one (§2.5): a
          * ru-RU target is spoken by a Russian voice and a uz-UZ one by an Uzbek voice,
@@ -75,8 +75,67 @@ public record Campaign(
     ) {
         this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
                 maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
-                companyId, disclosureEnabled, createdBy, RecurrenceType.ONCE, null, null, false, null,
-                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true, Map.of(), Set.of());
+                companyId, createdBy, RecurrenceType.ONCE, null, null, false, null,
+                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
+                disclosureEnabled ? AgentPersona.AI_ASSISTANT : AgentPersona.HUMAN_LIKE, Map.of(), Set.of());
+    }
+
+    public Campaign(
+            long id,
+            String name,
+            CampaignType type,
+            CampaignStatus status,
+            String goalPrompt,
+            String defaultLanguage,
+            LocalTime dialWindowStart,
+            LocalTime dialWindowEnd,
+            Set<DayOfWeek> dialDays,
+            int maxAttempts,
+            int retryIntervalMinutes,
+            int maxConcurrentCalls,
+            String ttsVoice,
+            int dailyCallCap,
+            long scenarioId,
+            long companyId,
+            Long createdBy
+    ) {
+        this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
+                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
+                companyId, createdBy, RecurrenceType.ONCE, null, null, false, null,
+                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
+                AgentPersona.AI_ASSISTANT, Map.of(), Set.of());
+    }
+
+    public Campaign(
+            long id,
+            String name,
+            CampaignType type,
+            CampaignStatus status,
+            String goalPrompt,
+            String defaultLanguage,
+            LocalTime dialWindowStart,
+            LocalTime dialWindowEnd,
+            Set<DayOfWeek> dialDays,
+            int maxAttempts,
+            int retryIntervalMinutes,
+            int maxConcurrentCalls,
+            String ttsVoice,
+            int dailyCallCap,
+            long scenarioId,
+            long companyId,
+            Long createdBy,
+            RecurrenceType recurrenceType,
+            Integer recurringDayOfMonth,
+            String cronExpression,
+            boolean autoResetTargets,
+            Instant lastRunAt
+    ) {
+        this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
+                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
+                companyId, createdBy, recurrenceType, recurringDayOfMonth, cronExpression,
+                autoResetTargets, lastRunAt, AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
+                AgentPersona.AI_ASSISTANT,
+                Map.of(), Set.of());
     }
 
     public Campaign(
@@ -106,9 +165,14 @@ public record Campaign(
     ) {
         this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
                 maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
-                companyId, disclosureEnabled, createdBy, recurrenceType, recurringDayOfMonth, cronExpression,
+                companyId, createdBy, recurrenceType, recurringDayOfMonth, cronExpression,
                 autoResetTargets, lastRunAt, AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
+                disclosureEnabled ? AgentPersona.AI_ASSISTANT : AgentPersona.HUMAN_LIKE,
                 Map.of(), Set.of());
+    }
+
+    public boolean disclosureEnabled() {
+        return agentPersona != null ? agentPersona == AgentPersona.AI_ASSISTANT : true;
     }
 
     public Set<DayOfWeek> allowedDays() {

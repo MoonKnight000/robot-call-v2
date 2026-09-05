@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.campaign.domain.enums.AmbientSound;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.VoicemailAction;
@@ -57,7 +58,6 @@ public record UpdateCampaignRequest(
         int maxConcurrentCalls,
         String ttsVoice,
         int dailyCallCap,
-        boolean disclosureEnabled,
         RecurrenceType recurrenceType,
         @Min(1) @Max(31) Integer recurringDayOfMonth,
         String cronExpression,
@@ -69,21 +69,27 @@ public record UpdateCampaignRequest(
         @Size(max = 500) String voicemailMessage,
         Boolean dtmfInputEnabled,
         Boolean emotionAdaptiveVoice,
+        AgentPersona agentPersona,
         Map<String, String> languageVoices,
         Set<Long> sipTrunkIds) {
 
     public UpdateCampaignRequest(String name, String goalPrompt, String defaultLanguage,
                                  LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
                                  int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls,
-                                 String ttsVoice, int dailyCallCap, boolean disclosureEnabled) {
+                                 String ttsVoice, int dailyCallCap) {
         this(name, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
-                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, disclosureEnabled,
+                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap,
                 RecurrenceType.ONCE, null, null, false,
-                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true, Map.of(), Set.of());
+                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
+                AgentPersona.AI_ASSISTANT, Map.of(), Set.of());
     }
 
     public RecurrenceType recurrenceTypeOrDefault() {
         return recurrenceType != null ? recurrenceType : RecurrenceType.ONCE;
+    }
+
+    public AgentPersona agentPersonaOrDefault() {
+        return agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
     }
 
     public boolean autoResetTargetsOrDefault() {

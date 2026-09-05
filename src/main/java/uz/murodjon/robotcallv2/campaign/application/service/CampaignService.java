@@ -116,7 +116,6 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 dailyCallCap,
                 r.scenarioId(),
                 currentCompany.id(),
-                r.disclosureEnabled() == null || r.disclosureEnabled(),
                 null,
                 r.recurrenceTypeOrDefault(),
                 r.recurringDayOfMonth(),
@@ -130,6 +129,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 r.voicemailMessage(),
                 r.dtmfInputEnabledOrDefault(),
                 r.emotionAdaptiveVoiceOrDefault(),
+                r.agentPersonaOrDefault(),
                 requireKnownVoicePerLanguage(currentCompany.id(), r.languageVoicesOrEmpty()),
                 r.sipTrunkIdsOrEmpty());
         long id = campaigns.create(row);
@@ -160,7 +160,6 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 Math.max(0, r.dailyCallCap()),
                 existing.scenarioId(),
                 existing.companyId(),
-                r.disclosureEnabled(),
                 existing.createdBy(),
                 r.recurrenceTypeOrDefault(),
                 r.recurringDayOfMonth(),
@@ -174,6 +173,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 r.voicemailMessage(),
                 r.dtmfInputEnabledOrDefault(),
                 r.emotionAdaptiveVoiceOrDefault(),
+                r.agentPersonaOrDefault(),
                 requireKnownVoicePerLanguage(existing.companyId(), r.languageVoicesOrEmpty()),
                 r.sipTrunkIdsOrEmpty());
         campaigns.update(id, row);
@@ -201,7 +201,6 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 source.dailyCallCap(),
                 source.scenarioId(),
                 source.companyId(),
-                source.disclosureEnabled(),
                 null,
                 source.recurrenceType(),
                 source.recurringDayOfMonth(),
@@ -215,6 +214,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 source.voicemailMessage(),
                 source.dtmfInputEnabled(),
                 source.emotionAdaptiveVoice(),
+                source.agentPersona(),
                 source.languageVoices(),
                 source.sipTrunkIdsOrEmpty());
         long newId = campaigns.create(row);

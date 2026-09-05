@@ -6,6 +6,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.Map;
@@ -247,5 +248,34 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("so'rovnoma o'tkazadigan agentisiz");
         assertThat(prompt).contains("xizmat sifati");
         assertThat(prompt).doesNotContain("qarz undirish");
+    }
+
+    @Test
+    void humanLikePersonaConfiguresNameAndProhibitsRobotIdentity() {
+        DialogSession session = new DialogSession(
+                "chan-1", "uz", "dilnavoz", ScenarioFixtures.fullContext(), ScenarioFixtures.debtCollection(),
+                null, null, null, 1L, null, false, "Uysot", null, null,
+                EffectiveVoiceSettings.NONE, true, AgentPersona.HUMAN_LIKE, Map.of()
+        );
+
+        String prompt = factory.stablePrefix(session);
+
+        assertThat(prompt).contains("SHAXSIYAT VA ROL (HAQIQIY INSON MUTAXASSIS)");
+        assertThat(prompt).contains("Dilnavoz");
+        assertThat(prompt).contains("QAT'IYAN TAQIQLANADI: O'zingizni robot, bot, sun'iy intellekt yoki avtomatlashtirilgan tizim deb atash");
+        assertThat(prompt).contains("Salom, mening ismim Dilnavoz. Uysot kompaniyasidan qo'ng'iroq qilyapman");
+    }
+
+    @Test
+    void aiAssistantPersonaConfiguresRobotDisclosureAndFallback() {
+        DialogSession session = new DialogSession(
+                "chan-1", "uz", "dilnavoz", ScenarioFixtures.fullContext(), ScenarioFixtures.debtCollection(),
+                null, null, null, 1L, null, true, "Uysot", null, null,
+                EffectiveVoiceSettings.NONE, true, AgentPersona.AI_ASSISTANT, Map.of()
+        );
+
+        String prompt = factory.stablePrefix(session);
+        assertThat(prompt).contains("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT)");
+        assertThat(prompt).contains("Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman");
     }
 }

@@ -4,6 +4,7 @@ import org.springframework.ai.chat.messages.Message;
 
 import uz.murodjon.robotcallv2.agent.metrics.TurnLatency;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -59,6 +60,7 @@ public class DialogSession implements DialogOutcomeSink {
     /** Campaign's own choice on the §11.1 opening disclosure (§10.6); the engine also
      * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
     private final boolean disclosureEnabled;
+    private final AgentPersona agentPersona;
 
     /** Whose name the §11.1 disclosure is spoken in — the company this call's campaign belongs to. */
     private final String companyName;
@@ -227,6 +229,18 @@ public class DialogSession implements DialogOutcomeSink {
                          String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
                          EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
                          Map<String, String> languageVoices) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
+                callAttemptId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
+                aiModel, voiceSettings, emotionAdaptiveVoice, AgentPersona.AI_ASSISTANT, languageVoices);
+    }
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
+                         AgentPersona agentPersona,
+                         Map<String, String> languageVoices) {
         this.channelId = channelId;
         this.language = language;
         this.ttsVoice = ttsVoice;
@@ -242,11 +256,16 @@ public class DialogSession implements DialogOutcomeSink {
         this.callAttemptId = callAttemptId;
         this.watchdog = watchdog;
         this.disclosureEnabled = disclosureEnabled;
+        this.agentPersona = agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
         this.companyName = companyName;
         this.companyDisclosureText = companyDisclosureText;
         this.aiModel = aiModel;
         this.voiceSettings = voiceSettings;
         this.emotionAdaptiveVoice = emotionAdaptiveVoice;
+    }
+
+    public AgentPersona agentPersona() {
+        return agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
     }
 
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,

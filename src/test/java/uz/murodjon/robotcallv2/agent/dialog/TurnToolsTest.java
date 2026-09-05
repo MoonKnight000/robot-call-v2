@@ -76,7 +76,7 @@ class TurnToolsTest {
     @Test
     void returnsGoogleGenAiChatOptionsWhenModelIsGemini() {
         EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
-                "gemini-3.8-flash", 0.7, 100, 300, 100000L
+                "gemini-2.5-flash", 0.7, 100, 300, 100000L
         );
         when(session.aiModel()).thenReturn(aiModel);
 
@@ -84,7 +84,7 @@ class TurnToolsTest {
 
         assertThat(options).isInstanceOf(GoogleGenAiChatOptions.class);
         GoogleGenAiChatOptions googleOptions = (GoogleGenAiChatOptions) options;
-        assertThat(googleOptions.getModel()).isEqualTo("gemini-3.8-flash");
+        assertThat(googleOptions.getModel()).isEqualTo("gemini-2.5-flash");
         assertThat(googleOptions.getTemperature()).isEqualTo(0.7);
         assertThat(googleOptions.getMaxOutputTokens()).isEqualTo(100);
     }

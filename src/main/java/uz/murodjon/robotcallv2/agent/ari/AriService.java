@@ -834,6 +834,9 @@ public class AriService {
                     engineConfig, realtimeBridge, context);
             audioListeners.add(audioMonitor);
             endpoint = new RtpEndpoint(port, recorder, audioListeners, audioMonitor::onBotAudio);
+            if (outbound != null && outbound.ambientSound() != null) {
+                endpoint.setAmbientSound(outbound.ambientSound());
+            }
             endpoint.bind(rtpEventLoopGroup);
 
             Channel extMedia = current.channels()
@@ -864,10 +867,11 @@ public class AriService {
             boolean startDialog = !manual || dialogProps.autoStart();
             if (dialogProps.enabled() && startDialog) {
                 if (realtime) {
+                    uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona persona = outbound != null && outbound.agentPersona() != null ? outbound.agentPersona() : uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona.AI_ASSISTANT;
                     boolean started = realtimeDialogEngine.startCall(channelId, endpoint, context,
                             scenarioRow.definition(), language, ttsVoice, disclosureEnabled,
                             () -> hangup(channelId), () -> transferToOperator(channelId), attemptId,
-                            realtimeBridge, null);
+                            realtimeBridge, null, persona);
                     if (!started) {
                         log.error("[{}] realtime dialog did not start — hanging up", channelId);
                         hangup(channelId);
@@ -875,9 +879,10 @@ public class AriService {
                 } else {
                     boolean emotionAdaptive = outbound != null ? outbound.emotionAdaptiveVoice() : true;
                     Map<String, String> languageVoices = outbound != null ? outbound.languageVoices() : Map.of();
+                    uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona persona = outbound != null && outbound.agentPersona() != null ? outbound.agentPersona() : uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona.AI_ASSISTANT;
                     dialogEngine.startCall(channelId, endpoint, context, scenarioRow.definition(), language, ttsVoice,
                             languageVoices, disclosureEnabled, () -> hangup(channelId), () -> transferToOperator(channelId),
-                            attemptId, emotionAdaptive);
+                            attemptId, emotionAdaptive, persona);
                 }
             }
         } catch (Exception e) {

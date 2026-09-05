@@ -148,7 +148,6 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
         entity.setLanguageVoices(row.languageVoices());
         entity.setSipTrunkIds(row.sipTrunkIds());
         entity.setDailyCallCap(row.dailyCallCap());
-        entity.setDisclosureEnabled(row.disclosureEnabled());
         entity.setRecurrenceType(row.recurrenceType());
         entity.setRecurringDayOfMonth(row.recurringDayOfMonth());
         entity.setCronExpression(row.cronExpression());
@@ -160,6 +159,7 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
         entity.setVoicemailMessage(row.voicemailMessage());
         entity.setDtmfInputEnabled(row.dtmfInputEnabled());
         entity.setEmotionAdaptiveVoice(row.emotionAdaptiveVoice());
+        entity.setAgentPersona(row.agentPersona());
     }
 
     private Specification<CampaignEntity> buildSpecification(CampaignFilter filter, long companyId) {

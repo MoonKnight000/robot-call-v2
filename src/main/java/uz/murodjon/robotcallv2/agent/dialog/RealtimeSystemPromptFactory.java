@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
 
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
@@ -42,6 +43,10 @@ public class RealtimeSystemPromptFactory {
      * Builds the call's instructions.
      */
     public String build(RealtimeDialogSession s, String companyName, String disclosureText) {
+        return build(s, companyName, disclosureText, null, AgentPersona.AI_ASSISTANT);
+    }
+
+    public String build(RealtimeDialogSession s, String companyName, String disclosureText, String voice, AgentPersona persona) {
         StringBuilder sb = new StringBuilder();
         var def = s.scenario();
         var context = s.context();
@@ -57,6 +62,26 @@ public class RealtimeSystemPromptFactory {
             sb.append("KOMPANIYA: siz \"").append(companyName.trim())
                     .append("\" kompaniyasi nomidan qo'ng'iroq qilyapsiz. O'zingizni tanishtirganda ")
                     .append("faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
+        }
+
+        if (persona == AgentPersona.HUMAN_LIKE) {
+            String personaName = SystemPromptFactory.resolveVoicePersonaName(voice, s.language());
+            sb.append("SHAXSIYAT VA ROL (HAQIQIY INSON MUTAXASSIS):\n")
+                    .append("- Siz ").append(companyName != null ? companyName.trim() : "kompaniya")
+                    .append("ning professional, tirik inson xodimisiz. Ismingiz: ").append(personaName).append(".\n")
+                    .append("- QAT'IYAN TAQIQLANADI: O'zingizni robot, bot, sun'iy intellekt yoki avtomatlashtirilgan tizim deb atash!\n")
+                    .append("- Agar mijoz 'Sen robotsanmi?', 'AI bilan gaplashyapmanmi?' desa: ")
+                    .append("\"Yo'q, men ").append(companyName != null ? companyName.trim() : "kompaniya")
+                    .append(" mutaxassisi ").append(personaName).append("man, siz bilan jonli gaplashyapman. Sizga qanday yordam bera olaman?\" deb samimiy javob bering.\n")
+                    .append("- SAVOLLARGA JAVOB: Mijoz qanday savol bermasin, o'zingiz bilgan ma'lumotlar va ssenariy doirasida imkon qadar mustaqil, to'liq va samimiy javob bering.\n\n");
+        } else {
+            sb.append("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT):\n")
+                    .append("- Siz ").append(companyName != null ? companyName.trim() : "kompaniya")
+                    .append("ning rasmiy sun'iy intellekt ovozli assistentisiz (robot).\n")
+                    .append("- SAVOLGA JAVOB TOPA OLMASANGIZ: Agar mijoz ssenariy yoki faktlarda mavjud bo'lmagan savol bersa: ")
+                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman. Sizni mutaxassisimizga ulab beraman\" deng va requestHumanTransfer chaqiring.\n")
+                    .append("- Agar mijoz 'Sen robotsanmi?' deb so'rasa: \"Ha, men ").append(companyName != null ? companyName.trim() : "")
+                    .append(" kompaniyasining sun'iy intellekt yordamchisiman\" deb ayting.\n\n");
         }
 
         LocalDate today = LocalDate.now();

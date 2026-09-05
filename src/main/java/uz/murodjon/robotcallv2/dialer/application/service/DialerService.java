@@ -177,6 +177,7 @@ public class DialerService {
                                 campaign.disclosureEnabled(), campaign.ambientSound(), campaign.midCallSmsEnabled(),
                                 campaign.midCallSmsTemplate(), campaign.voicemailAction(), campaign.voicemailMessage(),
                                 campaign.dtmfInputEnabled(), campaign.emotionAdaptiveVoice(),
+                                campaign.agentPersona(),
                                 campaign.languageVoices(), selectedTrunkId));
                 log.info("Dispatched target {} ({}) of campaign {} via trunk {}", t.id(), t.phone(), campaign.id(), selectedTrunkId);
             }

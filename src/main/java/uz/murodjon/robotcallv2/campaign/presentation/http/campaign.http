@@ -16,7 +16,7 @@ Authorization: Bearer {{auth_token}}
   "maxConcurrentCalls": 10,
   "dailyCallCap": 500,
   "scenarioId": 1,
-  "disclosureEnabled": true
+  "agentPersona": "AI_ASSISTANT"
 }
 
 ### Filter Campaigns
@@ -50,7 +50,7 @@ Authorization: Bearer {{auth_token}}
   "retryIntervalMinutes": 45,
   "maxConcurrentCalls": 15,
   "dailyCallCap": 600,
-  "disclosureEnabled": true
+  "agentPersona": "HUMAN_LIKE"
 }
 
 ### Clone Campaign
