@@ -9,8 +9,11 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -131,7 +134,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
     private int simulateAll() {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
-            log.error("Simulation needs an LLM ChatModel (set GEMINI_API_KEY)");
+            log.error("Simulation needs an LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY)");
             return 1;
         }
         if (personasPath == null || personasPath.isBlank() || scenarioId <= 0) {
@@ -249,14 +252,27 @@ public class DialogSimulationRunner implements ApplicationRunner {
 
     /** One caller turn: the persona answers whatever the agent just said. */
     private String callerTurn(ChatClient caller, SimulationPersona persona, List<Message> callerHistory) {
+        ChatModel cm = chatModelProvider.getIfAvailable();
+        boolean isOpenAi = (cm instanceof OpenAiChatModel)
+                || (personaModel != null && (personaModel.startsWith("llama") || personaModel.startsWith("mixtral")
+                || personaModel.startsWith("gpt-") || personaModel.startsWith("qwen")));
+        ChatOptions options;
+        if (isOpenAi) {
+            options = OpenAiChatOptions.builder()
+                    .model(personaModel)
+                    .maxTokens(200)
+                    .build();
+        } else {
+            options = GoogleGenAiChatOptions.builder()
+                    .model(personaModel)
+                    .maxOutputTokens(200)
+                    .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
+                    .build();
+        }
         ChatResponse response = caller.prompt()
                 .system(PERSONA_RULES + "\nSIZNING ROLINGIZ:\n" + persona.prompt())
                 .messages(callerHistory)
-                .options(GoogleGenAiChatOptions.builder()
-                        .model(personaModel)
-                        .maxOutputTokens(200)
-                        .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
-                        .build())
+                .options(options)
                 .call()
                 .chatResponse();
         return textOf(response);

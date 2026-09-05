@@ -73,8 +73,9 @@ dependencies {
     implementation("io.grpc:grpc-protobuf")
     implementation("io.grpc:grpc-stub")
 
-    // LLM dialog — Spring AI's native Google GenAI starter, talking to the Gemini
+    // LLM dialog — Spring AI's native Google GenAI starter (Gemini direct) and OpenAI-compatible starter (Groq ultra-low-latency LPU & OpenAI)
     implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
+    implementation("org.springframework.ai:spring-ai-starter-model-openai")
 
     // VAD — Silero voice-activity model (ONNX) for barge-in (PROJECT.md §2.3, §7.2).
     // The silero_vad.onnx model file is supplied at runtime (voice-agent.vad.model-path).

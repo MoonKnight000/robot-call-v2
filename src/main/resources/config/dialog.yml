@@ -21,6 +21,26 @@ spring:
             max-output-tokens: 1024
             thinking-level: ${LLM_REASONING_EFFORT:LOW}
 
+    openai:
+      base-url: ${GROQ_BASE_URL:https://api.groq.com/openai}
+      api-key: ${GROQ_API_KEY:disabled}
+      audio:
+        speech:
+          enabled: false
+        transcription:
+          enabled: false
+      embedding:
+        enabled: false
+      image:
+        enabled: false
+      moderation:
+        enabled: false
+      chat:
+        options:
+#           Ultra-low latency voice LLM on Groq LPU (e.g. llama-3.3-70b-versatile, llama-3.1-8b-instant)
+          model: ${LLM_DIALOG_MODEL:llama-3.3-70b-versatile}
+          max-tokens: 1024
+
 voice-agent:
   summary:
     enabled: ${SUMMARY_ENABLED:true}
@@ -64,8 +84,15 @@ voice-agent:
     preemptive: ${DIALOG_PREEMPTIVE:true}
     # Also pre-synthesize the guess's first sentence into the TTS cache. Saves the whole
     # synthesis round trip when the guess lands, buys nothing (and is billed) when it does
-    # not — so turn it on only once voice.llm.speculation.hit/started is comfortably high.
-    preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:false}
+    # not.
+    # On. Without it speculation stopped at the text and the caller still paid a full
+    # Yandex round trip (stage=tts_ttfb, 300-600 ms) after the final — the last thing
+    # standing between them and the first word, and paid on every turn rather than only
+    # on a miss. A wasted synthesis costs characters; the wait costs the call.
+    # Watch voice.tts.chars.synthesized against voice.tts.chars.saved: if the miss rate
+    # makes this expensive, the fix is the hit rate (preemptive-min-chars, the recognizer's
+    # interims), not turning it back off.
+    preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:true}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:2}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:2}
     mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}

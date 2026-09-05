@@ -32,6 +32,15 @@ public class EngineConfigEntity {
     @Column(name = "realtime_provider", length = 50)
     private String realtimeProvider;
 
+    @Column(name = "pipecat_stt", length = 50)
+    private String pipecatStt;
+
+    @Column(name = "pipecat_llm", length = 50)
+    private String pipecatLlm;
+
+    @Column(name = "pipecat_tts", length = 50)
+    private String pipecatTts;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -81,6 +90,30 @@ public class EngineConfigEntity {
 
     public void setRealtimeProvider(String realtimeProvider) {
         this.realtimeProvider = realtimeProvider;
+    }
+
+    public String getPipecatStt() {
+        return pipecatStt;
+    }
+
+    public void setPipecatStt(String pipecatStt) {
+        this.pipecatStt = pipecatStt;
+    }
+
+    public String getPipecatLlm() {
+        return pipecatLlm;
+    }
+
+    public void setPipecatLlm(String pipecatLlm) {
+        this.pipecatLlm = pipecatLlm;
+    }
+
+    public String getPipecatTts() {
+        return pipecatTts;
+    }
+
+    public void setPipecatTts(String pipecatTts) {
+        this.pipecatTts = pipecatTts;
     }
 
     public Instant getCreatedAt() {

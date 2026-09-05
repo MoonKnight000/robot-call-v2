@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
 import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
@@ -122,8 +123,8 @@ public class RealtimeDialogEngine implements CallDialog {
                              Runnable hangup, Runnable transfer, long callAttemptId,
                              RealtimeAudioBridge bridge, Runnable fallback) {
         long companyId = records.companyIdOf(callAttemptId);
-        RealtimeProvider provider = registry.findForCall(
-                engineConfigService.findEffectiveByCompanyId(companyId).realtimeProvider());
+        EffectiveEngineConfig effective = engineConfigService.findEffectiveByCompanyId(companyId);
+        RealtimeProvider provider = registry.findForCall(effective.realtimeProvider());
         if (provider == null) {
             log.error("[{}] REALTIME was selected but no engine resolved — call cannot start", channelId);
             return false;
@@ -144,7 +145,8 @@ public class RealtimeDialogEngine implements CallDialog {
         session.setTools(toolsFor(session));
         try {
             RealtimeSession engine = provider.startSession(
-                    new RealtimeCallConfig(channelId, language, prompt, voiceFor(voice, provider), session.tools()),
+                    new RealtimeCallConfig(channelId, language, prompt, voiceFor(voice, provider), session.tools(),
+                            effective.pipecatStt(), effective.pipecatLlm(), effective.pipecatTts()),
                     new EngineListener(session, provider.outputSampleRate(), fallback));
             session.setEngine(engine);
             sessions.put(channelId, session);

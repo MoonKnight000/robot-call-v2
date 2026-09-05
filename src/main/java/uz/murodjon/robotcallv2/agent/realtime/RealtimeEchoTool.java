@@ -78,7 +78,7 @@ public final class RealtimeEchoTool {
                         env("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview"),
                         env("GEMINI_LIVE_VOICE", "Aoede"),
                         15),
-                null, null, null));
+                null, null, null, null));
         provider.init();
 
         WavAudio audio = WavReader.read(input);

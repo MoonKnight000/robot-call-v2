@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Component
 @ConditionalOnExpression("!'${voice-agent.realtime.qwen-omni.api-key:}'.isBlank()")
+@SuppressWarnings("deprecation")
 public class QwenOmniRealtimeProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(QwenOmniRealtimeProvider.class);

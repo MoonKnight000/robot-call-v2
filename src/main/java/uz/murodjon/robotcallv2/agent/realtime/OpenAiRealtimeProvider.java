@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Component
 @ConditionalOnExpression("!'${voice-agent.realtime.open-ai.api-key:}'.isBlank()")
+@SuppressWarnings("deprecation")
 public class OpenAiRealtimeProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiRealtimeProvider.class);

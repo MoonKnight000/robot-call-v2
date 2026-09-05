@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param openAi        OpenAI Realtime settings
  * @param moshi         Kyutai Moshi settings
  * @param qwenOmni      Alibaba Cloud Qwen-Omni settings
+ * @param pipecat       Pipecat Cloud & Claude Realtime settings
  */
 @ConfigurationProperties(prefix = "voice-agent.realtime")
 public record RealtimeProperties(
@@ -31,6 +32,7 @@ public record RealtimeProperties(
         GeminiLiveProperties geminiLive,
         OpenAiRealtimeProperties openAi,
         MoshiRealtimeProperties moshi,
-        QwenOmniRealtimeProperties qwenOmni
+        QwenOmniRealtimeProperties qwenOmni,
+        PipecatRealtimeProperties pipecat
 ) {
 }

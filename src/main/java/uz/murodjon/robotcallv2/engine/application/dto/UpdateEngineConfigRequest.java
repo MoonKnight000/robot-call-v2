@@ -9,6 +9,12 @@ public record UpdateEngineConfigRequest(
         PipelineMode mode,
         String sttProvider,
         String ttsProvider,
-        String realtimeProvider
+        String realtimeProvider,
+        String pipecatStt,
+        String pipecatLlm,
+        String pipecatTts
 ) {
+    public UpdateEngineConfigRequest(PipelineMode mode, String sttProvider, String ttsProvider, String realtimeProvider) {
+        this(mode, sttProvider, ttsProvider, realtimeProvider, null, null, null);
+    }
 }

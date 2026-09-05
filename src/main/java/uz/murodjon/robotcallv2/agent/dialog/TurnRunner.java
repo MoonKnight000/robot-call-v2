@@ -47,7 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * that arrives while a turn is still in flight.
  *
  * <p>Owns the call's {@link ChatClient}, and therefore whether dialog is possible at all:
- * without an LLM ChatModel bean (no {@code GEMINI_API_KEY}) the app still starts and
+ * without an LLM ChatModel bean (no {@code GEMINI_API_KEY} or {@code GROQ_API_KEY}) the app still starts and
  * {@link #available()} is false.
  */
 @Component
@@ -132,7 +132,7 @@ public class TurnRunner {
             chatClient = ChatClient.create(model);
             log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
         } else {
-            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY); dialog disabled");
+            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY); dialog disabled");
         }
     }
 
@@ -920,7 +920,10 @@ public class TurnRunner {
                     outcome == SpeechOutcome.BLOCKED, toolNote);
         }
         // Nothing spoken and nothing carried — ask once more for the line alone. A whole
-        // extra round trip inside the turnaround budget (§1.3), so it is the last resort.
+        // extra round trip inside the turnaround budget (§1.3), so it is the last resort,
+        // and it is asked of the fast model with no tools: all that is wanted back is one
+        // sentence the model has already decided on, and the caller is sitting in silence
+        // for every millisecond of it. Measured at 996ms on the default model.
         metrics.spokenLineRetry();
         log.warn("[{}] empty LLM reply in {} — asking again for the spoken line",
                 s.channelId(), s.state());
@@ -928,6 +931,7 @@ public class TurnRunner {
         StreamedReply retry = consume(s, chatClient.prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
+                .options(turnTools.buildOptions(s, List.of(), props.fastModel()))
                 .stream()
                 .chatResponse(), retryUsage, new ArrayList<>());
         publishUsage(s, retryUsage);
@@ -1033,6 +1037,8 @@ public class TurnRunner {
         ChatResponse response = chatClient.prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
+                // Fast model, no tools — same reasoning as the streaming path above.
+                .options(turnTools.buildOptions(s, List.of(), props.fastModel()))
                 .call()
                 .chatResponse();
         TokenUsage retryUsage = new TokenUsage();

@@ -74,19 +74,42 @@ public class SileroVad {
     }
 
     /**
+     * Fresh input context for a new stream: the tail of the window before this one, which
+     * v5 wants in front of every window it scores. Zeros for the first one — there is no
+     * audio before the call started, which is exactly what the model is shown.
+     */
+    public float[] newContext() {
+        return new float[props.sampleRate() == 16000 ? 64 : 32];
+    }
+
+    /**
      * Run one window through the model.
+     *
+     * <p>v5 does not score a window on its own: it scores the window with the previous
+     * one's last {@code context.length} samples in front of it, so the first convolution
+     * looks back at real audio instead of a step up from nothing. The graph declares that
+     * input length dynamic, so a bare window is accepted — no exception, no warning — and
+     * answers with a probability that thrashes. On a recorded call one shouted 3.5 s
+     * sentence scored 0.94, 0.31, 0.10, 0.53, 0.20, 0.71, 0.02 across its windows; fed
+     * with the context it is 0.97-0.99 throughout, and silence stays at 0.00 either way.
+     * Neither the gate nor barge-in can survive that: both need consecutive windows over
+     * a threshold, so the caller was never heard for the rest of the call.
      *
      * @param window  {@code windowSamples} float samples in [-1, 1]
      * @param state   recurrent state in/out (from {@link #newState()} or a prior result)
+     * @param context the previous window's tail in/out (from {@link #newContext()})
      * @return speech probability, or {@code -1} on inference error
      */
-    public float run(float[] window, float[][][] state) {
+    public float run(float[] window, float[][][] state, float[] context) {
         OrtSession current = session;
         if (current == null) {
             return -1f;
         }
+        float[] scored = new float[context.length + window.length];
+        System.arraycopy(context, 0, scored, 0, context.length);
+        System.arraycopy(window, 0, scored, context.length, window.length);
         Map<String, OnnxTensor> inputs = new HashMap<>();
-        try (OnnxTensor in = OnnxTensor.createTensor(env, new float[][]{window});
+        try (OnnxTensor in = OnnxTensor.createTensor(env, new float[][]{scored});
              OnnxTensor st = OnnxTensor.createTensor(env, state);
              OnnxTensor sr = OnnxTensor.createTensor(env,
                      LongBuffer.wrap(new long[]{props.sampleRate()}), new long[]{})) {
@@ -100,6 +123,7 @@ public class SileroVad {
                 for (int a = 0; a < 2; a++) {
                     System.arraycopy(next[a][0], 0, state[a][0], 0, state[a][0].length);
                 }
+                System.arraycopy(window, window.length - context.length, context, 0, context.length);
                 return prob;
             }
         } catch (OrtException e) {

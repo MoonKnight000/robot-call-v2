@@ -371,10 +371,20 @@ public class SystemPromptFactory {
         // streams, and TurnRunner#consume speaks each sentence as it completes. A model
         // that ignores this and fills "reply" anyway still works — that path is the
         // fallback in TurnRunner#streamTurn, only slower.
+        //
+        // EVERY tool, not just transitionTo. Naming only transitionTo is what this said
+        // before, and on a measured call the model obeyed it exactly: it wrote text on
+        // the transitionTo turns and, on the turn it called recordPaymentPromise, emitted
+        // the function call alone with no text and no `reply` — "empty LLM reply in
+        // REASON_INQUIRY", then a whole extra round trip (996ms) to ask for the sentence
+        // the turn should already have had.
         sb.append("Mijozga aytadigan gapingizni AVVAL oddiy matn qilib yozing — u yozilishi bilanoq ")
-                .append("ovozga beriladi. Bosqichni o'zgartirish kerak bo'lsa, shu matndan KEYIN ")
-                .append("transitionTo tool'ini chaqiring va gapni uning \"reply\" parametrida QAYTA ")
-                .append("YOZMANG. Na matn, na reply bo'lsa — mijoz jimlikni eshitadi. ")
+                .append("ovozga beriladi. HAR QANDAY tool — transitionTo, recordPaymentPromise, ")
+                .append("recordRefusalReason, scheduleCallback, endCall va boshqalari — SHU MATNDAN ")
+                .append("KEYIN chaqiriladi, va gap uning \"reply\" parametrida QAYTA YOZILMAYDI. ")
+                .append("Tool chaqirib, matn yozmaslik — eng qo'pol xato: mijoz jimlikni eshitadi ")
+                .append("va javobi bir necha soniyaga kechikadi. Natijani yozayotgan bo'lsangiz ham ")
+                .append("(sana, summa, sabab), avval mijozga aytadigan gapni yozing. ")
                 .append("(DIQQAT: inglizcha kod yoki placeholder yozish qat'iyan man etiladi).]");
         String asked = lastQuestion(s.lastAgentText());
         if (asked != null) {

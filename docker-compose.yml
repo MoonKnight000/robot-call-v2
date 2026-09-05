@@ -203,9 +203,9 @@ services:
       TTS_PROVIDER: ${TTS_PROVIDER:-yandex}
       STT_YANDEX_API_KEY: ${STT_YANDEX_API_KEY:-}
       STT_YANDEX_FOLDER_ID: ${STT_YANDEX_FOLDER_ID:-}
-      # End-of-utterance tuning for Yandex STT v3. The pause is the whole endpointing
-      # budget on this path — no gate runs on our side — so it is paid on every turn.
-      # SpeechKit only accepts [500, 5000].
+      # End-of-utterance tuning for Yandex STT v3. Only read when STT_VAD_GATING is off
+      # (see below): with the gate on, SpeechKit uses the external classifier and this
+      # side decides when the utterance ended. SpeechKit only accepts [500, 5000].
       #
       # 500 + HIGH was measured cutting callers off: it ended one turn on a 0.60s pause
       # and the next on a 0.78s one, mid-sentence both times. On the second the bot
@@ -214,13 +214,26 @@ services:
       # If turns feel slow again, put SENSITIVITY back to HIGH before touching the pause:
       # it is the cheaper half, and the pause is what protects a mid-sentence caller.
       STT_YANDEX_EOU_SENSITIVITY: ${STT_YANDEX_EOU_SENSITIVITY:-DEFAULT}
-      STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-1200}
+      STT_YANDEX_EOU_MAX_PAUSE_MS: ${STT_YANDEX_EOU_MAX_PAUSE_MS:-900}
       # Which languages SpeechKit may return. One is faster and more accurate; two turns
       # on per-sentence detection and lets the bot answer in the language the caller
       # actually speaks. See config/speech.yml.
       STT_DETECT_LANGUAGES: ${STT_DETECT_LANGUAGES:-uz-UZ}
-      STT_VAD_GATING: ${STT_VAD_GATING:-false}
-      STT_ENDPOINTING: ${STT_ENDPOINTING:-false}
+      # End-of-utterance decided on this side instead of by SpeechKit: the VAD closes the
+      # gate, the gate tells the recognizer, and STT_YANDEX_EOU_MAX_PAUSE_MS above stops
+      # being read. This is the largest block of the wait a caller sits through — leaving
+      # it to SpeechKit put 1.2-2.3s in front of every reply (VOICE-QUALITY-PLAN A.1).
+      # All three must be on together, and all three need a working VAD_MODEL_PATH below:
+      # with no VAD the gate is never built and this block is silently inert.
+      # STT_VAD_GATING=false puts the decision back on SpeechKit; no rebuild needed.
+      STT_VAD_GATING: ${STT_VAD_GATING:-true}
+      STT_ENDPOINTING: ${STT_ENDPOINTING:-true}
+      STT_ENDPOINTING_DYNAMIC: ${STT_ENDPOINTING_DYNAMIC:-true}
+      # The top of the endpointing budget — the silence a long answer waits out. Short
+      # answers close at STT_ENDPOINTING_SHORT_SILENCE_MS (500) instead, and a caller who
+      # does not pause is brought down toward 600 by the dynamic setting above.
+      # Raise this first if callers are being cut off mid-sentence.
+      STT_VAD_POST_ROLL_MS: ${STT_VAD_POST_ROLL_MS:-700}
       # Preemptive LLM speculation (starts generating while interim speech is arriving).
       # On: the stream is single-language now (STT_DETECT_LANGUAGES=uz-UZ), which is what
       # broke it before — the interims of a uz+ru stream came back decoded as Russian and
@@ -229,6 +242,11 @@ services:
       # and that whole block is time the guess is already being written in.
       # Watch the "speculation: hit/miss" log lines — a miss is a billed request for nothing.
       DIALOG_PREEMPTIVE: ${DIALOG_PREEMPTIVE:-true}
+      # Carry the guess to its audio as well, not just its text. Measured on a real call:
+      # stage=tts_ttfb went from 847ms on a speculation miss to 0-2ms on a hit, because
+      # the first sentence was already synthesized into the TTS cache while the caller was
+      # still talking. Costs characters on a miss — watch voice.tts.chars.synthesized.
+      DIALOG_PREEMPTIVE_TTS: ${DIALOG_PREEMPTIVE_TTS:-true}
       DIALOG_STREAMING: ${DIALOG_STREAMING:-true}
       # Route turns of at most DIALOG_FAST_MODEL_MAX_WORDS words ("aha", "ha, to'layman")
       # to a smaller model — those are most of a call and pay time-to-first-token like any

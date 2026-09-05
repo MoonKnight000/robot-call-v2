@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Component
 @ConditionalOnExpression("!'${voice-agent.realtime.gemini-live.api-key:}'.isBlank()")
+@SuppressWarnings("deprecation")
 public class GeminiLiveProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiLiveProvider.class);

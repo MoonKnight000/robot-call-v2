@@ -3,12 +3,17 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
@@ -49,9 +54,11 @@ public class TurnTools {
             Set.of("transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall");
 
     private final DialogProperties props;
+    private final ObjectProvider<ChatModel> chatModelProvider;
 
-    public TurnTools(DialogProperties props) {
+    public TurnTools(DialogProperties props, ObjectProvider<ChatModel> chatModelProvider) {
         this.props = props;
+        this.chatModelProvider = chatModelProvider;
     }
 
     /**
@@ -149,7 +156,7 @@ public class TurnTools {
      * <p>A fresh options builder every turn — the ChatClient merges the tool callbacks
      * into the instance it is handed, so a shared one would accumulate them.
      */
-    public GoogleGenAiChatOptions buildOptions(DialogSession s, List<ToolCallback> tools) {
+    public ChatOptions buildOptions(DialogSession s, List<ToolCallback> tools) {
         return buildOptions(s, tools, null);
     }
 
@@ -161,9 +168,29 @@ public class TurnTools {
      *              model an objection does, and the difference is paid in time-to-first
      *              -token on every turn ({@code DialogProperties#fastModel})
      */
-    public GoogleGenAiChatOptions buildOptions(DialogSession s, List<ToolCallback> tools, String model) {
+    public ChatOptions buildOptions(DialogSession s, List<ToolCallback> tools, String model) {
         EffectiveAiModelConfig aiModel = s.aiModel();
         String selectedModel = model != null && !model.isBlank() ? model : aiModel.model();
+        ChatModel chatModel = chatModelProvider != null ? chatModelProvider.getIfAvailable() : null;
+
+        boolean isOpenAi = (chatModel instanceof OpenAiChatModel)
+                || (selectedModel != null && (selectedModel.startsWith("llama") || selectedModel.startsWith("mixtral")
+                || selectedModel.startsWith("gpt-") || selectedModel.startsWith("qwen")));
+
+        if (isOpenAi) {
+            var builder = OpenAiChatOptions.builder()
+                    .toolCallbacks(tools)
+                    .internalToolExecutionEnabled(false)
+                    .model(selectedModel);
+            if (aiModel.maxOutputTokens() != null) {
+                builder.maxTokens(aiModel.maxOutputTokens());
+            }
+            if (aiModel.temperature() != null) {
+                builder.temperature(aiModel.temperature());
+            }
+            return builder.build();
+        }
+
         var builder = GoogleGenAiChatOptions.builder()
                 .toolCallbacks(tools)
                 // Declarations only (see above). Left at Spring AI's default of true, a

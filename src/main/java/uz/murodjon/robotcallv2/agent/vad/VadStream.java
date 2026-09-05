@@ -46,6 +46,8 @@ public class VadStream implements AudioListener {
 
     private final float[] window;
     private final float[][][] state;
+    /** The tail of the window before this one — see {@link SileroVad#run}. */
+    private final float[] context;
     private int filled;
     private int speechWindows;
     private int silenceWindows;
@@ -79,6 +81,7 @@ public class VadStream implements AudioListener {
         this.onSpeechEnd = onSpeechEnd != null ? onSpeechEnd : ms -> { };
         this.window = new float[props.windowSamples()];
         this.state = model.newState();
+        this.context = model.newContext();
         int frameMs = Math.max(1, props.windowSamples() * 1000 / props.sampleRate());
         this.minSpeechWindows = Math.max(1, props.minSpeechMs() / frameMs);
         this.silenceResetWindows = Math.max(1, props.silenceResetMs() / frameMs);
@@ -100,7 +103,7 @@ public class VadStream implements AudioListener {
     }
 
     private void process() {
-        float prob = model.run(window, state);
+        float prob = model.run(window, state, context);
         if (prob < 0f) {
             // Inference error — stop scoring this stream (barge-in off, call continues).
             disabled = true;

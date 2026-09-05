@@ -7,7 +7,7 @@ voice-agent:
   # beside it.
   realtime:
     enabled: ${REALTIME_ENABLED:true}
-    provider: ${REALTIME_PROVIDER:gemini-live}
+    provider: ${REALTIME_PROVIDER:}
     facts-in-prompt: ${REALTIME_FACTS_IN_PROMPT:true}
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
@@ -34,6 +34,14 @@ voice-agent:
       model: ${REALTIME_QWEN_MODEL:qwen-omni-turbo}
       voice: ${REALTIME_QWEN_VOICE:cherry}
       connect-timeout-seconds: ${REALTIME_QWEN_CONNECT_TIMEOUT_SECONDS:10}
+    pipecat:
+      api-key: ${REALTIME_PIPECAT_API_KEY:${PIPECAT_CLOUD_API_KEY:}}
+      url: ${REALTIME_PIPECAT_URL:${PIPECAT_BASE_URL:https://api.pipecat.daily.co/v1/public}}
+      ws-url: ${REALTIME_PIPECAT_WS_URL:}
+      agent-name: ${REALTIME_PIPECAT_AGENT:phone-agent}
+      model: ${REALTIME_PIPECAT_MODEL:claude-3-5-haiku-20241022}
+      sample-rate: 16000
+      connect-timeout-seconds: ${REALTIME_PIPECAT_CONNECT_TIMEOUT_SECONDS:15}
 
   stt:
     enabled: ${STT_ENABLED:true}
@@ -54,24 +62,49 @@ voice-agent:
     # treated as broken and replaced. Without VAD gating the caller's silence is streamed
     # too, so this must stay longer than any silence a caller can produce. 0 disables it.
     response-timeout-ms: ${STT_RESPONSE_TIMEOUT_MS:30000}
-    # VAD gating: disabled by default so all audio frames stream directly to the STT provider
-    # without cutting utterance beginnings or dropping speech.
+    # VAD gating: only speech reaches the recognizer, and this side is what decides when
+    # an utterance is over (with endpointing below). On, because leaving that decision to
+    # SpeechKit put 1.2-2.3 s in front of every reply — the single largest block of the
+    # wait, and why a turn was heard as 4-6 s (VOICE-QUALITY-PLAN A.1).
+    #
+    # It was off, and the reason is worth keeping in view: a gate that closes early cuts
+    # the beginning of the next utterance off, and one that opens late drops the first
+    # word. pre-roll-ms is what pays for that — the audio in front of the VAD's "speech"
+    # is buffered and sent when the gate opens, so nothing before the first word is lost.
+    #
+    # Needs a working VAD: with no voice-agent.vad.model-path the gate is never built
+    # (AriService#buildAudioListeners) and everything here is silently inert — the same
+    # condition that disables barge-in, and it says so at startup.
+    #
+    # STT_VAD_GATING=false puts the whole decision back on the recognizer, where
+    # yandex.eou-max-pause-hint-ms below becomes the budget again. No deploy needed.
     vad-gating:
-      enabled: ${STT_VAD_GATING:false}
+      enabled: ${STT_VAD_GATING:true}
       pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:800}
-      post-roll-ms: ${STT_VAD_POST_ROLL_MS:1000}
+      # 700, down from 1000: this is the top of the endpointing budget now — the silence
+      # a long answer waits out before the turn starts. Short answers do not reach it
+      # (short-silence-ms below), and a fast talker does not either (dynamic).
+      # Raising it is the fix if callers are being cut off mid-sentence.
+      post-roll-ms: ${STT_VAD_POST_ROLL_MS:700}
       min-speech-ms: ${STT_VAD_MIN_SPEECH_MS:80}
-    # External endpointing: disabled so the provider (Yandex SpeechKit / Aisha) handles
-    # end-of-utterance detection cleanly.
+    # External endpointing: this side tells the provider when the utterance ended
+    # (Yandex switches to ExternalEouClassifier, and its own pause hint stops being read).
+    # Only takes effect with vad-gating above on — there is no gate to close otherwise,
+    # and this block goes quietly inert (AriService#buildAudioListeners).
     endpointing:
-      enabled: ${STT_ENDPOINTING:false}
+      enabled: ${STT_ENDPOINTING:true}
+      # An utterance shorter than this is closed after short-silence-ms instead of the
+      # full post-roll: "ha", "yo'q", "to'ladim" are most of a call and are finished the
+      # moment they stop. A long answer keeps the full budget, so somebody reading a
+      # contract number out slowly is not split in half.
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
       short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:500}
       max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:20000}
-      # Only reaches SpeechGate when vad-gating above is on as well — with the provider
-      # doing its own endpointing there is no gate for these to adapt (AriService#buildAudioListeners).
+      # Learns how long this particular caller's pauses run and shortens the wait toward
+      # min-post-roll-ms for one who does not pause. Only reaches SpeechGate when
+      # vad-gating above is on as well (AriService#buildAudioListeners).
       dynamic:
-        enabled: ${STT_ENDPOINTING_DYNAMIC:false}
+        enabled: ${STT_ENDPOINTING_DYNAMIC:true}
         min-post-roll-ms: ${STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS:600}
         ema-alpha: ${STT_ENDPOINTING_DYNAMIC_EMA_ALPHA:0.2}
         reopen-grace-ms: ${STT_ENDPOINTING_DYNAMIC_REOPEN_GRACE_MS:900}
@@ -96,21 +129,30 @@ voice-agent:
       # with a 500 ms pause hint it cut callers off mid-sentence — see below.
       eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:DEFAULT}
       # The pause SpeechKit may treat as the end of the utterance rather than a gap
-      # between words. This is the whole endpointing budget on the default path — no gate
-      # runs on our side.
+      # between words.
       #
-      # 1200, raised back off the 500 floor because 500 does not survive real speech: on a
-      # recorded call it ended the turn on a 0.60 s pause and again on a 0.78 s one, and
-      # both times the caller was mid-sentence. The second cost the call — "keyingi oy"
-      # was finalized, the bot answered and hung up, and "to'layman oktyabrda" arrived
-      # 0.2 s later with nobody left to hear it. Thinking pauses in Uzbek run past a
-      # second; a turnaround saved by talking over the caller is not saved.
-      # What pays for it is speculation (dialog.preemptive): the reply is being written
-      # during this pause, so most of it is no longer dead time.
+      # NOT READ on the default path any more: stt.vad-gating + stt.endpointing above are
+      # on, which switches SpeechKit to the external classifier — this side says when the
+      # utterance ended and vad-gating.post-roll-ms is the budget. This value is what the
+      # call falls back to when STT_VAD_GATING=false puts the decision back on the
+      # recognizer (no VAD model, or a gate that turns out to cut callers off).
+      #
+      # 900. It was 500, which does not survive real speech: on a recorded call it ended
+      # the turn on a 0.60 s pause and again on a 0.78 s one, and both times the caller
+      # was mid-sentence. The second cost the call — "keyingi oy" was finalized, the bot
+      # answered and hung up, and "to'layman oktyabrda" arrived 0.2 s later with nobody
+      # left to hear it. It was then 1200, which cleared both of those pauses with room
+      # to spare and put 1.2-2.3 s in front of every single reply — the largest block of
+      # the wait a caller sits through, and the reason a turn is heard as 4-6 s.
+      # 900 clears the 0.78 s pause that actually broke a call and gives back 300 ms of
+      # the margin above it that nothing was using.
+      # What pays for the rest is speculation (dialog.preemptive + preemptive-tts): both
+      # the reply and its first sentence's audio are made during this pause, so on a hit
+      # what is left of it is dead time only for the recognizer, not for the caller.
       #
       # SpeechKit accepts [500, 5000] and nothing else: below 500 it does not clamp or
       # ignore the hint, it kills the session with INVALID_ARGUMENT on every call.
-      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:1200}
+      eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:900}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
     aisha:
       api-key: ${STT_AISHA_API_KEY:}
@@ -126,10 +168,13 @@ voice-agent:
 
   turn:
     # Everything under here works by changing how long the speech gate waits, so it only
-    # runs when there IS a gate: stt.vad-gating.enabled above must be true as well. With
-    # the recognizer endpointing for itself there is no wait to lengthen or shorten, and
-    # this whole block is inert — the app says so at startup rather than leaving it to be
-    # discovered during a tuning session.
+    # runs when there IS a gate: stt.vad-gating.enabled above must be true as well — it
+    # now is, so the precondition is met and this block is off only because of the switch
+    # below. Turning gating back off makes the whole block inert; the app says so at
+    # startup rather than leaving it to be discovered during a tuning session.
+    #
+    # Still off: it needs an ONNX model at model-path, and languages is ru-RU — a uz-UZ
+    # call is never scored by it (VOICE-QUALITY-PLAN A.1, docs/REGRESSION.md §4).
     enabled: ${TURN_DETECTOR:false}
     model-path: ${TURN_MODEL_PATH:}
     languages: ${TURN_LANGUAGES:ru-RU}

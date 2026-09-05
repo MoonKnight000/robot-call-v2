@@ -5,9 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.converter.MapOutputConverter;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -94,7 +97,7 @@ public class CallQualityJudge {
             chatClient = ChatClient.create(chatModel);
             log.info("Call quality judge ready (model={}, sample rate={})", model, sampleRate);
         } else {
-            log.warn("Call quality judge has no LLM ChatModel (set GEMINI_API_KEY); scoring disabled");
+            log.warn("Call quality judge has no LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY); scoring disabled");
         }
     }
 
@@ -111,12 +114,25 @@ public class CallQualityJudge {
             return null;
         }
         try {
+            ChatModel cm = chatModelProvider.getIfAvailable();
+            boolean isOpenAi = (cm instanceof OpenAiChatModel)
+                    || (model != null && (model.startsWith("llama") || model.startsWith("mixtral")
+                    || model.startsWith("gpt-") || model.startsWith("qwen")));
+            ChatOptions options;
+            if (isOpenAi) {
+                options = OpenAiChatOptions.builder()
+                        .model(model)
+                        .maxTokens(maxTokens)
+                        .build();
+            } else {
+                options = GoogleGenAiChatOptions.builder()
+                        .model(model)
+                        .maxOutputTokens(maxTokens)
+                        .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
+                        .build();
+            }
             Map<String, Object> raw = chatClient.prompt()
-                    .options(GoogleGenAiChatOptions.builder()
-                            .model(model)
-                            .maxOutputTokens(maxTokens)
-                            .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
-                            .build())
+                    .options(options)
                     .system(RUBRIC + rules(scenario))
                     .user("QO'NG'IROQ YAKUNI: " + disposition + "\n\nTRANSKRIPT:\n" + transcript)
                     .call()

@@ -40,6 +40,9 @@ public class EngineConfigRepositoryAdapter implements EngineConfigRepository {
         entity.setSttProvider(config.sttProvider());
         entity.setTtsProvider(config.ttsProvider());
         entity.setRealtimeProvider(config.realtimeProvider());
+        entity.setPipecatStt(config.pipecatStt());
+        entity.setPipecatLlm(config.pipecatLlm());
+        entity.setPipecatTts(config.pipecatTts());
         return mapper.entityToDomain(jpaRepository.save(entity));
     }
 }

@@ -17,17 +17,23 @@ import java.util.List;
  *                     cascade pipeline builds them ({@code SystemPromptFactory})
  * @param voice        provider-side voice name, or {@code null} for the engine's default
  * @param tools        the tools the engine may call, reused as-is from the cascade
- *                     pipeline. They are passed here to be <em>declared</em> to the
- *                     engine, not to be invoked by it: a call arrives at
- *                     {@link RealtimeListener#onToolCall} and is executed by the dialog
- *                     driver, because tool bodies hit the DB and the CRM and must not
- *                     run on the provider's network thread
+ *                     pipeline.
+ * @param pipecatStt   per-company Pipecat STT sub-engine (e.g. deepgram, soniox, yandex)
+ * @param pipecatLlm   per-company Pipecat LLM sub-engine (e.g. claude-3-5-haiku, gemini-2.0-flash)
+ * @param pipecatTts   per-company Pipecat TTS sub-engine (e.g. cartesia, elevenlabs, yandex)
  */
 public record RealtimeCallConfig(
         String channelId,
         String language,
         String systemPrompt,
         String voice,
-        List<ToolCallback> tools
+        List<ToolCallback> tools,
+        String pipecatStt,
+        String pipecatLlm,
+        String pipecatTts
 ) {
+    public RealtimeCallConfig(String channelId, String language, String systemPrompt,
+                              String voice, List<ToolCallback> tools) {
+        this(channelId, language, systemPrompt, voice, tools, null, null, null);
+    }
 }

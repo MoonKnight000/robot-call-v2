@@ -291,23 +291,70 @@ ALERT: turnaround p95 1840ms over the last 64 turns exceeds the 1000ms budget (�
 Oyna aylanma (Micrometer), ya'ni "hozir qanday" degan savolga javob beradi; kam turnli
 oynaga baho berilmaydi (`ALERTING_TURNAROUND_MIN_TURNS`, default 30).
 
+### Kutish qayerga ketgani — har turnda bitta qator
+
+p95 raqami mijoz qancha kutganini aytadi, **nimani** kutganini aytmaydi. Buni har turnda
+INFO darajasida chiqadigan qator aytadi (`agent/metrics/TurnLatency`):
+
+```
+[ch-1] turn latency: eou=1180ms stt_final=240ms llm_ttft=1450ms tts_ttfb=380ms first_audio=3250ms
+[ch-1] speculation: hit after 7 interim(s) — the reply was already written
+```
+
+- `eou` — mijoz gapirib bo'lgan, lekin STT hali "tugadi" demagan vaqt. Bu **default
+  yo'lda eng katta bo'lak**; `STT_YANDEX_EOU_MAX_PAUSE_MS` shuni boshqaradi.
+- `llm_ttft` — so'rov ketdi → birinchi token. `speculation: hit` bo'lsa **0** deb
+  yoziladi (javob EOU pauzasi ichida yozilgan).
+- `tts_ttfb` — birinchi jumla sintezga ketdi → birinchi PCM. `DIALOG_PREEMPTIVE_TTS=true`
+  bo'lsa va guess tegsa, bu ham keshdan ~0 bo'ladi.
+- `first_audio` — mijozning butun jimligi. Sekin qo'ng'iroqni tekshirganda **faqat
+  shuni** boshqa raqamlar bilan solishtiring.
+
+`speculation: miss` yoki `speculation: none` ko'p chiqsa — `eou` va `llm_ttft` **qo'shilib**
+to'lanadi, ya'ni 4-6 soniya. Miss sababini o'sha qator o'zi yozadi (nimaga taxmin qilingan
+va final nima degan).
+
 Byudjetdagi eng katta bo'lak — **mijoz jim bo'lgandan keyin STT "gap tugadi" deb
-hisoblagunicha** o'tgan vaqt. Uni tezlashtirish uchun ikki yo'l bor va ikkalasi ham
+hisoblagunicha** o'tgan vaqt. Uni tezlashtirish uchun uch yo'l bor va uchalasi ham
 transkript sifati bilan savdolashadi:
 
-1. `STT_YANDEX_EOU_SENSITIVITY=HIGH` — SpeechKit'ning o'z detektorini tezlashtiradi.
+1. `STT_YANDEX_EOU_MAX_PAUSE_MS` — SpeechKit qancha pauzani "gap tugadi" deb hisoblashi.
+   Default **900 ms**. Bu default yo'ldagi butun endpointing byudjeti. Pastga tushirish
+   mumkin, lekin 500 sinalgan va qaytarilgan: mijozni 0.60 s va 0.78 s pauzalarda gap
+   o'rtasida kesib qo'ygan (`config/speech.yml` dagi izohga qarang). SpeechKit
+   [500, 5000] dan tashqarisini qabul qilmaydi — 500 dan past qiymat har qo'ng'iroqda
+   sessiyani `INVALID_ARGUMENT` bilan o'ldiradi.
+2. `STT_YANDEX_EOU_SENSITIVITY=HIGH` — SpeechKit'ning o'z detektorini tezlashtiradi.
    **Bu allaqachon sinalgan va qaytarilgan:** uz-UZ finallari bo'lak-bo'lak kela
    boshlagan (application.yml dagi izohga qarang).
-2. `STT_ENDPOINTING=true` — qarorni o'zimiz qabul qilamiz: barge-in uchun ishlayotgan
-   VAD "gap tugadi" deydi va SpeechKit'ga aytiladi (external EOU klassifikatori).
-   Farqi shundaki, tez kesish **faqat qisqa javoblarga** qo'llanadi:
-   `STT_ENDPOINTING_SHORT_UTTERANCE_MS` (1200 ms) dan qisqa gap
-   `STT_ENDPOINTING_SHORT_SILENCE_MS` (400 ms) jimlikdan keyin yopiladi, undan uzunlari
-   esa oldingidek to'liq `STT_VAD_POST_ROLL_MS` ni kutadi. Ya'ni "ha"/"yo'q" tez ketadi,
+3. **O'z gate'imiz — hozir default shu** (2026-09-04). Qarorni o'zimiz qabul qilamiz:
+   barge-in uchun ishlayotgan VAD "gap tugadi" deydi va SpeechKit'ga aytiladi (external
+   EOU klassifikatori), shunda `STT_YANDEX_EOU_MAX_PAUSE_MS` **umuman o'qilmaydi**.
+   Default qiymatlar:
+
+   ```
+   STT_VAD_GATING=true                             # gate — busiz qolganlari ta'sirsiz
+   STT_ENDPOINTING=true                            # external EOU klassifikatori
+   STT_ENDPOINTING_DYNAMIC=true                    # mijozning pauzasiga moslashish
+   STT_VAD_POST_ROLL_MS=700                        # byudjetning tepasi (ilgari 1000)
+   STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS=600    # pasti — tez gapiradigan mijozda
+   ```
+
+   Tez kesish **faqat qisqa javoblarga** qo'llanadi:
+   `STT_ENDPOINTING_SHORT_UTTERANCE_MS` (1500 ms) dan qisqa gap
+   `STT_ENDPOINTING_SHORT_SILENCE_MS` (500 ms) jimlikdan keyin yopiladi, undan uzunlari
+   esa to'liq `STT_VAD_POST_ROLL_MS` ni kutadi. Ya'ni "ha"/"yo'q" tez ketadi,
    shartnoma raqamini sekin aytayotgan odam esa bo'linmaydi.
 
-`STT_ENDPOINTING` **default o'chiq** va uni faqat real uz-UZ qo'ng'iroqlarni tinglab
-yoqish kerak. Yoqqandan keyin:
+   **Shart:** `VAD_MODEL_PATH` o'rnatilgan bo'lishi kerak. Bo'lmasa VAD ko'tarilmaydi,
+   gate qurilmaydi va bu blok jimgina ta'sirsiz qoladi — startda
+   `Silero VAD model path not set ...; barge-in disabled` degan WARN chiqadi. Bu holda
+   qo'ng'iroq 1-yo'lga (`STT_YANDEX_EOU_MAX_PAUSE_MS=900`) qaytadi.
+
+   **Orqaga qaytarish:** `STT_VAD_GATING=false` — bitta env, deploy shart emas.
+
+3-yo'l yangi default, shuning uchun real uz-UZ qo'ng'iroqlarni tinglab tasdiqlash kerak.
+Kuzatiladigan narsalar:
 
 - `voice_stt_utterances_endpointed_total` mijoz navbatlari soniga yaqin bo'lsin. Ancha
   ko'p bo'lsa — gaplar bo'linyapti (`SHORT_SILENCE_MS` ni oshiring), ancha kam bo'lsa —

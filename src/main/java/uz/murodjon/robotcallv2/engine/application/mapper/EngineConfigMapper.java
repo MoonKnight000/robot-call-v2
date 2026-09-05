@@ -20,6 +20,9 @@ public class EngineConfigMapper {
                 entity.getSttProvider(),
                 entity.getTtsProvider(),
                 entity.getRealtimeProvider(),
+                entity.getPipecatStt(),
+                entity.getPipecatLlm(),
+                entity.getPipecatTts(),
                 entity.getCreatedAt()
         );
     }
@@ -34,6 +37,9 @@ public class EngineConfigMapper {
         entity.setSttProvider(domain.sttProvider());
         entity.setTtsProvider(domain.ttsProvider());
         entity.setRealtimeProvider(domain.realtimeProvider());
+        entity.setPipecatStt(domain.pipecatStt());
+        entity.setPipecatLlm(domain.pipecatLlm());
+        entity.setPipecatTts(domain.pipecatTts());
         entity.setCreatedAt(domain.createdAt() != null ? domain.createdAt() : Instant.now());
         return entity;
     }
