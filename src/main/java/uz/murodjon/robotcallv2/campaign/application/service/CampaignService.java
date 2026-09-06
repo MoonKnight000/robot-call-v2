@@ -91,8 +91,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         this.clock = clock;
     }
 
-    private static final Set<DayOfWeek> DEFAULT_DIAL_DAYS = EnumSet.of(
-            DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
+    private static final Set<DayOfWeek> DEFAULT_DIAL_DAYS = EnumSet.allOf(DayOfWeek.class);
 
     @Override
     public CreateCampaignResponse createCampaign(long companyId, CreateCampaignRequest r) {

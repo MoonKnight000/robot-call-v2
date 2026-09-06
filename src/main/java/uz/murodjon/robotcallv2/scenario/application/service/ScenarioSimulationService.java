@@ -197,8 +197,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
         try {
             ScenarioSimulationResponse botResp = simulateTurn(companyId, new ScenarioSimulationRequest(
                     null, def, null, currentState, transcript,
-                    Map.of("clientName", "Azizbek", "debtAmount", "1,200,000 so'm", "dueDate", "2026-05-01"),
-                    "uz"
+                    Map.of("clientName", "Azizbek", "debtAmount", "1,200,000 so'm", "dueDate", "2026-05-01")
             ));
 
             transcript.add(Map.of("role", "assistant", "content", botResp.assistantReply()));
@@ -209,8 +208,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
 
                 botResp = simulateTurn(companyId, new ScenarioSimulationRequest(
                         null, def, turnText, currentState, transcript,
-                        Map.of("clientName", "Azizbek", "debtAmount", "1,200,000 so'm", "dueDate", "2026-05-01"),
-                        "uz"
+                        Map.of("clientName", "Azizbek", "debtAmount", "1,200,000 so'm", "dueDate", "2026-05-01")
                 ));
 
                 transcript.add(Map.of("role", "assistant", "content", botResp.assistantReply()));

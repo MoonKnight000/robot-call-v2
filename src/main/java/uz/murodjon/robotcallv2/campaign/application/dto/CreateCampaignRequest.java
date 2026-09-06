@@ -23,8 +23,8 @@ import java.util.Set;
  * @param aiAgentId    required: the agent from {@code GET /api/ai-agents} whose voice and
  *                     scenario this campaign's calls run under. Changeable later — an
  *                     agent is a way of speaking, not the campaign's identity
- * @param dialDays     weekdays this campaign may dial on ({@code ["MONDAY", ...]}); omit
- *                     or leave empty for Monday-Friday (§11.2)
+ * @param dialDays     days this campaign may dial on ({@code ["MONDAY", ...]}); omit
+ *                     or leave empty for every day of the week (§11.2)
  * @param dailyCallCap most calls this campaign may place in one day; 0 or omitted for
  *                     unlimited. A spend ceiling — every call costs STT, LLM, TTS and trunk
  *                     minutes, and a campaign with 50 000 targets will spend them all

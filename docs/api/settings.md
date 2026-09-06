@@ -112,6 +112,10 @@ Javob — yangilangan `EngineConfig` (yuqoridagi `GET` shakli).
 
 Dialoglarni boshqaruvchi asosiy til modeli (LLM) va xavfsizlik limitlarini kompaniya miqyosida sozlash.
 
+`model` maydoni erkin matn emas: mavjud modellar katalogi [`GET /api/ai-models`](ai-models.md)
+dan olinadi va saqlashda ham aynan shu ro'yxatga solishtiriladi. Shuning uchun noto'g'ri
+yozilgan model qo'ng'iroq paytida emas, PUT javobida `400 AI_MODEL_UNKNOWN` bilan bilinadi.
+
 ### `GET /api/settings/ai-model` — Joriy AI konfiguratsiyasi
 **Response** (`AiModelConfig`):
 ```json
@@ -146,7 +150,7 @@ Ixtiyoriy maydon bo'sh (`null`) qoldirilsa, tizim standarti tiklanadi.
 
 | Maydon | Turi | Cheklov | Izoh |
 |---|---|---|---|
-| `model` | `string` | — | Ishlatiladigan LLM nomi (`gemini-2.5-flash`, `gpt-4o-mini`) |
+| `model` | `string` | katalogdagi id | Ishlatiladigan LLM id'si. Faqat [`GET /api/ai-models`](ai-models.md) qaytargan id'lar qabul qilinadi — boshqasi `400 AI_MODEL_UNKNOWN` |
 | `temperature` | `number` | `0.0` - `2.0` | Javob erkinligi/kreativligi (ovozli agentlar uchun `0.2 - 0.4` tavsiya etiladi) |
 | `maxOutputTokens` | `number` | min: `1` | Bot bitta gapida qaytishi mumkin bo'lgan maksimal token soni |
 | `maxCallSeconds` | `number` | min: `1` | Bitta qo'ng'iroqning maksimal davomiyligi (soniyada). Chegara yetganda bot muloyim xayrlashadi |

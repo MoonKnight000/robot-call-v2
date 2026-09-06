@@ -11,7 +11,6 @@ public record ScenarioSimulationRequest(
         String userMessage,
         String currentState,
         List<Map<String, String>> chatHistory,
-        Map<String, Object> contextFacts,
-        String language
+        Map<String, Object> contextFacts
 ) {
 }

@@ -74,7 +74,8 @@ bo'lmagani uchun ovoz va personani berish imkoni yo'q edi.
 | `ttsVoice` | ❌ | `GET /api/tts/voices` dagi id. Noma'lum id → `400 TTS_VOICE_UNKNOWN` |
 | `languageVoices` | ❌ | Til → ovoz. Har bir ovoz o'sha tilda gapirishi shart, aks holda `400 TTS_VOICE_LANGUAGE_MISMATCH` |
 | `persona` | ❌ | `AI_ASSISTANT` (default) — qo'ng'iroq §11.1 disclosure bilan boshlanadi; `HUMAN_LIKE` — boshlanmaydi |
-| `llmModel` / `temperature` / `maxOutputTokens` | ❌ | Bo'sh bo'lsa kompaniyaning `/api/settings/ai-model` sozlamasi. `temperature` 0..2, `maxOutputTokens` 1..4096 |
+| `llmModel` | ❌ | [`GET /api/ai-models`](ai-models.md) dagi id. Bo'sh bo'lsa kompaniyaning `/api/settings/ai-model` sozlamasi; noma'lum id → `400 AI_MODEL_UNKNOWN` |
+| `temperature` / `maxOutputTokens` | ❌ | Bo'sh bo'lsa kompaniyaning sozlamasi. `temperature` 0..2, `maxOutputTokens` 1..4096. **Diqqat:** bu ikkisi faqat `CASCADE` rejimida qo'llanadi — `REALTIME` engine'lar o'z sozlamasi bilan ishlaydi |
 | `ambientSound` | ❌ | `OFF` (default), `OFFICE`, `CALL_CENTER`, `NATURAL_LINE`, `CAFE` |
 | `sipTrunkIds` | ❌ | Shu agent qaysi trunklardan qo'ng'iroq qilishi mumkin. Bo'sh — kompaniyaning barcha yoqilgan trunklari bo'yicha balanslanadi |
 | `enabled` | ❌ | `false` bo'lsa dialer bu agentli kampaniyani chetlab o'tadi |

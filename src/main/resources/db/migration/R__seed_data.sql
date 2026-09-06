@@ -40,15 +40,35 @@ ON CONFLICT (company_id, code) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('app_role', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_role), 1), true);
 
--- First admin account (ROADMAP E.1) — without this nobody can call POST /api/auth/login
--- to create the rest through the API. password_hash is a BCrypt digest of 'murodjon'
+-- First account (ROADMAP E.1) — without this nobody can call POST /api/auth/login to
+-- create the rest through the API. password_hash is a BCrypt digest of 'murodjon'
 -- (BCryptPasswordEncoder, matching SecurityConfig.passwordEncoder), never stored plaintext.
+--
+-- SUPERADMIN, not ADMIN. Permissions for a system role are computed from SystemRole on
+-- every read, never from app_role_permission rows, so nothing can be granted to this
+-- account by adding rows — the only lever is which role it points at. ADMIN deliberately
+-- holds every company permission EXCEPT ENGINE_EDIT (a wrong engine value breaks every
+-- call in the company), and no role but SUPERADMIN holds PLATFORM_ADMIN. That left the
+-- bootstrap owner 403'd out of PUT /api/settings/engine and the whole company CRUD.
 INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status)
 SELECT 1, 'Murodjon', 'murodjon000@softex.uz', 'murodjon',
        '$2a$10$6cGgfpkqI8lHvRx7rlHJKuW7PhH1XttNnYBGhe.lc4rqSMORrizFO', r.id, 'ACTIVE'
 FROM app_role r
-WHERE r.company_id = 1 AND r.code = 'ADMIN'
+WHERE r.company_id = 1 AND r.code = 'SUPERADMIN'
 ON CONFLICT (username) DO NOTHING;
+
+-- The INSERT above is a no-op on a database that already seeded this account as ADMIN,
+-- so re-assert the role: this is the bootstrap owner, and a reseed is the only way it
+-- gets repaired. Scoped to the seeded username alone — every other account keeps
+-- whatever role it was given through the API.
+UPDATE app_user u
+SET role_id = r.id
+FROM app_role r
+WHERE u.username = 'murodjon'
+  AND u.company_id = 1
+  AND r.company_id = 1
+  AND r.code = 'SUPERADMIN'
+  AND u.role_id <> r.id;
 SELECT setval(pg_get_serial_sequence('app_user', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_user), 1), true);
 
@@ -93,6 +113,28 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('gemini-tts-fenrir-ru', 'gemini',   'ru-RU', 'Fenrir',   'Fenrir (мужской, Gemini TTS)', NULL)
 ON CONFLICT (id) DO NOTHING;
 
+-- LLM model catalog: what an operator may pick for the company (§11 settings) or for one
+-- agent. The label is refreshed on every reseed, the id is not — an id already stored on
+-- an agent must keep meaning the same model.
+INSERT INTO ai_model (id, provider, mode, label) VALUES
+    -- CASCADE: the text LLM behind a turn. Only rows whose provider matches
+    -- spring.ai.model.chat are offered, so a Groq build never lists Gemini and back.
+    ('gemini-3.8-flash',            'google-genai',    'CASCADE',  'Gemini 3.8 Flash — standart, tezkor'),
+    ('gemini-3.5-flash-lite',       'google-genai',    'CASCADE',  'Gemini 3.5 Flash Lite — eng arzon, qisqa javoblar uchun'),
+    ('llama-3.3-70b-versatile',     'openai',          'CASCADE',  'Llama 3.3 70B (Groq) — kuchli, past kechikish'),
+    ('llama-3.1-8b-instant',        'openai',          'CASCADE',  'Llama 3.1 8B (Groq) — eng tezkor'),
+    -- REALTIME: the speech-to-speech engine's own model. Only rows whose provider is
+    -- registered in this build are offered.
+    ('gemini-3.1-flash-live-preview', 'gemini-live',   'REALTIME', 'Gemini 3.1 Flash Live — nativ audio'),
+    ('gpt-4o-realtime-preview',     'openai-realtime', 'REALTIME', 'GPT-4o Realtime'),
+    ('gpt-4o-mini-realtime-preview','openai-realtime', 'REALTIME', 'GPT-4o mini Realtime — arzonroq'),
+    ('qwen-omni-turbo',             'qwen-omni',       'REALTIME', 'Qwen Omni Turbo'),
+    ('moshi',                       'moshi',           'REALTIME', 'Moshi — o''z serveringizda'),
+    ('claude-3-5-haiku-20241022',   'pipecat',         'REALTIME', 'Claude 3.5 Haiku (Pipecat LLM)')
+ON CONFLICT (id) DO UPDATE SET provider = EXCLUDED.provider,
+                               mode     = EXCLUDED.mode,
+                               label    = EXCLUDED.label;
+
 -- Built-in scenario templates. They are read-only through the API
 -- (SCENARIO_BUILTIN_READONLY), so this file owns their text: an already-seeded row has
 -- its definition refreshed instead of being left on the wording it first got.
@@ -135,7 +177,7 @@ $def$
   "outcomeSchema": [
     {"name": "promisedDate", "type": "date", "description": "Mijoz va'da qilgan to'lov sanasi"},
     {"name": "promisedAmount", "type": "number", "description": "Mijoz va'da qilgan summa"},
-    {"name": "reasonCode", "type": "string", "description": "Rad etish sababi"}
+    {"name": "reasonCode", "type": "string", "description": "Rad etish sababi. Faqat shu qiymatlardan bittasini yozing: NO_MONEY, JOB_LOSS, ILLNESS, ALREADY_PAID, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE, OTHER"}
   ],
   "rolePrompt": "Siz \"Uysot\" kompaniyasining avtomatik qarz undirish ovozli agentisiz.",
   "guardrails": [
@@ -555,7 +597,7 @@ SELECT 1, 'MANUAL', 'DEBT_COLLECTION', 'DRAFT',
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE name = 'MANUAL');
 
 INSERT INTO campaign_dial_day (campaign_id, day)
-SELECT id, day FROM campaign, unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS day
+SELECT id, day FROM campaign, unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS day
 WHERE name = 'MANUAL'
 ON CONFLICT (campaign_id, day) DO NOTHING;
 
@@ -578,3 +620,68 @@ INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, context_
 SELECT 1, id, 0, 'INBOUND', '{}', 'IN_PROGRESS'
 FROM campaign WHERE name = 'INBOUND' AND NOT EXISTS (SELECT 1 FROM campaign_target WHERE phone = 'INBOUND')
 ORDER BY id LIMIT 1;
+
+-- Knowledge base: the answers the agent is allowed to give when a caller asks something
+-- the scenario does not script (KnowledgeBaseService). Guardrails forbid it from inventing
+-- an amount, a deadline or a concession, so every question of that shape needs an approved
+-- answer here or the agent has nothing to say but "I don't know".
+--
+-- DO NOTHING, not DO UPDATE: unlike the built-in scenarios above, these rows are editable
+-- through the API, and rerunning this file must not overwrite what an operator rewrote.
+INSERT INTO knowledge_base_item (company_id, item_key, topic, title, answer_uz, answer_ru, answer_en, keywords)
+VALUES
+(1, 'payment_methods', 'payment', 'To''lov usullari',
+ 'To''lovni Click, Payme, Uzum Bank ilovalari orqali yoki bank kassalarida shartnoma raqamingizni ko''rsatib amalga oshirishingiz mumkin.',
+ 'Оплату можно произвести через приложения Click, Payme, Uzum Bank или в кассах банков, указав номер договора.',
+ 'You can make payments via Click, Payme, Uzum Bank mobile apps or at bank branches using your contract number.',
+ 'click,payme,to''lash,qayerga,qanday to''layman,оплатить,как оплатить,how to pay'),
+
+(1, 'court_mib', 'legal', 'MIB va sud choralari',
+ 'To''lov kechiktirilsa, qonunchilikka asosan ish Majburiy ijro byurosiga (MIB) yoki sudga oshirilishi va hisob raqamlarga taqiq qo''yilishi mumkin.',
+ 'В случае задержки оплаты дело в соответствии с законом может быть передано в БПИ или суд с наложением ареста на счета.',
+ 'In case of prolonged non-payment, the case may be escalated to the enforcement bureau or court with account freezes.',
+ 'mib,sud,qonun,sudga,бпи,суд,court'),
+
+(1, 'restructuring', 'terms', 'Qayta ko''rib chiqish va restrukturizatsiya',
+ 'Agar moliyaviy qiyinchilik bo''lsa, bank filialiga ariza bilan murojaat qilib, to''lov muddatini uzaytirish yoki qayta ko''rib chiqishni so''rashingiz mumkin.',
+ 'При финансовых трудностях вы можете обратиться в филиал банка с заявлением о реструктуризации или продлении срока долга.',
+ 'If experiencing financial distress, you can visit a branch to request loan restructuring or installment adjustments.',
+ 'bo''lib to''lash,imtiyoz,sharoit,qiyin,рассрочка,реструктуризация'),
+
+(1, 'branch_locations', 'locations', 'Filial manzillari va ish tartibi',
+ 'Barcha filiallar dushanbadan jumagacha soat 9:00 dan 18:00 gacha ishlaydi. Eng yaqin filialni rasmiy veb-saytdan topishingiz mumkin.',
+ 'Все филиалы работают с понедельника по пятницу с 9:00 до 18:00. Ближайший филиал можно найти на официальном сайте.',
+ 'All branches operate Monday through Friday from 9:00 to 18:00. The nearest branch can be found on our official website.',
+ 'filial,manzil,ofis,филиал,адрес,branch,office'),
+
+-- "I already paid" is the commonest objection in collections, and the agent must not
+-- argue with it: the answer sends the receipt somewhere a human can check it.
+(1, 'already_paid', 'payment', 'To''lov qilinganini bildirish',
+ 'To''lovni allaqachon amalga oshirgan bo''lsangiz, tushunmovchilik uchun uzr. To''lov cheki bankka kelib tushishi bir necha ish kunini olishi mumkin. Chek yoki to''lov tasdig''ini filialga yoki qo''llab-quvvatlash xizmatiga yuborsangiz, mutaxassis tekshirib chiqadi.',
+ 'Если вы уже произвели оплату, приносим извинения за беспокойство. Зачисление платежа может занять несколько рабочих дней. Отправьте чек или подтверждение оплаты в филиал или в службу поддержки — специалист проверит.',
+ 'If you have already paid, we apologise for the call. A payment can take a few business days to post. Send the receipt to a branch or to support and a specialist will verify it.',
+ 'to''ladim,to''lab bo''ldim,chek,kvitansiya,уже оплатил,заплатил,чек,квитанция,already paid,receipt'),
+
+-- The agent may never restate or renegotiate the amount (scenario guardrails), so a
+-- caller who disputes it has to be pointed at the people who can.
+(1, 'amount_dispute', 'terms', 'Summa bo''yicha kelishmovchilik',
+ 'Summa bo''yicha savolingiz bo''lsa, men uni o''zgartira olmayman. Shartnoma bo''yicha batafsil hisob-kitobni filialda yoki qo''llab-quvvatlash xizmatidan olishingiz mumkin — ular har bir to''lovni ko''rsatib beradi.',
+ 'Если у вас есть вопросы по сумме, я не могу её изменить. Подробный расчёт по договору можно получить в филиале или в службе поддержки — там покажут каждый платёж.',
+ 'If you disagree with the amount, I am not able to change it. A detailed breakdown of the contract is available at a branch or from support, where every payment is itemised.',
+ 'summa,noto''g''ri,hisob,kelishmayman,сумма,неверно,расчёт,не согласен,amount,wrong'),
+
+-- Asking for a human is a request the agent honours, not one it talks the caller out of.
+(1, 'operator_transfer', 'general', 'Operator bilan bog''lanish',
+ 'Albatta, sizni jonli operatorga ulashim mumkin. Agar hozir band bo''lsalar, qo''llab-quvvatlash xizmatiga ish vaqtida — dushanbadan jumagacha 9:00 dan 18:00 gacha qo''ng''iroq qilishingiz mumkin.',
+ 'Конечно, я могу соединить вас с живым оператором. Если сейчас все заняты, вы можете позвонить в службу поддержки в рабочее время — с понедельника по пятницу с 9:00 до 18:00.',
+ 'Of course, I can transfer you to a live operator. If none is free, you can call support during business hours, Monday to Friday from 9:00 to 18:00.',
+ 'operator,odam,jonli,ulang,оператор,человек,живой,соедините,operator,human'),
+
+-- Pairs with company_config.disclosure_text: the call opens by saying it is recorded, so
+-- "why are you recording me" is a question this agent will be asked.
+(1, 'call_recording', 'legal', 'Suhbat yozib olinishi va shaxsiy ma''lumotlar',
+ 'Suhbat xizmat sifatini nazorat qilish uchun yozib olinadi va shaxsiy ma''lumotlar to''g''risidagi qonunchilikka muvofiq saqlanadi. Yozuvni o''chirish yoki nusxasini olish uchun qo''llab-quvvatlash xizmatiga yozma murojaat qilishingiz mumkin.',
+ 'Разговор записывается для контроля качества обслуживания и хранится в соответствии с законодательством о персональных данных. Для удаления записи или получения копии направьте письменное обращение в службу поддержки.',
+ 'The call is recorded for quality assurance and stored in line with personal data legislation. To request deletion or a copy, send a written request to support.',
+ 'yozib,yozuv,nega yozyapsiz,shaxsiy ma''lumot,запись,записываете,персональные данные,recording,privacy')
+ON CONFLICT (company_id, item_key) DO NOTHING;

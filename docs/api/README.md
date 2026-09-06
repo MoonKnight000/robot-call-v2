@@ -106,6 +106,7 @@ ro'yxatiga ega, u shu modulning hujjatida ko'rsatilgan.
 | [profile.md](profile.md) | `/api/profile` | Barcha foydalanuvchilar | Shaxsiy profil tahrirlash, avatar yuklash, faol sessiyalar, shaxsiy statistika |
 | [companies.md](companies.md) | `/api/companies` | COMPANY_READ / COMPANY_EDIT · PLATFORM_ADMIN | Kompaniya ma'lumotlari, logo, ish vaqti va til parametrlari |
 | [voices.md](voices.md) | `/api/tts/voices` | Barcha foydalanuvchilar | Mavjud TTS ovozlar katalogi (O'zbek, Rus, Ingliz) va dinamik hissiyotlar |
+| [ai-models.md](ai-models.md) | `/api/ai-models` | Barcha foydalanuvchilar | Mavjud LLM modellar katalogi — kompaniya sozlamasi va agent `llmModel` uchun tanlanadigan id'lar |
 | [speech-preview.md](speech-preview.md) | `/api/tts/voices/{id}/preview`, `/api/stt/preview` | VOICE_READ | Ovozni eshitib ko'rish (matn → WAV), STT provayderni brauzer yozuvi bilan sinash (audio → transkript) |
 | [files.md](files.md) | `/api/files` | Auth | MinIO/S3 fayl yuklash, audio yozuvlar va avatarlar yuklab olish |
 | [search.md](search.md) | `/api/search` | Auth | Tizim bo'ylab global qidiruv (kontaktlar, kampaniyalar, qo'ng'iroqlar) |

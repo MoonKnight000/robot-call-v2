@@ -24,6 +24,7 @@ import uz.murodjon.robotcallv2.scenario.application.service.FactWebhookClient;
 import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
+import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 /**
@@ -138,14 +139,16 @@ public class CallTaskConsumer {
         }
     }
 
-    /** CRM first, then what an operator noted on the client, then the target/campaign default. */
+    /**
+     * Full BCP-47 as the last resort, not a bare "uz": {@code AiAgent.voiceFor} looks the
+     * language up in a map keyed the way {@code ai_agent_language_voice} stores it, so a
+     * two-letter tag missed every per-language voice and quietly fell back to the agent's
+     * single one.
+     */
     private static String resolveLanguage(CallTask task, CrmClientSnapshot crm, ClientMemory memory) {
-        if (crm != null && crm.preferredLanguage() != null && !crm.preferredLanguage().isBlank()) {
-            return crm.preferredLanguage();
-        }
-        if (memory != null && memory.preferredLanguage() != null && !memory.preferredLanguage().isBlank()) {
-            return memory.preferredLanguage();
-        }
-        return task.language() != null ? task.language() : "uz";
+        return CallLanguage.resolve(
+                crm != null ? crm.preferredLanguage() : null,
+                memory != null ? memory.preferredLanguage() : null,
+                task.language() != null ? task.language() : "uz-UZ");
     }
 }

@@ -16,8 +16,9 @@ almashtiradi). Operator esa qo'lda `preferredName`, `preferredLanguage`,
 `operatorNotes` kiritadi. Promptda bu blok `MULTI-CALL MEMORY` sarlavhasi bilan
 chiqadi; agentga "bazamizda yozilgan" demaslik buyurilgan.
 
-**Til tanlash tartibi (outbound):** CRM `preferredLanguage` → xotiradagi
-`preferredLanguage` → nishon/kampaniya tili.
+**Til tanlash tartibi.** Ikkala yo'nalishda ham bir xil: CRM `preferredLanguage` →
+xotiradagi `preferredLanguage` → oxirgi zaxira. Zaxira outbound'da nishon/kampaniya
+tili, inbound'da esa javob beruvchi agentning tili (`ai_agent.language`).
 
 **Telefon formati.** Yo'lda (`{phone}`) `PhoneNumbers` qabul qiladigan har qanday
 ko'rinish: `998901234567`, `901234567`, `%2B998901234567`. `+` belgisini URL'da
@@ -76,7 +77,7 @@ deb ko'rsatadi.
 |---|---|---|
 | `phone` | string | E.164 ko'rinishda normalizatsiya qilingan |
 | `preferredName` | string \| null | Operator yozgan murojaat shakli ("Anvar aka") |
-| `preferredLanguage` | string \| null | Operator yozgan til (`uz-UZ`, `ru-RU`); outbound tilini CRM'dan keyin belgilaydi |
+| `preferredLanguage` | string \| null | Operator yozgan til (`uz-UZ`, `ru-RU`); qo'ng'iroq tilini CRM'dan keyin belgilaydi (outbound ham, inbound ham) |
 | `operatorNotes` | string \| null | Operator eslatmasi, promptga tushadi |
 | `recentCalls[]` | array | Eng yangisi birinchi, ko'pi bilan 3 ta. `scenarioKey`/`disposition` eski migratsiya yozuvlarida `null` bo'lishi mumkin |
 | `facts` | object | Ssenariy `outcomeSchema`sidan yig'ilgan faktlar, yangi qiymat eskisini almashtiradi |

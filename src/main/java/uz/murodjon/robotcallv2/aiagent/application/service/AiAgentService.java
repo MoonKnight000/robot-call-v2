@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentValidator;
+import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
@@ -47,16 +48,19 @@ public class AiAgentService implements AiAgentUseCase {
     private final AiAgentRepository repository;
     private final ScenarioUseCase scenarioUseCase;
     private final TtsVoiceUseCase ttsVoiceUseCase;
+    private final AiModelUseCase aiModelUseCase;
     private final CompanyConfigService companyConfigService;
     private final UserService userService;
     private final AuditService auditService;
 
     public AiAgentService(AiAgentRepository repository, ScenarioUseCase scenarioUseCase,
-                          TtsVoiceUseCase ttsVoiceUseCase, CompanyConfigService companyConfigService,
+                          TtsVoiceUseCase ttsVoiceUseCase, AiModelUseCase aiModelUseCase,
+                          CompanyConfigService companyConfigService,
                           UserService userService, AuditService auditService) {
         this.repository = repository;
         this.scenarioUseCase = scenarioUseCase;
         this.ttsVoiceUseCase = ttsVoiceUseCase;
+        this.aiModelUseCase = aiModelUseCase;
         this.companyConfigService = companyConfigService;
         this.userService = userService;
         this.auditService = auditService;
@@ -76,7 +80,7 @@ public class AiAgentService implements AiAgentUseCase {
                 requireKnownVoice(companyId, request.ttsVoice()),
                 requireKnownVoicePerLanguage(companyId, request.languageVoices()),
                 request.persona() != null ? request.persona() : AgentPersona.AI_ASSISTANT,
-                blankToNull(request.llmModel()),
+                requireKnownModel(companyId, request.llmModel()),
                 request.temperature(),
                 request.maxOutputTokens(),
                 request.ambientSound() != null ? request.ambientSound() : AmbientSound.OFF,
@@ -111,7 +115,7 @@ public class AiAgentService implements AiAgentUseCase {
                 requireKnownVoice(companyId, request.ttsVoice()),
                 requireKnownVoicePerLanguage(companyId, request.languageVoices()),
                 request.persona() != null ? request.persona() : AgentPersona.AI_ASSISTANT,
-                blankToNull(request.llmModel()),
+                requireKnownModel(companyId, request.llmModel()),
                 request.temperature(),
                 request.maxOutputTokens(),
                 request.ambientSound() != null ? request.ambientSound() : AmbientSound.OFF,
@@ -218,7 +222,21 @@ public class AiAgentService implements AiAgentUseCase {
         return trimmed;
     }
 
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+    /**
+     * The model this agent runs its turns on, or null for the company's own setting.
+     * Checked against the catalog for the same reason the voice is: an id the provider
+     * does not know fails on a call that is already connected, and nothing before that
+     * would have told the operator.
+     */
+    private String requireKnownModel(long companyId, String llmModel) {
+        if (llmModel == null || llmModel.isBlank()) {
+            return null;
+        }
+        String trimmed = llmModel.trim();
+        if (!aiModelUseCase.isSelectable(companyId, trimmed)) {
+            throw new ValidationException(ErrorCode.AI_MODEL_UNKNOWN, trimmed,
+                    aiModelUseCase.findSelectableIds(companyId));
+        }
+        return trimmed;
     }
 }

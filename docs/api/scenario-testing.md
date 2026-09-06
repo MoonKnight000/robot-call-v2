@@ -39,8 +39,7 @@ faktlar (`contextFacts`) va ssenariy qoidalariga asosan javob beradi. Har bir ch
     "currency": "so'm",
     "dueDate": "2026-09-01",
     "contractNumber": "UY-2026-00123"
-  },
-  "language": "uz-UZ"
+  }
 }
 ```
 
@@ -52,7 +51,6 @@ faktlar (`contextFacts`) va ssenariy qoidalariga asosan javob beradi. Har bir ch
 | `currentState` | string | ❌ | Joriy bosqich id'si. Berilmasa ssenariyning birinchi bosqichi |
 | `chatHistory` | `array<{role, content}>` | ❌ | Dialogning oldingi qadamlari. **`history` emas.** `role` — `"assistant"` yoki `"user"` |
 | `contextFacts` | object | ❌ | Ssenariy `factSchema` siga mos test faktlari |
-| `language` | string | ❌ | Suhbat tili (`uz-UZ`, `ru-RU`) |
 
 ### Response (`ScenarioSimulationResponse`)
 

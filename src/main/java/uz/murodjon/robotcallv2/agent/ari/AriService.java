@@ -106,6 +106,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -467,7 +468,11 @@ public class AriService {
                 ? number.substring(1)
                 : number;
         long targetId = outboundCall != null ? outboundCall.targetId() : callRecordService.manualTargetId();
-        String language = outboundCall != null ? outboundCall.language() : "uz";
+        // No OutboundCall means a manual/test originate, and StasisStart drives exactly
+        // those with dialogProperties.language(). Reading it here too keeps the row and the
+        // conversation on one language — the row is written now and never rewritten, so a
+        // literal here left the call held in uz-UZ but reported as "uz".
+        String language = outboundCall != null ? outboundCall.language() : dialogProperties.language();
         try {
             // Inside the try on purpose: an ARI connection that is down is one more way
             // for the call never to happen, and it has to leave a row like the rest.
@@ -1009,8 +1014,6 @@ public class AriService {
                 // always answered as AI_ASSISTANT in the company's default voice.
                 agent = inboundAgent;
                 targetId = callRecordService.inboundTargetId();
-                language = agent.language();
-                ttsVoice = agent.voiceFor(language);
                 scenarioRow = inboundScenario;
                 String callerNumber = extractCallerNumber(channel);
                 phone = callerNumber != null ? callerNumber : "INBOUND";
@@ -1019,6 +1022,14 @@ public class AriService {
                         ? crmClient.findByPhone(companyId, callerNumber) : null;
                 ClientMemory memory = callerNumber != null
                         ? clientMemoryService.findByCompanyIdAndPhone(companyId, callerNumber) : null;
+                // Read after the lookups, not before — a caller the company already knows to
+                // be Russian-speaking used to be answered in the agent's language on every
+                // inbound call, while the same person was called in Russian outbound.
+                language = CallLanguage.resolve(
+                        crm != null ? crm.preferredLanguage() : null,
+                        memory != null ? memory.preferredLanguage() : null,
+                        agent.language());
+                ttsVoice = agent.voiceFor(language);
                 // The webhook's answer goes on last, over the CRM: it was asked most recently.
                 context = CallContextMapper.overlayJson(
                         CallContextMapper.merge(new CallContext(Map.of(), null), crm).withMemory(memory),

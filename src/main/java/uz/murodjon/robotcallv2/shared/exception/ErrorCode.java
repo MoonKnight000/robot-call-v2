@@ -60,6 +60,7 @@ public enum ErrorCode {
     CAMPAIGN_RECURRENCE_INVALID("Invalid campaign recurrence configuration: %s"),
     TTS_VOICE_UNKNOWN("Unknown TTS voice '%s'; available: %s"),
     TTS_VOICE_LANGUAGE_MISMATCH("TTS voice '%s' speaks %s, so it cannot be the voice for %s"),
+    AI_MODEL_UNKNOWN("Unknown AI model '%s'; available: %s"),
     ENGINE_STT_PROVIDER_UNKNOWN("Unknown STT provider '%s'; available: %s"),
     ENGINE_TTS_PROVIDER_UNKNOWN("Unknown TTS provider '%s'; available: %s"),
     ENGINE_REALTIME_NOT_AVAILABLE("REALTIME mode has no engine wired in this build — use CASCADE"),
