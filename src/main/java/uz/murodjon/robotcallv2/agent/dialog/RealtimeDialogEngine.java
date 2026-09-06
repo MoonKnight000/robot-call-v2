@@ -159,7 +159,7 @@ public class RealtimeDialogEngine implements CallDialog {
                     new RealtimeCallConfig(channelId, language, prompt, voiceFor(voice, provider), session.tools(),
                             effective.pipecatStt(), effective.pipecatLlm(), effective.pipecatTts(),
                             agent != null ? agent.llmModel() : null),
-                    new EngineListener(session, provider.outputSampleRate(), fallback));
+                    new EngineListener(session, provider.outputSampleRate(), fallback, bridge));
             session.setEngine(engine);
             sessions.put(channelId, session);
             bridge.arm(engine, provider.inputSampleRate());
@@ -350,17 +350,26 @@ public class RealtimeDialogEngine implements CallDialog {
         private final StreamingDownsampler downsampler;
         /** Runs the call on the cascade pipeline instead; null leaves hanging up as the only option. */
         private final Runnable fallback;
+        /**
+         * The caller's side of the line. Armed as soon as the session is open, but only
+         * opened once the engine has started speaking — {@link RealtimeAudioBridge#open()}
+         * says why.
+         */
+        private final RealtimeAudioBridge bridge;
 
-        private EngineListener(RealtimeDialogSession session, int engineRate, Runnable fallback) {
+        private EngineListener(RealtimeDialogSession session, int engineRate, Runnable fallback,
+                               RealtimeAudioBridge bridge) {
             this.session = session;
             this.downsampler = engineRate == 24000
                     ? StreamingDownsampler.from24kTo8k()
                     : StreamingDownsampler.from16kTo8k();
             this.fallback = fallback;
+            this.bridge = bridge;
         }
 
         @Override
         public void onBotAudio(short[] pcm) {
+            bridge.open();
             short[] telephone = downsampler.push(pcm, pcm.length);
             if (telephone.length > 0) {
                 session.endpoint().enqueuePcm(telephone);
@@ -390,6 +399,9 @@ public class RealtimeDialogEngine implements CallDialog {
 
         @Override
         public void onTurnComplete() {
+            // Also here, not only on audio: a first turn that only called a tool would
+            // otherwise leave the caller unheard for the rest of the call.
+            bridge.open();
             session.countTurn();
             if (session.isEnded()) {
                 toolExecutor.execute(() -> finishWhenSpoken(session));

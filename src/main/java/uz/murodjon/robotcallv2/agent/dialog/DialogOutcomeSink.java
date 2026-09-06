@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 /**
@@ -30,6 +31,12 @@ public interface DialogOutcomeSink {
      * ignores this.
      */
     void addToolReply(String reply);
+
+    /** The scenario this call runs — its stages are what {@link #setState} moves between. */
+    ScenarioDefinition scenario();
+
+    /** The stage the conversation is in right now. */
+    String state();
 
     /** Move the FSM to {@code state}. */
     void setState(String state);

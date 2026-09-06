@@ -38,6 +38,8 @@ class DialogToolsTest {
 
     @Test
     void dropsUnspeakableReplyInTransitionTo() {
+        session.setState("DEBT_NOTICE");
+
         tools.transitionTo("dynamic_thought_or_fallback", "REASON_INQUIRY");
 
         assertThat(session.state()).isEqualTo("REASON_INQUIRY");
@@ -46,6 +48,8 @@ class DialogToolsTest {
 
     @Test
     void keepsValidReplyInTransitionTo() {
+        session.setState("DEBT_NOTICE");
+
         tools.transitionTo("Tushunarli. Sabab nimada?", "REASON_INQUIRY");
 
         assertThat(session.state()).isEqualTo("REASON_INQUIRY");
@@ -123,6 +127,18 @@ class DialogToolsTest {
 
         assertThat(session.state()).isEqualTo("IDENTITY_CHECK");
         assertThat(session.toolReplies()).isEqualTo("Murodjon sizmi?");
+    }
+
+    @Test
+    void refusesATransitionTheScenarioDoesNotAllow() {
+        // GREETING leads to IDENTITY_CHECK: jumping past it skips verifying who answered.
+        String result = tools.transitionTo("Sizning qarzingiz bor.", "DEBT_NOTICE");
+
+        assertThat(result).startsWith("XATO:");
+        // The model has to be told where it may go, or it re-sends the same stage.
+        assertThat(result).contains("IDENTITY_CHECK");
+        assertThat(session.state()).isEqualTo("GREETING");
+        assertThat(session.toolReplies()).isNull();
     }
 
     @Test

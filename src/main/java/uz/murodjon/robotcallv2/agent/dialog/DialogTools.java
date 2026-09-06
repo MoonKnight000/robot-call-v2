@@ -5,10 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -53,16 +55,38 @@ public class DialogTools {
         }
     }
 
+    /**
+     * The stages the scenario lets the current one move to, or empty when it names none.
+     *
+     * <p>Checked rather than trusted, because a skipped stage is skipped work: a call
+     * that jumps GREETING straight to DEBT_NOTICE never verified it had the right
+     * person on the line. The prompt lists the transitions either way, but a rule that
+     * lives only in the prompt is one the model can talk itself out of.
+     */
+    private List<String> allowedTransitions() {
+        StageDef stage = session.scenario() == null ? null : session.scenario().findStage(session.state());
+        List<String> allowed = stage == null ? null : stage.allowedTransitions();
+        return allowed == null ? List.of() : allowed;
+    }
+
     @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
     public String transitionTo(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                @ToolParam(description = "keyingi bosqich id'si") String nextStage) {
+        List<String> allowed = allowedTransitions();
+        if (!allowed.isEmpty() && !allowed.contains(nextStage)) {
+            log.warn("[{}] refused transition {} -> {}", session.channelId(), session.state(), nextStage);
+            return "XATO: " + session.state() + " bosqichidan faqat " + String.join(", ", allowed)
+                    + " ga o'tish mumkin. Bosqichni tashlab ketmang.";
+        }
         recordReply(reply);
         session.setState(nextStage);
         log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
         return "Holat " + nextStage + " ga o'tkazildi";
     }
 
-    @Tool(description = "Mijoz aniq to'lov sanasini va'da qilganda chaqiriladi")
+    @Tool(description = "Mijoz ANIQ KUNni o'zi aytganda chaqiriladi (masalan \"10-oktabr\", \"ertaga\"). "
+            + "Mijoz \"keyingi oy\", \"oy oxirida\", \"pul bo'lganda\" kabi noaniq javob bersa CHAQIRMANG "
+            + "— avval qaysi kun ekanini so'rang. Sanani o'zingizdan taxmin qilish TAQIQLANADI")
     public String recordPaymentPromise(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
             @ToolParam(description = "va'da qilingan sana, format yyyy-MM-dd") LocalDate promisedDate,
