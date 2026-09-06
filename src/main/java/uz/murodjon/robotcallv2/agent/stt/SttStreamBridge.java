@@ -52,16 +52,47 @@ public class SttStreamBridge implements AudioListener, Closeable {
     /** Circular replay buffer to recover speech frames lost during gRPC drops (~2 seconds @ 8kHz). */
     private static final int MAX_REPLAY_SAMPLES = 16000;
 
+    /**
+     * How long after a promoted final the provider's own final for the same utterance
+     * is still expected, and dropped. Past this a final belongs to the next utterance.
+     */
+    private static final long PROMOTED_FINAL_TTL_MS = 2500;
+
+    /**
+     * Failures of one provider — a stream that would not open, or one that took audio
+     * without ever answering — before the call is moved to another vendor. Two, not one:
+     * a single dropped stream is ordinary and the reopen above recovers it, and switching
+     * vendors mid-sentence costs the recognizer whatever context it had built up.
+     */
+    private static final int FAILOVER_AFTER_FAILURES = 2;
+
     private final String channelId;
-    private final int targetSampleRate;
     private final int sourceSampleRate;
     private final SpeechGate gate;
     private final VoiceMetrics metrics;
-    private final SttProvider provider;
+    /** Where another provider comes from when this one stops working; null disables failover. */
+    private final SttProviderSelector selector;
+    /**
+     * The provider recognizing this call, and the rate it wants audio in. Not final: a
+     * provider that keeps failing is replaced mid-call ({@link #failOver()}), and the
+     * rate is the replacement's — sending 8 kHz audio to a provider expecting 16 kHz
+     * transcribes as gibberish rather than failing.
+     */
+    private volatile SttProvider provider;
+    private volatile int targetSampleRate;
+    /**
+     * Failures charged to the provider in hand. Cleared by a transcript and by nothing
+     * else: a reopen that succeeds proves the socket opens, not that anything is being
+     * recognized, and clearing it there let a provider that stalls every thirty seconds
+     * reset its own count forever without the call ever moving off it.
+     */
+    private volatile int providerFailures;
     private final String language;
     /** Other languages this caller may answer in ({@code voice-agent.stt.detect-languages}). */
     private final List<String> alternativeLanguages;
     private final TranscriptListener listener;
+    /** Who the transcripts are for, once this bridge has had its say — the dialog side. */
+    private final TranscriptListener downstream;
     /** Words this call is likely to contain, for a provider that can be biased ({@link SttHints}). */
     private final List<String> hints;
     /** Told when an utterance is declared over, with the silence that closed it. */
@@ -94,6 +125,17 @@ public class SttStreamBridge implements AudioListener, Closeable {
     /** Whether the previous frame was sent — only used to log gate transitions. */
     private boolean streaming = true;
 
+    // Promoting a late final (EndpointingProperties#finalGraceMs). Guarded by finalLock:
+    // the provider's final and the grace timer race for the same utterance.
+    private final Object finalLock = new Object();
+    private final long finalGraceMs;
+    /** The provider's last interim for the utterance in hand. */
+    private String lastInterim;
+    /** An EOU has been sent and the provider has not answered it with a final yet. */
+    private boolean finalPending;
+    /** When the last interim was promoted, or 0 — the provider's late final is dropped for a while. */
+    private long promotedAt;
+
     /**
      * @param endpointing       when enabled <em>and</em> a gate is installed, this call decides
      *                          when the caller has finished and tells the provider.
@@ -103,11 +145,16 @@ public class SttStreamBridge implements AudioListener, Closeable {
      *                          declares an utterance over. Null for a call nothing is timing
      * @param hints             words this call is likely to contain — the client's name, the
      *                          services they will be pointed at ({@link SttHints}).
+     * @param selector          where a replacement provider comes from when this one keeps
+     *                          failing. Null leaves the call on the provider it started with,
+     *                          which is what an offline tool replaying a fixed recording wants
      */
     public SttStreamBridge(SttProvider provider, int targetSampleRate, int sourceSampleRate, String channelId,
                            String language, List<String> alternativeLanguages, TranscriptListener listener,
                            SpeechGate gate, VoiceMetrics metrics, EndpointingProperties endpointing,
-                           int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints) {
+                           int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
+                           SttProviderSelector selector) {
+        this.selector = selector;
         this.channelId = channelId;
         this.hints = hints == null ? List.of() : List.copyOf(hints);
         this.onUtteranceEnd = onUtteranceEnd != null ? onUtteranceEnd : ms -> { };
@@ -118,23 +165,33 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.provider = provider;
         this.language = language;
         this.alternativeLanguages = alternativeLanguages == null ? List.of() : List.copyOf(alternativeLanguages);
+        this.downstream = listener;
         this.listener = (text, isFinal, confidence) -> {
             lastResponseAt = System.currentTimeMillis();
+            providerFailures = 0;
             if (closed) {
                 log.warn("[{}] transcript arrived after the call ended, ignored: {}", channelId, text);
                 return;
             }
             if (isFinal) {
                 clearReplayBuffer();
-            }
-            if (!isFinal && gate != null) {
-                gate.onInterimTranscript(text);
+                if (!claimFinal(text)) {
+                    return; // already answered from the last interim
+                }
+            } else {
+                if (gate != null) {
+                    gate.onInterimTranscript(text);
+                }
+                synchronized (finalLock) {
+                    lastInterim = text;
+                }
             }
             if (listener != null) {
                 listener.onTranscript(text, isFinal, confidence);
             }
         };
         this.externalEndpointing = endpointing != null && endpointing.enabled() && gate != null;
+        this.finalGraceMs = externalEndpointing ? Math.max(0, endpointing.finalGraceMs()) : 0;
         this.maxUtteranceSamples = externalEndpointing
                 ? (long) Math.max(1000, endpointing.maxUtteranceMs()) * sourceSampleRate / 1000
                 : Long.MAX_VALUE;
@@ -256,7 +313,70 @@ public class SttStreamBridge implements AudioListener, Closeable {
             onUtteranceEnd.accept(gate.lastCloseWaitMs());
         } catch (Exception e) {
             log.warn("[{}] end-of-utterance signal failed: {}", channelId, e.getMessage());
+            return;
         }
+        if (finalGraceMs > 0) {
+            synchronized (finalLock) {
+                finalPending = true;
+            }
+            Thread.ofVirtual().name("stt-final-grace-" + channelId).start(this::promoteInterimAfterGrace);
+        }
+    }
+
+    /**
+     * Give the provider {@link #finalGraceMs} to answer the EOU with a final, then take
+     * its last interim as the final instead.
+     *
+     * <p>Measured on recorded calls: the gate closed 500-700 ms after the caller's last
+     * word and SpeechKit's final came another 500-1100 ms after that, saying what the
+     * last interim had said all along. The whole of that second sat in front of every
+     * reply. The provider's own final still comes; {@link #claimFinal} drops it.
+     */
+    private void promoteInterimAfterGrace() {
+        try {
+            Thread.sleep(finalGraceMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        String text;
+        synchronized (finalLock) {
+            if (!finalPending || closed || lastInterim == null || lastInterim.isBlank()) {
+                return; // the final made it in time, or there is nothing to promote yet
+            }
+            text = lastInterim;
+            lastInterim = null;
+            finalPending = false;
+            promotedAt = System.currentTimeMillis();
+        }
+        metrics.sttFinalPromoted();
+        log.info("[{}] no final {} ms after the EOU — using the last interim: {}", channelId, finalGraceMs, text);
+        clearReplayBuffer();
+        if (downstream != null) {
+            downstream.onTranscript(text, true, 0f);
+        }
+    }
+
+    /**
+     * Whether a final from the provider is still wanted, or was already delivered from
+     * the last interim. A dropped one is logged with both texts: the difference between
+     * them says whether the grace is too short.
+     */
+    private boolean claimFinal(String text) {
+        synchronized (finalLock) {
+            finalPending = false;
+            lastInterim = null;
+            if (promotedAt == 0) {
+                return true;
+            }
+            boolean stale = System.currentTimeMillis() - promotedAt < PROMOTED_FINAL_TTL_MS;
+            promotedAt = 0;
+            if (!stale) {
+                return true;
+            }
+        }
+        log.info("[{}] late final dropped, already answered from the interim: {}", channelId, text);
+        return false;
     }
 
     private void dropStalledStream() {
@@ -267,6 +387,11 @@ public class SttStreamBridge implements AudioListener, Closeable {
         log.warn("[{}] {} took audio for {} ms without a single transcript — dropping the stream",
                 channelId, provider.name(), responseTimeoutMs);
         metrics.sttError();
+        // Charged to the provider, not the stream. A vendor that accepts audio and answers
+        // nothing passes every liveness check there is, so reopening it forever is exactly
+        // what this used to do — and a call spent listening to a recognizer that never
+        // speaks is indistinguishable, from the caller's side, from a bot that ignores them.
+        providerFailures++;
         try {
             session.close();
         } catch (Exception e) {
@@ -295,6 +420,9 @@ public class SttStreamBridge implements AudioListener, Closeable {
         } catch (Exception e) {
             log.debug("[{}] closing the dead STT session failed: {}", channelId, e.getMessage());
         }
+        if (providerFailures >= FAILOVER_AFTER_FAILURES) {
+            failOver();
+        }
         try {
             utteranceSamples = 0;
             session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints);
@@ -302,7 +430,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
             streamOpenedAt = now;
             everReady = false;
             droppedFrames = 0;
-            log.warn("[{}] STT stream had died — reopened successfully", channelId);
+            log.warn("[{}] STT stream had died — reopened on {}", channelId, provider.name());
 
             // Replay buffered audio into the fresh stream so speech mid-sentence is not lost!
             if (!replayBuffer.isEmpty()) {
@@ -319,6 +447,41 @@ public class SttStreamBridge implements AudioListener, Closeable {
             log.warn("[{}] STT stream reopen failed: {}", channelId, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Move the call to another vendor after {@link #FAILOVER_AFTER_FAILURES} failures of
+     * the one in hand. Called from {@link #reopen()} with its lock held, so the next
+     * stream is opened on whatever this leaves behind.
+     *
+     * <p>Deliberately one-way and unconditional: there is no going back to the failed
+     * provider later in the call. A vendor that has failed twice in one call is having an
+     * incident, and a bot that flips between recognizers every reopen would spend the
+     * call switching rather than listening. The next call starts on the configured
+     * provider again, because {@code providerFailures} is per bridge and a bridge is per
+     * call — nothing here is remembered past the hangup, which is the right scope for an
+     * outage this side cannot see the end of.
+     */
+    private void failOver() {
+        if (selector == null) {
+            return;
+        }
+        SttProvider replacement = selector.findFallback(provider);
+        if (replacement == null) {
+            // Said once per failure round, not per frame: reopen() is rate-limited by
+            // REOPEN_COOLDOWN_MS, and this is the line that explains a call going quiet.
+            log.warn("[{}] {} has failed {} times and this build has no other STT provider "
+                            + "configured — the call stays on it",
+                    channelId, provider.name(), providerFailures);
+            providerFailures = 0;
+            return;
+        }
+        log.error("[{}] STT failing over: {} failed {} times, switching to {}",
+                channelId, provider.name(), providerFailures, replacement.name());
+        metrics.sttFailover(provider.name(), replacement.name());
+        provider = replacement;
+        targetSampleRate = replacement.sampleRate();
+        providerFailures = 0;
     }
 
     /** Duration of a frame at the source rate — what the provider bills, upsampled or not. */

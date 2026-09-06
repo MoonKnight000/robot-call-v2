@@ -98,7 +98,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
 
         String wsUrl = openAi.url();
         if (!wsUrl.contains("model=")) {
-            wsUrl += (wsUrl.contains("?") ? "&" : "?") + "model=" + openAi.model();
+            wsUrl += (wsUrl.contains("?") ? "&" : "?") + "model=" + config.modelOr(openAi.model());
         }
         URI uri = URI.create(wsUrl);
 
@@ -120,7 +120,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             }
 
             log.info("[{}] OpenAI Realtime session open (model={}, voice={})",
-                    config.channelId(), openAi.model(), openAi.voice());
+                    config.channelId(), config.modelOr(openAi.model()), openAi.voice());
             return session;
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED,

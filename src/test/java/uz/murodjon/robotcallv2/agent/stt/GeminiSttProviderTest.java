@@ -14,7 +14,7 @@ class GeminiSttProviderTest {
     void providerMetadata() {
         GeminiSttProperties geminiProps = new GeminiSttProperties(
                 "dummy-key", "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
-                "gemini-3.5-transcribe", 16000, 10);
+                "gemini-3.5-transcribe-live", 16000, 10);
         SttProperties props = new SttProperties(
                 true, "gemini", "uz-UZ", List.of(), null, null, 0,
                 geminiProps, null, null, null, null);

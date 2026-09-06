@@ -5,7 +5,12 @@ import org.junit.jupiter.api.Test;
 
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
+import uz.murodjon.robotcallv2.campaign.application.service.TargetApiImporter;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
@@ -21,10 +26,8 @@ import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
-import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.user.application.service.UserService;
-import uz.murodjon.robotcallv2.voice.application.service.TtsVoiceService;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -43,13 +46,13 @@ import static org.mockito.Mockito.when;
 class CampaignServiceTest {
 
     private static final long CAMPAIGN_ID = 3L;
+    private static final long AI_AGENT_ID = 7L;
     private static final long TARGET_ID = 42L;
 
     private CampaignRepository campaigns;
     private CampaignTargetRepository targets;
     private DoNotCallRepository doNotCallList;
-    private TtsVoiceService voices;
-    private ScenarioService scenarios;
+    private AiAgentUseCase aiAgents;
     private UserService users;
     private CompanyConfigService companyConfig;
     private CurrentCompany currentCompany;
@@ -57,6 +60,7 @@ class CampaignServiceTest {
     private AuditService audit;
     private NotificationService notifications;
     private TtsWarmup ttsWarmup;
+    private TargetSourceRepository targetSources;
     private Clock clock;
     private CampaignService service;
 
@@ -65,8 +69,8 @@ class CampaignServiceTest {
         campaigns = mock(CampaignRepository.class);
         targets = mock(CampaignTargetRepository.class);
         doNotCallList = mock(DoNotCallRepository.class);
-        voices = mock(TtsVoiceService.class);
-        scenarios = mock(ScenarioService.class);
+        aiAgents = mock(AiAgentUseCase.class);
+        targetSources = mock(TargetSourceRepository.class);
         users = mock(UserService.class);
         companyConfig = mock(CompanyConfigService.class);
         currentCompany = mock(CurrentCompany.class);
@@ -77,15 +81,17 @@ class CampaignServiceTest {
         clock = Clock.systemDefaultZone();
         when(currentCompany.id()).thenReturn(1L);
 
-        service = new CampaignService(campaigns, targets, doNotCallList, voices, scenarios,
-                users, companyConfig, currentCompany, dialerProps, audit, notifications, ttsWarmup, clock);
+        service = new CampaignService(campaigns, targets, doNotCallList, aiAgents,
+                users, companyConfig, currentCompany, dialerProps, audit, notifications, ttsWarmup,
+                targetSources, mock(TargetApiImporter.class), mock(SecretCipher.class), clock);
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
         return new Campaign(
-                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "goal", "uz-UZ",
+                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
                 LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(DayOfWeek.MONDAY), maxAttempts,
-                retryIntervalMinutes, 5, null, 0, 1L, 1L, true, null);
+                retryIntervalMinutes, 5, 0, AI_AGENT_ID, 1L, null,
+                RecurrenceType.ONCE, null, null, false, null);
     }
 
     @Test

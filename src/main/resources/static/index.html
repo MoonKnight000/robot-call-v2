@@ -207,20 +207,11 @@
         <h2><span class="num">1</span>Kampaniya yaratish</h2>
         <p class="hint">POST /api/campaigns</p>
         <label>Nomi</label><input id="c_name" value="Iyul qarzdorlik — test">
-        <div class="row">
-          <div><label>Turi</label>
-            <select id="c_type"><option>DEBT_COLLECTION</option><option>SURVEY</option></select></div>
-          <div><label>Til (default)</label>
-            <select id="c_lang"><option value="uz-UZ">uz-UZ</option><option value="ru-RU">ru-RU</option></select></div>
-        </div>
-        <label>TTS ovozi</label>
-        <select id="c_voice"><option value="">(standart sozlama)</option></select>
-        <p class="hint">GET /api/tts/voices — tanlangan til uchun mavjud ovozlar</p>
-        <label>Ssenariy (scenarioId)</label>
-        <select id="c_scenario"><option value="">(standart ssenariy)</option></select>
-        <p class="hint">POST /api/scenarios/list — kampaniya ishlaydigan ssenariy (majburiy, ROADMAP A.3)</p>
-        <label>Maqsad / skript (goalPrompt)</label>
-        <textarea id="c_goal">Mijozdan qarzni to'lash sanasini aniqlang. Muloyim va professional bo'ling.</textarea>
+        <label>Turi</label>
+        <select id="c_type"><option>DEBT_COLLECTION</option><option>SURVEY</option></select>
+        <label>AI agent (aiAgentId)</label>
+        <select id="c_agent"><option value="">(agent tanlang)</option></select>
+        <p class="hint">POST /api/ai-agents/filter — senariy, til, ovoz, persona va SIP trunklar shu agentdan olinadi</p>
         <div class="row">
           <div><label>Oyna boshi</label><input id="c_ws" type="time" value="07:00"></div>
           <div><label>Oyna oxiri</label><input id="c_we" type="time" value="23:00"></div>
@@ -614,7 +605,7 @@ $('apiKey').value = localStorage.getItem(KEY_STORE) || '';
 $('apiKey').addEventListener('change', () => {
   localStorage.setItem(KEY_STORE, $('apiKey').value.trim());
   checkConn();
-  loadVoices('c_voice',$('c_lang').value,true);
+  loadAiAgents();
   loadVoices('ca_sayvoice',$('ca_saylang').value,true);
   loadScenarios();
   loadSipTrunks();
@@ -723,9 +714,18 @@ async function loadScenarios(){
       return html + items.map(s=>`<option value="${s.id}">${esc(s.name)} [ID: ${s.id}, ${esc(s.scenarioKey)}]</option>`).join('');
     };
     if($('ca_scenario')) $('ca_scenario').innerHTML = buildOptions(true);
-    if($('c_scenario')) $('c_scenario').innerHTML = buildOptions(false);
     log(`Ssenariylar yuklandi (${items.length} ta)`,'ok');
   }catch(e){ log('Ssenariylarni yuklab bo\'lmadi: '+e.message,'bad'); }
+}
+
+async function loadAiAgents(){
+  try{
+    const r=await api('POST','/api/ai-agents/filter',{body:{page:0,size:50}});
+    const items = (r.ok && r.data?.items) ? r.data.items : [];
+    if($('c_agent')) $('c_agent').innerHTML = '<option value="">(agent tanlang)</option>'+
+      items.map(a=>`<option value="${a.id}">${esc(a.name)} [${esc(a.language)}, ${esc(a.scenarioName||'')}]</option>`).join('');
+    log(`AI agentlar yuklandi (${items.length} ta)`,'ok');
+  }catch(e){ log('Agentlarni yuklab bo\'lmadi: '+e.message,'bad'); }
 }
 
 function toggleDraftJson(){
@@ -736,12 +736,12 @@ function toggleDraftJson(){
 /* ================= CAMPAIGN ================= */
 async function createCampaign(){
   const body={
-    name:$('c_name').value, type:$('c_type').value, goalPrompt:$('c_goal').value,
-    defaultLanguage:$('c_lang').value, dialWindowStart:$('c_ws').value+':00',
+    name:$('c_name').value, type:$('c_type').value,
+    aiAgentId:+$('c_agent').value||null,
+    dialWindowStart:$('c_ws').value+':00',
     dialWindowEnd:$('c_we').value+':00', maxAttempts:+$('c_max').value,
     retryIntervalMinutes:+$('c_retry').value, maxConcurrentCalls:+$('c_conc').value,
-    ttsVoice:$('c_voice').value||null, dailyCallCap:+$('c_cap').value,
-    scenarioId:+$('c_scenario').value||null
+    dailyCallCap:+$('c_cap').value
   };
   try{
     const r=await api('POST','/api/campaigns',{body}); showResp('c_resp',r);
@@ -1522,9 +1522,8 @@ function highlightFsm(state){
 }
 
 /* ---------- init ---------- */
-$('c_lang').addEventListener('change',()=>loadVoices('c_voice',$('c_lang').value,true));
 $('ca_saylang').addEventListener('change',()=>loadVoices('ca_sayvoice',$('ca_saylang').value,true));
-loadVoices('c_voice',$('c_lang').value);
+loadAiAgents();
 loadVoices('ca_sayvoice',$('ca_saylang').value);
 loadScenarios();
 checkConn();

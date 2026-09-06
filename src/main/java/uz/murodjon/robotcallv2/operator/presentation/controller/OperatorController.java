@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.operator.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,14 +20,17 @@ import java.util.Map;
 @RequestMapping("/api/operator")
 public interface OperatorController {
 
+    @PreAuthorize("hasAuthority('OPERATOR_READ')")
     @GetMapping("/calls/{channelId}")
     ResponseEntity<ResponseData<OperatorSnapshot>> context(@PathVariable String channelId);
 
+    @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/calls/{channelId}/takeover")
     ResponseEntity<ResponseData<Map<String, Object>>> takeover(
             @PathVariable String channelId,
             @RequestParam(required = false, defaultValue = "100") String extension);
 
+    @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/calls/{channelId}/whisper")
     ResponseEntity<ResponseData<Map<String, Object>>> whisper(
             @PathVariable String channelId,

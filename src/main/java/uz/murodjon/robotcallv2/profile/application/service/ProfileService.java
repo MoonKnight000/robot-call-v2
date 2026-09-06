@@ -115,7 +115,7 @@ public class ProfileService implements ProfileUseCase {
 
     private static Profile toProfile(User u) {
         return new Profile(u.id(), u.name(), u.username(), u.email(), u.phone(), u.position(),
-                u.avatarFileId(), u.role(), u.companyId(), u.lastLoginAt(), u.createdAt(),
+                u.avatarFileId(), u.roleId(), u.roleCode(), u.roleName(), u.companyId(), u.lastLoginAt(), u.createdAt(),
                 parseCallColumns(u.callColumns()));
     }
 

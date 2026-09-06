@@ -6,9 +6,14 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -26,7 +31,7 @@ class SystemPromptFactoryTest {
 
     private static DialogSession session(CallContext context, String language) {
         return new DialogSession("chan-1", language, null, context, ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
+                null, null, null, 1L, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
     }
 
     @Test
@@ -63,12 +68,13 @@ class SystemPromptFactoryTest {
 
     @Test
     void injectsMultiCallMemoryWhenPresent() {
-        CallContext contextWithMemory = new CallContext(Map.of(
-                "clientName", "Aziz Karimov",
-                "operatorNotes", "Mijoz bilan xushmuomala gaplashing, aka deb murojaat qiling",
-                "lastCallSummary", "O'tgan safar dushanba kuni to'lashga va'da bergandi",
-                "preferredName", "Aziz aka"
-        ), "To'lov sanasini kelishish.");
+        ClientMemory memory = new ClientMemory(1L, 1L, "+998901234567", "Aziz aka", null,
+                "Mijoz bilan xushmuomala gaplashing, aka deb murojaat qiling",
+                List.of(new RememberedCall(Instant.parse("2026-08-20T09:00:00Z"), "debt-collection",
+                        Disposition.PROMISE_TO_PAY, "O'tgan safar dushanba kuni to'lashga va'da bergandi")),
+                Map.of("promisedDate", "2026-08-25"), null);
+        CallContext contextWithMemory = new CallContext(Map.of("clientName", "Aziz Karimov"),
+                "To'lov sanasini kelishish.", memory);
 
         String prompt = factory.stablePrefix(session(contextWithMemory, "uz-UZ"));
 
@@ -76,7 +82,17 @@ class SystemPromptFactoryTest {
                 .contains("MULTI-CALL MEMORY")
                 .contains("Aziz aka")
                 .contains("xushmuomala gaplashing")
-                .contains("dushanba kuni to'lashga va'da bergandi");
+                .contains("2026-08-20")
+                .contains("PROMISE_TO_PAY")
+                .contains("dushanba kuni to'lashga va'da bergandi")
+                .contains("2026-08-25");
+    }
+
+    @Test
+    void firstConversationCarriesNoMemoryBlock() {
+        String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+
+        assertThat(prompt).doesNotContain("MULTI-CALL MEMORY");
     }
 
     private static Stream<String> debtCollectionStageIds() {
@@ -240,7 +256,7 @@ class SystemPromptFactoryTest {
                 java.util.List.of("Savollarni neytral tarzda bering"),
                 "disclosure");
         DialogSession s = new DialogSession("chan-2", "uz-UZ", null,
-                new CallContext(Map.of("topicName", "xizmat sifati"), null), survey, null, null, null, 1L, null, true,
+                new CallContext(Map.of("topicName", "xizmat sifati"), null), survey, null, null, null, 1L, 1L, null, true,
                 "Uysot", null, null, EffectiveVoiceSettings.NONE);
 
         String prompt = factory.stablePrefix(s);
@@ -254,7 +270,7 @@ class SystemPromptFactoryTest {
     void humanLikePersonaConfiguresNameAndProhibitsRobotIdentity() {
         DialogSession session = new DialogSession(
                 "chan-1", "uz", "dilnavoz", ScenarioFixtures.fullContext(), ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, null, false, "Uysot", null, null,
+                null, null, null, 1L, 1L, null, false, "Uysot", null, null,
                 EffectiveVoiceSettings.NONE, true, AgentPersona.HUMAN_LIKE, Map.of()
         );
 
@@ -270,7 +286,7 @@ class SystemPromptFactoryTest {
     void aiAssistantPersonaConfiguresRobotDisclosureAndFallback() {
         DialogSession session = new DialogSession(
                 "chan-1", "uz", "dilnavoz", ScenarioFixtures.fullContext(), ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, null, true, "Uysot", null, null,
+                null, null, null, 1L, 1L, null, true, "Uysot", null, null,
                 EffectiveVoiceSettings.NONE, true, AgentPersona.AI_ASSISTANT, Map.of()
         );
 

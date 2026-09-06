@@ -9,11 +9,15 @@ import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
 import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.agent.rtp.WavRecorder;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
+import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
@@ -46,6 +50,7 @@ import static org.mockito.Mockito.when;
 class DialerServiceTest {
 
     private static final long CAMPAIGN_ID = 3L;
+    private static final long AI_AGENT_ID = 7L;
     private static final ZoneId ZONE = ZoneId.systemDefault();
 
     /** 51 even ports — well clear of the limits under test, so only those are exercised. */
@@ -58,6 +63,7 @@ class DialerServiceTest {
     private RabbitTemplate rabbit;
     private DialerState state;
     private TtsWarmup ttsWarmup;
+    private AiAgentUseCase aiAgents;
 
     @BeforeEach
     void setUp() {
@@ -67,6 +73,9 @@ class DialerServiceTest {
         rabbit = mock(RabbitTemplate.class);
         state = mock(DialerState.class);
         ttsWarmup = mock(TtsWarmup.class);
+        aiAgents = mock(AiAgentUseCase.class);
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID))
+                .thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 10L, "uz-UZ", "dilfuza"));
         when(state.active(anyLong())).thenReturn(0);
         when(state.activeTotal()).thenReturn(0);
         when(sipTrunks.findTrunksForCall(anyLong(), any())).thenReturn(List.of());
@@ -81,13 +90,14 @@ class DialerServiceTest {
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class),
                 mock(GracefulShutdownManager.class), ttsWarmup,
-                Clock.fixed(now.toInstant(), ZONE));
+                Clock.fixed(now.toInstant(), ZONE), mock(CampaignVariantUseCase.class), aiAgents);
     }
 
     private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
         when(campaigns.findActive()).thenReturn(List.of(new Campaign(
-                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE, "goal", "uz-UZ",
-                LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, null, dailyCallCap, 1L, 1L, true, null)));
+                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
+                LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, dailyCallCap, AI_AGENT_ID, 1L, null,
+                RecurrenceType.ONCE, null, null, false, null)));
     }
 
     private void givenDueTargets(int count) {
@@ -188,7 +198,7 @@ class DialerServiceTest {
                 RTP_PROPS, campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class), shutdown, ttsWarmup,
-                Clock.systemDefaultZone());
+                Clock.systemDefaultZone(), mock(CampaignVariantUseCase.class), aiAgents);
 
         dialer.dispatch();
 

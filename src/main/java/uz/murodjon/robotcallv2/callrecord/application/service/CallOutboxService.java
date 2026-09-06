@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.callrecord.application.dto.PendingSummary;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallOutboxRepository;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
 import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
+import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class CallOutboxService {
     private final SummaryService summaryService;
     private final CrmClient crmClient;
     private final ScenarioService scenarioService;
+    private final CallMemoryWriter memoryWriter;
     private final boolean enabled;
     private final int maxAttempts;
     private final int batch;
@@ -38,6 +40,7 @@ public class CallOutboxService {
                              SummaryService summaryService,
                              CrmClient crmClient,
                              ScenarioService scenarioService,
+                             CallMemoryWriter memoryWriter,
                              @Value("${voice-agent.outbox.enabled:true}") boolean enabled,
                              @Value("${voice-agent.outbox.max-attempts:5}") int maxAttempts,
                              @Value("${voice-agent.outbox.batch:20}") int batch) {
@@ -46,6 +49,7 @@ public class CallOutboxService {
         this.summaryService = summaryService;
         this.crmClient = crmClient;
         this.scenarioService = scenarioService;
+        this.memoryWriter = memoryWriter;
         this.enabled = enabled;
         this.maxAttempts = maxAttempts;
         this.batch = batch;
@@ -76,16 +80,16 @@ public class CallOutboxService {
             outbox.countSummaryAttempt(p.callId());
             try {
                 String transcript = records.transcriptText(p.callId());
-                long targetId = p.targetId();
-                // Find scenario id via target / company or direct lookup if present
-                var scenario = scenarioService.requireScenario(p.companyId()).definition(); // or scenarioId if passed in row
-                CallSummary summary = summaryService.summarize(transcript, scenario);
+                Scenario scenario = scenarioService.requireScenario(p.scenarioId());
+                CallSummary summary = summaryService.summarize(transcript, scenario.definition());
                 if (summary == null) {
                     log.debug("Outbox: summary still unavailable for call {}", p.callId());
                     continue;
                 }
-                Long noteId = crmClient.postNote(records.companyIdOf(p.callId()), targetId, summary);
+                long companyId = records.companyIdOf(p.callId());
+                Long noteId = crmClient.postNote(companyId, p.clientId(), summary);
                 records.writeResult(p.callId(), summary, false, noteId);
+                memoryWriter.remember(p.callId(), companyId, scenario, p.disposition(), summary);
                 log.info("Outbox: summarized call {} on retry (crmNoteId={})", p.callId(), noteId);
             } catch (Exception e) {
                 log.warn("Outbox: summary retry failed for call {}: {}", p.callId(), e.getMessage());

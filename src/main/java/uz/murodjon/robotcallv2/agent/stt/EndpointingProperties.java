@@ -33,12 +33,22 @@ package uz.murodjon.robotcallv2.agent.stt;
  *                         bot that never answers
  * @param dynamic          lets the long-utterance wait learn the caller's rhythm instead of
  *                         staying at the one {@code post-roll-ms} configured for everyone
+ * @param finalGraceMs     how long after this side declares the utterance over the
+ *                         provider's final is waited for before the last interim is taken
+ *                         as the final instead ({@code SttStreamBridge}). 0 always waits
+ * @param completeSilenceMs silence that ends an utterance whose last interim reads as a
+ *                         finished sentence ({@code TranscriptTurnCues}) — shorter than
+ *                         the post-roll, which stays the budget for a caller whose words
+ *                         say they may still be mid-thought. 0 leaves the words unable
+ *                         to shorten the wait
  */
 public record EndpointingProperties(
         boolean enabled,
         int shortUtteranceMs,
         int shortSilenceMs,
         int maxUtteranceMs,
-        DynamicEndpointingProperties dynamic
+        DynamicEndpointingProperties dynamic,
+        int finalGraceMs,
+        int completeSilenceMs
 ) {
 }

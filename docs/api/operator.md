@@ -1,6 +1,6 @@
 ﻿# Operator API
 
-`uz.murodjon.robotcallv2.operator` · rol: **ADMIN**
+`uz.murodjon.robotcallv2.operator` · huquq: **OPERATOR_READ** / **OPERATOR_EDIT**
 
 Qo'ng'iroq operatorga uzatilgandan keyin operator ekrani shu endpointlarni ishlatadi:
 mijoz kontekstini ko'rish, jonli qo'ng'iroqni o'z apparatiga qabul qilish (takeover) va

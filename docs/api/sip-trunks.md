@@ -1,6 +1,6 @@
 ﻿# SIP trunklar API
 
-`uz.murodjon.robotcallv2.siptrunk` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.robotcallv2.siptrunk` · huquq: **SIP_TRUNK_READ** / **SIP_TRUNK_EDIT**
 
 Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin (ROADMAP B.3), ulardan aynan bittasi — **default** (standart).
 

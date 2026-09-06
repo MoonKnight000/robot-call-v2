@@ -1,6 +1,6 @@
 ﻿# Fayllar (StoredFile katalogi) API
 
-`uz.murodjon.robotcallv2.storage` · rol: istalgan (kirgan bo'lsa yetarli)
+`uz.murodjon.robotcallv2.storage` · huquq: talab qilinmaydi (kirgan bo'lsa yetarli)
 
 Bu loyihada har qanday fayl (kompaniya logotipi, foydalanuvchi avatari,
 qo'ng'iroq yozuvi, hujjatlar) MinIO/S3'da saqlanadi, lekin **frontend hech qachon MinIO'ga
@@ -41,8 +41,8 @@ Interfeysdan har qanday fayllarni (rasmlar, audio namunalar, CSV/hujjatlar) yukl
     "category": "IMAGE",
     "createdAt": "2026-09-02T12:00:00Z"
   },
-  "message": "Fayl muvaffaqiyatli yuklandi",
-  "messageCode": "SUCCESS",
+  "message": null,
+  "messageCode": null,
   "errors": null
 }
 ```

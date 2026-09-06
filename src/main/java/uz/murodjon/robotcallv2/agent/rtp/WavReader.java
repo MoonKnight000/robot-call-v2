@@ -24,6 +24,22 @@ public final class WavReader {
      * Parse RIFF/WAVE bytes already in memory (e.g. a TTS provider's WAV output).
      */
     public static WavAudio read(byte[] bytes) throws IOException {
+        WavChannels wav = readChannels(bytes);
+        return new WavAudio(wav.sampleRate(), wav.channels()[0]);
+    }
+
+    /**
+     * The same file with its channels kept apart — for a call recording, where the left
+     * channel is the caller and the right is the bot ({@link WavRecorder.RecordingMode}) and the
+     * down-mix {@link #read} performs would throw away the half that says who was
+     * talking.
+     */
+    public static WavChannels readChannels(Path path) throws IOException {
+        return readChannels(Files.readAllBytes(path));
+    }
+
+    /** {@link #readChannels(Path)} over bytes already in memory. */
+    public static WavChannels readChannels(byte[] bytes) throws IOException {
         ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
 
         if (bytes.length < 12 || buf.getInt(0) != 0x46464952 /* "RIFF" */) {
@@ -62,11 +78,14 @@ public final class WavReader {
         dataLength = Math.min(dataLength, bytes.length - dataOffset);
 
         int frames = dataLength / (2 * channels);
-        short[] samples = new short[frames];
+        short[][] planes = new short[channels][frames];
         for (int i = 0; i < frames; i++) {
-            // Left channel only when stereo.
-            samples[i] = buf.getShort(dataOffset + i * 2 * channels);
+            // Samples are interleaved frame by frame: L R L R for stereo.
+            int frame = dataOffset + i * 2 * channels;
+            for (int c = 0; c < channels; c++) {
+                planes[c][i] = buf.getShort(frame + c * 2);
+            }
         }
-        return new WavAudio(sampleRate, samples);
+        return new WavChannels(sampleRate, planes);
     }
 }

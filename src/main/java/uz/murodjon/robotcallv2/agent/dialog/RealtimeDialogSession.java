@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 /**
  * State for one call running on a speech-to-speech engine — the realtime counterpart to
@@ -54,6 +55,8 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile String state;
     private volatile Disposition disposition;
     private volatile String doNotCallReason;
+    /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
+    private volatile Consumer<String> dtmfSender;
     private volatile boolean ended;
     /** Turns the engine completed — the closest realtime equivalent of an LLM turn count. */
     private volatile int turnCount;
@@ -111,6 +114,21 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     @Override
     public void setDoNotCallReason(String reason) {
         this.doNotCallReason = reason;
+    }
+
+    /** See {@link DialogSession#setDtmfSender} — same wiring, speech-to-speech engine. */
+    public void setDtmfSender(Consumer<String> sender) {
+        this.dtmfSender = sender;
+    }
+
+    @Override
+    public boolean sendDtmf(String digits) {
+        Consumer<String> sender = dtmfSender;
+        if (sender == null) {
+            return false;
+        }
+        sender.accept(digits);
+        return true;
     }
 
     public String language() {

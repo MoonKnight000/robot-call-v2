@@ -10,9 +10,10 @@ import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCas
 import uz.murodjon.robotcallv2.inbound.application.port.output.InboundRouteRepository;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.service.InboundRouteValidator;
+import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
-import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -31,14 +32,17 @@ import java.util.stream.Collectors;
 public class InboundRouteService implements InboundRouteUseCase {
 
     private final InboundRouteRepository routes;
-    private final ScenarioUseCase scenarios;
+    private final AiAgentUseCase aiAgents;
+    private final CurrentCompany currentCompany;
     private final ReportRepository reports;
     private final AuditService audit;
 
-    public InboundRouteService(InboundRouteRepository routes, ScenarioUseCase scenarios,
+    public InboundRouteService(InboundRouteRepository routes, AiAgentUseCase aiAgents,
+                               CurrentCompany currentCompany,
                                ReportRepository reports, AuditService audit) {
         this.routes = routes;
-        this.scenarios = scenarios;
+        this.aiAgents = aiAgents;
+        this.currentCompany = currentCompany;
         this.reports = reports;
         this.audit = audit;
     }
@@ -47,8 +51,8 @@ public class InboundRouteService implements InboundRouteUseCase {
     public InboundRouteRow create(CreateInboundRouteRequest r) {
         InboundRouteValidator.validateBusinessHours(r.businessHoursStart(), r.businessHoursEnd());
         String did = PhoneNumbers.require(r.didNumber());
-        if (r.scenarioId() != null) {
-            scenarios.requireScenario(r.scenarioId());
+        if (r.aiAgentId() != null) {
+            aiAgents.requireAgent(currentCompany.id(), r.aiAgentId());
         }
         if (routes.existsEnabledByDid(did)) {
             throw new ConflictException(ErrorCode.INBOUND_ROUTE_DID_EXISTS, did);
@@ -63,8 +67,8 @@ public class InboundRouteService implements InboundRouteUseCase {
         InboundRouteValidator.validateBusinessHours(r.businessHoursStart(), r.businessHoursEnd());
         requireRoute(id);
         String did = PhoneNumbers.require(r.didNumber());
-        if (r.scenarioId() != null) {
-            scenarios.requireScenario(r.scenarioId());
+        if (r.aiAgentId() != null) {
+            aiAgents.requireAgent(currentCompany.id(), r.aiAgentId());
         }
         if (r.enabled() && routes.existsEnabledByDidExcluding(did, id)) {
             throw new ConflictException(ErrorCode.INBOUND_ROUTE_DID_EXISTS, did);
@@ -86,16 +90,16 @@ public class InboundRouteService implements InboundRouteUseCase {
     public PageableData<InboundRouteRow> list(InboundRouteFilter filter) {
         List<InboundRoute> rows = routes.findAll(filter);
         long total = routes.count(filter);
-        Set<Long> scenarioIds = rows.stream()
-                .map(InboundRoute::scenarioId)
+        Set<Long> agentIds = rows.stream()
+                .map(InboundRoute::aiAgentId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        java.util.Map<Long, String> scenarioNames = scenarioIds.isEmpty()
+        java.util.Map<Long, String> agentNames = agentIds.isEmpty()
                 ? java.util.Map.of()
-                : scenarios.scenarioNamesByIds(scenarioIds);
+                : aiAgents.findNamesByIds(agentIds);
 
         List<InboundRouteRow> enriched = rows.stream()
-                .map(row -> InboundRouteRow.of(row, row.scenarioId() != null ? scenarioNames.get(row.scenarioId()) : null))
+                .map(row -> InboundRouteRow.of(row, row.aiAgentId() != null ? agentNames.get(row.aiAgentId()) : null))
                 .toList();
         return PageableData.of(enriched, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
@@ -112,11 +116,11 @@ public class InboundRouteService implements InboundRouteUseCase {
     @Override
     public InboundRouteRow routeRow(long id) {
         InboundRoute route = requireRoute(id);
-        String scenarioName = null;
-        if (route.scenarioId() != null) {
-            scenarioName = scenarios.scenarioNamesByIds(List.of(route.scenarioId())).get(route.scenarioId());
+        String agentName = null;
+        if (route.aiAgentId() != null) {
+            agentName = aiAgents.findNamesByIds(List.of(route.aiAgentId())).get(route.aiAgentId());
         }
-        return InboundRouteRow.of(route, scenarioName);
+        return InboundRouteRow.of(route, agentName);
     }
 
     @Override

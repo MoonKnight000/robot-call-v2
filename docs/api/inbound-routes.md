@@ -1,6 +1,6 @@
 ﻿# Kiruvchi qo'ng'iroq va Virtual PBX (OnlinePBX) marshrutlash API
 
-`uz.murodjon.robotcallv2.inbound` · rol: **OPERATOR** (barcha endpoint — ADMIN ham kiradi, rol ierarxiyasi bo'yicha)
+`uz.murodjon.robotcallv2.inbound` · huquq: **INBOUND_ROUTE_READ** / **INBOUND_ROUTE_EDIT**
 
 Virtual PBX / OnlinePBX darajasidagi to'liq kiruvchi qo'ng'iroqlarni boshqarish:
 DID raqamiga tushgan qo'ng'iroqni AI Ovozli agentga, operatorlar navbatiga, ichki SIP raqamiga (extension), tashqi mobil raqamga yoki CRM dagi mas'ul shaxsiy menejerga yo'naltirish.
@@ -18,7 +18,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 | Turi | Izoh |
 |---|---|
-| `SCENARIO` | AI Ovozli Agent (belgilangan `scenarioId` bo'yicha muloqot qiladi) |
+| `SCENARIO` | AI Ovozli Agent — belgilangan `aiAgentId` bo'yicha javob beradi (agent o'z senariysi, ovozi va personasi bilan) |
 | `OPERATOR_QUEUE` | Operatorlar guruhi / navbatiga yo'naltirish |
 | `EXTENSION` | Aniq ichki SIP raqamiga yo'naltirish (masalan: `101`, `102`) |
 | `EXTERNAL_NUMBER` | Tashqi mobil yoki shahar raqamiga yo'naltirish (masalan: `+998901234567`) |
@@ -58,7 +58,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 ```json
 {
   "didNumber": "998712345678",
-  "scenarioId": 6,
+  "aiAgentId": 9,
   "routeType": "SCENARIO",
   "targetDestination": null,
   "queueStrategy": "RING_ALL",
@@ -68,7 +68,6 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "afterHoursAction": "PLAY_MESSAGE_AND_HANGUP",
   "afterHoursDestination": "+998909998877",
   "ivrMenuConfig": "{\"1\": {\"action\": \"OPERATOR_QUEUE\", \"target\": \"sales\"}, \"2\": {\"action\": \"SCENARIO\", \"scenarioId\": 6}}",
-  "language": "uz-UZ",
   "businessHoursStart": "09:00:00",
   "businessHoursEnd": "18:00:00",
   "fallbackMessage": "Assalomu alaykum! Ish vaqtimiz 9:00 dan 18:00 gacha. Iltimos ish vaqtida qo'ng'iroq qiling."
@@ -78,7 +77,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | Maydon | Turi | Majburiymi | Izoh |
 |---|---|---|---|
 | `didNumber` | string | ✅ (`@NotBlank`) | dialangan DID raqam (E.164); bitta faol raqam uchun bitta yoqilgan marshrut |
-| `scenarioId` | long | ❌ | `routeType == SCENARIO` bo'lsa ssenariy ID; boshqa turlarda ixtiyoriy |
+| `aiAgentId` | long | ❌ | `routeType == SCENARIO` bo'lsa [AI agent](ai-agents.md) ID — qo'ng'iroq shu agentning senariysi, tili, ovozi va personasi bilan javob beradi; boshqa turlarda bo'sh qoldiriladi (agentsiz marshrutga kelgan qo'ng'iroqni AI ko'tarmaydi). Agent senariysida [`factWebhook`](scenarios.md) sozlangan bo'lsa, qo'ng'iroqqa **javob berilishidan oldin** (mijoz hali gudok eshitayotganda) kompaniya tizimidan qo'ng'iroq qiluvchining faktlari so'raladi |
 | `routeType` | enum | ❌ | Standart: `SCENARIO`. Variantlar: `SCENARIO`, `OPERATOR_QUEUE`, `EXTENSION`, `EXTERNAL_NUMBER`, `STICKY_AGENT`, `IVR_MENU`, `VOICEMAIL` |
 | `targetDestination` | string | ❌ | Extension raqami (`101`) yoki guruh nomi (`sales_queue`) |
 | `queueStrategy` | enum | ❌ | Standart: `RING_ALL`. Variantlar: `RING_ALL`, `ROUND_ROBIN`, `FEWEST_CALLS`, `LEAST_RECENT`, `RANDOM` |
@@ -87,7 +86,6 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `afterHoursAction` | enum | ❌ | Ish vaqtidan tashqari: `PLAY_MESSAGE_AND_HANGUP`, `AI_AGENT`, `VOICEMAIL`, `FORWARD_EXTERNAL` |
 | `afterHoursDestination` | string | ❌ | Tungi navbatchi mobil raqami |
 | `ivrMenuConfig` | string (JSON) | ❌ | DTMF tugmalar konfiguratsiyasi |
-| `language` | string | ❌ | BCP-47; standart: `uz-UZ` |
 | `businessHoursStart` / `businessHoursEnd` | `LocalTime` (`HH:mm:ss`) | ❌ | Ish vaqti oralig'i (berilmasa — 24/7 ochiq) |
 | `fallbackMessage` | string | ❌ | Ish vaqtidan tashqari o'qib beriladigan TTS xabari |
 
@@ -97,8 +95,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 {
   "id": 3,
   "didNumber": "998712345678",
-  "scenarioId": 6,
-  "scenarioName": "Kirish so'rovlari",
+  "aiAgentId": 9,
+  "aiAgentName": "Kirish so'rovlari agenti",
   "routeType": "SCENARIO",
   "targetDestination": null,
   "queueStrategy": "RING_ALL",
@@ -108,7 +106,6 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "afterHoursAction": "PLAY_MESSAGE_AND_HANGUP",
   "afterHoursDestination": "+998909998877",
   "ivrMenuConfig": "...",
-  "language": "uz-UZ",
   "businessHoursStart": "09:00:00",
   "businessHoursEnd": "18:00:00",
   "fallbackMessage": "Assalomu alaykum! Ish vaqtimiz 9:00 dan 18:00 gacha.",
@@ -122,7 +119,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 ## `POST /api/inbound-routes/list` — ro'yxat
 
 Body — `InboundRouteFilter` (`page`/`size`/`orders`).
-Saralash: `ID`, `DID_NUMBER`, `LANGUAGE`, `ENABLED`, `CREATED_AT`.
+Saralash: `ID`, `DID_NUMBER`, `AI_AGENT_ID`, `ENABLED`, `CREATED_AT`.
+Standart: `CREATED_AT DESC`.
 
 Javob — `PageableData<InboundRouteRow>`.
 

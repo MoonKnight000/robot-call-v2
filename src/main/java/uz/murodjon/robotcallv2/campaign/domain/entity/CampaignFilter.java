@@ -20,7 +20,7 @@ public record CampaignFilter(
         String search,
         CampaignStatus status,
         CampaignType type,
-        Long scenarioId,
+        Long aiAgentId,
         Long createdBy,
         RecurrenceType recurrenceType,
         Instant dateFrom,

@@ -27,3 +27,11 @@ X-Company-Id: 1
 POST http://localhost:8080/api/calls/channel-123/transfer
 Authorization: Bearer {{auth_token}}
 X-Company-Id: 1
+
+### Browser test call session (campaign profile; targetId optional)
+POST http://localhost:8080/api/calls/web-test
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+Content-Type: application/json
+
+{ "campaignId": 1 }

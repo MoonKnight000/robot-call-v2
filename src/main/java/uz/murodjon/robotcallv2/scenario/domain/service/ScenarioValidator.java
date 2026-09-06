@@ -13,6 +13,11 @@ public final class ScenarioValidator {
     private static final Set<String> RESERVED_TOOL_NAMES = Set.of(
             "transitionTo", "endCall", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall");
 
+    private static final Set<String> ALLOWED_WEBHOOK_METHODS = Set.of("GET", "POST");
+
+    /** Two seconds. This wait sits inside the dispatch loop, ahead of every other target's call. */
+    static final int MAX_FACT_WEBHOOK_TIMEOUT_MS = 2000;
+
     private ScenarioValidator() {
     }
 
@@ -29,7 +34,40 @@ public final class ScenarioValidator {
         checkStageTools(def.stages(), def.tools(), errors);
         checkOutcome(def.outcomeSchema(), errors);
         checkDisclosure(def.disclosureText(), errors);
+        checkFactWebhook(def.factWebhook(), def.factSchema(), errors);
         return errors;
+    }
+
+    /**
+     * What can be judged from the definition alone. Whether the host is one this server is
+     * allowed to call is decided when the call is actually made — a name that resolves
+     * publicly today can resolve to a private address tomorrow, so the answer cannot be
+     * cached in a saved scenario.
+     */
+    private static void checkFactWebhook(FactWebhook webhook, List<FactField> factSchema, List<String> errors) {
+        if (webhook == null) {
+            return;
+        }
+        if (webhook.url() == null || webhook.url().isBlank()) {
+            errors.add("factWebhook.url must not be empty");
+        } else {
+            String url = webhook.url().trim().toLowerCase(Locale.ROOT);
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                errors.add("factWebhook.url must start with http:// or https://");
+            }
+        }
+        if (webhook.method() != null && !webhook.method().isBlank()
+                && !ALLOWED_WEBHOOK_METHODS.contains(webhook.method().trim().toUpperCase(Locale.ROOT))) {
+            errors.add("factWebhook.method must be GET or POST");
+        }
+        if (webhook.timeoutMs() > MAX_FACT_WEBHOOK_TIMEOUT_MS) {
+            errors.add("factWebhook.timeoutMs must not exceed " + MAX_FACT_WEBHOOK_TIMEOUT_MS
+                    + " — the dialer waits for this between claiming a target and dialling it");
+        }
+        if (factSchema == null || factSchema.isEmpty()) {
+            errors.add("factWebhook needs a factSchema: only declared facts are read from its response, "
+                    + "so with an empty schema it would fetch and discard");
+        }
     }
 
     private static void checkDisclosure(String disclosureText, List<String> errors) {

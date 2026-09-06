@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
 import uz.murodjon.robotcallv2.auth.application.dto.IssuedToken;
 import uz.murodjon.robotcallv2.auth.infrastructure.config.JwtProperties;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -19,11 +19,17 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.EnumSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class JwtTokenService {
 
     private static final Logger log = LoggerFactory.getLogger(JwtTokenService.class);
+
+    /** Comma-separated {@link Permission#code()} values — the short form keeps the token small. */
+    private static final String PERMISSIONS_CLAIM = "perms";
 
     private final JwtProperties props;
     private final SecretKey key;
@@ -45,7 +51,9 @@ public class JwtTokenService {
         String token = Jwts.builder()
                 .subject(String.valueOf(user.userId()))
                 .claim("companyId", user.companyId())
-                .claim("role", user.role().name())
+                .claim("roleId", user.roleId())
+                .claim("role", user.roleCode())
+                .claim(PERMISSIONS_CLAIM, encodePermissions(user.permissions()))
                 .claim("name", user.name())
                 .claim("email", user.email())
                 .issuedAt(Date.from(now))
@@ -61,15 +69,40 @@ public class JwtTokenService {
         }
         try {
             var claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+            Number roleId = (Number) claims.get("roleId");
             return new AuthenticatedUser(
                     Long.parseLong(claims.getSubject()),
                     ((Number) claims.get("companyId")).longValue(),
-                    UserRole.valueOf(claims.get("role", String.class)),
+                    roleId == null ? 0L : roleId.longValue(),
+                    claims.get("role", String.class),
+                    decodePermissions(claims.get(PERMISSIONS_CLAIM, String.class)),
                     claims.get("name", String.class),
                     claims.get("email", String.class));
         } catch (JwtException | IllegalArgumentException e) {
             return null;
         }
+    }
+
+    private static String encodePermissions(Set<Permission> permissions) {
+        return permissions.stream().map(Permission::code).collect(Collectors.joining(","));
+    }
+
+    /**
+     * Unknown codes are dropped rather than rejected: a token issued before a permission
+     * was renamed keeps working for everything else it was granted.
+     */
+    private static Set<Permission> decodePermissions(String encoded) {
+        EnumSet<Permission> permissions = EnumSet.noneOf(Permission.class);
+        if (encoded == null || encoded.isBlank()) {
+            return permissions;
+        }
+        for (String code : encoded.split(",")) {
+            Permission permission = Permission.findByCode(code.trim());
+            if (permission != null) {
+                permissions.add(permission);
+            }
+        }
+        return permissions;
     }
 
     private static byte[] sha256(String value) {

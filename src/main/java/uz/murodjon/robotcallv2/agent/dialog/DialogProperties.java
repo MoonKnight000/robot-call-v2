@@ -150,6 +150,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxTokensPerCall cumulative LLM tokens one call may spend before it is closed
  *                       politely. Bounds the cost of a call that loops or refuses to
  *                       end. 0 disables the budget
+ * @param preToolSpeech  whether to speak a short intermediate phrase before executing tools
+ *                       to prevent dead silence during long or external tool operations
  * @param testContext    static client facts injected into the prompt for verification
  */
 @ConfigurationProperties(prefix = "voice-agent.dialog")
@@ -184,6 +186,7 @@ public record DialogProperties(
         boolean factGuard,
         int factViolationEscalateAfter,
         long maxTokensPerCall,
+        boolean preToolSpeech,
         TestContextProperties testContext
 ) {
 }

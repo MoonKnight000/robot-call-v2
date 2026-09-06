@@ -5,8 +5,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
 
 import java.util.Optional;
 
@@ -23,11 +23,12 @@ public class AuthenticatedCurrentUser implements CurrentUser {
     }
 
     @Override
-    public Optional<UserRole> role() {
+    public boolean hasPermission(Permission permission) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof AuthenticatedUser user) {
-            return Optional.of(user.role());
+        if (auth == null) {
+            return false;
         }
-        return Optional.empty();
+        return auth.getAuthorities().stream()
+                .anyMatch(authority -> permission.name().equals(authority.getAuthority()));
     }
 }

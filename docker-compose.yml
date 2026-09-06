@@ -108,6 +108,11 @@ services:
       - "8088:8088"     # ARI HTTP / WebSocket
       - "5038:5038"     # AMI
       - "10000-10200:10000-10200/udp" # RTP media range
+    # Pinned so rtp.conf [ice_host_candidates] can map this address to the host's
+    # LAN IP for browser (WebRTC) test calls — keep the two in sync.
+    networks:
+      default:
+        ipv4_address: 172.29.0.10
     restart: unless-stopped
     # For Linux hosts, prefer host networking instead of the port mappings above:
     # network_mode: host
@@ -233,7 +238,7 @@ services:
       # answers close at STT_ENDPOINTING_SHORT_SILENCE_MS (500) instead, and a caller who
       # does not pause is brought down toward 600 by the dynamic setting above.
       # Raise this first if callers are being cut off mid-sentence.
-      STT_VAD_POST_ROLL_MS: ${STT_VAD_POST_ROLL_MS:-700}
+      STT_VAD_POST_ROLL_MS: ${STT_VAD_POST_ROLL_MS:-1200}
       # Preemptive LLM speculation (starts generating while interim speech is arriving).
       # On: the stream is single-language now (STT_DETECT_LANGUAGES=uz-UZ), which is what
       # broke it before — the interims of a uz+ru stream came back decoded as Russian and
@@ -267,9 +272,9 @@ services:
       # Barge-in + answering-machine detection (§7.2, §8.6).
       VAD_MODEL_PATH: ${VAD_MODEL_PATH:-/app/silero_vad.onnx}
       VAD_THRESHOLD: ${VAD_THRESHOLD:-0.5}
-      VAD_MIN_SPEECH_MS: ${VAD_MIN_SPEECH_MS:-200}
+      VAD_MIN_SPEECH_MS: ${VAD_MIN_SPEECH_MS:-400}
       VAD_AMD_ENABLED: ${VAD_AMD_ENABLED:-true}
-      VAD_AMD_MIN_SPEECH_MS: ${VAD_AMD_MIN_SPEECH_MS:-2800}
+      VAD_AMD_MIN_SPEECH_MS: ${VAD_AMD_MIN_SPEECH_MS:-3500}
       TTS_YANDEX_API_KEY: ${TTS_YANDEX_API_KEY:-}
       TTS_YANDEX_FOLDER_ID: ${TTS_YANDEX_FOLDER_ID:-}
       TTS_YANDEX_VOICE: ${TTS_YANDEX_VOICE:-alena}
@@ -280,6 +285,9 @@ services:
       - "8080:8080"
     volumes:
       - ./recordings:/app/recordings
+      # Rolling app log (logback-spring.xml) — the per-turn "turn latency:" lines live here
+      # after `docker compose logs` has scrolled past them.
+      - ./logs:/app/logs
       # Same host directory the asterisk service mounts pjsip.conf from — lets
       # PjsipConfigWriter write pjsip_trunks.conf where Asterisk can #include it
       # (report #7). Harmless while SIPTRUNK_CONFIG_ENABLED is off.
@@ -331,3 +339,12 @@ volumes:
   rabbitmqdata:
   miniodata:
   # grafanadata:
+
+# Fixed subnet so the asterisk service can take a fixed address (see its
+# `networks:` block). Change both if 172.29.0.0/24 collides with another network
+# on this machine (`docker network ls` / `docker network inspect`).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24

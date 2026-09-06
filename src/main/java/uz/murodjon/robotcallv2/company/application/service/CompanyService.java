@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusReques
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
+import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -28,20 +29,24 @@ public class CompanyService implements CompanyUseCase {
     private final ImageUploadService images;
     private final CompanyAccessGuard access;
     private final AuditService audit;
+    private final RoleUseCase roleUseCase;
 
     public CompanyService(CompanyRepository repo, CompanyConfigUseCase config, ImageUploadService images,
-                          CompanyAccessGuard access, AuditService audit) {
+                          CompanyAccessGuard access, AuditService audit, RoleUseCase roleUseCase) {
         this.repo = repo;
         this.config = config;
         this.images = images;
         this.access = access;
         this.audit = audit;
+        this.roleUseCase = roleUseCase;
     }
 
     @Override
     public Company create(CreateCompanyRequest r) {
         long id = repo.create(r.name());
         config.createDefault(id);
+        // Without its system roles a new tenant cannot be given a single user.
+        roleUseCase.createSystemRoles(id);
         audit.record("COMPANY_CREATE", "company", String.valueOf(id), r.name());
         return repo.find(id);
     }

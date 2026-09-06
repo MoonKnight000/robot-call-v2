@@ -6,7 +6,7 @@ import uz.murodjon.robotcallv2.shared.api.TableField;
 public enum InboundRouteTableField implements TableField {
     ID("id"),
     DID_NUMBER("did_number"),
-    SCENARIO_ID("scenario_id"),
+    AI_AGENT_ID("ai_agent_id"),
     LANGUAGE("language"),
     ENABLED("enabled"),
     CREATED_AT("created_at");

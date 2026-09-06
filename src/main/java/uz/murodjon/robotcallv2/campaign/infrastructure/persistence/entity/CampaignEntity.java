@@ -1,24 +1,36 @@
 package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import uz.murodjon.robotcallv2.campaign.domain.enums.*;
+
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * JPA entity for campaign (PROJECT.md §6).
+ * JPA entity for campaign (PROJECT.md §6). The voice/persona/scenario columns moved to
+ * {@code ai_agent} in V12; what is left is the dialling job itself.
  */
 @Entity
 @Table(name = "campaign")
@@ -39,15 +51,9 @@ public class CampaignEntity {
     @Column(nullable = false)
     private CampaignStatus status;
 
-    @Column(name = "goal_prompt", nullable = false)
-    private String goalPrompt;
-
     @Column(name = "script_config", nullable = false)
     @JdbcTypeCode(SqlTypes.JSON)
     private String scriptConfig;
-
-    @Column(name = "default_language", nullable = false)
-    private String defaultLanguage;
 
     @Column(name = "dial_window_start", nullable = false)
     private LocalTime dialWindowStart;
@@ -77,25 +83,6 @@ public class CampaignEntity {
     @Column(name = "day", nullable = false)
     private Set<DayOfWeek> dialDays = EnumSet.noneOf(DayOfWeek.class);
 
-    @Column(name = "tts_voice")
-    private String ttsVoice;
-
-    /**
-     * Voice per call language, for a campaign that dials more than one — Uzbek targets
-     * spoken by an Uzbek voice, Russian ones by a Russian voice. A language with no
-     * entry here falls back to {@link #ttsVoice}.
-     */
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "campaign_language_voice", joinColumns = @JoinColumn(name = "campaign_id"))
-    @MapKeyColumn(name = "language")
-    @Column(name = "tts_voice", nullable = false)
-    private Map<String, String> languageVoices = new LinkedHashMap<>();
-
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "campaign_sip_trunk", joinColumns = @JoinColumn(name = "campaign_id"))
-    @Column(name = "sip_trunk_id", nullable = false)
-    private Set<Long> sipTrunkIds = new LinkedHashSet<>();
-
     @Column(name = "daily_call_cap", nullable = false)
     private int dailyCallCap;
 
@@ -103,9 +90,8 @@ public class CampaignEntity {
     @JoinColumn(name = "company_id", nullable = false)
     private CompanyEntity company;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scenario_id", nullable = false)
-    private ScenarioEntity scenario;
+    @Column(name = "ai_agent_id", nullable = false)
+    private long aiAgentId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "recurrence_type", nullable = false)
@@ -122,33 +108,6 @@ public class CampaignEntity {
 
     @Column(name = "last_run_at")
     private Instant lastRunAt;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "ambient_sound", nullable = false)
-    private AmbientSound ambientSound = AmbientSound.OFF;
-
-    @Column(name = "mid_call_sms_enabled", nullable = false)
-    private boolean midCallSmsEnabled;
-
-    @Column(name = "mid_call_sms_template")
-    private String midCallSmsTemplate;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "voicemail_action", nullable = false)
-    private VoicemailAction voicemailAction = VoicemailAction.HANGUP;
-
-    @Column(name = "voicemail_message")
-    private String voicemailMessage;
-
-    @Column(name = "dtmf_input_enabled", nullable = false)
-    private boolean dtmfInputEnabled;
-
-    @Column(name = "emotion_adaptive_voice", nullable = false)
-    private boolean emotionAdaptiveVoice = true;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "agent_persona", nullable = false)
-    private AgentPersona agentPersona = AgentPersona.AI_ASSISTANT;
 
     public Long getId() {
         return id;
@@ -182,28 +141,12 @@ public class CampaignEntity {
         this.status = status;
     }
 
-    public String getGoalPrompt() {
-        return goalPrompt;
-    }
-
-    public void setGoalPrompt(String goalPrompt) {
-        this.goalPrompt = goalPrompt;
-    }
-
     public String getScriptConfig() {
         return scriptConfig;
     }
 
     public void setScriptConfig(String scriptConfig) {
         this.scriptConfig = scriptConfig;
-    }
-
-    public String getDefaultLanguage() {
-        return defaultLanguage;
-    }
-
-    public void setDefaultLanguage(String defaultLanguage) {
-        this.defaultLanguage = defaultLanguage;
     }
 
     public LocalTime getDialWindowStart() {
@@ -276,34 +219,6 @@ public class CampaignEntity {
                 : EnumSet.copyOf(dialDays);
     }
 
-    public String getTtsVoice() {
-        return ttsVoice;
-    }
-
-    public void setTtsVoice(String ttsVoice) {
-        this.ttsVoice = ttsVoice;
-    }
-
-    public Map<String, String> getLanguageVoices() {
-        return languageVoices;
-    }
-
-    public void setLanguageVoices(Map<String, String> languageVoices) {
-        this.languageVoices = languageVoices == null
-                ? new LinkedHashMap<>()
-                : new LinkedHashMap<>(languageVoices);
-    }
-
-    public Set<Long> getSipTrunkIds() {
-        return sipTrunkIds;
-    }
-
-    public void setSipTrunkIds(Set<Long> sipTrunkIds) {
-        this.sipTrunkIds = (sipTrunkIds == null || sipTrunkIds.isEmpty())
-                ? new LinkedHashSet<>()
-                : new LinkedHashSet<>(sipTrunkIds);
-    }
-
     public int getDailyCallCap() {
         return dailyCallCap;
     }
@@ -324,20 +239,12 @@ public class CampaignEntity {
         return company != null ? company.getId() : 0L;
     }
 
-    public ScenarioEntity getScenario() {
-        return scenario;
+    public long getAiAgentId() {
+        return aiAgentId;
     }
 
-    public void setScenario(ScenarioEntity scenario) {
-        this.scenario = scenario;
-    }
-
-    public long getScenarioId() {
-        return scenario != null ? scenario.getId() : 0L;
-    }
-
-    public boolean isDisclosureEnabled() {
-        return getAgentPersona() == AgentPersona.AI_ASSISTANT;
+    public void setAiAgentId(long aiAgentId) {
+        this.aiAgentId = aiAgentId;
     }
 
     public RecurrenceType getRecurrenceType() {
@@ -378,69 +285,5 @@ public class CampaignEntity {
 
     public void setLastRunAt(Instant lastRunAt) {
         this.lastRunAt = lastRunAt;
-    }
-
-    public AmbientSound getAmbientSound() {
-        return ambientSound;
-    }
-
-    public void setAmbientSound(AmbientSound ambientSound) {
-        this.ambientSound = ambientSound != null ? ambientSound : AmbientSound.OFF;
-    }
-
-    public boolean isMidCallSmsEnabled() {
-        return midCallSmsEnabled;
-    }
-
-    public void setMidCallSmsEnabled(boolean midCallSmsEnabled) {
-        this.midCallSmsEnabled = midCallSmsEnabled;
-    }
-
-    public String getMidCallSmsTemplate() {
-        return midCallSmsTemplate;
-    }
-
-    public void setMidCallSmsTemplate(String midCallSmsTemplate) {
-        this.midCallSmsTemplate = midCallSmsTemplate;
-    }
-
-    public VoicemailAction getVoicemailAction() {
-        return voicemailAction;
-    }
-
-    public void setVoicemailAction(VoicemailAction voicemailAction) {
-        this.voicemailAction = voicemailAction != null ? voicemailAction : VoicemailAction.HANGUP;
-    }
-
-    public String getVoicemailMessage() {
-        return voicemailMessage;
-    }
-
-    public void setVoicemailMessage(String voicemailMessage) {
-        this.voicemailMessage = voicemailMessage;
-    }
-
-    public boolean isDtmfInputEnabled() {
-        return dtmfInputEnabled;
-    }
-
-    public void setDtmfInputEnabled(boolean dtmfInputEnabled) {
-        this.dtmfInputEnabled = dtmfInputEnabled;
-    }
-
-    public boolean isEmotionAdaptiveVoice() {
-        return emotionAdaptiveVoice;
-    }
-
-    public void setEmotionAdaptiveVoice(boolean emotionAdaptiveVoice) {
-        this.emotionAdaptiveVoice = emotionAdaptiveVoice;
-    }
-
-    public AgentPersona getAgentPersona() {
-        return agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
-    }
-
-    public void setAgentPersona(AgentPersona agentPersona) {
-        this.agentPersona = agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
     }
 }

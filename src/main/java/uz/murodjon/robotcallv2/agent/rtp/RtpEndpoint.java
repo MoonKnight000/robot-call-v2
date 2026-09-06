@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AmbientSound;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
@@ -46,10 +46,14 @@ public class RtpEndpoint implements Closeable {
 
     private static final int SAMPLES_PER_FRAME = 160; // 20 ms @ 8 kHz
     private static final int FRAME_MS = 20;
-    private static final byte ULAW_SILENCE = (byte) 0xFF;
 
-    /** Grace underflow frames (5 frames = 100ms) before stopping pacer to avoid jitter on streaming chunk boundaries. */
-    private static final int MAX_IDLE_FRAMES = 5;
+    /**
+     * Silence frames sent after the queue runs dry before the pacer stops (25 frames =
+     * 500 ms). Streamed synthesis and sentence-by-sentence replies leave gaps of a few
+     * hundred milliseconds between chunks; at 100 ms the pacer stopped inside those gaps
+     * and every restart added its pre-buffer delay on top of the gap itself.
+     */
+    private static final int MAX_IDLE_FRAMES = 25;
 
     /**
      * Half the 16-bit sequence space. A modular distance above this is the short way
@@ -58,6 +62,7 @@ public class RtpEndpoint implements Closeable {
     private static final int SEQ_HALF = 0x8000;
 
     private final int port;
+    private final RtpCodec codec;
     private final WavRecorder recorder;
     /**
      * Volatile because the chain can be swapped on a live endpoint ({@link
@@ -95,12 +100,14 @@ public class RtpEndpoint implements Closeable {
     private int sendSeq;
     private long sendTimestamp;
 
-    public RtpEndpoint(int port, WavRecorder recorder, List<AudioListener> listeners) {
-        this(port, recorder, listeners, null);
+    public RtpEndpoint(int port, RtpCodec codec, WavRecorder recorder, List<AudioListener> listeners) {
+        this(port, codec, recorder, listeners, null);
     }
 
-    public RtpEndpoint(int port, WavRecorder recorder, List<AudioListener> listeners, AudioListener outboundTap) {
+    public RtpEndpoint(int port, RtpCodec codec, WavRecorder recorder, List<AudioListener> listeners,
+                       AudioListener outboundTap) {
         this.port = port;
+        this.codec = codec;
         this.recorder = recorder;
         this.listeners = listeners == null ? List.of() : List.copyOf(listeners);
         this.outboundTap = outboundTap;
@@ -260,8 +267,22 @@ public class RtpEndpoint implements Closeable {
         }
     }
 
+    /**
+     * Whether the caller is hearing the bot right now — audio is queued or mid-frame.
+     *
+     * <p>Not "is the pacer running": the pacer also runs through the idle grace after a
+     * line and for the whole call when an ambient sound is on, and both read as "bot
+     * speaking" to barge-in. With ambient sound every caller utterance was then treated
+     * as an interruption — the turn annex told the model it had been cut off and the
+     * speculative reply was thrown away, on every single turn.
+     */
     public boolean isPlaying() {
-        return pacerRunning.get();
+        if (!pacerRunning.get()) {
+            return false;
+        }
+        synchronized (playLock) {
+            return !playQueue.isEmpty() || (currentChunk != null && currentOffset < currentChunk.length);
+        }
     }
 
     private InetSocketAddress awaitRemote() {
@@ -304,7 +325,7 @@ public class RtpEndpoint implements Closeable {
             stopPacer();
             return;
         }
-        byte[] ulaw = new byte[SAMPLES_PER_FRAME];
+        byte[] payload = new byte[SAMPLES_PER_FRAME];
         short[] pcmFrame = new short[SAMPLES_PER_FRAME];
         int filled = 0;
         boolean first;
@@ -320,7 +341,7 @@ public class RtpEndpoint implements Closeable {
                 int n = Math.min(SAMPLES_PER_FRAME - filled, currentChunk.length - currentOffset);
                 for (int i = 0; i < n; i++) {
                     short sample = currentChunk[currentOffset + i];
-                    ulaw[filled + i] = G711Codec.pcmToUlaw(sample);
+                    payload[filled + i] = codec.encode(sample);
                     pcmFrame[filled + i] = sample;
                 }
                 filled += n;
@@ -334,12 +355,12 @@ public class RtpEndpoint implements Closeable {
                     return;
                 }
                 for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
-                    ulaw[i] = ULAW_SILENCE;
+                    payload[i] = codec.silence();
                 }
             } else {
                 idleFrames = 0;
                 for (int i = filled; i < SAMPLES_PER_FRAME; i++) {
-                    ulaw[i] = ULAW_SILENCE;
+                    payload[i] = codec.silence();
                 }
             }
         }
@@ -347,7 +368,7 @@ public class RtpEndpoint implements Closeable {
         if (ambientSound != null && ambientSound != AmbientSound.OFF) {
             pcmFrame = AmbientSoundGenerator.mix(pcmFrame, ambientSound, sendTimestamp);
             for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
-                ulaw[i] = G711Codec.pcmToUlaw(pcmFrame[i]);
+                payload[i] = codec.encode(pcmFrame[i]);
             }
         }
 
@@ -357,7 +378,7 @@ public class RtpEndpoint implements Closeable {
         }
         first = sendSeq == 0;
         try {
-            byte[] rtp = RtpPacket.toBytes(PT_PCMU, sendSeq & 0xFFFF, sendTimestamp, ssrc, first, ulaw);
+            byte[] rtp = RtpPacket.toBytes(codec.payloadType(), sendSeq & 0xFFFF, sendTimestamp, ssrc, first, payload);
             channel.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(rtp), remote));
             sendSeq++;
             sendTimestamp += SAMPLES_PER_FRAME;

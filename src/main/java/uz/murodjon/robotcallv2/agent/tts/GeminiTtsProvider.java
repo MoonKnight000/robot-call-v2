@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.audio.Resampler;
+import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
 import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavReader;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -142,6 +142,14 @@ public class GeminiTtsProvider implements TtsProvider {
             }
 
             int sourceRate = resolveSampleRate();
+            // One filter for the whole utterance: the chunks are 40 ms each, and resampling
+            // them one by one put a click at every boundary — twenty-five a second.
+            StreamingDownsampler downsampler = sourceRate == 16000
+                    ? StreamingDownsampler.from16kTo8k()
+                    : StreamingDownsampler.from24kTo8k();
+            // A chunk may end halfway through a 16-bit sample; the odd byte belongs to the next one.
+            byte[] carry = new byte[1];
+            boolean[] carried = {false};
             try (Stream<String> lines = response.body()) {
                 lines.forEach(line -> {
                     if (line == null || !line.contains("data:")) {
@@ -163,19 +171,35 @@ public class GeminiTtsProvider implements TtsProvider {
                         }
                         for (JsonNode part : parts) {
                             JsonNode inline = part.path("inlineData");
-                            if (!inline.isMissingNode() && inline.hasNonNull("data")) {
-                                String b64 = inline.get("data").asText();
-                                byte[] audioData = Base64.getDecoder().decode(b64);
-                                short[] pcm8k = convertTo8kPcm(audioData, sourceRate);
-                                if (pcm8k.length > 0 && onChunk != null) {
-                                    onChunk.onChunk(pcm8k);
-                                }
+                            if (inline.isMissingNode() || !inline.hasNonNull("data")) {
+                                continue;
+                            }
+                            byte[] audioData = Base64.getDecoder().decode(inline.get("data").asText());
+                            if (carried[0]) {
+                                byte[] joined = new byte[audioData.length + 1];
+                                joined[0] = carry[0];
+                                System.arraycopy(audioData, 0, joined, 1, audioData.length);
+                                audioData = joined;
+                                carried[0] = false;
+                            }
+                            if (audioData.length % 2 == 1 && !startsWithRiff(audioData)) {
+                                carry[0] = audioData[audioData.length - 1];
+                                carried[0] = true;
+                            }
+                            short[] source = toSourceSamples(audioData);
+                            short[] pcm8k = sourceRate == 8000 ? source : downsampler.push(source, source.length);
+                            if (pcm8k.length > 0 && onChunk != null) {
+                                onChunk.onChunk(pcm8k);
                             }
                         }
                     } catch (Exception e) {
                         log.warn("Failed to parse Gemini TTS chunk: {}", e.getMessage());
                     }
                 });
+            }
+            short[] tail = sourceRate == 8000 ? new short[0] : downsampler.flush();
+            if (tail.length > 0 && onChunk != null) {
+                onChunk.onChunk(tail);
             }
         } catch (ExternalServiceException e) {
             throw e;
@@ -258,39 +282,28 @@ public class GeminiTtsProvider implements TtsProvider {
     }
 
     /**
-     * Converts audio bytes (WAV container or raw PCM s16le) to 8 kHz mono linear PCM.
+     * The samples in one chunk at the source rate: a WAV container's payload, or raw
+     * little-endian s16 PCM. A trailing odd byte is ignored — the caller carries it over.
      */
-    static short[] convertTo8kPcm(byte[] audioData, int sourceRate) {
+    static short[] toSourceSamples(byte[] audioData) {
         if (audioData == null || audioData.length == 0) {
             return new short[0];
         }
-
-        // Check for RIFF/WAVE container header
-        if (audioData.length >= 12 && audioData[0] == 'R' && audioData[1] == 'I' && audioData[2] == 'F' && audioData[3] == 'F') {
+        if (startsWithRiff(audioData)) {
             try {
                 WavAudio wav = WavReader.read(audioData);
-                if (wav.sampleRate() == 24000) {
-                    return Resampler.downsample24kTo8k(wav.samples(), wav.samples().length);
-                } else if (wav.sampleRate() == 16000) {
-                    return Resampler.downsample16kTo8k(wav.samples(), wav.samples().length);
-                } else {
-                    return wav.samples();
-                }
+                return wav.samples();
             } catch (Exception e) {
                 log.debug("WAV parsing skipped, interpreting as raw PCM: {}", e.getMessage());
             }
         }
-
-        // Raw 16-bit little-endian PCM
-        int frames = audioData.length / 2;
-        short[] pcm = new short[frames];
+        short[] pcm = new short[audioData.length / 2];
         ByteBuffer.wrap(audioData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm);
-
-        if (sourceRate == 24000) {
-            return Resampler.downsample24kTo8k(pcm, pcm.length);
-        } else if (sourceRate == 16000) {
-            return Resampler.downsample16kTo8k(pcm, pcm.length);
-        }
         return pcm;
+    }
+
+    private static boolean startsWithRiff(byte[] audioData) {
+        return audioData.length >= 12 && audioData[0] == 'R' && audioData[1] == 'I'
+                && audioData[2] == 'F' && audioData[3] == 'F';
     }
 }

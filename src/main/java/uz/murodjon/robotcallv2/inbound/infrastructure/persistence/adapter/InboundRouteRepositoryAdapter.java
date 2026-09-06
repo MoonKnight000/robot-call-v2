@@ -15,8 +15,6 @@ import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
 import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundRouteEntity;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.repository.InboundRouteJpaRepository;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
@@ -27,32 +25,25 @@ import java.util.List;
 public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
 
     private final InboundRouteJpaRepository jpa;
-    private final ScenarioJpaRepository scenarioJpa;
     private final CurrentCompany company;
     private final InboundRouteMapper mapper;
 
     public InboundRouteRepositoryAdapter(InboundRouteJpaRepository jpa,
-                                         ScenarioJpaRepository scenarioJpa,
                                          CurrentCompany company,
                                          InboundRouteMapper mapper) {
         this.jpa = jpa;
-        this.scenarioJpa = scenarioJpa;
         this.company = company;
         this.mapper = mapper;
     }
 
     @Override
     public long create(CreateInboundRouteRequest request) {
-        ScenarioEntity scenario = null;
-        if (request.scenarioId() != null) {
-            scenario = scenarioJpa.findById(request.scenarioId())
-                    .orElseThrow(() -> new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, request.scenarioId()));
-        }
+        // The agent is validated by InboundRouteService before it gets here.
 
         InboundRouteEntity entity = new InboundRouteEntity();
         entity.setCompanyId(company.id());
         entity.setDidNumber(request.didNumber());
-        entity.setScenario(scenario);
+        entity.setAiAgentId(request.aiAgentId());
         entity.setRouteType(request.routeType() != null ? request.routeType() : InboundRouteType.SCENARIO);
         entity.setTargetDestination(request.targetDestination());
         entity.setQueueStrategy(request.queueStrategy() != null ? request.queueStrategy() : QueueStrategy.RING_ALL);
@@ -62,7 +53,6 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
         entity.setAfterHoursAction(request.afterHoursAction() != null ? request.afterHoursAction() : InboundAfterHoursAction.PLAY_MESSAGE_AND_HANGUP);
         entity.setAfterHoursDestination(request.afterHoursDestination());
         entity.setIvrMenuConfig(request.ivrMenuConfig());
-        entity.setLanguage(request.language() != null && !request.language().isBlank() ? request.language() : "uz-UZ");
         entity.setBusinessHoursStart(request.businessHoursStart());
         entity.setBusinessHoursEnd(request.businessHoursEnd());
         entity.setFallbackMessage(request.fallbackMessage());
@@ -76,14 +66,9 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
         InboundRouteEntity entity = jpa.findByIdAndCompanyId(id, company.id())
                 .orElseThrow(() -> new NotFoundException(ErrorCode.INBOUND_ROUTE_NOT_FOUND, id));
 
-        ScenarioEntity scenario = null;
-        if (request.scenarioId() != null) {
-            scenario = scenarioJpa.findById(request.scenarioId())
-                    .orElseThrow(() -> new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, request.scenarioId()));
-        }
 
         entity.setDidNumber(request.didNumber());
-        entity.setScenario(scenario);
+        entity.setAiAgentId(request.aiAgentId());
         if (request.routeType() != null) entity.setRouteType(request.routeType());
         entity.setTargetDestination(request.targetDestination());
         if (request.queueStrategy() != null) entity.setQueueStrategy(request.queueStrategy());
@@ -93,7 +78,6 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
         if (request.afterHoursAction() != null) entity.setAfterHoursAction(request.afterHoursAction());
         entity.setAfterHoursDestination(request.afterHoursDestination());
         entity.setIvrMenuConfig(request.ivrMenuConfig());
-        if (request.language() != null && !request.language().isBlank()) entity.setLanguage(request.language());
         entity.setBusinessHoursStart(request.businessHoursStart());
         entity.setBusinessHoursEnd(request.businessHoursEnd());
         entity.setFallbackMessage(request.fallbackMessage());

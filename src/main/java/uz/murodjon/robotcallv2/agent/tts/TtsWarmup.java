@@ -7,6 +7,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
@@ -19,10 +21,8 @@ import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
-import uz.murodjon.robotcallv2.voice.application.service.TtsVoiceService;
 import uz.murodjon.robotcallv2.voice.application.service.VoiceSettingsService;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
-import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,6 +30,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Pre-synthesizes the lines the agent always says (§11.1 disclosure, greetings, confirmations,
  * the goodbye, the fallback phrases) into the Redis/Memory TTS cache.
+ *
+ * <p>At startup only the default voice of each configured language is warmed. Every other
+ * catalog voice is warmed by {@link #warmUpForCampaign(Campaign, AiAgent)} when a campaign that
+ * actually uses it starts — warming the whole catalog instead billed a synthesis for
+ * voices no campaign had chosen, and one provider being down turned every one of those
+ * into a fallback request to another paid provider.
  *
  * <p>Warm-up is performed on-demand when a campaign starts (or before calls are dispatched),
  * tailored to that specific campaign's configured language, TTS voice, scenario, and tenant.
@@ -46,32 +52,33 @@ public class TtsWarmup {
     private final DialogProperties dialogProps;
     private final TtsRouter router;
     private final TtsCache cache;
-    private final TtsVoiceService catalog;
     private final CompanyService companyService;
     private final CompanyConfigService companyConfigService;
     private final VoiceSettingsService voiceSettingsService;
     private final ScenarioService scenarioService;
     private final EngineConfigService engineConfigService;
     private final CampaignRepository campaignRepository;
+    private final AiAgentUseCase aiAgentService;
 
     private final Set<Long> warmedCampaigns = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public TtsWarmup(TtsProperties ttsProps, DialogProperties dialogProps, TtsRouter router,
-                     TtsCache cache, TtsVoiceService catalog, CompanyService companyService,
+                     TtsCache cache, CompanyService companyService,
                      CompanyConfigService companyConfigService,
                      VoiceSettingsService voiceSettingsService, ScenarioService scenarioService,
-                     EngineConfigService engineConfigService, CampaignRepository campaignRepository) {
+                     EngineConfigService engineConfigService, CampaignRepository campaignRepository,
+                     AiAgentUseCase aiAgentService) {
         this.ttsProps = ttsProps;
         this.dialogProps = dialogProps;
         this.router = router;
         this.cache = cache;
-        this.catalog = catalog;
         this.companyService = companyService;
         this.companyConfigService = companyConfigService;
         this.voiceSettingsService = voiceSettingsService;
         this.scenarioService = scenarioService;
         this.engineConfigService = engineConfigService;
         this.campaignRepository = campaignRepository;
+        this.aiAgentService = aiAgentService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -96,7 +103,7 @@ public class TtsWarmup {
         Thread.ofVirtual().name("tts-warmup-camp-" + campaignId).start(() -> {
             Campaign c = campaignRepository.find(campaignId);
             if (c != null) {
-                warmUpForCampaign(c);
+                warmUpForCampaign(c, aiAgentService.requireAgent(c.companyId(), c.aiAgentId()));
             }
         });
     }
@@ -112,8 +119,8 @@ public class TtsWarmup {
      * Synthesizes and caches all static phrases (confirmations, disclosures, fallback phrases)
      * for a given campaign.
      */
-    public void warmUpForCampaign(Campaign campaign) {
-        if (campaign == null || !ttsProps.enabled() || !cache.prewarmEnabled()) {
+    public void warmUpForCampaign(Campaign campaign, AiAgent agent) {
+        if (campaign == null || agent == null || !ttsProps.enabled() || !cache.prewarmEnabled()) {
             return;
         }
         if (!warmedCampaigns.add(campaign.id())) {
@@ -131,23 +138,21 @@ public class TtsWarmup {
         CompanyConfig config = companyConfigService.find(campaign.companyId());
         EffectiveVoiceSettings style = voiceSettingsService.effective(campaign.companyId());
 
-        Scenario scenario = scenarioService.findById(campaign.scenarioId());
+        Scenario scenario = scenarioService.findById(agent.scenarioId());
         List<Scenario> scenarios = scenario != null ? List.of(scenario) : List.of();
 
         Set<String> languages = new LinkedHashSet<>();
-        if (campaign.defaultLanguage() != null && !campaign.defaultLanguage().isBlank()) {
-            languages.add(campaign.defaultLanguage());
+        if (agent.language() != null && !agent.language().isBlank()) {
+            languages.add(agent.language());
         }
-        if (campaign.languageVoices() != null) {
-            languages.addAll(campaign.languageVoices().keySet());
-        }
+        languages.addAll(agent.languageVoicesOrEmpty().keySet());
         if (languages.isEmpty()) {
             languages.add(ttsProps.defaultLanguage());
         }
 
         int count = 0;
         for (String lang : languages) {
-            String voiceId = campaign.voiceFor(lang);
+            String voiceId = agent.voiceFor(lang);
             List<String> lines = linesFor(companyName, lang, scenarios,
                     config != null ? config.disclosureText() : null);
 
@@ -168,15 +173,15 @@ public class TtsWarmup {
         int done = 0;
         int failed = 0;
         long startedAt = System.nanoTime();
-        for (Warm target : targets()) {
-            for (Spoken spoken : linesToWarm(target.language())) {
+        for (String language : languages()) {
+            for (Spoken spoken : linesToWarm(language)) {
                 try {
-                    router.synthesize(spoken.line(), target.language(), target.voiceId(), spoken.style());
+                    router.synthesize(spoken.line(), language, null, spoken.style());
                     done++;
                 } catch (Exception e) {
                     failed++;
-                    log.debug("TTS warm-up failed for {}/{} ('{}'): {}",
-                            target.language(), target.voiceId(), spoken.line(), e.getMessage());
+                    log.debug("TTS warm-up failed for {} ('{}'): {}",
+                            language, spoken.line(), e.getMessage());
                 }
             }
         }
@@ -186,9 +191,6 @@ public class TtsWarmup {
         } else {
             log.info("TTS warm-up: {} line(s) cached in {} ms", done, ms);
         }
-    }
-
-    private record Warm(String language, String voiceId) {
     }
 
     private record Spoken(String line, EffectiveVoiceSettings style) {
@@ -238,20 +240,6 @@ public class TtsWarmup {
             out.add(new Spoken(line, style));
         }
         return out;
-    }
-
-    private Set<Warm> targets() {
-        Set<String> languages = languages();
-        Set<Warm> targets = new LinkedHashSet<>();
-        for (String language : languages) {
-            targets.add(new Warm(language, null));
-        }
-        for (TtsVoice voice : catalog.findSelectable(null)) {
-            if (voice.language() != null && languages.contains(voice.language())) {
-                targets.add(new Warm(voice.language(), voice.id()));
-            }
-        }
-        return targets;
     }
 
     private Set<String> languages() {

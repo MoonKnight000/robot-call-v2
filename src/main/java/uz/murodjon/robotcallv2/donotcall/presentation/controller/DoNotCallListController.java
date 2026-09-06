@@ -19,9 +19,11 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 @PreAuthorize("hasAuthority('ADMIN')")
 public interface DoNotCallListController {
 
+    @PreAuthorize("hasAuthority('DO_NOT_CALL_READ')")
     @PostMapping("/do-not-call/list")
     ResponseEntity<ResponseData<PageableData<DoNotCallRow>>> list(@Valid @RequestBody DoNotCallFilter filter);
 
+    @PreAuthorize("hasAuthority('DO_NOT_CALL_EDIT')")
     @PostMapping("/do-not-call/{phone}/remove")
     ResponseEntity<ResponseData<DoNotCallRemoveResponse>> remove(@PathVariable String phone);
 }

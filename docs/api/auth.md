@@ -1,6 +1,6 @@
 ﻿# Autentifikatsiya (login) API
 
-`uz.murodjon.robotcallv2.auth` · rol: aralash (pastga qarang) · ROADMAP E.1
+`uz.murodjon.robotcallv2.auth` · huquq: aralash (pastga qarang) · ROADMAP E.1
 
 Panel uchun real foydalanuvchi login — `X-Api-Key` (machine-to-machine)ga
 qo'shimcha, uni almashtirmaydi. Ikkalasi ham bir vaqtda ishlaydi:
@@ -36,7 +36,9 @@ Body (`LoginRequest`):
       "name": "Admin",
       "username": "admin",
       "email": "admin@example.com",
-      "role": "ADMIN",
+      "roleId": 2,
+      "roleCode": "ADMIN",
+      "roleName": "Administrator",
       "status": "ACTIVE",
       "lastLoginAt": "2026-08-02T08:00:00Z",
       "createdAt": "2026-07-01T00:00:00Z"
@@ -171,7 +173,10 @@ Rol: istalgan (kirgan bo'lsa yetarli).
     "name": "Admin",
     "username": "admin",
     "email": "admin@example.com",
-    "role": "ADMIN",
+    "roleId": 2,
+    "roleCode": "ADMIN",
+    "roleName": "Administrator",
+    "permissions": ["DASHBOARD_READ", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "USER_READ", "USER_EDIT", "ROLE_READ", "ROLE_EDIT"],
     "companyId": 1,
     "companyName": "Default"
   },
@@ -184,6 +189,15 @@ Rol: istalgan (kirgan bo'lsa yetarli).
 
 Sidebar xodim kartochkasi, hover-popover va topbar shu javobga qarab
 chiziladi (UI-DESIGN §7–9).
+
+`permissions` — foydalanuvchi rolidagi barcha huquqlarning to'liq enum nomlari. Frontend
+qaysi sahifa va tugmani ko'rsatishni shu ro'yxatga qarab hal qiladi; nomlarni o'zi tarjima
+qiladi (`ErrorCode` bilan bir xil konventsiya). To'liq model: [roles.md](roles.md).
+
+Access tokenning o'zida esa permissionlar **qisqa kod** bilan yuriladi — `perms` claim,
+masalan `"cmp.r,cmp.w,usr.r"`; yana `roleId` va `role` (rol kodi) claimlari bor. Token
+12 soat yashagani uchun rol tahrirlanganda yoki foydalanuvchining roli almashtirilganda
+uning sessiyalari bekor qilinadi va u qayta login qiladi.
 
 ---
 

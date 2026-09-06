@@ -15,7 +15,7 @@ import java.time.LocalTime;
 
 public record CreateInboundRouteRequest(
         @NotBlank @Pattern(regexp = PhoneNumbers.E164_REGEX) String didNumber,
-        Long scenarioId,
+        Long aiAgentId,
         InboundRouteType routeType,
         String targetDestination,
         QueueStrategy queueStrategy,
@@ -25,7 +25,7 @@ public record CreateInboundRouteRequest(
         InboundAfterHoursAction afterHoursAction,
         String afterHoursDestination,
         String ivrMenuConfig,
-        @Pattern(regexp = "^[a-z]{2}(-[A-Z]{2})?$") String language,
+
         @Schema(type = "string", pattern = DateTimeProperties.TIME_PATTERN, example = "09:00:00")
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN)
         LocalTime businessHoursStart,

@@ -1,8 +1,9 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
-import java.util.Set;
+import uz.murodjon.robotcallv2.agent.turn.TranscriptTurnCues;
+import uz.murodjon.robotcallv2.agent.turn.TurnCue;
+
 import java.util.function.BooleanSupplier;
-import java.util.regex.Pattern;
 
 /**
  * Decides which of a call's audio is worth sending to the speech recognizer.
@@ -25,30 +26,17 @@ import java.util.regex.Pattern;
  * silence to emit a final; cutting the audio the moment speech stops would leave the
  * turn hanging with no final at all.
  *
- * <p>Smart Endpointing: adjusts silence threshold dynamically based on speech length,
- * acoustic turn detector, and interim linguistic hints (continuation clauses vs quick answers).
+ * <p>Smart endpointing: the hangover is not one number. It shrinks for a short answer,
+ * learns the caller's rhythm ({@code DynamicEndpointingProperties}), is extended by the
+ * acoustic turn detector, and moves both ways on what the words say — the recognizer's
+ * last interim is read for whether the sentence has reached its verb
+ * ({@link TranscriptTurnCues}): finished-sounding closes at {@link #setTranscriptCues
+ * completeSilenceMs}, unfinished-sounding waits out the extension as well.
  */
 public class SpeechGate {
 
-    private static final Set<String> CONTINUATION_WORDS = Set.of(
-            // Uzbek
-            "chunki", "lekin", "ammo", "agar", "va", "balki", "yoki", "hamda", "modomiki",
-            // Russian
-            "потому", "потому что", "но", "если", "и", "а", "или", "хотя", "ведь",
-            // English
-            "because", "but", "if", "and", "or", "although", "while", "so"
-    );
-
-    private static final Set<String> QUICK_ANSWERS = Set.of(
-            // Uzbek
-            "ha", "yo'q", "yoq", "eshitaman", "albatta", "tushundim", "mayli", "rahmat",
-            // Russian
-            "да", "нет", "слушаю", "конечно", "понятно", "хорошо", "спасибо",
-            // English
-            "yes", "no", "yeah", "nope", "sure", "ok", "okay", "thanks"
-    );
-
-    private static final Pattern WORD_SPLIT = Pattern.compile("[\\s,;:.!?]+");
+    /** A COMPLETE hypothesis of at most this many words is a quick answer ("ha", "yo'q, ertaga"). */
+    private static final int QUICK_ANSWER_WORDS = 2;
 
     private final int sampleRate;
     private final int hangoverSamples;
@@ -98,9 +86,17 @@ public class SpeechGate {
     private boolean extensionDecided;
     private int extensionSamples;
 
-    /** Linguistic smart endpointing flags updated via interim transcripts. */
+    // What the last interim said about the utterance (TranscriptTurnCues). At most one of
+    // the three is set; a neutral interim clears them all, because the verdict was about
+    // the words before it.
+    /** Reads as mid-sentence — the extension applies whatever the acoustic model says. */
     private boolean continuationClause;
+    /** Reads as a one- or two-word answer — the short hangover applies. */
     private boolean confirmedQuickAnswer;
+    /** Reads as a finished sentence — {@link #completeHangoverSamples} applies, if set. */
+    private boolean completeCue;
+    /** Hangover for a finished-sounding utterance; 0 leaves the words unable to shorten it. */
+    private int completeHangoverSamples;
 
     public SpeechGate(int sampleRate, int preRollMs, int postRollMs, int minSpeechMs,
                       int shortUtteranceMs, int shortPostRollMs,
@@ -119,25 +115,32 @@ public class SpeechGate {
     }
 
     /**
-     * Feeds interim recognition transcript to adjust the silence endpointing threshold.
+     * Let the words move the wait: once {@code completeSilenceMs} of silence have passed,
+     * an utterance whose last interim reads as a finished sentence closes there instead of
+     * waiting out the full hangover. 0 keeps the words from ever shortening the wait — an
+     * unfinished-sounding one is still extended regardless.
+     *
+     * <p>This is the uz-UZ answer to the turnaround budget: the acoustic model cannot be
+     * asked ({@link #setEarlyClose}), but a sentence that has reached its verb is over in
+     * this language more reliably than any silence threshold can tell.
+     */
+    public void setTranscriptCues(int completeSilenceMs) {
+        this.completeHangoverSamples = Math.max(0, completeSilenceMs) * sampleRate / 1000;
+    }
+
+    /**
+     * The recognizer's latest hypothesis for the utterance in progress. Only its last word
+     * matters, and only the latest hypothesis counts: each one replaces the verdict of the
+     * one before, since the caller has said more since.
      */
     public void onInterimTranscript(String transcript) {
         if (transcript == null || transcript.isBlank()) {
             return;
         }
-        String cleaned = transcript.trim().toLowerCase();
-        String[] words = WORD_SPLIT.split(cleaned);
-        if (words.length == 0) {
-            return;
-        }
-        String lastWord = words[words.length - 1];
-        if (CONTINUATION_WORDS.contains(lastWord) || CONTINUATION_WORDS.contains(cleaned)) {
-            continuationClause = true;
-            confirmedQuickAnswer = false;
-        } else if (words.length <= 2 && QUICK_ANSWERS.contains(cleaned)) {
-            confirmedQuickAnswer = true;
-            continuationClause = false;
-        }
+        TurnCue cue = TranscriptTurnCues.judge(transcript);
+        continuationClause = cue == TurnCue.INCOMPLETE;
+        completeCue = cue == TurnCue.COMPLETE;
+        confirmedQuickAnswer = completeCue && TranscriptTurnCues.wordCount(transcript) <= QUICK_ANSWER_WORDS;
     }
 
     /**
@@ -213,6 +216,7 @@ public class SpeechGate {
         earlyCloseDecided = false;
         continuationClause = false;
         confirmedQuickAnswer = false;
+        completeCue = false;
         // Start judging this close: whether the caller carries on is what says the
         // wait that produced it was too short.
         sinceCloseSamples = dynamic ? 0 : -1;
@@ -318,7 +322,13 @@ public class SpeechGate {
         if (shortAnswer) {
             return shortHangoverSamples;
         }
-        return dynamic ? (int) Math.round(emaHangoverSamples) : hangoverSamples;
+        int wait = dynamic ? (int) Math.round(emaHangoverSamples) : hangoverSamples;
+        // A finished-sounding sentence does not wait out a budget sized for the caller who
+        // might still be mid-thought — the words already said they are not.
+        if (completeCue && completeHangoverSamples > 0) {
+            return Math.min(completeHangoverSamples, wait);
+        }
+        return wait;
     }
 
     /**

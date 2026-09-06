@@ -1,8 +1,11 @@
 package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.adapter;
 
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
 import uz.murodjon.robotcallv2.campaign.application.mapper.CampaignMapper;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
@@ -14,36 +17,32 @@ import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.Ca
 import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
 public class CampaignRepositoryAdapter implements CampaignRepository {
 
-    private final CampaignJpaRepository jpa;
-    private final CompanyJpaRepository companyJpa;
-    private final ScenarioJpaRepository scenarioJpa;
-    private final UserJpaRepository userJpa;
+    private final CampaignJpaRepository jpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
+    private final UserJpaRepository userJpaRepository;
     private final CurrentCompany currentCompany;
     private final CampaignMapper mapper;
 
-    public CampaignRepositoryAdapter(CampaignJpaRepository jpa,
-                                     CompanyJpaRepository companyJpa,
-                                     ScenarioJpaRepository scenarioJpa,
-                                     UserJpaRepository userJpa,
+    public CampaignRepositoryAdapter(CampaignJpaRepository jpaRepository,
+                                     CompanyJpaRepository companyJpaRepository,
+                                     UserJpaRepository userJpaRepository,
                                      CurrentCompany currentCompany,
                                      CampaignMapper mapper) {
-        this.jpa = jpa;
-        this.companyJpa = companyJpa;
-        this.scenarioJpa = scenarioJpa;
-        this.userJpa = userJpa;
+        this.jpaRepository = jpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
+        this.userJpaRepository = userJpaRepository;
         this.currentCompany = currentCompany;
         this.mapper = mapper;
     }
@@ -52,119 +51,89 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
     @Transactional
     public long create(Campaign row) {
         long companyId = row.companyId() > 0 ? row.companyId() : currentCompany.id();
-        CompanyEntity company = companyJpa.findById(companyId)
+        CompanyEntity company = companyJpaRepository.findById(companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
-        ScenarioEntity scenario = scenarioJpa.findById(row.scenarioId())
-                .orElseThrow(() -> new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, row.scenarioId()));
-        UserEntity createdBy = row.createdBy() != null ? userJpa.findById(row.createdBy()).orElse(null) : null;
+        UserEntity createdBy = row.createdBy() != null
+                ? userJpaRepository.findById(row.createdBy()).orElse(null)
+                : null;
 
-        CampaignEntity entity = mapper.toEntity(row, company, scenario, createdBy);
+        CampaignEntity entity = mapper.toEntity(row, company, createdBy);
         entity.setCreatedAt(Instant.now());
-        CampaignEntity saved = jpa.save(entity);
-        return saved.getId();
+        return jpaRepository.save(entity).getId();
     }
 
     @Override
     public Campaign find(long id) {
-        return jpa.findByIdAndCompanyId(id, currentCompany.id())
-                .map(mapper::toDomain)
+        return jpaRepository.findByIdAndCompanyId(id, currentCompany.id())
+                .map(mapper::toCampaign)
                 .orElse(null);
     }
 
     @Override
     public List<Campaign> findAll(CampaignFilter filter) {
         Specification<CampaignEntity> spec = buildSpecification(filter, currentCompany.id());
-        return jpa.findAll(spec, filter.pageable()).stream()
-                .map(mapper::toDomain)
+        return jpaRepository.findAll(spec, filter.pageable()).stream()
+                .map(mapper::toCampaign)
                 .toList();
     }
 
     @Override
     public long count() {
-        return jpa.countByCompanyId(currentCompany.id());
+        return jpaRepository.countByCompanyId(currentCompany.id());
     }
 
     @Override
     public long count(CampaignFilter filter) {
-        Specification<CampaignEntity> spec = buildSpecification(filter, currentCompany.id());
-        return jpa.count(spec);
+        return jpaRepository.count(buildSpecification(filter, currentCompany.id()));
     }
 
     @Override
     public List<Campaign> searchByName(String q, int limit) {
-        return jpa.searchByCompanyId(currentCompany.id(), "%" + q.toLowerCase() + "%",
-                        org.springframework.data.domain.PageRequest.of(0, limit))
+        return jpaRepository.searchByCompanyId(currentCompany.id(), "%" + q.toLowerCase() + "%",
+                        PageRequest.of(0, limit))
                 .stream()
-                .map(mapper::toDomain)
+                .map(mapper::toCampaign)
                 .toList();
     }
 
     @Override
     public List<Campaign> findActive() {
-        return jpa.findByStatusOrderById(CampaignStatus.ACTIVE).stream()
-                .map(mapper::toDomain)
+        return jpaRepository.findByStatusOrderById(CampaignStatus.ACTIVE).stream()
+                .map(mapper::toCampaign)
                 .toList();
     }
 
     @Override
     public List<Campaign> findRecurring() {
-        return jpa.findByRecurrenceTypeNotAndStatusNot(RecurrenceType.ONCE, CampaignStatus.ARCHIVED).stream()
-                .map(mapper::toDomain)
+        return jpaRepository.findByRecurrenceTypeNotAndStatusNot(RecurrenceType.ONCE, CampaignStatus.ARCHIVED).stream()
+                .map(mapper::toCampaign)
                 .toList();
     }
 
     @Override
     @Transactional
     public void updateStatus(long companyId, long id, CampaignStatus status) {
-        jpa.updateStatus(id, status, companyId);
+        jpaRepository.updateStatus(id, status, companyId);
     }
 
     @Override
     @Transactional
     public void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status) {
-        jpa.recordRecurrenceRun(id, lastRunAt, status);
+        jpaRepository.recordRecurrenceRun(id, lastRunAt, status);
     }
 
     @Override
     @Transactional
     public void update(long id, Campaign row) {
-        CampaignEntity entity = jpa.findByIdAndCompanyId(id, currentCompany.id())
+        CampaignEntity entity = jpaRepository.findByIdAndCompanyId(id, currentCompany.id())
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id));
-        applyEditableFields(entity, row);
-        jpa.save(entity);
-    }
-
-    private static void applyEditableFields(CampaignEntity entity, Campaign row) {
-        entity.setName(row.name());
-        entity.setGoalPrompt(row.goalPrompt());
-        entity.setDefaultLanguage(row.defaultLanguage());
-        entity.setDialWindowStart(row.dialWindowStart());
-        entity.setDialWindowEnd(row.dialWindowEnd());
-        entity.setDialDays(row.dialDays());
-        entity.setMaxAttempts(row.maxAttempts());
-        entity.setRetryIntervalMinutes(row.retryIntervalMinutes());
-        entity.setMaxConcurrentCalls(row.maxConcurrentCalls());
-        entity.setTtsVoice(row.ttsVoice());
-        entity.setLanguageVoices(row.languageVoices());
-        entity.setSipTrunkIds(row.sipTrunkIds());
-        entity.setDailyCallCap(row.dailyCallCap());
-        entity.setRecurrenceType(row.recurrenceType());
-        entity.setRecurringDayOfMonth(row.recurringDayOfMonth());
-        entity.setCronExpression(row.cronExpression());
-        entity.setAutoResetTargets(row.autoResetTargets());
-        entity.setAmbientSound(row.ambientSound());
-        entity.setMidCallSmsEnabled(row.midCallSmsEnabled());
-        entity.setMidCallSmsTemplate(row.midCallSmsTemplate());
-        entity.setVoicemailAction(row.voicemailAction());
-        entity.setVoicemailMessage(row.voicemailMessage());
-        entity.setDtmfInputEnabled(row.dtmfInputEnabled());
-        entity.setEmotionAdaptiveVoice(row.emotionAdaptiveVoice());
-        entity.setAgentPersona(row.agentPersona());
+        mapper.applyEditableFields(entity, row);
+        jpaRepository.save(entity);
     }
 
     private Specification<CampaignEntity> buildSpecification(CampaignFilter filter, long companyId) {
         return (root, query, cb) -> {
-            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("company").get("id"), companyId));
 
             if (filter.status() != null) {
@@ -173,8 +142,8 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
             if (filter.type() != null) {
                 predicates.add(cb.equal(root.get("type"), filter.type()));
             }
-            if (filter.scenarioId() != null) {
-                predicates.add(cb.equal(root.get("scenario").get("id"), filter.scenarioId()));
+            if (filter.aiAgentId() != null) {
+                predicates.add(cb.equal(root.get("aiAgentId"), filter.aiAgentId()));
             }
             if (filter.createdBy() != null) {
                 predicates.add(cb.equal(root.get("createdBy").get("id"), filter.createdBy()));
@@ -191,7 +160,7 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
             if (filter.dateTo() != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), filter.dateTo()));
             }
-            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            return cb.and(predicates.toArray(new Predicate[0]));
         };
     }
 }

@@ -5,7 +5,6 @@ import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
 import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -27,9 +26,8 @@ public class InboundRouteEntity {
     @Column(name = "did_number", nullable = false)
     private String didNumber;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scenario_id")
-    private ScenarioEntity scenario;
+    @Column(name = "ai_agent_id")
+    private Long aiAgentId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "route_type", nullable = false)
@@ -62,8 +60,6 @@ public class InboundRouteEntity {
     @Column(name = "ivr_menu_config", columnDefinition = "TEXT")
     private String ivrMenuConfig;
 
-    @Column(nullable = false)
-    private String language = "uz-UZ";
 
     @Column(name = "business_hours_start")
     private LocalTime businessHoursStart;
@@ -104,12 +100,12 @@ public class InboundRouteEntity {
         this.didNumber = didNumber;
     }
 
-    public ScenarioEntity getScenario() {
-        return scenario;
+    public Long getAiAgentId() {
+        return aiAgentId;
     }
 
-    public void setScenario(ScenarioEntity scenario) {
-        this.scenario = scenario;
+    public void setAiAgentId(Long aiAgentId) {
+        this.aiAgentId = aiAgentId;
     }
 
     public InboundRouteType getRouteType() {
@@ -184,13 +180,6 @@ public class InboundRouteEntity {
         this.ivrMenuConfig = ivrMenuConfig;
     }
 
-    public String getLanguage() {
-        return language;
-    }
-
-    public void setLanguage(String language) {
-        this.language = language;
-    }
 
     public LocalTime getBusinessHoursStart() {
         return businessHoursStart;

@@ -36,8 +36,8 @@ class GeminiTtsProviderTest {
         byte[] rawBytes = new byte[source.length * 2];
         ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(source);
 
-        short[] pcm8k = GeminiTtsProvider.convertTo8kPcm(rawBytes, 24000);
-        assertThat(pcm8k).hasSize(80); // 240 / 3 = 80 samples at 8 kHz
+        short[] samples = GeminiTtsProvider.toSourceSamples(rawBytes);
+        assertThat(samples).isEqualTo(source);
     }
 
     @Test
@@ -54,16 +54,13 @@ class GeminiTtsProviderTest {
         System.arraycopy(header, 0, wavBytes, 0, header.length);
         System.arraycopy(pcmData, 0, wavBytes, header.length, pcmData.length);
 
-        short[] pcm8k = GeminiTtsProvider.convertTo8kPcm(wavBytes, 24000);
-        assertThat(pcm8k).hasSize(80);
+        short[] samples = GeminiTtsProvider.toSourceSamples(wavBytes);
+        assertThat(samples).isEqualTo(source);
     }
 
     @Test
     void emptyAudioReturnsEmptyArray() {
-        short[] pcm = GeminiTtsProvider.convertTo8kPcm(new byte[0], 24000);
-        assertThat(pcm).isEmpty();
-
-        short[] pcmNull = GeminiTtsProvider.convertTo8kPcm(null, 24000);
-        assertThat(pcmNull).isEmpty();
+        assertThat(GeminiTtsProvider.toSourceSamples(new byte[0])).isEmpty();
+        assertThat(GeminiTtsProvider.toSourceSamples(null)).isEmpty();
     }
 }

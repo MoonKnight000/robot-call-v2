@@ -39,6 +39,7 @@ public class VoiceMetrics {
     private final Counter sttSecondsSent;
     private final Counter sttSecondsSkipped;
     private final Counter sttUtterancesEndpointed;
+    private final Counter sttFinalsPromoted;
     private final Counter noInputPrompts;
     private final Counter noInputHangups;
     private final Counter factGuardBlocks;
@@ -49,6 +50,7 @@ public class VoiceMetrics {
     private final Counter fillersPlayed;
     private final Counter bargeIns;
     private final Counter falseBargeIns;
+    private final Counter stitchedTurns;
     private final Counter backchannels;
     private final Counter backchannelsPlayed;
     private final Counter knowledgeBaseAnswers;
@@ -124,6 +126,9 @@ public class VoiceMetrics {
         // together, far more means they are being chopped up.
         this.sttUtterancesEndpointed = Counter.builder("voice.stt.utterances.endpointed")
                 .description("utterances this side declared finished, instead of the provider")
+                .register(registry);
+        this.sttFinalsPromoted = Counter.builder("voice.stt.finals.promoted")
+                .description("utterances whose last interim was taken as the final because the provider's was late")
                 .register(registry);
         // Flat at post-roll-ms unless the adaptation is on. Once it is, this is the whole
         // story: a distribution that never leaves the maximum means callers keep talking
@@ -205,6 +210,13 @@ public class VoiceMetrics {
         // above: a majority means the VAD is firing on noise, or there is echo on the line.
         this.falseBargeIns = Counter.builder("voice.dialog.barge.in.false")
                 .description("interruptions no transcript followed, after which the reply resumed")
+                .register(registry);
+        // The caller was still talking when the gate closed: the turn started, was cancelled
+        // before a word of the reply went out, and the next final was folded onto the first.
+        // This is the cut-off rate the endpointing settings are tuned against — every one
+        // of these is a sentence the wait was too short for.
+        this.stitchedTurns = Counter.builder("voice.dialog.turn.stitched")
+                .description("caller utterances the gate split in two and the dialog rejoined")
                 .register(registry);
         // Barge-ins the caller did back up with words, but only "aha" — agreement over the
         // top of the bot, not an answer to it. Counted separately from the false ones
@@ -305,6 +317,21 @@ public class VoiceMetrics {
         sttErrors.increment();
     }
 
+    /**
+     * A live call moved off a recognizer that kept failing
+     * ({@link uz.murodjon.robotcallv2.agent.stt.SttStreamBridge}). Tagged both ways: the
+     * question this answers during an incident is which vendor is down, and one that only
+     * counted events would need the logs to say.
+     */
+    public void sttFailover(String from, String to) {
+        Counter.builder("voice.stt.failover")
+                .description("calls moved to another STT provider mid-call after repeated failures")
+                .tag("from", from != null ? from : "unknown")
+                .tag("to", to != null ? to : "unknown")
+                .register(registry)
+                .increment();
+    }
+
     public void ttsError() {
         ttsErrors.increment();
     }
@@ -386,6 +413,11 @@ public class VoiceMetrics {
         sttUtterancesEndpointed.increment();
     }
 
+    /** The provider's final was late and the last interim was used in its place. */
+    public void sttFinalPromoted() {
+        sttFinalsPromoted.increment();
+    }
+
     /** The wait a long utterance earned before it was closed — fixed, or learned. */
     public void sttEndpointingHangover(int ms) {
         endpointingHangover.record(ms);
@@ -442,6 +474,11 @@ public class VoiceMetrics {
     /** A barge-in no transcript followed, so the interrupted reply was resumed. */
     public void falseBargeIn() {
         falseBargeIns.increment();
+    }
+
+    /** The gate closed mid-sentence; the two halves were answered as one turn. */
+    public void turnStitched() {
+        stitchedTurns.increment();
     }
 
     /** A caller transcript was agreement over the bot's line, so it did not start a turn. */

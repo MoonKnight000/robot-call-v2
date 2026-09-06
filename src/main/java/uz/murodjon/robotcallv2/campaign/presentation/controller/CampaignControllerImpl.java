@@ -56,6 +56,27 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<TargetSourceRow>> targetSource(long id) {
+        return ResponseEntity.ok(ResponseData.ok(targets.findTargetSource(id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TargetSourceRow>> updateTargetSource(long id, UpdateTargetSourceRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(targets.updateTargetSource(id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<Void>> deleteTargetSource(long id) {
+        targets.deleteTargetSource(id);
+        return ResponseEntity.ok(ResponseData.ok(null));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TargetSyncResult>> syncTargets(long id) {
+        return ResponseEntity.ok(ResponseData.ok(targets.syncTargetsFromSource(id)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<AddTargetsResponse>> addTargets(long id, List<AddTargetRequest> targetRequests) {
         return ResponseEntity.ok(ResponseData.ok(targets.addTargets(id, targetRequests)));
     }
@@ -88,15 +109,5 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<DoNotCallResponse>> doNotCall(long id) {
         return ResponseEntity.ok(ResponseData.ok(targets.markDoNotCall(id)));
-    }
-
-    @Override
-    public ResponseEntity<ResponseData<TargetMemoryDto>> getTargetMemory(long campaignId, long targetId) {
-        return ResponseEntity.ok(ResponseData.ok(targets.getTargetMemory(targetId)));
-    }
-
-    @Override
-    public ResponseEntity<ResponseData<TargetMemoryDto>> updateTargetMemory(long campaignId, long targetId, UpdateTargetMemoryRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(targets.updateTargetMemory(targetId, r)));
     }
 }

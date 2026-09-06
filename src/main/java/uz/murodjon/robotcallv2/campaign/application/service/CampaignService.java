@@ -1,23 +1,26 @@
 package uz.murodjon.robotcallv2.campaign.application.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
@@ -31,17 +34,16 @@ import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallReposi
 import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
-import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
+import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.user.application.service.UserService;
-import uz.murodjon.robotcallv2.voice.application.service.TtsVoiceService;
-import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
 import java.time.*;
 import java.util.*;
@@ -51,13 +53,11 @@ import java.util.stream.Collectors;
 public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CampaignService.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
     private final DoNotCallRepository doNotCallList;
-    private final TtsVoiceService voices;
-    private final ScenarioService scenarios;
+    private final AiAgentUseCase aiAgents;
     private final UserService users;
     private final CompanyConfigService companyConfig;
     private final CurrentCompany currentCompany;
@@ -65,19 +65,22 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     private final AuditService audit;
     private final NotificationService notifications;
     private final TtsWarmup ttsWarmup;
+    private final TargetSourceRepository targetSources;
+    private final TargetApiImporter targetApiImporter;
+    private final SecretCipher secretCipher;
     private final Clock clock;
 
     public CampaignService(CampaignRepository campaigns, CampaignTargetRepository targets,
-                           DoNotCallRepository doNotCallList, TtsVoiceService voices, ScenarioService scenarios,
+                           DoNotCallRepository doNotCallList, AiAgentUseCase aiAgents,
                            UserService users, CompanyConfigService companyConfig, CurrentCompany currentCompany,
                            DialerProperties dialerProps, AuditService audit, NotificationService notifications,
-                           TtsWarmup ttsWarmup, Clock clock
+                           TtsWarmup ttsWarmup, TargetSourceRepository targetSources,
+                           TargetApiImporter targetApiImporter, SecretCipher secretCipher, Clock clock
     ) {
         this.campaigns = campaigns;
         this.targets = targets;
         this.doNotCallList = doNotCallList;
-        this.voices = voices;
-        this.scenarios = scenarios;
+        this.aiAgents = aiAgents;
         this.users = users;
         this.companyConfig = companyConfig;
         this.currentCompany = currentCompany;
@@ -85,6 +88,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         this.audit = audit;
         this.notifications = notifications;
         this.ttsWarmup = ttsWarmup;
+        this.targetSources = targetSources;
+        this.targetApiImporter = targetApiImporter;
+        this.secretCipher = secretCipher;
         this.clock = clock;
     }
 
@@ -93,89 +99,64 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
 
     @Override
     public CreateCampaignResponse createCampaign(CreateCampaignRequest r) {
-        scenarios.requireScenario(r.scenarioId());
-        String language = companyConfig.resolveLanguage(currentCompany.id(), r.defaultLanguage());
+        long companyId = currentCompany.id();
+        AiAgent agent = aiAgents.requireAgent(companyId, r.aiAgentId());
         int dailyCallCap = Math.max(0, r.dailyCallCap());
         LocalTime dialWindowStart = r.dialWindowStart() != null ? r.dialWindowStart() : LocalTime.of(9, 0);
         LocalTime dialWindowEnd = r.dialWindowEnd() != null ? r.dialWindowEnd() : LocalTime.of(20, 0);
-        requireWindowWithinCompany(currentCompany.id(), dialWindowStart, dialWindowEnd);
+        requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
         Campaign row = new Campaign(
                 0,
                 r.name(),
                 r.type(),
                 CampaignStatus.DRAFT,
-                r.goalPrompt() != null ? r.goalPrompt() : "",
-                language,
                 dialWindowStart,
                 dialWindowEnd,
                 r.dialDays() != null && !r.dialDays().isEmpty() ? r.dialDays() : DEFAULT_DIAL_DAYS,
                 r.maxAttempts() > 0 ? r.maxAttempts() : 3,
                 Math.max(0, r.retryIntervalMinutes()),
                 r.maxConcurrentCalls() > 0 ? r.maxConcurrentCalls() : 20,
-                requireKnownVoice(r.ttsVoice()),
                 dailyCallCap,
-                r.scenarioId(),
-                currentCompany.id(),
+                agent.id(),
+                companyId,
                 null,
                 r.recurrenceTypeOrDefault(),
                 r.recurringDayOfMonth(),
                 r.cronExpression(),
                 r.autoResetTargetsOrDefault(),
-                null,
-                r.ambientSoundOrDefault(),
-                r.midCallSmsEnabledOrDefault(),
-                r.midCallSmsTemplate(),
-                r.voicemailActionOrDefault(),
-                r.voicemailMessage(),
-                r.dtmfInputEnabledOrDefault(),
-                r.emotionAdaptiveVoiceOrDefault(),
-                r.agentPersonaOrDefault(),
-                requireKnownVoicePerLanguage(currentCompany.id(), r.languageVoicesOrEmpty()),
-                r.sipTrunkIdsOrEmpty());
+                null);
         long id = campaigns.create(row);
         audit.record("CAMPAIGN_CREATE", "campaign", String.valueOf(id),
-                r.name() + " (" + language + ", cap/day=" + dailyCallCap + ", recurrence=" + r.recurrenceTypeOrDefault() + ")");
+                r.name() + " (agent " + agent.name() + ", cap/day=" + dailyCallCap
+                        + ", recurrence=" + r.recurrenceTypeOrDefault() + ")");
         return new CreateCampaignResponse(id, CampaignStatus.DRAFT);
     }
 
     @Override
     public CampaignRow updateCampaign(long id, UpdateCampaignRequest r) {
         Campaign existing = requireCampaign(id);
-        String language = companyConfig.resolveLanguage(existing.companyId(), r.defaultLanguage());
+        AiAgent agent = aiAgents.requireAgent(existing.companyId(), r.aiAgentId());
         requireWindowWithinCompany(existing.companyId(), r.dialWindowStart(), r.dialWindowEnd());
         Campaign row = new Campaign(
                 id,
                 r.name(),
                 existing.type(),
                 existing.status(),
-                r.goalPrompt(),
-                language,
                 r.dialWindowStart(),
                 r.dialWindowEnd(),
                 r.dialDays(),
                 r.maxAttempts(),
                 Math.max(0, r.retryIntervalMinutes()),
                 r.maxConcurrentCalls(),
-                requireKnownVoice(r.ttsVoice()),
                 Math.max(0, r.dailyCallCap()),
-                existing.scenarioId(),
+                agent.id(),
                 existing.companyId(),
                 existing.createdBy(),
                 r.recurrenceTypeOrDefault(),
                 r.recurringDayOfMonth(),
                 r.cronExpression(),
                 r.autoResetTargetsOrDefault(),
-                existing.lastRunAt(),
-                r.ambientSoundOrDefault(),
-                r.midCallSmsEnabledOrDefault(),
-                r.midCallSmsTemplate(),
-                r.voicemailActionOrDefault(),
-                r.voicemailMessage(),
-                r.dtmfInputEnabledOrDefault(),
-                r.emotionAdaptiveVoiceOrDefault(),
-                r.agentPersonaOrDefault(),
-                requireKnownVoicePerLanguage(existing.companyId(), r.languageVoicesOrEmpty()),
-                r.sipTrunkIdsOrEmpty());
+                existing.lastRunAt());
         campaigns.update(id, row);
         audit.record("CAMPAIGN_UPDATE", "campaign", String.valueOf(id), r.name());
         return campaignRow(id);
@@ -189,34 +170,21 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 source.name() + " (nusxa)",
                 source.type(),
                 CampaignStatus.DRAFT,
-                source.goalPrompt(),
-                source.defaultLanguage(),
                 source.dialWindowStart(),
                 source.dialWindowEnd(),
                 source.dialDays(),
                 source.maxAttempts(),
                 source.retryIntervalMinutes(),
                 source.maxConcurrentCalls(),
-                source.ttsVoice(),
                 source.dailyCallCap(),
-                source.scenarioId(),
+                source.aiAgentId(),
                 source.companyId(),
                 null,
                 source.recurrenceType(),
                 source.recurringDayOfMonth(),
                 source.cronExpression(),
                 source.autoResetTargets(),
-                null,
-                source.ambientSound(),
-                source.midCallSmsEnabled(),
-                source.midCallSmsTemplate(),
-                source.voicemailAction(),
-                source.voicemailMessage(),
-                source.dtmfInputEnabled(),
-                source.emotionAdaptiveVoice(),
-                source.agentPersona(),
-                source.languageVoices(),
-                source.sipTrunkIdsOrEmpty());
+                null);
         long newId = campaigns.create(row);
         audit.record("CAMPAIGN_CLONE", "campaign", String.valueOf(newId), "from " + id);
         return campaignRow(newId);
@@ -234,38 +202,6 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
             throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_WINDOW_OUT_OF_RANGE,
                     start, end, config.dialWindowStart(), config.dialWindowEnd());
         }
-    }
-
-    private Map<String, String> requireKnownVoicePerLanguage(long companyId, Map<String, String> languageVoices) {
-        if (languageVoices.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, String> checked = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : languageVoices.entrySet()) {
-            String language = companyConfig.resolveLanguage(companyId, e.getKey());
-            String voiceId = requireKnownVoice(e.getValue());
-            if (voiceId == null) {
-                continue;
-            }
-            TtsVoice voice = voices.find(voiceId);
-            if (voice != null && !language.equalsIgnoreCase(voice.language())) {
-                throw new ValidationException(ErrorCode.TTS_VOICE_LANGUAGE_MISMATCH,
-                        voiceId, voice.language(), language);
-            }
-            checked.put(language, voiceId);
-        }
-        return checked;
-    }
-
-    private String requireKnownVoice(String ttsVoice) {
-        if (ttsVoice == null || ttsVoice.isBlank()) {
-            return null;
-        }
-        String trimmed = ttsVoice.trim();
-        if (!voices.isSelectable(trimmed)) {
-            throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed, voices.selectableIds());
-        }
-        return trimmed;
     }
 
     @Override
@@ -312,6 +248,109 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
+    public TargetSourceRow findTargetSource(long campaignId) {
+        requireCampaign(campaignId);
+        TargetSource source = targetSources.findByCampaignId(campaignId);
+        return source != null ? TargetSourceRow.of(source) : null;
+    }
+
+    @Override
+    public TargetSourceRow updateTargetSource(long campaignId, UpdateTargetSourceRequest r) {
+        requireCampaign(campaignId);
+        TargetSource existing = targetSources.findByCampaignId(campaignId);
+        // Omitted on an edit means "keep the secret you already have" — the API never
+        // hands it back out, so a client re-saving the form has nothing to send back.
+        String authHeaderValue = r.authHeaderValue() != null && !r.authHeaderValue().isBlank()
+                ? encryptSecret(r.authHeaderValue())
+                : (existing != null ? existing.authHeaderValue() : null);
+        TargetSource saved = targetSources.upsert(campaignId, new TargetSource(
+                campaignId,
+                r.url().trim(),
+                r.method(),
+                r.requestBody(),
+                r.authHeaderName(),
+                authHeaderValue,
+                r.itemsPath(),
+                r.phoneField(),
+                r.clientIdField(),
+                r.languageField(),
+                r.replaceTargets() != null && r.replaceTargets(),
+                r.syncOnRecurrence() == null || r.syncOnRecurrence(),
+                r.enabled() == null || r.enabled(),
+                existing != null ? existing.lastSyncAt() : null,
+                existing != null ? existing.lastSyncAdded() : null,
+                existing != null ? existing.lastSyncError() : null));
+        audit.record("TARGET_SOURCE_UPDATE", "campaign", String.valueOf(campaignId), saved.url());
+        return TargetSourceRow.of(saved);
+    }
+
+    @Override
+    public void deleteTargetSource(long campaignId) {
+        requireCampaign(campaignId);
+        targetSources.delete(campaignId);
+        audit.record("TARGET_SOURCE_DELETE", "campaign", String.valueOf(campaignId), null);
+    }
+
+    @Override
+    public TargetSyncResult syncTargetsFromSource(long campaignId) {
+        requireCampaign(campaignId);
+        TargetSource source = targetSources.findByCampaignId(campaignId);
+        if (source == null) {
+            throw new NotFoundException(ErrorCode.TARGET_SOURCE_NOT_FOUND, campaignId);
+        }
+        return importFromSource(source);
+    }
+
+    /**
+     * @throws uz.murodjon.robotcallv2.shared.exception.ExternalServiceException when the
+     *         endpoint could not be read — deliberately not swallowed, so a manual sync
+     *         says what went wrong and leaves the existing list untouched
+     */
+    private TargetSyncResult importFromSource(TargetSource source) {
+        long campaignId = source.campaignId();
+        List<CsvRowError> errors = new ArrayList<>();
+        List<ParsedTarget> fetched;
+        try {
+            fetched = targetApiImporter.fetchTargets(source, decryptSecret(source.authHeaderValue()), errors);
+        } catch (RuntimeException e) {
+            targetSources.recordSync(campaignId, Instant.now(clock), 0, e.getMessage());
+            throw e;
+        }
+        // Only once the endpoint has answered: clearing first would empty the campaign on
+        // every failed fetch, and a campaign with no targets dials nobody all day.
+        int removed = source.replaceTargets() ? targets.deleteByCampaignId(campaignId) : 0;
+        List<Long> added = new ArrayList<>();
+        for (ParsedTarget t : fetched) {
+            try {
+                added.add(targets.add(campaignId, t.clientId(), PhoneNumbers.require(t.phone()),
+                        t.language(), t.contextJson()));
+            } catch (Exception e) {
+                errors.add(new CsvRowError(t.line(), e.getMessage()));
+            }
+        }
+        targetSources.recordSync(campaignId, Instant.now(clock), added.size(), null);
+        audit.record("TARGETS_SYNC", "campaign", String.valueOf(campaignId),
+                added.size() + " added, " + removed + " removed, " + errors.size() + " rejected");
+        log.info("Target source sync for campaign {}: {} fetched, {} added, {} removed, {} rejected",
+                campaignId, fetched.size(), added.size(), removed, errors.size());
+        return new TargetSyncResult(campaignId, fetched.size(), added.size(), removed, errors);
+    }
+
+    private String encryptSecret(String plaintext) {
+        if (!secretCipher.available()) {
+            throw new ExternalServiceException(ErrorCode.ENCRYPTION_KEY_NOT_SET, "target-source");
+        }
+        return secretCipher.encrypt(plaintext);
+    }
+
+    private String decryptSecret(String encrypted) {
+        if (encrypted == null || encrypted.isBlank() || !secretCipher.available()) {
+            return null;
+        }
+        return secretCipher.decrypt(encrypted);
+    }
+
+    @Override
     public PageableData<CampaignRow> filterCampaigns(CampaignFilter filter) {
         List<Campaign> rows = campaigns.findAll(filter);
         long total = campaigns.count(filter);
@@ -326,12 +365,12 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     private List<CampaignRow> toRows(List<Campaign> rows) {
         Set<Long> campaignIds = rows.stream().map(Campaign::id).collect(Collectors.toSet());
         Map<Long, CampaignTargetStats> statsMap = targets.statsByCampaignIds(campaignIds);
-        Map<Long, String> scenarioNames = scenarios.scenarioNamesByIds(
-                rows.stream().map(Campaign::scenarioId).collect(Collectors.toSet()));
+        Map<Long, String> agentNames = aiAgents.findNamesByIds(
+                rows.stream().map(Campaign::aiAgentId).collect(Collectors.toSet()));
         Map<Long, String> creatorNames = users.namesByIds(
                 rows.stream().map(Campaign::createdBy).filter(Objects::nonNull).collect(Collectors.toSet()));
         return rows.stream()
-                .map(c -> CampaignRow.of(c, scenarioNames.get(c.scenarioId()),
+                .map(c -> CampaignRow.of(c, agentNames.get(c.aiAgentId()),
                         c.createdBy() != null ? creatorNames.get(c.createdBy()) : null,
                         statsMap.getOrDefault(c.id(), CampaignTargetStats.ZERO)))
                 .toList();
@@ -340,12 +379,12 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     @Override
     public CampaignRow campaignRow(long id) {
         Campaign c = requireCampaign(id);
-        String scenarioName = scenarios.scenarioNamesByIds(List.of(c.scenarioId())).get(c.scenarioId());
+        String agentName = aiAgents.findNamesByIds(List.of(c.aiAgentId())).get(c.aiAgentId());
         String createdByName = c.createdBy() != null
                 ? users.namesByIds(List.of(c.createdBy())).get(c.createdBy())
                 : null;
         CampaignTargetStats stats = targets.statsByCampaignId(id);
-        return CampaignRow.of(c, scenarioName, createdByName, stats);
+        return CampaignRow.of(c, agentName, createdByName, stats);
     }
 
     @Override
@@ -367,6 +406,15 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         List<CampaignTarget> rows = targets.findByCampaign(campaignId, filter);
         long total = targets.countByCampaign(campaignId);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
+    }
+
+    @Override
+    public CampaignTarget requireTarget(long campaignId, long targetId) {
+        CampaignTarget target = targets.find(targetId);
+        if (target == null || target.campaignId() != campaignId) {
+            throw new NotFoundException(ErrorCode.TARGET_NOT_FOUND, targetId);
+        }
+        return target;
     }
 
     public void setStatus(long companyId, long campaignId, CampaignStatus status) {
@@ -423,88 +471,37 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public TargetMemoryDto getTargetMemory(long targetId) {
-        CampaignTarget t = targets.find(targetId);
-        if (t == null) {
-            throw new NotFoundException(ErrorCode.TARGET_NOT_FOUND, targetId);
-        }
-        Map<String, Object> map = parseContextMap(t.contextData());
-        String operatorNotes = map.get("operatorNotes") != null ? map.get("operatorNotes").toString() : null;
-        String lastCallSummary = map.get("lastCallSummary") != null ? map.get("lastCallSummary").toString() : null;
-        String preferredName = map.get("preferredName") != null ? map.get("preferredName").toString() : null;
-        return new TargetMemoryDto(targetId, operatorNotes, lastCallSummary, preferredName, map);
-    }
-
-    @Override
-    @Transactional
-    public TargetMemoryDto updateTargetMemory(long targetId, UpdateTargetMemoryRequest r) {
-        CampaignTarget t = targets.find(targetId);
-        if (t == null) {
-            throw new NotFoundException(ErrorCode.TARGET_NOT_FOUND, targetId);
-        }
-        Map<String, Object> map = parseContextMap(t.contextData());
-        if (r.operatorNotes() != null) {
-            if (r.operatorNotes().isBlank()) {
-                map.remove("operatorNotes");
-            } else {
-                map.put("operatorNotes", r.operatorNotes().trim());
-            }
-        }
-        if (r.lastCallSummary() != null) {
-            if (r.lastCallSummary().isBlank()) {
-                map.remove("lastCallSummary");
-            } else {
-                map.put("lastCallSummary", r.lastCallSummary().trim());
-            }
-        }
-        if (r.preferredName() != null) {
-            if (r.preferredName().isBlank()) {
-                map.remove("preferredName");
-            } else {
-                map.put("preferredName", r.preferredName().trim());
-            }
-        }
-        if (r.additionalContext() != null) {
-            map.putAll(r.additionalContext());
-        }
-        try {
-            String updatedJson = MAPPER.writeValueAsString(map);
-            targets.updateContextData(targetId, updatedJson);
-            audit.record("TARGET_MEMORY_UPDATE", "target", String.valueOf(targetId), "Memory updated by operator");
-            return new TargetMemoryDto(
-                    targetId,
-                    (String) map.get("operatorNotes"),
-                    (String) map.get("lastCallSummary"),
-                    (String) map.get("preferredName"),
-                    map
-            );
-        } catch (Exception e) {
-            throw new ValidationException(ErrorCode.INVALID_PARAMETER_VALUE, e.getMessage());
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseContextMap(String json) {
-        if (json == null || json.isBlank()) {
-            return new HashMap<>();
-        }
-        try {
-            return MAPPER.readValue(json, Map.class);
-        } catch (Exception e) {
-            return new HashMap<>();
-        }
-    }
-
-    @Override
     @Transactional
     public void triggerRecurrenceRun(long campaignId, boolean resetTargets) {
         if (resetTargets) {
             targets.resetTargetsForRecurrence(campaignId);
             log.info("Reset targets for recurring campaign {}", campaignId);
         }
+        syncFromSourceQuietly(campaignId);
         campaigns.recordRecurrenceRun(campaignId, Instant.now(clock), CampaignStatus.ACTIVE);
         ttsWarmup.warmUpForCampaign(campaignId);
         log.info("Triggered recurring run for campaign {}", campaignId);
+    }
+
+    /**
+     * Pulls today's list before the run starts, when the campaign has a source set to it.
+     *
+     * <p>A failure here is logged and stamped on the source rather than thrown: this runs
+     * on the recurrence sweep, which serves every tenant, and one company's API being down
+     * must not stop the others' campaigns from starting. The campaign then runs over the
+     * list it already had — {@code replaceTargets} never clears it on a failed fetch.
+     */
+    private void syncFromSourceQuietly(long campaignId) {
+        TargetSource source = targetSources.findByCampaignId(campaignId);
+        if (source == null || !source.enabled() || !source.syncOnRecurrence()) {
+            return;
+        }
+        try {
+            importFromSource(source);
+        } catch (Exception e) {
+            log.error("Target source sync failed for campaign {} — running over the existing list: {}",
+                    campaignId, e.getMessage());
+        }
     }
 
     @Override

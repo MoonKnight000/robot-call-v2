@@ -95,6 +95,19 @@ public class CallRecordService {
         }
     }
 
+    /** The number the attempt talked to; {@code null} when there is no such attempt. */
+    public String phoneOf(long callAttemptId) {
+        if (callAttemptId == 0) {
+            return null;
+        }
+        try {
+            return callAttempts.findPhoneById(callAttemptId);
+        } catch (Exception e) {
+            log.warn("phoneOf failed for call {}: {}", callAttemptId, e.getMessage());
+            return null;
+        }
+    }
+
     /**
      * Id of the placeholder target seeded by {@code V5} (phone = 'MANUAL'); cached.
      * Manual calls placed through the REST API use this as their {@code

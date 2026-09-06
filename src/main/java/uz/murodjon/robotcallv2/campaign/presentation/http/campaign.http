@@ -6,8 +6,6 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "Qarzdorlik eslatmasi - May 2026",
   "type": "DEBT_COLLECTION",
-  "goalPrompt": "Mijozga qarzdorlikni to'lash muddatini eslatish va to'lov sanasini kelishish",
-  "defaultLanguage": "uz-UZ",
   "dialWindowStart": "09:00:00",
   "dialWindowEnd": "19:00:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
@@ -15,8 +13,7 @@ Authorization: Bearer {{auth_token}}
   "retryIntervalMinutes": 60,
   "maxConcurrentCalls": 10,
   "dailyCallCap": 500,
-  "scenarioId": 1,
-  "agentPersona": "AI_ASSISTANT"
+  "aiAgentId": 1
 }
 
 ### Filter Campaigns
@@ -41,8 +38,6 @@ Authorization: Bearer {{auth_token}}
 
 {
   "name": "Qarzdorlik eslatmasi - May 2026 (Updated)",
-  "goalPrompt": "Mijoz bilan yangilangan qarz eslatmasi dialogi",
-  "defaultLanguage": "uz-UZ",
   "dialWindowStart": "09:30:00",
   "dialWindowEnd": "18:30:00",
   "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"],
@@ -50,7 +45,7 @@ Authorization: Bearer {{auth_token}}
   "retryIntervalMinutes": 45,
   "maxConcurrentCalls": 15,
   "dailyCallCap": 600,
-  "agentPersona": "HUMAN_LIKE"
+  "aiAgentId": 1
 }
 
 ### Clone Campaign
@@ -101,16 +96,71 @@ Authorization: Bearer {{auth_token}}
 POST http://localhost:8080/api/targets/1/do-not-call
 Authorization: Bearer {{auth_token}}
 
-### Get Target Memory
-GET http://localhost:8080/api/campaigns/1/targets/1/memory
-Authorization: Bearer {{auth_token}}
+### ----------------------------------------------------
+### A/B TESTING VARIANTS
+### ----------------------------------------------------
 
-### Update Target Memory
-PUT http://localhost:8080/api/campaigns/1/targets/1/memory
+### 1. Create Variant A (Direct & Formal)
+POST http://localhost:8080/api/campaigns/1/variants
 Content-Type: application/json
 Authorization: Bearer {{auth_token}}
 
 {
-  "operatorNotes": "Mijoz to'lovni ertaga qilaman dedi",
-  "preferredName": "Anvar aka"
+  "name": "Variant A - Rasmiy va Aniq",
+  "aiAgentId": 1,
+  "promptOverride": "Siz qat'iy va rasmiy ovozda to'lov sanasini kelishasiz.",
+  "ttsVoiceId": "uz-dilshod-neural",
+  "trafficWeight": 50
 }
+
+### 2. Create Variant B (Empathetic & Restructuring)
+POST http://localhost:8080/api/campaigns/1/variants
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Variant B - Empatiya va Bo'lib to'lash",
+  "aiAgentId": 1,
+  "promptOverride": "Siz xushmuomala, mijoz holatini tushunadigan va bo'lib to'lashni taklif qiluvchi yordamchisiz.",
+  "ttsVoiceId": "uz-nodira-neural",
+  "trafficWeight": 50
+}
+
+### 3. List Campaign Variants
+GET http://localhost:8080/api/campaigns/1/variants
+Authorization: Bearer {{auth_token}}
+
+### 4. Get A/B Test Real-Time Report & Winner
+GET http://localhost:8080/api/campaigns/1/variants/report
+Authorization: Bearer {{auth_token}}
+
+### Configure the campaign's API target source
+PUT http://localhost:8080/api/campaigns/1/target-source
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "url": "https://crm.company.uz/api/overdue-clients",
+  "method": "GET",
+  "authHeaderName": "Authorization",
+  "authHeaderValue": "Bearer test-token",
+  "itemsPath": "data.items",
+  "phoneField": "phone",
+  "clientIdField": "client_id",
+  "languageField": "lang",
+  "replaceTargets": true,
+  "syncOnRecurrence": true,
+  "enabled": true
+}
+
+### Read it back (authHeaderValue is never returned)
+GET http://localhost:8080/api/campaigns/1/target-source
+Authorization: Bearer {{auth_token}}
+
+### Fetch the list now instead of waiting for the next recurrence run
+POST http://localhost:8080/api/campaigns/1/targets/sync
+Authorization: Bearer {{auth_token}}
+
+### Remove the source
+DELETE http://localhost:8080/api/campaigns/1/target-source
+Authorization: Bearer {{auth_token}}

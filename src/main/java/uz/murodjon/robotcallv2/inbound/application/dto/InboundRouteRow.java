@@ -12,13 +12,13 @@ import java.time.Instant;
 import java.time.LocalTime;
 
 /**
- * InboundRoute enriched with scenarioName and OnlinePBX parameters for API response.
+ * InboundRoute enriched with the agent's name and OnlinePBX parameters for API response.
  */
 public record InboundRouteRow(
         long id,
         String didNumber,
-        Long scenarioId,
-        String scenarioName,
+        Long aiAgentId,
+        String aiAgentName,
         InboundRouteType routeType,
         String targetDestination,
         QueueStrategy queueStrategy,
@@ -28,7 +28,6 @@ public record InboundRouteRow(
         InboundAfterHoursAction afterHoursAction,
         String afterHoursDestination,
         String ivrMenuConfig,
-        String language,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime businessHoursStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime businessHoursEnd,
         String fallbackMessage,
@@ -36,12 +35,12 @@ public record InboundRouteRow(
         Instant createdAt
 ) {
 
-    public static InboundRouteRow of(InboundRoute r, String scenarioName) {
+    public static InboundRouteRow of(InboundRoute r, String aiAgentName) {
         return new InboundRouteRow(
                 r.id(),
                 r.didNumber(),
-                r.scenarioId(),
-                scenarioName,
+                r.aiAgentId(),
+                aiAgentName,
                 r.routeType(),
                 r.targetDestination(),
                 r.queueStrategy(),
@@ -51,7 +50,6 @@ public record InboundRouteRow(
                 r.afterHoursAction(),
                 r.afterHoursDestination(),
                 r.ivrMenuConfig(),
-                r.language(),
                 r.businessHoursStart(),
                 r.businessHoursEnd(),
                 r.fallbackMessage(),

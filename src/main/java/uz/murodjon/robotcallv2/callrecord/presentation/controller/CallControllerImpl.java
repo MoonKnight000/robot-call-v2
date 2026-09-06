@@ -35,6 +35,11 @@ public class CallControllerImpl implements CallController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<WebTestCallResponse>> webTest(WebTestCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.startWebTest(request)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<PlayResponse>> play(String channelId, String file) {
         return ResponseEntity.ok(ResponseData.ok(useCase.play(channelId, file)));
     }

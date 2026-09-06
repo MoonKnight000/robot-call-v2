@@ -295,7 +295,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
         // No endpoint, no watchdog and no hangup: nothing here plays audio or ends a
         // channel, and every path that would touch one is guarded against null.
         return new DialogSession("sim-" + persona.id(), language, null,
-                new CallContext(persona.facts(), null), scenario, null, null, null, 0L, null, false,
+                new CallContext(persona.facts(), null), scenario, null, null, null, 0L, companyId, null, false,
                 null, null, aiModelConfigService.findEffectiveByCompanyId(companyId),
                 voiceSettingsService.effective(companyId));
     }

@@ -16,6 +16,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param amd                answering-machine detection, driven by the same window scores
  * @param listeningThreshold more sensitive speech probability threshold when the bot is silent and listening (0..1)
  * @param minEnergyRms       minimum RMS energy threshold to prevent mic noise, coughs, and breathing from triggering barge-in
+ * @param noiseFloorMargin   how far above the measured background noise speech has to sit
+ *                           before it may interrupt the bot, as a multiple of that noise.
+ *                           {@code minEnergyRms} alone is a fixed line and a caller on a
+ *                           street sits above it permanently, so every passing car cut the
+ *                           bot off; this raises the line with the call. 0 or less keeps the
+ *                           fixed threshold only.
  */
 @ConfigurationProperties(prefix = "voice-agent.vad")
 public record VadProperties(
@@ -28,6 +34,7 @@ public record VadProperties(
         int silenceResetMs,
         AmdProperties amd,
         float listeningThreshold,
-        double minEnergyRms
+        double minEnergyRms,
+        double noiseFloorMargin
 ) {
 }

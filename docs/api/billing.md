@@ -1,6 +1,6 @@
 # Billing & Balans API
 
-`uz.murodjon.robotcallv2.billing` · rol: **ADMIN / SUPERADMIN**
+`uz.murodjon.robotcallv2.billing` · huquq: **BILLING_READ** / **BILLING_EDIT** (topup)
 
 Kompaniyaning joriy tarif rejasi, balansi, qo'ng'iroq daqiqalari va AI token sarf-xarajatlari metrikalari, oylik hisobotlar (invoices), hisob-fakturani PDF formatida yuklab olish hamda hisobni to'ldirish (Payme, Click, Bank Transfer) endpointlari.
 
@@ -11,6 +11,12 @@ Umumiy javob formati va xatolar uchun [README.md](README.md)ga qarang.
 ## 1. `GET /api/billing/overview` — Hisob holati va limitlar
 
 Kompaniyaning umumiy balans holati, faol tarif rejasi, keyingi hisob-kitob sanasi va asosiy resurslar (daqiqalar, AI tokenlar, TTS belgilar, parallel chiquvchi kanallar) bo'yicha joriy sarf va limitlarni qaytaradi.
+
+> ℹ️ Kompaniyada hali `company_billing` / `billing_usage` qatori bo'lmasa, birinchi
+> chaqiruvda **standart qator yaratiladi** (`PRO_MONTHLY` / "Professional (Pro)",
+> balans 1 450 000 so'm, 5000 daqiqa, 2 000 000 token, 1 000 000 TTS belgi, 30 kanal).
+> Ya'ni bu qiymatlar haqiqiy sarf emas, boshlang'ich sozlama — real hisoblash ulanmaguncha
+> shunday qoladi.
 
 ### Request
 ```http
@@ -56,7 +62,7 @@ Authorization: Bearer <accessToken>
     }
   },
   "message": null,
-  "messageCode": "SUCCESS",
+  "messageCode": null,
   "errors": null
 }
 ```
@@ -111,7 +117,7 @@ Authorization: Bearer <accessToken>
     }
   ],
   "message": null,
-  "messageCode": "SUCCESS",
+  "messageCode": null,
   "errors": null
 }
 ```
@@ -133,7 +139,10 @@ Authorization: Bearer <accessToken>
 {
   "accept": true,
   "data": {
-    "items": [
+    "totalPages": 2,
+    "currentPage": 0,
+    "totalElements": 14,
+    "data": [
       {
         "id": "INV-2026-0091",
         "period": "Avgust 2026",
@@ -150,23 +159,24 @@ Authorization: Bearer <accessToken>
         "paidAt": "2026-08-01T09:00:00Z",
         "pdfUrl": "/api/billing/invoices/INV-2026-0082/pdf"
       }
-    ],
-    "total": 14,
-    "page": 0,
-    "size": 10,
-    "totalPages": 2
+    ]
   },
-  "messageCode": "SUCCESS",
+  "message": null,
+  "messageCode": null,
   "errors": null
 }
 ```
 
-| Faktura Statusi | Izoh |
+`page`/`size` — bu endpointda **query parametrlar** (`?page=0&size=10`), boshqa
+ro'yxatlardagi kabi body'dagi filtr emas.
+
+| Faktura Statusi (`InvoiceStatus`) | Izoh |
 |---|---|
 | `PENDING` | To'lov kutilmoqda |
 | `PAID` | To'langan |
-| `OVERDUE` | To'lov muddati o'tgan |
 | `CANCELLED` | Bekor qilingan |
+
+> ⚠️ `OVERDUE` degan status **yo'q** — enum'da faqat yuqoridagi uchtasi.
 
 ---
 
@@ -213,8 +223,8 @@ Hisobni to'ldirish uchun to'lov tizimiga tranzaksiya yaratadi va foydalanuvchini
     "paymentId": "PAY-88231920",
     "checkoutUrl": "https://my.click.uz/services/pay?service_id=...&trans_id=PAY-88231920"
   },
-  "message": "To'lov so'rovi muvaffaqiyatli yaratildi",
-  "messageCode": "SUCCESS",
+  "message": null,
+  "messageCode": null,
   "errors": null
 }
 ```

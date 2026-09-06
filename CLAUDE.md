@@ -97,8 +97,8 @@ Ajratish testi: **service uni o'qiydi ham, yozadi ham → `domain.entity`; faqat
 endpoint javobi uchun yasalgan → `application.dto`.** JPA entity hech qachon
 controller'ga chiqmaydi, DTO hech qachon `port/output` ga kirmaydi.
 
-Mavjud feature'lar (27 ta):
-`aimodel` · `audit` · `auth` · `billing` · `callrecord` · `campaign` · `company` ·
+Mavjud feature'lar (28 ta):
+`aiagent` · `aimodel` · `audit` · `auth` · `billing` · `callrecord` · `campaign` · `company` ·
 `contact` · `crm` · `dialer` · `donotcall` · `engine` · `inbound` · `integration` ·
 `live` · `notification` · `operator` · `profile` · `report` · `scenario` · `search` ·
 `siptrunk` · `sms` · `storage` · `user` · `voice` · `webhook`

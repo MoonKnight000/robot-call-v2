@@ -9,11 +9,15 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
 import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
@@ -63,6 +67,8 @@ public class DialerService {
     private final GracefulShutdownManager shutdown;
     private final TtsWarmup ttsWarmup;
     private final Clock clock;
+    private final CampaignVariantUseCase campaignVariants;
+    private final AiAgentUseCase aiAgents;
 
     private final Map<Long, AtomicInteger> campaignTrunkCounters = new ConcurrentHashMap<>();
 
@@ -71,7 +77,8 @@ public class DialerService {
                          CompanyConfigService companyConfig, SipTrunkUseCase sipTrunks,
                          RabbitTemplate rabbit, DialerState state,
                          OutboundCallRegistry registry, AriService ariService,
-                         GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock) {
+                         GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock,
+                         CampaignVariantUseCase campaignVariants, AiAgentUseCase aiAgents) {
         this.props = props;
         this.rtpProps = rtpProps;
         this.campaigns = campaigns;
@@ -86,6 +93,8 @@ public class DialerService {
         this.shutdown = shutdown;
         this.ttsWarmup = ttsWarmup;
         this.clock = clock;
+        this.campaignVariants = campaignVariants;
+        this.aiAgents = aiAgents;
     }
 
     @Scheduled(fixedDelayString = "#{${voice-agent.dialer.tick-seconds:5} * 1000}")
@@ -105,8 +114,23 @@ public class DialerService {
                 log.debug("Campaign {} ({}) skipped: outside dial window or allowed days", campaign.id(), campaign.name());
                 continue;
             }
+            // Everything about how this campaign's calls sound. Read once per tick rather
+            // than once per target: a tick dials at most `dispatch-batch` numbers and they
+            // all speak as the same agent.
+            AiAgent agent;
+            try {
+                agent = aiAgents.requireAgent(campaign.companyId(), campaign.aiAgentId());
+            } catch (RuntimeException e) {
+                log.error("Campaign {} ({}) skipped: {}", campaign.id(), campaign.name(), e.getMessage());
+                continue;
+            }
+            if (!agent.enabled()) {
+                log.debug("Campaign {} skipped: agent {} is disabled", campaign.id(), agent.id());
+                continue;
+            }
+
             // Pre-warm campaign phrases on-demand if not already done
-            ttsWarmup.warmUpForCampaign(campaign);
+            ttsWarmup.warmUpForCampaign(campaign, agent);
 
             // The platform's ceiling is physical: past the RTP port range a call is
             // answered and then dropped for want of a port, which costs the subscriber a
@@ -137,7 +161,7 @@ public class DialerService {
             // the batch marked as taken with no call ever placed for it.
             List<SipTrunkRow> candidateTrunks;
             try {
-                candidateTrunks = sipTrunks.findTrunksForCall(campaign.companyId(), campaign.sipTrunkIdsOrEmpty());
+                candidateTrunks = sipTrunks.findTrunksForCall(campaign.companyId(), agent.sipTrunkIdsOrEmpty());
             } catch (ConflictException e) {
                 // Paused, not skipped. With no usable trunk the campaign cannot place a
                 // single call, and leaving it ACTIVE shows an owner a running campaign
@@ -163,7 +187,7 @@ public class DialerService {
             for (CampaignTarget t : due) {
                 state.reserve(campaign.companyId());
                 state.countDispatch(campaign.id(), today);
-                String language = t.language() != null ? t.language() : campaign.defaultLanguage();
+                String language = t.language() != null ? t.language() : agent.language();
 
                 Long selectedTrunkId = null;
                 if (!candidateTrunks.isEmpty()) {
@@ -171,15 +195,34 @@ public class DialerService {
                     selectedTrunkId = candidateTrunks.get(idx).id();
                 }
 
+                // Assigned here rather than when the task is consumed: this is the one place
+                // that knows the campaign is dialling, so it is also where the attempt is
+                // counted against the variant. Keyed on the number, so a retry of this same
+                // target lands on the same script and the two attempts do not end up
+                // credited to different variants.
+                CampaignVariant variant =
+                        campaignVariants.findForCall(campaign.companyId(), campaign.id(), t.phone());
+                Long variantId = null;
+                long aiAgentId = agent.id();
+                String ttsVoiceOverride = null;
+                String promptOverride = null;
+                if (variant != null) {
+                    variantId = variant.id();
+                    // A variant that names its own agent is testing a different voice,
+                    // persona or script wholesale; one that only names a voice is testing
+                    // that voice against the agent it otherwise shares.
+                    aiAgentId = variant.aiAgentId() != null ? variant.aiAgentId() : aiAgentId;
+                    ttsVoiceOverride = variant.ttsVoiceId();
+                    promptOverride = variant.promptOverride();
+                    campaignVariants.recordCall(variantId);
+                }
+
                 rabbit.convertAndSend(RabbitConfig.CALL_TASK_QUEUE,
                         new CallTask(campaign.id(), t.id(), t.clientId(), t.phone(), language,
-                                campaign.ttsVoice(), t.contextData(), campaign.scenarioId(), campaign.companyId(),
-                                campaign.disclosureEnabled(), campaign.ambientSound(), campaign.midCallSmsEnabled(),
-                                campaign.midCallSmsTemplate(), campaign.voicemailAction(), campaign.voicemailMessage(),
-                                campaign.dtmfInputEnabled(), campaign.emotionAdaptiveVoice(),
-                                campaign.agentPersona(),
-                                campaign.languageVoices(), selectedTrunkId));
-                log.info("Dispatched target {} ({}) of campaign {} via trunk {}", t.id(), t.phone(), campaign.id(), selectedTrunkId);
+                                t.contextData(), campaign.companyId(), aiAgentId, selectedTrunkId,
+                                variantId, ttsVoiceOverride, promptOverride));
+                log.info("Dispatched target {} ({}) of campaign {} via trunk {}{}", t.id(), t.phone(), campaign.id(),
+                        selectedTrunkId, variantId != null ? ", variant " + variant.name() : "");
             }
         }
     }

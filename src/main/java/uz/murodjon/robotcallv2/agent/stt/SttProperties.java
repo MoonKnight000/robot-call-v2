@@ -19,7 +19,7 @@ import java.util.List;
  *                          transcript before it is treated as broken and replaced. Has to
  *                          outlast the longest silence a caller can produce, because
  *                          without VAD gating that silence is streamed too; 0 disables it
- * @param gemini            Gemini STT settings (gemini-3.5-transcribe)
+ * @param gemini            Gemini STT settings (gemini-3.5-transcribe-live)
  * @param google            Google-specific settings (legacy)
  * @param yandex            Yandex-specific settings
  * @param aisha             Aisha-specific settings

@@ -1,0 +1,14 @@
+### Get client memory (phone without '+', or '+' encoded as %2B)
+GET http://localhost:8080/api/memory/998901234567
+Authorization: Bearer {{auth_token}}
+
+### Update operator part of client memory (null keeps, "" clears)
+PUT http://localhost:8080/api/memory/998901234567
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "preferredName": "Anvar aka",
+  "preferredLanguage": "uz-UZ",
+  "operatorNotes": "Kechqurun 18:00 dan keyin qo'ng'iroq qilish qulay"
+}

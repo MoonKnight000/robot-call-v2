@@ -1,6 +1,6 @@
 ﻿# Bildirishnomalar API
 
-`uz.murodjon.robotcallv2.notification` · rol: istalgan (kirgan bo'lsa yetarli)
+`uz.murodjon.robotcallv2.notification` · huquq: talab qilinmaydi (kirgan bo'lsa yetarli)
 · UI-DESIGN §0.8/§8.2/§9
 
 Topbar qo'ng'iroq ikonkasi va uning popover'idagi toggle'lar. Har bir
@@ -11,7 +11,7 @@ sifatida fan-out qilinadi — o'qilgan/o'qilmagan holat foydalanuvchi bo'yicha.
 Umumiy javob shakli uchun [README.md](README.md)ga qarang.
 
 Bu yerdagi hammasi **ichki** (in-app) bell — tashqi kanallarga (email/webhook/telegram)
-kompaniya darajasida yetkazish uchun [settings.md](settings.md#bildirishnoma-matritsasi--uzmurodjonuysotvoicenotification-kanal-qismi)dagi
+kompaniya darajasida yetkazish uchun [settings.md](settings.md#4-kompaniya-bildirishnomalar-matritsasi-apisettingsnotifications)dagi
 `GET/PUT /api/settings/notifications`ga qarang; ikkalasi bir `NotificationService
 .notify(...)` chaqiruvidan parallel ishga tushadi.
 
@@ -23,12 +23,10 @@ kompaniya darajasida yetkazish uchun [settings.md](settings.md#bildirishnoma-mat
 |---|---|---|
 | `OPERATOR_REQUEST` | Qo'ng'iroq operatorga uzatilganda | ✅ ulangan (`AriService.transferToOperator`) |
 | `ERROR_OCCURRED` | Qo'ng'iroq muvaffaqiyat darajasi chegaradan pastga tushganda | ✅ ulangan (`AlertingService.checkSuccessRate`) |
-| `CAMPAIGN_FINISHED` | Kampaniya barcha nishonlarni tugatganda | ❌ hali yo'q — kampaniya-tugash holati kuzatilmaydi |
-| `DAILY_REPORT` | Kunlik hisobot tayyor bo'lganda | ❌ hali yo'q — rejalashtirilgan hisobot generatsiyasi yo'q |
+| `CAMPAIGN_FINISHED` | Kampaniya barcha nishonlarni tugatganda | ✅ ulangan (`CampaignService.checkCompletion`) |
+| `DAILY_REPORT` | Rejalashtirilgan hisobot jo'natilganda | ✅ ulangan (`ReportScheduleService`, [reports.md](reports.md#3-rejalashtirilgan-hisobotlar-apireportsschedule)) |
 
-Oxirgi ikkitasi uchun ham preference sozlanishi mumkin (popover'da
-toggle bor), lekin hech qachon bildirishnoma kelmaydi — bu ikkisi alohida,
-aniqroq belgilangan vazifa sifatida keyin qo'shiladi.
+To'rttasi ham endi haqiqiy producerga ega — popover'dagi to'rtta toggle ham ishlaydi.
 
 ---
 

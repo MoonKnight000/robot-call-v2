@@ -6,20 +6,25 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
 import uz.murodjon.robotcallv2.auth.application.service.JwtTokenService;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Authenticates a request by its {@code Authorization: Bearer <jwt>} header (ROADMAP
  * E.1) or {@code ?token=} / {@code ?access_token=} query parameter (for EventSource/SSE).
+ *
+ * <p>Each permission the token carries becomes one authority named exactly like the
+ * {@link Permission} constant, which is what every {@code @PreAuthorize("hasAuthority(...)")}
+ * on the controllers checks.
  */
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -60,19 +65,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (token != null && !token.isBlank()) {
             AuthenticatedUser user = tokens.parse(token);
             if (user != null) {
-                var authentication = new UsernamePasswordAuthenticationToken(user, null, authorities(user.role()));
+                var authentication = new UsernamePasswordAuthenticationToken(
+                        user, null, authorities(user.permissions()));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         }
         chain.doFilter(request, response);
     }
 
-    private static List<GrantedAuthority> authorities(UserRole role) {
-        return switch (role) {
-            case ADMIN -> AuthorityUtils.createAuthorityList("ROLE_ADMIN", "ROLE_OPERATOR", "ROLE_VIEWER");
-            case OPERATOR -> AuthorityUtils.createAuthorityList("ROLE_OPERATOR", "ROLE_VIEWER");
-            case VIEWER -> AuthorityUtils.createAuthorityList("ROLE_VIEWER");
-            case SUPERADMIN -> AuthorityUtils.createAuthorityList("ROLE_SUPERADMIN");
-        };
+    static List<GrantedAuthority> authorities(Set<Permission> permissions) {
+        return permissions.stream()
+                .map(permission -> (GrantedAuthority) new SimpleGrantedAuthority(permission.name()))
+                .toList();
     }
 }

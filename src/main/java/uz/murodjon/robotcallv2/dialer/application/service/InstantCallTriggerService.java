@@ -70,8 +70,8 @@ public class InstantCallTriggerService {
             contextJson = "{}";
         }
 
-        String lang = campaign.defaultLanguage() != null ? campaign.defaultLanguage() : "uz-UZ";
-        long targetId = targets.add(campaign.id(), 0L, phone.trim(), lang, contextJson);
+        // null lets the dialer fall back to the agent's language when it dispatches this target.
+        long targetId = targets.add(campaign.id(), 0L, phone.trim(), null, contextJson);
         log.info("Instant call triggered for company={} phone={} targetId={}", companyId, phone, targetId);
 
         // Run dialer dispatch cycle immediately

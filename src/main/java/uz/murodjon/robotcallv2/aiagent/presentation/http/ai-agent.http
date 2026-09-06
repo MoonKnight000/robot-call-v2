@@ -1,0 +1,56 @@
+### Create AI agent
+POST http://localhost:8080/api/ai-agents
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qarz undirish - o'zbekcha",
+  "description": "Kunlik qarzdorlar bazasi uchun",
+  "scenarioId": 1,
+  "language": "uz-UZ",
+  "ttsVoice": "nigora",
+  "languageVoices": { "uz-UZ": "nigora", "ru-RU": "alena" },
+  "persona": "AI_ASSISTANT",
+  "ambientSound": "OFFICE",
+  "emotionAdaptiveVoice": true,
+  "dtmfInputEnabled": false,
+  "sipTrunkIds": [1],
+  "enabled": true
+}
+
+### Filter AI agents
+POST http://localhost:8080/api/ai-agents/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "orders": { "CREATED_AT": "DESC" },
+  "enabled": true
+}
+
+### Get one
+GET http://localhost:8080/api/ai-agents/1
+Authorization: Bearer {{auth_token}}
+
+### Update (same shape as create; scenarioId may change)
+PUT http://localhost:8080/api/ai-agents/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qarz undirish - ruscha",
+  "scenarioId": 1,
+  "language": "ru-RU",
+  "ttsVoice": "alena",
+  "persona": "HUMAN_LIKE",
+  "llmModel": "gemini-2.5-flash",
+  "temperature": 0.6,
+  "maxOutputTokens": 300,
+  "enabled": true
+}
+
+### Delete (409 while a campaign or inbound route still uses it)
+DELETE http://localhost:8080/api/ai-agents/1
+Authorization: Bearer {{auth_token}}

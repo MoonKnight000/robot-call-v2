@@ -14,11 +14,14 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
+import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
+import uz.murodjon.robotcallv2.role.domain.entity.Role;
+import uz.murodjon.robotcallv2.role.domain.enums.SystemRole;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,6 +29,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class AuthServiceTest {
+
+    private static final Role ADMIN_ROLE = new Role(1L, 1L, SystemRole.ADMIN.name(), SystemRole.ADMIN.label(),
+            null, true, Set.of(), Instant.now());
 
     private UserRepository users;
     private CompanyRepository companies;
@@ -36,6 +42,7 @@ class AuthServiceTest {
     private AuditService audit;
     private SessionService sessions;
     private PasswordResetMailSender resetMail;
+    private RoleUseCase roleUseCase;
     private AuthService authService;
 
     @BeforeEach
@@ -49,17 +56,19 @@ class AuthServiceTest {
         audit = mock(AuditService.class);
         sessions = mock(SessionService.class);
         resetMail = mock(PasswordResetMailSender.class);
+        roleUseCase = mock(RoleUseCase.class);
+        when(roleUseCase.findRole(1L, ADMIN_ROLE.id())).thenReturn(ADMIN_ROLE);
 
         authService = new AuthService(
                 users, companies, currentCompany, passwordEncoder, tokens,
-                currentUser, audit, sessions, resetMail
+                currentUser, audit, sessions, resetMail, roleUseCase
         );
     }
 
     private User sampleUser(UserStatus status, String passwordHash) {
         return new User(
                 1L, 1L, "Ali Valiyev", "ali", "ali@example.com",
-                passwordHash, UserRole.ADMIN, status,
+                passwordHash, ADMIN_ROLE.id(), ADMIN_ROLE.code(), ADMIN_ROLE.name(), status,
                 null, null, null, null, null, Instant.now(),
                 "+998901234567", "Manager", null, null, null
         );

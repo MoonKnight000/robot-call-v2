@@ -65,10 +65,13 @@ class PipecatRealtimeProviderTest {
                 List.of(),
                 "deepgram",
                 "claude-3-5-haiku",
-                "cartesia"
+                "cartesia",
+                null
         );
         assertThat(config.pipecatStt()).isEqualTo("deepgram");
         assertThat(config.pipecatLlm()).isEqualTo("claude-3-5-haiku");
         assertThat(config.pipecatTts()).isEqualTo("cartesia");
+        // No scenario model, so the company's sub-engine is what the provider will send.
+        assertThat(config.modelOr(config.pipecatLlm())).isEqualTo("claude-3-5-haiku");
     }
 }

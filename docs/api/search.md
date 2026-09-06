@@ -1,6 +1,6 @@
 ﻿# Qidiruv (command palette) API
 
-`uz.murodjon.robotcallv2.search` · rol: istalgan (kirgan bo'lsa yetarli) ·
+`uz.murodjon.robotcallv2.search` · huquq: talab qilinmaydi (kirgan bo'lsa yetarli) ·
 UI-DESIGN §11.9, §9
 
 `⌘K` command palette'ning ma'lumot manbasi. "Sahifalar" va "Buyruqlar"
@@ -13,12 +13,19 @@ faqat haqiqiy ma'lumotga tayangan ikkita guruhni qaytaradi.
 
 Joriy kompaniya bo'yicha, har guruhda eng ko'p 5 ta natija.
 
-**Javob** (`SearchResult`):
+**Javob** (`ResponseData<SearchResult>`) — har bir element `SearchItem`:
+`{ id, title, subtitle }` (`label`/`context` **emas**):
 
 ```json
 {
-  "campaigns": [ { "id": 3, "label": "Qarzdorlik iyul", "context": "ACTIVE" } ],
-  "calls": [ { "id": 812, "label": "998901234567", "context": "PROMISE_TO_PAY" } ]
+  "accept": true,
+  "data": {
+    "campaigns": [ { "id": 3, "title": "Qarzdorlik iyul", "subtitle": "ACTIVE" } ],
+    "calls": [ { "id": 812, "title": "998901234567", "subtitle": "PROMISE_TO_PAY" } ]
+  },
+  "message": null,
+  "messageCode": null,
+  "errors": null
 }
 ```
 

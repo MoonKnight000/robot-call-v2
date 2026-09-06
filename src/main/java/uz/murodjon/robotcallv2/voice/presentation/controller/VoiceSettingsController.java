@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.voice.presentation.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,9 +18,11 @@ import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
 @RequestMapping("/api/settings/voice")
 public interface VoiceSettingsController {
 
+    @PreAuthorize("hasAuthority('VOICE_READ')")
     @GetMapping
     ResponseEntity<ResponseData<VoiceSettings>> get();
 
+    @PreAuthorize("hasAuthority('VOICE_EDIT')")
     @PutMapping
     ResponseEntity<ResponseData<VoiceSettings>> update(@Valid @RequestBody UpdateVoiceSettingsRequest r);
 }

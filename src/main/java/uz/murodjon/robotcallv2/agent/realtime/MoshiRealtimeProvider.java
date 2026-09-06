@@ -117,7 +117,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
     private static String handshakeMessage(RealtimeCallConfig config, MoshiRealtimeProperties m) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "handshake");
-        root.put("model", m.model());
+        root.put("model", config.modelOr(m.model()));
         root.put("sample_rate", AUDIO_RATE);
         if (config.systemPrompt() != null && !config.systemPrompt().isBlank()) {
             root.put("system_prompt", config.systemPrompt());

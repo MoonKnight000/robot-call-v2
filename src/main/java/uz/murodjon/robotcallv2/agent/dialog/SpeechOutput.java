@@ -70,6 +70,79 @@ public class SpeechOutput {
      * Failures are logged, never thrown: a lost sentence is better than an aborted turn.
      */
     public SpeechOutcome speak(DialogSession s, String text) {
+        SpeechOutcome refused = refusal(s, text);
+        if (refused != null) {
+            return refused;
+        }
+        // After the fact guard, which matches the figures as the model wrote them, and
+        // before anything reaches a synthesizer: a yyyy-MM-dd date read aloud is a run of
+        // digits, and the prompt asking the model not to write one is not a guarantee.
+        String spoken = SpokenDates.humanize(text, s.language());
+        try {
+            EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
+            // Only the turn's first sentence is still on the §1.3 turnaround clock — that
+            // is the one place shaving a TTS network round trip actually moves the number
+            // that matters (everything after it already overlaps LLM generation, §7.2).
+            if (s.isFirstAudioPending()) {
+                s.latency().ttsRequested();
+                return speakStreaming(s, spoken, dynamicSettings);
+            }
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings);
+            return deliver(s, new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN));
+        } catch (Exception e) {
+            log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
+            return SpeechOutcome.SKIPPED;
+        }
+    }
+
+    /**
+     * Synthesize a line now so it can be queued later, in its place in the reply
+     * ({@link #deliver}).
+     *
+     * <p>Sentences used to be synthesized one after another on the turn's thread: the
+     * second sentence's round trip only began once the first had come back, and since the
+     * first is usually a one-word acknowledgement that plays in under a second, the caller
+     * heard "Xo'p." and then 400-900 ms of nothing on every reply (measured on recorded
+     * calls). Preparing each sentence as soon as the model has written it lets that round
+     * trip overlap the sentence still playing.
+     *
+     * <p>Every check {@link #speak} makes is made here, so nothing can be queued that
+     * {@code speak} would have refused — the fact guard included.
+     */
+    public PreparedLine prepare(DialogSession s, String text) {
+        SpeechOutcome refused = refusal(s, text);
+        if (refused != null) {
+            return PreparedLine.refused(text, refused);
+        }
+        String spoken = SpokenDates.humanize(text, s.language());
+        try {
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            return new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN);
+        } catch (Exception e) {
+            log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
+            return PreparedLine.refused(text, SpeechOutcome.SKIPPED);
+        }
+    }
+
+    /**
+     * Queue a prepared line for the caller. Lines must be delivered in reply order — the
+     * playback position is what later decides how much of each one was heard.
+     */
+    public SpeechOutcome deliver(DialogSession s, PreparedLine line) {
+        if (line.outcome() != SpeechOutcome.SPOKEN) {
+            return line.outcome();
+        }
+        if (s.isCancelled()) {
+            return SpeechOutcome.SKIPPED; // barge-in landed while it was being synthesized
+        }
+        long startSample = s.endpoint().queuedSamples();
+        s.endpoint().enqueuePcm(line.pcm());
+        s.appendSpokenAudio(line.text(), startSample, line.pcm().length);
+        return SpeechOutcome.SPOKEN;
+    }
+
+    /** Why {@code text} must not be spoken, or {@code null} when it may be. */
+    private SpeechOutcome refusal(DialogSession s, String text) {
         if (!ttsProps.enabled() || text == null || text.isBlank()) {
             return SpeechOutcome.SKIPPED;
         }
@@ -101,31 +174,7 @@ public class SpeechOutput {
                 return SpeechOutcome.BLOCKED;
             }
         }
-        // After the fact guard, which matches the figures as the model wrote them, and
-        // before anything reaches a synthesizer: a yyyy-MM-dd date read aloud is a run of
-        // digits, and the prompt asking the model not to write one is not a guarantee.
-        String spoken = SpokenDates.humanize(text, s.language());
-        try {
-            EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
-            // Only the turn's first sentence is still on the §1.3 turnaround clock — that
-            // is the one place shaving a TTS network round trip actually moves the number
-            // that matters (everything after it already overlaps LLM generation, §7.2).
-            if (s.isFirstAudioPending()) {
-                s.latency().ttsRequested();
-                return speakStreaming(s, spoken, dynamicSettings);
-            }
-            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings);
-            if (s.isCancelled()) {
-                return SpeechOutcome.SKIPPED; // barge-in landed while we were synthesizing
-            }
-            long startSample = s.endpoint().queuedSamples();
-            s.endpoint().enqueuePcm(pcm);
-            s.appendSpokenAudio(spoken, startSample, pcm.length);
-            return SpeechOutcome.SPOKEN;
-        } catch (Exception e) {
-            log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
-            return SpeechOutcome.SKIPPED;
-        }
+        return null;
     }
 
     /** {@link #speak} for the fixed lines, where only "did the caller hear it" matters. */
@@ -184,6 +233,11 @@ public class SpeechOutput {
             return;
         }
         metrics.recordTurnaround(turnaround);
+        // And onto the call's own row. The histogram above is process-wide and resets with
+        // the process; this is the only place the number survives per call, and without it
+        // call_technical.avg/max_turn_latency_ms was null on every call ever recorded —
+        // the one figure §1.3 is written in terms of, missing from the table that reports it.
+        s.recordTurnLatency(turnaround.toMillis());
         // The same moment, broken down: the budget number says how long the caller waited,
         // this says what for (TurnLatency). One line per turn, at INFO, because reading it
         // off a live call is the point — a histogram only answers the question afterwards.

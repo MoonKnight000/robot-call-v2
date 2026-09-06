@@ -19,15 +19,12 @@ import java.util.Map;
  * Builds a {@link CallContext} from a target's {@code context_data} JSON (PROJECT.md
  * §6, ROADMAP A.3). Lenient — a fact missing from the JSON, or one that fails to
  * coerce to its declared type, is simply left out. Only keys the bound scenario's
- * {@link FactField} list actually declares or well-known memory keys are read.
+ * {@link FactField} list actually declares are read.
  */
 public final class CallContextMapper {
 
     private static final Logger log = LoggerFactory.getLogger(CallContextMapper.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    private static final List<String> MEMORY_KEYS = List.of(
-            "operatorNotes", "lastCallSummary", "previousCallSummary", "memoryNotes", "preferredName");
 
     private CallContextMapper() {
     }
@@ -45,11 +42,6 @@ public final class CallContextMapper {
                         if (value != null) {
                             facts.put(f.name(), value);
                         }
-                    }
-                }
-                for (String memoryKey : MEMORY_KEYS) {
-                    if (n.hasNonNull(memoryKey)) {
-                        facts.put(memoryKey, n.get(memoryKey).asText());
                     }
                 }
                 String g = text(n, "goal");
@@ -76,6 +68,47 @@ public final class CallContextMapper {
         } catch (Exception e) {
             log.warn("context_data field {} does not match its declared type {}: {}", field, type, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Overlay a fact webhook's answer over whatever the call already knows.
+     *
+     * <p>Applied last, over the CSV and over the CRM: the endpoint was asked seconds ago and
+     * is the freshest thing on the call. Lenient in the same way as {@link #fromJson} — only
+     * declared facts are read, and one that does not match its declared type is left out
+     * rather than replacing a good value with a broken one. A response that is not an object
+     * changes nothing.
+     *
+     * @param json the endpoint's body, or null when it was not called or did not answer
+     */
+    public static CallContext overlayJson(CallContext context, String json, List<FactField> factSchema) {
+        if (json == null || json.isBlank() || factSchema == null || factSchema.isEmpty()) {
+            return context;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(json);
+            if (!node.isObject()) {
+                log.warn("Fact webhook answered with {} rather than a JSON object", node.getNodeType());
+                return context;
+            }
+            Map<String, Object> facts = new HashMap<>(context.facts());
+            int applied = 0;
+            for (FactField field : factSchema) {
+                Object value = coerce(node, field.name(), field.type());
+                if (value != null) {
+                    facts.put(field.name(), value);
+                    applied++;
+                }
+            }
+            if (applied == 0) {
+                return context;
+            }
+            log.info("Fact webhook refreshed {} fact(s) before dialling", applied);
+            return new CallContext(facts, context.goal(), context.memory());
+        } catch (Exception e) {
+            log.warn("Fact webhook answer could not be read as JSON: {}", e.getMessage());
+            return context;
         }
     }
 

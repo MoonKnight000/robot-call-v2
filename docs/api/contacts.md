@@ -1,6 +1,6 @@
 ﻿# Kontaktlar API
 
-`uz.murodjon.robotcallv2.contact` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.robotcallv2.contact` · huquq: **CONTACT_READ** / **CONTACT_EDIT**
 
 Kontaktlar jadvali `campaign_target`dan mustaqil — kampaniyaga bog'liq emas.
 Qo'ng'iroqlar tarixi `contact_id` FK orqali emas, telefon raqami bo'yicha
@@ -43,7 +43,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 ---
 
-## `POST /api/contacts/list` — ro'yxat
+## `POST /api/contacts/list` va `POST /api/contacts/filter` — ro'yxat
 
 Body — `ContactFilter`:
 

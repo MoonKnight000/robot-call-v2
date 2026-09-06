@@ -1,13 +1,14 @@
 ﻿# TTS ovozlar katalogi va Dinamik Hissiyotlar
 
-`uz.murodjon.robotcallv2.voice` · rol: **ADMIN**
+`uz.murodjon.robotcallv2.voice` · huquq: talab qilinmaydi (katalog har bir kirgan foydalanuvchiga ochiq)
 
 Kampaniya qaysi ovoz bilan yaratilishi mumkinligining katalogi — `tts_voice`
 jadvalida saqlanadi (migration bilan seed qilinadi), config fayl emas. Kampaniya
 formasi ovoz tanlagichini shu yerdan to'ldiradi — shuning uchun operator
 ko'radigan variantlar aynan `POST /api/campaigns`ning `ttsVoice` maydoni qabul
-qilinadigan id'larning o'zi. Hozircha faqat o'qish uchun (`GET`) — yaratish/
-o'chirish endpoint yo'q.
+qilinadigan id'larning o'zi. Yaratish/o'chirish endpoint yo'q. Ovozni eshitib
+ko'rish (`POST /api/tts/voices/{id}/preview`) va STT provayderni sinash
+(`POST /api/stt/preview`) — [speech-preview.md](speech-preview.md).
 
 `id` va `name` alohida ustunlar — shuning uchun bitta provayder ovozi bir nechta
 katalog qatori bo'lib turishi mumkin, faqat `role` bilan farq qiladi (masalan
@@ -75,7 +76,7 @@ standart ovozida gapiradi (`RealtimeDialogEngine.voiceFor`).
 | `role` | ovozning boshlang'ich gapirish uslubi / roli |
 
 `REALTIME` rejimidagi kompaniya uchun xuddi shu endpoint engine ovozlarini
-qaytaradi (`V7__gemini_live_voices.sql` bilan seed qilinadi):
+qaytaradi (`R__seed_data.sql` bilan seed qilinadi):
 
 ```json
 {
@@ -96,7 +97,7 @@ gapirishi mumkin.
 
 ## 🎭 Dinamik Hissiyotlar va Moslashuvchan Ovoz (Voice Emotion Resolution)
 
-Agar kampaniyada `"emotionAdaptiveVoice": true` (odatiy holatda `true`) bo'lsa yoki ssenariy bosqichida `emotion` belgilangan bo'lsa, `VoiceEmotionResolver` har bir dialog replikasida ovozning xarakteri va tezligini quyidagicha moslashtiradi:
+Agar [AI agentda](ai-agents.md) `"emotionAdaptiveVoice": true` (odatiy holatda `true`) bo'lsa yoki ssenariy bosqichida `emotion` belgilangan bo'lsa, `VoiceEmotionResolver` har bir dialog replikasida ovozning xarakteri va tezligini quyidagicha moslashtiradi:
 
 1. **Ssenariy bosqichi bo'yicha moslashuv**:
    - `GREETING`, `CLOSING`, `OFFER` bosqichlarida: `CHEERFUL` (quvnoq, samimiy).

@@ -12,6 +12,7 @@ public interface CallControlUseCase {
     CallOriginateResponse originate(String number, Long scenarioId, Long sipTrunkId);
     CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition);
     CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition, Long sipTrunkId);
+    WebTestCallResponse startWebTest(WebTestCallRequest request);
     PlayResponse play(String channelId, String file);
     SayResponse say(String channelId, String text, String language, String voice);
     HangupResponse hangup(String channelId);

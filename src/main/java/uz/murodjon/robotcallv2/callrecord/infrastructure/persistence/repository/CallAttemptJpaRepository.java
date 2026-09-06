@@ -80,6 +80,10 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     @Query("SELECT a.target.id FROM CallAttemptEntity a WHERE a.id = :id")
     Long findTargetIdById(@Param("id") long id);
 
+    /** The number this attempt talked to: dialed for outbound, the caller's for inbound. */
+    @Query("SELECT a.phone FROM CallAttemptEntity a WHERE a.id = :id")
+    String findPhoneById(@Param("id") long id);
+
     long countByEndedAtGreaterThanEqual(Instant since);
 
     long countByEndedAtGreaterThanEqualAndDisposition(Instant since, Disposition disposition);
@@ -88,11 +92,13 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
      * Finished calls that still have no {@code call_result}. Restricted to attempts with
      * transcripts: a call nobody spoke on has nothing to summarize, and would otherwise be
      * retried until its attempt counter ran out. Each row is
-     * {@code [callId, clientId, scenarioId]} (ROADMAP A.3 — the summary retry needs the
-     * same scenario the live call ran, for its {@code outcomeSchema}).
+     * {@code [callId, clientId, scenarioId, disposition]} (ROADMAP A.3 — the summary
+     * retry needs the same scenario the live call ran, for its {@code outcomeSchema}).
      */
-    @Query("SELECT a.id, a.target.contact.id, a.target.campaign.scenario.id FROM CallAttemptEntity a "
-            + "WHERE a.endedAt IS NOT NULL AND a.finalizeAttempts < :maxAttempts "
+    @Query("SELECT a.id, a.target.contact.id, ag.scenarioId, a.disposition "
+            + "FROM CallAttemptEntity a, AiAgentEntity ag "
+            + "WHERE ag.id = a.target.campaign.aiAgentId "
+            + "AND a.endedAt IS NOT NULL AND a.finalizeAttempts < :maxAttempts "
             + "AND NOT EXISTS (SELECT 1 FROM CallResultEntity r WHERE r.call = a) "
             + "AND EXISTS (SELECT 1 FROM CallTranscriptEntity c WHERE c.call = a) "
             + "ORDER BY a.id")

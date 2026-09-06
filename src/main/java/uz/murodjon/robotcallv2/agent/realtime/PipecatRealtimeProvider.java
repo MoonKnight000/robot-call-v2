@@ -116,7 +116,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
                 log.debug("[{}] Pipecat ready event not received within initial timeout; proceeding on open socket", config.channelId());
             }
 
-            String effectiveModel = config.pipecatLlm() != null && !config.pipecatLlm().isBlank() ? config.pipecatLlm() : p.model();
+            String effectiveModel = config.modelOr(config.pipecatLlm() != null && !config.pipecatLlm().isBlank() ? config.pipecatLlm() : p.model());
             log.info("[{}] Pipecat Realtime session open (agent={}, model={}, stt={}, tts={})",
                     config.channelId(), p.agentName(), effectiveModel, config.pipecatStt(), config.pipecatTts());
             return session;
@@ -141,8 +141,11 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
                 if (config.pipecatStt() != null && !config.pipecatStt().isBlank()) {
                     payload.put("stt", config.pipecatStt());
                 }
-                if (config.pipecatLlm() != null && !config.pipecatLlm().isBlank()) {
-                    payload.put("llm", config.pipecatLlm());
+                // Scenario override first, then the company's sub-engine — same rule the
+                // handshake below uses, so the room and the session agree on the model.
+                String llm = config.modelOr(config.pipecatLlm());
+                if (llm != null && !llm.isBlank()) {
+                    payload.put("llm", llm);
                 }
                 if (config.pipecatTts() != null && !config.pipecatTts().isBlank()) {
                     payload.put("tts", config.pipecatTts());
@@ -184,7 +187,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "session_init");
         root.put("agent", p.agentName());
-        String selectedModel = config.pipecatLlm() != null && !config.pipecatLlm().isBlank() ? config.pipecatLlm() : p.model();
+        String selectedModel = config.modelOr(config.pipecatLlm() != null && !config.pipecatLlm().isBlank() ? config.pipecatLlm() : p.model());
         String selectedStt = config.pipecatStt() != null && !config.pipecatStt().isBlank() ? config.pipecatStt() : "deepgram";
         String selectedTts = config.pipecatTts() != null && !config.pipecatTts().isBlank() ? config.pipecatTts() : "cartesia";
         root.put("model", selectedModel);

@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.user.application.port.output;
 
 import uz.murodjon.robotcallv2.user.domain.entity.User;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.time.Instant;
@@ -12,10 +11,10 @@ import java.util.Optional;
 
 public interface UserRepository {
 
-    long create(String name, String username, String email, UserRole role, UserStatus status);
+    long create(String name, String username, String email, long roleId, UserStatus status);
 
     long createForCompany(long companyId, String name, String username, String email, String passwordHash,
-                          UserRole role, UserStatus status);
+                          long roleId, UserStatus status);
 
     boolean existsByEmail(String email);
 
@@ -39,7 +38,8 @@ public interface UserRepository {
 
     boolean hasAnyUser(long companyId);
 
-    long countActiveAdmins(long companyId);
+    /** Active users holding any of these roles — how "the last admin" is counted now. */
+    long countActiveByRoleIds(long companyId, Collection<Long> roleIds);
 
     void setInviteToken(long id, String tokenHash, Instant expiresAt);
 
@@ -53,7 +53,7 @@ public interface UserRepository {
 
     void resetPassword(long id, String passwordHash);
 
-    void updateRole(long id, UserRole role);
+    void updateRole(long id, long roleId);
 
     void updateStatus(long id, UserStatus status);
 

@@ -1,6 +1,6 @@
 ﻿# Qo'lda va Tezkor Qo'ng'iroqlar API
 
-`uz.murodjon.robotcallv2.callrecord` · rol: **OPERATOR / ADMIN**
+`uz.murodjon.robotcallv2.callrecord` · huquq: **CALL_EDIT** (qo'ng'iroq boshlash), **LIVE_READ** / **LIVE_EDIT** (jonli kanalni boshqarish)
 
 Kampaniyaga bog'liq bo'lmagan, qo'lda yoki sayt/CRM orqali bir lahzada ishga tushiriladigan tekshiruv va tezkor qo'ng'iroq endpointlari. Har bir qo'ng'iroq qaysi SIP trunk orqali amalga oshirilgani tizimda aniq qayd etiladi va hisobotlarda ko'rsatiladi.
 
@@ -26,7 +26,13 @@ Qo'ng'iroq ulanishi bilan (`StasisStart` / go'shak ko'tarilganda), bot darhol ga
 | `NO_ANSWER` | Go'shak ko'tarilmadi |
 | `CARRIER_REJECTED` | Operator orqali ulanmadi |
 | `HUNG_UP` | Mijoz suhbat davomida go'shakni qo'ydi |
+| `FAILED` | Texnik nosozlik (kanal ochilmadi, pipeline yiqildi) |
 | `COMPLETED` | Muloqot normal yakunlandi |
+
+**Konversiya deb sanaladiganlar:** faqat `PROMISE_TO_PAY` va `COMPLETED`
+(`Disposition.isConversion()`). `TRANSFERRED` ataylab hisoblanmaydi — operatorga o'tkazish
+botning ishni oxiriga yetkaza olmagani; uni konversiya deb sanash eng tez taslim
+bo'ladigan ssenariyni A/B testda g'olib qilardi ([campaigns.md](campaigns.md)).
 
 ---
 
@@ -50,13 +56,21 @@ Saqlangan stsenariy asosida kiritilgan raqamga qo'ng'iroq boshlaydi.
 {
   "accept": true,
   "data": {
-    "number": "+998901234567",
-    "channelId": "1710000000.12"
+    "channelId": "+998901234567",
+    "status": "1710000000.12"
   },
-  "messageCode": "SUCCESS",
+  "message": null,
+  "messageCode": null,
   "errors": null
 }
 ```
+
+> ⚠️ **Maydon nomlari kodda almashib ketgan.** `CallOriginateResponse` record'i
+> `(channelId, status)` deb e'lon qilingan, lekin `AriService` uni
+> `new CallOriginateResponse(number, channelId)` bilan to'ldiradi. Ya'ni amalda
+> **`channelId` — terilgan raqam, `status` — haqiqiy Asterisk kanal id'si**. Jonli
+> boshqaruv endpointlariga (`/{channelId}/hangup` va h.k.) `status` maydonidagi
+> qiymatni bering. Bu `POST /api/calls` va `POST /api/calls/test` uchun bir xil.
 
 ---
 
@@ -75,6 +89,85 @@ Hali bazada saqlanmagan, veb-muharrirda tahrirlanayotgan yangi stsenariy JSON st
 
 **Misol So'rov:**
 `POST /api/calls/test?number=+998901234567&sipTrunkId=1`
+
+---
+
+## `POST /api/calls/web-test` — Brauzerdan test qo'ng'irog'i (mikrofon ↔ AI)
+
+Kampaniyani (yoki ssenariyni) telefon va trunk daqiqasisiz, **to'g'ridan-to'g'ri brauzerda** sinash: foydalanuvchi mikrofonga gapiradi, AI javobi dinamikdan eshitiladi. Audio yo'li real qo'ng'iroq bilan bir xil — brauzer WebRTC orqali Asterisk'ga ulanadi, u yog'i odatdagi Stasis → RTP → STT/LLM/TTS pipeline. Qo'ng'iroq `call_attempt` da `MANUAL` target ostida, telefon `WEB-TEST` bilan yoziladi; kampaniya statistikasi va target holati **o'zgarmaydi**, CRM ga hech narsa yozilmaydi.
+
+Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer o'zi ulanishi uchun kerak bo'lgan hamma narsani qaytaradi. Sessiya 5 daqiqa ichida terilmasa unutiladi.
+
+**Request Body** (`WebTestCallRequest`) — `campaignId`, `scenarioId`, `definition` dan **ko'pi bilan bittasi**; hech biri berilmasa standart test ssenariysi:
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `campaignId` | number | Kampaniya [agentining](ai-agents.md) to'liq profili bilan: ssenariy, tillar bo'yicha ovozlar, persona, ambient sound, disclosure, DTMF |
+| `targetId` | number | Ixtiyoriy, faqat `campaignId` bilan. Shu target faktlari (contextData + CRM + memory) ishlatiladi; berilmasa `voice-agent.dialog.test-context` faktlari |
+| `scenarioId` | number | Saqlangan ssenariyni standart sozlamalar bilan sinash (`POST /api/calls?scenarioId=` kabi) |
+| `definition` | `ScenarioDefinition` | Saqlanmagan qoralama (`POST /api/calls/test` kabi) |
+
+```json
+{ "campaignId": 12, "targetId": 1042 }
+```
+
+**Response** (`WebTestCallResponse`):
+
+```json
+{
+  "accept": true,
+  "data": {
+    "sessionId": "6f1c2a4e-3b7d-4c1e-9a0f-2d5e8b7c1a90",
+    "wsUrl": "ws://192.168.0.100:8088/ws",
+    "sipUser": "webtest",
+    "sipPassword": "webtest123",
+    "dialNumber": "700",
+    "sessionHeader": "X-Web-Test"
+  },
+  "errors": null
+}
+```
+
+**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba yoki `targetId` `campaignId`siz), `400 SCENARIO_DEFINITION_INVALID`, `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND`, `409 WEB_TEST_NOT_CONFIGURED` (serverda `ws-url` bo'sh).
+
+### Frontend oqimi
+
+1. `POST /api/calls/web-test` → javobni ol.
+2. SIP.js (`sip.js@0.21`) bilan `wsUrl` ga `sipUser`/`sipPassword` sifatida ulan. Ro'yxatdan o'tish (REGISTER) **shart emas** — har bir INVITE o'zi autentifikatsiya qilinadi.
+3. `sip:<dialNumber>@<wsUrl host>` ga INVITE yubor, `extraHeaders` ga `"<sessionHeader>: <sessionId>"` qo'sh, `constraints: { audio: true, video: false }`.
+4. Sessiya `Established` bo'lganda remote track'ni `<audio autoplay>` ga ula. Tugatish — `session.bye()`.
+5. Jonli transkript va holat — odatdagidek `GET /api/calls/live` va `/api/live/**` SSE orqali (`phone` = `WEB-TEST`).
+
+```js
+import { UserAgent, Inviter } from "sip.js";
+
+const { data } = await api.post("/api/calls/web-test", { campaignId: 12 });
+const host = new URL(data.wsUrl).host;
+const ua = new UserAgent({
+  uri: UserAgent.makeURI(`sip:${data.sipUser}@${host}`),
+  transportOptions: { server: data.wsUrl },
+  authorizationUsername: data.sipUser,
+  authorizationPassword: data.sipPassword,
+});
+await ua.start();
+
+const inviter = new Inviter(ua, UserAgent.makeURI(`sip:${data.dialNumber}@${host}`), {
+  extraHeaders: [`${data.sessionHeader}: ${data.sessionId}`],
+  sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
+});
+inviter.stateChange.addListener(state => {
+  if (state === "Established") {
+    const remote = new MediaStream();
+    inviter.sessionDescriptionHandler.peerConnection.getReceivers()
+      .forEach(r => r.track && remote.addTrack(r.track));
+    audioElement.srcObject = remote;      // <audio autoplay>
+  }
+});
+await inviter.invite();
+// tugatish: await inviter.bye(); await ua.stop();
+```
+
+**Brauzer talablari:** `getUserMedia` faqat `https://` yoki `http://localhost` da ishlaydi; `https` sahifadan faqat `wss://` ochiladi (Asterisk `http.conf` TLS, `WEB_TEST_WS_URL=wss://…:8089/ws`). Backend'siz sinash uchun `docs/web-test.html` sahifasini oching (docs/RUN.md "Brauzerdan test").
 
 ---
 

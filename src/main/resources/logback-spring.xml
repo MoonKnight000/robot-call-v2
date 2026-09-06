@@ -1,17 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Structured logging with per-call trace (PROJECT.md §10 Bosqich 12). The MDC key
      `channelId` is set around per-call work (AriService, DialogEngine) so every line
-     for a call carries its id — filter logs by [call:<channelId>]. -->
+     for a call carries its id — filter logs by [call:<channelId>].
+
+     Besides the console, everything goes to a rolling file under LOG_DIR (default
+     `logs/`), kept for 14 days. The per-turn "turn latency: eou=.. stt_final=.. llm_ttft=..
+     tts_ttfb=.." lines (VOICE-QUALITY-PLAN 0.1) only ever existed in the console buffer,
+     which is exactly where they were gone by the time a slow call was being looked into. -->
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
+    <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
+    <property name="LINE" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [call:%X{channelId:-none}] %logger{36} - %msg%n"/>
+
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [call:%X{channelId:-none}] %logger{36} - %msg%n</pattern>
+            <pattern>${LINE}</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/app.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>14</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LINE}</pattern>
         </encoder>
     </appender>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
     </root>
 </configuration>

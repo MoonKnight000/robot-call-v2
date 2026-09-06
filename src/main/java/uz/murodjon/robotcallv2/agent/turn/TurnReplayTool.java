@@ -170,7 +170,7 @@ public final class TurnReplayTool {
 
         SileroVad vad = new SileroVad(new VadProperties(true, settings.vadModel, rate,
                 settings.windowSamples, settings.vadThreshold, settings.vadMinSpeechMs,
-                settings.vadSilenceResetMs, null, 0.35f, 150.0));
+                settings.vadSilenceResetMs, null, 0.35f, 150.0, 2.5));
         vad.init();
         if (!vad.available()) {
             System.err.println("VAD model could not be loaded: " + settings.vadModel);
@@ -205,7 +205,7 @@ public final class TurnReplayTool {
         // of the caller's side is: there is no bot talking over them here.
         VadStream stream = new VadStream(vad, new VadProperties(true, settings.vadModel, rate,
                 settings.windowSamples, settings.vadThreshold, settings.vadMinSpeechMs,
-                settings.vadSilenceResetMs, null, 0.35f, 150.0), file.getFileName().toString(), () -> false, gate, null, null);
+                settings.vadSilenceResetMs, null, 0.35f, 150.0, 2.5), file.getFileName().toString(), () -> false, gate, null, null);
 
         int frame = Math.max(1, rate * FRAME_MS / 1000);
         short[] samples = audio.samples();

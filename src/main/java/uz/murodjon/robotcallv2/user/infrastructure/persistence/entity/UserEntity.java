@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.user.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.time.Instant;
@@ -32,9 +32,11 @@ public class UserEntity {
     @Column(name = "password_hash")
     private String passwordHash;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserRole role;
+    // Eager: UserMapper reads the role name and code outside any transaction, where a lazy
+    // proxy would fail, and a company has at most a handful of roles.
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "role_id", nullable = false)
+    private RoleEntity role;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -125,11 +127,11 @@ public class UserEntity {
         this.passwordHash = passwordHash;
     }
 
-    public UserRole getRole() {
+    public RoleEntity getRole() {
         return role;
     }
 
-    public void setRole(UserRole role) {
+    public void setRole(RoleEntity role) {
         this.role = role;
     }
 

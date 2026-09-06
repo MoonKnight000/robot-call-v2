@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.siptrunk.presentation.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -15,27 +16,35 @@ import java.util.List;
 @RequestMapping("/api")
 public interface SipTrunkController {
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
     @PostMapping("/sip-trunks")
     ResponseEntity<ResponseData<SipTrunkRow>> create(@Valid @RequestBody CreateSipTrunkRequest r);
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_READ')")
     @PostMapping("/sip-trunks/list")
     ResponseEntity<ResponseData<PageableData<SipTrunkRow>>> list(@Valid @RequestBody SipTrunkFilter filter);
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_READ')")
     @GetMapping("/sip-trunks/{id}")
     ResponseEntity<ResponseData<SipTrunkRow>> get(@PathVariable long id);
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_READ')")
     @GetMapping("/sip-trunks/{id}/status")
     ResponseEntity<ResponseData<SipTrunkStatus>> getStatus(@PathVariable long id);
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_READ')")
     @GetMapping("/sip-trunks/status")
     ResponseEntity<ResponseData<List<SipTrunkStatus>>> getAllStatuses();
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
     @PutMapping("/sip-trunks/{id}")
     ResponseEntity<ResponseData<SipTrunkRow>> update(@PathVariable long id, @Valid @RequestBody UpdateSipTrunkRequest r);
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
     @PostMapping("/sip-trunks/{id}/default")
     ResponseEntity<ResponseData<SipTrunkRow>> makeDefault(@PathVariable long id);
 
+    @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
     @DeleteMapping("/sip-trunks/{id}")
     ResponseEntity<ResponseData<SipTrunkDeleteResponse>> delete(@PathVariable long id);
 }

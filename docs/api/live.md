@@ -1,9 +1,7 @@
 ﻿# Jonli monitoring API
 
 `uz.murodjon.robotcallv2.live` (SSE oqimi) + `uz.murodjon.robotcallv2.callrecord`
-(`/live` ro'yxati) · rol: **VIEWER** (`GET /api/live/stream`) yoki **ADMIN**
-(`GET /api/calls/live` — bu `/api/reports/**`/`/api/live/**` ostida emas,
-shuning uchun standart ADMIN qoidasiga tushadi).
+(`/live` ro'yxati) · huquq: **LIVE_READ** (ikkala endpoint ham).
 
 Ikki alohida narsa: (1) hozirgi holatni bir marta olish uchun oddiy `GET`, va
 (2) real-vaqt push kanali (SSE). Ikkalasi ham bir xil ma'lumotni turli
@@ -80,6 +78,11 @@ fetchEventSource('/api/live/stream', {
 });
 ```
 
+Panel foydalanuvchisi uchun `EventSource` ham ishlaydi, chunki `/api/live/stream` tokenni
+query parametr sifatida ham qabul qiladi: `new EventSource('/api/live/stream?token=' +
+accessToken)`. Ikkala usulda ham **LIVE_READ** huquqi talab qilinadi — tokensiz ulanish
+`401`, huquqsiz token `403` oladi.
+
 "Ulanish uzildi" holati serverdan alohida push qilinmaydi — standart
 `onerror`/qayta-ulanish + ~15s heartbeat orqali klient o'zi aniqlaydi.
 
@@ -153,7 +156,7 @@ Operator kiritgan matn mijozga eshitilmaydi. Bot keyingi javobni shakllantirishd
     "channelId": "1710000000.12",
     "status": "WHISPER_INJECTED"
   },
-  "messageCode": "SUCCESS",
+  "messageCode": null,
   "errors": null
 }
 ```
@@ -177,7 +180,7 @@ AI bot darhol ovozni to'xtatadi va qo'ng'iroq ko'rsatilgan operator ichki raqami
     "channelId": "1710000000.12",
     "status": "TAKEOVER_TRIGGERED"
   },
-  "messageCode": "SUCCESS",
+  "messageCode": null,
   "errors": null
 }
 ```

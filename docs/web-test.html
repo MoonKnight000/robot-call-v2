@@ -1,0 +1,109 @@
+<!doctype html>
+<!--
+  Browser test call without the web UI (docs/RUN.md "Brauzerdan test",
+  docs/api/calls.md "web-test"). Open in Chrome (file:// works), fill in the API
+  address and key/token, pick what to test, press Start and talk.
+-->
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<title>Web test call</title>
+<style>
+  body { font: 14px system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  label { display: block; margin: .6rem 0 .2rem; }
+  input { width: 100%; padding: .4rem; box-sizing: border-box; }
+  .row { display: flex; gap: 1rem; }
+  .row > div { flex: 1; }
+  button { margin: 1rem .5rem 1rem 0; padding: .5rem 1.2rem; }
+  #log { white-space: pre-wrap; background: #f4f4f4; padding: .8rem; min-height: 8rem; font-family: monospace; }
+</style>
+</head>
+<body>
+<h2>Web test call</h2>
+
+<label>API</label>
+<input id="api" value="http://localhost:8080">
+<div class="row">
+  <div><label>X-Api-Key</label><input id="apiKey" placeholder="yoki pastdagi token"></div>
+  <div><label>Bearer token (JWT)</label><input id="token"></div>
+</div>
+<div class="row">
+  <div><label>campaignId</label><input id="campaignId" type="number"></div>
+  <div><label>targetId (ixtiyoriy)</label><input id="targetId" type="number"></div>
+  <div><label>scenarioId</label><input id="scenarioId" type="number"></div>
+</div>
+
+<button id="start">Boshlash</button>
+<button id="stop" disabled>Tugatish</button>
+<audio id="remote" autoplay></audio>
+<div id="log"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/sip.js@0.21.2/dist/sip.min.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const log = m => { $('log').textContent += new Date().toLocaleTimeString() + '  ' + m + '\n'; };
+  let ua, session;
+
+  async function openSession() {
+    const body = {};
+    for (const f of ['campaignId', 'targetId', 'scenarioId']) {
+      if ($(f).value) body[f] = Number($(f).value);
+    }
+    const headers = { 'Content-Type': 'application/json' };
+    if ($('apiKey').value) headers['X-Api-Key'] = $('apiKey').value;
+    if ($('token').value) headers['Authorization'] = 'Bearer ' + $('token').value;
+    const res = await fetch($('api').value.replace(/\/$/, '') + '/api/calls/web-test',
+        { method: 'POST', headers, body: JSON.stringify(body) });
+    const json = await res.json();
+    if (!res.ok || !json.accept) {
+      throw new Error(res.status + ' ' + (json.messageCode || '') + ' ' + (json.message || ''));
+    }
+    return json.data;
+  }
+
+  $('start').onclick = async () => {
+    $('start').disabled = true;
+    try {
+      const s = await openSession();
+      log('session ' + s.sessionId + ' -> ' + s.wsUrl + ' dial ' + s.dialNumber);
+      const host = new URL(s.wsUrl).host;
+      ua = new SIP.UserAgent({
+        uri: SIP.UserAgent.makeURI('sip:' + s.sipUser + '@' + host),
+        transportOptions: { server: s.wsUrl },
+        authorizationUsername: s.sipUser,
+        authorizationPassword: s.sipPassword,
+      });
+      await ua.start();
+      log('websocket connected');
+
+      session = new SIP.Inviter(ua, SIP.UserAgent.makeURI('sip:' + s.dialNumber + '@' + host), {
+        extraHeaders: [s.sessionHeader + ': ' + s.sessionId],
+        sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
+      });
+      session.stateChange.addListener(state => {
+        log('call ' + state);
+        if (state === 'Established') {
+          const remote = new MediaStream();
+          session.sessionDescriptionHandler.peerConnection.getReceivers()
+              .forEach(r => r.track && remote.addTrack(r.track));
+          $('remote').srcObject = remote;
+          $('stop').disabled = false;
+        }
+        if (state === 'Terminated') {
+          $('stop').disabled = true;
+          $('start').disabled = false;
+          ua.stop();
+        }
+      });
+      await session.invite();
+    } catch (e) {
+      log('ERROR ' + e.message);
+      $('start').disabled = false;
+      if (ua) ua.stop();
+    }
+  };
+
+  $('stop').onclick = () => session && session.bye();
+</script>
+</body>
+</html>

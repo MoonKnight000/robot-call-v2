@@ -2,7 +2,6 @@ package uz.murodjon.robotcallv2.agent.stt;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -28,11 +27,26 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Gemini streaming Speech-to-Text provider ({@code gemini-3.5-transcribe}).
+ * Gemini streaming Speech-to-Text provider ({@code gemini-3.5-transcribe-live}).
  *
- * <p>Streams 16 kHz PCM audio into Gemini's bidirectional streaming WebSocket
- * endpoint ({@code BidiGenerateContent}) and delivers live incremental and finalized
- * transcripts to {@link TranscriptListener}.
+ * <p>Streams 16 kHz PCM audio into Gemini's Live WebSocket endpoint
+ * ({@code BidiGenerateContent}) and delivers the server's own transcription of that
+ * audio to {@link TranscriptListener}: {@code interimInputTranscription} as interims,
+ * {@code inputTranscription} as the final. The setup asks for it with
+ * {@code inputAudioTranscription}; without that field nothing is ever transcribed.
+ *
+ * <p>Who says the utterance is over depends on the call. With external endpointing the
+ * gate does: automatic activity detection is switched off and the session brackets each
+ * utterance with {@code activityStart}/{@code activityEnd} — the only signal this model
+ * finalizes on (a {@code clientContent.turnComplete} produces no final at all). Without
+ * a gate the server's own detection stays on and finalizes after the silence it hears.
+ *
+ * <p>Measured on a recorded uz-UZ call (2026-09-05): the final arrives ~350 ms after
+ * {@code activityEnd}, the interims are usable, and the final is sometimes emitted in an
+ * unrelated script (Bengali, Gurmukhi) for the same audio the interim had as Uzbek. Such
+ * a final is discarded in favour of the last interim. No setup field pins the language:
+ * {@code customVocabulary} and a language code under {@code inputAudioTranscription} are
+ * rejected, and {@code speechConfig.languageCode} changed nothing.
  */
 @Component
 @ConditionalOnExpression("!'${voice-agent.stt.gemini.api-key:}'.isBlank() || !'${GEMINI_API_KEY:}'.isBlank()")
@@ -42,7 +56,7 @@ public class GeminiSttProvider implements SttProvider {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final int DEFAULT_SAMPLE_RATE = 16000;
-    private static final String DEFAULT_MODEL = "gemini-3.5-transcribe";
+    private static final String DEFAULT_MODEL = "gemini-3.5-transcribe-live";
 
     private final SttProperties props;
     private final VoiceMetrics metrics;
@@ -116,7 +130,7 @@ public class GeminiSttProvider implements SttProvider {
             alive.set(true);
 
             // Send session setup message
-            String setupPayload = buildSetupMessage(hints, languageCode);
+            String setupPayload = buildSetupMessage(externalEndpointing);
             webSocket.sendText(setupPayload, true).get(timeoutSeconds, TimeUnit.SECONDS);
 
             // Wait for setup acknowledgement
@@ -127,8 +141,9 @@ public class GeminiSttProvider implements SttProvider {
                         "gemini-stt", "session setup was not acknowledged within " + timeoutSeconds + "s");
             }
 
-            log.info("Gemini STT streaming session open (lang={}, model={})", languageCode, resolveModel());
-            return new GeminiSttSession(webSocket, alive, metrics);
+            log.info("Gemini STT streaming session open (lang={}, model={}, endpointing={})",
+                    languageCode, resolveModel(), externalEndpointing ? "external" : "gemini");
+            return new GeminiSttSession(webSocket, alive, metrics, externalEndpointing);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             metrics.sttError();
@@ -165,23 +180,49 @@ public class GeminiSttProvider implements SttProvider {
         return URI.create(base + separator + "key=" + apiKey);
     }
 
-    private String buildSetupMessage(List<String> hints, String languageCode) {
+    /**
+     * The session setup. Hints are deliberately not sent: the Live API has no vocabulary
+     * field ({@code customVocabulary} closes the socket with "Cannot find field"), and a
+     * setup that fails costs the whole call its recognition.
+     */
+    private String buildSetupMessage(boolean externalEndpointing) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode setup = root.putObject("setup");
         setup.put("model", "models/" + resolveModel());
 
         ObjectNode genConfig = setup.putObject("generationConfig");
         genConfig.putArray("responseModalities").add("TEXT");
-
-        if (hints != null && !hints.isEmpty()) {
-            ArrayNode vocab = setup.putArray("customVocabulary");
-            for (String hint : hints) {
-                if (hint != null && !hint.isBlank()) {
-                    vocab.add(hint.trim());
-                }
-            }
+        // This is what makes the server transcribe the audio at all.
+        setup.putObject("inputAudioTranscription");
+        if (externalEndpointing) {
+            // The gate says where an utterance ends (activityStart/activityEnd); the
+            // server's own detector would wait for a silence the gate never sends it.
+            setup.putObject("realtimeInputConfig")
+                    .putObject("automaticActivityDetection")
+                    .put("disabled", true);
         }
         return root.toString();
+    }
+
+    /**
+     * Whether a final is in the script this call's language is written in. The model
+     * occasionally finalizes Uzbek phone audio as Bengali or Gurmukhi; a transcript the
+     * dialog cannot read is worse than the interim it replaces.
+     */
+    static boolean inExpectedScript(String text, String languageCode) {
+        boolean anyLetter = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (!Character.isLetter(c)) {
+                continue;
+            }
+            anyLetter = true;
+            Character.UnicodeScript script = Character.UnicodeScript.of(c);
+            if (script != Character.UnicodeScript.LATIN && script != Character.UnicodeScript.CYRILLIC) {
+                return false;
+            }
+        }
+        return anyLetter;
     }
 
     /**
@@ -195,7 +236,8 @@ public class GeminiSttProvider implements SttProvider {
         private final CountDownLatch ready;
 
         private final StringBuilder messageBuffer = new StringBuilder();
-        private final StringBuilder accumulatedTranscript = new StringBuilder();
+        /** The last interim of the utterance in hand — what a garbage final falls back to. */
+        private String lastInterim;
 
         private ResponseHandler(String languageCode, TranscriptListener listener,
                                 AtomicBoolean alive, CountDownLatch ready) {
@@ -250,36 +292,29 @@ public class GeminiSttProvider implements SttProvider {
         }
 
         private void handleServerContent(JsonNode content) {
-            JsonNode modelTurn = content.path("modelTurn");
-            if (!modelTurn.isMissingNode()) {
-                for (JsonNode part : modelTurn.path("parts")) {
-                    String text = part.path("text").asText("");
-                    if (!text.isEmpty()) {
-                        accumulatedTranscript.append(text);
-                    }
-                }
-            }
-
-            String interim = content.path("interimInputTranscription").path("text").asText("");
-            if (interim.isEmpty()) {
-                interim = content.path("inputTranscription").path("text").asText("");
-            }
+            String interim = content.path("interimInputTranscription").path("text").asText("").trim();
             if (!interim.isEmpty()) {
+                lastInterim = interim;
                 listener.onTranscript(interim, false, 0.0f);
             }
 
-            boolean turnComplete = content.path("turnComplete").asBoolean(false);
-            if (turnComplete) {
-                String finalResult = accumulatedTranscript.toString().trim();
-                if (!finalResult.isEmpty()) {
-                    listener.onTranscript(finalResult, true, 1.0f);
-                    accumulatedTranscript.setLength(0);
+            String finalText = content.path("inputTranscription").path("text").asText("").trim();
+            if (finalText.isEmpty()) {
+                return;
+            }
+            if (!inExpectedScript(finalText, languageCode)) {
+                if (lastInterim == null) {
+                    log.warn("Gemini STT final is not in the {} script and there is no interim to fall back to — dropped: {}",
+                            languageCode, finalText);
+                    return;
                 }
+                log.warn("Gemini STT final is not in the {} script ('{}') — using the last interim: {}",
+                        languageCode, finalText, lastInterim);
+                finalText = lastInterim;
             }
-
-            if (content.path("interrupted").asBoolean(false)) {
-                accumulatedTranscript.setLength(0);
-            }
+            lastInterim = null;
+            // No confidence from this API; 0 keeps the low-confidence repair from firing on it.
+            listener.onTranscript(finalText, true, 0.0f);
         }
 
         @Override
@@ -307,13 +342,19 @@ public class GeminiSttProvider implements SttProvider {
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
         private final VoiceMetrics metrics;
+        /** Whether this side brackets utterances with activityStart/activityEnd. */
+        private final boolean externalEndpointing;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private volatile boolean closed;
+        /** An activityStart has been sent and its activityEnd has not. */
+        private boolean inActivity;
 
-        private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics) {
+        private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics,
+                                 boolean externalEndpointing) {
             this.webSocket = webSocket;
             this.alive = alive;
             this.metrics = metrics;
+            this.externalEndpointing = externalEndpointing;
         }
 
         @Override
@@ -321,15 +362,33 @@ public class GeminiSttProvider implements SttProvider {
             if (closed || !alive.get() || pcm16le == null || pcm16le.length == 0) {
                 return;
             }
-
+            if (externalEndpointing && !inActivity) {
+                // First audio of an utterance: with automatic detection off the server
+                // ignores audio outside an activity.
+                inActivity = true;
+                ObjectNode start = MAPPER.createObjectNode();
+                start.putObject("realtimeInput").putObject("activityStart");
+                send(start.toString());
+            }
             ObjectNode root = MAPPER.createObjectNode();
-            ObjectNode mediaChunk = root.putObject("realtimeInput")
-                    .putArray("mediaChunks")
-                    .addObject();
-            mediaChunk.put("mimeType", "audio/pcm;rate=16000");
-            mediaChunk.put("data", Base64.getEncoder().encodeToString(pcm16le));
+            ObjectNode audio = root.putObject("realtimeInput").putObject("audio");
+            audio.put("mimeType", "audio/pcm;rate=16000");
+            audio.put("data", Base64.getEncoder().encodeToString(pcm16le));
+            send(root.toString());
+        }
 
-            String payload = root.toString();
+        @Override
+        public synchronized void endUtterance() {
+            if (closed || !alive.get() || !externalEndpointing || !inActivity) {
+                return;
+            }
+            inActivity = false;
+            ObjectNode root = MAPPER.createObjectNode();
+            root.putObject("realtimeInput").putObject("activityEnd");
+            send(root.toString());
+        }
+
+        private void send(String payload) {
             sendChain = sendChain
                     .thenCompose(ignored -> webSocket.sendText(payload, true))
                     .thenAccept(sent -> {
@@ -340,21 +399,6 @@ public class GeminiSttProvider implements SttProvider {
                         log.warn("Gemini STT send failed: {}", e.getMessage());
                         return null;
                     });
-        }
-
-        @Override
-        public synchronized void endUtterance() {
-            if (closed || !alive.get()) {
-                return;
-            }
-            ObjectNode root = MAPPER.createObjectNode();
-            root.putObject("clientContent").put("turnComplete", true);
-            String payload = root.toString();
-            sendChain = sendChain
-                    .thenCompose(ignored -> webSocket.sendText(payload, true))
-                    .thenAccept(sent -> {
-                    })
-                    .exceptionally(e -> null);
         }
 
         @Override

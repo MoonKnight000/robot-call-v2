@@ -32,7 +32,7 @@ class DialogToolsTest {
         ), "goal");
         // No RTP endpoint: none of these tools touch audio.
         session = new DialogSession("chan-1", "uz-UZ", null, context, ScenarioFixtures.debtCollection(),
-                null, null, null, 42L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
+                null, null, null, 42L, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
         tools = new DialogTools(session);
     }
 

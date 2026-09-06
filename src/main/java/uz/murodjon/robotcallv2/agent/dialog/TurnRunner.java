@@ -18,7 +18,9 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
+import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Duration;
@@ -27,6 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -218,6 +222,18 @@ public class TurnRunner {
                 return;
             }
 
+            String unanswered = fromClient ? s.takeUnansweredClientText() : null;
+            if (unanswered != null) {
+                // The previous final was the first half of this sentence: the gate closed on a
+                // pause, the caller carried on, and the reply to the half was cancelled before
+                // a word of it went out. Answer the whole thought once, not its halves twice —
+                // and the model was not interrupted, because the caller never heard it start.
+                dropUnansweredMessage(s, unanswered);
+                clientText = unanswered + " " + clientText;
+                s.setInterrupted(false);
+                metrics.turnStitched();
+                log.info("[{}] stitched the cut-off utterance onto this one: {}", s.channelId(), clientText);
+            }
             s.history().add(new UserMessage(clientText));
             int dropped = s.trimHistory(props.historyMaxMessages(), HISTORY_TRIM_BLOCK);
             if (dropped > 0) {
@@ -295,6 +311,12 @@ public class TurnRunner {
                 log.info("[{}] AGENT ({}{}): {}", s.channelId(), s.state(),
                         cutOff ? ", cut off by the caller" : "", reply);
                 transcript.recordAgentLine(s, reply);
+            } else if (cutOff && fromClient) {
+                // Silenced before the first word: the caller heard nothing, so as far as they
+                // know their sentence is still being listened to — and the next final is
+                // probably the rest of it. Kept for that turn to fold in; the false-interruption
+                // check clears it if it turns out nobody was speaking and the reply resumes.
+                s.setUnansweredClientText(clientText);
             }
             if (result.toolNote() != null && result.toolNote().contains("XATO")) {
                 // The model spoke and called a tool in the same breath, and the tool
@@ -586,7 +608,7 @@ public class TurnRunner {
         if (!props.knowledgeBase() || !fromClient) {
             return false;
         }
-        String answer = knowledgeBase.findRelevantKnowledge(clientText, s.language());
+        String answer = knowledgeBase.findRelevantKnowledge(s.companyId(), clientText, s.language());
         if (answer == null) {
             return false;
         }
@@ -736,6 +758,14 @@ public class TurnRunner {
         if (s.isEnded() || s.turnCount() != turn || s.busy().get() || s.endpoint().isPlaying()) {
             return; // the caller really was speaking, or something else is talking to them
         }
+        if (s.heardCallerWithin(props.falseInterruptionTimeoutMs())) {
+            // Interims are still arriving: the caller is mid-sentence and the final that
+            // ends it has simply not come yet. Resuming the reply now would talk over them —
+            // which is the cut-off this check exists to avoid. Ask again later.
+            log.debug("[{}] barge-in check deferred — the caller is still speaking", s.channelId());
+            scheduleFalseInterruptionCheck(s, turn, onFalseInterruption);
+            return;
+        }
         metrics.falseBargeIn();
         log.info("[{}] no speech followed the barge-in after {} ms — treating it as noise",
                 s.channelId(), props.falseInterruptionTimeoutMs());
@@ -767,6 +797,7 @@ public class TurnRunner {
             if (!speech.speakChunk(s, rest)) {
                 return;
             }
+            s.setUnansweredClientText(null); // the caller has their answer after all
             String merged = mergeResumedReply(s, rest);
             s.setLastAgentText(merged);
             transcript.recordAgentLine(s, rest);
@@ -775,6 +806,21 @@ public class TurnRunner {
         } finally {
             s.busy().set(false);
             MDC.remove("channelId");
+        }
+    }
+
+    /**
+     * Remove the half-sentence user message the cancelled turn left in the history, so the
+     * stitched sentence replaces it rather than following it. Searched from the end: a
+     * tool-rejection note may sit after it.
+     */
+    private static void dropUnansweredMessage(DialogSession s, String unanswered) {
+        List<Message> history = s.history();
+        for (int i = history.size() - 1; i >= 0 && i >= history.size() - 2; i--) {
+            if (history.get(i) instanceof UserMessage user && unanswered.equals(user.getText())) {
+                history.remove(i);
+                return;
+            }
         }
     }
 
@@ -905,6 +951,7 @@ public class TurnRunner {
                 .stream()
                 .chatResponse(), turnUsage, toolCalls);
         publishUsage(s, turnUsage);
+        maybeSpeakPreToolSpeech(s, toolCalls, reply.spoken());
         String toolNote = turnTools.run(s, tools, toolCalls);
 
         if (!reply.text().isEmpty() && !SpeechSanitizer.isUnspeakable(reply.text())) {
@@ -951,8 +998,7 @@ public class TurnRunner {
                                   TokenUsage usage, List<AssistantMessage.ToolCall> toolCalls) {
         StringBuilder full = new StringBuilder();
         StringBuilder pending = new StringBuilder();
-        boolean spoken = false;
-        boolean blocked = false;
+        SentenceQueue sentences = new SentenceQueue(s);
 
         for (ChatResponse response : responses.toIterable()) {
             s.latency().llmFirstToken();
@@ -979,19 +1025,84 @@ public class TurnRunner {
                 continue;
             }
             for (String sentence = takeSentence(pending); sentence != null; sentence = takeSentence(pending)) {
-                SpeechOutcome outcome = speech.speak(s, sentence);
-                spoken |= outcome == SpeechOutcome.SPOKEN;
-                blocked |= outcome == SpeechOutcome.BLOCKED;
+                sentences.add(sentence);
             }
         }
         if (s.isCancelled()) {
             s.setUnspokenText(pending.toString());
         } else if (!pending.isEmpty()) {
-            SpeechOutcome outcome = speech.speak(s, pending.toString().trim());
-            spoken |= outcome == SpeechOutcome.SPOKEN;
-            blocked |= outcome == SpeechOutcome.BLOCKED;
+            sentences.add(pending.toString().trim());
         }
-        return new StreamedReply(full.toString().trim(), spoken, blocked);
+        sentences.finish();
+        return new StreamedReply(full.toString().trim(), sentences.spoken(), sentences.blocked());
+    }
+
+    /**
+     * One reply's sentences, queued for the caller in order while the next one is already
+     * being synthesized.
+     *
+     * <p>The first sentence is spoken on the turn's own thread: it is the one on the §1.3
+     * turnaround clock and goes out chunk by chunk as the synthesizer produces it
+     * ({@link SpeechOutput#speak}). Every sentence after it is handed to a worker the
+     * moment the model finishes writing it, and queued behind its predecessor when both
+     * are ready — so the second sentence's round trip runs while the first is playing
+     * instead of after it, which is where the 400-900 ms gaps between a reply's sentences
+     * came from.
+     */
+    private final class SentenceQueue {
+
+        private final DialogSession s;
+        /** Deliveries so far, in order — each one waits for the previous. */
+        private CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        private final AtomicBoolean spoken = new AtomicBoolean();
+        private final AtomicBoolean blocked = new AtomicBoolean();
+        /** Whether the streamed first sentence is still to come. */
+        private boolean opening = true;
+
+        private SentenceQueue(DialogSession s) {
+            this.s = s;
+        }
+
+        void add(String sentence) {
+            if (opening) {
+                SpeechOutcome outcome = speech.speak(s, sentence);
+                // A refused opening line leaves the next one on the clock, and on the
+                // streamed path.
+                opening = outcome != SpeechOutcome.SPOKEN;
+                note(outcome);
+                return;
+            }
+            CompletableFuture<PreparedLine> prepared = executors.supply(() -> speech.prepare(s, sentence));
+            chain = chain.thenCombine(prepared, (done, line) -> {
+                note(speech.deliver(s, line));
+                return null;
+            });
+        }
+
+        /** Wait for every queued sentence to reach the endpoint (or be refused). */
+        void finish() {
+            try {
+                chain.join();
+            } catch (CompletionException e) {
+                log.warn("[{}] a queued sentence was lost: {}", s.channelId(), e.getCause().toString());
+            }
+        }
+
+        boolean spoken() {
+            return spoken.get();
+        }
+
+        boolean blocked() {
+            return blocked.get();
+        }
+
+        private void note(SpeechOutcome outcome) {
+            if (outcome == SpeechOutcome.SPOKEN) {
+                spoken.set(true);
+            } else if (outcome == SpeechOutcome.BLOCKED) {
+                blocked.set(true);
+            }
+        }
     }
 
     /** One turn in a single blocking call — the pre-streaming path, kept as a fallback. */
@@ -1006,7 +1117,9 @@ public class TurnRunner {
         TokenUsage turnUsage = new TokenUsage();
         turnUsage.add(response);
         publishUsage(s, turnUsage);
-        String toolNote = turnTools.run(s, tools, turnTools.extractCalls(response));
+        List<AssistantMessage.ToolCall> calls = turnTools.extractCalls(response);
+        maybeSpeakPreToolSpeech(s, calls, false);
+        String toolNote = turnTools.run(s, tools, calls);
 
         String reply = textOf(response);
         if (reply == null || reply.isBlank() || SpeechSanitizer.isUnspeakable(reply)) {
@@ -1030,6 +1143,38 @@ public class TurnRunner {
         }
         return new TurnResult(reply, outcome == SpeechOutcome.SPOKEN,
                 outcome == SpeechOutcome.BLOCKED, toolNote);
+    }
+
+    private static final Set<String> SILENT_CONTROL_TOOLS = Set.of(
+            "transitionTo", "endCall", "recordWrongPerson", "recordDoNotCall"
+    );
+
+    private void maybeSpeakPreToolSpeech(DialogSession s, List<AssistantMessage.ToolCall> calls, boolean alreadySpoken) {
+        if (!props.preToolSpeech() || s.isCancelled() || s.isEnded() || calls == null || calls.isEmpty()) {
+            return;
+        }
+        for (AssistantMessage.ToolCall call : calls) {
+            if (SILENT_CONTROL_TOOLS.contains(call.name())) {
+                continue;
+            }
+            String phrase = null;
+            if (s.scenario() != null && s.scenario().tools() != null) {
+                phrase = s.scenario().tools().stream()
+                        .filter(t -> t.name().equals(call.name()))
+                        .map(ToolDef::preToolSpeech)
+                        .filter(Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
+            }
+            if (phrase == null || phrase.isBlank()) {
+                phrase = PreToolPhrases.forTool(call.name(), s.language());
+            }
+            if (phrase != null && !phrase.isBlank()) {
+                log.info("[{}] pre-tool speech before executing tool '{}': {}", s.channelId(), call.name(), phrase);
+                speech.speakChunk(s, phrase);
+                break;
+            }
+        }
     }
 
     /** Second attempt when a turn produced only tool calls: text, no tools. */
@@ -1143,8 +1288,18 @@ public class TurnRunner {
     );
 
     /**
+     * Shortest piece worth its own synthesis round trip. "Xo'p." or "Tushunarli." alone is
+     * under a second of audio, and a line that short cannot cover the round trip of the
+     * sentence behind it — on recorded calls the caller heard the acknowledgement, then
+     * 400-900 ms of silence, then the actual answer. Kept with the sentence that follows,
+     * it costs the first word nothing measurable and the gap disappears.
+     */
+    static final int MIN_CHUNK_CHARS = 20;
+
+    /**
      * Cut the next complete sentence off the front of {@code pending}, or return
-     * {@code null} if there is not one yet.
+     * {@code null} if there is not one yet. A sentence shorter than {@link #MIN_CHUNK_CHARS}
+     * is not cut on its own but carried into the next one.
      */
     static String takeSentence(StringBuilder pending) {
         for (int i = 0; i < pending.length(); i++) {
@@ -1153,6 +1308,9 @@ public class TurnRunner {
             if ((c == '.' || c == ',') && i > 0 && Character.isDigit(pending.charAt(i - 1))
                     && i + 1 < pending.length() && Character.isDigit(pending.charAt(i + 1))) {
                 continue;
+            }
+            if (i + 1 < MIN_CHUNK_CHARS) {
+                continue; // too short to be worth a round trip of its own
             }
             if (c == '.') {
                 if (!isDotSentenceEnd(pending, i)) {

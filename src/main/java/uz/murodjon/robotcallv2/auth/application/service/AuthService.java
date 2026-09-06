@@ -11,6 +11,9 @@ import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
 import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
+import uz.murodjon.robotcallv2.role.domain.entity.Role;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
@@ -25,6 +28,7 @@ import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class AuthService implements AuthUseCase {
@@ -43,10 +47,12 @@ public class AuthService implements AuthUseCase {
     private final AuditService audit;
     private final SessionService sessions;
     private final PasswordResetMailSender resetMail;
+    private final RoleUseCase roleUseCase;
 
     public AuthService(UserRepository users, CompanyRepository companies, CurrentCompany currentCompany,
                        PasswordEncoder passwordEncoder, JwtTokenService tokens, CurrentUser currentUser,
-                       AuditService audit, SessionService sessions, PasswordResetMailSender resetMail) {
+                       AuditService audit, SessionService sessions, PasswordResetMailSender resetMail,
+                       RoleUseCase roleUseCase) {
         this.users = users;
         this.companies = companies;
         this.currentCompany = currentCompany;
@@ -56,6 +62,7 @@ public class AuthService implements AuthUseCase {
         this.audit = audit;
         this.sessions = sessions;
         this.resetMail = resetMail;
+        this.roleUseCase = roleUseCase;
     }
 
     public List<Company> myCompanies() {
@@ -170,13 +177,14 @@ public class AuthService implements AuthUseCase {
             throw new NotFoundException(ErrorCode.USER_NOT_FOUND, userId);
         }
         var company = companies.find(user.companyId());
-        return new CurrentUserResponse(user.id(), user.name(), user.username(), user.email(), user.role(),
+        return new CurrentUserResponse(user.id(), user.name(), user.username(), user.email(),
+                user.roleId(), user.roleCode(), user.roleName(), resolvePermissions(user),
                 user.companyId(), company == null ? null : company.name());
     }
 
     private IssuedSession issueTokens(User user) {
-        AuthenticatedUser principal = new AuthenticatedUser(user.id(), user.companyId(), user.role(),
-                user.name(), user.email());
+        AuthenticatedUser principal = new AuthenticatedUser(user.id(), user.companyId(), user.roleId(),
+                user.roleCode(), resolvePermissions(user), user.name(), user.email());
         IssuedToken issued = tokens.issue(principal);
 
         String refreshToken = Tokens.generate();
@@ -185,6 +193,12 @@ public class AuthService implements AuthUseCase {
         LoginResponse response = new LoginResponse(issued.token(), issued.expiresAt(), refreshToken,
                 refreshExpiresAt, UserRow.of(user));
         return new IssuedSession(response, Tokens.hash(refreshToken), refreshExpiresAt);
+    }
+
+    /** Everything the role grants right now — what the new token will carry. */
+    private Set<Permission> resolvePermissions(User user) {
+        Role role = roleUseCase.findRole(user.companyId(), user.roleId());
+        return role == null ? Set.of() : role.permissions();
     }
 
     private record IssuedSession(LoginResponse response, String refreshTokenHash, Instant refreshExpiresAt) {

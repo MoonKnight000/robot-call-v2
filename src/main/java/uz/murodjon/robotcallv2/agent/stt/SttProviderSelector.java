@@ -103,4 +103,30 @@ public class SttProviderSelector {
         }
         return provider;
     }
+
+    /**
+     * Another provider to recognize with when {@code failed} has stopped working during a
+     * call, or {@code null} when this build has only the one.
+     *
+     * <p>The counterpart of {@code TtsProviderSelector#findFallback}, and needed for the
+     * same reason with more at stake: synthesis failing costs one sentence, recognition
+     * failing costs the rest of the call. Until this existed
+     * {@link SttStreamBridge#reopen()} could only reopen the provider that had just
+     * failed, so a vendor that was down — or worse, up and silently returning nothing —
+     * left the bot listening to a caller it could no longer hear.
+     *
+     * <p>Any registered provider will do: a provider is only a bean when its API key is
+     * configured ({@code @ConditionalOnExpression} on each), so what is here is what this
+     * deployment actually paid for. Language is not checked — every provider in this
+     * build is configured for the languages the campaigns dial, and a recognizer with a
+     * worse accent is still better than a deaf call.
+     */
+    public SttProvider findFallback(SttProvider failed) {
+        for (SttProvider provider : byName.values()) {
+            if (failed == null || !provider.name().equalsIgnoreCase(failed.name())) {
+                return provider;
+            }
+        }
+        return null;
+    }
 }

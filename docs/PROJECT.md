@@ -272,7 +272,22 @@ void endCall(Disposition disposition);
 
 @Tool(description = "Suhbat bosqichini keyingisiga o'tkazish")
 void transitionTo(DialogState nextState);
+
+@Tool(description = "Narigi tomondagi avtomat menyuda (IVR) kerakli tugmani bot o'zi bosadi")
+String sendDtmfTones(String reply, String digits, String menuOption);
 ```
+
+**`sendDtmfTones` — IVR navigatsiyasi.** Korxona raqamiga qo'ng'iroq qilganda odamgacha
+avtomat menyu javob beradi ("buxgalteriya uchun 1 ni bosing"). Bot menyuni oddiy nutq
+kabi eshitadi va mos raqamni o'zi bosadi (ARI `channels/{id}/dtmf`).
+
+Ikki cheklov bilan:
+- **Faqat chiquvchi qo'ng'iroqda.** Kiruvchi qo'ng'iroqda narigi uchda odam turadi;
+  `AriService` u yerda DTMF yuboruvchini umuman ulamaydi va tool "bo'lmaydi" deb javob
+  qaytaradi.
+- **Faqat ssenariy so'raganda.** Tool `HARDCODED_TOOL_NAMES` ichida, ya'ni LLM ga faqat
+  ssenariy `tools` ro'yxatida `sendDtmfTones` nomli `ToolDef` e'lon qilingan bo'lsa
+  ko'rinadi. Odamga qo'ng'iroq qiladigan ssenariyda umuman mavjud emas.
 
 ```java
 enum ReasonCode {
@@ -390,24 +405,66 @@ Vazifalari:
 
 ## 6. Ma'lumotlar modeli
 
+Uchta obyekt uch xil savolga javob beradi va bir-birini takrorlamaydi:
+`scenario` — **nima** gapiriladi, `ai_agent` — **kim** gapiradi, `campaign` — **kimga va
+qachon**. Har bir qo'ng'iroq — chiquvchi ham, kiruvchi ham — aynan bitta `ai_agent` orqali
+o'tadi (`campaign.ai_agent_id`, `inbound_route.ai_agent_id`), shuning uchun ovoz, persona
+va model bitta joydan o'qiladi.
+
 ```sql
--- Kampaniya
+-- AI agent: senariyni qanday ovoz, persona va model bilan gapirish (V12)
+CREATE TABLE ai_agent (
+    id              BIGSERIAL PRIMARY KEY,
+    company_id      BIGINT       NOT NULL REFERENCES company(id),
+    name            VARCHAR(255) NOT NULL,
+    scenario_id     BIGINT       NOT NULL REFERENCES scenario(id),
+    language        VARCHAR(10)  NOT NULL DEFAULT 'uz-UZ',
+    tts_voice       VARCHAR(64),             -- voice-agent.tts.catalog id; null -> kompaniya sozlamasi
+    persona         VARCHAR(30)  NOT NULL DEFAULT 'AI_ASSISTANT',  -- AI_ASSISTANT, HUMAN_LIKE
+    llm_model       VARCHAR(120),            -- null -> kompaniyaning ai_model_config
+    temperature     DOUBLE PRECISION,
+    max_output_tokens INT,
+    ambient_sound   VARCHAR(30)  NOT NULL DEFAULT 'OFF',
+    emotion_adaptive_voice BOOLEAN NOT NULL DEFAULT true,
+    dtmf_input_enabled BOOLEAN   NOT NULL DEFAULT false,
+    voicemail_action VARCHAR(30) NOT NULL DEFAULT 'HANGUP',
+    enabled         BOOLEAN      NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+-- + ai_agent_language_voice (til -> ovoz) va ai_agent_sip_trunk (chiquvchi trunklar)
+
+-- Kampaniya: kimga va qachon qo'ng'iroq qilinadi
 CREATE TABLE campaign (
     id              BIGSERIAL PRIMARY KEY,
     name            VARCHAR(255) NOT NULL,
     type            VARCHAR(50)  NOT NULL,   -- DEBT_COLLECTION, SURVEY, ...
     status          VARCHAR(50)  NOT NULL,   -- DRAFT, ACTIVE, PAUSED, COMPLETED
-    goal_prompt     TEXT         NOT NULL,   -- LLM system prompt qismi
-    script_config   JSONB        NOT NULL,   -- FSM sozlamalari, savollar
-    default_language VARCHAR(10) NOT NULL DEFAULT 'uz-UZ',
+    script_config   JSONB        NOT NULL,
+    ai_agent_id     BIGINT       NOT NULL REFERENCES ai_agent(id),
     dial_window_start TIME       NOT NULL DEFAULT '09:00',
     dial_window_end   TIME       NOT NULL DEFAULT '20:00',
     max_attempts    INT          NOT NULL DEFAULT 3,
     retry_interval_minutes INT   NOT NULL DEFAULT 0,   -- 0 -> natijaga qarab (dialer.retry.*)
     max_concurrent_calls INT     NOT NULL DEFAULT 20,
-    tts_voice       VARCHAR(64),             -- tanlangan ovoz (voice-agent.tts.catalog id); null -> sozlamadagi yo'naltirish
+    daily_call_cap  INT          NOT NULL DEFAULT 0,
+    recurrence_type VARCHAR(20)  NOT NULL DEFAULT 'ONCE',  -- ONCE, DAILY, WEEKLY, MONTHLY, CRON
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     created_by      BIGINT
+);
+
+-- Kampaniya nishonlari qayerdan olinadi (CSV o'rniga kompaniyaning o'z API'si; V13)
+CREATE TABLE campaign_target_source (
+    campaign_id     BIGINT PRIMARY KEY REFERENCES campaign(id) ON DELETE CASCADE,
+    url             VARCHAR(1000) NOT NULL,
+    http_method     VARCHAR(10)   NOT NULL DEFAULT 'GET',
+    auth_header_name  VARCHAR(100),
+    auth_header_value TEXT,                  -- AES-GCM
+    items_path      VARCHAR(200),            -- javob ichidagi massivgacha nuqtali yo'l
+    phone_field     VARCHAR(100)  NOT NULL DEFAULT 'phone',
+    replace_targets BOOLEAN       NOT NULL DEFAULT false,
+    sync_on_recurrence BOOLEAN    NOT NULL DEFAULT true,
+    last_sync_at    TIMESTAMPTZ,
+    last_sync_error VARCHAR(1000)
 );
 
 -- Kampaniya nishoni (mijoz)

@@ -49,8 +49,8 @@ class RecurringCampaignSchedulerTest {
             CampaignStatus status
     ) {
         return new Campaign(
-                id, "Test Recurring", CampaignType.DEBT_COLLECTION, status, "goal", "uz-UZ",
-                windowStart, windowEnd, dialDays, 3, 0, 10, null, 0, 1L, 1L, true, 1L,
+                id, "Test Recurring", CampaignType.DEBT_COLLECTION, status,
+                windowStart, windowEnd, dialDays, 3, 0, 10, 0, 7L, 1L, 1L,
                 recurrenceType, recurringDayOfMonth, cronExpression, true, null
         );
     }

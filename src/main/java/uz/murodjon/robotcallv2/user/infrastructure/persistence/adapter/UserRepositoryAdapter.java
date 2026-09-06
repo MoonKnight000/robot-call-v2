@@ -11,7 +11,8 @@ import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.application.mapper.UserMapper;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
@@ -28,25 +29,28 @@ public class UserRepositoryAdapter implements UserRepository {
 
     private final UserJpaRepository jpa;
     private final CompanyJpaRepository companyJpa;
+    private final RoleJpaRepository roleJpaRepository;
     private final CurrentCompany company;
     private final UserMapper mapper;
 
     public UserRepositoryAdapter(UserJpaRepository jpa, CompanyJpaRepository companyJpa,
-                                 CurrentCompany company, UserMapper mapper) {
+                                 RoleJpaRepository roleJpaRepository, CurrentCompany company,
+                                 UserMapper mapper) {
         this.jpa = jpa;
         this.companyJpa = companyJpa;
+        this.roleJpaRepository = roleJpaRepository;
         this.company = company;
         this.mapper = mapper;
     }
 
     @Override
-    public long create(String name, String username, String email, UserRole role, UserStatus status) {
-        return createForCompany(company.id(), name, username, email, null, role, status);
+    public long create(String name, String username, String email, long roleId, UserStatus status) {
+        return createForCompany(company.id(), name, username, email, null, roleId, status);
     }
 
     @Override
     public long createForCompany(long companyId, String name, String username, String email, String passwordHash,
-                                  UserRole role, UserStatus status) {
+                                  long roleId, UserStatus status) {
         CompanyEntity comp = companyJpa.findById(companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
 
@@ -56,7 +60,7 @@ public class UserRepositoryAdapter implements UserRepository {
         entity.setUsername(username);
         entity.setEmail(email);
         entity.setPasswordHash(passwordHash);
-        entity.setRole(role);
+        entity.setRole(roleReference(roleId));
         entity.setStatus(status);
         entity.setCreatedAt(Instant.now());
         return jpa.save(entity).getId();
@@ -128,8 +132,11 @@ public class UserRepositoryAdapter implements UserRepository {
     }
 
     @Override
-    public long countActiveAdmins(long companyId) {
-        return jpa.countByCompanyIdAndRoleAndStatus(companyId, UserRole.ADMIN, UserStatus.ACTIVE);
+    public long countActiveByRoleIds(long companyId, Collection<Long> roleIds) {
+        if (roleIds.isEmpty()) {
+            return 0;
+        }
+        return jpa.countByCompanyIdAndRoleIdsAndStatus(companyId, roleIds, UserStatus.ACTIVE);
     }
 
     @Override
@@ -182,9 +189,9 @@ public class UserRepositoryAdapter implements UserRepository {
     }
 
     @Override
-    public void updateRole(long id, UserRole role) {
+    public void updateRole(long id, long roleId) {
         jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
-            entity.setRole(role);
+            entity.setRole(roleReference(roleId));
             jpa.save(entity);
         });
     }
@@ -238,5 +245,10 @@ public class UserRepositoryAdapter implements UserRepository {
             entity.setCallColumns(callColumns);
             jpa.save(entity);
         });
+    }
+
+    private RoleEntity roleReference(long roleId) {
+        return roleJpaRepository.findById(roleId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.ROLE_NOT_FOUND, roleId));
     }
 }

@@ -10,13 +10,7 @@ public enum CampaignTableField implements TableField {
     STATUS("status"),
     CREATED_AT("created_at"),
     LAST_RUN_AT("last_run_at"),
-    SCENARIO_ID("scenario_id") {
-        /** {@code scenario} is a {@code @ManyToOne}: the entity has no {@code scenarioId} attribute. */
-        @Override
-        public String property() {
-            return "scenario.id";
-        }
-    };
+    AI_AGENT_ID("ai_agent_id");
 
     private final String column;
 

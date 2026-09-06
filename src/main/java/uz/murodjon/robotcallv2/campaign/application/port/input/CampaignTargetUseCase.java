@@ -21,15 +21,24 @@ public interface CampaignTargetUseCase {
 
     TargetCsvPreview previewTargetsCsv(long campaignId, String csv);
 
+    /** The campaign's target source, or null when it has none. */
+    TargetSourceRow findTargetSource(long campaignId);
+
+    TargetSourceRow updateTargetSource(long campaignId, UpdateTargetSourceRequest request);
+
+    void deleteTargetSource(long campaignId);
+
+    /** Fetches the list now, as the recurrence sweep does on its own. */
+    TargetSyncResult syncTargetsFromSource(long campaignId);
+
     PageableData<CampaignTarget> listTargets(long campaignId, TargetFilter filter);
+
+    /** The target, which must belong to the campaign — 404 otherwise. */
+    CampaignTarget requireTarget(long campaignId, long targetId);
 
     void doNotCall(long targetId);
 
     DoNotCallResponse markDoNotCall(long targetId);
-
-    TargetMemoryDto getTargetMemory(long targetId);
-
-    TargetMemoryDto updateTargetMemory(long targetId, UpdateTargetMemoryRequest r);
 
     void applyOutcome(long targetId, Disposition disposition);
 

@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -116,6 +117,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public void asyncDisconnected(AsyncRequestNotUsableException e) {
         log.debug("SSE client disconnected: {}", e.getMessage());
+    }
+
+    /**
+     * A {@code @PreAuthorize} on the controller refused the call. Without this the catch-all
+     * below would report a missing permission as a 500 — the advice runs inside the dispatch,
+     * before Spring Security own translation filter ever sees the exception.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ResponseData<Object>> accessDenied(AccessDeniedException e) {
+        return respond(HttpStatus.FORBIDDEN, ErrorCode.PERMISSION_DENIED, ErrorCode.PERMISSION_DENIED.format(),
+                null, e);
     }
 
     /** Catch-all for truly unexpected errors. */

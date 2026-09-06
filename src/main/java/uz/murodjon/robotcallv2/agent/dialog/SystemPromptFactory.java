@@ -4,12 +4,15 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +72,41 @@ public class SystemPromptFactory {
     );
 
     /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
+    /** Remembered calls are dated in the client's local day, the way the agent would say it. */
+    private static final ZoneId MEMORY_ZONE = ZoneId.of("Asia/Tashkent");
+
+    /**
+     * Cross-call memory: what earlier conversations with this phone established, plus the
+     * operator's notes. Newest call first, so the model leans on the latest state. Shared
+     * with {@link RealtimeSystemPromptFactory} so both pipelines remember the same way.
+     */
+    static void appendMemory(StringBuilder sb, ClientMemory memory) {
+        if (memory == null || memory.isEmpty()) {
+            return;
+        }
+        sb.append("\nMULTI-CALL MEMORY (Mijoz bilan avvalgi suhbatlar xotirasi va operator eslatmalari — ")
+                .append("bulardan tabiiy foydalaning, lekin \"bazamizda yozilgan\" deb aytmang):\n");
+        if (memory.preferredName() != null) {
+            sb.append("- Mijozga qulay murojaat: ").append(memory.preferredName()).append('\n');
+        }
+        if (memory.operatorNotes() != null) {
+            sb.append("- Operator eslatmasi: ").append(memory.operatorNotes()).append('\n');
+        }
+        for (RememberedCall call : memory.recentCalls()) {
+            sb.append("- Avvalgi suhbat");
+            if (call.at() != null) {
+                sb.append(" (").append(LocalDate.ofInstant(call.at(), MEMORY_ZONE)).append(')');
+            }
+            if (call.disposition() != null) {
+                sb.append(", natija: ").append(call.disposition());
+            }
+            sb.append(": ").append(call.summary()).append('\n');
+        }
+        memory.facts().forEach((name, value) -> sb.append("- ")
+                .append(FACT_LABELS.getOrDefault(name, name)).append(" (avvalgi suhbatdan): ")
+                .append(value).append('\n'));
+    }
+
     static final Map<String, String> FACT_LABELS = Map.of(
             "clientName", "Ism",
             "debtAmount", "Summa",
@@ -154,22 +192,7 @@ public class SystemPromptFactory {
             sb.append("- Kampaniya maqsadi: ").append(c.goal()).append('\n');
         }
 
-        // Multi-call memory and operator notes
-        String prefName = strFact(c, "preferredName");
-        String opNotes = strFact(c, "operatorNotes");
-        String lastSummary = strFact(c, "lastCallSummary");
-        if (prefName != null || opNotes != null || lastSummary != null) {
-            sb.append("\nMULTI-CALL MEMORY & OPERATOR NOTES (Mijozning avvalgi suhbatlar xotirasi va eslatmalar):\n");
-            if (prefName != null) {
-                sb.append("- Mijozga qulay murojaat: ").append(prefName).append('\n');
-            }
-            if (opNotes != null) {
-                sb.append("- Operator eslatmasi: ").append(opNotes).append('\n');
-            }
-            if (lastSummary != null) {
-                sb.append("- Avvalgi qo'ng'iroq xulosasi: ").append(lastSummary).append('\n');
-            }
-        }
+        appendMemory(sb, c.memory());
 
         if (s.isDisclosureSpoken()) {
             sb.append("\n[TIZIM: Salomlashuv va \"avtomatik xizmat, suhbat yozib olinmoqda\" ")
@@ -289,6 +312,18 @@ public class SystemPromptFactory {
                 + "allaqachon bergan savolingizni boshqa so'z bilan qayta bermang. Mijoz eshitmagan "
                 + "bo'lsa — butun xabarni emas, faqat so'ralgan qismini qisqa ayting. Istisno: "
                 + "kelishilgan sana va summa yakunda bir marta tasdiqlanadi.");
+        // A garbled answer used to cost the whole question: on a real call the caller's
+        // reply came back as noise, the model said "Gapingizni to'liq tushunolmadim" and
+        // then asked the next stage's question instead, so the reason it had just asked
+        // for was never given. What pushed it forward was the rule above about not
+        // repeating a question, which is why the exception has to sit next to that rule.
+        rules.add("Mijozning javobi tushunarsiz chiqsa yoki bergan savolingizga javob bo'lmasa — "
+                + "keyingi bosqichga ham, boshqa savolga ham o'tmang: qisqa uzr bilan O'SHA savolni "
+                + "soddaroq qilib bir marta qayta bering "
+                + (russian ? "(\"Плохо слышно. Почему не оплачено?\")" : "(\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\")")
+                + ". Bu — yuqoridagi \"bergan savolingizni qayta bermang\" qoidasiga istisno. "
+                + "Ikkinchi urinishda ham tushunarsiz bo'lsa, uchinchi marta so'ramang: ssenariy "
+                + "bo'yicha davom eting.");
         rules.add("Qisqa savolga qisqa javob bering — hammasini bir javobda tushuntirmang. Har bir "
                 + "javobingiz suhbatning davomi bo'lsin, uni boshidan boshlash emas.");
         if (russian) {
@@ -363,6 +398,8 @@ public class SystemPromptFactory {
                     MISOL (✗ noto'g'ri → ✓ to'g'ri):
                     ✗ "Когда ожидается осуществление данного платежа?" → ✓ "Когда сможете оплатить?"
                     ✗ "Вы Мурод?" → ✓ "Я говорю с Мурод-ака?"
+                    ✗ (ответ клиента не разобран) "Я вас не совсем понял. Когда сможете оплатить?"
+                      → ✓ "Плохо слышно. Почему не оплачено?"
                     """;
         }
         return """
@@ -380,6 +417,8 @@ public class SystemPromptFactory {
                   → ✓ "Tushunarli. Sabab nimada — vaqtinchalik qiyinchilikmi?"
                 ✗ (mijoz "20-sanada" dedi, endi tasdiqlatyapti) "Aha. 20-oktabrda 1500000 so'm to'lay olasizmi?"
                   → ✓ "Kelishdik. 20-oktabr kuni 1500000 so'mni kutib qolamiz. Salomat bo'ling!"
+                ✗ (mijoz javobi tushunarsiz chiqdi) "Gapingizni to'liq tushunolmadim. Bu to'lovni qachon to'lay olasiz?"
+                  → ✓ "Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?"
                 """;
     }
 
@@ -523,13 +562,6 @@ public class SystemPromptFactory {
         return value == null ? "—" : String.valueOf(value);
     }
 
-    private static String strFact(CallContext c, String key) {
-        Object val = c.fact(key);
-        if (val instanceof String s && !s.isBlank()) {
-            return s.trim();
-        }
-        return null;
-    }
 
     public static String resolveVoicePersonaName(String voice, String language) {
         if (voice != null && !voice.isBlank()) {

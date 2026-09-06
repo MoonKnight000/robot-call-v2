@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
@@ -91,6 +91,7 @@ public class RealtimeSystemPromptFactory {
         if (context.goal() != null && !context.goal().isBlank()) {
             sb.append("- Kampaniya maqsadi: ").append(context.goal()).append('\n');
         }
+        SystemPromptFactory.appendMemory(sb, context.memory());
 
         sb.append("\nSUHBAT BOSQICHLARI (transitionTo tool'i bilan o'tasiz):\n");
         for (StageDef stage : def.stages()) {

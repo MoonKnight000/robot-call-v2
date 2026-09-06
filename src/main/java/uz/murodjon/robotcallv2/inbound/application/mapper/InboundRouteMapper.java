@@ -12,12 +12,12 @@ public class InboundRouteMapper {
         if (entity == null) {
             return null;
         }
-        Long scenarioId = entity.getScenario() != null ? entity.getScenario().getId() : null;
+        // ai_agent_id is null for a route that rings a queue, an IVR or a user.
         return new InboundRoute(
                 entity.getId(),
                 entity.getCompanyId(),
                 entity.getDidNumber(),
-                scenarioId,
+                entity.getAiAgentId(),
                 entity.getRouteType(),
                 entity.getTargetDestination(),
                 entity.getQueueStrategy(),
@@ -27,7 +27,6 @@ public class InboundRouteMapper {
                 entity.getAfterHoursAction(),
                 entity.getAfterHoursDestination(),
                 entity.getIvrMenuConfig(),
-                entity.getLanguage(),
                 entity.getBusinessHoursStart(),
                 entity.getBusinessHoursEnd(),
                 entity.getFallbackMessage(),

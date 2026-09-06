@@ -5,7 +5,7 @@ Authorization: Bearer {{auth_token}}
 
 {
   "didNumber": "+998712000000",
-  "scenarioId": 1,
+  "aiAgentId": 1,
   "language": "uz",
   "businessHoursStart": "09:00:00",
   "businessHoursEnd": "18:00:00",
@@ -33,7 +33,7 @@ Authorization: Bearer {{auth_token}}
 
 {
   "didNumber": "+998712000000",
-  "scenarioId": 1,
+  "aiAgentId": 1,
   "language": "uz",
   "businessHoursStart": "09:00:00",
   "businessHoursEnd": "19:00:00",

@@ -313,10 +313,10 @@ to'plamiga qo'shiladi (Hamming/Coval amaliyoti).
 
 | Band                            | Holat          | Izoh                                                                                                                          |
 |---------------------------------|----------------|-------------------------------------------------------------------------------------------------------------------------------|
-| 0.1 Latency ledger              | ✅             | `agent/metrics/TurnLatency`, `voice.turn.stage.latency{stage}`, har turnda log qatori. `eou` bosqichi endi gate'siz ham to'ladi — `VadStream` mijoz jim bo'lganini `notifyUtteranceEnd` orqali xabar qiladi (2026-09-04) |
+| 0.1 Latency ledger              | ✅             | `agent/metrics/TurnLatency`, `voice.turn.stage.latency{stage}`, har turnda log qatori. `eou` bosqichi endi gate'siz ham to'ladi — `VadStream` mijoz jim bo'lganini `notifyUtteranceEnd` orqali xabar qiladi (2026-09-04). **2026-09-05:** `DialogSession.recordTurnLatency` hech qayerdan chaqirilmagani aniqlandi — `call_technical.avg/max_turn_latency_ms` 16 ta qo'ng'iroqning hammasida NULL edi, ya'ni §1.3 budjeti yoziladigan ustun hech qachon to'lmagan. `SpeechOutput.recordTurnaround` dan ulandi |
 | 0.2 Samaradorlik paneli         | ✅             | `AlertingService.checkEfficiency()` + `speculation-min-hit-rate`                                                              |
 | D.1 Replay harness              | ✅ CI'da       | `agent/turn/TurnReplayTool` — offline, tarmoqsiz. `--manifest` har yozuvga o'z turn sonini beradi; `.github/workflows/ci.yml` har push'da yuritadi (korpus sirlari bo'lsa). Korpus shartnomasi: `docs/REGRESSION.md` |
-| A.1 EOU qisqartirish            | 🔸 qo'yildi, o'lchov kutmoqda | **Gate'ga ko'chirildi (2026-09-04), kodga tegilmadi — faqat default'lar.** `stt.vad-gating.enabled: true` + `stt.endpointing.enabled: true` + `endpointing.dynamic.enabled: true`, `post-roll-ms` 1000 → **700** (dynamic pasti 600). SpeechKit external EOU klassifikatoriga o'tdi, `yandex.eou-max-pause-hint-ms` (1200 → 900) endi faqat **fallback** — `STT_VAD_GATING=false` bo'lganda o'qiladi. Qisqa javoblar `short-silence-ms: 500` da yopiladi. **Shart:** `VAD_MODEL_PATH` — busiz gate qurilmaydi va blok jimgina ta'sirsiz qoladi (`AriService#buildAudioListeners`, startda WARN). Orqaga qaytarish: `STT_VAD_GATING=false`, deploysiz. `SmartTurnDetector.isConfidentlyComplete` + `SpeechGate.setEarlyClose` shuning ustiga qo'shiladi, lekin ONNX model fayli va uz-UZ korpusi kerak (`docs/REGRESSION.md` §4) — `turn.enabled` hamon `false`, `turn.languages` esa `ru-RU`. **Tasdiqlash:** jonli `stage=eou` p50 ≤700 ms, `voice.stt.utterances.endpointed` mijoz navbatlari soniga yaqin, bitta gapning ikkiga bo'linishi 5% dan oshmasin |
+| A.1 EOU qisqartirish            | 🔸 qo'yildi, o'lchov kutmoqda | **Gate'ga ko'chirildi (2026-09-04), kodga tegilmadi — faqat default'lar.** `stt.vad-gating.enabled: true` + `stt.endpointing.enabled: true` + `endpointing.dynamic.enabled: true`, `post-roll-ms` 1000 → **700** (dynamic pasti 600). SpeechKit external EOU klassifikatoriga o'tdi, `yandex.eou-max-pause-hint-ms` (1200 → 900) endi faqat **fallback** — `STT_VAD_GATING=false` bo'lganda o'qiladi. Qisqa javoblar `short-silence-ms: 500` da yopiladi. **Shart:** `VAD_MODEL_PATH` — busiz gate qurilmaydi va blok jimgina ta'sirsiz qoladi (`AriService#buildAudioListeners`, startda WARN). Orqaga qaytarish: `STT_VAD_GATING=false`, deploysiz. `SmartTurnDetector.isConfidentlyComplete` + `SpeechGate.setEarlyClose` shuning ustiga qo'shiladi, lekin ONNX model fayli va uz-UZ korpusi kerak (`docs/REGRESSION.md` §4) — `turn.enabled` hamon `false`, `turn.languages` esa `ru-RU`. **2026-09-05: `post-roll-ms` 700 → 1200 ga oshirildi** — yo'nalish teskari, ataylab. C.4 dataset'i ko'rsatdiki mijoz gap o'rtasida qilgan pauzalarning uchdan biri 700 ms dan uzun, ya'ni ular kesilib, gap yarmida javob berilgan (`docs/VOICE-QUALITY-PLAN` C.4 jadvali). Qisqa javoblar bunga tegmaydi (`short-silence-ms: 500`), speculation esa bu jimlikni javob yozishga sarflaydi. **Tasdiqlash:** `stage=eou` p50 ~1200 ms ga chiqadi (bu kutilgan), lekin `voice.turnaround.latency` p95 shunga mos oshmasin — oshsa speculation hit-rate past demakdir; bitta gapning ikkiga bo'linishi kamayishi kerak |
 | A.2 Speculative TTS             | ✅ yoqildi     | Guess'ning birinchi jumlasi `TtsCache` ga oldindan sintez qilinadi; `dialog.preemptive-tts: true` (2026-09-04). Ilgari o'chiq edi va speculation matnda to'xtar edi — mijoz final'dan keyin baribir to'liq Yandex round-trip'ini (`stage=tts_ttfb` 300-600 ms) to'lardi. Kuzatish: `voice.tts.chars.synthesized` ↔ `voice.tts.chars.saved` |
 | A.3 Prompt/KV-cache             | ✅ tekshirildi | Prefix sessiyada bir marta quriladi, faktlar annex'da — o'zgartirish shart emas                                               |
 | A.4 Model routing               | ✅             | `dialog.fast-model` (bo'sh = o'chiq), `fast-model-max-words: 3`                                                               |
@@ -332,10 +332,100 @@ to'plamiga qo'shiladi (Hamming/Coval amaliyoti).
 | C.1 Til moslashuvi              | ✅             | `LanguageDetector`/`DialogLanguageSwitcher` **o'lik kod edi** — `ClientInputGate` ga ulandi                                   |
 | C.2 STT keyterms                | ✅ qisman      | `SttHints` + `SttProvider` 5-argumentli overload; hozircha faqat Google qo'llab-quvvatlaydi                                   |
 | C.3 Uzbek gold-set              | ⏳             | Korpus kerak (2–3 soat qo'lda transkript qilingan yozuv)                                                                      |
-| C.4 Uzbek EOU fine-tune         | ⏳             | C.3 bilan bir xil ma'lumotga bog'liq                                                                                          |
+| C.4 Uzbek EOU fine-tune         | 🔸 dataset tayyor | `agent/turn/TurnDatasetTool` yozuvlardan belgilangan EOU to'plamini chiqaradi (2026-09-05). **C.3 dan farqli — qo'lda transkript kerak emas**, belgini bot kanali beradi. Qolgani: yozuv yig'ish va Colab'da fine-tune |
 | C.5 Uzbek TTS (Navoiy)          | ⏳             | Avval TTFB/narx o'lchovi kerak                                                                                                |
 | D.2 Simulyatsiya qilingan mijoz | ✅ CI'da | `DialogSimulationRunner` + `docs/simulation-personas.json` (**20 persona**, jumladan ikkita prompt-injection). Endi xato bo'lsa 1 qaytaradi va ilovani to'xtatadi; `.github/workflows/simulation.yml` kechasi va talab bo'yicha yuritadi — har push'da emas, chunki bir yurish ~400 LLM chaqiruvi. Audio yo'q — u D.1 ning ishi |
 | D.3 LLM-judge | ✅ | `CallQualityJudge`, `voice.qa.score` / `voice.qa.flags`; DB'ga yozilmaydi — migratsiya shart emas  |
+
+### C.4 — EOU dataset tool (2026-09-05)
+
+`agent/turn/TurnDatasetTool` — yozilgan qo'ng'iroqlardan Smart Turn fine-tune uchun
+belgilangan to'plam yasaydi. `TurnReplayTool` bilan bir xil shakl: oddiy `main()`,
+Spring'siz, tarmoqsiz, o'sha `SileroVad` + `VadStream`.
+
+**Belgilash qoidasi rejadagidan yaxshiroq.** Reja §C.4 da "1.5 s ichida yana gapirsa
+INCOMPLETE" degan chegara bor edi; stereo yozuvda esa javob to'g'ridan-to'g'ri turibdi —
+mijoz to'xtagandan keyin **bot gapirgan bo'lsa** navbat tugagan (`COMPLETE`), **mijozning
+o'zi qayta boshlagan va bot jim bo'lsa** tugamagan (`INCOMPLETE`). Ikkalasi ham
+bo'lmasa (yozuv tugadi, yoki javobsiz uzoq jimlik — nosozlik) hech narsa chiqarilmaydi:
+noto'g'ri belgi yo'q belgidan yomonroq.
+
+SPATIAL_STEREO cross-feed teskari yechiladi (`caller = (L − 0.35·R)/(1−0.35²)`) — busiz
+botning 0.35 dagi ovozi VAD uchun nutq bo'lib ko'rinadi va "mijoz pauzasi" botning gapi
+o'rtasiga tushadi.
+
+Klip modelning oynasi: 8 s, 16 kHz, mijoz jim bo'lgandan **`--tail-ms` keyin tugaydi**.
+Bu bezak emas — inference'da model gate kutib bo'lgandan keyin so'raladi, ya'ni orqadagi
+jimlikni ko'radi; oxirgi so'zda kesilgan to'plam unga hech qachon kelmaydigan audioni
+o'rgatadi. `--tail-ms` amaldagi `post-roll-ms` ga teng turishi kerak.
+
+Yozuvlarni MinIO'dan olish (obyekt `/data/files/<path>/<id>/part.1`, RIFF oldida 32 bayt
+MinIO sarlavhasi bor — tashlab yuboriladi):
+
+```bash
+docker exec robot-call-minio sh -c 'cat /data/files/<path>/<id>/part.1' \
+  | tail -c +33 > corpus/call-14.wav
+```
+
+Ishga tushirish va tekshiruv:
+
+```bash
+java -cp build/classes/java/main:$(cat build/cp.txt) \
+  uz.murodjon.robotcallv2.agent.turn.TurnDatasetTool corpus/ \
+  --vad-model=models/silero_vad.onnx --out=corpus/turn --tail-ms=1200
+```
+
+**Tekshiruv mezoni:** `manifest.jsonl` da ikkala label ham bor va minority klass ≥25%
+(tool o'zi ogohlantiradi); tasodifiy 5 ta klipni tinglaganda `_complete.wav` haqiqatan
+tugagan gap, `_incomplete.wav` esa yarim gap bo'lsin. Balans yoki eshitish mos kelmasa —
+`--mix` (spatial/stereo) va `--bot-rms` birinchi tekshiriladigan joy.
+
+**Birinchi yurish (2026-09-05, 16 ta yozuv, ~14 daqiqa audio):** 48 COMPLETE ·
+18 INCOMPLETE · 14 tashlandi · 66 klip, har biri 8 s / 16 kHz mono (256 044 bayt).
+
+Ikkita xato shu yurishda topilib tuzatildi:
+
+1. **"Bot javob berdi" testi ustma-ust tushishni ham hisoblardi.** Birinchi variantda
+   bot bo'shliqqa *tegib o'tsa* yetarli edi, ya'ni allaqachon gapirayotgan botning davomi
+   ham "javob" bo'lib chiqardi va mijozning gap o'rtasidagi pauzalari COMPLETE bo'lardi.
+   Buni raqam oshkor qildi: 6 ta COMPLETE klipning pauzasi 700 ms dan qisqa edi — javob
+   sintez bo'lishiga ham ulgurmaydigan vaqt. Endi bot bo'shliq **ichida boshlagan**
+   bo'lishi shart.
+2. **Ustma-ust gapirish umuman tashlanadi.** Mijoz to'xtaganda bot gapirayotgan bo'lsa
+   klip chiqarilmaydi: jonli modelda gate bot gapirayotganda yopiq turadi, ya'ni bu holat
+   unga hech qachon kelmaydi.
+
+Tuzatishdan keyingi taqsimot — modelning nima uchun kerakligini ko'rsatadi:
+
+| Label      | pauza (ms)              |
+|------------|-------------------------|
+| INCOMPLETE | 204 … 1824              |
+| COMPLETE   | 1084 … 21124            |
+
+Ikki sinf 1.1–1.8 s oralig'ida ustma-ust tushadi. Aynan shu — hech qanday sobit chegara
+to'g'ri ajrata olmaydigan zona; semantik model shuning uchun kerak.
+
+66 klip fine-tune uchun kam (bir necha ming kerak) — bu tool "yig'ishni boshla" degan
+asbob, natijaning o'zi emas.
+
+### STT failover — qo'shildi (2026-09-05)
+
+Rejada yo'q edi, lekin barqarorlikdagi eng aniq teshik shu edi: TTS'da
+`TtsProviderSelector.findFallback` bor, STT'da yo'q. `SttStreamBridge` stream o'lsa
+**o'sha** provayderni qayta ochardi, ya'ni Yandex tushib qolsa qo'ng'iroq oxirigacha kar
+bo'lib qolardi. LiveKit buni `FallbackAdapter` bilan yechadi.
+
+Endi: `SttProviderSelector.findFallback` + `SttStreamBridge.failOver()`. Bitta provayderning
+**2 ta xatosi** (stream ochilmadi, yoki `response-timeout-ms` ichida audio yutib hech narsa
+qaytarmadi) — keyin qo'ng'iroq boshqa provayderga o'tadi va `targetSampleRate` ham
+almashadi (Yandex 8 kHz → Gemini 16 kHz). Hisoblagichni **faqat transkript** nolga
+qaytaradi: muvaffaqiyatli reopen soket ochilganini isbotlaydi, tanilayotganini emas —
+aks holda har 30 soniyada stall bo'ladigan provayder o'z hisobini abadiy nollab turardi.
+
+O'tish bir tomonlama va qo'ng'iroq ichida qoladi: keyingi qo'ng'iroq yana sozlangan
+provayderdan boshlanadi. Provayder faqat API kaliti bo'lsa bean bo'ladi, shuning uchun
+zaxira sifatida sozlanmagan vendor tanlanmaydi. Kuzatish: `voice.stt.failover{from,to}`
+va `ERROR: STT failing over` qatori.
 
 ### `FastPathRouter` — ulandi (2026-09-03)
 
@@ -388,3 +478,50 @@ Qamramaydi: audio (RTP, STT, TTS, barge-in, endpointing) — u `TurnReplayTool` 
 **Har ikkalasi CI'da:** `docs/REGRESSION.md` — korpus shartnomasi, kerakli sirlar, va
 A.1 qarorini (endpointing provayderdami yoki gate'da) hal qiladigan o'lchov tartibi.
 Ikkalasi birga: D.1 "qayerda turn tugadi", D.2 "nima qaror qilindi".
+
+### Turn-taking: so'zlar kutishni boshqaradi + kesilgan gap tikiladi (2026-09-05)
+
+Shikoyat ikkita edi — "mijozni kesib yuboradi" va "kech javob beradi" — va ikkalasi
+bitta raqamga borib taqaladi: `post-roll-ms`. O'lchov (call 14): mijoz to'xtadi → FINAL
+1.2–1.8 s, FINAL → bot audio 0.04–0.7 s. Ya'ni kechikishning to'rtdan uchi gate'ning
+kutishi, va aynan shu kutish qisqartirilganda gap kesiladi. C.4 jadvali sababini
+ko'rsatgan edi: tugagan va tugamagan pauzalar 1.1–1.8 s oralig'ida ustma-ust tushadi —
+hech qanday taymer ajrata olmaydi. So'zlar ajrata oladi.
+
+**1. `TranscriptTurnCues` (agent/turn) — matnga asoslangan EOU.** LiveKit turn-detector /
+Vapi smart-endpointing g'oyasi, uz-UZ uchun model yo'qligi sababli qoidalar bilan.
+Oxirgi interim'ning oxirgi so'zi o'qiladi:
+
+| Verdikt      | Belgi (uz)                                                          | Belgi (ru)                                    | Gate                                  |
+|--------------|---------------------------------------------------------------------|-----------------------------------------------|---------------------------------------|
+| `COMPLETE`   | tuslangan fe'l: *-di/-dim, -man/-miz, -yapti, -adi, -moqchiman, -ing, -mi*; "ha/yo'q/kerak/bo'ladi/so'm" | fe'l: *-ю/-у, -ет, -ла/-ли, -ть, -ите/-йте*; "да/нет/хорошо" | `complete-silence-ms` (800)           |
+| `INCOMPLETE` | kelishik *-ni/-ga/-da/-ning*, ravishdosh *-ib/-sa/-ganda*, bog'lovchi, olmosh, **son** | bog'lovchi, **predlog**, olmosh, son          | `post-roll-ms` + extension (1200+400) |
+| `UNKNOWN`    | qolgan hamma                                                         |                                               | `post-roll-ms` (1200)                 |
+
+Bir so'zda ikkala qo'shimcha bo'lsa uzunrog'i g'olib ("pul**ning**" ≠ "qil**ing**"),
+teng bo'lsa INCOMPLETE — chunki xato INCOMPLETE 400 ms jimlik, xato COMPLETE esa mijozning
+gapi. Shu sababli *-ingiz* (egalik "pulingiz") va ruscha *-ит/-ат/-ут/-им* (кредит,
+результат) COMPLETE ro'yxatidan ataylab chiqarilgan. Yozuv (lotin/kirill) lug'atni
+tanlaydi, konfig tili emas — mijoz aralash gapiradi.
+
+`SpeechGate.setTranscriptCues(completeSilenceMs)`; `stt.endpointing.complete-silence-ms`
+(0 = so'zlar kutishni qisqartira olmaydi, faqat uzaytiradi — eski xatti-harakat).
+Eski `CONTINUATION_WORDS`/`QUICK_ANSWERS` shu klassga singdi.
+
+**2. Kesilgan gapni tikish (Deepgram Flux `TurnResumed` analogi).** Gate erta yopilsa
+ham bot hali **bir og'iz gapirmagan** bo'lsa (turn barge-in bilan bekor qilindi,
+`spokenText` bo'sh) — birinchi yarim `DialogSession.unansweredClientText` da turadi va
+keyingi final unga **qo'shilib bitta turn** bo'ladi: history'dagi yarim `UserMessage`
+olib tashlanadi, `interrupted` bayrog'i tushiriladi (mijoz hech narsa eshitmagan). Ilgari
+ikkita turn, ikkita javob edi. Metrika: `voice.dialog.turn.stitched` — **bu aynan
+kesilishlar soni**; u o'sib borsa `complete-silence-ms` ni `post-roll-ms` tomon ko'taring.
+
+**3. Tuzatilgan bug:** `false-interruption` tekshiruvi (1500 ms) mijoz hali gapirayotgan
+paytda ("interim kelyapti, final hali yo'q") yarim javobni "shovqin edi" deb **mijoz
+ustidan** o'qib yuborardi — endi `DialogSession.heardCallerWithin` bo'lsa tekshiruv
+keyinga suriladi.
+
+**Tekshiruv:** `TranscriptTurnCuesTest` (≈45 gap), `SpeechGateTest` (+6). Jonli: 10 ta
+qo'ng'iroqdan keyin `stage=eou` p50 1200 → ~800–900 ms; `voice_dialog_turn_stitched_total`
+/ turn soni ≤ 5%; log'da `stitched the cut-off utterance` qatorlari — har biri eshitib
+tekshiriladigan misol. Orqaga qaytarish: `STT_ENDPOINTING_COMPLETE_SILENCE_MS=0`, deploysiz.

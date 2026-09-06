@@ -5,27 +5,27 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Set;
 
 /**
  * Authenticates a request by its {@code X-Api-Key} header or {@code ?apiKey=} / {@code ?api_key=} query parameter.
+ *
+ * <p>A machine caller has no role row, so its authorities come straight from the
+ * {@link Permission} catalog: the full key gets everything a company role can hold, the
+ * read-only key only the {@code *_READ} half. Neither ever gets
+ * {@link Permission#PLATFORM_ADMIN} — creating or suspending a tenant stays a human action.
  */
 public class ApiKeyFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Api-Key";
-
-    /** Full access: originate calls, create and start campaigns, opt numbers out. */
-    public static final String ROLE_ADMIN = "ROLE_ADMIN";
-    /** Day-to-day operational access — same bar as a JWT-logged-in OPERATOR (ROADMAP E.1). */
-    public static final String ROLE_OPERATOR = "ROLE_OPERATOR";
-    /** Read-only: reporting, transcripts, recordings, audit log. */
-    public static final String ROLE_VIEWER = "ROLE_VIEWER";
 
     private final byte[] adminKey;
     private final byte[] readKey;
@@ -61,17 +61,17 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         if (presented != null) {
             byte[] offered = presented.getBytes(StandardCharsets.UTF_8);
             if (matches(adminKey, offered)) {
-                authenticate("api-key", ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER);
+                authenticate("api-key", Permission.findCompanyPermissions());
             } else if (matches(readKey, offered)) {
-                authenticate("read-api-key", ROLE_VIEWER);
+                authenticate("read-api-key", Permission.findCompanyReadPermissions());
             }
         }
         chain.doFilter(request, response);
     }
 
-    private static void authenticate(String principal, String... roles) {
+    private static void authenticate(String principal, Set<Permission> permissions) {
         var authentication = new UsernamePasswordAuthenticationToken(
-                principal, null, AuthorityUtils.createAuthorityList(roles));
+                principal, null, JwtAuthFilter.authorities(permissions));
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 

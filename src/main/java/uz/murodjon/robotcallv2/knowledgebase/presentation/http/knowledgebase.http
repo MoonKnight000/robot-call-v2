@@ -1,0 +1,49 @@
+### 1. Create Knowledge Item
+POST http://localhost:8080/api/knowledge-base
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "key": "credit_grace_period",
+  "topic": "terms",
+  "title": "Kredit imtiyozli davri haqida ma'lumot",
+  "answerUz": "Imtiyozli davr shartnomada belgilangan bo'lib, odatda 15 kundan 30 kungacha davom etadi. Bu muddatda foizlar hisoblanmaydi.",
+  "answerRu": "Льготный период определяется договором и обычно составляет от 15 до 30 дней. В этот период проценты не начисляются.",
+  "answerEn": "The grace period is specified in the agreement, typically lasting from 15 to 30 days during which no interest is charged.",
+  "keywords": "imtiyoz, grace period, льготный период, foizsiz, foiz"
+}
+
+### 2. Get Knowledge Item by ID
+GET http://localhost:8080/api/knowledge-base/1
+Authorization: Bearer {{token}}
+
+### 3. Update Knowledge Item
+PUT http://localhost:8080/api/knowledge-base/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "key": "credit_grace_period",
+  "topic": "terms",
+  "title": "Kredit imtiyozli davri (Yangilangan)",
+  "answerUz": "Imtiyozli davr shartnomada ko'rsatilgan bo'lib, 30 kungacha foizsiz to'lash imkonini beradi.",
+  "answerRu": "Льготный период позволяет оплатить без начисления процентов до 30 дней.",
+  "answerEn": "Grace period allows paying without interest up to 30 days.",
+  "keywords": "imtiyoz, muddat, grace",
+  "active": true
+}
+
+### 4. Filter & List Knowledge Items
+POST http://localhost:8080/api/knowledge-base/list
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "page": 0,
+  "size": 10,
+  "search": "imtiyoz"
+}
+
+### 5. Delete Knowledge Item
+DELETE http://localhost:8080/api/knowledge-base/1
+Authorization: Bearer {{token}}

@@ -1,15 +1,19 @@
 package uz.murodjon.robotcallv2.dialer.application.dto;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AmbientSound;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
-import uz.murodjon.robotcallv2.campaign.domain.enums.VoicemailAction;
-
-import java.util.Map;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 
 /**
- * Correlates an originated channel back to its campaign target so
- * AriService can build the real dialog context and apply the outcome (PROJECT.md §10).
+ * Correlates an originated channel back to its campaign target so AriService can build the
+ * real dialog context and apply the outcome (PROJECT.md §10).
+ *
+ * <p>Carries the {@link AiAgent} itself rather than a copy of its settings: it is resolved
+ * once in {@code CallTaskConsumer}, before the number is dialled, and everything the call
+ * needs to know about how it should sound is then one field away — on the ARI thread,
+ * where a database read would sit between the answer and the first word.
+ *
+ * @param ttsVoice the voice this call actually speaks with: the A/B variant's if it named
+ *                 one, otherwise the agent's for {@code language}
  */
 public record OutboundCall(
         Long campaignId,
@@ -19,28 +23,12 @@ public record OutboundCall(
         String language,
         String ttsVoice,
         CallContext context,
-        Long scenarioId,
+        AiAgent agent,
         Long companyId,
-        boolean disclosureEnabled,
-        AmbientSound ambientSound,
-        boolean midCallSmsEnabled,
-        String midCallSmsTemplate,
-        VoicemailAction voicemailAction,
-        String voicemailMessage,
-        boolean dtmfInputEnabled,
-        boolean emotionAdaptiveVoice,
-        AgentPersona agentPersona,
-        /**
-         * The campaign's voice per call language (§2.5) — the dialog keeps it for the
-         * whole call, because the language it speaks can still change when the caller
-         * turns out to speak the other one.
-         */
-        Map<String, String> languageVoices,
-        Long sipTrunkId
+        Long sipTrunkId,
+        /** The A/B variant this call runs, or null when the campaign is not testing. */
+        Long variantId,
+        /** The variant's replacement for the scenario's role prompt; null leaves it alone. */
+        String promptOverride
 ) {
-    public OutboundCall(Long campaignId, Long targetId, Long clientId, String phone, String language,
-                        String ttsVoice, CallContext context, Long scenarioId, Long companyId, boolean disclosureEnabled) {
-        this(campaignId, targetId, clientId, phone, language, ttsVoice, context, scenarioId, companyId, disclosureEnabled,
-                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true, AgentPersona.AI_ASSISTANT, Map.of(), null);
-    }
 }

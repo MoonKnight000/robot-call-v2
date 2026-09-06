@@ -21,6 +21,10 @@ import java.util.List;
  * @param pipecatStt   per-company Pipecat STT sub-engine (e.g. deepgram, soniox, yandex)
  * @param pipecatLlm   per-company Pipecat LLM sub-engine (e.g. claude-3-5-haiku, gemini-2.0-flash)
  * @param pipecatTts   per-company Pipecat TTS sub-engine (e.g. cartesia, elevenlabs, yandex)
+ * @param model        the agent's own model for this call ({@code AiAgent.llmModel}),
+ *                     or {@code null} to leave the provider on the model it was deployed
+ *                     with. Providers read it through {@link #modelOr}, so a company that
+ *                     configures nothing per scenario behaves exactly as before
  */
 public record RealtimeCallConfig(
         String channelId,
@@ -30,10 +34,25 @@ public record RealtimeCallConfig(
         List<ToolCallback> tools,
         String pipecatStt,
         String pipecatLlm,
-        String pipecatTts
+        String pipecatTts,
+        String model
 ) {
     public RealtimeCallConfig(String channelId, String language, String systemPrompt,
                               String voice, List<ToolCallback> tools) {
-        this(channelId, language, systemPrompt, voice, tools, null, null, null);
+        this(channelId, language, systemPrompt, voice, tools, null, null, null, null);
+    }
+
+    /**
+     * The model this call should run on.
+     *
+     * <p>One rule in one place rather than the same three-line ternary in five providers —
+     * and the rule is the same as everywhere else in this project: what was chosen closer to
+     * the call wins, and what was not chosen falls through.
+     *
+     * @param fallback what the provider would have used on its own — its configured model,
+     *                 or for Pipecat the company's LLM sub-engine
+     */
+    public String modelOr(String fallback) {
+        return model != null && !model.isBlank() ? model.trim() : fallback;
     }
 }

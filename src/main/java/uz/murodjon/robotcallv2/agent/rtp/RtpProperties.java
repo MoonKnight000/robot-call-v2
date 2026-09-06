@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                         every concurrent call, so a single thread jitters at the
  *                         ~20 concurrent calls the MVP targets (PROJECT.md §1.3).
  * @param recordingMode    channel mixing mode for recordings (STEREO, SPATIAL_STEREO, DUAL_MONO)
+ * @param codec            G.711 variant of the app–Asterisk leg (ULAW default, or ALAW to
+ *                         match an A-law trunk)
  */
 @ConfigurationProperties(prefix = "voice-agent.rtp")
 public record RtpProperties(
@@ -25,12 +27,16 @@ public record RtpProperties(
         String recordingDir,
         String testPlaybackFile,
         int eventLoopThreads,
-        WavRecorder.RecordingMode recordingMode
+        WavRecorder.RecordingMode recordingMode,
+        RtpCodec codec
 ) {
 
     public RtpProperties {
         if (recordingMode == null) {
             recordingMode = WavRecorder.RecordingMode.SPATIAL_STEREO;
+        }
+        if (codec == null) {
+            codec = RtpCodec.ULAW;
         }
     }
 

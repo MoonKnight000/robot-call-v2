@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.agent.dialog.LiveCallControlHub;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -20,6 +21,7 @@ public class LiveControlController {
         this.hub = hub;
     }
 
+    @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/{channelId}/whisper")
     public ResponseEntity<ResponseData<Map<String, String>>> whisper(
             @PathVariable String channelId,
@@ -29,6 +31,7 @@ public class LiveControlController {
         return ResponseEntity.ok(ResponseData.ok(Map.of("channelId", channelId, "status", "WHISPER_INJECTED")));
     }
 
+    @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/{channelId}/takeover")
     public ResponseEntity<ResponseData<Map<String, String>>> takeover(
             @PathVariable String channelId,

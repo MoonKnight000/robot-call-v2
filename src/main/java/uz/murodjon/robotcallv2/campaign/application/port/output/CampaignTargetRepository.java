@@ -16,8 +16,6 @@ public interface CampaignTargetRepository {
 
     CampaignTarget find(long id);
 
-    void updateContextData(long id, String contextDataJson);
-
     void resetTargetsForRecurrence(long campaignId);
 
     List<CampaignTarget> findByCampaign(long campaignId, TargetFilter filter);
@@ -38,6 +36,9 @@ public interface CampaignTargetRepository {
     void updateStatus(long id, TargetStatus status, Instant nextAttemptAt);
 
     void setDoNotCall(long id);
+
+    /** Clears the whole list, for a source that answers with the whole of today's. */
+    int deleteByCampaignId(long campaignId);
 
     Map<Long, CampaignTargetStats> statsByCampaignIds(Collection<Long> campaignIds);
 

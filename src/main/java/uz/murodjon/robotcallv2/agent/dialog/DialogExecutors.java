@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.concurrent.*;
+import java.util.function.Supplier;
 
 /**
  * The two threading resources every stage of the cascade pipeline shares: a
@@ -37,6 +38,11 @@ public class DialogExecutors {
     /** Run {@code task} on the virtual-thread worker — where blocking calls belong. */
     public void submit(Runnable task) {
         worker.submit(task);
+    }
+
+    /** As {@link #submit}, for a task whose result is wanted back. */
+    public <T> CompletableFuture<T> supply(Supplier<T> task) {
+        return CompletableFuture.supplyAsync(task, worker);
     }
 
     /**

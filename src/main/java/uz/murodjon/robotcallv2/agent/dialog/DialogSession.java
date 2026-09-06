@@ -4,7 +4,7 @@ import org.springframework.ai.chat.messages.Message;
 
 import uz.murodjon.robotcallv2.agent.metrics.TurnLatency;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Mutable in-memory state for one call's conversation (PROJECT.md §4, §5.1). Holds
@@ -50,7 +51,11 @@ public class DialogSession implements DialogOutcomeSink {
     private final RtpEndpoint endpoint;
     private final Runnable hangup;
     private final Runnable transfer;
+    /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
+    private volatile Consumer<String> dtmfSender;
     private final long callAttemptId;
+    /** The company this call's campaign belongs to — scopes the per-company lookups a turn makes. */
+    private final long companyId;
     /** This call's company's AI-model overrides merged over the process defaults (§11 settings), resolved once. */
     private final EffectiveAiModelConfig aiModel;
     /** This call's company's TTS overrides (§11 settings/voice), resolved once. */
@@ -160,6 +165,16 @@ public class DialogSession implements DialogOutcomeSink {
     private final AtomicReference<String> unspokenText = new AtomicReference<>();
 
     /**
+     * A caller utterance whose turn was cancelled before one word of the reply went out:
+     * the gate closed, the caller was in fact still talking, and their next final is the
+     * rest of the same sentence. {@code TurnRunner} folds the two into one turn.
+     */
+    private final AtomicReference<String> unansweredClientText = new AtomicReference<>();
+
+    /** When the recognizer last produced an interim — the caller was speaking then. */
+    private volatile long lastInterimAtMs;
+
+    /**
      * A reply started while the caller was still speaking, waiting to find out whether
      * they said what the recognizer guessed they were saying ({@link Speculation}).
      */
@@ -225,18 +240,18 @@ public class DialogSession implements DialogOutcomeSink {
 
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
                          ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
                          String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
                          EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
                          Map<String, String> languageVoices) {
         this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
-                callAttemptId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
+                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
                 aiModel, voiceSettings, emotionAdaptiveVoice, AgentPersona.AI_ASSISTANT, languageVoices);
     }
 
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
                          ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
                          String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
                          EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
                          AgentPersona agentPersona,
@@ -254,6 +269,7 @@ public class DialogSession implements DialogOutcomeSink {
         this.hangup = hangup;
         this.transfer = transfer;
         this.callAttemptId = callAttemptId;
+        this.companyId = companyId;
         this.watchdog = watchdog;
         this.disclosureEnabled = disclosureEnabled;
         this.agentPersona = agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
@@ -270,12 +286,12 @@ public class DialogSession implements DialogOutcomeSink {
 
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
                          ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
                          String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
                          EffectiveVoiceSettings voiceSettings) {
         this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer, callAttemptId,
-                watchdog, disclosureEnabled, companyName, companyDisclosureText, aiModel, voiceSettings, true,
-                Map.of());
+                companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText, aiModel, voiceSettings,
+                true, Map.of());
     }
 
     public EffectiveAiModelConfig aiModel() {
@@ -398,6 +414,10 @@ public class DialogSession implements DialogOutcomeSink {
 
     public long callAttemptId() {
         return callAttemptId;
+    }
+
+    public long companyId() {
+        return companyId;
     }
 
     public String channelId() {
@@ -768,6 +788,22 @@ public class DialogSession implements DialogOutcomeSink {
         return unspokenText.get() != null;
     }
 
+    /** Remember a caller utterance the bot never got to answer; {@code null} forgets it. */
+    public void setUnansweredClientText(String text) {
+        unansweredClientText.set(text == null || text.isBlank() ? null : text.trim());
+    }
+
+    /** Take the unanswered utterance, or {@code null} if the last turn was answered. */
+    public String takeUnansweredClientText() {
+        return unansweredClientText.getAndSet(null);
+    }
+
+    /** Whether the recognizer has heard the caller within the last {@code withinMs}. */
+    public boolean heardCallerWithin(long withinMs) {
+        long at = lastInterimAtMs;
+        return at != 0 && System.currentTimeMillis() - at <= withinMs;
+    }
+
     /**
      * Park a speculative reply. Anything it supersedes is cancelled: the caller has said
      * more since, so the older hypothesis is answering half a sentence.
@@ -792,6 +828,7 @@ public class DialogSession implements DialogOutcomeSink {
     /** The recognizer delivered another interim hypothesis for the utterance in progress. */
     public void noteInterim() {
         interimsThisTurn.incrementAndGet();
+        lastInterimAtMs = System.currentTimeMillis();
     }
 
     public int interimsThisTurn() {
@@ -890,6 +927,25 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setDoNotCallReason(String doNotCallReason) {
         this.doNotCallReason = doNotCallReason;
+    }
+
+    /**
+     * Wires this call's keypad. Set once by the engine when the call has a real Asterisk
+     * channel behind it; left null for simulated runs, where {@link #sendDtmf} then tells
+     * the model the truth rather than silently doing nothing.
+     */
+    public void setDtmfSender(Consumer<String> sender) {
+        this.dtmfSender = sender;
+    }
+
+    @Override
+    public boolean sendDtmf(String digits) {
+        Consumer<String> sender = dtmfSender;
+        if (sender == null) {
+            return false;
+        }
+        sender.accept(digits);
+        return true;
     }
 
     /**

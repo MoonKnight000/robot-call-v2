@@ -157,7 +157,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
                                        String resumptionHandle) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode setup = root.putObject("setup");
-        setup.put("model", "models/" + resolveModelName(live.model()));
+        setup.put("model", "models/" + resolveModelName(config.modelOr(live.model())));
 
         // A Gemini Live connection lives about ten minutes and is then closed by the
         // server, whatever the call is doing. Asking for session resumption makes the

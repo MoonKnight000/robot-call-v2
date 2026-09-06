@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.application.service.AiModelConfigService;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
@@ -21,6 +22,7 @@ import uz.murodjon.robotcallv2.voice.application.service.VoiceSettingsService;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -79,40 +81,41 @@ public class DialogEngine implements CallDialog {
         return turnRunner.available();
     }
 
-    public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
-                          ScenarioDefinition scenario, String language, String ttsVoice, boolean disclosureEnabled,
-                          Runnable hangup, Runnable transfer, long callAttemptId) {
-        startCall(channelId, endpoint, context, scenario, language, ttsVoice, Map.of(), disclosureEnabled,
-                hangup, transfer, callAttemptId, true);
-    }
-
-    public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
-                          ScenarioDefinition scenario, String language, String ttsVoice,
-                          Map<String, String> languageVoices, boolean disclosureEnabled,
-                          Runnable hangup, Runnable transfer, long callAttemptId, boolean emotionAdaptiveVoice) {
-        startCall(channelId, endpoint, context, scenario, language, ttsVoice, languageVoices,
-                disclosureEnabled, hangup, transfer, callAttemptId, emotionAdaptiveVoice, AgentPersona.AI_ASSISTANT);
-    }
-
+    /**
+     * @param agent who is speaking — voice per language, persona, and this agent's own
+     *              model settings over the company's. Null on a manual test call, which
+     *              runs a scenario with no agent behind it and takes the defaults
+     * @param dtmf  how this call presses keypad tones for IVR navigation, or null when it
+     *              cannot — the {@code sendDtmfTones} tool then tells the model so
+     */
     public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
                           ScenarioDefinition scenario, String language, String ttsVoice,
-                          Map<String, String> languageVoices, boolean disclosureEnabled,
-                          Runnable hangup, Runnable transfer, long callAttemptId, boolean emotionAdaptiveVoice,
-                          AgentPersona agentPersona) {
+                          AiAgent agent, Runnable hangup, Runnable transfer, long callAttemptId,
+                          Consumer<String> dtmf) {
         if (!available()) {
             log.debug("Dialog not started for {} (engine unavailable)", channelId);
             return;
         }
         long companyId = records.companyIdOf(callAttemptId);
-        EffectiveAiModelConfig aiModel = aiModelConfigService.findEffectiveByCompanyId(companyId);
+        // The agent's own model settings sit over the company's: one company runs a cheap
+        // model for a survey and a careful one for collections, on the same day.
+        EffectiveAiModelConfig aiModel = aiModelConfigService.findEffectiveByCompanyId(companyId)
+                .withOverrides(agent != null ? agent.llmModel() : null,
+                        agent != null ? agent.temperature() : null,
+                        agent != null ? agent.maxOutputTokens() : null);
         EffectiveVoiceSettings voiceSettings = voiceSettingsService.effective(companyId);
         Company company = companyService.findById(companyId);
         String companyName = company != null ? company.name() : null;
         CompanyConfig companyConfig = companyConfigService.find(companyId);
         String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
+        boolean disclosureEnabled = agent == null || agent.disclosureEnabled();
+        AgentPersona agentPersona = agent != null ? agent.personaOrDefault() : AgentPersona.AI_ASSISTANT;
+        boolean emotionAdaptiveVoice = agent == null || agent.emotionAdaptiveVoice();
+        Map<String, String> languageVoices = agent != null ? agent.languageVoicesOrEmpty() : Map.of();
         DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
-                hangup, transfer, callAttemptId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
+                hangup, transfer, callAttemptId, companyId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
                 companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices);
+        session.setDtmfSender(dtmf);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());

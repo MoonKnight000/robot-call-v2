@@ -32,7 +32,7 @@ class VoiceEmotionResolverTest {
         DialogSession session = new DialogSession(
                 "chan-test", "uz-UZ", ttsVoice,
                 new CallContext(Map.of(), "goal"),
-                scenario, null, null, null, 1L, null, true, "Company",
+                scenario, null, null, null, 1L, 1L, null, true, "Company",
                 null, null, voiceSettings, emotionAdaptive, Map.of()
         );
         session.setState(stageId);

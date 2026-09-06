@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.dialer.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.dialer.application.service.InstantCallTriggerService;
@@ -24,6 +25,7 @@ public class TriggerCallController {
         this.currentCompany = currentCompany;
     }
 
+    @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping
     public ResponseEntity<ResponseData<Map<String, Object>>> trigger(@RequestBody InstantCallRequest request) {
         long targetId = triggerService.triggerCall(

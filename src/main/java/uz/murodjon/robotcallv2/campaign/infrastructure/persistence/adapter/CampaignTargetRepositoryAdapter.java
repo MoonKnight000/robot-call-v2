@@ -74,11 +74,6 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     }
 
     @Override
-    public void updateContextData(long id, String contextDataJson) {
-        jpa.updateContextData(id, company.id(), contextDataJson);
-    }
-
-    @Override
     public void resetTargetsForRecurrence(long campaignId) {
         jpa.resetTargetsForRecurrence(campaignId);
     }
@@ -118,6 +113,11 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     @Override
     public void setDoNotCall(long id) {
         jpa.setDoNotCall(id, company.id());
+    }
+
+    @Override
+    public int deleteByCampaignId(long campaignId) {
+        return jpa.deleteByCampaignId(campaignId, company.id());
     }
 
     @Override

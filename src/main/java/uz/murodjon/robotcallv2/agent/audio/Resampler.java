@@ -14,12 +14,12 @@ package uz.murodjon.robotcallv2.agent.audio;
 public final class Resampler {
 
     // 7-tap symmetric FIR low-pass filter coefficients for 16 kHz -> 8 kHz (Q15 fixed point, sum = 32768)
-    private static final int[] FIR_16K_TO_8K = {-1024, 1638, 9216, 13108, 9216, 1638, -1024};
-    private static final int FIR_16K_OFFSET = 3;
+    static final int[] FIR_16K_TO_8K = {-1024, 1638, 9216, 13108, 9216, 1638, -1024};
+    static final int FIR_16K_OFFSET = 3;
 
     // 9-tap symmetric FIR low-pass filter coefficients for 24 kHz -> 8 kHz (Q15 fixed point, sum = 32768)
-    private static final int[] FIR_24K_TO_8K = {-700, 400, 3600, 7400, 11368, 7400, 3600, 400, -700};
-    private static final int FIR_24K_OFFSET = 4;
+    static final int[] FIR_24K_TO_8K = {-700, 400, 3600, 7400, 11368, 7400, 3600, 400, -700};
+    static final int FIR_24K_OFFSET = 4;
 
     private Resampler() {
     }

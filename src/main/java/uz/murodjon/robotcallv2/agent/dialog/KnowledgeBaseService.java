@@ -1,16 +1,29 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
 
 import java.util.List;
 import java.util.Locale;
 
 /**
- * In-memory fast Knowledge Base (RAG) for handling frequent legal, financial,
- * and operational objections during debtor calls.
+ * Knowledge Base (RAG) service for handling frequent legal, financial,
+ * and operational objections during debtor and customer calls.
+ * Dynamically queries company-specific knowledge entries from database,
+ * falling back to built-in presets when appropriate.
  */
 @Service
 public class KnowledgeBaseService {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseService.class);
+
+    private final KnowledgeBaseRepository repository;
+
+    public KnowledgeBaseService(KnowledgeBaseRepository repository) {
+        this.repository = repository;
+    }
 
     public record KnowledgeItem(String key, String topic, String answerUz, String answerRu, String answerEn) {
     }
@@ -49,7 +62,7 @@ public class KnowledgeBaseService {
     /**
      * Finds the most relevant knowledge snippet for the given caller question or objection.
      */
-    public String findRelevantKnowledge(String query, String language) {
+    public String findRelevantKnowledge(long companyId, String query, String language) {
         if (query == null || query.isBlank()) {
             return null;
         }
@@ -57,14 +70,49 @@ public class KnowledgeBaseService {
         boolean isRu = language != null && language.startsWith("ru");
         boolean isEn = language != null && language.startsWith("en");
 
+        // 1. Dynamic database lookup for the company
+        try {
+            List<uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem> dbItems =
+                    repository.findAllActiveByCompanyId(companyId);
+            for (var item : dbItems) {
+                if (matchesDbItem(lower, item)) {
+                    log.debug("Knowledge base matched company DB item '{}'", item.key());
+                    return item.answerForLanguage(language);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to query knowledge base repository: {}", e.getMessage());
+        }
+
+        // 2. Built-in static fallback
         for (KnowledgeItem item : KNOWLEDGE_BASE) {
             if (matchesTopic(lower, item.key())) {
+                log.debug("Knowledge base matched built-in item '{}'", item.key());
                 if (isEn) return item.answerEn();
                 if (isRu) return item.answerRu();
                 return item.answerUz();
             }
         }
         return null;
+    }
+
+    public String findRelevantKnowledge(String query, String language) {
+        return findRelevantKnowledge(1L, query, language);
+    }
+
+    private static boolean matchesDbItem(String query, uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem item) {
+        if (query.contains(item.key().toLowerCase(Locale.ROOT))) {
+            return true;
+        }
+        if (item.keywords() != null && !item.keywords().isBlank()) {
+            String[] split = item.keywords().split("[,;\\s]+");
+            for (String kw : split) {
+                if (!kw.isBlank() && query.contains(kw.toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean matchesTopic(String query, String key) {

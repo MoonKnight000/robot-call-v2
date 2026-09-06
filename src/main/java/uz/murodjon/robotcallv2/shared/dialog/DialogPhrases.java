@@ -160,6 +160,7 @@ public final class DialogPhrases {
         lines.addAll(thinking(language));
         lines.addAll(confirmations(language));
         lines.addAll(backchannels(language));
+        lines.addAll(PreToolPhrases.allPhrases(language));
         lines.add(interjection(language));
         return List.copyOf(lines);
     }

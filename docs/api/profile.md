@@ -1,6 +1,6 @@
 ﻿# Profilim (self-service) API
 
-`uz.murodjon.robotcallv2.profile` · rol: istalgan (kirgan bo'lsa yetarli) · API-REQUIREMENTS §15, UI-DESIGN §8.3
+`uz.murodjon.robotcallv2.profile` · huquq: talab qilinmaydi (kirgan bo'lsa yetarli) · API-REQUIREMENTS §15, UI-DESIGN §8.3
 
 Har bir endpoint faqat **chaqirgan foydalanuvchining o'z** `app_user`
 qatoriga ishlaydi — `CurrentUser` (JWT) orqali aniqlanadi, path'da `id`
@@ -26,10 +26,13 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
     "phone": "+998901234567",
     "position": "Operator",
     "avatarFileId": null,
-    "role": "OPERATOR",
+    "roleId": 3,
+    "roleCode": "OPERATOR",
+    "roleName": "Operator",
     "companyId": 1,
     "lastLoginAt": "2026-08-02T08:00:00Z",
-    "createdAt": "2026-07-01T00:00:00Z"
+    "createdAt": "2026-07-01T00:00:00Z",
+    "callColumns": ["startedAt", "phone", "clientName", "disposition", "durationSec"]
   },
   "message": null,
   "messageCode": null,
@@ -40,6 +43,11 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 `avatarFileId` — [files.md](files.md)dagi `GET /api/files/{avatarFileId}`ga
 beriladigan id, xom MinIO URL emas.
+
+`roleId`/`roleCode`/`roleName` — foydalanuvchining roli ([roles.md](roles.md)). Bitta
+`role` maydoni **yo'q**; kompaniyaning o'z rolida `roleCode` — `null`.
+`callColumns` — qo'ng'iroqlar jadvalida ko'rsatiladigan ustunlar tartibi
+(`PUT /api/profile/call-columns` bilan saqlanadi).
 
 ## `PUT /api/profile` — "Umumiy" tab, saqlash
 

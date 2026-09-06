@@ -73,7 +73,7 @@ public class AuditService implements AuditUseCase {
         }
         if (auth.getPrincipal() instanceof AuthenticatedUser user) {
             String identifier = user.email() != null && !user.email().isBlank() ? user.email() : ("user:" + user.userId());
-            return user.role() != null ? identifier + " (" + user.role().name() + ")" : identifier;
+            return user.roleCode() != null ? identifier + " (" + user.roleCode() + ")" : identifier;
         }
         String name = auth.getName();
         if (name == null || name.isBlank() || name.startsWith("AuthenticatedUser[")) {

@@ -27,11 +27,33 @@ public class VadStream implements AudioListener {
 
     private static final Logger log = LoggerFactory.getLogger(VadStream.class);
 
+    /** ~8 dB over the background. Below this a loud street reads as speech; above it a quiet caller cannot interrupt. */
+    private static final double DEFAULT_NOISE_FLOOR_MARGIN = 2.5;
+    /**
+     * How high the measured floor may push the barge-in threshold, as a multiple of
+     * {@code minEnergyRms}. Without a ceiling a line that is loud from the first second —
+     * a bad trunk, a speakerphone in a workshop — trains a floor nobody can shout over,
+     * and the caller loses the ability to interrupt at all. Better a few false barge-ins
+     * than a bot that cannot be stopped.
+     */
+    private static final double MAX_FLOOR_MULTIPLE = 6.0;
+    /** Weight of one window when the background is getting louder — slow, so speech cannot train it up. */
+    private static final double FLOOR_RISE = 0.005;
+    /** Weight when it is getting quieter — faster, so the threshold follows a call that goes indoors. */
+    private static final double FLOOR_FALL = 0.05;
+
     private final SileroVad model;
     private final String channelId;
     private final float threshold;
     private final float listeningThreshold;
     private final double minEnergyRms;
+    private final double noiseFloorMargin;
+    /**
+     * Running estimate of this call's background level, measured only on windows the model
+     * scored as non-speech. One number per call because the noise is a property of the
+     * caller's surroundings, and those do not change between one utterance and the next.
+     */
+    private double noiseFloorRms;
     private final int minSpeechWindows;
     private final int silenceResetWindows;
     private final BooleanSupplier onBargeIn;
@@ -75,6 +97,8 @@ public class VadStream implements AudioListener {
         this.threshold = props.threshold();
         this.listeningThreshold = props.listeningThreshold() > 0f ? props.listeningThreshold() : 0.35f;
         this.minEnergyRms = props.minEnergyRms() > 0 ? props.minEnergyRms() : 150.0;
+        this.noiseFloorMargin = props.noiseFloorMargin() > 0 ? props.noiseFloorMargin() : DEFAULT_NOISE_FLOOR_MARGIN;
+        this.noiseFloorRms = this.minEnergyRms;
         this.onBargeIn = onBargeIn;
         this.gate = gate;
         this.amd = amd;
@@ -124,10 +148,25 @@ public class VadStream implements AudioListener {
         }
         double rms = Math.sqrt(sumSq / window.length);
 
-        // For barge-in: strict probability and energy check to avoid false barge-ins from short coughs/noise
-        boolean bargeInSpeech = prob >= threshold && rms >= minEnergyRms;
+        // Windows the model calls silence are this call's background, and that is what the
+        // energy check should be measured against. A fixed threshold assumes every caller is
+        // somewhere quiet; the ones who are not sit above it all call long, so every car,
+        // every bit of market noise looked like speech loud enough to interrupt.
+        if (prob < listeningThreshold) {
+            double weight = rms < noiseFloorRms ? FLOOR_FALL : FLOOR_RISE;
+            noiseFloorRms = noiseFloorRms + weight * (rms - noiseFloorRms);
+        }
+        double bargeInFloor = Math.min(
+                Math.max(minEnergyRms, noiseFloorRms * noiseFloorMargin),
+                minEnergyRms * MAX_FLOOR_MULTIPLE);
 
-        // For gating / listening: sensitive threshold so quiet or slow speakers are not missed when bot is listening
+        // For barge-in: strict probability and energy check to avoid false barge-ins from short coughs/noise
+        boolean bargeInSpeech = prob >= threshold && rms >= bargeInFloor;
+
+        // For gating / listening: sensitive threshold so quiet or slow speakers are not missed when bot is listening.
+        // Deliberately still measured against the fixed floor — the gate only decides what
+        // reaches the recognizer, and sending a little noise costs a fraction of a cent
+        // where a missed quiet answer costs the turn.
         boolean gateSpeech = bargeInSpeech || (prob >= listeningThreshold && rms >= (minEnergyRms * 0.4));
 
         if (gate != null) {

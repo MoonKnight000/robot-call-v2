@@ -8,6 +8,7 @@ import java.util.Optional;
 public interface CallAttemptRepository {
     Long findCompanyIdById(long id);
     Long findTargetIdById(long id);
+    String findPhoneById(long id);
     Optional<Long> findTargetIdByPhone(String phone);
     long startAttempt(long targetId, String channelId, String phone, String language,
                       Long inboundRouteId, long companyId);

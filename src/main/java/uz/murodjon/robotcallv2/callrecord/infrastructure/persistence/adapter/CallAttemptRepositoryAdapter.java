@@ -52,6 +52,11 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     }
 
     @Override
+    public String findPhoneById(long id) {
+        return jpa.findPhoneById(id);
+    }
+
+    @Override
     public Optional<Long> findTargetIdByPhone(String phone) {
         return targets.findFirstByPhoneOrderById(phone).map(CampaignTargetEntity::getId);
     }

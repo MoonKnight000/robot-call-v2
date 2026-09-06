@@ -28,13 +28,26 @@ ON CONFLICT (company_config_id, ord) DO NOTHING;
 INSERT INTO company_config_language (company_config_id, ord, language)
 SELECT id, 1, 'ru-RU' FROM company_config WHERE company_id = 1
 ON CONFLICT (company_config_id, ord) DO NOTHING;
+-- System roles for the bootstrap tenant (V10). The admin below needs one to point at, and
+-- on a fresh database this file runs after V10, when no company existed for V10 to seed.
+INSERT INTO app_role (company_id, code, name, is_system)
+VALUES (1, 'DEVELOPER', 'Developer', true),
+       (1, 'ADMIN', 'Administrator', true),
+       (1, 'OPERATOR', 'Operator', true),
+       (1, 'VIEWER', 'Viewer', true),
+       (1, 'SUPERADMIN', 'Superadmin', true)
+ON CONFLICT (company_id, code) DO NOTHING;
+SELECT setval(pg_get_serial_sequence('app_role', 'id'),
+              GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_role), 1), true);
 
 -- First admin account (ROADMAP E.1) — without this nobody can call POST /api/auth/login
 -- to create the rest through the API. password_hash is a BCrypt digest of 'murodjon'
 -- (BCryptPasswordEncoder, matching SecurityConfig.passwordEncoder), never stored plaintext.
-INSERT INTO app_user (company_id, name, email, username, password_hash, role, status)
-VALUES (1, 'Murodjon', 'murodjon000@softex.uz', 'murodjon',
-        '$2a$10$6cGgfpkqI8lHvRx7rlHJKuW7PhH1XttNnYBGhe.lc4rqSMORrizFO', 'ADMIN', 'ACTIVE')
+INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status)
+SELECT 1, 'Murodjon', 'murodjon000@softex.uz', 'murodjon',
+       '$2a$10$6cGgfpkqI8lHvRx7rlHJKuW7PhH1XttNnYBGhe.lc4rqSMORrizFO', r.id, 'ACTIVE'
+FROM app_role r
+WHERE r.company_id = 1 AND r.code = 'ADMIN'
 ON CONFLICT (username) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('app_user', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_user), 1), true);
@@ -521,15 +534,24 @@ $def$::jsonb,
 ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
     SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
+-- The agent every seeded placeholder speaks as (V12). One per company, on the built-in
+-- collections scenario: the placeholder campaigns below exist only to give manual and
+-- inbound call attempts a parent row, and campaign.ai_agent_id is NOT NULL.
+INSERT INTO ai_agent (company_id, name, description, scenario_id, language)
+SELECT 1, 'Default', 'Seeded default agent',
+       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
+       'uz-UZ'
+WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Default');
+
 -- Placeholder campaign + target so manually/auto-started calls (Stages 7-9) have a
 -- call_attempt parent before a real campaign exists. Looked up by phone = 'MANUAL'.
 -- DRAFT (not ACTIVE): it is only a parent row for manual/test calls, never meant to
 -- be picked up by the dialer's own scan. No unique constraint on campaign.name, so
 -- guarded with WHERE NOT EXISTS instead of ON CONFLICT.
-INSERT INTO campaign (company_id, name, type, status, goal_prompt, script_config, scenario_id)
+INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id)
 SELECT 1, 'MANUAL', 'DEBT_COLLECTION', 'DRAFT',
-       'Qo''lda/avtomatik test qo''ng''iroqlari (Bosqich 9)', '{}',
-       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1)
+       '{}',
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Default' LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE name = 'MANUAL');
 
 INSERT INTO campaign_dial_day (campaign_id, day)
@@ -546,10 +568,10 @@ ORDER BY id LIMIT 1;
 -- every inbound call_attempt has a parent row, distinct from manual REST test calls
 -- (which use 'MANUAL') so reports can tell the two apart. No dial days: inbound calls
 -- are never picked up by the dialer's own scan.
-INSERT INTO campaign (company_id, name, type, status, goal_prompt, script_config, scenario_id)
+INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id)
 SELECT 1, 'INBOUND', 'DEBT_COLLECTION', 'DRAFT',
-       'Kiruvchi qo''ng''iroqlar uchun texnik ota-ona qator (ROADMAP C.1)', '{}',
-       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1)
+       '{}',
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Default' LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE name = 'INBOUND');
 
 INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, context_data, status)

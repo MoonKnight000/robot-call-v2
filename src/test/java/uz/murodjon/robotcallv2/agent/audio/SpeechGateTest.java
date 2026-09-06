@@ -433,4 +433,86 @@ class SpeechGateTest {
 
         assertThat(gate.isOpen()).isFalse();
     }
+
+    // ---- what the words say (TranscriptTurnCues) --------------------------------------
+
+    @Test
+    void aFinishedSoundingSentenceClosesOnTheCompleteWait() {
+        SpeechGate gate = gate();                       // 1000ms for everyone else
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);                         // a long answer, not a short one
+        gate.onInterimTranscript("keyingi oyning beshinchisida to'layman");
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseWaitMs()).isBetween(600, 700);
+    }
+
+    @Test
+    void anUnfinishedSoundingSentenceWaitsOutTheExtensionToo() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("men pulni bankga");
+        feed(gate, false, 1200);
+        assertThat(gate.isOpen()).isTrue();             // 1000 + the 400ms default extension
+
+        feed(gate, false, 300);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void aNeutralEndingKeepsTheTimer() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("shartnoma raqami");
+        feed(gate, false, 900);
+        assertThat(gate.isOpen()).isTrue();
+
+        feed(gate, false, 200);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void theLatestInterimReplacesTheVerdictOfTheOneBefore() {
+        // "to'layman" read as finished; "to'layman lekin" says the caller was not.
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("to'layman");
+        gate.onInterimTranscript("to'layman lekin");
+        feed(gate, false, 1200);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void withoutACompleteWaitTheWordsCannotShortenAnything() {
+        SpeechGate gate = gate();                       // setTranscriptCues never called
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("to'layman");
+        feed(gate, false, 900);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void aOneWordAnswerTakesTheShortWaitEvenWhenItWasSpokenSlowly() {
+        SpeechGate gate = adaptiveGate();               // short answers close at 300ms
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 900);                          // longer than the 600ms short-utterance bar
+        gate.onInterimTranscript("yo'q");
+        feed(gate, false, 350);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
 }

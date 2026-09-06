@@ -1,0 +1,41 @@
+### Roles and permissions (ROLE_READ / ROLE_EDIT)
+@host = http://localhost:8080
+@token = PASTE_ACCESS_TOKEN
+
+### Every role of my company, with how many users hold it
+GET {{host}}/api/roles
+Authorization: Bearer {{token}}
+
+### Permission catalog for the role editor (grouped by page)
+GET {{host}}/api/roles/permissions
+Authorization: Bearer {{token}}
+
+### One role
+GET {{host}}/api/roles/1
+Authorization: Bearer {{token}}
+
+### Create a role of my own (max 10 per company)
+POST {{host}}/api/roles
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Sotuv menejeri",
+  "description": "Kampaniya va kontaktlar, sozlamalarsiz",
+  "permissions": ["DASHBOARD_READ", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "CONTACT_READ", "CONTACT_EDIT", "REPORT_READ"]
+}
+
+### Update it — everyone holding this role is logged out
+PUT {{host}}/api/roles/6
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Sotuv menejeri",
+  "description": "Jonli monitoring ham qo'shildi",
+  "permissions": ["DASHBOARD_READ", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "CONTACT_READ", "CONTACT_EDIT", "REPORT_READ", "LIVE_READ"]
+}
+
+### Delete it (409 while any user still holds it)
+DELETE {{host}}/api/roles/6
+Authorization: Bearer {{token}}

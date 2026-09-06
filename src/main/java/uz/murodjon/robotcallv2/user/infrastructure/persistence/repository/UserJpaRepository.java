@@ -6,7 +6,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
@@ -35,10 +34,11 @@ public interface UserJpaRepository extends JpaRepository<UserEntity, Long> {
     @Query("SELECT COUNT(u) > 0 FROM UserEntity u WHERE u.company.id = :companyId")
     boolean existsByCompanyId(@Param("companyId") long companyId);
 
-    @Query("SELECT COUNT(u) FROM UserEntity u WHERE u.company.id = :companyId AND u.role = :role AND u.status = :status")
-    long countByCompanyIdAndRoleAndStatus(@Param("companyId") long companyId,
-                                          @Param("role") UserRole role,
-                                          @Param("status") UserStatus status);
+    @Query("SELECT COUNT(u) FROM UserEntity u WHERE u.company.id = :companyId "
+            + "AND u.role.id IN :roleIds AND u.status = :status")
+    long countByCompanyIdAndRoleIdsAndStatus(@Param("companyId") long companyId,
+                                             @Param("roleIds") Collection<Long> roleIds,
+                                             @Param("status") UserStatus status);
 
     Optional<UserEntity> findByInviteTokenHash(String inviteTokenHash);
 

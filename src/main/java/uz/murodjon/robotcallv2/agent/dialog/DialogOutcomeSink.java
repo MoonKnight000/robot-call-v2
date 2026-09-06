@@ -45,4 +45,14 @@ public interface DialogOutcomeSink {
 
     /** Why the client asked never to be called again (§11.4) — recorded against the number at teardown. */
     void setDoNotCallReason(String reason);
+
+    /**
+     * Press keypad tones on this call, so the bot can work its way through the automated
+     * menu a company answers with before a person does.
+     *
+     * @return whether the tones were sent — {@code false} when this call has no way to send
+     *         them (a simulated conversation, or a session started without an Asterisk channel),
+     *         which the tool reports back to the model instead of pretending it pressed a button
+     */
+    boolean sendDtmf(String digits);
 }

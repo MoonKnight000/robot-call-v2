@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.profile.domain.entity;
 
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
-
 import java.time.Instant;
 import java.util.List;
 
@@ -16,7 +14,9 @@ public record Profile(
         String phone,
         String position,
         Long avatarFileId,
-        UserRole role,
+        long roleId,
+        String roleCode,
+        String roleName,
         long companyId,
         Instant lastLoginAt,
         Instant createdAt,

@@ -26,6 +26,18 @@ voice-agent:
     # through as the A-number and the terminating network answered 603 Declined ~7s in.
     caller-id: ${CALLER_ID:}
     answer-timeout-sec: 30
+    # Browser test calls (POST /api/calls/web-test, docs/api/calls.md). The web UI
+    # connects to Asterisk over SIP/WebSocket as the [webtest] endpoint and dials
+    # dial-number, which lands in the Stasis app like a softphone dialling 600 does.
+    # ws-url must be reachable from the browser: the host's LAN IP, not "asterisk".
+    # Use wss:// (http.conf TLS) when the UI itself is served over https. Blank
+    # ws-url disables the endpoint (409 WEB_TEST_NOT_CONFIGURED).
+    web-test:
+      ws-url: ${WEB_TEST_WS_URL:ws://192.168.0.100:8088/ws}
+      sip-user: ${WEB_TEST_SIP_USER:webtest}
+      # Must match asterisk/etc/asterisk/pjsip.conf [webtest-auth].
+      sip-password: ${WEB_TEST_SIP_PASSWORD:webtest123}
+      dial-number: ${WEB_TEST_DIAL_NUMBER:700}
     ami:
       # AMI is used for exactly one thing: reloading res_pjsip.so after a managed SIP
       # trunk is created/edited (report #7, agent.ami.AmiClient) — not call control,
@@ -54,6 +66,13 @@ voice-agent:
     port-range-start: 20000
     port-range-end: 20500
     recording-dir: ${RTP_RECORDING_DIR:recordings}
+    # Codec of the app<->Asterisk media leg: ULAW (default) or ALAW. Both are G.711 at
+    # 8 kHz, so nothing downstream changes; pick the one the trunk negotiates
+    # (pjsip.conf allow=) so Asterisk passes frames through instead of transcoding.
+    # Wideband (G.722 / slin16) is deliberately not offered: the caller arrives over a
+    # PSTN trunk at 8 kHz, so a 16 kHz leg here would only upsample the same audio for
+    # STT while costing a transcode per call.
+    codec: ${RTP_CODEC:ULAW}
     # Channel mixing for recordings: SPATIAL_STEREO (default, both ears hear speech), STEREO (hard isolation), or DUAL_MONO.
     recording-mode: ${RTP_RECORDING_MODE:SPATIAL_STEREO}
     # Optional: 8 kHz mono 16-bit WAV auto-played to the caller on answer (Stage 4 test).

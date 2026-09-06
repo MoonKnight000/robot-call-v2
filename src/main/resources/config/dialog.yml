@@ -126,3 +126,4 @@ voice-agent:
     # on it. Providers that report no confidence (0) are never treated as unsure.
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.55}
     fact-guard: ${DIALOG_FACT_GUARD:true}
+    pre-tool-speech: ${DIALOG_PRE_TOOL_SPEECH:true}

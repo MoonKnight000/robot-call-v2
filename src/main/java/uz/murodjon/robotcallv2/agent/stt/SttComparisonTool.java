@@ -122,7 +122,7 @@ public class SttComparisonTool {
         String geminiKey = System.getenv("GEMINI_API_KEY");
         if (geminiKey != null && !geminiKey.isBlank()) {
             try {
-                GeminiSttProperties geminiProps = new GeminiSttProperties(geminiKey, null, "gemini-3.5-transcribe", 16000, 10);
+                GeminiSttProperties geminiProps = new GeminiSttProperties(geminiKey, null, "gemini-3.5-transcribe-live", 16000, 10);
                 SttProperties props = new SttProperties(true, "gemini", language, List.of(), null, null, 0,
                         geminiProps, null, null, null, null);
                 GeminiSttProvider gemini = new GeminiSttProvider(props, metrics);

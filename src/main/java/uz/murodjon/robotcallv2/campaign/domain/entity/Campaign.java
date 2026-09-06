@@ -1,199 +1,49 @@
 package uz.murodjon.robotcallv2.campaign.domain.entity;
 
-import uz.murodjon.robotcallv2.campaign.domain.enums.*;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.EnumSet;
-import java.util.Map;
 import java.util.Set;
 
+/**
+ * A calling job: who is called, when, how often and how many times.
+ *
+ * <p>Everything about <em>how the call sounds</em> — the scenario, the voice, the persona,
+ * the model, the ambient sound, the trunks — belongs to the {@code AiAgent} this campaign
+ * names (V12). A campaign used to carry both, which meant running the same script with a
+ * Russian voice required cloning the whole campaign, and an inbound call, having no
+ * campaign at all, could not be given those settings by any means.
+ *
+ * @param aiAgentId the agent whose voice and script this campaign's calls run under
+ */
 public record Campaign(
         long id,
         String name,
         CampaignType type,
         CampaignStatus status,
-        String goalPrompt,
-        String defaultLanguage,
         LocalTime dialWindowStart,
         LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
         int maxAttempts,
         int retryIntervalMinutes,
         int maxConcurrentCalls,
-        String ttsVoice,
         int dailyCallCap,
-        long scenarioId,
+        long aiAgentId,
         long companyId,
         Long createdBy,
         RecurrenceType recurrenceType,
         Integer recurringDayOfMonth,
         String cronExpression,
         boolean autoResetTargets,
-        Instant lastRunAt,
-        AmbientSound ambientSound,
-        boolean midCallSmsEnabled,
-        String midCallSmsTemplate,
-        VoicemailAction voicemailAction,
-        String voicemailMessage,
-        boolean dtmfInputEnabled,
-        boolean emotionAdaptiveVoice,
-        AgentPersona agentPersona,
-        /**
-         * Voice per call language for a campaign that dials more than one (§2.5): a
-         * ru-RU target is spoken by a Russian voice and a uz-UZ one by an Uzbek voice,
-         * from the same campaign. A language absent here speaks with {@code ttsVoice}.
-         */
-        Map<String, String> languageVoices,
-        /**
-         * Explicit SIP trunk IDs selected for this campaign.
-         * If empty or null, the dialer balances across all enabled trunks of the company.
-         */
-        Set<Long> sipTrunkIds
+        Instant lastRunAt
 ) {
-
-    public Campaign(
-            long id,
-            String name,
-            CampaignType type,
-            CampaignStatus status,
-            String goalPrompt,
-            String defaultLanguage,
-            LocalTime dialWindowStart,
-            LocalTime dialWindowEnd,
-            Set<DayOfWeek> dialDays,
-            int maxAttempts,
-            int retryIntervalMinutes,
-            int maxConcurrentCalls,
-            String ttsVoice,
-            int dailyCallCap,
-            long scenarioId,
-            long companyId,
-            boolean disclosureEnabled,
-            Long createdBy
-    ) {
-        this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
-                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
-                companyId, createdBy, RecurrenceType.ONCE, null, null, false, null,
-                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
-                disclosureEnabled ? AgentPersona.AI_ASSISTANT : AgentPersona.HUMAN_LIKE, Map.of(), Set.of());
-    }
-
-    public Campaign(
-            long id,
-            String name,
-            CampaignType type,
-            CampaignStatus status,
-            String goalPrompt,
-            String defaultLanguage,
-            LocalTime dialWindowStart,
-            LocalTime dialWindowEnd,
-            Set<DayOfWeek> dialDays,
-            int maxAttempts,
-            int retryIntervalMinutes,
-            int maxConcurrentCalls,
-            String ttsVoice,
-            int dailyCallCap,
-            long scenarioId,
-            long companyId,
-            Long createdBy
-    ) {
-        this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
-                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
-                companyId, createdBy, RecurrenceType.ONCE, null, null, false, null,
-                AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
-                AgentPersona.AI_ASSISTANT, Map.of(), Set.of());
-    }
-
-    public Campaign(
-            long id,
-            String name,
-            CampaignType type,
-            CampaignStatus status,
-            String goalPrompt,
-            String defaultLanguage,
-            LocalTime dialWindowStart,
-            LocalTime dialWindowEnd,
-            Set<DayOfWeek> dialDays,
-            int maxAttempts,
-            int retryIntervalMinutes,
-            int maxConcurrentCalls,
-            String ttsVoice,
-            int dailyCallCap,
-            long scenarioId,
-            long companyId,
-            Long createdBy,
-            RecurrenceType recurrenceType,
-            Integer recurringDayOfMonth,
-            String cronExpression,
-            boolean autoResetTargets,
-            Instant lastRunAt
-    ) {
-        this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
-                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
-                companyId, createdBy, recurrenceType, recurringDayOfMonth, cronExpression,
-                autoResetTargets, lastRunAt, AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
-                AgentPersona.AI_ASSISTANT,
-                Map.of(), Set.of());
-    }
-
-    public Campaign(
-            long id,
-            String name,
-            CampaignType type,
-            CampaignStatus status,
-            String goalPrompt,
-            String defaultLanguage,
-            LocalTime dialWindowStart,
-            LocalTime dialWindowEnd,
-            Set<DayOfWeek> dialDays,
-            int maxAttempts,
-            int retryIntervalMinutes,
-            int maxConcurrentCalls,
-            String ttsVoice,
-            int dailyCallCap,
-            long scenarioId,
-            long companyId,
-            boolean disclosureEnabled,
-            Long createdBy,
-            RecurrenceType recurrenceType,
-            Integer recurringDayOfMonth,
-            String cronExpression,
-            boolean autoResetTargets,
-            Instant lastRunAt
-    ) {
-        this(id, name, type, status, goalPrompt, defaultLanguage, dialWindowStart, dialWindowEnd, dialDays,
-                maxAttempts, retryIntervalMinutes, maxConcurrentCalls, ttsVoice, dailyCallCap, scenarioId,
-                companyId, createdBy, recurrenceType, recurringDayOfMonth, cronExpression,
-                autoResetTargets, lastRunAt, AmbientSound.OFF, false, null, VoicemailAction.HANGUP, null, false, true,
-                disclosureEnabled ? AgentPersona.AI_ASSISTANT : AgentPersona.HUMAN_LIKE,
-                Map.of(), Set.of());
-    }
-
-    public boolean disclosureEnabled() {
-        return agentPersona != null ? agentPersona == AgentPersona.AI_ASSISTANT : true;
-    }
 
     public Set<DayOfWeek> allowedDays() {
         return dialDays == null || dialDays.isEmpty() ? EnumSet.allOf(DayOfWeek.class) : dialDays;
-    }
-
-    public Set<Long> sipTrunkIdsOrEmpty() {
-        return sipTrunkIds == null ? Set.of() : sipTrunkIds;
-    }
-
-    /**
-     * The voice a call in {@code language} speaks with: this campaign's choice for that
-     * language, or its single {@code ttsVoice} when it made none.
-     */
-    public String voiceFor(String language) {
-        if (language != null && languageVoices != null) {
-            String voice = languageVoices.get(language);
-            if (voice != null && !voice.isBlank()) {
-                return voice;
-            }
-        }
-        return ttsVoice;
     }
 }

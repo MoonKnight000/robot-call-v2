@@ -1,6 +1,10 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
+
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,15 +19,19 @@ import java.util.Map;
  * come from a CRM record and from a CSV somebody uploaded, and they are pasted into the
  * prompt beside the rules the model has to follow — so this is the boundary where text
  * this system did not write stops being able to look like an instruction. Doing it here
- * rather than at each prompt factory means a new consumer cannot forget.
+ * rather than at each prompt factory means a new consumer cannot forget. The memory
+ * gets the same treatment: its summaries were written by an LLM from what the client
+ * said, and its notes by an operator.
  *
- * @param facts fact name -> value ({@link String}, {@link java.math.BigDecimal}, or
- *              {@link java.time.LocalDate}, matching the fact's declared type)
- * @param goal  campaign goal / extra instruction appended to the prompt (nullable) —
- *              deliberately not a fact: it is campaign-level, not part of any
- *              scenario's factSchema
+ * @param facts  fact name -> value ({@link String}, {@link java.math.BigDecimal}, or
+ *               {@link java.time.LocalDate}, matching the fact's declared type)
+ * @param goal   campaign goal / extra instruction appended to the prompt (nullable) —
+ *               deliberately not a fact: it is campaign-level, not part of any
+ *               scenario's factSchema
+ * @param memory what the company remembers about this phone from earlier calls
+ *               (nullable — a first conversation has none)
  */
-public record CallContext(Map<String, Object> facts, String goal) {
+public record CallContext(Map<String, Object> facts, String goal, ClientMemory memory) {
 
     /** A fact fills one line of the prompt: a name, a sum, a date, a contract number. */
     private static final int MAX_FACT_CHARS = 200;
@@ -31,9 +39,21 @@ public record CallContext(Map<String, Object> facts, String goal) {
     /** The goal is a sentence or two of campaign instruction, so it gets more room. */
     private static final int MAX_GOAL_CHARS = 500;
 
+    /** A remembered call is the summary LLM's two or three sentences. */
+    private static final int MAX_SUMMARY_CHARS = 400;
+
     public CallContext {
         facts = sanitize(facts);
         goal = PromptSafeText.sanitize(goal, MAX_GOAL_CHARS);
+        memory = sanitize(memory);
+    }
+
+    public CallContext(Map<String, Object> facts, String goal) {
+        this(facts, goal, null);
+    }
+
+    public CallContext withMemory(ClientMemory memory) {
+        return new CallContext(facts, goal, memory);
     }
 
     /**
@@ -49,6 +69,21 @@ public record CallContext(Map<String, Object> facts, String goal) {
         facts.forEach((name, value) -> safe.put(name,
                 value instanceof String text ? PromptSafeText.sanitize(text, MAX_FACT_CHARS) : value));
         return Map.copyOf(safe);
+    }
+
+    private static ClientMemory sanitize(ClientMemory memory) {
+        if (memory == null) {
+            return null;
+        }
+        List<RememberedCall> calls = memory.recentCalls().stream()
+                .map(call -> new RememberedCall(call.at(), call.scenarioKey(), call.disposition(),
+                        PromptSafeText.sanitize(call.summary(), MAX_SUMMARY_CHARS)))
+                .toList();
+        return new ClientMemory(memory.id(), memory.companyId(), memory.phone(),
+                PromptSafeText.sanitize(memory.preferredName(), MAX_FACT_CHARS),
+                memory.preferredLanguage(),
+                PromptSafeText.sanitize(memory.operatorNotes(), MAX_GOAL_CHARS),
+                calls, sanitize(memory.facts()), memory.updatedAt());
     }
 
     /** Convenience lookup; {@code null} if this scenario has no such fact or it was never set. */

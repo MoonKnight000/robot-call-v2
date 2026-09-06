@@ -52,3 +52,12 @@ out/
 ### Claude Code ###
 /.claude
 /.junie/
+
+# Silero VAD model for local (IDE) runs — downloaded, not committed:
+# curl -fsSL -o models/silero_vad.onnx https://raw.githubusercontent.com/snakers4/silero-vad/v5.1.2/src/silero_vad/data/silero_vad.onnx
+models/
+# Rolling application log (logback-spring.xml)
+logs/
+# EOU training corpus pulled out of MinIO (TurnDatasetTool) — customer voices, and
+# regenerable from the recordings at any time. Never committed.
+corpus/

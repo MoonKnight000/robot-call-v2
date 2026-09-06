@@ -1,6 +1,6 @@
 ﻿# "Qo'ng'iroq qilinmasin" (DNC) API
 
-`uz.murodjon.robotcallv2.donotcall` · rol: **ADMIN** (barcha endpoint)
+`uz.murodjon.robotcallv2.donotcall` · huquq: **DO_NOT_CALL_READ** / **DO_NOT_CALL_EDIT**
 
 Kompaniya darajasidagi opt-out ro'yxati — kampaniyaga bog'liq emas, shuning
 uchun alohida API. Kontakt yoki nishondan qo'shish uchun
@@ -21,24 +21,26 @@ Body — `DoNotCallFilter`:
 {
   "page": 0,
   "size": 20,
-  "orders": { "CREATED_AT": "DESC" },
-  "search": "998901234567"
+  "orders": { "CREATED_AT": "DESC" }
 }
 ```
 
-Saralanadigan ustunlar: `ID`, `PHONE`, `CREATED_AT`. Standart:
-`CREATED_AT DESC` (yangi qo'shilgani birinchi). Faqat **faol** (o'chirilmagan)
-yozuvlarni qaytaradi.
+Saralanadigan ustunlar: `PHONE`, `REASON`, `SOURCE`, `CREATED_AT`. Standart:
+`CREATED_AT DESC, PHONE ASC` (yangi qo'shilgani birinchi). Qaysi saralash berilsa ham
+`PHONE ASC` oxiriga qo'shiladi — sahifalar orasida tartib barqaror bo'lishi uchun.
+Faqat **faol** (o'chirilmagan) yozuvlarni qaytaradi.
+
+> ⚠️ `DoNotCallFilter` da `search` maydoni **yo'q** — raqam bo'yicha qidiruv qo'llab
+> quvvatlanmaydi. `ID` ham saralanadigan ustunlar ichida emas.
 
 **Javob qatori** (`DoNotCallRow`, `PageableData<DoNotCallRow>` ichida):
 
 ```json
 {
   "data": {
-    "page": 0,
-    "size": 20,
-    "totalElements": 1,
     "totalPages": 1,
+    "currentPage": 0,
+    "totalElements": 1,
     "data": [
       {
         "id": 3,

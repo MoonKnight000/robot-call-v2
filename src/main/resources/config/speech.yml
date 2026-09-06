@@ -2,6 +2,10 @@
 # Speech Recognition (STT), Synthesis (TTS), and Voice Activity Detection (VAD)
 # ==============================================================================
 voice-agent:
+  audio:
+    # Decodes browser recordings (WebM/Opus, MP4/AAC) for POST /api/stt/preview. The
+    # Docker image installs it; a local run needs ffmpeg on the PATH or a full path here.
+    ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
   # Speech-to-speech engines (PipelineMode.REALTIME) — one vendor does recognition,
   # reasoning and speech, replacing the stt/tts/dialog chain below rather than sitting
   # beside it.
@@ -81,11 +85,26 @@ voice-agent:
     vad-gating:
       enabled: ${STT_VAD_GATING:true}
       pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:800}
-      # 700, down from 1000: this is the top of the endpointing budget now — the silence
-      # a long answer waits out before the turn starts. Short answers do not reach it
-      # (short-silence-ms below), and a fast talker does not either (dynamic).
-      # Raising it is the fix if callers are being cut off mid-sentence.
-      post-roll-ms: ${STT_VAD_POST_ROLL_MS:700}
+      # The top of the endpointing budget — the silence a long answer waits out before
+      # the turn starts. Short answers do not reach it (short-silence-ms below), and a
+      # fast talker does not either (dynamic).
+      #
+      # 1200, up from 700, and this direction costs latency on purpose. TurnDatasetTool
+      # labelled every caller pause in the recorded calls (VOICE-QUALITY-PLAN C.4) and the
+      # two classes came out as: pauses the caller resumed from run 204-1824 ms, pauses
+      # they were actually finished at start at 1084 ms. A third of the mid-sentence
+      # pauses were longer than 700 ms — those callers were being cut off and answered
+      # mid-thought, which costs a whole turn to recover and sometimes the call.
+      # 1200 covers all but the two longest of them.
+      #
+      # What is not paid: "ha", "yo'q", "to'ladim" close at short-silence-ms and never
+      # reach this, and speculation (dialog.preemptive + preemptive-tts) writes the reply
+      # and synthesizes its first sentence during this silence — on a hit the extra 500 ms
+      # is dead time for the recognizer, not for the caller.
+      #
+      # The real fix is a turn detector that reads the 1.1-1.8 s overlap semantically
+      # instead of guessing at a threshold; until uz-UZ has one, this errs toward waiting.
+      post-roll-ms: ${STT_VAD_POST_ROLL_MS:1200}
       min-speech-ms: ${STT_VAD_MIN_SPEECH_MS:80}
     # External endpointing: this side tells the provider when the utterance ended
     # (Yandex switches to ExternalEouClassifier, and its own pause hint stops being read).
@@ -99,7 +118,29 @@ voice-agent:
       # contract number out slowly is not split in half.
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
       short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:500}
+      # The words move the wait too (TranscriptTurnCues, 2026-09-05). The last interim is
+      # read for whether the sentence has reached its verb: "to'layman", "bo'ladi",
+      # "bilmadim", "ha/yo'q", "нет", "заплачу" close after this much silence instead of
+      # the full post-roll-ms; "pulni", "bankga", "lekin", "besh yuz", "потому что", a
+      # bare number wait post-roll-ms PLUS the turn extension (turn.max-extend-ms, 400 ms
+      # without a model). Neutral endings keep post-roll-ms. This is the one lever that
+      # moves cut-offs and latency in opposite directions at once: C.4 showed finished
+      # and unfinished pauses overlap between 1.1 and 1.8 s, where no timer can tell them
+      # apart — the words can, in a verb-final language.
+      #
+      # 800: below it the recognizer's interim lags the audio too often to have the last
+      # word yet. Raise toward post-roll-ms if "stitched" turns (voice_dialog_turn_stitched)
+      # climb — those are exactly the finished-sounding sentences that were not. 0 = off.
+      complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:800}
       max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:20000}
+      # After the gate closes and the recognizer is told the utterance is over, its final
+      # still takes a while to come back — on recorded calls (2026-09-05) 500-1100 ms
+      # after the EOU, and the final said what the last interim already said. Past this
+      # grace the last interim is promoted to the final and the turn starts on it; the
+      # provider's own final, when it arrives, is dropped (SttStreamBridge). 0 waits for
+      # the provider as before. Watch voice_stt_finals_promoted_total and the "late final
+      # differed" log lines: a stream of those means interims here lag the audio.
+      final-grace-ms: ${STT_ENDPOINTING_FINAL_GRACE_MS:250}
       # Learns how long this particular caller's pauses run and shortens the wait toward
       # min-post-roll-ms for one who does not pause. Only reaches SpeechGate when
       # vad-gating above is on as well (AriService#buildAudioListeners).
@@ -111,7 +152,12 @@ voice-agent:
     gemini:
       api-key: ${GEMINI_API_KEY:}
       url: ${STT_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
-      model: ${STT_GEMINI_MODEL:gemini-3.5-transcribe}
+      # Must be a Live (bidiGenerateContent) model. gemini-3.5-transcribe without "-live"
+      # is the batch model: the socket closed at setup on every call, so no caller was
+      # ever transcribed (2026-09-05). Measured on a recorded uz-UZ call: interims are
+      # usable, finals sometimes come back in another script/language entirely, and the
+      # provider handles that by keeping the last interim (GeminiSttProvider).
+      model: ${STT_GEMINI_MODEL:gemini-3.5-transcribe-live}
       sample-rate: 16000
       connect-timeout-seconds: ${STT_GEMINI_CONNECT_TIMEOUT_SECONDS:10}
     yandex:
@@ -201,7 +247,9 @@ voice-agent:
       max-chars: ${TTS_CACHE_MAX_CHARS:200}
       redis: ${TTS_CACHE_REDIS:true}
       ttl-days: ${TTS_CACHE_TTL_DAYS:30}
-      prewarm: ${TTS_CACHE_PREWARM:false}
+      # On: the disclosure, farewell and fillers are synthesized at startup, so the first
+      # call after a deploy does not pay a round trip for the first thing it says.
+      prewarm: ${TTS_CACHE_PREWARM:true}
     gemini:
       api-key: ${GEMINI_API_KEY:}
       url: ${TTS_GEMINI_URL:https://generativelanguage.googleapis.com/v1beta/models}
@@ -244,16 +292,32 @@ voice-agent:
 
   vad:
     enabled: ${VAD_ENABLED:true}
-    model-path: ${VAD_MODEL_PATH:}
+    # Local runs (IDE/bootRun) read models/silero_vad.onnx from the project root — the
+    # Silero v5.1.2 file the Dockerfile bakes into the image (download line in .gitignore).
+    # Docker sets VAD_MODEL_PATH itself (docker-compose.yml). Without a model there is no
+    # barge-in, no STT gating and no endpointing on this side: the call silently falls
+    # back to the recognizer's own EOU, which is why an IDE run sounded nothing like Docker.
+    model-path: ${VAD_MODEL_PATH:models/silero_vad.onnx}
     sample-rate: 8000
     window-samples: 256
     threshold: ${VAD_THRESHOLD:0.5}
     listening-threshold: ${VAD_LISTENING_THRESHOLD:0.35}
     min-energy-rms: ${VAD_MIN_ENERGY_RMS:150.0}
-    min-speech-ms: ${VAD_MIN_SPEECH_MS:250}
+    # How far over the call's own background noise speech has to sit before it may cut the
+    # bot off. min-energy-rms alone is a fixed line: a caller on a street or in a bazaar is
+    # above it the whole call, so passing traffic barged in. 2.5 is ~8 dB over the measured
+    # floor, and the floor can only push the threshold to 6x min-energy-rms so a loud line
+    # never becomes one the caller cannot interrupt at all. 0 restores the fixed threshold.
+    noise-floor-margin: ${VAD_NOISE_FLOOR_MARGIN:2.5}
+    # 400, up from 250: what a barge-in has to hear before it silences the bot. LiveKit
+    # ships 500. At 250 a cough, a door, or the bot's own voice off a speakerphone cut the
+    # line for 1.5 s (false-interruption-timeout-ms) before the reply resumed.
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:400}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}
-      min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:2800}
+      # 3500, up from 2800: "Alo, assalomu alaykum, eshitaman, kim bu?" is about three
+      # seconds, and at 2800 that person was hung up on as a voicemail.
+      min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:3500}
       silence-tolerance-ms: ${VAD_AMD_SILENCE_TOLERANCE_MS:600}

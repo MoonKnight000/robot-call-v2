@@ -6,11 +6,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.audio.Resampler;
+import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.*;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AgentPersona;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
@@ -31,6 +32,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
 import java.util.concurrent.Executors;
 
 /**
@@ -112,27 +114,24 @@ public class RealtimeDialogEngine implements CallDialog {
     /**
      * Connect the engine for {@code channelId} and let it open the conversation.
      *
-     * @param voice    the campaign's voice for this call's language, resolved the same way
+     * @param voice    the agent's voice for this call's language, resolved the same way
      *                 the cascade pipeline resolves it. Only honoured when it belongs to
      *                 the engine that is actually running — see {@link #voiceFor}
+     * @param agent    who is speaking — persona and this agent's own model, over the
+     *                 company's. Null on a manual test call, which has no agent behind it
      * @param fallback continues the call on the cascade pipeline when the engine drops out
      *                 mid-conversation and cannot be recovered; null hangs up instead
+     * @param dtmf     how this call presses keypad tones for IVR navigation, or null when
+     *                 it cannot
      */
     public boolean startCall(String channelId, RtpEndpoint endpoint, CallContext context,
                              ScenarioDefinition scenario, String language, String voice,
-                             boolean disclosureEnabled,
-                             Runnable hangup, Runnable transfer, long callAttemptId,
-                             RealtimeAudioBridge bridge, Runnable fallback) {
-        return startCall(channelId, endpoint, context, scenario, language, voice, disclosureEnabled,
-                hangup, transfer, callAttemptId, bridge, fallback, AgentPersona.AI_ASSISTANT);
-    }
-
-    public boolean startCall(String channelId, RtpEndpoint endpoint, CallContext context,
-                             ScenarioDefinition scenario, String language, String voice,
-                             boolean disclosureEnabled,
+                             AiAgent agent,
                              Runnable hangup, Runnable transfer, long callAttemptId,
                              RealtimeAudioBridge bridge, Runnable fallback,
-                             AgentPersona agentPersona) {
+                             Consumer<String> dtmf) {
+        boolean disclosureEnabled = agent == null || agent.disclosureEnabled();
+        AgentPersona agentPersona = agent != null ? agent.personaOrDefault() : AgentPersona.AI_ASSISTANT;
         long companyId = records.companyIdOf(callAttemptId);
         EffectiveEngineConfig effective = engineConfigService.findEffectiveByCompanyId(companyId);
         RealtimeProvider provider = registry.findForCall(effective.realtimeProvider());
@@ -143,6 +142,7 @@ public class RealtimeDialogEngine implements CallDialog {
 
         RealtimeDialogSession session = new RealtimeDialogSession(channelId, language, callAttemptId,
                 scenario, context, endpoint, hangup, transfer);
+        session.setDtmfSender(dtmf);
         Company company = companyService.findById(companyId);
         String companyName = company != null ? company.name() : null;
 
@@ -157,7 +157,8 @@ public class RealtimeDialogEngine implements CallDialog {
         try {
             RealtimeSession engine = provider.startSession(
                     new RealtimeCallConfig(channelId, language, prompt, voiceFor(voice, provider), session.tools(),
-                            effective.pipecatStt(), effective.pipecatLlm(), effective.pipecatTts()),
+                            effective.pipecatStt(), effective.pipecatLlm(), effective.pipecatTts(),
+                            agent != null ? agent.llmModel() : null),
                     new EngineListener(session, provider.outputSampleRate(), fallback));
             session.setEngine(engine);
             sessions.put(channelId, session);
@@ -342,22 +343,28 @@ public class RealtimeDialogEngine implements CallDialog {
     private final class EngineListener implements RealtimeListener {
 
         private final RealtimeDialogSession session;
-        private final int engineRate;
+        /**
+         * Carries the anti-aliasing filter across the engine's chunks: resampling each one
+         * on its own put a click at every chunk boundary (StreamingDownsampler).
+         */
+        private final StreamingDownsampler downsampler;
         /** Runs the call on the cascade pipeline instead; null leaves hanging up as the only option. */
         private final Runnable fallback;
 
         private EngineListener(RealtimeDialogSession session, int engineRate, Runnable fallback) {
             this.session = session;
-            this.engineRate = engineRate;
+            this.downsampler = engineRate == 24000
+                    ? StreamingDownsampler.from24kTo8k()
+                    : StreamingDownsampler.from16kTo8k();
             this.fallback = fallback;
         }
 
         @Override
         public void onBotAudio(short[] pcm) {
-            short[] telephone = engineRate == 24000
-                    ? Resampler.downsample24kTo8k(pcm, pcm.length)
-                    : Resampler.downsample16kTo8k(pcm, pcm.length);
-            session.endpoint().enqueuePcm(telephone);
+            short[] telephone = downsampler.push(pcm, pcm.length);
+            if (telephone.length > 0) {
+                session.endpoint().enqueuePcm(telephone);
+            }
         }
 
         @Override

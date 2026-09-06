@@ -7,25 +7,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TurnRunnerSentenceTest {
 
     @Test
-    void cutsShortAffirmationsImmediately() {
-        StringBuilder pending = new StringBuilder("Aha. Sizga qanday yordam bera olaman?");
+    void carriesShortAffirmationIntoTheNextSentence() {
+        // "Aha." alone is under a second of audio and cannot cover the next round trip.
+        StringBuilder pending = new StringBuilder("Aha. Sizga qanday yordam bera olaman? Qachon");
         String first = TurnRunner.takeSentence(pending);
 
-        assertThat(first).isEqualTo("Aha.");
-        assertThat(pending.toString()).isEqualTo(" Sizga qanday yordam bera olaman?");
-
-        String second = TurnRunner.takeSentence(pending);
-        assertThat(second).isEqualTo("Sizga qanday yordam bera olaman?");
-        assertThat(pending.toString()).isEmpty();
+        assertThat(first).isEqualTo("Aha. Sizga qanday yordam bera olaman?");
+        assertThat(pending.toString()).isEqualTo(" Qachon");
     }
 
     @Test
-    void cutsShortGreetingSentence() {
+    void waitsForMoreTextWhenEverythingSoFarIsShort() {
         StringBuilder pending = new StringBuilder("Salom! Qayerdansiz?");
         String first = TurnRunner.takeSentence(pending);
 
-        assertThat(first).isEqualTo("Salom!");
-        assertThat(pending.toString()).isEqualTo(" Qayerdansiz?");
+        assertThat(first).isNull();
+        assertThat(pending.toString()).isEqualTo("Salom! Qayerdansiz?");
     }
 
     @Test

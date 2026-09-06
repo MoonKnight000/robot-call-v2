@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.user.application.mapper;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
@@ -11,6 +12,7 @@ public class UserMapper {
         if (e == null) {
             return null;
         }
+        RoleEntity role = e.getRole();
         return new User(
                 e.getId(),
                 e.getCompanyId(),
@@ -18,7 +20,9 @@ public class UserMapper {
                 e.getUsername(),
                 e.getEmail(),
                 e.getPasswordHash(),
-                e.getRole(),
+                role == null ? 0L : role.getId(),
+                role == null ? null : role.getCode(),
+                role == null ? null : role.getName(),
                 e.getStatus(),
                 e.getInviteTokenHash(),
                 e.getInviteExpiresAt(),

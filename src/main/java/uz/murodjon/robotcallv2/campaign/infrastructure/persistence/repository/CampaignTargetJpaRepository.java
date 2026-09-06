@@ -89,13 +89,13 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
 
     @Modifying
     @Transactional
-    @Query("UPDATE CampaignTargetEntity t SET t.contextData = :contextData WHERE t.id = :id AND t.company.id = :companyId")
-    void updateContextData(@Param("id") long id, @Param("companyId") long companyId, @Param("contextData") String contextData);
+    @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING, t.attempts = 0, t.nextAttemptAt = null WHERE t.campaign.id = :campaignId AND t.doNotCall = false")
+    void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
 
     @Modifying
     @Transactional
-    @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING, t.attempts = 0, t.nextAttemptAt = null WHERE t.campaign.id = :campaignId AND t.doNotCall = false")
-    void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
+    @Query("DELETE FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId")
+    int deleteByCampaignId(@Param("campaignId") long campaignId, @Param("companyId") long companyId);
 
     /**
      * Unlike {@link #resetTargetsForRecurrence} this only drops the waiting time: the

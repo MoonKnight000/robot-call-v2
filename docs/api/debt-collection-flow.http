@@ -14,7 +14,6 @@ X-Api-Key: {{apiKey}}
 ### 2. Qarzdorlik kampaniyasini yaratish
 # Faqat "name" majburiy — qolgani berilmasa default bilan to'ladi
 # (defaultLanguage=uz-UZ, dialWindowStart=09:00, dialWindowEnd=20:00,
-# dialDays=Dush-Juma, maxAttempts=3). goalPrompt agentga maqsad sifatida beriladi.
 POST {{baseUrl}}/api/campaigns
 X-Api-Key: {{apiKey}}
 Content-Type: application/json
@@ -22,7 +21,6 @@ Content-Type: application/json
 {
   "name": "Qarzdorlik — sinov",
   "type": "debt_collection",
-  "goalPrompt": "Mijozga qarzi haqida xabar berish, to'lov muddati va summasini eslatish, to'lov va'dasini olish. Foiz/jarima haqida o'zingizdan gapirmang.",
   "defaultLanguage": "uz-UZ",
   "dialWindowStart": "00:00",
   "dialWindowEnd": "23:59",

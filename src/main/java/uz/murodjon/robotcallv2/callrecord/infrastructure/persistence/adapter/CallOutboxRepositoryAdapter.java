@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.output.CallOutboxRepo
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallResultEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallResultJpaRepository;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.Collections;
 import java.util.List;
@@ -57,7 +58,7 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     public List<PendingSummary> attemptsAwaitingSummary(int maxAttempts, int limit) {
         try {
             return callAttempts.attemptsAwaitingSummary(maxAttempts, PageRequest.of(0, limit)).stream()
-                    .map(row -> new PendingSummary((Long) row[0], (Long) row[1], (Long) row[2]))
+                    .map(row -> new PendingSummary((Long) row[0], (Long) row[1], (Long) row[2], (Disposition) row[3]))
                     .toList();
         } catch (Exception e) {
             log.warn("Outbox scan for summaries failed: {}", e.getMessage());

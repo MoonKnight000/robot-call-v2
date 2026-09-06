@@ -1,92 +1,71 @@
 package uz.murodjon.robotcallv2.campaign.application.mapper;
 
 import org.springframework.stereotype.Component;
+
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
-
-import java.util.Map;
-import java.util.Set;
 
 @Component
 public class CampaignMapper {
 
-    public Campaign toDomain(CampaignEntity e) {
-        if (e == null) return null;
+    public Campaign toCampaign(CampaignEntity entity) {
+        if (entity == null) {
+            return null;
+        }
         return new Campaign(
-                e.getId(),
-                e.getName(),
-                e.getType(),
-                e.getStatus(),
-                e.getGoalPrompt(),
-                e.getDefaultLanguage(),
-                e.getDialWindowStart(),
-                e.getDialWindowEnd(),
-                e.getDialDays(),
-                e.getMaxAttempts(),
-                e.getRetryIntervalMinutes(),
-                e.getMaxConcurrentCalls(),
-                e.getTtsVoice(),
-                e.getDailyCallCap(),
-                e.getScenarioId(),
-                e.getCompanyId(),
-                e.getCreatedById(),
-                e.getRecurrenceType(),
-                e.getRecurringDayOfMonth(),
-                e.getCronExpression(),
-                e.isAutoResetTargets(),
-                e.getLastRunAt(),
-                e.getAmbientSound(),
-                e.isMidCallSmsEnabled(),
-                e.getMidCallSmsTemplate(),
-                e.getVoicemailAction(),
-                e.getVoicemailMessage(),
-                e.isDtmfInputEnabled(),
-                e.isEmotionAdaptiveVoice(),
-                e.getAgentPersona(),
-                Map.copyOf(e.getLanguageVoices()),
-                Set.copyOf(e.getSipTrunkIds())
-        );
+                entity.getId(),
+                entity.getName(),
+                entity.getType(),
+                entity.getStatus(),
+                entity.getDialWindowStart(),
+                entity.getDialWindowEnd(),
+                entity.getDialDays(),
+                entity.getMaxAttempts(),
+                entity.getRetryIntervalMinutes(),
+                entity.getMaxConcurrentCalls(),
+                entity.getDailyCallCap(),
+                entity.getAiAgentId(),
+                entity.getCompanyId(),
+                entity.getCreatedById(),
+                entity.getRecurrenceType(),
+                entity.getRecurringDayOfMonth(),
+                entity.getCronExpression(),
+                entity.isAutoResetTargets(),
+                entity.getLastRunAt());
     }
 
-    public CampaignEntity toEntity(Campaign d, CompanyEntity company, ScenarioEntity scenario, UserEntity createdBy) {
-        if (d == null) return null;
-        CampaignEntity e = new CampaignEntity();
-        e.setId(d.id() > 0 ? d.id() : null);
-        e.setName(d.name());
-        e.setType(d.type());
-        e.setStatus(d.status());
-        e.setGoalPrompt(d.goalPrompt());
-        e.setScriptConfig("{}");
-        e.setDefaultLanguage(d.defaultLanguage());
-        e.setDialWindowStart(d.dialWindowStart());
-        e.setDialWindowEnd(d.dialWindowEnd());
-        e.setDialDays(d.dialDays());
-        e.setMaxAttempts(d.maxAttempts());
-        e.setRetryIntervalMinutes(d.retryIntervalMinutes());
-        e.setMaxConcurrentCalls(d.maxConcurrentCalls());
-        e.setTtsVoice(d.ttsVoice());
-        e.setDailyCallCap(d.dailyCallCap());
-        e.setCompany(company);
-        e.setScenario(scenario);
-        e.setCreatedBy(createdBy);
-        e.setRecurrenceType(d.recurrenceType());
-        e.setRecurringDayOfMonth(d.recurringDayOfMonth());
-        e.setCronExpression(d.cronExpression());
-        e.setAutoResetTargets(d.autoResetTargets());
-        e.setLastRunAt(d.lastRunAt());
-        e.setAmbientSound(d.ambientSound());
-        e.setMidCallSmsEnabled(d.midCallSmsEnabled());
-        e.setMidCallSmsTemplate(d.midCallSmsTemplate());
-        e.setVoicemailAction(d.voicemailAction());
-        e.setVoicemailMessage(d.voicemailMessage());
-        e.setDtmfInputEnabled(d.dtmfInputEnabled());
-        e.setEmotionAdaptiveVoice(d.emotionAdaptiveVoice());
-        e.setAgentPersona(d.agentPersona());
-        e.setLanguageVoices(d.languageVoices());
-        e.setSipTrunkIds(d.sipTrunkIds());
-        return e;
+    public CampaignEntity toEntity(Campaign campaign, CompanyEntity company, UserEntity createdBy) {
+        if (campaign == null) {
+            return null;
+        }
+        CampaignEntity entity = new CampaignEntity();
+        entity.setId(campaign.id() > 0 ? campaign.id() : null);
+        entity.setScriptConfig("{}");
+        entity.setType(campaign.type());
+        entity.setStatus(campaign.status());
+        entity.setCompany(company);
+        entity.setCreatedBy(createdBy);
+        entity.setLastRunAt(campaign.lastRunAt());
+        applyEditableFields(entity, campaign);
+        return entity;
+    }
+
+    /** Everything an edit may change — the same set {@code PUT /api/campaigns/{id}} sends. */
+    public void applyEditableFields(CampaignEntity entity, Campaign campaign) {
+        entity.setName(campaign.name());
+        entity.setAiAgentId(campaign.aiAgentId());
+        entity.setDialWindowStart(campaign.dialWindowStart());
+        entity.setDialWindowEnd(campaign.dialWindowEnd());
+        entity.setDialDays(campaign.dialDays());
+        entity.setMaxAttempts(campaign.maxAttempts());
+        entity.setRetryIntervalMinutes(campaign.retryIntervalMinutes());
+        entity.setMaxConcurrentCalls(campaign.maxConcurrentCalls());
+        entity.setDailyCallCap(campaign.dailyCallCap());
+        entity.setRecurrenceType(campaign.recurrenceType());
+        entity.setRecurringDayOfMonth(campaign.recurringDayOfMonth());
+        entity.setCronExpression(campaign.cronExpression());
+        entity.setAutoResetTargets(campaign.autoResetTargets());
     }
 }

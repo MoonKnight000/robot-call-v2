@@ -1,10 +1,10 @@
 package uz.murodjon.robotcallv2.company.application.service;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
 
 @Component
 public class CompanyAccessGuard {
@@ -18,7 +18,7 @@ public class CompanyAccessGuard {
     }
 
     public void requireOwnOrSuperadmin(long companyId) {
-        if (currentUser.role().map(role -> role == UserRole.SUPERADMIN).orElse(false)) {
+        if (currentUser.hasPermission(Permission.PLATFORM_ADMIN)) {
             return;
         }
         if (companyId != company.id()) {

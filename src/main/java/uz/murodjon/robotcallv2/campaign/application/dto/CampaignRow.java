@@ -1,21 +1,23 @@
 package uz.murodjon.robotcallv2.campaign.application.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
-import uz.murodjon.robotcallv2.campaign.domain.enums.*;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
-import java.util.Map;
 import java.util.Set;
 
 /**
  * {@link Campaign} enriched for the API response with names resolved from the ids it
  * carries (backend-uchun-talablar.md §16/§18) — a projection over {@code campaign},
- * {@code scenario} and {@code app_user}, so it takes the {@code <Noun>Row} suffix rather
+ * {@code ai_agent} and {@code app_user}, so it takes the {@code <Noun>Row} suffix rather
  * than bare {@code Campaign}.
  */
 public record CampaignRow(
@@ -23,18 +25,15 @@ public record CampaignRow(
         String name,
         CampaignType type,
         CampaignStatus status,
-        String goalPrompt,
-        String defaultLanguage,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
         int maxAttempts,
         int retryIntervalMinutes,
         int maxConcurrentCalls,
-        String ttsVoice,
         int dailyCallCap,
-        long scenarioId,
-        String scenarioName,
+        long aiAgentId,
+        String aiAgentName,
         long companyId,
         Long createdBy,
         String createdByName,
@@ -43,46 +42,26 @@ public record CampaignRow(
         String cronExpression,
         boolean autoResetTargets,
         Instant lastRunAt,
-        AmbientSound ambientSound,
-        boolean midCallSmsEnabled,
-        String midCallSmsTemplate,
-        VoicemailAction voicemailAction,
-        String voicemailMessage,
-        boolean dtmfInputEnabled,
-        boolean emotionAdaptiveVoice,
-        AgentPersona agentPersona,
-        Map<String, String> languageVoices,
-        Set<Long> sipTrunkIds,
         long totalTargets,
         long calledTargets,
         long pendingTargets,
         long completedTargets
 ) {
 
-    public static CampaignRow of(Campaign c, String scenarioName, String createdByName) {
-        return of(c, scenarioName, createdByName, CampaignTargetStats.ZERO);
+    public static CampaignRow of(Campaign c, String aiAgentName, String createdByName) {
+        return of(c, aiAgentName, createdByName, CampaignTargetStats.ZERO);
     }
 
-    public static CampaignRow of(Campaign c, String scenarioName, String createdByName, CampaignTargetStats stats) {
+    public static CampaignRow of(Campaign c, String aiAgentName, String createdByName, CampaignTargetStats stats) {
         CampaignTargetStats s = stats != null ? stats : CampaignTargetStats.ZERO;
         return new CampaignRow(
-                c.id(), c.name(), c.type(), c.status(), c.goalPrompt(), c.defaultLanguage(),
+                c.id(), c.name(), c.type(), c.status(),
                 c.dialWindowStart(), c.dialWindowEnd(), c.dialDays(), c.maxAttempts(),
-                c.retryIntervalMinutes(), c.maxConcurrentCalls(), c.ttsVoice(), c.dailyCallCap(),
-                c.scenarioId(), scenarioName, c.companyId(),
+                c.retryIntervalMinutes(), c.maxConcurrentCalls(), c.dailyCallCap(),
+                c.aiAgentId(), aiAgentName, c.companyId(),
                 c.createdBy(), createdByName,
                 c.recurrenceType() != null ? c.recurrenceType() : RecurrenceType.ONCE,
                 c.recurringDayOfMonth(), c.cronExpression(), c.autoResetTargets(), c.lastRunAt(),
-                c.ambientSound() != null ? c.ambientSound() : AmbientSound.OFF,
-                c.midCallSmsEnabled(),
-                c.midCallSmsTemplate(),
-                c.voicemailAction() != null ? c.voicemailAction() : VoicemailAction.HANGUP,
-                c.voicemailMessage(),
-                c.dtmfInputEnabled(),
-                c.emotionAdaptiveVoice(),
-                c.agentPersona() != null ? c.agentPersona() : AgentPersona.AI_ASSISTANT,
-                c.languageVoices(),
-                c.sipTrunkIdsOrEmpty(),
                 s.totalTargets(),
                 s.calledTargets(),
                 s.pendingTargets(),

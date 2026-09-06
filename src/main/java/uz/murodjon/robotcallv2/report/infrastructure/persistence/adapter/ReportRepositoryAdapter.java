@@ -418,13 +418,14 @@ public class ReportRepositoryAdapter implements ReportRepository {
                         + "FROM call_attempt a "
                         + "JOIN campaign_target t ON t.id = a.target_id "
                         + "LEFT JOIN campaign c ON c.id = t.campaign_id "
+                        + "LEFT JOIN ai_agent ag ON ag.id = c.ai_agent_id "
                         + "LEFT JOIN call_result r ON r.call_id = a.id "
                         + "WHERE a.company_id = :companyId AND a.started_at >= :from AND a.started_at < :to");
         if (campaignId != null) {
             sql.append(" AND t.campaign_id = :campaignId");
         }
         if (scenarioId != null) {
-            sql.append(" AND c.scenario_id = :scenarioId");
+            sql.append(" AND ag.scenario_id = :scenarioId");
         }
         if (escalated != null) {
             sql.append(" AND coalesce(r.escalated, false) = :escalated");

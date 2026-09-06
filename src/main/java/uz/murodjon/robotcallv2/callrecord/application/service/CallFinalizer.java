@@ -17,6 +17,7 @@ import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
+import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
@@ -48,13 +49,14 @@ public class CallFinalizer {
     private final EngineConfigService engineConfigService;
     private final TtsVoiceService voices;
     private final VadProperties vadProps;
+    private final CallMemoryWriter memoryWriter;
     private final String llmModel;
 
     public CallFinalizer(CallRecordService records, SummaryService summaryService, CallQualityJudge qualityJudge,
                          AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
                          CampaignService campaignService, NotificationService notificationService,
                          VoiceMetrics metrics, EngineConfigService engineConfigService, TtsVoiceService voices,
-                         VadProperties vadProps,
+                         VadProperties vadProps, CallMemoryWriter memoryWriter,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
         this.summaryService = summaryService;
@@ -68,6 +70,7 @@ public class CallFinalizer {
         this.engineConfigService = engineConfigService;
         this.voices = voices;
         this.vadProps = vadProps;
+        this.memoryWriter = memoryWriter;
         this.llmModel = llmModel;
     }
 
@@ -114,9 +117,11 @@ public class CallFinalizer {
             }
 
             CallSummary summary = null;
+            Scenario scenarioRow = null;
             try {
                 String transcript = records.transcriptText(callAttemptId);
-                ScenarioDefinition scenario = scenarioService.requireScenario(scenarioId).definition();
+                scenarioRow = scenarioService.requireScenario(scenarioId);
+                ScenarioDefinition scenario = scenarioRow.definition();
                 summary = summaryService.summarize(transcript, scenario);
                 if (disposition == null && promised(summary)) {
                     disposition = Disposition.PROMISE_TO_PAY;
@@ -143,6 +148,8 @@ public class CallFinalizer {
                 } catch (Exception e) {
                     log.error("[{}] writeResult failed: {}", callAttemptId, e.getMessage());
                 }
+
+                memoryWriter.remember(callAttemptId, companyId, scenarioRow, disposition, summary);
 
                 try {
                     if (summary.callbackAt() != null && !summary.callbackAt().isBlank()) {

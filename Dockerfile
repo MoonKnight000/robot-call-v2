@@ -48,6 +48,11 @@ RUN --mount=type=cache,target=/gradle-home,sharing=locked \
     && cp "$(ls -1 build/libs/*.jar | grep -v -- '-plain.jar' | head -n1)" /out/app.jar
 
 FROM eclipse-temurin:21-jre
+# ffmpeg decodes browser recordings (WebM/Opus, MP4/AAC) for the STT preview endpoint
+# (AudioTranscoder) — nothing in the JVM reads those containers.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/app.jar /app/app.jar
 # docker-compose points VAD_MODEL_PATH here. Kept out of application.yml's default so a

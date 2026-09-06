@@ -124,7 +124,7 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("header", MAPPER.createObjectNode().put("action", "session-update"));
         ObjectNode payload = root.putObject("payload");
-        payload.put("model", q.model());
+        payload.put("model", config.modelOr(q.model()));
         // The call's own voice wins; the configured one is the deployment default.
         payload.put("voice", config.voice() != null && !config.voice().isBlank()
                 ? config.voice() : q.voice());

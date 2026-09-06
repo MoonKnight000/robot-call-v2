@@ -5,6 +5,10 @@ import java.util.List;
 public record ToolDef(
         String name,
         String description,
-        List<ToolParamDef> params
+        List<ToolParamDef> params,
+        String preToolSpeech
 ) {
+    public ToolDef(String name, String description, List<ToolParamDef> params) {
+        this(name, description, params, null);
+    }
 }

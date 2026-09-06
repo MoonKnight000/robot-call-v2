@@ -27,7 +27,7 @@ public class DialogTools {
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
             "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
             "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
-            "sendSmsPaymentLink", "requestPaymentExtension", "endCall"
+            "sendSmsPaymentLink", "requestPaymentExtension", "endCall", "sendDtmfTones"
     );
 
     private final DialogOutcomeSink session;
@@ -150,6 +150,29 @@ public class DialogTools {
         session.recordOutcome("extensionReason", reason);
         log.info("[{}] payment extension requested: {} days, reason: {}", session.channelId(), extensionDays, reason);
         return "To'lov muddatini uzaytirish bo'yicha ariza qayd etildi: " + extensionDays + " kun.";
+    }
+
+    /**
+     * IVR navigation. Only reaches the model when the scenario declares a {@code ToolDef}
+     * named {@code sendDtmfTones} — an outbound scenario that dials companies rather than
+     * people (see {@code TurnTools#build}). The scenario's own {@code ToolDef.description}
+     * is not used here: the wording below is what stops the model asking the human to press
+     * the key, or guessing a digit it has not heard the menu name.
+     */
+    @Tool(description = "Narigi tomonda avtomat menyu (IVR) gapirganda kerakli tugmani BOT o'zi bosadi. "
+            + "Menyuni oxirigacha yoki kerakli punkt aytilgunicha tinglang, keyin shu tool'ni faqat mos "
+            + "raqam bilan chaqiring. Odamdan tugma bosishni SO'RAMANG. Qaysi raqam ekani aniq bo'lmasa "
+            + "chaqirmang — tinglashda davom eting.")
+    public String sendDtmfTones(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+                                @ToolParam(description = "bosiladigan tugmalar: 0-9, * yoki #. Odatda bitta raqam") String digits,
+                                @ToolParam(description = "menyuning shu raqamni qaysi so'z bilan atagani", required = false) String menuOption) {
+        recordReply(reply);
+        if (!session.sendDtmf(digits)) {
+            log.warn("[{}] sendDtmfTones('{}') on a call with no keypad", session.channelId(), digits);
+            return "XATO: bu qo'ng'iroqda tugma bosib bo'lmaydi. Menyuni kutmang, gapirib davom eting.";
+        }
+        log.info("[{}] IVR: pressed '{}' for '{}'", session.channelId(), digits, menuOption);
+        return "'" + digits + "' bosildi. Endi menyu javobini kuting.";
     }
 
     @Tool(description = "Suhbatni yakunlaydi va natijani belgilaydi")

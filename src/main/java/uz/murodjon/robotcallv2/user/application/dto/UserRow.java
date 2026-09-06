@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.user.application.dto;
 
 import uz.murodjon.robotcallv2.user.domain.entity.User;
-import uz.murodjon.robotcallv2.user.domain.enums.UserRole;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.time.Instant;
@@ -13,14 +12,16 @@ public record UserRow(
         String name,
         String username,
         String email,
-        UserRole role,
+        long roleId,
+        String roleCode,
+        String roleName,
         UserStatus status,
         Instant lastLoginAt,
         Instant createdAt
 ) {
 
     public static UserRow of(User u) {
-        return new UserRow(u.id(), u.companyId(), u.name(), u.username(), u.email(), u.role(), u.status(),
-                u.lastLoginAt(), u.createdAt());
+        return new UserRow(u.id(), u.companyId(), u.name(), u.username(), u.email(), u.roleId(), u.roleCode(),
+                u.roleName(), u.status(), u.lastLoginAt(), u.createdAt());
     }
 }
