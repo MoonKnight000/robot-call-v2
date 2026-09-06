@@ -48,7 +48,7 @@ public class CallFinalizer {
     private final VoiceMetrics metrics;
     private final EngineConfigService engineConfigService;
     private final TtsVoiceService voices;
-    private final VadProperties vadProps;
+    private final VadProperties vadProperties;
     private final CallMemoryWriter memoryWriter;
     private final String llmModel;
 
@@ -56,7 +56,7 @@ public class CallFinalizer {
                          AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
                          CampaignService campaignService, NotificationService notificationService,
                          VoiceMetrics metrics, EngineConfigService engineConfigService, TtsVoiceService voices,
-                         VadProperties vadProps, CallMemoryWriter memoryWriter,
+                         VadProperties vadProperties, CallMemoryWriter memoryWriter,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
         this.summaryService = summaryService;
@@ -69,7 +69,7 @@ public class CallFinalizer {
         this.metrics = metrics;
         this.engineConfigService = engineConfigService;
         this.voices = voices;
-        this.vadProps = vadProps;
+        this.vadProperties = vadProperties;
         this.memoryWriter = memoryWriter;
         this.llmModel = llmModel;
     }
@@ -120,7 +120,7 @@ public class CallFinalizer {
             Scenario scenarioRow = null;
             try {
                 String transcript = records.transcriptText(callAttemptId);
-                scenarioRow = scenarioService.requireScenario(scenarioId);
+                scenarioRow = scenarioService.requireScenario(companyId, scenarioId);
                 ScenarioDefinition scenario = scenarioRow.definition();
                 summary = summaryService.summarize(transcript, scenario);
                 if (disposition == null && promised(summary)) {
@@ -157,7 +157,7 @@ public class CallFinalizer {
                         if (targetId != 0L) {
                             Instant callbackInstant = parseCallbackInstant(summary.callbackAt());
                             if (callbackInstant != null && callbackInstant.isAfter(Instant.now())) {
-                                campaignService.scheduleCallback(targetId, callbackInstant);
+                                campaignService.scheduleCallback(companyId, targetId, callbackInstant);
                             }
                         }
                     }
@@ -247,7 +247,7 @@ public class CallFinalizer {
         if (d == Disposition.VOICEMAIL) {
             return "VOICEMAIL";
         }
-        if (vadProps.amd() == null || !vadProps.amd().enabled()) {
+        if (vadProperties.amd() == null || !vadProperties.amd().enabled()) {
             return "DISABLED";
         }
         return "HUMAN";

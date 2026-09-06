@@ -8,11 +8,11 @@ public interface TtsVoiceUseCase {
 
     List<TtsVoice> findSelectable(String language);
 
-    List<TtsVoice> findSelectableForCurrentCompany(String language);
+    List<TtsVoice> findSelectableByCompanyId(long companyId, String language);
 
     TtsVoice find(String id);
 
-    boolean isSelectable(String id);
+    boolean isSelectable(long companyId, String id);
 
-    List<String> selectableIds();
+    List<String> findSelectableIds(long companyId);
 }

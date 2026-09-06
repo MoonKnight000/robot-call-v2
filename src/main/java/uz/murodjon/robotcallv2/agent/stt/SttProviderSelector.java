@@ -28,11 +28,11 @@ public class SttProviderSelector {
     private final Map<String, SttProvider> byName = new LinkedHashMap<>();
     private final SttProvider defaultProvider;
 
-    public SttProviderSelector(List<SttProvider> providers, SttProperties props) {
+    public SttProviderSelector(List<SttProvider> providers, SttProperties sttProperties) {
         for (SttProvider provider : providers) {
             byName.put(provider.name().toLowerCase(), provider);
         }
-        this.defaultProvider = choose(providers, props.provider());
+        this.defaultProvider = choose(providers, sttProperties.provider());
     }
 
     private static SttProvider choose(List<SttProvider> providers, String configured) {

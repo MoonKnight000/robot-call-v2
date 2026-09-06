@@ -2,8 +2,7 @@ package uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkFilter;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.application.mapper.SipTrunkMapper;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
@@ -18,25 +17,22 @@ import java.util.List;
 @Component
 public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
 
-    private final SipTrunkJpaRepository jpa;
-    private final CurrentCompany company;
+    private final SipTrunkJpaRepository jpaRepository;
     private final SipTrunkMapper mapper;
 
-    public SipTrunkRepositoryAdapter(SipTrunkJpaRepository jpa, CurrentCompany company, SipTrunkMapper mapper) {
-        this.jpa = jpa;
-        this.company = company;
+    public SipTrunkRepositoryAdapter(SipTrunkJpaRepository jpaRepository, SipTrunkMapper mapper) {
+        this.jpaRepository = jpaRepository;
         this.mapper = mapper;
     }
 
     @Override
-    public long create(String name, String pjsipEndpoint, String callerId, boolean makeDefault,
+    public long create(long companyId, String name, String pjsipEndpoint, String callerId, boolean makeDefault,
                        String host, int port, String sipUsername, String sipPasswordEnc,
                        SipTrunkTransport transport, List<String> codecs) {
-        long companyId = company.id();
-        boolean first = !jpa.existsByCompanyId(companyId);
+        boolean first = !jpaRepository.existsByCompanyId(companyId);
         boolean asDefault = makeDefault || first;
         if (asDefault) {
-            jpa.clearDefault(companyId);
+            jpaRepository.clearDefault(companyId);
         }
         SipTrunkEntity entity = new SipTrunkEntity();
         entity.setCompanyId(companyId);
@@ -52,24 +48,24 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
         entity.setDefault(asDefault);
         entity.setEnabled(true);
         entity.setCreatedAt(Instant.now());
-        return jpa.save(entity).getId();
+        return jpaRepository.save(entity).getId();
     }
 
     @Override
-    public SipTrunk find(long id) {
-        return jpa.findByIdAndCompanyId(id, company.id()).map(mapper::entityToDomain).orElse(null);
+    public SipTrunk find(long companyId, long id) {
+        return jpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::entityToDomain).orElse(null);
     }
 
     @Override
-    public boolean hasDefault() {
-        return jpa.existsByCompanyIdAndIsDefaultTrue(company.id());
+    public boolean hasDefault(long companyId) {
+        return jpaRepository.existsByCompanyIdAndIsDefaultTrue(companyId);
     }
 
     @Override
-    public void update(long id, String name, String pjsipEndpoint, String callerId, boolean enabled,
+    public void update(long companyId, long id, String name, String pjsipEndpoint, String callerId, boolean enabled,
                        String host, int port, String sipUsername, String sipPasswordEnc,
                        SipTrunkTransport transport, List<String> codecs) {
-        jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
+        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             entity.setName(name);
             entity.setPjsipEndpoint(pjsipEndpoint);
             entity.setCallerId(callerId);
@@ -82,55 +78,54 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
             }
             entity.setTransport(transport);
             entity.setCodecs(codecs);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
-    public void updatePjsipEndpoint(long id, String pjsipEndpoint) {
-        jpa.findByIdAndCompanyId(id, company.id()).ifPresent(entity -> {
+    public void updatePjsipEndpoint(long companyId, long id, String pjsipEndpoint) {
+        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             entity.setPjsipEndpoint(pjsipEndpoint);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
     @Transactional
-    public void makeDefault(long id) {
-        long companyId = company.id();
-        jpa.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
-            jpa.clearDefault(companyId);
+    public void makeDefault(long companyId, long id) {
+        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
+            jpaRepository.clearDefault(companyId);
             entity.setDefault(true);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
-    public void delete(long id) {
-        jpa.findByIdAndCompanyId(id, company.id()).ifPresent(jpa::delete);
+    public void delete(long companyId, long id) {
+        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(jpaRepository::delete);
     }
 
     @Override
-    public List<SipTrunk> findAll(SipTrunkFilter filter) {
-        return jpa.findByCompanyId(company.id(), filter.pageable()).stream()
+    public List<SipTrunk> findAll(long companyId, SipTrunkFilter filter) {
+        return jpaRepository.findByCompanyId(companyId, filter.pageable()).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }
 
     @Override
-    public long count(SipTrunkFilter filter) {
-        return jpa.countByCompanyId(company.id());
+    public long count(long companyId, SipTrunkFilter filter) {
+        return jpaRepository.countByCompanyId(companyId);
     }
 
     @Override
     public SipTrunk findDefaultForCompany(long companyId) {
-        return jpa.findByCompanyIdAndIsDefaultTrueAndEnabledTrue(companyId)
+        return jpaRepository.findByCompanyIdAndIsDefaultTrueAndEnabledTrue(companyId)
                 .map(mapper::entityToDomain).orElse(null);
     }
 
     @Override
     public List<SipTrunk> findAllEnabledByCompany(long companyId) {
-        return jpa.findByCompanyIdAndEnabledTrue(companyId).stream()
+        return jpaRepository.findByCompanyIdAndEnabledTrue(companyId).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }
@@ -140,13 +135,13 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
         if (ids == null || ids.isEmpty()) {
             return List.of();
         }
-        return jpa.findByIdInAndCompanyIdAndEnabledTrue(ids, companyId).stream()
+        return jpaRepository.findByIdInAndCompanyIdAndEnabledTrue(ids, companyId).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }
 
     @Override
     public List<SipTrunk> findAllManagedEnabled() {
-        return jpa.findByHostIsNotNullAndEnabledTrue().stream().map(mapper::entityToDomain).toList();
+        return jpaRepository.findByHostIsNotNullAndEnabledTrue().stream().map(mapper::entityToDomain).toList();
     }
 }

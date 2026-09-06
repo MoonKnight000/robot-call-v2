@@ -14,7 +14,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentValidator;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
@@ -50,25 +49,22 @@ public class AiAgentService implements AiAgentUseCase {
     private final TtsVoiceUseCase ttsVoiceUseCase;
     private final CompanyConfigService companyConfigService;
     private final UserService userService;
-    private final CurrentCompany currentCompany;
     private final AuditService auditService;
 
     public AiAgentService(AiAgentRepository repository, ScenarioUseCase scenarioUseCase,
                           TtsVoiceUseCase ttsVoiceUseCase, CompanyConfigService companyConfigService,
-                          UserService userService, CurrentCompany currentCompany, AuditService auditService) {
+                          UserService userService, AuditService auditService) {
         this.repository = repository;
         this.scenarioUseCase = scenarioUseCase;
         this.ttsVoiceUseCase = ttsVoiceUseCase;
         this.companyConfigService = companyConfigService;
         this.userService = userService;
-        this.currentCompany = currentCompany;
         this.auditService = auditService;
     }
 
     @Override
-    public AiAgentRow createAgent(CreateAiAgentRequest request) {
-        long companyId = currentCompany.id();
-        scenarioUseCase.requireScenario(request.scenarioId());
+    public AiAgentRow createAgent(long companyId, CreateAiAgentRequest request) {
+        scenarioUseCase.requireScenario(companyId, request.scenarioId());
         AiAgentValidator.validate(request.temperature(), request.maxOutputTokens());
         AiAgent agent = new AiAgent(
                 0,
@@ -77,7 +73,7 @@ public class AiAgentService implements AiAgentUseCase {
                 request.description(),
                 request.scenarioId(),
                 companyConfigService.resolveLanguage(companyId, request.language()),
-                requireKnownVoice(request.ttsVoice()),
+                requireKnownVoice(companyId, request.ttsVoice()),
                 requireKnownVoicePerLanguage(companyId, request.languageVoices()),
                 request.persona() != null ? request.persona() : AgentPersona.AI_ASSISTANT,
                 blankToNull(request.llmModel()),
@@ -95,16 +91,15 @@ public class AiAgentService implements AiAgentUseCase {
                 null,
                 null);
         long id = repository.create(agent);
-        auditService.record("AI_AGENT_CREATE", "ai_agent", String.valueOf(id),
+        auditService.record(companyId, "AI_AGENT_CREATE", "ai_agent", String.valueOf(id),
                 agent.name() + " (scenario " + agent.scenarioId() + ", " + agent.language() + ")");
-        return findAgentRow(id);
+        return findAgentRow(companyId, id);
     }
 
     @Override
-    public AiAgentRow updateAgent(long id, UpdateAiAgentRequest request) {
-        long companyId = currentCompany.id();
+    public AiAgentRow updateAgent(long companyId, long id, UpdateAiAgentRequest request) {
         AiAgent existing = requireAgent(companyId, id);
-        scenarioUseCase.requireScenario(request.scenarioId());
+        scenarioUseCase.requireScenario(companyId, request.scenarioId());
         AiAgentValidator.validate(request.temperature(), request.maxOutputTokens());
         AiAgent agent = new AiAgent(
                 id,
@@ -113,7 +108,7 @@ public class AiAgentService implements AiAgentUseCase {
                 request.description(),
                 request.scenarioId(),
                 companyConfigService.resolveLanguage(companyId, request.language()),
-                requireKnownVoice(request.ttsVoice()),
+                requireKnownVoice(companyId, request.ttsVoice()),
                 requireKnownVoicePerLanguage(companyId, request.languageVoices()),
                 request.persona() != null ? request.persona() : AgentPersona.AI_ASSISTANT,
                 blankToNull(request.llmModel()),
@@ -131,29 +126,28 @@ public class AiAgentService implements AiAgentUseCase {
                 existing.createdAt(),
                 existing.createdBy());
         repository.update(companyId, id, agent);
-        auditService.record("AI_AGENT_UPDATE", "ai_agent", String.valueOf(id), agent.name());
-        return findAgentRow(id);
+        auditService.record(companyId, "AI_AGENT_UPDATE", "ai_agent", String.valueOf(id), agent.name());
+        return findAgentRow(companyId, id);
     }
 
     @Override
-    public AiAgentRow findAgentRow(long id) {
-        AiAgent agent = requireAgent(currentCompany.id(), id);
-        String scenarioName = scenarioUseCase.scenarioNamesByIds(List.of(agent.scenarioId()))
+    public AiAgentRow findAgentRow(long companyId, long id) {
+        AiAgent agent = requireAgent(companyId, id);
+        String scenarioName = scenarioUseCase.scenarioNamesByIds(companyId, List.of(agent.scenarioId()))
                 .get(agent.scenarioId());
         String createdByName = agent.createdBy() != null
-                ? userService.namesByIds(List.of(agent.createdBy())).get(agent.createdBy())
+                ? userService.namesByIds(companyId, List.of(agent.createdBy())).get(agent.createdBy())
                 : null;
         return AiAgentRow.of(agent, scenarioName, createdByName);
     }
 
     @Override
-    public PageableData<AiAgentRow> filterAgents(AiAgentFilter filter) {
-        long companyId = currentCompany.id();
+    public PageableData<AiAgentRow> filterAgents(long companyId, AiAgentFilter filter) {
         List<AiAgent> agents = repository.findAll(companyId, filter);
         long total = repository.count(companyId, filter);
-        Map<Long, String> scenarioNames = scenarioUseCase.scenarioNamesByIds(
+        Map<Long, String> scenarioNames = scenarioUseCase.scenarioNamesByIds(companyId,
                 agents.stream().map(AiAgent::scenarioId).collect(Collectors.toSet()));
-        Map<Long, String> creatorNames = userService.namesByIds(
+        Map<Long, String> creatorNames = userService.namesByIds(companyId,
                 agents.stream().map(AiAgent::createdBy).filter(Objects::nonNull).collect(Collectors.toSet()));
         List<AiAgentRow> rows = agents.stream()
                 .map(agent -> AiAgentRow.of(agent, scenarioNames.get(agent.scenarioId()),
@@ -163,8 +157,7 @@ public class AiAgentService implements AiAgentUseCase {
     }
 
     @Override
-    public void deleteAgent(long id) {
-        long companyId = currentCompany.id();
+    public void deleteAgent(long companyId, long id) {
         requireAgent(companyId, id);
         // Refused rather than cascaded: deleting an agent a campaign still runs would leave
         // that campaign unable to place a single call, and the owner would find out by
@@ -175,7 +168,7 @@ public class AiAgentService implements AiAgentUseCase {
             throw new ConflictException(ErrorCode.AI_AGENT_IN_USE, id, campaigns, routes);
         }
         repository.delete(companyId, id);
-        auditService.record("AI_AGENT_DELETE", "ai_agent", String.valueOf(id), null);
+        auditService.record(companyId, "AI_AGENT_DELETE", "ai_agent", String.valueOf(id), null);
     }
 
     @Override
@@ -199,7 +192,7 @@ public class AiAgentService implements AiAgentUseCase {
         Map<String, String> checked = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : languageVoices.entrySet()) {
             String language = companyConfigService.resolveLanguage(companyId, entry.getKey());
-            String voiceId = requireKnownVoice(entry.getValue());
+            String voiceId = requireKnownVoice(companyId, entry.getValue());
             if (voiceId == null) {
                 continue;
             }
@@ -213,13 +206,14 @@ public class AiAgentService implements AiAgentUseCase {
         return checked;
     }
 
-    private String requireKnownVoice(String ttsVoice) {
+    private String requireKnownVoice(long companyId, String ttsVoice) {
         if (ttsVoice == null || ttsVoice.isBlank()) {
             return null;
         }
         String trimmed = ttsVoice.trim();
-        if (!ttsVoiceUseCase.isSelectable(trimmed)) {
-            throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed, ttsVoiceUseCase.selectableIds());
+        if (!ttsVoiceUseCase.isSelectable(companyId, trimmed)) {
+            throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed,
+                    ttsVoiceUseCase.findSelectableIds(companyId));
         }
         return trimmed;
     }

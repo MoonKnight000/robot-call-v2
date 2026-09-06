@@ -67,6 +67,7 @@ import uz.murodjon.robotcallv2.agent.vad.SileroVad;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.agent.vad.VadStream;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.callrecord.application.dto.CallOriginateResponse;
 import uz.murodjon.robotcallv2.callrecord.application.dto.LiveCallRow;
 import uz.murodjon.robotcallv2.callrecord.application.dto.PlayResponse;
@@ -77,7 +78,6 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUs
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
@@ -180,23 +180,23 @@ public class AriService {
      */
     private static final double POOR_RTP_LOSS_PERCENT = 5.0;
 
-    private final AsteriskProperties props;
-    private final RtpProperties rtpProps;
+    private final AsteriskProperties asteriskProperties;
+    private final RtpProperties rtpProperties;
     private final RtpPortAllocator portAllocator;
     private final EventLoopGroup rtpEventLoopGroup;
     private final ExecutorService callExecutor;
-    private final SttProperties sttProps;
+    private final SttProperties sttProperties;
     private final SttProviderSelector sttProviderSelector;
     private final EngineConfigService engineConfigService;
-    private final TtsProperties ttsProps;
+    private final TtsProperties ttsProperties;
     private final TtsRouter ttsRouter;
-    private final DialogProperties dialogProps;
+    private final DialogProperties dialogProperties;
     private final DialogEngine dialogEngine;
     private final RealtimeDialogEngine realtimeDialogEngine;
     private final DialogRouter dialogRouter;
-    private final VadProperties vadProps;
+    private final VadProperties vadProperties;
     private final ObjectProvider<SileroVad> vadProvider;
-    private final SmartTurnProperties turnProps;
+    private final SmartTurnProperties smartTurnProperties;
     private final ObjectProvider<SmartTurnDetector> turnDetectorProvider;
     private final CallRecordService callRecordService;
     private final CallFinalizer callFinalizer;
@@ -207,16 +207,16 @@ public class AriService {
     private final AiAgentUseCase aiAgentService;
     private final InboundRouteService inboundRouteService;
     private final SipTrunkService sipTrunkService;
-    private final CurrentCompany currentCompany;
     private final CrmClient crmClient;
     private final ClientMemoryService clientMemoryService;
-    private final OperatorProperties operatorProps;
+    private final OperatorProperties operatorProperties;
     private final VoiceMetrics metrics;
     private final CallRouteRegistry routeRegistry;
     private final DoNotCallRepository doNotCallRepository;
+    private final CompanyProperties companyProperties;
     private final AuditService audit;
     private final LiveBroadcastService broadcast;
-    private final LiveProperties liveProps;
+    private final LiveProperties liveProperties;
     private final Clock clock;
     private final NotificationService notificationService;
     /** A/B counters for the campaign variant an outbound call was assigned (§ campaign variants). */
@@ -241,6 +241,12 @@ public class AriService {
      * channel here never also has a real {@code pendingManualScenarios} entry.
      */
     private final Map<String, ScenarioDefinition> pendingManualDefinitions = new ConcurrentHashMap<>();
+
+    /**
+     * The company a manual/test call was placed for, kept until its {@code StasisStart}
+     * arrives — that thread has no request behind it, so the tenant cannot be re-derived.
+     */
+    private final Map<String, Long> pendingManualCompanies = new ConcurrentHashMap<>();
 
     /**
      * Browser test calls handed out by {@link #prepareWebTest}, keyed by session id until
@@ -268,23 +274,23 @@ public class AriService {
 
     private volatile ARI ari;
 
-    public AriService(AsteriskProperties props,
-                      RtpProperties rtpProps,
+    public AriService(AsteriskProperties asteriskProperties,
+                      RtpProperties rtpProperties,
                       RtpPortAllocator portAllocator,
                       EventLoopGroup rtpEventLoopGroup,
                       ExecutorService callExecutor,
-                      SttProperties sttProps,
+                      SttProperties sttProperties,
                       SttProviderSelector sttProviderSelector,
                       EngineConfigService engineConfigService,
-                      TtsProperties ttsProps,
+                      TtsProperties ttsProperties,
                       TtsRouter ttsRouter,
-                      DialogProperties dialogProps,
+                      DialogProperties dialogProperties,
                       DialogEngine dialogEngine,
                       RealtimeDialogEngine realtimeDialogEngine,
                       DialogRouter dialogRouter,
-                      VadProperties vadProps,
+                      VadProperties vadProperties,
                       ObjectProvider<SileroVad> vadProvider,
-                      SmartTurnProperties turnProps,
+                      SmartTurnProperties smartTurnProperties,
                       ObjectProvider<SmartTurnDetector> turnDetectorProvider,
                       CallRecordService callRecordService,
                       CallFinalizer callFinalizer,
@@ -295,37 +301,37 @@ public class AriService {
                       AiAgentUseCase aiAgentService,
                       InboundRouteService inboundRouteService,
                       SipTrunkService sipTrunkService,
-                      CurrentCompany currentCompany,
+                      CompanyProperties companyProperties,
                       CrmClient crmClient,
                       ClientMemoryService clientMemoryService,
-                      OperatorProperties operatorProps,
+                      OperatorProperties operatorProperties,
                       VoiceMetrics metrics,
                       CallRouteRegistry routeRegistry,
                       DoNotCallRepository doNotCallRepository,
                       AuditService audit,
                       LiveBroadcastService broadcast,
-                      LiveProperties liveProps,
+                      LiveProperties liveProperties,
                       Clock clock,
                       NotificationService notificationService,
                       CampaignVariantUseCase campaignVariants,
                       FactWebhookClient factWebhookClient) {
-        this.props = props;
-        this.rtpProps = rtpProps;
+        this.asteriskProperties = asteriskProperties;
+        this.rtpProperties = rtpProperties;
         this.portAllocator = portAllocator;
         this.rtpEventLoopGroup = rtpEventLoopGroup;
         this.callExecutor = callExecutor;
-        this.sttProps = sttProps;
+        this.sttProperties = sttProperties;
         this.sttProviderSelector = sttProviderSelector;
         this.engineConfigService = engineConfigService;
-        this.ttsProps = ttsProps;
+        this.ttsProperties = ttsProperties;
         this.ttsRouter = ttsRouter;
-        this.dialogProps = dialogProps;
+        this.dialogProperties = dialogProperties;
         this.dialogEngine = dialogEngine;
         this.realtimeDialogEngine = realtimeDialogEngine;
         this.dialogRouter = dialogRouter;
-        this.vadProps = vadProps;
+        this.vadProperties = vadProperties;
         this.vadProvider = vadProvider;
-        this.turnProps = turnProps;
+        this.smartTurnProperties = smartTurnProperties;
         this.turnDetectorProvider = turnDetectorProvider;
         this.callRecordService = callRecordService;
         this.callFinalizer = callFinalizer;
@@ -336,16 +342,16 @@ public class AriService {
         this.aiAgentService = aiAgentService;
         this.inboundRouteService = inboundRouteService;
         this.sipTrunkService = sipTrunkService;
-        this.currentCompany = currentCompany;
+        this.companyProperties = companyProperties;
         this.crmClient = crmClient;
         this.clientMemoryService = clientMemoryService;
-        this.operatorProps = operatorProps;
+        this.operatorProperties = operatorProperties;
         this.metrics = metrics;
         this.routeRegistry = routeRegistry;
         this.doNotCallRepository = doNotCallRepository;
         this.audit = audit;
         this.broadcast = broadcast;
-        this.liveProps = liveProps;
+        this.liveProperties = liveProperties;
         this.clock = clock;
         this.notificationService = notificationService;
         this.campaignVariants = campaignVariants;
@@ -364,16 +370,16 @@ public class AriService {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void warnAboutInertTurnSettings() {
-        boolean gated = vadProps.enabled() && sttProps.enabled()
-                && sttProps.vadGating() != null && sttProps.vadGating().enabled();
+        boolean gated = vadProperties.enabled() && sttProperties.enabled()
+                && sttProperties.vadGating() != null && sttProperties.vadGating().enabled();
         if (gated) {
             return;
         }
-        if (turnProps.enabled()) {
+        if (smartTurnProperties.enabled()) {
             log.warn("voice-agent.turn.enabled is on but no speech gate is installed — Smart Turn "
                     + "(extend and early close) will not run. It needs voice-agent.stt.vad-gating.enabled=true.");
         }
-        EndpointingProperties endpointing = sttProps.endpointing();
+        EndpointingProperties endpointing = sttProperties.endpointing();
         if (endpointing != null && endpointing.enabled()) {
             log.warn("voice-agent.stt.endpointing.enabled is on but no speech gate is installed — "
                     + "the recognizer keeps deciding end-of-utterance. It needs voice-agent.stt.vad-gating.enabled=true.");
@@ -398,15 +404,15 @@ public class AriService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void connect() {
-        if (!props.enabled()) {
+        if (!asteriskProperties.enabled()) {
             log.info("Asterisk ARI disabled (voice-agent.asterisk.enabled=false); not connecting");
             return;
         }
         try {
             BaseAriAction.setObjectMapperLessStrict();
-            ari = ARI.build(props.ariUrl(), props.appName(), props.ariUser(), props.ariPassword(),
+            ari = ARI.build(asteriskProperties.ariUrl(), asteriskProperties.appName(), asteriskProperties.ariUser(), asteriskProperties.ariPassword(),
                     AriVersion.IM_FEELING_LUCKY);
-            ari.events().eventWebsocket(props.appName()).execute(new AriWSHelper() {
+            ari.events().eventWebsocket(asteriskProperties.appName()).execute(new AriWSHelper() {
                 @Override
                 public void onStasisStart(StasisStart event) {
                     handleStasisStart(event);
@@ -432,14 +438,10 @@ public class AriService {
                     handleDtmf(event);
                 }
             });
-            log.info("Connected to Asterisk ARI at {} as app '{}'", props.ariUrl(), props.appName());
+            log.info("Connected to Asterisk ARI at {} as app '{}'", asteriskProperties.ariUrl(), asteriskProperties.appName());
         } catch (Exception e) {
-            log.error("Failed to connect to Asterisk ARI at {}: {}", props.ariUrl(), e.getMessage());
+            log.error("Failed to connect to Asterisk ARI at {}: {}", asteriskProperties.ariUrl(), e.getMessage());
         }
-    }
-
-    public String originate(String rawNumber) {
-        return originate(rawNumber, currentCompany.id(), (Long) null);
     }
 
     public String originate(String rawNumber, long companyId) {
@@ -471,9 +473,9 @@ public class AriService {
             // for the call never to happen, and it has to leave a row like the rest.
             var request = requireConnection().channels()
                     .originate("PJSIP/" + dialNumber + "@" + endpoint)
-                    .setApp(props.appName())
+                    .setApp(asteriskProperties.appName())
                     .setAppArgs(callId)
-                    .setTimeout(props.answerTimeoutSec());
+                    .setTimeout(asteriskProperties.answerTimeoutSec());
             if (callerId != null && !callerId.isBlank()) {
                 request.setCallerId(callerId);
             }
@@ -497,28 +499,31 @@ public class AriService {
         }
     }
 
-    public CallOriginateResponse originateManualCall(String number, Long scenarioId) {
-        return originateManualCall(number, scenarioId, null);
+    public CallOriginateResponse originateManualCall(long companyId, String number, Long scenarioId) {
+        return originateManualCall(companyId, number, scenarioId, null);
     }
 
-    public CallOriginateResponse originateManualCall(String number, Long scenarioId, Long sipTrunkId) {
+    public CallOriginateResponse originateManualCall(long companyId, String number, Long scenarioId, Long sipTrunkId) {
         if (scenarioId != null) {
-            scenarioService.requireScenario(scenarioId);
+            scenarioService.requireScenario(companyId, scenarioId);
         }
-        String channelId = originate(number, currentCompany.id(), sipTrunkId);
+        String channelId = originate(number, companyId, sipTrunkId);
         pendingManualScenarios.put(channelId, scenarioId != null ? scenarioId : NO_EXPLICIT_SCENARIO);
-        audit.record("CALL_ORIGINATE_MANUAL", "call", channelId, number);
+        pendingManualCompanies.put(channelId, companyId);
+        audit.record(companyId, "CALL_ORIGINATE_MANUAL", "call", channelId, number);
         return new CallOriginateResponse(number, channelId);
     }
 
-    public CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition) {
-        return originateTestCall(number, definition, null);
+    public CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition) {
+        return originateTestCall(companyId, number, definition, null);
     }
 
-    public CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition, Long sipTrunkId) {
-        String channelId = originate(number, currentCompany.id(), sipTrunkId);
+    public CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition,
+                                                   Long sipTrunkId) {
+        String channelId = originate(number, companyId, sipTrunkId);
         pendingManualDefinitions.put(channelId, definition);
-        audit.record("CALL_ORIGINATE_TEST", "call", channelId, number);
+        pendingManualCompanies.put(channelId, companyId);
+        audit.record(companyId, "CALL_ORIGINATE_TEST", "call", channelId, number);
         return new CallOriginateResponse(number, channelId);
     }
 
@@ -529,13 +534,14 @@ public class AriService {
      * and, given a {@code targetId}, that target's facts; otherwise it is a manual test
      * call of the draft, the scenario, or the default test scenario.
      */
-    public String prepareWebTest(Long campaignId, Long targetId, Long scenarioId, ScenarioDefinition definition) {
+    public String prepareWebTest(long companyId, Long campaignId, Long targetId, Long scenarioId,
+                                 ScenarioDefinition definition) {
         Instant cutoff = Instant.now().minus(WEB_TEST_SESSION_TTL);
         pendingWebTests.values().removeIf(test -> test.createdAt().isBefore(cutoff));
-        OutboundCall outbound = campaignId != null ? webTestProfile(campaignId, targetId) : null;
+        OutboundCall outbound = campaignId != null ? webTestProfile(companyId, campaignId, targetId) : null;
         String sessionId = UUID.randomUUID().toString();
         pendingWebTests.put(sessionId, new WebTestCall(outbound, definition, scenarioId, Instant.now()));
-        audit.record("CALL_WEB_TEST", "call", sessionId,
+        audit.record(companyId, "CALL_WEB_TEST", "call", sessionId,
                 campaignId != null ? "campaign " + campaignId + (targetId != null ? " target " + targetId : "") : null);
         return sessionId;
     }
@@ -545,11 +551,12 @@ public class AriService {
      * for a real target, minus the target itself: the attempt is booked on the manual
      * target and the phone is a placeholder, so no campaign statistic moves.
      */
-    private OutboundCall webTestProfile(long campaignId, Long targetId) {
-        Campaign campaign = campaignService.requireCampaign(campaignId);
+    private OutboundCall webTestProfile(long companyId, long campaignId, Long targetId) {
+        Campaign campaign = campaignService.requireCampaign(companyId, campaignId);
         AiAgent agent = aiAgentService.requireAgent(campaign.companyId(), campaign.aiAgentId());
-        Scenario scenario = scenarioService.requireScenario(agent.scenarioId());
-        CampaignTarget target = targetId != null ? campaignService.requireTarget(campaignId, targetId) : null;
+        Scenario scenario = scenarioService.requireScenario(campaign.companyId(), agent.scenarioId());
+        CampaignTarget target = targetId != null
+                ? campaignService.requireTarget(companyId, campaignId, targetId) : null;
         String language = target != null && target.language() != null ? target.language() : agent.language();
         CallContext context;
         if (target != null) {
@@ -597,7 +604,7 @@ public class AriService {
     private SipTrunkRow resolveTrunkForCall(long companyId, Long sipTrunkId) {
         if (sipTrunkId != null) {
             try {
-                return sipTrunkService.requireTrunk(sipTrunkId);
+                return sipTrunkService.requireTrunk(companyId, sipTrunkId);
             } catch (Exception e) {
                 log.warn("Requested sipTrunkId {} could not be loaded, falling back to default: {}", sipTrunkId, e.getMessage());
             }
@@ -606,8 +613,8 @@ public class AriService {
     }
 
     private boolean isLocalNumber(String number) {
-        String local = props.localEndpoint();
-        String pattern = props.localNumberPattern();
+        String local = asteriskProperties.localEndpoint();
+        String pattern = asteriskProperties.localNumberPattern();
         return local != null && !local.isBlank()
                 && pattern != null && !pattern.isBlank()
                 && number != null && number.matches(pattern);
@@ -615,16 +622,16 @@ public class AriService {
 
     private String endpointFor(String number, SipTrunkRow trunk) {
         if (isLocalNumber(number)) {
-            return props.localEndpoint();
+            return asteriskProperties.localEndpoint();
         }
-        return trunk != null ? trunk.pjsipEndpoint() : props.trunkEndpoint();
+        return trunk != null ? trunk.pjsipEndpoint() : asteriskProperties.trunkEndpoint();
     }
 
     private String callerIdFor(SipTrunkRow trunk) {
         if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
             return trunk.callerId();
         }
-        return props.callerId();
+        return asteriskProperties.callerId();
     }
 
     private static String trunkOf(String channelName) {
@@ -662,7 +669,7 @@ public class AriService {
         if (file == null || file.isBlank()) {
             throw new ValidationException(ErrorCode.PLAYBACK_FILE_BLANK);
         }
-        Path base = Path.of(rtpProps.recordingDir()).toAbsolutePath().normalize();
+        Path base = Path.of(rtpProperties.recordingDir()).toAbsolutePath().normalize();
         Path resolved = base.resolve(file).normalize();
         if (!resolved.startsWith(base)) {
             throw new ValidationException(ErrorCode.PLAYBACK_FILE_OUTSIDE_BASE, base);
@@ -687,10 +694,10 @@ public class AriService {
         if (session == null) {
             throw new ConflictException(ErrorCode.CALL_NOT_ACTIVE, channelId);
         }
-        if (!ttsProps.enabled()) {
+        if (!ttsProperties.enabled()) {
             throw new ConflictException(ErrorCode.TTS_DISABLED);
         }
-        String lang = (language == null || language.isBlank()) ? ttsProps.defaultLanguage() : language;
+        String lang = (language == null || language.isBlank()) ? ttsProperties.defaultLanguage() : language;
         short[] pcm = ttsRouter.synthesize(text, lang, ttsVoice);
         log.info("TTS speak [{}] lang={} voice={} chars={} -> {} samples",
                 channelId, lang, ttsVoice != null ? ttsVoice : "default", text.length(), pcm.length);
@@ -754,7 +761,7 @@ public class AriService {
         String phone = outbound != null ? outbound.phone() : null;
         String campaignName = null;
         if (campaignId != null) {
-            Campaign campaign = campaignService.getCampaign(campaignId);
+            Campaign campaign = campaignService.getCampaign(outbound.companyId(), campaignId);
             campaignName = campaign != null ? campaign.name() : null;
         }
         CallSession session = sessions.get(s.channelId());
@@ -835,7 +842,7 @@ public class AriService {
 
     public void transferToOperator(String channelId) {
         CallSession session = sessions.get(channelId);
-        if (!operatorProps.enabled() || operatorProps.endpoint() == null || operatorProps.endpoint().isBlank()
+        if (!operatorProperties.enabled() || operatorProperties.endpoint() == null || operatorProperties.endpoint().isBlank()
                 || session == null) {
             log.info("Operator transfer unavailable for {}; hanging up", channelId);
             hangup(channelId);
@@ -843,14 +850,15 @@ public class AriService {
         }
         try {
             requireConnection().channels()
-                    .originate(operatorProps.endpoint())
-                    .setApp(props.appName())
+                    .originate(operatorProperties.endpoint())
+                    .setApp(asteriskProperties.appName())
                     .setAppArgs("operator," + session.bridgeId() + "," + channelId)
-                    .setTimeout(operatorProps.answerTimeoutSec())
+                    .setTimeout(operatorProperties.answerTimeoutSec())
                     .execute();
             log.info("Transferring {} to operator {} (bridge {})",
-                    channelId, operatorProps.endpoint(), session.bridgeId());
-            notificationService.notify(currentCompany.id(), NotificationType.OPERATOR_REQUEST,
+                    channelId, operatorProperties.endpoint(), session.bridgeId());
+            notificationService.notify(callRecordService.companyIdOf(session.callAttemptId()),
+                    NotificationType.OPERATOR_REQUEST,
                     "Operatorga so'rov", "Qo'ng'iroq " + channelId + " operatorga uzatildi", null);
         } catch (Exception e) {
             log.error("Operator transfer failed for {}: {}", channelId, e.getMessage());
@@ -926,14 +934,14 @@ public class AriService {
             String inboundFacts = null;
             if (inboundRoute != null) {
                 inboundAgent = aiAgentService.requireAgent(inboundRoute.companyId(), inboundRoute.aiAgentId());
-                inboundScenario = scenarioService.requireScenario(inboundAgent.scenarioId());
+                inboundScenario = scenarioService.requireScenario(inboundRoute.companyId(), inboundAgent.scenarioId());
                 inboundFacts = factWebhookClient.fetchFacts(inboundScenario.definition().factWebhook(),
                         FactWebhookRequest.inbound(extractCallerNumber(channel), extractDid(channel)));
             }
 
-            Files.createDirectories(Path.of(rtpProps.recordingDir()));
-            Path wav = Path.of(rtpProps.recordingDir(), channelId.replace('/', '_') + ".wav");
-            WavRecorder recorder = new WavRecorder(wav, SAMPLE_RATE, rtpProps.recordingMode());
+            Files.createDirectories(Path.of(rtpProperties.recordingDir()));
+            Path wav = Path.of(rtpProperties.recordingDir(), channelId.replace('/', '_') + ".wav");
+            WavRecorder recorder = new WavRecorder(wav, SAMPLE_RATE, rtpProperties.recordingMode());
 
             // Media before the line opens. Answering first and then looking the caller up
             // left the call connected with no RTP path for as long as that lookup took —
@@ -942,7 +950,7 @@ public class AriService {
             // told where to send audio before anyone can speak; the listener chain that
             // needs the database is swapped in afterwards (RtpEndpoint#replaceListeners).
             LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
-            endpoint = new RtpEndpoint(port, rtpProps.codec(), recorder, List.<AudioListener>of(audioMonitor),
+            endpoint = new RtpEndpoint(port, rtpProperties.codec(), recorder, List.<AudioListener>of(audioMonitor),
                     audioMonitor::onBotAudio);
             if (outbound != null && outbound.agent().ambientSound() != null) {
                 endpoint.setAmbientSound(outbound.agent().ambientSound());
@@ -950,7 +958,7 @@ public class AriService {
             endpoint.bind(rtpEventLoopGroup);
 
             Channel extMedia = current.channels()
-                    .externalMedia(props.appName(), rtpProps.localIp() + ":" + port, rtpProps.codec().asteriskFormat())
+                    .externalMedia(asteriskProperties.appName(), rtpProperties.localIp() + ":" + port, rtpProperties.codec().asteriskFormat())
                     .setEncapsulation("rtp")
                     .setTransport("udp")
                     .execute();
@@ -979,21 +987,22 @@ public class AriService {
                 outboundRegistry.markAnswered(channelId);
                 agent = outbound.agent();
                 targetId = outbound.targetId();
-                language = outbound.language() != null ? outbound.language() : dialogProps.language();
+                language = outbound.language() != null ? outbound.language() : dialogProperties.language();
                 ttsVoice = outbound.ttsVoice();
                 context = outbound.context();
-                scenarioRow = scenarioService.requireScenario(agent.scenarioId());
+                scenarioRow = scenarioService.requireScenario(outbound.companyId(), agent.scenarioId());
                 phone = outbound.phone();
                 companyId = outbound.companyId();
             } else if (manual) {
                 agent = null;
                 targetId = callRecordService.manualTargetId();
-                language = dialogProps.language();
-                ttsVoice = dialogProps.ttsVoice();
-                scenarioRow = resolveManualScenario(channelId);
+                language = dialogProperties.language();
+                ttsVoice = dialogProperties.ttsVoice();
+                Long manualCompanyId = pendingManualCompanies.remove(channelId);
+                companyId = manualCompanyId != null ? manualCompanyId : companyProperties.defaultId();
+                scenarioRow = resolveManualScenario(companyId, channelId);
                 context = buildTestContext(scenarioRow.definition());
                 phone = "MANUAL";
-                companyId = currentCompany.id();
             } else {
                 // The same object an outbound call reads its voice and persona from. Before
                 // the agent existed an inbound call had no campaign to read them from, so it
@@ -1053,12 +1062,12 @@ public class AriService {
             metrics.activeInc();
             routeRegistry.register(channelId);
 
-            String testFile = rtpProps.testPlaybackFile();
+            String testFile = rtpProperties.testPlaybackFile();
             if (testFile != null && !testFile.isBlank()) {
                 play(channelId, Path.of(testFile));
             }
 
-            boolean startDialog = !manual || dialogProps.autoStart();
+            boolean startDialog = !manual || dialogProperties.autoStart();
             // Keypad tones only on calls we placed. Inbound is a person who dialled us —
             // there is no menu on their end to navigate, and a bot pressing buttons into a
             // live caller's ear is only ever a bug.
@@ -1068,7 +1077,7 @@ public class AriService {
             ScenarioDefinition definition = outbound != null
                     ? scenarioRow.definition().withRolePrompt(outbound.promptOverride())
                     : scenarioRow.definition();
-            if (dialogProps.enabled() && startDialog) {
+            if (dialogProperties.enabled() && startDialog) {
                 if (realtime) {
                     boolean started = realtimeDialogEngine.startCall(channelId, endpoint, context,
                             definition, language, ttsVoice, agent,
@@ -1126,17 +1135,17 @@ public class AriService {
         List<AudioListener> listeners = new ArrayList<>();
         boolean realtime = realtimeBridge != null;
 
-        if (liveProps.audioLevelEnabled()) {
+        if (liveProperties.audioLevelEnabled()) {
             listeners.add(new AudioLevelListener(channelId, broadcast));
         }
 
         SpeechGate speechGate = null;
-        if (vadProps.enabled()) {
+        if (vadProperties.enabled()) {
             SileroVad vad = vadProvider.getIfAvailable();
             if (vad != null && vad.available()) {
-                VadGatingProperties gating = sttProps.vadGating();
-                if (!realtime && gating != null && gating.enabled() && sttProps.enabled()) {
-                    EndpointingProperties endpointing = sttProps.endpointing();
+                VadGatingProperties gating = sttProperties.vadGating();
+                if (!realtime && gating != null && gating.enabled() && sttProperties.enabled()) {
+                    EndpointingProperties endpointing = sttProperties.endpointing();
                     boolean adaptive = endpointing != null && endpointing.enabled();
                     DynamicEndpointingProperties dynamic = adaptive ? endpointing.dynamic() : null;
                     boolean learning = dynamic != null && dynamic.enabled();
@@ -1158,10 +1167,10 @@ public class AriService {
                 // window for barge-in, so it can say so at no extra cost.
                 IntConsumer onSpeechEnd = realtime || speechGate != null ? null
                         : waitMs -> dialogEngine.notifyUtteranceEnd(channelId, waitMs);
-                listeners.add(new VadStream(vad, vadProps, channelId,
+                listeners.add(new VadStream(vad, vadProperties, channelId,
                         realtime ? () -> false : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
                         buildAmd(channelId), onSpeechEnd));
-            } else if (!realtime && sttProps.vadGating() != null && sttProps.vadGating().enabled()) {
+            } else if (!realtime && sttProperties.vadGating() != null && sttProperties.vadGating().enabled()) {
                 log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }
         }
@@ -1171,10 +1180,10 @@ public class AriService {
             return listeners;
         }
 
-        if (sttProps.enabled()) {
+        if (sttProperties.enabled()) {
             SttProvider stt = sttProviderSelector.findForCall(engineConfig.sttProvider());
             if (stt != null) {
-                boolean dialog = dialogProps.enabled() && dialogEngine.available();
+                boolean dialog = dialogProperties.enabled() && dialogEngine.available();
                 TranscriptListener listener = (text, isFinal, confidence) -> {
                     if (isFinal) {
                         log.info("[{}] FINAL (conf={}): {}", channelId, confidence, text);
@@ -1192,11 +1201,11 @@ public class AriService {
                 };
                 try {
                     String sttLanguage = (language == null || language.isBlank())
-                            ? sttProps.defaultLanguage() : language;
-                    List<String> detectLangs = sttProps.detectLanguages() != null ? sttProps.detectLanguages() : List.of();
+                            ? sttProperties.defaultLanguage() : language;
+                    List<String> detectLangs = sttProperties.detectLanguages() != null ? sttProperties.detectLanguages() : List.of();
                     listeners.add(new SttStreamBridge(stt, stt.sampleRate(), SAMPLE_RATE,
                             channelId, sttLanguage, detectLangs, listener, speechGate, metrics,
-                            sttProps.endpointing(), sttProps.responseTimeoutMs(),
+                            sttProperties.endpointing(), sttProperties.responseTimeoutMs(),
                             dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null,
                             SttHints.of(context), sttProviderSelector));
                 } catch (Exception e) {
@@ -1208,7 +1217,7 @@ public class AriService {
     }
 
     private void installTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language) {
-        if (!turnProps.enabled()) {
+        if (!smartTurnProperties.enabled()) {
             return;
         }
         SmartTurnDetector detector = turnDetectorProvider.getIfAvailable();
@@ -1216,8 +1225,8 @@ public class AriService {
             return;
         }
         String callLanguage = (language == null || language.isBlank())
-                ? sttProps.defaultLanguage() : language;
-        if (!turnProps.supports(callLanguage)) {
+                ? sttProperties.defaultLanguage() : language;
+        if (!smartTurnProperties.supports(callLanguage)) {
             log.debug("Smart Turn skipped for {} — not a language the model was trained for", callLanguage);
             return;
         }
@@ -1227,20 +1236,20 @@ public class AriService {
             boolean complete = detector.isComplete(buffer.recent(), buffer.length());
             metrics.turnScored(complete);
             return complete;
-        }, turnProps.maxExtendMs());
-        if (turnProps.earlyWaitMs() > 0) {
+        }, smartTurnProperties.maxExtendMs());
+        if (smartTurnProperties.earlyWaitMs() > 0) {
             gate.setEarlyClose(() -> {
                 boolean confident = detector.isConfidentlyComplete(buffer.recent(), buffer.length());
                 if (confident) {
                     metrics.turnClosedEarly();
                 }
                 return confident;
-            }, turnProps.earlyWaitMs());
+            }, smartTurnProperties.earlyWaitMs());
         }
     }
 
     private AnsweringMachineDetector buildAmd(String channelId) {
-        AmdProperties amd = vadProps.amd();
+        AmdProperties amd = vadProperties.amd();
         if (amd == null || !amd.enabled()) {
             return null;
         }
@@ -1255,7 +1264,7 @@ public class AriService {
         callExecutor.execute(() -> withMdc(channelId, () -> hangup(channelId)));
     }
 
-    private Scenario resolveManualScenario(String channelId) {
+    private Scenario resolveManualScenario(long companyId, String channelId) {
         ScenarioDefinition adHoc = pendingManualDefinitions.remove(channelId);
         if (adHoc != null) {
             return new Scenario(0, "adhoc-test-call", 0, "Ad-hoc test call", null, false, false, adHoc,
@@ -1263,12 +1272,12 @@ public class AriService {
         }
         Long requested = pendingManualScenarios.remove(channelId);
         return requested != null && requested != NO_EXPLICIT_SCENARIO
-                ? scenarioService.requireScenario(requested)
+                ? scenarioService.requireScenario(companyId, requested)
                 : scenarioService.requireScenarioByKey(defaultTestScenarioKey());
     }
 
     private String defaultTestScenarioKey() {
-        TestContextProperties t = dialogProps.testContext();
+        TestContextProperties t = dialogProperties.testContext();
         return t != null ? t.scenarioKey() : "debt-collection";
     }
 
@@ -1289,7 +1298,7 @@ public class AriService {
     }
 
     private void playFallbackAndHangup(String channelId, InboundRoute route) {
-        if (!ttsProps.enabled()) {
+        if (!ttsProperties.enabled()) {
             log.warn("TTS disabled; cannot play fallback message for {}", channelId);
             hangup(channelId);
             return;
@@ -1298,14 +1307,14 @@ public class AriService {
         int port = portAllocator.allocate();
         RtpEndpoint endpoint = null;
         try {
-            Files.createDirectories(Path.of(rtpProps.recordingDir()));
-            Path wav = Path.of(rtpProps.recordingDir(), channelId.replace('/', '_') + "-fallback.wav");
-            endpoint = new RtpEndpoint(port, rtpProps.codec(),
-                    new WavRecorder(wav, SAMPLE_RATE, rtpProps.recordingMode()), List.of());
+            Files.createDirectories(Path.of(rtpProperties.recordingDir()));
+            Path wav = Path.of(rtpProperties.recordingDir(), channelId.replace('/', '_') + "-fallback.wav");
+            endpoint = new RtpEndpoint(port, rtpProperties.codec(),
+                    new WavRecorder(wav, SAMPLE_RATE, rtpProperties.recordingMode()), List.of());
             endpoint.bind(rtpEventLoopGroup);
 
             Channel extMedia = current.channels()
-                    .externalMedia(props.appName(), rtpProps.localIp() + ":" + port, rtpProps.codec().asteriskFormat())
+                    .externalMedia(asteriskProperties.appName(), rtpProperties.localIp() + ":" + port, rtpProperties.codec().asteriskFormat())
                     .setEncapsulation("rtp")
                     .setTransport("udp")
                     .execute();
@@ -1316,7 +1325,7 @@ public class AriService {
 
             // The route no longer carries a language of its own: outside business hours no
             // agent speaks, so the platform default is the only thing left to say it in.
-            String language = ttsProps.defaultLanguage();
+            String language = ttsProperties.defaultLanguage();
             // Synthesis first, answer second: the caller hears ringback while the message is
             // rendered instead of an open line playing nothing.
             short[] pcm = ttsRouter.synthesize(route.fallbackMessage(), language, null);
@@ -1363,7 +1372,7 @@ public class AriService {
     }
 
     private CallContext buildTestContext(ScenarioDefinition scenario) {
-        TestContextProperties t = dialogProps.testContext();
+        TestContextProperties t = dialogProperties.testContext();
         if (t == null) {
             return new CallContext(Map.of(), null);
         }
@@ -1435,7 +1444,7 @@ public class AriService {
             return;
         }
         dialerState.release(outbound.companyId());
-        campaignService.applyOutcome(outbound.targetId(), disposition);
+        campaignService.applyOutcome(outbound.companyId(), outbound.targetId(), disposition);
         metrics.disposition(disposition);
         log.info("Unanswered call {} to {} settled as {} (cause {})",
                 channelId, outbound.phone(), disposition, HangupCause.label(cause));
@@ -1506,7 +1515,7 @@ public class AriService {
                     session.channelName(), session.trunk(), technical);
         }
         if (outbound != null) {
-            campaignService.applyOutcome(outbound.targetId(), disposition);
+            campaignService.applyOutcome(outbound.companyId(), outbound.targetId(), disposition);
             // After finalization, not before: the summary can recognise a promise the caller
             // hung up on before a tool recorded it, and that promise is a conversion.
             if (outbound.variantId() != null && disposition != null && disposition.isConversion()) {
@@ -1522,7 +1531,7 @@ public class AriService {
         if (received == 0) {
             log.error("ALERT: no inbound RTP at all on call {} — the caller was never heard. "
                             + "Check that RTP_LOCAL_IP ({}) is reachable from Asterisk (docs/NETWORK.md)",
-                    session.channelId(), rtpProps.localIp());
+                    session.channelId(), rtpProperties.localIp());
             return;
         }
         double loss = stats.lossPercent();
@@ -1542,8 +1551,8 @@ public class AriService {
             return;
         }
         Instant now = clock.instant();
-        int maxCallSeconds = dialogProps != null && dialogProps.maxCallSeconds() > 0
-                ? dialogProps.maxCallSeconds()
+        int maxCallSeconds = dialogProperties != null && dialogProperties.maxCallSeconds() > 0
+                ? dialogProperties.maxCallSeconds()
                 : 300;
         int ghostTimeoutSeconds = maxCallSeconds + 60;
 

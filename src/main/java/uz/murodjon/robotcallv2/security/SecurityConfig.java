@@ -31,12 +31,10 @@ import java.util.List;
  * originate calls on the real SIP trunk or start a campaign, and {@code /actuator/**}
  * exposes infrastructure state — none of it may be reachable anonymously.
  *
- * <p>Two independent authentications run in the same chain: a shared {@code X-Api-Key}
- * header ({@link ApiKeyFilter}) for machine-to-machine callers, and a per-user
- * {@code Authorization: Bearer} JWT ({@link JwtAuthFilter}, ROADMAP E.1) for the panel.
- * Either can authenticate a request; sessions and CSRF stay off regardless — both are
- * stateless. Kubernetes-style liveness/readiness probes stay open so an orchestrator can
- * reach them without a secret.
+ * <p>A request is authenticated one way only: a per-user {@code Authorization: Bearer} JWT
+ * ({@link JwtAuthFilter}, ROADMAP E.1). Sessions and CSRF stay off — the token is stateless.
+ * Kubernetes-style liveness/readiness probes stay open so an orchestrator can reach them
+ * without a secret.
  *
  * <p><b>This class answers only "who is calling".</b> What that identity may do is decided
  * one endpoint at a time by {@code @PreAuthorize("hasAuthority('<PERMISSION>')")} on each
@@ -50,32 +48,21 @@ public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-    private final SecurityProperties props;
-    private final JwtProperties jwtProps;
+    private final SecurityProperties securityProperties;
+    private final JwtProperties jwtProperties;
     private final JwtTokenService jwtTokenService;
 
-    public SecurityConfig(SecurityProperties props, JwtProperties jwtProps, JwtTokenService jwtTokenService) {
-        this.props = props;
-        this.jwtProps = jwtProps;
+    public SecurityConfig(SecurityProperties securityProperties, JwtProperties jwtProperties, JwtTokenService jwtTokenService) {
+        this.securityProperties = securityProperties;
+        this.jwtProperties = jwtProperties;
         this.jwtTokenService = jwtTokenService;
     }
 
     @PostConstruct
     public void warnIfUnconfigured() {
-        if (!props.configured()) {
-            log.error("voice-agent.security.api-key (env API_KEY) is not set — every /api/** "
-                    + "request will be rejected with 401. Set it before making calls.");
-        }
-        if (props.readOnlyConfigured() && props.apiKey() != null
-                && props.apiKey().equals(props.readApiKey())) {
-            // Same value for both means the "read-only" key can dial subscribers, which is
-            // the opposite of what configuring it was for.
-            log.error("voice-agent.security.read-api-key is identical to api-key — the "
-                    + "read-only key grants full admin access. Use a different secret.");
-        }
-        if (!jwtProps.configured()) {
-            log.error("voice-agent.security.jwt.secret is not set — no user can log in "
-                    + "(ROADMAP E.1); X-Api-Key requests are unaffected.");
+        if (!jwtProperties.configured()) {
+            log.error("voice-agent.security.jwt.secret (env JWT_SECRET) is not set — nobody "
+                    + "can log in and every /api/** request will be rejected with 401.");
         }
     }
 
@@ -96,15 +83,12 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 // 401 instead of a redirect to a login page that does not exist.
                 .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
-                // Neither filter ever rejects on its own, only populates the context (see
-                // the javadoc on each), so order between them does not matter — whichever
-                // header is present wins, and a request with both is not expected to occur.
-                .addFilterBefore(new ApiKeyFilter(props.apiKey(), props.readApiKey()),
-                        UsernamePasswordAuthenticationFilter.class)
+                // The filter never rejects on its own, it only populates the context (see its
+                // javadoc); an unauthenticated request is stopped by authorizeHttpRequests below.
                 .addFilterBefore(new JwtAuthFilter(jwtTokenService), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> {
-                    // Preflight carries no X-Api-Key by design (the browser sends it without
-                    // credentials); it must clear the filter chain before the real request.
+                    // Preflight carries no Authorization header by design (the browser sends it
+                    // without credentials); it must clear the filter chain before the real request.
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // Probes carry no data and must work without a secret.
                     auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
@@ -115,8 +99,8 @@ public class SecurityConfig {
                             "/api/auth/refresh", "/api/auth/uysot/callback", "/api/auth/forgot-password",
                             "/api/auth/reset-password").permitAll();
                     // The Uysot CRM OAuth redirect (§11 integrations) lands here straight from
-                    // the Uysot server, carrying neither X-Api-Key nor a Bearer token — the
-                    // signed `state` param authenticates it instead (CrmIntegrationService
+                    // the Uysot server, carrying no Bearer token — the signed `state`
+                    // param authenticates it instead (CrmIntegrationService
                     // #verifyState).
                     auth.requestMatchers(HttpMethod.GET, "/api/settings/integrations/uysot/callback").permitAll();
                     // Everything else needs an identity; which permission that identity has to
@@ -135,7 +119,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        List<String> origins = props.allowedOrigins();
+        List<String> origins = securityProperties.allowedOrigins();
         if (origins == null || origins.isEmpty()) {
             configuration.setAllowedOriginPatterns(List.of("*"));
         } else {

@@ -224,24 +224,20 @@ ancha qimmatga tushadi.
 
 **B.2 — Izolyatsiyani majburlash — ✅ BAJARILDI (repository-filtr + real API kalit → company_id, backend-uchun-talablar.md §8)**
 
-- Repository darajasida **majburiy** `company_id` filtri — `CurrentCompany`
-  interfeysi `CampaignRepository`, `CampaignTargetRepository`, `ContactRepository`,
-  `DoNotCallRepository`, `InboundRouteRepository`, `ScenarioRepository`,
-  `ReportRepository`, `AuditService`, `CallRecordService` — barchasida ishlatiladi.
+- Repository darajasida **majburiy** `company_id` filtri: `companyId` port va adapter
+  metodlarining argumenti — `CampaignRepository`, `CampaignTargetRepository`,
+  `ContactRepository`, `DoNotCallRepository`, `InboundRouteRepository`,
+  `ScenarioRepository`, `ReportRepository`, `UserRepository`, `SipTrunkRepository`,
+  `AuditService` — barchasida shunday. Yashirin (thread-local) kompaniya qolmadi.
   Qo'shimcha qatlam sifatida Postgres RLS hamon baholanmagan (ixtiyoriy).
-- **`X-Api-Key` → `company_id`: ✅ hal qilindi.** `api_key` jadvali (`V7__api_key.sql`,
-  `uz.murodjon.robotcallv2.apikey`) har kalitni bitta kompaniyaga bog'laydi; panel
-  orqali yaratiladi/bekor qilinadi (`POST/DELETE /api/settings/api-keys`, [settings.md](api/settings.md)).
-  `security.ApiKeyFilter` uchta manbani navbat bilan tekshiradi: global admin kalit,
-  global read-only kalit, keyin DB'dagi kompaniyaga-scoped kalit — oxirgisi
-  `AuthenticatedUser` (xuddi JWT login qanday principal beradigan bo'lsa, shunday)
-  ni o'z `companyId`si bilan o'rnatadi, shu sababli `JwtCurrentCompanyResolver`
-  o'zgarishsiz ikkalasini ham to'g'ri scoped qiladi. Ikkita global konstantali kalit
-  hamon ishlaydi — fallback/bootstrap kirish sifatida, `DefaultCompanyResolver`ga
-  scoped bo'lib qoladi (ataylab, ular kompaniyaga xos emas).
+- **`X-Api-Key` → `company_id`: masala yo'qoldi.** Bu bo'limda tasvirlangan `api_key`
+  jadvali va `/api/settings/api-keys` endpointlari hech qachon yozilmagan edi; global
+  ikkita kalit esa (`ApiKeyFilter`, `voice-agent.security.api-key/read-api-key`)
+  butunlay olib tashlandi. API'ga kirishning yagona yo'li — JWT login; tashqi xizmat
+  ham o'ziga ochilgan foydalanuvchi tokeni bilan kiradi.
 - **JWT bilan kirgan foydalanuvchi uchun bu ✅ hal qilindi** (ROADMAP E.1, 2026-08-02)
-  — `JwtCurrentCompanyResolver` har so'rovni foydalanuvchining haqiqiy kompaniyasiga
-  scoped qiladi.
+  — kompaniya tokendan olinadi va controller kirishida `@CurrentCompanyId` bilan
+  argumentga aylanadi (`security.CurrentCompanyIdArgumentResolver`).
 - **Qoldiq:** bitta foydalanuvchi bir nechta kompaniyaga a'zo bo'lishi (E.2) — hozir
   `app_user.company_id` bitta ustun, `user_company` ko'p-ko'pga jadvali yo'q;
   `GET /api/companies` shu sababli hamon har doim bitta elementli ro'yxat qaytaradi.
@@ -346,9 +342,8 @@ hali yo'q; bu keyingi aniq belgilangan vazifa).
 - DID'ni aniqlash `channel.getDialplan().getExten()`ga tayanadi — bu haqiqiy
   Asterisk dialplan'ning `exten => <DID>,1,Stasis(app)` shaklida yozilganini
   talab qiladi; foydalanuvchi o'z dialplan'iga qarab tekshirishi kerak.
-- `CurrentCompany` hamon bitta hardcoded default (B.2 hali qilinmagan) —
-  `inbound_route.company_id` kelajak uchun saqlanadi, amalda hozircha bitta
-  kompaniyaga tegishli.
+- Kiruvchi qo'ng'iroqning kompaniyasi `inbound_route.company_id` dan olinadi va
+  StasisStart oqimi bo'ylab argument bo'lib yuradi.
 
 **C.4 — Operator navbati — hali qilinmagan**
 
@@ -432,12 +427,10 @@ foydalanuvchi qatlami va biznes qismini qo'shadi.
   `POST /api/auth/activate` (invite → parol, SMTP yo'qligi uchun bir martalik token),
   `GET /api/auth/me`. `POST /api/auth/uysot/callback` — stub, D bosqichi
   kredensiallarini kutmoqda.
-- Hozirgi API-kalit rejimi saqlanadi (machine-to-machine) — endi uchta rol
-  ierarxiyasiga moslashtirildi (`ADMIN` → `OPERATOR` → `VIEWER`,
-  `config.SecurityConfig`). JWT bilan kirgan foydalanuvchi uchun
-  `CurrentCompany` haqiqiy per-request aniqlanadi (`JwtCurrentCompanyResolver`)
-  — B.2'dagi "auth bilan keladi" izohi shu. `X-Api-Key → company_id` xaritalash
-  o'zi hamon qilinmagan (B.2'ning qolgan yarmi).
+- API-kalit rejimi butunlay olib tashlandi — kirish faqat JWT login orqali, rollar
+  esa `ADMIN` → `OPERATOR` → `VIEWER` ierarxiyasi bilan beriladi
+  (`security.SecurityConfig`). Har so'rovning kompaniyasi tokendan olinadi
+  (`@CurrentCompanyId`) — B.2'dagi "auth bilan keladi" izohi shu.
 - Foydalanuvchi boshqaruvi (`GET/invite/role/block/unblock /api/users`),
   komanda-palitra qidiruvi (`GET /api/search`) va bildirishnomalar
   (`GET/PUT /api/notifications`) ham shu bilan birga qo'shildi — batafsil
@@ -450,7 +443,7 @@ foydalanuvchi qatlami va biznes qismini qo'shadi.
   ishlaydi (`docs/api/profile.md`).
 - **Qoldiqlar:** ko'p-kompaniyaga a'zolik (hozir `app_user.company_id` — bitta
   ustun, jadval emas), real email yuborish (SMTP — hozir aktivatsiya tokeni
-  admin tomonidan qo'lda yetkaziladi), `X-Api-Key → company_id` xaritalash.
+  admin tomonidan qo'lda yetkaziladi).
 
 **E.2 — Kompaniyaga xos resurslar (to'liq)**
 
@@ -557,7 +550,7 @@ qilishga to'g'ri keladi. C–E bosqichlarining hammasi kompaniya tushunchasiga t
 2. [x] Hozirgi qarzdorlik xatti-harakatini `debt-collection.json` ga ko'chirish (xatti-harakat o'zgarmasligi sharti bilan) — 2026-08-01: shu bilan birga `DialogEngine`ga to'liq ulandi (A.3), shunchaki faylga ko'chirish emas
 3. [ ] `lead-qualification` shablonini yozish va test kampaniyada sinash — shablon yozilgan va generic engine uni ishga tushira oladi (2026-08-01), lekin real qo'ng'iroq bilan hali sinalmagan
 4. [x] `scenario` jadvali + CRUD API + validatsiya (A.4 ning birinchi qismi — vizual tahrirlagichsiz)
-5. [x] `company` jadvali va `company_id` migratsiya rejasini chizish (qaysi jadvalga qaysi tartibda) — jadval ustunlari joyida; B.2 dagi to'liq izolyatsiya regressiya testlari va real per-request `CurrentCompany` (hozir bitta hardcoded default) hali qolgan
+5. [x] `company` jadvali va `company_id` migratsiya rejasini chizish (qaysi jadvalga qaysi tartibda) — jadval ustunlari joyida; per-request kompaniya tokendan olinadi (`@CurrentCompanyId`), B.2 dagi to'liq izolyatsiya regressiya testlari hali qolgan
 6. [ ] Uysot'dan OAuth/API hujjatlarini so'rash (D bosqichi bloklanmasligi uchun hoziroq) — OAuth kod oqimi (D.2) allaqachon yozilgan va kompaniya darajasida ishlaydi, faqat haqiqiy `authorizeUrl`/`tokenUrl` kutilmoqda
 7. [x] Inbound uchun `inbound_route` jadvali va StasisStart routing (Bosqich C.1-C.3 — 2026-08-01 bajarildi)
 8. [ ] Operator navbati (C.4) — Asterisk queue, transfer konteksti, ish vaqti tekshiruvi (profil ish jadvali, §15, allaqachon saqlanadi — bu navbat mantig'i uni hali o'qimaydi)

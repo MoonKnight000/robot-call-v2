@@ -5,5 +5,5 @@ import uz.murodjon.robotcallv2.search.application.dto.SearchResult;
 /** Inbound UseCase port for Command Palette searching (§11.9). */
 public interface SearchUseCase {
 
-    SearchResult search(String q);
+    SearchResult search(long companyId, String q);
 }

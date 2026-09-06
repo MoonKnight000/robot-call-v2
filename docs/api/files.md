@@ -64,7 +64,7 @@ Interfeysdan har qanday fayllarni (rasmlar, audio namunalar, CSV/hujjatlar) yukl
 **`ResponseData`ga o'ralmagan** — xom fayl baytlarini qaytaradi
 (`ResponseEntity<Resource>`).
 
-Autentifikatsiya boshqa hamma `/api/**` kabi (`X-Api-Key`/Bearer) — bu
+Autentifikatsiya boshqa hamma `/api/**` kabi (`Authorization: Bearer`) — bu
 degani oddiy `<img src="...">`/`<audio src="...">` ishlamaydi (brauzer
 maxsus sarlavha qo'ya olmaydi). Frontend `fetch` bilan blob sifatida olib,
 `URL.createObjectURL`ga o'raydi (masalan `requestBlob`, `src/api/http.ts`),

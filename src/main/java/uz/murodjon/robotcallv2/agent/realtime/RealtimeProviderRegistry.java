@@ -36,12 +36,12 @@ public class RealtimeProviderRegistry {
      * the interface, which would make a build with no realtime engine — the normal case
      * today — refuse to start.
      */
-    public RealtimeProviderRegistry(ObjectProvider<RealtimeProvider> providers, RealtimeProperties props) {
-        this.enabled = props.enabled();
+    public RealtimeProviderRegistry(ObjectProvider<RealtimeProvider> providers, RealtimeProperties realtimeProperties) {
+        this.enabled = realtimeProperties.enabled();
         if (enabled) {
             providers.orderedStream().forEach(provider -> byName.put(provider.name().toLowerCase(), provider));
         }
-        this.defaultProvider = chooseDefault(props.provider());
+        this.defaultProvider = chooseDefault(realtimeProperties.provider());
     }
 
     /**

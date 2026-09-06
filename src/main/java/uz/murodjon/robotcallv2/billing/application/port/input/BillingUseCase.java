@@ -7,13 +7,13 @@ import java.util.List;
 
 public interface BillingUseCase {
 
-    BillingOverviewResponse overview();
+    BillingOverviewResponse overview(long companyId);
 
-    List<SpendMonthDto> spendChart(int months);
+    List<SpendMonthDto> spendChart(long companyId, int months);
 
-    PageableData<InvoiceDto> invoices(int page, int size);
+    PageableData<InvoiceDto> invoices(long companyId, int page, int size);
 
-    byte[] invoicePdf(String invoiceId);
+    byte[] invoicePdf(long companyId, String invoiceId);
 
-    TopupResponse topup(TopupRequest request);
+    TopupResponse topup(long companyId, TopupRequest request);
 }

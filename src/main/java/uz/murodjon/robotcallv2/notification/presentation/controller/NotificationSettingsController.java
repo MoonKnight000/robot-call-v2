@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import uz.murodjon.robotcallv2.notification.application.dto.UpdateNotificationSettingsRequest;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationSettings;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -20,9 +21,10 @@ public interface NotificationSettingsController {
 
     @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_READ')")
     @GetMapping
-    ResponseEntity<ResponseData<NotificationSettings>> get();
+    ResponseEntity<ResponseData<NotificationSettings>> get(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_EDIT')")
     @PutMapping
-    ResponseEntity<ResponseData<NotificationSettings>> update(@Valid @RequestBody UpdateNotificationSettingsRequest r);
+    ResponseEntity<ResponseData<NotificationSettings>> update(@CurrentCompanyId long companyId,
+            @Valid @RequestBody UpdateNotificationSettingsRequest request);
 }

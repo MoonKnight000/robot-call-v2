@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.donotcall.application.port.input;
 
-import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallFilter;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRemoveResponse;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRow;
 import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
@@ -11,9 +11,9 @@ import uz.murodjon.robotcallv2.shared.api.PageableData;
  */
 public interface DoNotCallUseCase {
 
-    PageableData<DoNotCallRow> list(DoNotCallFilter filter);
+    PageableData<DoNotCallRow> list(long companyId, DoNotCallFilter filter);
 
-    DoNotCallRemoveResponse remove(String phone);
+    DoNotCallRemoveResponse remove(long companyId, String phone);
 
     void add(long companyId, String phone, String reason, DoNotCallSource source);
 

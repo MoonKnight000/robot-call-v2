@@ -22,8 +22,8 @@ public class RoleControllerImpl implements RoleController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<RoleRow>>> list() {
-        return ResponseEntity.ok(ResponseData.ok(roleUseCase.listForCurrentCompany()));
+    public ResponseEntity<ResponseData<List<RoleRow>>> list(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(roleUseCase.findByCompanyId(companyId)));
     }
 
     @Override
@@ -32,23 +32,23 @@ public class RoleControllerImpl implements RoleController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<RoleRow>> get(long id) {
-        return ResponseEntity.ok(ResponseData.ok(roleUseCase.get(id)));
+    public ResponseEntity<ResponseData<RoleRow>> get(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(roleUseCase.get(companyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<RoleRow>> create(CreateRoleRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(roleUseCase.create(request)));
+    public ResponseEntity<ResponseData<RoleRow>> create(long companyId, CreateRoleRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(roleUseCase.create(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<RoleRow>> update(long id, UpdateRoleRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(roleUseCase.update(id, request)));
+    public ResponseEntity<ResponseData<RoleRow>> update(long companyId, long id, UpdateRoleRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(roleUseCase.update(companyId, id, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> delete(long id) {
-        roleUseCase.delete(id);
+    public ResponseEntity<ResponseData<Void>> delete(long companyId, long id) {
+        roleUseCase.delete(companyId, id);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 }

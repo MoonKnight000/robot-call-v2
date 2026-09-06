@@ -11,9 +11,9 @@ public interface CompanyConfigUseCase {
 
     CompanyConfig requireConfig(long companyId);
 
-    CompanyConfig requireConfigForApi(long companyId);
+    CompanyConfig requireConfigForApi(long callerCompanyId, long companyId);
 
-    CompanyConfig update(long companyId, UpdateCompanyConfigRequest r);
+    CompanyConfig update(long callerCompanyId, long companyId, UpdateCompanyConfigRequest request);
 
     String resolveLanguage(long companyId, String requested);
 }

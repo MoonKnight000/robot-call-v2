@@ -48,18 +48,18 @@ public class YandexSttProvider implements SttProvider {
     private static final int MIN_PAUSE_HINT_MS = 500;
     private static final int MAX_PAUSE_HINT_MS = 5000;
 
-    private final SttProperties props;
+    private final SttProperties sttProperties;
     private final VoiceMetrics metrics;
     private volatile ManagedChannel channel;
 
-    public YandexSttProvider(SttProperties props, VoiceMetrics metrics) {
-        this.props = props;
+    public YandexSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+        this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
 
     @PostConstruct
     public void init() {
-        YandexSttProperties y = props.yandex();
+        YandexSttProperties y = sttProperties.yandex();
         if (y == null || y.apiKey() == null || y.apiKey().isBlank()) {
             log.warn("Yandex STT (v3) selected but api-key is blank — recognition will fail");
             return;
@@ -89,7 +89,7 @@ public class YandexSttProvider implements SttProvider {
 
     @Override
     public int sampleRate() {
-        return props.yandex().sampleRate();
+        return sttProperties.yandex().sampleRate();
     }
 
     @Override
@@ -99,7 +99,7 @@ public class YandexSttProvider implements SttProvider {
         if (current == null) {
             throw new ExternalServiceException(ErrorCode.STT_YANDEX_CHANNEL_UNAVAILABLE, "yandex-stt");
         }
-        YandexSttProperties y = props.yandex();
+        YandexSttProperties y = sttProperties.yandex();
 
         // Per-call auth + request-id metadata, attached to a fresh stub.
         Metadata headers = new Metadata();
@@ -252,7 +252,7 @@ public class YandexSttProvider implements SttProvider {
 
         @Override
         public void onNext(Stt.StreamingResponse response) {
-            if (response.hasPartial() && props.yandex().interimResults()) {
+            if (response.hasPartial() && sttProperties.yandex().interimResults()) {
                 emit(response.getPartial(), false);
             } else if (response.hasFinal()) {
                 emit(response.getFinal(), true);

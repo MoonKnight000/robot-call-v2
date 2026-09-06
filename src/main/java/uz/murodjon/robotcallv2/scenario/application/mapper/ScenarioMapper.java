@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 @Component
 public class ScenarioMapper {
@@ -24,29 +26,29 @@ public class ScenarioMapper {
         }
     }
 
-    public String writeDefinition(ScenarioDefinition def) {
+    public String writeDefinition(ScenarioDefinition definition) {
         try {
-            return JSON.writeValueAsString(def);
+            return JSON.writeValueAsString(definition);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Could not serialize scenario definition: " + e.getMessage(), e);
+            throw new ValidationException(ErrorCode.SCENARIO_DEFINITION_INVALID, e.getMessage());
         }
     }
 
-    public Scenario entityToDomain(ScenarioEntity e) {
-        if (e == null) {
+    public Scenario entityToDomain(ScenarioEntity entity) {
+        if (entity == null) {
             return null;
         }
         return new Scenario(
-                e.getId(),
-                e.getScenarioKey(),
-                e.getVersion(),
-                e.getName(),
-                e.getDescription(),
-                e.isBuiltin(),
-                e.isActive(),
-                readDefinition(e.getDefinition()),
-                e.getCreatedAt(),
-                e.getCreatedBy()
+                entity.getId(),
+                entity.getScenarioKey(),
+                entity.getVersion(),
+                entity.getName(),
+                entity.getDescription(),
+                entity.isBuiltin(),
+                entity.isActive(),
+                readDefinition(entity.getDefinition()),
+                entity.getCreatedAt(),
+                entity.getCreatedBy()
         );
     }
 }

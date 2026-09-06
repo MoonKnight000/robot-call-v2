@@ -25,4 +25,15 @@ public record CallResult(
         String crmLastError,
         String outcome
 ) {
+
+    /**
+     * The post-call summary on its way to storage. Identity, {@code createdAt} and the
+     * CRM retry bookkeeping belong to the storage layer, which fills them in itself.
+     */
+    public static CallResult summaryOf(long callId, String summary, ReasonCode reasonCode, LocalDate promisedDate,
+                                       BigDecimal promisedAmount, Sentiment sentiment, boolean needsFollowUp,
+                                       String followUpNote, boolean escalated, Long crmNoteId, String outcome) {
+        return new CallResult(0, callId, summary, reasonCode, promisedDate, promisedAmount, sentiment,
+                needsFollowUp, followUpNote, escalated, crmNoteId, null, 0, null, outcome);
+    }
 }

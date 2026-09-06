@@ -35,18 +35,18 @@ public class DeepgramSttProvider implements SttProvider {
     private static final Logger log = LoggerFactory.getLogger(DeepgramSttProvider.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final SttProperties props;
+    private final SttProperties sttProperties;
     private final VoiceMetrics metrics;
     private volatile HttpClient client;
 
-    public DeepgramSttProvider(SttProperties props, VoiceMetrics metrics) {
-        this.props = props;
+    public DeepgramSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+        this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
 
     @PostConstruct
     public void init() {
-        DeepgramSttProperties d = props.deepgram();
+        DeepgramSttProperties d = sttProperties.deepgram();
         if (d == null || d.apiKey() == null || d.apiKey().isBlank()) {
             return;
         }
@@ -63,7 +63,7 @@ public class DeepgramSttProvider implements SttProvider {
 
     @Override
     public int sampleRate() {
-        DeepgramSttProperties d = props.deepgram();
+        DeepgramSttProperties d = sttProperties.deepgram();
         return d != null ? d.sampleRate() : 8000;
     }
 
@@ -71,7 +71,7 @@ public class DeepgramSttProvider implements SttProvider {
     public SttSession startStream(String languageCode, List<String> alternativeLanguages,
                                   TranscriptListener listener, boolean externalEndpointing) {
         HttpClient current = client;
-        DeepgramSttProperties d = props.deepgram();
+        DeepgramSttProperties d = sttProperties.deepgram();
         if (current == null || d == null) {
             throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_CONNECT_FAILED, "deepgram client not initialized");
         }

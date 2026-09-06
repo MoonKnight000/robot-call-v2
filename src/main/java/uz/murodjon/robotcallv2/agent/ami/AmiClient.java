@@ -23,10 +23,10 @@ public class AmiClient {
     private static final Logger log = LoggerFactory.getLogger(AmiClient.class);
     private static final int TIMEOUT_MS = 5000;
 
-    private final AmiProperties props;
+    private final AmiProperties amiProperties;
 
-    public AmiClient(AmiProperties props) {
-        this.props = props;
+    public AmiClient(AmiProperties amiProperties) {
+        this.amiProperties = amiProperties;
     }
 
     /**
@@ -37,12 +37,12 @@ public class AmiClient {
      * reason to fail the trunk CRUD request that triggered this.
      */
     public boolean reloadPjsip() {
-        if (!props.enabled()) {
+        if (!amiProperties.enabled()) {
             log.debug("AMI disabled (voice-agent.asterisk.ami.enabled=false) — pjsip reload skipped");
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(props.host(), props.port()), TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(amiProperties.host(), amiProperties.port()), TIMEOUT_MS);
             socket.setSoTimeout(TIMEOUT_MS);
             BufferedReader in = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -50,14 +50,14 @@ public class AmiClient {
 
             String banner = in.readLine();
             if (banner == null || !banner.startsWith("Asterisk Call Manager")) {
-                log.warn("AMI {}:{} — unexpected banner '{}'", props.host(), props.port(), banner);
+                log.warn("AMI {}:{} — unexpected banner '{}'", amiProperties.host(), amiProperties.port(), banner);
                 return false;
             }
 
-            send(out, "Action: Login\r\nUsername: " + props.username() + "\r\nSecret: " + props.password()
+            send(out, "Action: Login\r\nUsername: " + amiProperties.username() + "\r\nSecret: " + amiProperties.password()
                     + "\r\nEvents: off\r\n\r\n");
             if (!readResponse(in).contains("Response: Success")) {
-                log.warn("AMI {}:{} — login failed", props.host(), props.port());
+                log.warn("AMI {}:{} — login failed", amiProperties.host(), amiProperties.port());
                 return false;
             }
 
@@ -65,14 +65,14 @@ public class AmiClient {
             String reloadResponse = readResponse(in);
             boolean ok = reloadResponse.contains("Response: Success");
             if (!ok) {
-                log.warn("AMI {}:{} — pjsip reload failed: {}", props.host(), props.port(),
+                log.warn("AMI {}:{} — pjsip reload failed: {}", amiProperties.host(), amiProperties.port(),
                         reloadResponse.replace('\n', ' '));
             }
 
             send(out, "Action: Logoff\r\n\r\n");
             return ok;
         } catch (IOException e) {
-            log.warn("AMI {}:{} connection failed: {}", props.host(), props.port(), e.getMessage());
+            log.warn("AMI {}:{} connection failed: {}", amiProperties.host(), amiProperties.port(), e.getMessage());
             return false;
         }
     }
@@ -81,12 +81,12 @@ public class AmiClient {
      * Executes a CLI command via AMI (Action: Command) and returns the output lines.
      */
     public String executeCommand(String command) {
-        if (!props.enabled()) {
+        if (!amiProperties.enabled()) {
             log.debug("AMI disabled (voice-agent.asterisk.ami.enabled=false) — executeCommand skipped");
             return null;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(props.host(), props.port()), TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(amiProperties.host(), amiProperties.port()), TIMEOUT_MS);
             socket.setSoTimeout(TIMEOUT_MS);
             BufferedReader in = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -94,14 +94,14 @@ public class AmiClient {
 
             String banner = in.readLine();
             if (banner == null || !banner.startsWith("Asterisk Call Manager")) {
-                log.warn("AMI {}:{} — unexpected banner '{}'", props.host(), props.port(), banner);
+                log.warn("AMI {}:{} — unexpected banner '{}'", amiProperties.host(), amiProperties.port(), banner);
                 return null;
             }
 
-            send(out, "Action: Login\r\nUsername: " + props.username() + "\r\nSecret: " + props.password()
+            send(out, "Action: Login\r\nUsername: " + amiProperties.username() + "\r\nSecret: " + amiProperties.password()
                     + "\r\nEvents: off\r\n\r\n");
             if (!readResponse(in).contains("Response: Success")) {
-                log.warn("AMI {}:{} — login failed", props.host(), props.port());
+                log.warn("AMI {}:{} — login failed", amiProperties.host(), amiProperties.port());
                 return null;
             }
 
@@ -111,7 +111,7 @@ public class AmiClient {
             send(out, "Action: Logoff\r\n\r\n");
             return cmdResponse;
         } catch (IOException e) {
-            log.warn("AMI {}:{} executeCommand failed: {}", props.host(), props.port(), e.getMessage());
+            log.warn("AMI {}:{} executeCommand failed: {}", amiProperties.host(), amiProperties.port(), e.getMessage());
             return null;
         }
     }

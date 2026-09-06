@@ -86,14 +86,14 @@ public class CallTaskConsumer {
                 state.release(task.companyId());
                 callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.DO_NOT_CALL, "number is in the do-not-call list");
-                campaignService.applyOutcome(task.targetId(), Disposition.DO_NOT_CALL);
+                campaignService.applyOutcome(task.companyId(), task.targetId(), Disposition.DO_NOT_CALL);
                 return;
             }
 
             // Ahead of everything else, because it decides the script the facts are read
             // against and the voice the call is warmed up for.
             AiAgent agent = aiAgents.requireAgent(task.companyId(), task.aiAgentId());
-            Scenario scenario = scenarioService.requireScenario(agent.scenarioId());
+            Scenario scenario = scenarioService.requireScenario(task.companyId(), agent.scenarioId());
             CrmClientSnapshot crm = crmClient.fetchClient(task.companyId(), task.clientId());
             ClientMemory memory = clientMemoryService.findByCompanyIdAndPhone(task.companyId(), task.phone());
             CallContext context = CallContextMapper.merge(
@@ -123,7 +123,7 @@ public class CallTaskConsumer {
             originateReached = true;
             String channelId = ariService.originate(task.phone(), task.companyId(), outboundCall);
 
-            audit.record("CALL_ORIGINATE", "call", channelId,
+            audit.record(task.companyId(), "CALL_ORIGINATE", "call", channelId,
                     "target " + task.targetId() + " -> " + task.phone() + " (" + language + ")");
             log.info("Originated target {} -> channel {} (lang={}, trunkId={})",
                     task.targetId(), channelId, language, task.sipTrunkId());
@@ -134,7 +134,7 @@ public class CallTaskConsumer {
                 callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.FAILED, "call preparation failed: " + e.getMessage());
             }
-            campaignService.applyOutcome(task.targetId(), Disposition.FAILED);
+            campaignService.applyOutcome(task.companyId(), task.targetId(), Disposition.FAILED);
         }
     }
 

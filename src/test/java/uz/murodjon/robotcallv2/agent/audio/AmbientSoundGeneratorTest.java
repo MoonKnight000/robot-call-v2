@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.campaign.domain.enums.AmbientSound;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 
 import static org.junit.jupiter.api.Assertions.*;
 

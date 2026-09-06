@@ -18,12 +18,12 @@ public class AiModelConfigControllerImpl implements AiModelConfigController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<AiModelConfig>> get() {
-        return ResponseEntity.ok(ResponseData.ok(aiModelConfigUseCase.findForCurrentCompany()));
+    public ResponseEntity<ResponseData<AiModelConfig>> get(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(aiModelConfigUseCase.findByCompanyId(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<AiModelConfig>> update(UpdateAiModelConfigRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(aiModelConfigUseCase.updateForCurrentCompany(request)));
+    public ResponseEntity<ResponseData<AiModelConfig>> update(long companyId, UpdateAiModelConfigRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiModelConfigUseCase.updateByCompanyId(companyId, request)));
     }
 }

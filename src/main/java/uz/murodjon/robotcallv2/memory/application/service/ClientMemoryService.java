@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.memory.application.dto.UpdateClientMemoryRequest;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
@@ -31,18 +30,16 @@ public class ClientMemoryService implements ClientMemoryUseCase {
     private static final Logger log = LoggerFactory.getLogger(ClientMemoryService.class);
 
     private final ClientMemoryRepository repository;
-    private final CurrentCompany currentCompany;
     private final AuditService audit;
 
-    public ClientMemoryService(ClientMemoryRepository repository, CurrentCompany currentCompany, AuditService audit) {
+    public ClientMemoryService(ClientMemoryRepository repository, AuditService audit) {
         this.repository = repository;
-        this.currentCompany = currentCompany;
         this.audit = audit;
     }
 
     @Override
-    public ClientMemory findForCurrentCompany(String phone) {
-        ClientMemory memory = findByCompanyIdAndPhone(currentCompany.id(), PhoneNumbers.require(phone));
+    public ClientMemory requireByCompanyIdAndPhone(long companyId, String phone) {
+        ClientMemory memory = findByCompanyIdAndPhone(companyId, PhoneNumbers.require(phone));
         if (memory == null) {
             throw new NotFoundException(ErrorCode.CLIENT_MEMORY_NOT_FOUND, phone);
         }
@@ -51,8 +48,7 @@ public class ClientMemoryService implements ClientMemoryUseCase {
 
     @Override
     @Transactional
-    public ClientMemory updateForCurrentCompany(String phone, UpdateClientMemoryRequest request) {
-        long companyId = currentCompany.id();
+    public ClientMemory updateByCompanyIdAndPhone(long companyId, String phone, UpdateClientMemoryRequest request) {
         String normalized = PhoneNumbers.require(phone);
         ClientMemory current = orEmpty(repository.findByCompanyIdAndPhone(companyId, normalized), companyId, normalized);
         ClientMemory updated = new ClientMemory(
@@ -62,7 +58,7 @@ public class ClientMemoryService implements ClientMemoryUseCase {
                 apply(current.operatorNotes(), request.operatorNotes()),
                 current.recentCalls(), current.facts(), Instant.now());
         ClientMemory saved = repository.upsert(companyId, updated);
-        audit.record("CLIENT_MEMORY_UPDATE", "client_memory", normalized, "Memory updated by operator");
+        audit.record(companyId, "CLIENT_MEMORY_UPDATE", "client_memory", normalized, "Memory updated by operator");
         return saved;
     }
 

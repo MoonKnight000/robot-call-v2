@@ -11,10 +11,8 @@ import java.util.Optional;
 
 public interface UserRepository {
 
-    long create(String name, String username, String email, long roleId, UserStatus status);
-
-    long createForCompany(long companyId, String name, String username, String email, String passwordHash,
-                          long roleId, UserStatus status);
+    long create(long companyId, String name, String username, String email, String passwordHash,
+                long roleId, UserStatus status);
 
     boolean existsByEmail(String email);
 
@@ -26,13 +24,13 @@ public interface UserRepository {
 
     Optional<User> findById(long id);
 
-    User find(long id);
+    User find(long companyId, long id);
 
     User findBySipExtension(String sipExtension, long companyId);
 
-    List<User> findAll();
+    List<User> findAll(long companyId);
 
-    Map<Long, String> namesByIds(Collection<Long> ids);
+    Map<Long, String> namesByIds(long companyId, Collection<Long> ids);
 
     List<User> findActiveByCompany(long companyId);
 
@@ -53,17 +51,18 @@ public interface UserRepository {
 
     void resetPassword(long id, String passwordHash);
 
-    void updateRole(long id, long roleId);
+    void updateRole(long companyId, long id, long roleId);
 
-    void updateStatus(long id, UserStatus status);
+    void updateStatus(long companyId, long id, UserStatus status);
 
     void touchLastLogin(long id);
 
-    void updateProfile(long id, String name, String email, String phone, String position, String sipExtension);
+    void updateProfile(long companyId, long id, String name, String email, String phone, String position,
+                       String sipExtension);
 
-    void updateAvatarFileId(long id, Long avatarFileId);
+    void updateAvatarFileId(long companyId, long id, Long avatarFileId);
 
-    void updatePassword(long id, String passwordHash);
+    void updatePassword(long companyId, long id, String passwordHash);
 
-    void updateCallColumns(long id, String callColumns);
+    void updateCallColumns(long companyId, long id, String callColumns);
 }

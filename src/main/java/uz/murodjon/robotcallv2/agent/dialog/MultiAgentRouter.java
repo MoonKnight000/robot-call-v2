@@ -18,11 +18,11 @@ public class MultiAgentRouter {
 
     private static final Logger log = LoggerFactory.getLogger(MultiAgentRouter.class);
 
-    private final ScenarioRepository scenarioRepo;
+    private final ScenarioRepository scenarioRepository;
     private final DialogEngine dialogEngine;
 
-    public MultiAgentRouter(ScenarioRepository scenarioRepo, DialogEngine dialogEngine) {
-        this.scenarioRepo = scenarioRepo;
+    public MultiAgentRouter(ScenarioRepository scenarioRepository, DialogEngine dialogEngine) {
+        this.scenarioRepository = scenarioRepository;
         this.dialogEngine = dialogEngine;
     }
 
@@ -35,7 +35,7 @@ public class MultiAgentRouter {
             throw new NotFoundException(ErrorCode.CALL_NOT_FOUND, channelId);
         }
 
-        Scenario targetScenario = scenarioRepo.findActiveByKey(targetScenarioKey);
+        Scenario targetScenario = scenarioRepository.findActiveByKey(targetScenarioKey);
         if (targetScenario == null) {
             throw new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, targetScenarioKey);
         }

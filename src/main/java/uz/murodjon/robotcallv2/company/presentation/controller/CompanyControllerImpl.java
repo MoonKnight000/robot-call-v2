@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -23,8 +24,8 @@ public class CompanyControllerImpl implements CompanyController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Company>> create(CreateCompanyRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.create(r)));
+    public ResponseEntity<ResponseData<Company>> create(CreateCompanyRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.create(request)));
     }
 
     @Override
@@ -33,32 +34,36 @@ public class CompanyControllerImpl implements CompanyController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Company>> get(long id) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.requireCompany(id)));
+    public ResponseEntity<ResponseData<Company>> get(long callerCompanyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.requireCompany(callerCompanyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Company>> update(long id, UpdateCompanyRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.update(id, r)));
+    public ResponseEntity<ResponseData<Company>> update(long callerCompanyId, long id,
+                                                        UpdateCompanyRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.update(callerCompanyId, id, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Company>> updateStatus(long id, UpdateCompanyStatusRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateStatus(id, r)));
+    public ResponseEntity<ResponseData<Company>> updateStatus(long id, UpdateCompanyStatusRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateStatus(id, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Company>> uploadLogo(long id, MultipartFile file) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.uploadLogo(id, file)));
+    public ResponseEntity<ResponseData<Company>> uploadLogo(long callerCompanyId, long id, MultipartFile file) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.uploadLogo(callerCompanyId, id, file)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<CompanyConfig>> getConfig(long id) {
-        return ResponseEntity.ok(ResponseData.ok(companyConfigUseCase.requireConfigForApi(id)));
+    public ResponseEntity<ResponseData<CompanyConfig>> getConfig(long callerCompanyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(
+                companyConfigUseCase.requireConfigForApi(callerCompanyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<CompanyConfig>> updateConfig(long id, UpdateCompanyConfigRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(companyConfigUseCase.update(id, r)));
+    public ResponseEntity<ResponseData<CompanyConfig>> updateConfig(long callerCompanyId, long id,
+                                                                     UpdateCompanyConfigRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(
+                companyConfigUseCase.update(callerCompanyId, id, request)));
     }
 }

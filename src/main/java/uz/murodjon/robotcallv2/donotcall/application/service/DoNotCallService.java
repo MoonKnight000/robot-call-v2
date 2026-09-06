@@ -5,9 +5,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.contact.application.service.ContactService;
-import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallFilter;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRemoveResponse;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRow;
 import uz.murodjon.robotcallv2.donotcall.application.mapper.DoNotCallMapper;
@@ -31,27 +30,24 @@ public class DoNotCallService implements DoNotCallUseCase {
     private final DoNotCallRepository doNotCallRepository;
     private final ContactService contactService;
     private final AuditService auditService;
-    private final CurrentCompany currentCompany;
     private final DoNotCallMapper doNotCallMapper;
 
     public DoNotCallService(DoNotCallRepository doNotCallRepository,
                             ContactService contactService,
                             AuditService auditService,
-                            CurrentCompany currentCompany,
                             DoNotCallMapper doNotCallMapper) {
         this.doNotCallRepository = doNotCallRepository;
         this.contactService = contactService;
         this.auditService = auditService;
-        this.currentCompany = currentCompany;
         this.doNotCallMapper = doNotCallMapper;
     }
 
     @Override
-    public PageableData<DoNotCallRow> list(DoNotCallFilter filter) {
-        long companyId = currentCompany.id();
+    public PageableData<DoNotCallRow> list(long companyId, DoNotCallFilter filter) {
         List<DoNotCall> rows = doNotCallRepository.findAll(companyId, filter);
         long total = doNotCallRepository.count(companyId, filter);
-        Map<String, String> contactNames = contactService.namesByPhones(rows.stream().map(DoNotCall::getPhone).toList());
+        Map<String, String> contactNames = contactService.namesByPhones(companyId,
+                rows.stream().map(DoNotCall::getPhone).toList());
         List<DoNotCallRow> enriched = rows.stream()
                 .map(d -> doNotCallMapper.domainToRow(d, contactNames.get(d.getPhone())))
                 .toList();
@@ -59,13 +55,12 @@ public class DoNotCallService implements DoNotCallUseCase {
     }
 
     @Override
-    public DoNotCallRemoveResponse remove(String phone) {
-        long companyId = currentCompany.id();
+    public DoNotCallRemoveResponse remove(long companyId, String phone) {
         boolean removed = doNotCallRepository.remove(companyId, phone, currentActor());
         if (!removed) {
             throw new NotFoundException(ErrorCode.DO_NOT_CALL_ENTRY_NOT_FOUND, phone);
         }
-        auditService.record("DNC_REMOVE", "do_not_call", phone, null);
+        auditService.record(companyId, "DNC_REMOVE", "do_not_call", phone, null);
         return new DoNotCallRemoveResponse(phone, true);
     }
 

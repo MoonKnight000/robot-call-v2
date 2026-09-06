@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.profile.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.profile.application.port.output.PersonalNotificationMatrixRepository;
@@ -20,36 +19,34 @@ import java.util.List;
 @Component
 public class PersonalNotificationMatrixRepositoryAdapter implements PersonalNotificationMatrixRepository {
 
-    private final PersonalNotificationMatrixJpaRepository jpa;
-    private final UserJpaRepository userJpa;
-    private final CompanyJpaRepository companyJpa;
-    private final CurrentCompany company;
+    private final PersonalNotificationMatrixJpaRepository personalNotificationMatrixJpaRepository;
+    private final UserJpaRepository userJpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public PersonalNotificationMatrixRepositoryAdapter(PersonalNotificationMatrixJpaRepository jpa,
-                                                       UserJpaRepository userJpa,
-                                                       CompanyJpaRepository companyJpa,
-                                                       CurrentCompany company) {
-        this.jpa = jpa;
-        this.userJpa = userJpa;
-        this.companyJpa = companyJpa;
-        this.company = company;
+    public PersonalNotificationMatrixRepositoryAdapter(PersonalNotificationMatrixJpaRepository personalNotificationMatrixJpaRepository,
+                                                       UserJpaRepository userJpaRepository,
+                                                       CompanyJpaRepository companyJpaRepository) {
+        this.personalNotificationMatrixJpaRepository = personalNotificationMatrixJpaRepository;
+        this.userJpaRepository = userJpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
     public List<PersonalNotificationMatrixEntry> find(long userId) {
-        return jpa.findByUserId(userId).stream()
+        return personalNotificationMatrixJpaRepository.findByUserId(userId).stream()
                 .map(e -> new PersonalNotificationMatrixEntry(e.getType(), e.getChannel(), e.isEnabled()))
                 .toList();
     }
 
     @Override
     @Transactional
-    public List<PersonalNotificationMatrixEntry> save(long userId, List<PersonalNotificationMatrixEntry> rows) {
-        jpa.deleteByUserId(userId);
-        UserEntity user = userJpa.findById(userId)
+    public List<PersonalNotificationMatrixEntry> save(long companyId, long userId,
+                                                     List<PersonalNotificationMatrixEntry> rows) {
+        personalNotificationMatrixJpaRepository.deleteByUserId(userId);
+        UserEntity user = userJpaRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity comp = companyJpa.findById(company.id())
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, company.id()));
+        CompanyEntity comp = companyJpaRepository.findById(companyId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
 
         for (PersonalNotificationMatrixEntry row : rows) {
             PersonalNotificationMatrixEntity entity = new PersonalNotificationMatrixEntity();
@@ -58,7 +55,7 @@ public class PersonalNotificationMatrixRepositoryAdapter implements PersonalNoti
             entity.setType(row.type());
             entity.setChannel(row.channel());
             entity.setEnabled(row.enabled());
-            jpa.save(entity);
+            personalNotificationMatrixJpaRepository.save(entity);
         }
         return find(userId);
     }

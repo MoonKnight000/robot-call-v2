@@ -2,9 +2,11 @@ package uz.murodjon.robotcallv2.contact.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+
 import uz.murodjon.robotcallv2.contact.application.dto.*;
 import uz.murodjon.robotcallv2.contact.application.port.input.ContactUseCase;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.ContactDncResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -19,38 +21,38 @@ public class ContactControllerImpl implements ContactController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Contact>> create(CreateContactRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.create(r)));
+    public ResponseEntity<ResponseData<Contact>> create(long companyId, CreateContactRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.create(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<Contact>>> list(ContactFilter filter) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.list(filter)));
+    public ResponseEntity<ResponseData<PageableData<Contact>>> list(long companyId, ContactFilter filter) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.list(companyId, filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ContactDetail>> get(long id) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.detail(id)));
+    public ResponseEntity<ResponseData<ContactDetail>> get(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.detail(companyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Contact>> update(long id, UpdateContactRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.update(id, r)));
+    public ResponseEntity<ResponseData<Contact>> update(long companyId, long id, UpdateContactRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.update(companyId, id, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> delete(long id) {
-        contactUseCase.delete(id);
+    public ResponseEntity<ResponseData<Void>> delete(long companyId, long id) {
+        contactUseCase.delete(companyId, id);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ContactImportResult>> importCsv(String csv) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.importCsv(csv)));
+    public ResponseEntity<ResponseData<ContactImportResult>> importCsv(long companyId, String csv) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.importCsv(companyId, csv)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ContactDncResponse>> addToDoNotCall(long id) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.addToDoNotCall(id)));
+    public ResponseEntity<ResponseData<ContactDncResponse>> addToDoNotCall(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.addToDoNotCall(companyId, id)));
     }
 }

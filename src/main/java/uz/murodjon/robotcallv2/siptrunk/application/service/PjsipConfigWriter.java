@@ -32,29 +32,29 @@ public class PjsipConfigWriter {
 
             """;
 
-    private final SipTrunkRepository repo;
+    private final SipTrunkRepository repository;
     private final SecretCipher cipher;
-    private final PjsipConfigProperties props;
+    private final PjsipConfigProperties pjsipConfigProperties;
     private final AmiClient ami;
 
-    public PjsipConfigWriter(SipTrunkRepository repo, SecretCipher cipher, PjsipConfigProperties props,
+    public PjsipConfigWriter(SipTrunkRepository repository, SecretCipher cipher, PjsipConfigProperties pjsipConfigProperties,
                               AmiClient ami) {
-        this.repo = repo;
+        this.repository = repository;
         this.cipher = cipher;
-        this.props = props;
+        this.pjsipConfigProperties = pjsipConfigProperties;
         this.ami = ami;
     }
 
     public void regenerateAndReload() {
-        if (!props.enabled()) {
+        if (!pjsipConfigProperties.enabled()) {
             return;
         }
-        if (props.configDir() == null || props.configDir().isBlank()) {
+        if (pjsipConfigProperties.configDir() == null || pjsipConfigProperties.configDir().isBlank()) {
             log.warn("voice-agent.siptrunk.config-dir is not set — cannot write generated PJSIP config");
             return;
         }
-        List<SipTrunk> trunks = repo.findAllManagedEnabled();
-        Path file = Path.of(props.configDir(), props.configFileName());
+        List<SipTrunk> trunks = repository.findAllManagedEnabled();
+        Path file = Path.of(pjsipConfigProperties.configDir(), pjsipConfigProperties.configFileName());
         try {
             Files.writeString(file, render(trunks), StandardCharsets.UTF_8);
         } catch (IOException e) {

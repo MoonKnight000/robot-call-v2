@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import uz.murodjon.robotcallv2.aimodel.application.dto.UpdateAiModelConfigRequest;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 /**
@@ -20,9 +21,10 @@ public interface AiModelConfigController {
 
     @PreAuthorize("hasAuthority('AI_MODEL_READ')")
     @GetMapping
-    ResponseEntity<ResponseData<AiModelConfig>> get();
+    ResponseEntity<ResponseData<AiModelConfig>> get(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('AI_MODEL_EDIT')")
     @PutMapping
-    ResponseEntity<ResponseData<AiModelConfig>> update(@Valid @RequestBody UpdateAiModelConfigRequest request);
+    ResponseEntity<ResponseData<AiModelConfig>> update(@CurrentCompanyId long companyId,
+                                                       @Valid @RequestBody UpdateAiModelConfigRequest request);
 }

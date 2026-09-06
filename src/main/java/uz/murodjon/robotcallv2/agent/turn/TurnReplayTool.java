@@ -267,10 +267,10 @@ public final class TurnReplayTool {
     }
 
     private static SmartTurnDetector loadDetector(Settings settings) {
-        SmartTurnProperties props = new SmartTurnProperties(true, settings.turnModel, List.of(),
+        SmartTurnProperties smartTurnProperties = new SmartTurnProperties(true, settings.turnModel, List.of(),
                 settings.turnThreshold, settings.turnExtendMs, settings.earlyWaitMs, settings.earlyThreshold,
                 settings.nFft, settings.hopSamples, settings.mels, settings.frames);
-        SmartTurnDetector detector = new SmartTurnDetector(props);
+        SmartTurnDetector detector = new SmartTurnDetector(smartTurnProperties);
         detector.init();
         if (!detector.available()) {
             System.err.println("Smart Turn model could not be loaded: " + settings.turnModel);

@@ -16,9 +16,9 @@ public class RtpPortAllocator {
     private final int rangeEnd;
     private final NavigableSet<Integer> free = new TreeSet<>();
 
-    public RtpPortAllocator(RtpProperties props) {
-        this.rangeStart = props.portRangeStart();
-        this.rangeEnd = props.portRangeEnd();
+    public RtpPortAllocator(RtpProperties rtpProperties) {
+        this.rangeStart = rtpProperties.portRangeStart();
+        this.rangeEnd = rtpProperties.portRangeEnd();
         for (int port = rangeStart; port <= rangeEnd; port += 2) {
             free.add(port);
         }

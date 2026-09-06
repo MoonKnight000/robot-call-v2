@@ -9,15 +9,14 @@ Ushbu katalog **Uysot Voice Platform (robot-call-v2)** backend tizimining barcha
 Barcha REST API'lar `/api` prefiksi ostida ishlaydi (masalan, `https://voice.app.uysot.uz/api/campaigns`).
 
 ### Autentifikatsiya mexanizmlari:
-1. **Bearer Token (JWT)**:
-   - Panel foydalanuvchilari uchun.
+1. **Bearer Token (JWT)** — yagona usul:
    - Sarlavha: `Authorization: Bearer <accessToken>`
-   - Token muddati tugaganda: `POST /api/auth/refresh`
-2. **API Key (M2M / Server-to-Server)**:
-   - Tashqi xizmatlar, cron yoki integratsiyalar uchun.
-   - `X-Api-Key: <TOKEN>`
-3. **Multi-Tenancy**:
-   - Har bir so'rov foydalanuvchining joriy kompaniyasi (`CurrentCompany` / `company_id`) kontekstida xavfsiz izolyatsiyalangan holda bajariladi.
+   - Token `POST /api/auth/login` dan olinadi; muddati tugaganda `POST /api/auth/refresh`.
+   - Tashqi xizmat / cron ham shu yo'l bilan kiradi: unga alohida foydalanuvchi
+     ochiladi va uning tokeni ishlatiladi (`X-Api-Key` olib tashlangan).
+2. **Multi-Tenancy**:
+   - Kompaniya har doim tokendan olinadi (`@CurrentCompanyId`); so'rovdagi
+     `companyId` parametriga ishonilmaydi.
 
 ### Ruxsatlar (permission):
 Har bir sahifaning o'z permissioni bor: `<SAHIFA>_READ` (ko'rish) va `<SAHIFA>_EDIT`

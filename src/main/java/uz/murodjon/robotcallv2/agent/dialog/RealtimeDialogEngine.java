@@ -71,7 +71,7 @@ public class RealtimeDialogEngine implements CallDialog {
     private final CallRecordService records;
     private final CompanyService companyService;
     private final CompanyConfigService companyConfigService;
-    private final DialogProperties props;
+    private final DialogProperties dialogProperties;
     private final RealtimeProperties realtimeProperties;
     private final VoiceMetrics metrics;
     private final TtsVoiceService voiceCatalog;
@@ -87,7 +87,7 @@ public class RealtimeDialogEngine implements CallDialog {
     public RealtimeDialogEngine(RealtimeProviderRegistry registry, EngineConfigService engineConfigService,
                                 RealtimeSystemPromptFactory promptFactory, CallRecordService records,
                                 CompanyService companyService, CompanyConfigService companyConfigService,
-                                DialogProperties props, RealtimeProperties realtimeProperties,
+                                DialogProperties dialogProperties, RealtimeProperties realtimeProperties,
                                 VoiceMetrics metrics, TtsVoiceService voiceCatalog) {
         this.registry = registry;
         this.engineConfigService = engineConfigService;
@@ -95,7 +95,7 @@ public class RealtimeDialogEngine implements CallDialog {
         this.records = records;
         this.companyService = companyService;
         this.companyConfigService = companyConfigService;
-        this.props = props;
+        this.dialogProperties = dialogProperties;
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
         this.voiceCatalog = voiceCatalog;
@@ -147,7 +147,7 @@ public class RealtimeDialogEngine implements CallDialog {
         String companyName = company != null ? company.name() : null;
 
         String disclosureText = null;
-        if (props.mandatoryDisclosure() && disclosureEnabled && agentPersona != AgentPersona.HUMAN_LIKE) {
+        if (dialogProperties.mandatoryDisclosure() && disclosureEnabled && agentPersona != AgentPersona.HUMAN_LIKE) {
             CompanyConfig companyConfig = companyConfigService.find(companyId);
             disclosureText = disclosureLine(session, companyConfig != null ? companyConfig.disclosureText() : null, companyName);
         }
@@ -309,7 +309,7 @@ public class RealtimeDialogEngine implements CallDialog {
     }
 
     private void auditFacts(RealtimeDialogSession s, String text) {
-        if (!props.factGuard()) {
+        if (!dialogProperties.factGuard()) {
             return;
         }
         List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
@@ -324,7 +324,7 @@ public class RealtimeDialogEngine implements CallDialog {
         records.recordError(s.callAttemptId(),
                 "fact guard: spoken figures not in call facts: " + String.join(", ", bad));
 
-        int limit = props.factViolationEscalateAfter();
+        int limit = dialogProperties.factViolationEscalateAfter();
         if (limit <= 0 || violations < limit || s.isEnded()) {
             return;
         }

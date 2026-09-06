@@ -15,20 +15,6 @@ public final class CallCostCalculator {
     private static final BigDecimal TTS_PER_1K_CHARS = new BigDecimal("0.004"); // Yandex/Aisha TTS
     private static final BigDecimal TELEPHONY_PER_MINUTE = new BigDecimal("0.015"); // SIP trunk outbound
 
-    public record CallCostBreakdown(
-            int promptTokens,
-            int completionTokens,
-            int totalTokens,
-            int durationSeconds,
-            int ttsCharacters,
-            BigDecimal llmCostUsd,
-            BigDecimal sttCostUsd,
-            BigDecimal ttsCostUsd,
-            BigDecimal telephonyCostUsd,
-            BigDecimal totalCostUsd
-    ) {
-    }
-
     private CallCostCalculator() {
     }
 

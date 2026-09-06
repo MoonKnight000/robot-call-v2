@@ -3,9 +3,8 @@ package uz.murodjon.robotcallv2.donotcall.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.contact.application.service.ContactService;
-import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallFilter;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRemoveResponse;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRow;
 import uz.murodjon.robotcallv2.donotcall.application.mapper.DoNotCallMapper;
@@ -28,7 +27,6 @@ class DoNotCallServiceTest {
     private DoNotCallRepository doNotCallRepository;
     private ContactService contactService;
     private AuditService auditService;
-    private CurrentCompany currentCompany;
     private DoNotCallMapper doNotCallMapper;
     private DoNotCallService service;
 
@@ -37,14 +35,10 @@ class DoNotCallServiceTest {
         doNotCallRepository = mock(DoNotCallRepository.class);
         contactService = mock(ContactService.class);
         auditService = mock(AuditService.class);
-        currentCompany = mock(CurrentCompany.class);
         doNotCallMapper = mock(DoNotCallMapper.class);
 
-        when(currentCompany.id()).thenReturn(1L);
-
         service = new DoNotCallService(
-                doNotCallRepository, contactService, auditService, currentCompany, doNotCallMapper
-        );
+                doNotCallRepository, contactService, auditService, doNotCallMapper);
     }
 
     @Test
@@ -56,10 +50,10 @@ class DoNotCallServiceTest {
 
         when(doNotCallRepository.findAll(1L, filter)).thenReturn(List.of(entry));
         when(doNotCallRepository.count(1L, filter)).thenReturn(1L);
-        when(contactService.namesByPhones(List.of("998901234567"))).thenReturn(Map.of("998901234567", "Ali Valiyev"));
+        when(contactService.namesByPhones(1L, List.of("998901234567"))).thenReturn(Map.of("998901234567", "Ali Valiyev"));
         when(doNotCallMapper.domainToRow(entry, "Ali Valiyev")).thenReturn(row);
 
-        PageableData<DoNotCallRow> result = service.list(filter);
+        PageableData<DoNotCallRow> result = service.list(1L, filter);
 
         assertThat(result).isNotNull();
         assertThat(result.data()).hasSize(1);
@@ -73,7 +67,7 @@ class DoNotCallServiceTest {
         String phone = "998901234567";
         when(doNotCallRepository.remove(eq(1L), eq(phone), anyString())).thenReturn(true);
 
-        DoNotCallRemoveResponse response = service.remove(phone);
+        DoNotCallRemoveResponse response = service.remove(1L, phone);
 
         assertThat(response.phone()).isEqualTo(phone);
         assertThat(response.removed()).isTrue();
@@ -85,7 +79,7 @@ class DoNotCallServiceTest {
         String phone = "998909999999";
         when(doNotCallRepository.remove(eq(1L), eq(phone), anyString())).thenReturn(false);
 
-        assertThatThrownBy(() -> service.remove(phone))
+        assertThatThrownBy(() -> service.remove(1L, phone))
                 .isInstanceOf(NotFoundException.class);
     }
 

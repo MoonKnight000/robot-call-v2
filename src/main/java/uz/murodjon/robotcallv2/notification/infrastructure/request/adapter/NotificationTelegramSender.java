@@ -22,18 +22,18 @@ public class NotificationTelegramSender {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationTelegramSender.class);
 
-    private final NotificationProperties props;
+    private final NotificationProperties notificationProperties;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
-    public NotificationTelegramSender(NotificationProperties props) {
-        this.props = props;
+    public NotificationTelegramSender(NotificationProperties notificationProperties) {
+        this.notificationProperties = notificationProperties;
     }
 
     public void send(String chatId, String text) {
-        if (props.telegramBotToken() == null || props.telegramBotToken().isBlank()) {
+        if (notificationProperties.telegramBotToken() == null || notificationProperties.telegramBotToken().isBlank()) {
             log.warn("Telegram notification to {} skipped: voice-agent.notification.telegram-bot-token not set", chatId);
             return;
         }
@@ -42,7 +42,7 @@ public class NotificationTelegramSender {
             body.put("chat_id", chatId);
             body.put("text", text);
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.telegram.org/bot" + props.telegramBotToken() + "/sendMessage"))
+                    .uri(URI.create("https://api.telegram.org/bot" + notificationProperties.telegramBotToken() + "/sendMessage"))
                     .timeout(Duration.ofSeconds(5))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))

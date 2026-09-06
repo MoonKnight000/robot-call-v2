@@ -8,7 +8,7 @@ import uz.murodjon.robotcallv2.report.infrastructure.persistence.entity.ReportSc
 @Component
 public class ReportScheduleMapper {
 
-    public ReportSchedule toDomain(ReportScheduleEntity entity) {
+    public ReportSchedule toReportSchedule(ReportScheduleEntity entity) {
         if (entity == null) {
             return null;
         }

@@ -55,7 +55,7 @@ public class RecurringCampaignScheduler {
             try {
                 if (isDue(c, now)) {
                     log.info("Recurring campaign {} ({}) is due. Triggering execution...", c.id(), c.name());
-                    campaignUseCase.triggerRecurrenceRun(c.id(), c.autoResetTargets());
+                    campaignUseCase.triggerRecurrenceRun(c.companyId(), c.id(), c.autoResetTargets());
                 }
             } catch (Exception e) {
                 log.error("Failed to evaluate recurrence for campaign {}: {}", c.id(), e.getMessage(), e);

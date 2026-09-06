@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.profile.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.profile.application.port.output.UserScheduleRepository;
@@ -21,36 +20,33 @@ import java.util.List;
 @Component
 public class UserScheduleRepositoryAdapter implements UserScheduleRepository {
 
-    private final UserScheduleJpaRepository jpa;
-    private final UserJpaRepository userJpa;
-    private final CompanyJpaRepository companyJpa;
-    private final CurrentCompany company;
+    private final UserScheduleJpaRepository userScheduleJpaRepository;
+    private final UserJpaRepository userJpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public UserScheduleRepositoryAdapter(UserScheduleJpaRepository jpa,
-                                         UserJpaRepository userJpa,
-                                         CompanyJpaRepository companyJpa,
-                                         CurrentCompany company) {
-        this.jpa = jpa;
-        this.userJpa = userJpa;
-        this.companyJpa = companyJpa;
-        this.company = company;
+    public UserScheduleRepositoryAdapter(UserScheduleJpaRepository userScheduleJpaRepository,
+                                         UserJpaRepository userJpaRepository,
+                                         CompanyJpaRepository companyJpaRepository) {
+        this.userScheduleJpaRepository = userScheduleJpaRepository;
+        this.userJpaRepository = userJpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
     public List<ScheduleSlot> find(long userId) {
-        return jpa.findByUserIdOrderByDayOfWeekAscStartTimeAsc(userId).stream()
+        return userScheduleJpaRepository.findByUserIdOrderByDayOfWeekAscStartTimeAsc(userId).stream()
                 .map(e -> new ScheduleSlot(e.getDayOfWeek(), e.getStartTime(), e.getEndTime()))
                 .toList();
     }
 
     @Override
     @Transactional
-    public List<ScheduleSlot> save(long userId, List<ScheduleSlot> slots) {
-        jpa.deleteByUserId(userId);
-        UserEntity user = userJpa.findById(userId)
+    public List<ScheduleSlot> save(long companyId, long userId, List<ScheduleSlot> slots) {
+        userScheduleJpaRepository.deleteByUserId(userId);
+        UserEntity user = userJpaRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity comp = companyJpa.findById(company.id())
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, company.id()));
+        CompanyEntity comp = companyJpaRepository.findById(companyId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
 
         Instant now = Instant.now();
         for (ScheduleSlot slot : slots) {
@@ -61,7 +57,7 @@ public class UserScheduleRepositoryAdapter implements UserScheduleRepository {
             entity.setStartTime(slot.startTime());
             entity.setEndTime(slot.endTime());
             entity.setCreatedAt(now);
-            jpa.save(entity);
+            userScheduleJpaRepository.save(entity);
         }
         return find(userId);
     }

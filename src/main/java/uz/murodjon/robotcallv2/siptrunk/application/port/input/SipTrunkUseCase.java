@@ -2,23 +2,24 @@ package uz.murodjon.robotcallv2.siptrunk.application.port.input;
 
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 
 import java.util.Collection;
 import java.util.List;
 
 public interface SipTrunkUseCase {
 
-    SipTrunkRow create(CreateSipTrunkRequest r);
+    SipTrunkRow create(long companyId, CreateSipTrunkRequest request);
 
-    SipTrunkRow update(long id, UpdateSipTrunkRequest r);
+    SipTrunkRow update(long companyId, long id, UpdateSipTrunkRequest request);
 
-    SipTrunkRow makeDefault(long id);
+    SipTrunkRow makeDefault(long companyId, long id);
 
-    void delete(long id);
+    void delete(long companyId, long id);
 
-    PageableData<SipTrunkRow> list(SipTrunkFilter filter);
+    PageableData<SipTrunkRow> list(long companyId, SipTrunkFilter filter);
 
-    SipTrunkRow requireTrunk(long id);
+    SipTrunkRow requireTrunk(long companyId, long id);
 
     SipTrunkRow findDefaultForCall(long companyId);
 
@@ -26,7 +27,7 @@ public interface SipTrunkUseCase {
 
     List<SipTrunkRow> findAllEnabledForCompany(long companyId);
 
-    SipTrunkStatus getStatus(long id);
+    SipTrunkStatus getStatus(long companyId, long id);
 
-    List<SipTrunkStatus> getAllStatuses();
+    List<SipTrunkStatus> getAllStatuses(long companyId);
 }

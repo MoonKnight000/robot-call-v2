@@ -41,18 +41,18 @@ public class CampaignVariantRepositoryAdapter implements CampaignVariantReposito
         entity.setUpdatedAt(Instant.now());
 
         CampaignVariantEntity saved = jpaRepository.save(entity);
-        return toDomain(saved);
+        return toCampaignVariant(saved);
     }
 
     @Override
     public Optional<CampaignVariant> findByIdAndCompanyId(long id, long companyId) {
-        return jpaRepository.findByIdAndCompanyId(id, companyId).map(this::toDomain);
+        return jpaRepository.findByIdAndCompanyId(id, companyId).map(this::toCampaignVariant);
     }
 
     @Override
     public List<CampaignVariant> findAllByCampaignIdAndCompanyId(long campaignId, long companyId) {
         return jpaRepository.findAllByCampaignIdAndCompanyId(campaignId, companyId).stream()
-                .map(this::toDomain)
+                .map(this::toCampaignVariant)
                 .toList();
     }
 
@@ -80,22 +80,22 @@ public class CampaignVariantRepositoryAdapter implements CampaignVariantReposito
         jpaRepository.deleteByIdAndCompanyId(id, companyId);
     }
 
-    private CampaignVariant toDomain(CampaignVariantEntity e) {
+    private CampaignVariant toCampaignVariant(CampaignVariantEntity entity) {
         return new CampaignVariant(
-                e.getId() != null ? e.getId() : 0L,
-                e.getCampaignId(),
-                e.getCompanyId(),
-                e.getName(),
-                e.getAiAgentId(),
-                e.getPromptOverride(),
-                e.getTtsVoiceId(),
-                e.getTrafficWeight(),
-                e.getCallsCount(),
-                e.getAnsweredCount(),
-                e.getConvertedCount(),
-                e.isActive(),
-                e.getCreatedAt(),
-                e.getUpdatedAt()
+                entity.getId() != null ? entity.getId() : 0L,
+                entity.getCampaignId(),
+                entity.getCompanyId(),
+                entity.getName(),
+                entity.getAiAgentId(),
+                entity.getPromptOverride(),
+                entity.getTtsVoiceId(),
+                entity.getTrafficWeight(),
+                entity.getCallsCount(),
+                entity.getAnsweredCount(),
+                entity.getConvertedCount(),
+                entity.isActive(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
         );
     }
 }

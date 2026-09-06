@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
-import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
@@ -27,7 +27,7 @@ public class AlertingService {
 
     private static final Logger log = LoggerFactory.getLogger(AlertingService.class);
 
-    private final CallAttemptJpaRepository callAttemptJpaRepository;
+    private final CallAttemptRepository callAttemptRepository;
     private final NotificationService notificationService;
     private final CompanyProperties companyProperties;
     private final VoiceMetrics voiceMetrics;
@@ -44,12 +44,12 @@ public class AlertingService {
     private long lastPromptTokens;
     private long lastCachedTokens;
 
-    public AlertingService(CallAttemptJpaRepository callAttemptJpaRepository,
+    public AlertingService(CallAttemptRepository callAttemptRepository,
                            NotificationService notificationService,
                            CompanyProperties companyProperties,
                            VoiceMetrics voiceMetrics,
                            AlertingProperties alertingProperties) {
-        this.callAttemptJpaRepository = callAttemptJpaRepository;
+        this.callAttemptRepository = callAttemptRepository;
         this.notificationService = notificationService;
         this.companyProperties = companyProperties;
         this.voiceMetrics = voiceMetrics;
@@ -63,11 +63,11 @@ public class AlertingService {
         }
         try {
             Instant since = Instant.now().minus(alertingProperties.windowMinutes(), ChronoUnit.MINUTES);
-            long total = callAttemptJpaRepository.countByEndedAtGreaterThanEqual(since);
+            long total = callAttemptRepository.countEndedSince(since);
             if (total < alertingProperties.minSample()) {
                 return; // not enough data to judge
             }
-            long success = callAttemptJpaRepository.countByEndedAtGreaterThanEqualAndDisposition(since, Disposition.PROMISE_TO_PAY);
+            long success = callAttemptRepository.countEndedSinceWithDisposition(since, Disposition.PROMISE_TO_PAY);
             double rate = success / (double) total;
             if (rate < alertingProperties.successThreshold()) {
                 log.error("ALERT: call success rate {}% over last {}min ({}/{}) below threshold {}%",

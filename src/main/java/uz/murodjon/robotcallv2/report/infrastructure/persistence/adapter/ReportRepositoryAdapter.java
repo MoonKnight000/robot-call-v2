@@ -4,9 +4,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.contact.application.dto.ContactCallHistoryRow;
-import uz.murodjon.robotcallv2.report.application.dto.CallFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.FilterInterface;
@@ -54,19 +53,17 @@ public class ReportRepositoryAdapter implements ReportRepository {
             """;
 
     private final EntityManager em;
-    private final CurrentCompany company;
 
-    public ReportRepositoryAdapter(EntityManager em, CurrentCompany company) {
+    public ReportRepositoryAdapter(EntityManager em) {
         this.em = em;
-        this.company = company;
     }
 
     @Override
-    public CampaignStats campaignStats(long campaignId) {
+    public CampaignStats campaignStats(long companyId, long campaignId) {
         List<Object[]> campaign = rows(em.createNativeQuery(
                         "SELECT name, status FROM campaign WHERE id = :campaignId AND company_id = :companyId")
                 .setParameter("campaignId", campaignId)
-                .setParameter("companyId", company.id()));
+                .setParameter("companyId", companyId));
         if (campaign.isEmpty()) {
             return null;
         }
@@ -105,11 +102,11 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public InboundRouteStats inboundRouteStats(long inboundRouteId) {
+    public InboundRouteStats inboundRouteStats(long companyId, long inboundRouteId) {
         List<Object[]> route = rows(em.createNativeQuery(
                         "SELECT did_number FROM inbound_route WHERE id = :routeId AND company_id = :companyId")
                 .setParameter("routeId", inboundRouteId)
-                .setParameter("companyId", company.id()));
+                .setParameter("companyId", companyId));
         if (route.isEmpty()) {
             return null;
         }
@@ -122,7 +119,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
                                 + "max(started_at) AS last_call_at "
                                 + "FROM call_attempt WHERE inbound_route_id = :routeId AND company_id = :companyId")
                 .setParameter("routeId", inboundRouteId)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .getSingleResult();
         long totalCalls = asLong(totals[0]);
         long answeredCalls = asLong(totals[1]);
@@ -133,14 +130,14 @@ public class ReportRepositoryAdapter implements ReportRepository {
                                 + "WHERE inbound_route_id = :routeId AND company_id = :companyId AND ended_at IS NOT NULL "
                                 + "GROUP BY coalesce(disposition, 'UNKNOWN')")
                 .setParameter("routeId", inboundRouteId)
-                .setParameter("companyId", company.id()))) {
+                .setParameter("companyId", companyId))) {
             dispositions.put((String) row[0], asLong(row[1]));
         }
 
         Object earliest = em.createNativeQuery(
                         "SELECT min(started_at) FROM call_attempt "
                                 + "WHERE company_id = :companyId AND inbound_route_id IS NOT NULL")
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .getSingleResult();
 
         return new InboundRouteStats(inboundRouteId, didNumber, totalCalls, answeredCalls,
@@ -149,35 +146,35 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<CallRow> callsOfCampaign(long campaignId, CallFilter filter) {
+    public List<CallRow> callsOfCampaign(long companyId, long campaignId, CallFilter filter) {
         List<Object[]> result = rows(em.createNativeQuery(CALL_SELECT
                         + " WHERE t.campaign_id = :campaignId AND a.company_id = :companyId"
                         + filter.orderByClause() + " LIMIT :limit OFFSET :offset")
                 .setParameter("campaignId", campaignId)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("limit", filter.sizeOrDefault())
                 .setParameter("offset", filter.offset()));
         return result.stream().map(ReportRepositoryAdapter::toCallRow).toList();
     }
 
     @Override
-    public long countCallsOfCampaign(long campaignId) {
+    public long countCallsOfCampaign(long companyId, long campaignId) {
         Object result = em.createNativeQuery(
                         "SELECT count(*) FROM call_attempt a JOIN campaign_target t ON t.id = a.target_id "
                                 + "WHERE t.campaign_id = :campaignId AND a.company_id = :companyId")
                 .setParameter("campaignId", campaignId)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .getSingleResult();
         return asLong(result);
     }
 
     @Override
-    public List<CallRow> recentCalls(CallFilter filter) {
+    public List<CallRow> recentCalls(long companyId, CallFilter filter) {
         StringBuilder sql = new StringBuilder(CALL_SELECT).append(" WHERE a.company_id = :companyId");
         appendCallFilterWhere(sql, filter);
         sql.append(filter.orderByClause()).append(" LIMIT :limit OFFSET :offset");
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("limit", filter.sizeOrDefault())
                 .setParameter("offset", filter.offset());
         bindCallFilterParams(query, filter);
@@ -185,26 +182,26 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<CallRow> exportCalls(CallFilter filter) {
+    public List<CallRow> exportCalls(long companyId, CallFilter filter) {
         StringBuilder sql = new StringBuilder(CALL_SELECT).append(" WHERE a.company_id = :companyId");
         appendCallFilterWhere(sql, filter);
         sql.append(filter.orderByClause()).append(" LIMIT :limit");
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("limit", FilterInterface.MAX_SIZE);
         bindCallFilterParams(query, filter);
         return rows(query).stream().map(ReportRepositoryAdapter::toCallRow).toList();
     }
 
     @Override
-    public long countRecentCalls(CallFilter filter) {
+    public long countRecentCalls(long companyId, CallFilter filter) {
         StringBuilder sql = new StringBuilder(
                 "SELECT count(*) FROM call_attempt a "
                         + "LEFT JOIN campaign_target t ON t.id = a.target_id "
                         + "LEFT JOIN campaign c ON c.id = t.campaign_id "
                         + "WHERE a.company_id = :companyId");
         appendCallFilterWhere(sql, filter);
-        Query query = em.createNativeQuery(sql.toString()).setParameter("companyId", company.id());
+        Query query = em.createNativeQuery(sql.toString()).setParameter("companyId", companyId);
         bindCallFilterParams(query, filter);
         return asLong(query.getSingleResult());
     }
@@ -266,17 +263,17 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public CallRow findCall(long callId) {
+    public CallRow findCall(long companyId, long callId) {
         List<Object[]> result = rows(em.createNativeQuery(
                         CALL_SELECT + " WHERE a.id = :callId AND a.company_id = :companyId")
                 .setParameter("callId", callId)
-                .setParameter("companyId", company.id()));
+                .setParameter("companyId", companyId));
         return result.isEmpty() ? null : toCallRow(result.get(0));
     }
 
     @Override
-    public CallDetail callDetail(long callId) {
-        CallRow callRow = findCall(callId);
+    public CallDetail callDetail(long companyId, long callId) {
+        CallRow callRow = findCall(companyId, callId);
         if (callRow == null) {
             return null;
         }
@@ -333,7 +330,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public DashboardTotals dashboardTotals(Instant from, Instant to, Long campaignId) {
+    public DashboardTotals dashboardTotals(long companyId, Instant from, Instant to, Long campaignId) {
         StringBuilder sql = new StringBuilder(
                 "SELECT count(*) AS total_calls, "
                         + "count(*) FILTER (WHERE a.duration_sec IS NOT NULL) AS answered_calls, "
@@ -345,7 +342,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
             sql.append(" AND t.campaign_id = :campaignId");
         }
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -356,7 +353,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public DashboardTotals operatorTotals(Instant from, Instant to, long operatorUserId) {
+    public DashboardTotals operatorTotals(long companyId, Instant from, Instant to, long operatorUserId) {
         Object[] row = (Object[]) em.createNativeQuery(
                         "SELECT count(*) AS total_calls, "
                                 + "count(*) FILTER (WHERE duration_sec IS NOT NULL) AS answered_calls, "
@@ -365,7 +362,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
                                 + "FROM call_attempt "
                                 + "WHERE company_id = :companyId AND operator_user_id = :operatorUserId "
                                 + "AND started_at >= :from AND started_at < :to")
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("operatorUserId", operatorUserId)
                 .setParameter("from", from)
                 .setParameter("to", to)
@@ -374,7 +371,8 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<DashboardBucket> dashboardBuckets(Instant from, Instant to, Long campaignId, String granularity) {
+    public List<DashboardBucket> dashboardBuckets(long companyId, Instant from, Instant to, Long campaignId,
+                                                  String granularity) {
         StringBuilder sql = new StringBuilder(
                 "SELECT date_trunc(:granularity, a.started_at) AS bucket, "
                         + "count(*) AS total, "
@@ -391,7 +389,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
         sql.append(" GROUP BY bucket ORDER BY bucket");
         Query query = em.createNativeQuery(sql.toString())
                 .setParameter("granularity", granularity)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -405,7 +403,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<DashboardBucket> dynamicsBuckets(Instant from, Instant to, Long campaignId, Long scenarioId,
+    public List<DashboardBucket> dynamicsBuckets(long companyId, Instant from, Instant to, Long campaignId, Long scenarioId,
                                                  Boolean escalated, String granularity) {
         StringBuilder sql = new StringBuilder(
                 "SELECT date_trunc(:granularity, a.started_at) AS bucket, "
@@ -433,7 +431,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
         sql.append(" GROUP BY bucket ORDER BY bucket");
         Query query = em.createNativeQuery(sql.toString())
                 .setParameter("granularity", granularity)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -453,7 +451,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<DashboardOutcome> dashboardOutcomes(Instant from, Instant to, Long campaignId) {
+    public List<DashboardOutcome> dashboardOutcomes(long companyId, Instant from, Instant to, Long campaignId) {
         StringBuilder sql = new StringBuilder(
                 "SELECT coalesce(a.disposition, 'UNKNOWN') AS disposition, count(*) AS n "
                         + "FROM call_attempt a JOIN campaign_target t ON t.id = a.target_id "
@@ -463,7 +461,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
         }
         sql.append(" GROUP BY coalesce(a.disposition, 'UNKNOWN') ORDER BY n DESC");
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -475,7 +473,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<HourlyHeatmapCell> hourlyHeatmap(Instant from, Instant to, Long campaignId) {
+    public List<HourlyHeatmapCell> hourlyHeatmap(long companyId, Instant from, Instant to, Long campaignId) {
         StringBuilder sql = new StringBuilder(
                 "SELECT extract(dow from a.started_at)::int AS day_of_week, "
                         + "extract(hour from a.started_at)::int AS hour_of_day, "
@@ -488,7 +486,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
         }
         sql.append(" GROUP BY day_of_week, hour_of_day ORDER BY day_of_week, hour_of_day");
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -504,7 +502,8 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<CampaignComparisonRow> campaignComparison(Instant from, Instant to, List<Long> campaignIds) {
+    public List<CampaignComparisonRow> campaignComparison(long companyId, Instant from, Instant to,
+                                                          List<Long> campaignIds) {
         StringBuilder sql = new StringBuilder(
                 "SELECT c.id AS campaign_id, c.name AS campaign_name, "
                         + "count(*) AS total_calls, "
@@ -520,7 +519,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
         }
         sql.append(" GROUP BY c.id, c.name ORDER BY total_calls DESC");
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignIds != null && !campaignIds.isEmpty()) {
@@ -540,7 +539,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     private static final int[] DURATION_BUCKET_BOUNDARIES = {30, 60, 120, 300, 600};
 
     @Override
-    public List<DurationHistogramBucket> durationHistogram(Instant from, Instant to, Long campaignId) {
+    public List<DurationHistogramBucket> durationHistogram(long companyId, Instant from, Instant to, Long campaignId) {
         StringBuilder sql = new StringBuilder(
                 "SELECT CASE "
                         + "WHEN a.duration_sec < 30 THEN '0-30' "
@@ -558,7 +557,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
         }
         sql.append(" GROUP BY bucket_label");
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -580,7 +579,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<FunnelStage> funnel(Instant from, Instant to, Long campaignId) {
+    public List<FunnelStage> funnel(long companyId, Instant from, Instant to, Long campaignId) {
         StringBuilder sql = new StringBuilder(
                 "SELECT count(*) AS calls, "
                         + "count(*) FILTER (WHERE a.duration_sec IS NOT NULL) AS answered, "
@@ -599,7 +598,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
             sql.append(" AND t.campaign_id = :campaignId");
         }
         Query query = em.createNativeQuery(sql.toString())
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("from", from)
                 .setParameter("to", to);
         if (campaignId != null) {
@@ -620,7 +619,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public List<ContactCallHistoryRow> callsForPhone(String phone, int limit) {
+    public List<ContactCallHistoryRow> callsForPhone(long companyId, String phone, int limit) {
         List<Object[]> result = rows(em.createNativeQuery(
                         "SELECT a.id AS call_id, cmp.name AS campaign_name, a.started_at AS started_at, "
                                 + "a.duration_sec AS duration_sec, a.disposition AS disposition "
@@ -630,7 +629,7 @@ public class ReportRepositoryAdapter implements ReportRepository {
                                 + "WHERE COALESCE(a.phone, t.phone) = :phone AND a.company_id = :companyId "
                                 + "ORDER BY a.started_at DESC NULLS LAST LIMIT :limit")
                 .setParameter("phone", phone)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .setParameter("limit", limit));
         return result.stream()
                 .map(r -> new ContactCallHistoryRow(
@@ -640,11 +639,11 @@ public class ReportRepositoryAdapter implements ReportRepository {
     }
 
     @Override
-    public Long recordingFileId(long callId) {
+    public Long recordingFileId(long companyId, long callId) {
         List<Object> result = em.createNativeQuery(
                         "SELECT recording_file_id FROM call_attempt WHERE id = :callId AND company_id = :companyId")
                 .setParameter("callId", callId)
-                .setParameter("companyId", company.id())
+                .setParameter("companyId", companyId)
                 .getResultList();
         return result.isEmpty() || result.get(0) == null ? null : ((Number) result.get(0)).longValue();
     }

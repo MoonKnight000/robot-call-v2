@@ -9,12 +9,12 @@ import uz.murodjon.robotcallv2.auth.application.dto.*;
 import uz.murodjon.robotcallv2.auth.application.port.input.AuthUseCase;
 import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
@@ -40,7 +40,6 @@ public class AuthService implements AuthUseCase {
 
     private final UserRepository users;
     private final CompanyRepository companies;
-    private final CurrentCompany currentCompany;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService tokens;
     private final CurrentUser currentUser;
@@ -49,13 +48,12 @@ public class AuthService implements AuthUseCase {
     private final PasswordResetMailSender resetMail;
     private final RoleUseCase roleUseCase;
 
-    public AuthService(UserRepository users, CompanyRepository companies, CurrentCompany currentCompany,
+    public AuthService(UserRepository users, CompanyRepository companies,
                        PasswordEncoder passwordEncoder, JwtTokenService tokens, CurrentUser currentUser,
                        AuditService audit, SessionService sessions, PasswordResetMailSender resetMail,
                        RoleUseCase roleUseCase) {
         this.users = users;
         this.companies = companies;
-        this.currentCompany = currentCompany;
         this.passwordEncoder = passwordEncoder;
         this.tokens = tokens;
         this.currentUser = currentUser;
@@ -65,14 +63,20 @@ public class AuthService implements AuthUseCase {
         this.roleUseCase = roleUseCase;
     }
 
-    public List<Company> myCompanies() {
-        Company company = companies.find(currentCompany.id());
+    @Override
+    public List<Company> findMyCompanies(long companyId) {
+        Company company = companies.find(companyId);
         return company == null ? List.of() : List.of(company);
     }
 
     @Override
-    public LoginResponse login(LoginRequest r, String device, String ipAddress) {
-        User user = users.findByUsername(r.username())
+    public LoginResponse loginWithUysotCallback() {
+        throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_LOGIN_NOT_AVAILABLE, "uysot-oauth");
+    }
+
+    @Override
+    public LoginResponse login(LoginRequest request) {
+        User user = users.findByUsername(request.username())
                 .orElseThrow(() -> new ValidationException(ErrorCode.LOGIN_INVALID_CREDENTIALS));
         if (user.status() == UserStatus.BLOCKED) {
             throw new ForbiddenException(ErrorCode.ACCOUNT_BLOCKED);
@@ -80,23 +84,19 @@ public class AuthService implements AuthUseCase {
         if (user.status() == UserStatus.INVITED || user.passwordHash() == null) {
             throw new ForbiddenException(ErrorCode.ACCOUNT_NOT_ACTIVATED);
         }
-        if (!passwordEncoder.matches(r.password(), user.passwordHash())) {
+        if (!passwordEncoder.matches(request.password(), user.passwordHash())) {
             throw new ValidationException(ErrorCode.LOGIN_INVALID_CREDENTIALS);
         }
         users.touchLastLogin(user.id());
-        audit.record("USER_LOGIN", "user", String.valueOf(user.id()), user.email());
+        audit.record(user.companyId(), "USER_LOGIN", "user", String.valueOf(user.id()), user.email());
         IssuedSession issued = issueTokens(user);
         sessions.create(user.companyId(), user.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
     }
 
-    public LoginResponse login(LoginRequest r) {
-        return login(r, null, null);
-    }
-
     @Override
-    public LoginResponse refresh(RefreshTokenRequest r, String device, String ipAddress) {
-        String tokenHash = Tokens.hash(r.refreshToken());
+    public LoginResponse refresh(RefreshTokenRequest request) {
+        String tokenHash = Tokens.hash(request.refreshToken());
         UserSession session = sessions.findActiveByHash(tokenHash)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.REFRESH_TOKEN_INVALID));
         if (session.expiresAt().isBefore(Instant.now())) {
@@ -112,24 +112,21 @@ public class AuthService implements AuthUseCase {
         return issued.response();
     }
 
-    public LoginResponse refresh(RefreshTokenRequest r) {
-        return refresh(r, null, null);
-    }
-
+    @Override
     public void logout() {
         currentUser.id().ifPresent(sessions::revokeAllForUser);
     }
 
     @Override
-    public LoginResponse activate(ActivateRequest r) {
-        String tokenHash = Tokens.hash(r.token());
+    public LoginResponse activate(ActivateRequest request) {
+        String tokenHash = Tokens.hash(request.token());
         User user = users.findByInviteTokenHash(tokenHash)
                 .orElseThrow(() -> new ValidationException(ErrorCode.ACTIVATION_TOKEN_INVALID));
         if (user.inviteExpiresAt() == null || user.inviteExpiresAt().isBefore(Instant.now())) {
             throw new ValidationException(ErrorCode.ACTIVATION_TOKEN_EXPIRED);
         }
-        users.activate(user.id(), passwordEncoder.encode(r.password()));
-        audit.record("USER_ACTIVATE", "user", String.valueOf(user.id()), user.email());
+        users.activate(user.id(), passwordEncoder.encode(request.password()));
+        audit.record(user.companyId(), "USER_ACTIVATE", "user", String.valueOf(user.id()), user.email());
         User activated = users.findByEmail(user.email()).orElseThrow();
         IssuedSession issued = issueTokens(activated);
         sessions.create(activated.companyId(), activated.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
@@ -137,13 +134,13 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    public void forgotPassword(ForgotPasswordRequest r) {
-        users.findByEmail(r.email())
+    public void forgotPassword(ForgotPasswordRequest request) {
+        users.findByEmail(request.email())
                 .filter(user -> user.status() == UserStatus.ACTIVE)
                 .ifPresent(user -> {
                     String token = Tokens.generate();
                     users.setResetToken(user.id(), Tokens.hash(token), Instant.now().plus(RESET_TTL));
-                    audit.record("PASSWORD_RESET_REQUEST", "user", String.valueOf(user.id()), user.email());
+                    audit.record(user.companyId(), "PASSWORD_RESET_REQUEST", "user", String.valueOf(user.id()), user.email());
                     try {
                         resetMail.send(user.email(), token);
                     } catch (Exception e) {
@@ -153,15 +150,15 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    public LoginResponse resetPassword(ResetPasswordRequest r) {
-        String tokenHash = Tokens.hash(r.token());
+    public LoginResponse resetPassword(ResetPasswordRequest request) {
+        String tokenHash = Tokens.hash(request.token());
         User user = users.findByResetTokenHash(tokenHash)
                 .orElseThrow(() -> new ValidationException(ErrorCode.RESET_TOKEN_INVALID));
         if (user.resetExpiresAt() == null || user.resetExpiresAt().isBefore(Instant.now())) {
             throw new ValidationException(ErrorCode.RESET_TOKEN_EXPIRED);
         }
-        users.resetPassword(user.id(), passwordEncoder.encode(r.newPassword()));
-        audit.record("PASSWORD_RESET", "user", String.valueOf(user.id()), user.email());
+        users.resetPassword(user.id(), passwordEncoder.encode(request.newPassword()));
+        audit.record(user.companyId(), "PASSWORD_RESET", "user", String.valueOf(user.id()), user.email());
         User updated = users.findByEmail(user.email()).orElseThrow();
         IssuedSession issued = issueTokens(updated);
         sessions.create(updated.companyId(), updated.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
@@ -169,10 +166,10 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    public CurrentUserResponse me() {
+    public CurrentUserResponse me(long companyId) {
         long userId = currentUser.id()
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
-        User user = users.find(userId);
+        User user = users.find(companyId, userId);
         if (user == null) {
             throw new NotFoundException(ErrorCode.USER_NOT_FOUND, userId);
         }

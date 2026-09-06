@@ -1,10 +1,10 @@
 package uz.murodjon.robotcallv2.report.application.port.input;
 
-import uz.murodjon.robotcallv2.audit.application.dto.AuditFilter;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
-import uz.murodjon.robotcallv2.report.application.dto.CallFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
@@ -13,37 +13,38 @@ import java.util.List;
 
 public interface ReportUseCase {
 
-    CampaignStats campaign(long id);
+    CampaignStats campaign(long companyId, long id);
 
-    PageableData<CallRow> campaignCalls(long id, CallFilter filter);
+    PageableData<CallRow> campaignCalls(long companyId, long id, CallFilter filter);
 
-    PageableData<CallRow> calls(CallFilter filter);
+    PageableData<CallRow> calls(long companyId, CallFilter filter);
 
-    List<CallRow> exportCalls(CallFilter filter);
+    List<CallRow> exportCalls(long companyId, CallFilter filter);
 
-    BulkCallActionResult bulkAction(BulkCallActionRequest r);
+    BulkCallActionResult bulkAction(long companyId, BulkCallActionRequest request);
 
-    CallDetail call(long callId);
+    CallDetail call(long companyId, long callId);
 
-    DownloadableFile recording(long callId);
+    DownloadableFile recording(long companyId, long callId);
 
-    PageableData<AuditLog> auditLog(AuditFilter filter);
+    PageableData<AuditLog> auditLog(long companyId, AuditFilter filter);
 
-    DashboardKpi dashboardKpi(String from, String to, Long campaignId);
+    DashboardKpi dashboardKpi(long companyId, String from, String to, Long campaignId);
 
-    List<DashboardBucket> dashboardTimeseries(String from, String to, Long campaignId);
+    List<DashboardBucket> dashboardTimeseries(long companyId, String from, String to, Long campaignId);
 
-    List<DashboardBucket> dynamics(String from, String to, Long campaignId, Long scenarioId, Boolean escalated);
+    List<DashboardBucket> dynamics(long companyId, String from, String to, Long campaignId, Long scenarioId,
+                                   Boolean escalated);
 
-    List<DashboardOutcome> dashboardOutcomes(String from, String to, Long campaignId);
+    List<DashboardOutcome> dashboardOutcomes(long companyId, String from, String to, Long campaignId);
 
-    List<HourlyHeatmapCell> hourlyHeatmap(String from, String to, Long campaignId);
+    List<HourlyHeatmapCell> hourlyHeatmap(long companyId, String from, String to, Long campaignId);
 
-    List<CampaignComparisonRow> campaignComparison(String from, String to, List<Long> campaignIds);
+    List<CampaignComparisonRow> campaignComparison(long companyId, String from, String to, List<Long> campaignIds);
 
-    List<DurationHistogramBucket> durationHistogram(String from, String to, Long campaignId);
+    List<DurationHistogramBucket> durationHistogram(long companyId, String from, String to, Long campaignId);
 
-    List<FunnelStage> funnel(String from, String to, Long campaignId);
+    List<FunnelStage> funnel(long companyId, String from, String to, Long campaignId);
 
-    ReportSummary summary(String from, String to, Long campaignId);
+    ReportSummary summary(long companyId, String from, String to, Long campaignId);
 }

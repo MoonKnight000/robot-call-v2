@@ -97,11 +97,11 @@ Ajratish testi: **service uni o'qiydi ham, yozadi ham → `domain.entity`; faqat
 endpoint javobi uchun yasalgan → `application.dto`.** JPA entity hech qachon
 controller'ga chiqmaydi, DTO hech qachon `port/output` ga kirmaydi.
 
-Mavjud feature'lar (28 ta):
+Mavjud feature'lar (31 ta):
 `aiagent` · `aimodel` · `audit` · `auth` · `billing` · `callrecord` · `campaign` · `company` ·
 `contact` · `crm` · `dialer` · `donotcall` · `engine` · `inbound` · `integration` ·
-`live` · `notification` · `operator` · `profile` · `report` · `scenario` · `search` ·
-`siptrunk` · `sms` · `storage` · `user` · `voice` · `webhook`
+`knowledgebase` · `live` · `memory` · `notification` · `operator` · `profile` · `report` ·
+`role` · `scenario` · `search` · `siptrunk` · `sms` · `storage` · `user` · `voice` · `webhook`
 
 **Istisno — `agent/`.** Voice pipeline infratuzilmasi, CRUD emas, shuning uchun hexagonal
 emas, **texnik tamoyil** bo'yicha bo'linadi: `agent/ari`, `agent/ami`, `agent/rtp`,
@@ -114,7 +114,7 @@ refactor qilinmaydi (`docs/VOICE-QUALITY-PLAN.md` §8).
 PageableData, FilterInterface, TableField), `shared/dialog`, `shared/exception`,
 `shared/csv`, `shared/converter`, `shared/util`. **`config/`** — ilova darajasidagi
 konfiguratsiya: executor, netty, clock, encryption, global exception handler.
-**`security/`** — ApiKeyFilter, JwtAuthFilter, SecurityConfig.
+**`security/`** — JwtAuthFilter, SecurityConfig, CurrentCompanyId(+ArgumentResolver).
 
 ## 3. Controller — interfeys + bitta Impl, logikasiz
 
@@ -148,13 +148,17 @@ konfiguratsiya: executor, netty, clock, encryption, global exception handler.
   domain record'dagi nomlangan factory yasaydi (`AiModelConfig.overrides(...)`).
 - **Spring'siz sof qoidalar `domain.service` da** (`<Feature>Validator`): bog'liqliksiz,
   shuning uchun eng arzon test qilinadigan joy.
-- **`CurrentCompany` faqat service'da.** Port yashirin kontekst bilmaydi —
-  `companyId` unga har doim argument bo'lib beriladi.
+- **Kompaniya — hech qachon yashirin kontekst emas.** So'rovning kompaniyasi controller
+  kirishida `@CurrentCompanyId long companyId` bilan tokendan olinadi va shundan keyin
+  oddiy argument bo'lib yuradi: UseCase → service → port → adapter. Hech bir qatlam uni
+  `SecurityContext`dan yoki thread-local'dan o'qimaydi — aks holda dialer/ARI kabi
+  so'rovsiz threadlarda kompaniya yo'qoladi. So'rovsiz startup ishlari (bootstrap, TTS
+  warmup, simulyatsiya) `companyProperties.defaultId()` ni **oshkora** chaqiradi.
 
 ```java
 // ✗ yoyilgan parametrlar + adapter ichida yashirin kompaniya
 public AiModelConfig save(String model, Double temperature, Integer maxOutputTokens) {
-    long companyId = company.id();
+    long companyId = securityContextdanQaydandir();
     ...
 }
 // ✓
@@ -250,10 +254,11 @@ bir nechta bo'lsa **nima bilan ishlashi prefiks bo'ladi** (`aiModelConfigService
 
 - Metod **fe'l bilan boshlanadi**: `find…`, `create…`, `update…`, `upsert…`, `delete…`,
   `count…`. `effective(...)`, `active(...)` kabi sifat-nomlar taqiqlanadi.
-- Nom o'z qamrovini aytadi: argument bo'lsa nomda ko'rinadi (`findByCompanyId(long)`),
-  argumentsiz va joriy kompaniya/foydalanuvchi kontekstida ishlasa — `…ForCurrentCompany`.
+- Nom o'z qamrovini aytadi: argument bo'lsa nomda ko'rinadi — `findByCompanyId(long)`,
+  `requireByCompanyIdAndPhone(long, String)`.
 - **Yashirin overload taqiqlanadi:** `find()` va `find(long companyId)` yonma-yon
-  turmaydi — birinchisi qaysi kompaniya ekanini yashiradi.
+  turmaydi — birinchisi qaysi kompaniya ekanini yashiradi. Shu sababli
+  `…ForCurrentCompany` uslubidagi argumentsiz nomlar ham yo'q.
 - Entity→domain mapping metodi `to<Domain>`: `toAiModelConfig(entity)`. `toRow`/`toDto` emas.
 
 **Etalon:** `aimodel` feature'i — yangi kod yozishda `AiModelConfigUseCase`,

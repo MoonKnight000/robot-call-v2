@@ -6,9 +6,9 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 
 public interface AiModelConfigUseCase {
 
-    AiModelConfig findForCurrentCompany();
+    AiModelConfig findByCompanyId(long companyId);
 
-    AiModelConfig updateForCurrentCompany(UpdateAiModelConfigRequest request);
+    AiModelConfig updateByCompanyId(long companyId, UpdateAiModelConfigRequest request);
 
     EffectiveAiModelConfig findEffectiveByCompanyId(long companyId);
 }

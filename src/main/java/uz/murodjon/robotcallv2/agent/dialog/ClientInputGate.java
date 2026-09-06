@@ -60,7 +60,7 @@ public class ClientInputGate {
             "not in service", "currently unavailable", "switched off"
     );
 
-    private final DialogProperties props;
+    private final DialogProperties dialogProperties;
     private final SttProperties sttProperties;
     private final LanguageDetector languageDetector;
     private final VoiceMetrics metrics;
@@ -68,10 +68,10 @@ public class ClientInputGate {
     private final TurnRunner turnRunner;
     private final DialogExecutors executors;
 
-    public ClientInputGate(DialogProperties props, SttProperties sttProperties, LanguageDetector languageDetector,
+    public ClientInputGate(DialogProperties dialogProperties, SttProperties sttProperties, LanguageDetector languageDetector,
                            VoiceMetrics metrics, DialogTranscript transcript,
                            TurnRunner turnRunner, DialogExecutors executors) {
-        this.props = props;
+        this.dialogProperties = dialogProperties;
         this.sttProperties = sttProperties;
         this.languageDetector = languageDetector;
         this.metrics = metrics;
@@ -230,7 +230,7 @@ public class ClientInputGate {
     private boolean isBackchannelOverTheBot(DialogSession s, String text) {
         return s.isInterrupted()
                 && s.hasUnspokenText()
-                && Backchannels.matches(text, props.minInterruptionWords());
+                && Backchannels.matches(text, dialogProperties.minInterruptionWords());
     }
 
     /**

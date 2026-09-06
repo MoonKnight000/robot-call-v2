@@ -1,11 +1,12 @@
 package uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.adapter;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+
+
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.entity.KnowledgeItemEntity;
 import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.repository.KnowledgeItemJpaRepository;
 
@@ -44,29 +45,36 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
         entity.setUpdatedAt(Instant.now());
 
         KnowledgeItemEntity saved = jpaRepository.save(entity);
-        return toDomain(saved);
+        return toKnowledgeItem(saved);
     }
 
     @Override
     public Optional<KnowledgeItem> findByIdAndCompanyId(long id, long companyId) {
-        return jpaRepository.findByIdAndCompanyId(id, companyId).map(this::toDomain);
+        return jpaRepository.findByIdAndCompanyId(id, companyId).map(this::toKnowledgeItem);
     }
 
     @Override
     public Optional<KnowledgeItem> findByCompanyIdAndKey(long companyId, String key) {
-        return jpaRepository.findByCompanyIdAndItemKey(companyId, key).map(this::toDomain);
+        return jpaRepository.findByCompanyIdAndItemKey(companyId, key).map(this::toKnowledgeItem);
     }
 
     @Override
     public List<KnowledgeItem> findAllActiveByCompanyId(long companyId) {
         return jpaRepository.findAllByCompanyIdAndActiveTrue(companyId).stream()
-                .map(this::toDomain)
+                .map(this::toKnowledgeItem)
                 .toList();
     }
 
     @Override
-    public Page<KnowledgeItem> findAllByCompanyId(long companyId, String search, Pageable pageable) {
-        return jpaRepository.searchByCompany(companyId, search, pageable).map(this::toDomain);
+    public List<KnowledgeItem> findAllByCompanyId(long companyId, KnowledgeItemFilter filter) {
+        return jpaRepository.searchByCompany(companyId, filter.search(), filter.pageable()).stream()
+                .map(this::toKnowledgeItem)
+                .toList();
+    }
+
+    @Override
+    public long countByCompanyId(long companyId, KnowledgeItemFilter filter) {
+        return jpaRepository.countSearchByCompany(companyId, filter.search());
     }
 
     @Override
@@ -75,7 +83,7 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
         jpaRepository.deleteByIdAndCompanyId(id, companyId);
     }
 
-    private KnowledgeItem toDomain(KnowledgeItemEntity entity) {
+    private KnowledgeItem toKnowledgeItem(KnowledgeItemEntity entity) {
         return new KnowledgeItem(
                 entity.getId() != null ? entity.getId() : 0L,
                 entity.getCompanyId(),

@@ -21,25 +21,25 @@ import java.util.Optional;
 @Component
 public class UserSessionRepositoryAdapter implements UserSessionRepository {
 
-    private final UserSessionJpaRepository jpa;
-    private final UserJpaRepository userJpa;
-    private final CompanyJpaRepository companyJpa;
+    private final UserSessionJpaRepository userSessionJpaRepository;
+    private final UserJpaRepository userJpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
     private final UserSessionMapper mapper;
 
-    public UserSessionRepositoryAdapter(UserSessionJpaRepository jpa, UserJpaRepository userJpa,
-                                        CompanyJpaRepository companyJpa, UserSessionMapper mapper) {
-        this.jpa = jpa;
-        this.userJpa = userJpa;
-        this.companyJpa = companyJpa;
+    public UserSessionRepositoryAdapter(UserSessionJpaRepository userSessionJpaRepository, UserJpaRepository userJpaRepository,
+                                        CompanyJpaRepository companyJpaRepository, UserSessionMapper mapper) {
+        this.userSessionJpaRepository = userSessionJpaRepository;
+        this.userJpaRepository = userJpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
     }
 
     @Override
     public long create(long companyId, long userId, String tokenHash, Instant expiresAt,
                        String device, String ipAddress) {
-        UserEntity user = userJpa.findById(userId)
+        UserEntity user = userJpaRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity company = companyJpa.findById(companyId)
+        CompanyEntity company = companyJpaRepository.findById(companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
 
         UserSessionEntity entity = new UserSessionEntity();
@@ -52,17 +52,17 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
         entity.setCreatedAt(now);
         entity.setLastActivityAt(now);
         entity.setExpiresAt(expiresAt);
-        return jpa.save(entity).getId();
+        return userSessionJpaRepository.save(entity).getId();
     }
 
     @Override
     public Optional<UserSession> findActiveByHash(String tokenHash) {
-        return jpa.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash).map(mapper::entityToDomain);
+        return userSessionJpaRepository.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash).map(mapper::entityToDomain);
     }
 
     @Override
     public void rotate(long id, String newTokenHash, Instant newExpiresAt, String device, String ipAddress) {
-        jpa.findById(id).ifPresent(entity -> {
+        userSessionJpaRepository.findById(id).ifPresent(entity -> {
             entity.setRefreshTokenHash(newTokenHash);
             entity.setExpiresAt(newExpiresAt);
             entity.setLastActivityAt(Instant.now());
@@ -72,30 +72,30 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
             if (ipAddress != null) {
                 entity.setIpAddress(ipAddress);
             }
-            jpa.save(entity);
+            userSessionJpaRepository.save(entity);
         });
     }
 
     @Override
     public void revoke(long id, long userId) {
-        jpa.findByIdAndUserId(id, userId).ifPresent(entity -> {
+        userSessionJpaRepository.findByIdAndUserId(id, userId).ifPresent(entity -> {
             entity.setRevokedAt(Instant.now());
-            jpa.save(entity);
+            userSessionJpaRepository.save(entity);
         });
     }
 
     @Override
     public void revokeAllForUser(long userId) {
-        jpa.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId)
+        userSessionJpaRepository.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId)
                 .forEach(entity -> {
                     entity.setRevokedAt(Instant.now());
-                    jpa.save(entity);
+                    userSessionJpaRepository.save(entity);
                 });
     }
 
     @Override
     public List<UserSession> listActiveForUser(long userId) {
-        return jpa.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId).stream()
+        return userSessionJpaRepository.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }

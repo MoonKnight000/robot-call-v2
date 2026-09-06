@@ -17,7 +17,7 @@ public class SearchControllerImpl implements SearchController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<SearchResult>> search(String q) {
-        return ResponseEntity.ok(ResponseData.ok(searchUseCase.search(q)));
+    public ResponseEntity<ResponseData<SearchResult>> search(long companyId, String q) {
+        return ResponseEntity.ok(ResponseData.ok(searchUseCase.search(companyId, q)));
     }
 }

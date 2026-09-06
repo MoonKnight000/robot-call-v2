@@ -4,7 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import uz.murodjon.robotcallv2.inbound.application.dto.CreateInboundRouteRequest;
-import uz.murodjon.robotcallv2.inbound.application.dto.InboundRouteFilter;
+import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.application.dto.InboundRouteRow;
 import uz.murodjon.robotcallv2.inbound.application.dto.UpdateInboundRouteRequest;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
@@ -22,33 +22,33 @@ public class InboundRouteControllerImpl implements InboundRouteController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<InboundRouteRow>> create(CreateInboundRouteRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.create(r)));
+    public ResponseEntity<ResponseData<InboundRouteRow>> create(long companyId, CreateInboundRouteRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.create(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<InboundRouteRow>>> list(InboundRouteFilter filter) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.list(filter)));
+    public ResponseEntity<ResponseData<PageableData<InboundRouteRow>>> list(long companyId, InboundRouteFilter filter) {
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.list(companyId, filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<InboundRouteRow>> get(long id) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.routeRow(id)));
+    public ResponseEntity<ResponseData<InboundRouteRow>> get(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.routeRow(companyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<InboundRouteRow>> update(long id, UpdateInboundRouteRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.update(id, r)));
+    public ResponseEntity<ResponseData<InboundRouteRow>> update(long companyId, long id, UpdateInboundRouteRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.update(companyId, id, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<InboundRouteRow>> disable(long id) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.disable(id)));
+    public ResponseEntity<ResponseData<InboundRouteRow>> disable(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.disable(companyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<InboundRouteStats>> stats(long id) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.stats(id)));
+    public ResponseEntity<ResponseData<InboundRouteStats>> stats(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.stats(companyId, id)));
     }
 }
 

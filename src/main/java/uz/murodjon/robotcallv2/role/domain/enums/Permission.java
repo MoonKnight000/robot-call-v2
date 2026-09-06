@@ -129,17 +129,6 @@ public enum Permission {
         return filterByScope(PermissionScope.COMPANY);
     }
 
-    /** The read-only half of {@link #findCompanyPermissions()} (the read-only API key, VIEWER). */
-    public static Set<Permission> findCompanyReadPermissions() {
-        EnumSet<Permission> result = EnumSet.noneOf(Permission.class);
-        for (Permission permission : findCompanyPermissions()) {
-            if (permission.name().endsWith("_READ")) {
-                result.add(permission);
-            }
-        }
-        return Collections.unmodifiableSet(result);
-    }
-
     private static Set<Permission> filterByScope(PermissionScope scope) {
         EnumSet<Permission> result = EnumSet.noneOf(Permission.class);
         for (Permission permission : values()) {

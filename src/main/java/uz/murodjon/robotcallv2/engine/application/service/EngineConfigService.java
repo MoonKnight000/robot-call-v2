@@ -6,7 +6,6 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.engine.application.dto.EngineOptions;
 import uz.murodjon.robotcallv2.engine.application.dto.UpdateEngineConfigRequest;
 import uz.murodjon.robotcallv2.engine.application.port.input.EngineConfigUseCase;
@@ -39,7 +38,6 @@ public class EngineConfigService implements EngineConfigUseCase {
     );
 
     private final EngineConfigRepository repository;
-    private final CurrentCompany currentCompany;
     private final AuditService auditService;
     private final SttProviderSelector sttProviderSelector;
     private final TtsProviderSelector ttsProviderSelector;
@@ -49,7 +47,6 @@ public class EngineConfigService implements EngineConfigUseCase {
     private final RealtimeProperties realtimeProperties;
 
     public EngineConfigService(EngineConfigRepository repository,
-                               CurrentCompany currentCompany,
                                AuditService auditService,
                                SttProviderSelector sttProviderSelector,
                                TtsProviderSelector ttsProviderSelector,
@@ -58,7 +55,6 @@ public class EngineConfigService implements EngineConfigUseCase {
                                TtsProperties ttsProperties,
                                RealtimeProperties realtimeProperties) {
         this.repository = repository;
-        this.currentCompany = currentCompany;
         this.auditService = auditService;
         this.sttProviderSelector = sttProviderSelector;
         this.ttsProviderSelector = ttsProviderSelector;
@@ -69,13 +65,8 @@ public class EngineConfigService implements EngineConfigUseCase {
     }
 
     @Override
-    public EngineConfig findForCurrentCompany() {
-        return repository.findByCompanyId(currentCompany.id());
-    }
-
-    @Override
-    public EffectiveEngineConfig findEffectiveForCurrentCompany() {
-        return findEffectiveByCompanyId(currentCompany.id());
+    public EngineConfig findByCompanyId(long companyId) {
+        return repository.findByCompanyId(companyId);
     }
 
     @Override
@@ -91,14 +82,14 @@ public class EngineConfigService implements EngineConfigUseCase {
     }
 
     @Override
-    public EngineConfig updateForCurrentCompany(UpdateEngineConfigRequest request) {
+    public EngineConfig updateByCompanyId(long companyId, UpdateEngineConfigRequest request) {
         PipelineMode mode = request.mode() != null ? request.mode() : PipelineMode.CASCADE;
         validate(mode, request);
-        EngineConfig saved = repository.upsert(currentCompany.id(),
+        EngineConfig saved = repository.upsert(companyId,
                 EngineConfig.overrides(mode, request.sttProvider(), request.ttsProvider(),
                         request.realtimeProvider(), request.pipecatStt(), request.pipecatLlm(),
                         request.pipecatTts()));
-        auditService.record("ENGINE_CONFIG_UPDATE", "engine_config",
+        auditService.record(companyId, "ENGINE_CONFIG_UPDATE", "engine_config",
                 String.valueOf(saved.companyId()), mode.name());
         return saved;
     }

@@ -21,23 +21,23 @@ public class BillingControllerImpl implements BillingController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<BillingOverviewResponse>> getOverview() {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.overview()));
+    public ResponseEntity<ResponseData<BillingOverviewResponse>> getOverview(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.overview(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<SpendMonthDto>>> getSpendChart(int months) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.spendChart(months)));
+    public ResponseEntity<ResponseData<List<SpendMonthDto>>> getSpendChart(long companyId, int months) {
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.spendChart(companyId, months)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<InvoiceDto>>> getInvoices(int page, int size) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.invoices(page, size)));
+    public ResponseEntity<ResponseData<PageableData<InvoiceDto>>> getInvoices(long companyId, int page, int size) {
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.invoices(companyId, page, size)));
     }
 
     @Override
-    public ResponseEntity<byte[]> downloadInvoicePdf(String id) {
-        byte[] pdfBytes = billingUseCase.invoicePdf(id);
+    public ResponseEntity<byte[]> downloadInvoicePdf(long companyId, String id) {
+        byte[] pdfBytes = billingUseCase.invoicePdf(companyId, id);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invoice-" + id + ".pdf\"")
@@ -45,7 +45,7 @@ public class BillingControllerImpl implements BillingController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<TopupResponse>> topup(TopupRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.topup(request)));
+    public ResponseEntity<ResponseData<TopupResponse>> topup(long companyId, TopupRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.topup(companyId, request)));
     }
 }

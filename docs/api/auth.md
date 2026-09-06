@@ -2,8 +2,7 @@
 
 `uz.murodjon.robotcallv2.auth` · huquq: aralash (pastga qarang) · ROADMAP E.1
 
-Panel uchun real foydalanuvchi login — `X-Api-Key` (machine-to-machine)ga
-qo'shimcha, uni almashtirmaydi. Ikkalasi ham bir vaqtda ishlaydi:
+Panel uchun real foydalanuvchi login — API'ga kirishning yagona yo'li:
 [README.md §1](README.md#1-bazaviy-url-va-autentifikatsiya)ga qarang.
 
 Umumiy javob shakli, xatolar va pagination konventsiyasi uchun

@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import uz.murodjon.robotcallv2.search.application.dto.SearchResult;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 /**
@@ -17,5 +18,5 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 public interface SearchController {
 
     @GetMapping("/search")
-    ResponseEntity<ResponseData<SearchResult>> search(@RequestParam String q);
+    ResponseEntity<ResponseData<SearchResult>> search(@CurrentCompanyId long companyId, @RequestParam String q);
 }

@@ -140,13 +140,11 @@ services:
       # against LocalTime.now() — without this the container runs in UTC and a
       # 09:00–20:00 window silently means 14:00–01:00 Tashkent time.
       TZ: ${TZ:-Asia/Tashkent}
-      # Shared secret for /api/** and /actuator/** (header X-Api-Key). No default on
-      # purpose: an unset key means the API rejects everything rather than dialling
-      # the trunk for anyone who can reach port 8080.
-      API_KEY: ${API_KEY:-}
       SECURITY_PUBLIC_UI: ${SECURITY_PUBLIC_UI:-true}
-      # HS256 signing key for user login (Authorization: Bearer). No default on purpose,
-      # same fail-closed reasoning as API_KEY above.
+      # HS256 signing key for user login (Authorization: Bearer) — the only way into
+      # /api/**. No default on purpose: an unset secret means nobody can log in and the
+      # API rejects everything, rather than dialling the trunk for anyone who can reach
+      # port 8080.
       JWT_SECRET: ${JWT_SECRET:-}
       # In-network service hostnames (override the localhost defaults).
       DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-robot_call}

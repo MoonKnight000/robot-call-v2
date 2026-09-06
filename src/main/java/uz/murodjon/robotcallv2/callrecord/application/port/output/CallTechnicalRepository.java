@@ -1,8 +1,9 @@
 package uz.murodjon.robotcallv2.callrecord.application.port.output;
 
-import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTechnical;
 
 public interface CallTechnicalRepository {
-    boolean save(long callId, String channelName, String trunk, String amdResult, String sttProvider,
-                 String ttsProvider, String ttsVoice, String llmModel, DialogTechnicalSnapshot technical);
+
+    /** @return false when the call the row belongs to no longer exists */
+    boolean save(CallTechnical technical);
 }

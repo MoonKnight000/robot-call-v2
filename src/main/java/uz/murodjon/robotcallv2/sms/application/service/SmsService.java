@@ -43,7 +43,7 @@ public class SmsService implements SmsUseCase {
      * Send SMS to a target phone number. Best-effort delivery.
      */
     @Override
-    public boolean sendSms(SmsSendRequest req) {
+    public boolean sendSms(long companyId, SmsSendRequest req) {
         SmsValidator.validate(req.phone(), req.message());
 
         if (!enabled) {
@@ -55,7 +55,7 @@ public class SmsService implements SmsUseCase {
             log.info("Sending SMS to {}: {}", req.phone(), req.message());
             boolean success = externalSmsClient.send(req.phone(), req.message());
             if (success) {
-                auditService.record("SMS_SENT", "sms", req.phone(), req.message());
+                auditService.record(companyId, "SMS_SENT", "sms", req.phone(), req.message());
             }
             return success;
         } catch (Exception e) {

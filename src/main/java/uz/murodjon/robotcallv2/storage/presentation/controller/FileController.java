@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.storage.application.dto.FileUploadResponse;
 import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
@@ -22,11 +23,12 @@ public interface FileController {
      * that slice, which is how an audio player seeks.
      */
     @GetMapping("/files/{id}")
-    ResponseEntity<Resource> download(@PathVariable long id,
+    ResponseEntity<Resource> download(@CurrentCompanyId long callerCompanyId, @PathVariable long id,
                                       @RequestHeader(value = HttpHeaders.RANGE, required = false) String range);
 
     @PostMapping(value = {"/files/upload", "/v1/files/upload"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ResponseEntity<ResponseData<FileUploadResponse>> upload(
+            @CurrentCompanyId long callerCompanyId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "category", required = false) FileCategory category,
             @RequestParam(value = "companyId", required = false) Long companyId);

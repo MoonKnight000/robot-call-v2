@@ -15,6 +15,16 @@ public final class SpeechSanitizer {
     private static final Pattern FUNCTION_CALL_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+\\s*\\(.*\\)$", Pattern.DOTALL);
     private static final Pattern XML_TAG_PATTERN = Pattern.compile("</?[a-zA-Z0-9_\\-]+(?:\\s+[^>]*)?>");
 
+    /**
+     * Anything a spoken Uzbek or Russian line cannot be made of. What is kept: Latin and
+     * Cyrillic letters, digits, whitespace, the apostrophes Uzbek writes o' and g' with
+     * (ASCII, U+02BB, U+02BC, U+2019), sentence punctuation, and the brackets, braces,
+     * angle brackets and underscores the checks above identify code tokens and thought
+     * tags by — stripping those would turn {@code <thought>} into a word to read aloud.
+     */
+    private static final Pattern UNSPEAKABLE_CHAR_PATTERN = Pattern.compile(
+            "[^\\p{IsLatin}\\p{IsCyrillic}0-9\\s.,!?:;…\\-—–'ʻʼ’\"«»„“”()\\[\\]{}<>_/%№+]");
+
     private static final Set<String> FORBIDDEN_TOKENS = Set.of(
             "dynamic_thought_or_fallback",
             "dynamic_thought",
@@ -55,6 +65,14 @@ public final class SpeechSanitizer {
             return true;
         }
 
+        // Thought tags. The whole reply goes, not just the tags: what sits between
+        // <thought> and </thought> is the model reasoning with itself, so stripping the
+        // markup would leave exactly the words the caller must not hear. Handled the way
+        // a system-note echo is — dropped, and the turn's fallback line covers it.
+        if (XML_TAG_PATTERN.matcher(trimmed).find()) {
+            return true;
+        }
+
         // Raw JSON or array
         if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
             return true;
@@ -86,15 +104,19 @@ public final class SpeechSanitizer {
     }
 
     /**
-     * Strips XML/HTML tags (like <thought>...</thought>) and returns sanitized text,
-     * or null if the entire text is unspeakable.
+     * Drops the individual characters that cannot be spoken, leaving the rest of the line
+     * intact.
+     *
+     * <p>Every other check here is a whole-string verdict, so one stray character makes an
+     * otherwise good sentence neither speakable nor droppable: a real call ended with
+     * "Xayr, salomat bo'ling!읍", and the Hangul syllable reached both the synthesizer and
+     * the stored transcript. Applied where model text enters ({@code TurnRunner.textOf},
+     * {@code DialogTools.recordReply}), so the transcript and the audio see the same line.
      */
-    public static String sanitize(String text) {
-        if (isUnspeakable(text)) {
-            return null;
+    public static String stripUnspeakableCharacters(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
         }
-        // Remove XML tags like <thought> or </thought> if present
-        String stripped = XML_TAG_PATTERN.matcher(text).replaceAll("").trim();
-        return isUnspeakable(stripped) ? null : stripped;
+        return UNSPEAKABLE_CHAR_PATTERN.matcher(text).replaceAll("");
     }
 }

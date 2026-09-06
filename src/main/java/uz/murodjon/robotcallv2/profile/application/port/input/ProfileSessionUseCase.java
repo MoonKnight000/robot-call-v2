@@ -8,5 +8,5 @@ public interface ProfileSessionUseCase {
 
     List<UserSessionRow> list();
 
-    void revoke(long id);
+    void revoke(long companyId, long id);
 }

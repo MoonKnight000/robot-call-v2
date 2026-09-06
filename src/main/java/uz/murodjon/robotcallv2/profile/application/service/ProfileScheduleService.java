@@ -17,31 +17,31 @@ import java.util.List;
 @Service
 public class ProfileScheduleService implements ProfileScheduleUseCase {
 
-    private final UserScheduleRepository repo;
+    private final UserScheduleRepository repository;
     private final CurrentUser currentUser;
     private final AuditService audit;
 
-    public ProfileScheduleService(UserScheduleRepository repo, CurrentUser currentUser, AuditService audit) {
-        this.repo = repo;
+    public ProfileScheduleService(UserScheduleRepository repository, CurrentUser currentUser, AuditService audit) {
+        this.repository = repository;
         this.currentUser = currentUser;
         this.audit = audit;
     }
 
     @Override
     public List<ScheduleSlot> find() {
-        return repo.find(requireUserId());
+        return repository.find(requireUserId());
     }
 
     @Override
-    public List<ScheduleSlot> update(UpdateScheduleRequest r) {
+    public List<ScheduleSlot> update(long companyId, UpdateScheduleRequest r) {
         for (ScheduleSlot slot : r.slots()) {
             if (!slot.startTime().isBefore(slot.endTime())) {
                 throw new ValidationException(ErrorCode.SCHEDULE_START_AFTER_END);
             }
         }
         long userId = requireUserId();
-        List<ScheduleSlot> saved = repo.save(userId, r.slots());
-        audit.record("PROFILE_SCHEDULE_UPDATE", "app_user", String.valueOf(userId), saved.size() + " slot(s)");
+        List<ScheduleSlot> saved = repository.save(companyId, userId, r.slots());
+        audit.record(companyId, "PROFILE_SCHEDULE_UPDATE", "app_user", String.valueOf(userId), saved.size() + " slot(s)");
         return saved;
     }
 

@@ -34,17 +34,17 @@ public class SileroVad {
 
     private static final Logger log = LoggerFactory.getLogger(SileroVad.class);
 
-    private final VadProperties props;
+    private final VadProperties vadProperties;
     private OrtEnvironment env;
     private volatile OrtSession session;
 
-    public SileroVad(VadProperties props) {
-        this.props = props;
+    public SileroVad(VadProperties vadProperties) {
+        this.vadProperties = vadProperties;
     }
 
     @PostConstruct
     public void init() {
-        String path = props.modelPath();
+        String path = vadProperties.modelPath();
         if (path == null || path.isBlank()) {
             log.warn("Silero VAD model path not set (voice-agent.vad.model-path); barge-in disabled");
             return;
@@ -57,7 +57,7 @@ public class SileroVad {
             env = OrtEnvironment.getEnvironment();
             session = env.createSession(path, new OrtSession.SessionOptions());
             log.info("Silero VAD ready (model={}, sampleRate={}, window={})",
-                    path, props.sampleRate(), props.windowSamples());
+                    path, vadProperties.sampleRate(), vadProperties.windowSamples());
         } catch (Exception e) {
             log.error("Failed to load Silero VAD model {}: {}", path, e.getMessage());
             session = null;
@@ -79,7 +79,7 @@ public class SileroVad {
      * audio before the call started, which is exactly what the model is shown.
      */
     public float[] newContext() {
-        return new float[props.sampleRate() == 16000 ? 64 : 32];
+        return new float[vadProperties.sampleRate() == 16000 ? 64 : 32];
     }
 
     /**
@@ -112,7 +112,7 @@ public class SileroVad {
         try (OnnxTensor in = OnnxTensor.createTensor(env, new float[][]{scored});
              OnnxTensor st = OnnxTensor.createTensor(env, state);
              OnnxTensor sr = OnnxTensor.createTensor(env,
-                     LongBuffer.wrap(new long[]{props.sampleRate()}), new long[]{})) {
+                     LongBuffer.wrap(new long[]{vadProperties.sampleRate()}), new long[]{})) {
             inputs.put("input", in);
             inputs.put("state", st);
             inputs.put("sr", sr);

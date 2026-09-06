@@ -57,7 +57,7 @@ o'zini parse qilib bo'lmaydigan holga keltiradi.
 
 ### Muhim: browser'ning tayyor `EventSource`i ishlamaydi
 
-`EventSource` maxsus sarlavha (`X-Api-Key`) qo'ya olmaydi, bu esa autentifikatsiya
+`EventSource` maxsus sarlavha (`Authorization`) qo'ya olmaydi, bu esa autentifikatsiya
 talab qiladigan endpoint uchun muammo. Frontendda **`fetch`-asosidagi SSE
 klient** kerak, masalan `@microsoft/fetch-event-source`:
 
@@ -65,7 +65,7 @@ klient** kerak, masalan `@microsoft/fetch-event-source`:
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 fetchEventSource('/api/live/stream', {
-  headers: { 'X-Api-Key': apiKey },
+  headers: { 'Authorization': 'Bearer ' + accessToken },
   onmessage(msg) {
     switch (msg.event) {
       case 'KPI': /* LiveKpiSnapshot */ break;
@@ -147,6 +147,8 @@ Operator kiritgan matn mijozga eshitilmaydi. Bot keyingi javobni shakllantirishd
   "instruction": "Mijozga muddatli to'lov uchun 10% chegirma taklif qil"
 }
 ```
+
+`instruction` majburiy va bo'sh bo'lmasligi kerak — aks holda `400 VALIDATION_FAILED`.
 
 **Response:**
 ```json

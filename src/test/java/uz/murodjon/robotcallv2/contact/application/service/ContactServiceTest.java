@@ -3,8 +3,7 @@ package uz.murodjon.robotcallv2.contact.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactFilter;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.application.dto.CreateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.dto.UpdateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
@@ -30,7 +29,6 @@ class ContactServiceTest {
     private ReportRepository reportRepository;
     private DoNotCallRepository doNotCallRepository;
     private AuditService auditService;
-    private CurrentCompany currentCompany;
     private ContactService contactService;
 
     @BeforeEach
@@ -39,14 +37,9 @@ class ContactServiceTest {
         reportRepository = mock(ReportRepository.class);
         doNotCallRepository = mock(DoNotCallRepository.class);
         auditService = mock(AuditService.class);
-        currentCompany = mock(CurrentCompany.class);
-
-        when(currentCompany.id()).thenReturn(1L);
 
         contactService = new ContactService(
-                contactRepository, reportRepository, doNotCallRepository,
-                auditService, currentCompany
-        );
+                contactRepository, reportRepository, doNotCallRepository, auditService);
     }
 
     private Contact sampleContact(long id, String name, String phone) {
@@ -59,10 +52,10 @@ class ContactServiceTest {
         String normalizedPhone = "+998901234567";
 
         when(contactRepository.existsByPhone(1L, normalizedPhone)).thenReturn(false);
-        when(contactRepository.create(1L, "Aziz", normalizedPhone, "Tashkent", "vip", "Client")).thenReturn(10L);
+        when(contactRepository.create(1L, Contact.of("Aziz", normalizedPhone, "Tashkent", "vip", "Client"))).thenReturn(10L);
         when(contactRepository.find(1L, 10L)).thenReturn(sampleContact(10L, "Aziz", normalizedPhone));
 
-        Contact created = contactService.create(req);
+        Contact created = contactService.create(1L, req);
 
         assertThat(created).isNotNull();
         assertThat(created.id()).isEqualTo(10L);
@@ -75,7 +68,7 @@ class ContactServiceTest {
         CreateContactRequest req = new CreateContactRequest("Aziz", "+998901234567", null, null, null);
         when(contactRepository.existsByPhone(1L, "+998901234567")).thenReturn(true);
 
-        assertThatThrownBy(() -> contactService.create(req))
+        assertThatThrownBy(() -> contactService.create(1L, req))
                 .isInstanceOf(ConflictException.class);
     }
 
@@ -88,10 +81,10 @@ class ContactServiceTest {
         Contact updatedContact = new Contact(10L, "Aziz Updated", "+998901234567", "Samarkand", "lead", "Updated notes", Instant.now());
         when(contactRepository.find(1L, 10L)).thenReturn(existing, updatedContact);
 
-        Contact result = contactService.update(10L, req);
+        Contact result = contactService.update(1L, 10L, req);
 
         assertThat(result.name()).isEqualTo("Aziz Updated");
-        verify(contactRepository).update(1L, 10L, "Aziz Updated", "Samarkand", "lead", "Updated notes");
+        verify(contactRepository).update(1L, 10L, Contact.profile("Aziz Updated", "Samarkand", "lead", "Updated notes"));
         verify(auditService).record("CONTACT_UPDATE", "contact", "10", "+998901234567");
     }
 
@@ -100,7 +93,7 @@ class ContactServiceTest {
         Contact existing = sampleContact(10L, "Aziz", "+998901234567");
         when(contactRepository.find(1L, 10L)).thenReturn(existing);
 
-        contactService.delete(10L);
+        contactService.delete(1L, 10L);
 
         verify(contactRepository).delete(1L, 10L);
         verify(auditService).record("CONTACT_DELETE", "contact", "10", "+998901234567");
@@ -114,7 +107,7 @@ class ContactServiceTest {
         when(contactRepository.findAll(1L, filter)).thenReturn(List.of(c));
         when(contactRepository.count(1L, filter)).thenReturn(1L);
 
-        PageableData<Contact> result = contactService.list(filter);
+        PageableData<Contact> result = contactService.list(1L, filter);
 
         assertThat(result.data()).hasSize(1);
         assertThat(result.totalElements()).isEqualTo(1L);
@@ -125,7 +118,7 @@ class ContactServiceTest {
         Contact existing = sampleContact(5L, "Bobur", "+998905556677");
         when(contactRepository.find(1L, 5L)).thenReturn(existing);
 
-        ContactDncResponse response = contactService.addToDoNotCall(5L);
+        ContactDncResponse response = contactService.addToDoNotCall(1L, 5L);
 
         assertThat(response.contactId()).isEqualTo(5L);
         assertThat(response.doNotCall()).isTrue();

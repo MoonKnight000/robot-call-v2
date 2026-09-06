@@ -11,4 +11,10 @@ public record CallTranscript(
         int tsOffsetMs,
         Float sttConfidence
 ) {
+
+    /** A line on its way to storage; the id is the database's to assign. */
+    public static CallTranscript line(long callId, int seq, String role, String text, String dialogState,
+                                      int tsOffsetMs, Float sttConfidence) {
+        return new CallTranscript(0, callId, seq, role, text, dialogState, tsOffsetMs, sttConfidence);
+    }
 }

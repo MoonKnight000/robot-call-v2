@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactFilter;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
@@ -22,42 +22,42 @@ import java.util.stream.Collectors;
 @Component
 public class ContactRepositoryAdapter implements ContactRepository {
 
-    private final ContactJpaRepository jpaRepository;
+    private final ContactJpaRepository contactJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
     private final ContactMapper mapper;
 
-    public ContactRepositoryAdapter(ContactJpaRepository jpaRepository,
+    public ContactRepositoryAdapter(ContactJpaRepository contactJpaRepository,
                                   CompanyJpaRepository companyJpaRepository,
                                   ContactMapper mapper) {
-        this.jpaRepository = jpaRepository;
+        this.contactJpaRepository = contactJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
     }
 
     @Override
-    public long create(long companyId, String name, String phone, String address, String tags, String notes) {
+    public long create(long companyId, Contact contact) {
         CompanyEntity comp = companyJpaRepository.findById(companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
 
         ContactEntity entity = new ContactEntity();
         entity.setCompany(comp);
-        entity.setName(name);
-        entity.setPhone(phone);
-        entity.setAddress(address);
-        entity.setTags(tags);
-        entity.setNotes(notes);
+        entity.setName(contact.name());
+        entity.setPhone(contact.phone());
+        entity.setAddress(contact.address());
+        entity.setTags(contact.tags());
+        entity.setNotes(contact.notes());
         entity.setCreatedAt(Instant.now());
-        return jpaRepository.save(entity).getId();
+        return contactJpaRepository.save(entity).getId();
     }
 
     @Override
     public Contact find(long companyId, long id) {
-        return jpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::entityToDomain).orElse(null);
+        return contactJpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::entityToDomain).orElse(null);
     }
 
     @Override
     public boolean existsByPhone(long companyId, String phone) {
-        return jpaRepository.existsByCompanyIdAndPhone(companyId, phone);
+        return contactJpaRepository.existsByCompanyIdAndPhone(companyId, phone);
     }
 
     @Override
@@ -65,36 +65,36 @@ public class ContactRepositoryAdapter implements ContactRepository {
         if (phones.isEmpty()) {
             return Map.of();
         }
-        return jpaRepository.findNamesByPhones(companyId, phones).stream()
+        return contactJpaRepository.findNamesByPhones(companyId, phones).stream()
                 .collect(Collectors.toMap(row -> (String) row[0], row -> (String) row[1]));
     }
 
     @Override
-    public void update(long companyId, long id, String name, String address, String tags, String notes) {
-        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
-            entity.setName(name);
-            entity.setAddress(address);
-            entity.setTags(tags);
-            entity.setNotes(notes);
-            jpaRepository.save(entity);
+    public void update(long companyId, long id, Contact contact) {
+        contactJpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
+            entity.setName(contact.name());
+            entity.setAddress(contact.address());
+            entity.setTags(contact.tags());
+            entity.setNotes(contact.notes());
+            contactJpaRepository.save(entity);
         });
     }
 
     @Override
     public void delete(long companyId, long id) {
-        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(jpaRepository::delete);
+        contactJpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(contactJpaRepository::delete);
     }
 
     @Override
     public List<Contact> findAll(long companyId, ContactFilter filter) {
-        return jpaRepository.search(companyId, likePattern(filter.search()), filter.pageable()).stream()
+        return contactJpaRepository.search(companyId, likePattern(filter.search()), filter.pageable()).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }
 
     @Override
     public long count(long companyId, ContactFilter filter) {
-        return jpaRepository.countSearch(companyId, likePattern(filter.search()));
+        return contactJpaRepository.countSearch(companyId, likePattern(filter.search()));
     }
 
     private static String likePattern(String search) {

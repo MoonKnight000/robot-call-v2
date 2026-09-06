@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.report.application.port.output;
 
 import uz.murodjon.robotcallv2.report.application.dto.CreateReportScheduleRequest;
-import uz.murodjon.robotcallv2.report.application.dto.ReportScheduleFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSchedule;
 
 import java.time.Instant;
@@ -12,15 +12,15 @@ import java.util.List;
  */
 public interface ReportScheduleRepository {
 
-    long create(CreateReportScheduleRequest r);
+    long create(long companyId, CreateReportScheduleRequest request);
 
-    ReportSchedule find(long id);
+    ReportSchedule find(long companyId, long id);
 
-    List<ReportSchedule> findAll(ReportScheduleFilter filter);
+    List<ReportSchedule> findAll(long companyId, ReportScheduleFilter filter);
 
-    long count(ReportScheduleFilter filter);
+    long count(long companyId, ReportScheduleFilter filter);
 
-    void disable(long id);
+    void disable(long companyId, long id);
 
     List<ReportSchedule> findEnabled();
 

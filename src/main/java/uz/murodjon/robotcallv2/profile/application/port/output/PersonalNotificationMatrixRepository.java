@@ -8,5 +8,6 @@ public interface PersonalNotificationMatrixRepository {
 
     List<PersonalNotificationMatrixEntry> find(long userId);
 
-    List<PersonalNotificationMatrixEntry> save(long userId, List<PersonalNotificationMatrixEntry> rows);
+    List<PersonalNotificationMatrixEntry> save(long companyId, long userId,
+                                              List<PersonalNotificationMatrixEntry> rows);
 }

@@ -12,15 +12,15 @@ import java.util.Map;
 
 public interface CampaignTargetRepository {
 
-    long add(long campaignId, long clientId, String phone, String language, String contextDataJson);
+    long add(long companyId, CampaignTarget target);
 
-    CampaignTarget find(long id);
+    CampaignTarget find(long companyId, long id);
 
     void resetTargetsForRecurrence(long campaignId);
 
-    List<CampaignTarget> findByCampaign(long campaignId, TargetFilter filter);
+    List<CampaignTarget> findByCampaign(long companyId, long campaignId, TargetFilter filter);
 
-    long countByCampaign(long campaignId);
+    long countByCampaign(long companyId, long campaignId);
 
     long countActive(long campaignId);
 
@@ -35,12 +35,12 @@ public interface CampaignTargetRepository {
 
     void updateStatus(long id, TargetStatus status, Instant nextAttemptAt);
 
-    void setDoNotCall(long id);
+    void setDoNotCall(long companyId, long id);
 
     /** Clears the whole list, for a source that answers with the whole of today's. */
-    int deleteByCampaignId(long campaignId);
+    int deleteByCampaignId(long companyId, long campaignId);
 
-    Map<Long, CampaignTargetStats> statsByCampaignIds(Collection<Long> campaignIds);
+    Map<Long, CampaignTargetStats> statsByCampaignIds(long companyId, Collection<Long> campaignIds);
 
-    CampaignTargetStats statsByCampaignId(long campaignId);
+    CampaignTargetStats statsByCampaignId(long companyId, long campaignId);
 }

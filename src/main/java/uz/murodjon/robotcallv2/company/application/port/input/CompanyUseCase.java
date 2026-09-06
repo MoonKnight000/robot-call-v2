@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.company.application.port.input;
 
 import org.springframework.web.multipart.MultipartFile;
-import uz.murodjon.robotcallv2.company.application.dto.CompanyFilter;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusRequest;
@@ -14,11 +14,11 @@ public interface CompanyUseCase {
 
     Company create(CreateCompanyRequest r);
 
-    Company update(long id, UpdateCompanyRequest r);
+    Company update(long callerCompanyId, long id, UpdateCompanyRequest request);
 
     Company updateStatus(long id, UpdateCompanyStatusRequest r);
 
-    Company uploadLogo(long id, MultipartFile file);
+    Company uploadLogo(long callerCompanyId, long id, MultipartFile file);
 
     PageableData<Company> list(CompanyFilter filter);
 
@@ -26,5 +26,5 @@ public interface CompanyUseCase {
 
     List<Company> findAllForWarmup();
 
-    Company requireCompany(long id);
+    Company requireCompany(long callerCompanyId, long id);
 }

@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -73,12 +74,12 @@ class ScenarioServiceTest {
                 "custom-key", "My Scenario", "Desc", validDefinition());
 
         when(repo.existsByKey("custom-key")).thenReturn(false);
-        when(repo.create(eq("custom-key"), eq("My Scenario"), eq("Desc"), eq(false), any(), eq(1L)))
+        when(repo.create(eq(1L), eq("custom-key"), eq("My Scenario"), eq("Desc"), eq(false), any(), eq(1L)))
                 .thenReturn(10L);
-        when(repo.find(10L)).thenReturn(sampleScenario(10L, "custom-key", false));
-        when(users.namesByIds(any())).thenReturn(Map.of(1L, "Admin User"));
+        when(repo.find(1L, 10L)).thenReturn(sampleScenario(10L, "custom-key", false));
+        when(users.namesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin User"));
 
-        ScenarioRow created = scenarioService.create(req);
+        ScenarioRow created = scenarioService.create(1L, req);
 
         assertThat(created).isNotNull();
         assertThat(created.id()).isEqualTo(10L);
@@ -92,30 +93,30 @@ class ScenarioServiceTest {
                 "existing-key", "My Scenario", "Desc", validDefinition());
         when(repo.existsByKey("existing-key")).thenReturn(true);
 
-        assertThatThrownBy(() -> scenarioService.create(req))
+        assertThatThrownBy(() -> scenarioService.create(1L, req))
                 .isInstanceOf(ConflictException.class);
     }
 
     @Test
     void updateThrowsForbiddenWhenBuiltin() {
         Scenario builtinScenario = sampleScenario(1L, "debt-collection", true);
-        when(repo.find(1L)).thenReturn(builtinScenario);
+        when(repo.find(1L, 1L)).thenReturn(builtinScenario);
 
-        assertThatThrownBy(() -> scenarioService.update(1L, null))
+        assertThatThrownBy(() -> scenarioService.update(1L, 1L, null))
                 .isInstanceOf(ForbiddenException.class);
     }
 
     @Test
     void cloneSuccess() {
         Scenario source = sampleScenario(5L, "source-scenario", false);
-        when(repo.find(5L)).thenReturn(source);
+        when(repo.find(1L, 5L)).thenReturn(source);
         when(repo.existsByKey("cloned-scenario")).thenReturn(false);
-        when(repo.create(eq("cloned-scenario"), eq("Cloned"), eq("Description"), eq(false), any(), eq(1L)))
+        when(repo.create(eq(1L), eq("cloned-scenario"), eq("Cloned"), eq("Description"), eq(false), any(), eq(1L)))
                 .thenReturn(6L);
-        when(repo.find(6L)).thenReturn(sampleScenario(6L, "cloned-scenario", false));
-        when(users.namesByIds(any())).thenReturn(Map.of(1L, "Admin"));
+        when(repo.find(1L, 6L)).thenReturn(sampleScenario(6L, "cloned-scenario", false));
+        when(users.namesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
 
-        ScenarioRow cloned = scenarioService.clone(5L, new CloneScenarioRequest("cloned-scenario", "Cloned"));
+        ScenarioRow cloned = scenarioService.clone(1L, 5L, new CloneScenarioRequest("cloned-scenario", "Cloned"));
 
         assertThat(cloned).isNotNull();
         assertThat(cloned.id()).isEqualTo(6L);
@@ -124,9 +125,9 @@ class ScenarioServiceTest {
 
     @Test
     void requireScenarioThrowsNotFoundWhenMissing() {
-        when(repo.find(999L)).thenReturn(null);
+        when(repo.find(1L, 999L)).thenReturn(null);
 
-        assertThatThrownBy(() -> scenarioService.requireScenario(999L))
+        assertThatThrownBy(() -> scenarioService.requireScenario(1L, 999L))
                 .isInstanceOf(NotFoundException.class);
     }
 }

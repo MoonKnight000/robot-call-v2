@@ -6,6 +6,8 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
@@ -135,7 +137,7 @@ public class InvoicePdfService {
             document.close();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new RuntimeException("PDF generatsiyasida xatolik: " + e.getMessage(), e);
+            throw new ExternalServiceException(ErrorCode.INVOICE_PDF_RENDER_FAILED, "pdf", e, e.getMessage());
         }
     }
 

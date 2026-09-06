@@ -30,13 +30,6 @@ public class SentimentDetector {
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
     );
 
-    public enum CustomerSentiment {
-        POSITIVE,
-        NEUTRAL,
-        CONFUSED,
-        FRUSTRATED
-    }
-
     /**
      * Evaluates customer text for sentiment triggers.
      */

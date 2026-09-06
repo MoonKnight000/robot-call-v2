@@ -47,52 +47,53 @@ public class ProfileService implements ProfileUseCase {
     }
 
     @Override
-    public Profile find() {
-        return toProfile(requireUser());
+    public Profile find(long companyId) {
+        return toProfile(requireUser(companyId));
     }
 
     @Override
-    public Profile update(UpdateProfileRequest r) {
-        User user = requireUser();
+    public Profile update(long companyId, UpdateProfileRequest r) {
+        User user = requireUser(companyId);
         if (!user.email().equalsIgnoreCase(r.email()) && users.existsByEmail(r.email())) {
             throw new ValidationException(ErrorCode.EMAIL_ALREADY_TAKEN);
         }
-        users.updateProfile(user.id(), r.name(), r.email(), r.phone(), r.position(), user.sipExtension());
-        audit.record("PROFILE_UPDATE", "user", String.valueOf(user.id()), r.name());
-        return find();
+        users.updateProfile(companyId, user.id(), r.name(), r.email(), r.phone(), r.position(),
+                user.sipExtension());
+        audit.record(companyId, "PROFILE_UPDATE", "user", String.valueOf(user.id()), r.name());
+        return find(companyId);
     }
 
     @Override
-    public Profile uploadAvatar(MultipartFile file) {
-        User user = requireUser();
+    public Profile uploadAvatar(long companyId, MultipartFile file) {
+        User user = requireUser(companyId);
         StoredFile stored = images.upload(file, user.companyId());
-        users.updateAvatarFileId(user.id(), stored.id());
-        audit.record("PROFILE_AVATAR_UPLOAD", "user", String.valueOf(user.id()), String.valueOf(stored.id()));
-        return find();
+        users.updateAvatarFileId(companyId, user.id(), stored.id());
+        audit.record(companyId, "PROFILE_AVATAR_UPLOAD", "user", String.valueOf(user.id()), String.valueOf(stored.id()));
+        return find(companyId);
     }
 
     @Override
-    public void changePassword(ChangePasswordRequest r) {
-        User user = requireUser();
+    public void changePassword(long companyId, ChangePasswordRequest r) {
+        User user = requireUser(companyId);
         if (user.passwordHash() == null || !passwordEncoder.matches(r.currentPassword(), user.passwordHash())) {
             throw new ValidationException(ErrorCode.CURRENT_PASSWORD_INCORRECT);
         }
-        users.updatePassword(user.id(), passwordEncoder.encode(r.newPassword()));
-        audit.record("PROFILE_PASSWORD_CHANGE", "user", String.valueOf(user.id()), null);
+        users.updatePassword(companyId, user.id(), passwordEncoder.encode(r.newPassword()));
+        audit.record(companyId, "PROFILE_PASSWORD_CHANGE", "user", String.valueOf(user.id()), null);
     }
 
     @Override
-    public List<String> updateCallColumns(UpdateCallColumnsRequest r) {
-        User user = requireUser();
-        users.updateCallColumns(user.id(), String.join(",", r.columns()));
+    public List<String> updateCallColumns(long companyId, UpdateCallColumnsRequest r) {
+        User user = requireUser(companyId);
+        users.updateCallColumns(companyId, user.id(), String.join(",", r.columns()));
         return r.columns();
     }
 
     @Override
-    public TodayStats todayStats() {
+    public TodayStats todayStats(long companyId) {
         long userId = requireUserId();
         Instant startOfToday = Instant.now().truncatedTo(ChronoUnit.DAYS);
-        DashboardTotals totals = reports.operatorTotals(startOfToday, Instant.now(), userId);
+        DashboardTotals totals = reports.operatorTotals(companyId, startOfToday, Instant.now(), userId);
         double onAirMinutes = totals.avgDurationSec() == null
                 ? 0
                 : totals.avgDurationSec() * totals.answeredCalls() / 60.0;
@@ -104,9 +105,9 @@ public class ProfileService implements ProfileUseCase {
         return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 
-    private User requireUser() {
+    private User requireUser(long companyId) {
         long id = requireUserId();
-        User user = users.find(id);
+        User user = users.find(companyId, id);
         if (user == null) {
             throw new NotFoundException(ErrorCode.USER_NOT_FOUND, id);
         }

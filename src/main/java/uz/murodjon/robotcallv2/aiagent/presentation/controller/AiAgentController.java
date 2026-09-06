@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -30,23 +31,25 @@ public interface AiAgentController {
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping
-    ResponseEntity<ResponseData<AiAgentRow>> create(@Valid @RequestBody CreateAiAgentRequest request);
+    ResponseEntity<ResponseData<AiAgentRow>> create(@CurrentCompanyId long companyId,
+                                                    @Valid @RequestBody CreateAiAgentRequest request);
 
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @PostMapping({"/filter", "/list"})
-    ResponseEntity<ResponseData<PageableData<AiAgentRow>>> filter(@Valid @RequestBody AiAgentFilter filter);
+    ResponseEntity<ResponseData<PageableData<AiAgentRow>>> filter(@CurrentCompanyId long companyId,
+                                                                  @Valid @RequestBody AiAgentFilter filter);
 
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<AiAgentRow>> get(@PathVariable long id);
+    ResponseEntity<ResponseData<AiAgentRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PutMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<AiAgentRow>> update(@PathVariable long id,
+    ResponseEntity<ResponseData<AiAgentRow>> update(@CurrentCompanyId long companyId, @PathVariable long id,
                                                     @Valid @RequestBody UpdateAiAgentRequest request);
 
     /** 409 while any campaign or inbound route still runs this agent. */
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @DeleteMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<Void>> delete(@PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
 }

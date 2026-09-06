@@ -80,13 +80,13 @@ public class CallOutboxService {
             outbox.countSummaryAttempt(p.callId());
             try {
                 String transcript = records.transcriptText(p.callId());
-                Scenario scenario = scenarioService.requireScenario(p.scenarioId());
+                long companyId = records.companyIdOf(p.callId());
+                Scenario scenario = scenarioService.requireScenario(companyId, p.scenarioId());
                 CallSummary summary = summaryService.summarize(transcript, scenario.definition());
                 if (summary == null) {
                     log.debug("Outbox: summary still unavailable for call {}", p.callId());
                     continue;
                 }
-                long companyId = records.companyIdOf(p.callId());
                 Long noteId = crmClient.postNote(companyId, p.clientId(), summary);
                 records.writeResult(p.callId(), summary, false, noteId);
                 memoryWriter.remember(p.callId(), companyId, scenario, p.disposition(), summary);

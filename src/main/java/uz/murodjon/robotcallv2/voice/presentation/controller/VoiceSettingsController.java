@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.voice.application.dto.UpdateVoiceSettingsRequest;
 import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
@@ -20,9 +21,10 @@ public interface VoiceSettingsController {
 
     @PreAuthorize("hasAuthority('VOICE_READ')")
     @GetMapping
-    ResponseEntity<ResponseData<VoiceSettings>> get();
+    ResponseEntity<ResponseData<VoiceSettings>> get(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('VOICE_EDIT')")
     @PutMapping
-    ResponseEntity<ResponseData<VoiceSettings>> update(@Valid @RequestBody UpdateVoiceSettingsRequest r);
+    ResponseEntity<ResponseData<VoiceSettings>> update(@CurrentCompanyId long companyId,
+                                                        @Valid @RequestBody UpdateVoiceSettingsRequest request);
 }

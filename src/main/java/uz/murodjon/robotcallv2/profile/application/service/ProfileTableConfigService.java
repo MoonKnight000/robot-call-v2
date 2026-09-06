@@ -16,24 +16,24 @@ public class ProfileTableConfigService implements ProfileTableConfigUseCase {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final TableConfigRepository repo;
+    private final TableConfigRepository repository;
     private final CurrentUser currentUser;
 
-    public ProfileTableConfigService(TableConfigRepository repo, CurrentUser currentUser) {
-        this.repo = repo;
+    public ProfileTableConfigService(TableConfigRepository repository, CurrentUser currentUser) {
+        this.repository = repository;
         this.currentUser = currentUser;
     }
 
     @Override
     public JsonNode find(String key) {
-        String json = repo.find(requireUserId(), requireKey(key));
+        String json = repository.find(requireUserId(), requireKey(key));
         return json == null ? null : readValue(json);
     }
 
     @Override
-    public JsonNode update(String key, JsonNode value) {
+    public JsonNode update(long companyId, String key, JsonNode value) {
         String json = value == null || value.isNull() ? null : value.toString();
-        String saved = repo.save(requireUserId(), requireKey(key), json);
+        String saved = repository.save(companyId, requireUserId(), requireKey(key), json);
         return saved == null ? null : readValue(saved);
     }
 

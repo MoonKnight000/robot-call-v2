@@ -29,8 +29,8 @@ public class SecretCipher {
     private final SecureRandom random = new SecureRandom();
     private final SecretKeySpec key;
 
-    public SecretCipher(EncryptionProperties props) {
-        this.key = props.configured() ? new SecretKeySpec(Base64.getDecoder().decode(props.secretKey()), "AES") : null;
+    public SecretCipher(EncryptionProperties encryptionProperties) {
+        this.key = encryptionProperties.configured() ? new SecretKeySpec(Base64.getDecoder().decode(encryptionProperties.secretKey()), "AES") : null;
     }
 
     public boolean available() {

@@ -48,28 +48,19 @@ public class CallService implements CallControlUseCase {
     }
 
     @Override
-    public CallOriginateResponse originate(String number, Long scenarioId) {
-        return originate(number, scenarioId, null);
+    public CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long sipTrunkId) {
+        return ari.originateManualCall(companyId, number, scenarioId, sipTrunkId);
     }
 
     @Override
-    public CallOriginateResponse originate(String number, Long scenarioId, Long sipTrunkId) {
-        return ari.originateManualCall(number, scenarioId, sipTrunkId);
-    }
-
-    @Override
-    public CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition) {
-        return originateTestCall(number, definition, null);
-    }
-
-    @Override
-    public CallOriginateResponse originateTestCall(String number, ScenarioDefinition definition, Long sipTrunkId) {
+    public CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition,
+                                                   Long sipTrunkId) {
         requireValid(definition);
-        return ari.originateTestCall(number, definition, sipTrunkId);
+        return ari.originateTestCall(companyId, number, definition, sipTrunkId);
     }
 
     @Override
-    public WebTestCallResponse startWebTest(WebTestCallRequest request) {
+    public WebTestCallResponse startWebTest(long companyId, WebTestCallRequest request) {
         if (webTestProperties.wsUrl() == null || webTestProperties.wsUrl().isBlank()) {
             throw new ConflictException(ErrorCode.WEB_TEST_NOT_CONFIGURED);
         }
@@ -81,7 +72,7 @@ public class CallService implements CallControlUseCase {
         if (request.definition() != null) {
             requireValid(request.definition());
         }
-        String sessionId = ari.prepareWebTest(request.campaignId(), request.targetId(),
+        String sessionId = ari.prepareWebTest(companyId, request.campaignId(), request.targetId(),
                 request.scenarioId(), request.definition());
         return new WebTestCallResponse(sessionId, webTestProperties.wsUrl(), webTestProperties.sipUser(),
                 webTestProperties.sipPassword(), webTestProperties.dialNumber(), WEB_TEST_SESSION_HEADER);
@@ -105,23 +96,23 @@ public class CallService implements CallControlUseCase {
     }
 
     @Override
-    public HangupResponse hangup(String channelId) {
+    public HangupResponse hangup(long companyId, String channelId) {
         ari.hangupChannel(channelId);
-        audit.record("CALL_HANGUP_MANUAL", "call", channelId, null);
+        audit.record(companyId, "CALL_HANGUP_MANUAL", "call", channelId, null);
         return new HangupResponse(channelId, "HUNG_UP");
     }
 
     @Override
-    public TransferResponse transfer(String channelId) {
+    public TransferResponse transfer(long companyId, String channelId) {
         ari.transferToOperator(channelId);
-        audit.record("CALL_TRANSFER_MANUAL", "call", channelId, null);
+        audit.record(companyId, "CALL_TRANSFER_MANUAL", "call", channelId, null);
         return new TransferResponse(channelId, "TRANSFERRING");
     }
 
     @Override
-    public StreamingResponseBody listen(String channelId) {
+    public StreamingResponseBody listen(long companyId, String channelId) {
         StreamingResponseBody body = ari.listen(channelId);
-        audit.record("CALL_LISTEN", "call", channelId, null);
+        audit.record(companyId, "CALL_LISTEN", "call", channelId, null);
         return body;
     }
 }

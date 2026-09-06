@@ -20,13 +20,13 @@ public class EngineConfigControllerImpl implements EngineConfigController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<EngineConfig>> get() {
-        return ResponseEntity.ok(ResponseData.ok(engineConfigUseCase.findForCurrentCompany()));
+    public ResponseEntity<ResponseData<EngineConfig>> get(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(engineConfigUseCase.findByCompanyId(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<EffectiveEngineConfig>> getEffective() {
-        return ResponseEntity.ok(ResponseData.ok(engineConfigUseCase.findEffectiveForCurrentCompany()));
+    public ResponseEntity<ResponseData<EffectiveEngineConfig>> getEffective(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(engineConfigUseCase.findEffectiveByCompanyId(companyId)));
     }
 
     @Override
@@ -35,7 +35,7 @@ public class EngineConfigControllerImpl implements EngineConfigController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<EngineConfig>> update(UpdateEngineConfigRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(engineConfigUseCase.updateForCurrentCompany(request)));
+    public ResponseEntity<ResponseData<EngineConfig>> update(long companyId, UpdateEngineConfigRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(engineConfigUseCase.updateByCompanyId(companyId, request)));
     }
 }

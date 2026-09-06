@@ -14,7 +14,6 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignJpaRepository;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -29,28 +28,24 @@ import java.util.List;
 @Component
 public class CampaignRepositoryAdapter implements CampaignRepository {
 
-    private final CampaignJpaRepository jpaRepository;
+    private final CampaignJpaRepository campaignJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
     private final UserJpaRepository userJpaRepository;
-    private final CurrentCompany currentCompany;
     private final CampaignMapper mapper;
 
-    public CampaignRepositoryAdapter(CampaignJpaRepository jpaRepository,
+    public CampaignRepositoryAdapter(CampaignJpaRepository campaignJpaRepository,
                                      CompanyJpaRepository companyJpaRepository,
                                      UserJpaRepository userJpaRepository,
-                                     CurrentCompany currentCompany,
                                      CampaignMapper mapper) {
-        this.jpaRepository = jpaRepository;
+        this.campaignJpaRepository = campaignJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.userJpaRepository = userJpaRepository;
-        this.currentCompany = currentCompany;
         this.mapper = mapper;
     }
 
     @Override
     @Transactional
-    public long create(Campaign row) {
-        long companyId = row.companyId() > 0 ? row.companyId() : currentCompany.id();
+    public long create(long companyId, Campaign row) {
         CompanyEntity company = companyJpaRepository.findById(companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
         UserEntity createdBy = row.createdBy() != null
@@ -59,37 +54,37 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
 
         CampaignEntity entity = mapper.toEntity(row, company, createdBy);
         entity.setCreatedAt(Instant.now());
-        return jpaRepository.save(entity).getId();
+        return campaignJpaRepository.save(entity).getId();
     }
 
     @Override
-    public Campaign find(long id) {
-        return jpaRepository.findByIdAndCompanyId(id, currentCompany.id())
+    public Campaign find(long companyId, long id) {
+        return campaignJpaRepository.findByIdAndCompanyId(id, companyId)
                 .map(mapper::toCampaign)
                 .orElse(null);
     }
 
     @Override
-    public List<Campaign> findAll(CampaignFilter filter) {
-        Specification<CampaignEntity> spec = buildSpecification(filter, currentCompany.id());
-        return jpaRepository.findAll(spec, filter.pageable()).stream()
+    public List<Campaign> findAll(long companyId, CampaignFilter filter) {
+        Specification<CampaignEntity> spec = buildSpecification(filter, companyId);
+        return campaignJpaRepository.findAll(spec, filter.pageable()).stream()
                 .map(mapper::toCampaign)
                 .toList();
     }
 
     @Override
-    public long count() {
-        return jpaRepository.countByCompanyId(currentCompany.id());
+    public long count(long companyId) {
+        return campaignJpaRepository.countByCompanyId(companyId);
     }
 
     @Override
-    public long count(CampaignFilter filter) {
-        return jpaRepository.count(buildSpecification(filter, currentCompany.id()));
+    public long count(long companyId, CampaignFilter filter) {
+        return campaignJpaRepository.count(buildSpecification(filter, companyId));
     }
 
     @Override
-    public List<Campaign> searchByName(String q, int limit) {
-        return jpaRepository.searchByCompanyId(currentCompany.id(), "%" + q.toLowerCase() + "%",
+    public List<Campaign> searchByName(long companyId, String q, int limit) {
+        return campaignJpaRepository.searchByCompanyId(companyId, "%" + q.toLowerCase() + "%",
                         PageRequest.of(0, limit))
                 .stream()
                 .map(mapper::toCampaign)
@@ -98,14 +93,14 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
 
     @Override
     public List<Campaign> findActive() {
-        return jpaRepository.findByStatusOrderById(CampaignStatus.ACTIVE).stream()
+        return campaignJpaRepository.findByStatusOrderById(CampaignStatus.ACTIVE).stream()
                 .map(mapper::toCampaign)
                 .toList();
     }
 
     @Override
     public List<Campaign> findRecurring() {
-        return jpaRepository.findByRecurrenceTypeNotAndStatusNot(RecurrenceType.ONCE, CampaignStatus.ARCHIVED).stream()
+        return campaignJpaRepository.findByRecurrenceTypeNotAndStatusNot(RecurrenceType.ONCE, CampaignStatus.ARCHIVED).stream()
                 .map(mapper::toCampaign)
                 .toList();
     }
@@ -113,22 +108,22 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
     @Override
     @Transactional
     public void updateStatus(long companyId, long id, CampaignStatus status) {
-        jpaRepository.updateStatus(id, status, companyId);
+        campaignJpaRepository.updateStatus(id, status, companyId);
     }
 
     @Override
     @Transactional
     public void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status) {
-        jpaRepository.recordRecurrenceRun(id, lastRunAt, status);
+        campaignJpaRepository.recordRecurrenceRun(id, lastRunAt, status);
     }
 
     @Override
     @Transactional
-    public void update(long id, Campaign row) {
-        CampaignEntity entity = jpaRepository.findByIdAndCompanyId(id, currentCompany.id())
+    public void update(long companyId, long id, Campaign row) {
+        CampaignEntity entity = campaignJpaRepository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id));
         mapper.applyEditableFields(entity, row);
-        jpaRepository.save(entity);
+        campaignJpaRepository.save(entity);
     }
 
     private Specification<CampaignEntity> buildSpecification(CampaignFilter filter, long companyId) {

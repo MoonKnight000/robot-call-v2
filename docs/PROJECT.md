@@ -441,8 +441,8 @@ CREATE TABLE campaign (
     status          VARCHAR(50)  NOT NULL,   -- DRAFT, ACTIVE, PAUSED, COMPLETED
     script_config   JSONB        NOT NULL,
     ai_agent_id     BIGINT       NOT NULL REFERENCES ai_agent(id),
-    dial_window_start TIME       NOT NULL DEFAULT '09:00',
-    dial_window_end   TIME       NOT NULL DEFAULT '20:00',
+    dial_window_start TIME       NOT NULL DEFAULT '07:00',
+    dial_window_end   TIME       NOT NULL DEFAULT '23:00',
     max_attempts    INT          NOT NULL DEFAULT 3,
     retry_interval_minutes INT   NOT NULL DEFAULT 0,   -- 0 -> natijaga qarab (dialer.retry.*)
     max_concurrent_calls INT     NOT NULL DEFAULT 20,
@@ -891,7 +891,7 @@ ari.bridges().addChannel(bridge.getId(), channel.getId() + "," + extMedia.getId(
 1. **Ogohlantirish** — suhbat boshida aytiladi:
    - Bu avtomatik tizim ekani
    - Suhbat yozib olinayotgani
-2. **Qo'ng'iroq vaqti** — faqat `dial_window` ichida (default 09:00–20:00). Dam olish kunlari alohida sozlanadi.
+2. **Qo'ng'iroq vaqti** — faqat `dial_window` ichida (default 07:00–23:00). Dam olish kunlari alohida sozlanadi.
 3. **Yozuvlar** — MinIO da saqlanadi, saqlash muddati konfiguratsiyada. Nizoda dalil bo'ladi.
 4. **Rad etish huquqi** — mijoz "boshqa qo'ng'iroq qilmang" desa, `do_not_call` flag qo'yiladi va keyingi kampaniyalarga tushmaydi.
 5. **Tahdid taqiqi** — guardrails da (4.4).

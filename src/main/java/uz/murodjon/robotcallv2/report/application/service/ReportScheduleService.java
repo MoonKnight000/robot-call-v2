@@ -11,7 +11,8 @@ import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.report.application.dto.CreateReportScheduleRequest;
-import uz.murodjon.robotcallv2.report.application.dto.ReportScheduleFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
+import uz.murodjon.robotcallv2.report.application.port.input.ReportExportUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportScheduleUseCase;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportScheduleRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSchedule;
@@ -35,21 +36,21 @@ public class ReportScheduleService implements ReportScheduleUseCase {
     private final ReportScheduleRepository schedules;
     private final CampaignService campaigns;
     private final ReportService reportService;
-    private final ReportExportFactory exportFactory;
+    private final ReportExportUseCase reportExportUseCase;
     private final ReportEmailSender emailSender;
     private final AuditService audit;
     private final NotificationService notifications;
     private final boolean enabled;
 
     public ReportScheduleService(ReportScheduleRepository schedules, CampaignService campaigns,
-                                 ReportService reportService, ReportExportFactory exportFactory,
+                                 ReportService reportService, ReportExportUseCase reportExportUseCase,
                                  ReportEmailSender emailSender, AuditService audit,
                                  NotificationService notifications,
                                  @Value("${voice-agent.report-schedule.enabled:false}") boolean enabled) {
         this.schedules = schedules;
         this.campaigns = campaigns;
         this.reportService = reportService;
-        this.exportFactory = exportFactory;
+        this.reportExportUseCase = reportExportUseCase;
         this.emailSender = emailSender;
         this.audit = audit;
         this.notifications = notifications;
@@ -57,29 +58,29 @@ public class ReportScheduleService implements ReportScheduleUseCase {
     }
 
     @Override
-    public ReportSchedule create(CreateReportScheduleRequest r) {
+    public ReportSchedule create(long companyId, CreateReportScheduleRequest r) {
         if (r.format() != null && !r.format().isBlank() && !ALLOWED_FORMATS.contains(r.format().toLowerCase())) {
             throw new ValidationException(ErrorCode.REPORT_SCHEDULE_FORMAT_INVALID, ALLOWED_FORMATS, r.format());
         }
         if (r.campaignId() != null) {
-            campaigns.requireCampaign(r.campaignId());
+            campaigns.requireCampaign(companyId, r.campaignId());
         }
-        long id = schedules.create(r);
-        audit.record("REPORT_SCHEDULE_CREATE", "report_schedule", String.valueOf(id),
+        long id = schedules.create(companyId, r);
+        audit.record(companyId, "REPORT_SCHEDULE_CREATE", "report_schedule", String.valueOf(id),
                 r.email() + " (" + r.periodicity() + ")");
-        return requireSchedule(id);
+        return requireSchedule(companyId, id);
     }
 
     @Override
-    public PageableData<ReportSchedule> list(ReportScheduleFilter filter) {
-        List<ReportSchedule> rows = schedules.findAll(filter);
-        long total = schedules.count(filter);
+    public PageableData<ReportSchedule> list(long companyId, ReportScheduleFilter filter) {
+        List<ReportSchedule> rows = schedules.findAll(companyId, filter);
+        long total = schedules.count(companyId, filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     @Override
-    public ReportSchedule requireSchedule(long id) {
-        ReportSchedule row = schedules.find(id);
+    public ReportSchedule requireSchedule(long companyId, long id) {
+        ReportSchedule row = schedules.find(companyId, id);
         if (row == null) {
             throw new NotFoundException(ErrorCode.REPORT_SCHEDULE_NOT_FOUND, id);
         }
@@ -87,11 +88,11 @@ public class ReportScheduleService implements ReportScheduleUseCase {
     }
 
     @Override
-    public ReportSchedule disable(long id) {
-        requireSchedule(id);
-        schedules.disable(id);
-        audit.record("REPORT_SCHEDULE_DISABLE", "report_schedule", String.valueOf(id), null);
-        return requireSchedule(id);
+    public ReportSchedule disable(long companyId, long id) {
+        requireSchedule(companyId, id);
+        schedules.disable(companyId, id);
+        audit.record(companyId, "REPORT_SCHEDULE_DISABLE", "report_schedule", String.valueOf(id), null);
+        return requireSchedule(companyId, id);
     }
 
     @Override
@@ -116,14 +117,16 @@ public class ReportScheduleService implements ReportScheduleUseCase {
     }
 
     private void sendOne(ReportSchedule schedule, Instant from, Instant to) throws Exception {
-        ReportSummary summary = reportService.summary(from.toString(), to.toString(), schedule.campaignId());
-        byte[] rendered = exportFactory.renderBytes(schedule.format(), summary);
-        String contentType = exportFactory.contentType(schedule.format());
+        ReportSummary summary = reportService.summary(schedule.companyId(), from.toString(), to.toString(),
+                schedule.campaignId());
+        byte[] rendered = reportExportUseCase.renderSummaryBytes(schedule.format(), summary);
+        String contentType = reportExportUseCase.contentType(schedule.format());
         emailSender.send(schedule.email(),
                 "Uysot Voice — hisobot (" + schedule.periodicity() + ")",
                 "Ilova qilingan fayl " + from + " dan " + to + " gacha bo'lgan davrni qamrab oladi.",
                 rendered, "report." + schedule.format(), contentType);
-        audit.record("REPORT_SCHEDULE_SENT", "report_schedule", String.valueOf(schedule.id()), schedule.email());
+        audit.record(schedule.companyId(), "REPORT_SCHEDULE_SENT", "report_schedule",
+                String.valueOf(schedule.id()), schedule.email());
         if (schedule.periodicity() == ReportPeriodicity.DAILY) {
             notifications.notify(schedule.companyId(), NotificationType.DAILY_REPORT,
                     "Kunlik hisobot tayyor", schedule.email() + " manziliga yuborildi", null);

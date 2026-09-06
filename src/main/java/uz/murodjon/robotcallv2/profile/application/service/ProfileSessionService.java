@@ -31,10 +31,10 @@ public class ProfileSessionService implements ProfileSessionUseCase {
     }
 
     @Override
-    public void revoke(long id) {
+    public void revoke(long companyId, long id) {
         long userId = requireUserId();
         sessions.revoke(id, userId);
-        audit.record("PROFILE_SESSION_REVOKE", "user_session", String.valueOf(id), null);
+        audit.record(companyId, "PROFILE_SESSION_REVOKE", "user_session", String.valueOf(id), null);
     }
 
     private long requireUserId() {

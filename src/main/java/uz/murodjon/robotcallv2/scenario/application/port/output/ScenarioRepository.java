@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.scenario.application.port.output;
 
-import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioFilter;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 
@@ -10,19 +10,19 @@ import java.util.Map;
 
 public interface ScenarioRepository {
 
-    long create(String scenarioKey, String name, String description, boolean builtin,
+    long create(long companyId, String scenarioKey, String name, String description, boolean builtin,
                 ScenarioDefinition definition, Long createdBy);
 
-    long insertVersion(String scenarioKey, int version, String name, String description,
+    long insertVersion(long companyId, String scenarioKey, int version, String name, String description,
                        boolean builtin, ScenarioDefinition definition, Long createdBy);
 
     void deactivate(String scenarioKey);
 
-    Scenario find(long id);
+    Scenario find(long companyId, long id);
 
-    Map<Long, String> namesByIds(Collection<Long> ids);
+    Map<Long, String> namesByIds(long companyId, Collection<Long> ids);
 
-    String nameById(long id);
+    String nameById(long companyId, long id);
 
     int maxVersion(String scenarioKey);
 
@@ -30,9 +30,9 @@ public interface ScenarioRepository {
 
     Scenario findActiveByKey(String scenarioKey);
 
-    List<Scenario> findAll(ScenarioFilter filter);
+    List<Scenario> findAll(long companyId, ScenarioFilter filter);
 
-    long count(ScenarioFilter filter);
+    long count(long companyId, ScenarioFilter filter);
 
     List<Scenario> findAllActive();
 }

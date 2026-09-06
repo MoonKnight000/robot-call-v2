@@ -153,8 +153,8 @@
   <div class="conn">
     <span>API:</span>
     <input id="baseUrl" class="base-input" value="" placeholder="(same-origin)">
-    <span>Key:</span>
-    <input id="apiKey" class="base-input" type="password" value="" placeholder="X-Api-Key">
+    <span>Token:</span>
+    <input id="authToken" class="base-input" type="password" value="" placeholder="POST /api/auth/login dan olingan JWT">
     <span class="dot" id="connDot"></span>
     <span id="connText">tekshirilmoqda…</span>
   </div>
@@ -545,7 +545,7 @@
     <div class="card">
       <h2><span class="num">6</span>Kampaniya natijasi</h2>
       <p class="hint">GET /api/reports/campaigns/{id} — disposition taqsimoti, va'da foizi,
-        o'rtacha davomiylik. Faqat o'qish uchun kalit (READ_API_KEY) ham yetadi.</p>
+        o'rtacha davomiylik. VIEWER roli ham yetadi.</p>
       <div class="inline">
         <div><label>Kampaniya ID</label><input id="r_camp" type="number" placeholder="1"></div>
         <button class="btn sec" onclick="loadStats()">Ko'rsatish</button>
@@ -599,11 +599,11 @@
 const $ = id => document.getElementById(id);
 const base = () => $('baseUrl').value.replace(/\/$/,'');
 
-/* ---------- api key (X-Api-Key on every request) ---------- */
-const KEY_STORE = 'uysot.apiKey';
-$('apiKey').value = localStorage.getItem(KEY_STORE) || '';
-$('apiKey').addEventListener('change', () => {
-  localStorage.setItem(KEY_STORE, $('apiKey').value.trim());
+/* ---------- login token (Authorization: Bearer on every request) ---------- */
+const KEY_STORE = 'uysot.token';
+$('authToken').value = localStorage.getItem(KEY_STORE) || '';
+$('authToken').addEventListener('change', () => {
+  localStorage.setItem(KEY_STORE, $('authToken').value.trim());
   checkConn();
   loadAiAgents();
   loadVoices('ca_sayvoice',$('ca_saylang').value,true);
@@ -611,8 +611,8 @@ $('apiKey').addEventListener('change', () => {
   loadSipTrunks();
 });
 function authHeaders(){
-  const k = $('apiKey').value.trim();
-  return k ? {'X-Api-Key': k} : {};
+  const token = $('authToken').value.trim();
+  return token ? {'Authorization': 'Bearer ' + token} : {};
 }
 
 /* ---------- tabs ---------- */

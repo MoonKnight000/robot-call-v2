@@ -1,10 +1,13 @@
 package uz.murodjon.robotcallv2.callrecord.application.port.output;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallResult;
 
 public interface CallResultRepository {
-    void insertIgnoringConflict(long callId, String summary, String reasonCode, LocalDate promisedDate,
-                                BigDecimal promisedAmount, String sentiment, boolean needsFollowUp,
-                                String followUpNote, boolean escalated, Long crmNoteId, String outcome);
+
+    /**
+     * Writes the one {@code call_result} row for a call, keeping whichever row got there
+     * first — the outbox re-runs the summary for calls that still have none, and two
+     * instances sweeping at once are summarizing the same transcript.
+     */
+    void insertIgnoringConflict(CallResult result);
 }

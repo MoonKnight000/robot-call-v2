@@ -4,7 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import uz.murodjon.robotcallv2.report.application.dto.CreateReportScheduleRequest;
-import uz.murodjon.robotcallv2.report.application.dto.ReportScheduleFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportScheduleUseCase;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSchedule;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -20,17 +20,17 @@ public class ReportScheduleControllerImpl implements ReportScheduleController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<ReportSchedule>> create(CreateReportScheduleRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(scheduleService.create(request)));
+    public ResponseEntity<ResponseData<ReportSchedule>> create(long companyId, CreateReportScheduleRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(scheduleService.create(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<ReportSchedule>>> list(ReportScheduleFilter filter) {
-        return ResponseEntity.ok(ResponseData.ok(scheduleService.list(filter)));
+    public ResponseEntity<ResponseData<PageableData<ReportSchedule>>> list(long companyId, ReportScheduleFilter filter) {
+        return ResponseEntity.ok(ResponseData.ok(scheduleService.list(companyId, filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ReportSchedule>> disable(long id) {
-        return ResponseEntity.ok(ResponseData.ok(scheduleService.disable(id)));
+    public ResponseEntity<ResponseData<ReportSchedule>> disable(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(scheduleService.disable(companyId, id)));
     }
 }

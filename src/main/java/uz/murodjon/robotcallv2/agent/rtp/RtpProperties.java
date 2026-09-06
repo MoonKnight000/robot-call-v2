@@ -27,13 +27,13 @@ public record RtpProperties(
         String recordingDir,
         String testPlaybackFile,
         int eventLoopThreads,
-        WavRecorder.RecordingMode recordingMode,
+        RecordingMode recordingMode,
         RtpCodec codec
 ) {
 
     public RtpProperties {
         if (recordingMode == null) {
-            recordingMode = WavRecorder.RecordingMode.SPATIAL_STEREO;
+            recordingMode = RecordingMode.SPATIAL_STEREO;
         }
         if (codec == null) {
             codec = RtpCodec.ULAW;

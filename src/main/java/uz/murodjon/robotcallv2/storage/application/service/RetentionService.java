@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
-import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallTranscriptJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
 import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort;
 import uz.murodjon.robotcallv2.storage.application.port.output.StoredFileRepository;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
@@ -29,25 +29,26 @@ public class RetentionService {
 
     private static final Logger log = LoggerFactory.getLogger(RetentionService.class);
 
-    private final StoredFileRepository storedFiles;
+    private final StoredFileRepository storedFileRepository;
     private final ObjectStoragePort objectStorage;
-    private final AudioStorageProperties storageProps;
-    private final CallTranscriptJpaRepository transcripts;
+    private final AudioStorageProperties audioStorageProperties;
+    private final CallTranscriptRepository callTranscriptRepository;
     private final Path recordingDir;
 
-    public RetentionService(StoredFileRepository storedFiles, ObjectStoragePort objectStorage,
-                            AudioStorageProperties storageProps, CallTranscriptJpaRepository transcripts,
-                            RtpProperties rtpProps) {
-        this.storedFiles = storedFiles;
+    public RetentionService(StoredFileRepository storedFileRepository, ObjectStoragePort objectStorage,
+                            AudioStorageProperties audioStorageProperties,
+                            CallTranscriptRepository callTranscriptRepository,
+                            RtpProperties rtpProperties) {
+        this.storedFileRepository = storedFileRepository;
         this.objectStorage = objectStorage;
-        this.storageProps = storageProps;
-        this.transcripts = transcripts;
-        this.recordingDir = Path.of(rtpProps.recordingDir());
+        this.audioStorageProperties = audioStorageProperties;
+        this.callTranscriptRepository = callTranscriptRepository;
+        this.recordingDir = Path.of(rtpProperties.recordingDir());
     }
 
     @Scheduled(cron = "${voice-agent.storage.retention-cron:0 30 3 * * *}")
     public void purge() {
-        int days = storageProps.retentionDays();
+        int days = audioStorageProperties.retentionDays();
         if (days <= 0) {
             return;
         }
@@ -64,12 +65,12 @@ public class RetentionService {
     }
 
     private int purgeStoredRecordings(Instant cutoff) {
-        List<StoredFile> old = storedFiles.findOlderThan(FileCategory.AUDIO, cutoff);
+        List<StoredFile> old = storedFileRepository.findOlderThan(FileCategory.AUDIO, cutoff);
         int removed = 0;
         for (StoredFile file : old) {
             try {
                 objectStorage.delete(file.bucket(), file.path());
-                storedFiles.delete(file.id());
+                storedFileRepository.delete(file.id());
                 removed++;
             } catch (Exception e) {
                 log.warn("Could not remove stored recording {}: {}", file.id(), e.getMessage());
@@ -105,7 +106,7 @@ public class RetentionService {
 
     private int purgeTranscripts(Instant cutoff) {
         try {
-            return transcripts.purgeForAttemptsEndedBefore(cutoff);
+            return callTranscriptRepository.purgeEndedBefore(cutoff);
         } catch (Exception e) {
             log.warn("Transcript purge failed: {}", e.getMessage());
             return 0;

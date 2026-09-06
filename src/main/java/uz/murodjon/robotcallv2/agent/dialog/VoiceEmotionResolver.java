@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
@@ -23,15 +22,6 @@ import java.util.Locale;
 public class VoiceEmotionResolver {
 
     private static final Logger log = LoggerFactory.getLogger(VoiceEmotionResolver.class);
-
-    public enum VoiceEmotion {
-        NEUTRAL,
-        CHEERFUL,
-        FRIENDLY,
-        STRICT,
-        WHISPER,
-        SAD
-    }
 
     /**
      * Resolves the effective voice settings (role + adaptive speed) for the given dialog session turn.

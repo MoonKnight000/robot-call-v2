@@ -4,7 +4,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
@@ -44,7 +43,6 @@ class UserServiceTest {
     private UserRepository repository;
     private RoleUseCase roleUseCase;
     private SessionUseCase sessionUseCase;
-    private CurrentCompany company;
     private CurrentUser currentUser;
     private AuditService audit;
     private UserService userService;
@@ -54,17 +52,15 @@ class UserServiceTest {
         repository = mock(UserRepository.class);
         roleUseCase = mock(RoleUseCase.class);
         sessionUseCase = mock(SessionUseCase.class);
-        company = mock(CurrentCompany.class);
         currentUser = mock(CurrentUser.class);
         audit = mock(AuditService.class);
 
-        when(company.id()).thenReturn(COMPANY_ID);
         when(currentUser.id()).thenReturn(Optional.of(100L));
         when(roleUseCase.findRole(COMPANY_ID, ADMIN_ROLE.id())).thenReturn(ADMIN_ROLE);
         when(roleUseCase.findRole(COMPANY_ID, OPERATOR_ROLE.id())).thenReturn(OPERATOR_ROLE);
         when(roleUseCase.findRole(COMPANY_ID, DEVELOPER_ROLE.id())).thenReturn(DEVELOPER_ROLE);
 
-        userService = new UserService(repository, roleUseCase, sessionUseCase, company, currentUser, audit);
+        userService = new UserService(repository, roleUseCase, sessionUseCase, currentUser, audit);
     }
 
     private static Role systemRole(long id, SystemRole systemRole) {
@@ -86,10 +82,11 @@ class UserServiceTest {
 
         when(repository.existsByEmail("jasur@example.com")).thenReturn(false);
         when(repository.existsByUsername("jasur")).thenReturn(false);
-        when(repository.create("Jasur", "jasur", "jasur@example.com", OPERATOR_ROLE.id(), UserStatus.INVITED))
+        when(repository.create(COMPANY_ID, "Jasur", "jasur", "jasur@example.com", null, OPERATOR_ROLE.id(),
+                UserStatus.INVITED))
                 .thenReturn(5L);
 
-        InviteUserResponse res = userService.invite(req);
+        InviteUserResponse res = userService.invite(COMPANY_ID, req);
 
         assertThat(res).isNotNull();
         assertThat(res.userId()).isEqualTo(5L);
@@ -105,7 +102,7 @@ class UserServiceTest {
         InviteUserRequest req = new InviteUserRequest("Jasur", "jasur", "jasur@example.com", OPERATOR_ROLE.id());
         when(repository.existsByEmail("jasur@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.invite(req))
+        assertThatThrownBy(() -> userService.invite(COMPANY_ID, req))
                 .isInstanceOf(ConflictException.class);
     }
 
@@ -114,7 +111,7 @@ class UserServiceTest {
         InviteUserRequest req = new InviteUserRequest("Jasur", "jasur", "jasur@example.com", 99L);
         when(roleUseCase.findRole(COMPANY_ID, 99L)).thenReturn(null);
 
-        assertThatThrownBy(() -> userService.invite(req))
+        assertThatThrownBy(() -> userService.invite(COMPANY_ID, req))
                 .isInstanceOf(NotFoundException.class);
     }
 
@@ -123,35 +120,35 @@ class UserServiceTest {
         InviteUserRequest req = new InviteUserRequest("Root", "root", "root@example.com", DEVELOPER_ROLE.id());
         when(currentUser.hasPermission(Permission.PLATFORM_ADMIN)).thenReturn(false);
 
-        assertThatThrownBy(() -> userService.invite(req))
+        assertThatThrownBy(() -> userService.invite(COMPANY_ID, req))
                 .isInstanceOf(ForbiddenException.class);
     }
 
     @Test
     void changeRoleFailsWhenDemotingLastUserManager() {
         User admin = sampleUser(1L, ADMIN_ROLE, UserStatus.ACTIVE);
-        when(repository.find(1L)).thenReturn(admin);
+        when(repository.find(COMPANY_ID, 1L)).thenReturn(admin);
         when(roleUseCase.findRolesWithPermission(COMPANY_ID, Permission.USER_EDIT))
                 .thenReturn(List.of(ADMIN_ROLE));
         when(repository.countActiveByRoleIds(COMPANY_ID, List.of(ADMIN_ROLE.id()))).thenReturn(1L);
 
         UpdateUserRoleRequest req = new UpdateUserRoleRequest(OPERATOR_ROLE.id());
 
-        assertThatThrownBy(() -> userService.changeRole(1L, req))
+        assertThatThrownBy(() -> userService.changeRole(COMPANY_ID, 1L, req))
                 .isInstanceOf(ConflictException.class);
     }
 
     @Test
     void changeRoleRevokesTheSessionsOfTheUser() {
         User operator = sampleUser(5L, OPERATOR_ROLE, UserStatus.ACTIVE);
-        when(repository.find(5L)).thenReturn(operator);
+        when(repository.find(COMPANY_ID, 5L)).thenReturn(operator);
         when(roleUseCase.findRolesWithPermission(COMPANY_ID, Permission.USER_EDIT))
                 .thenReturn(List.of(ADMIN_ROLE));
         when(repository.countActiveByRoleIds(COMPANY_ID, List.of(ADMIN_ROLE.id()))).thenReturn(2L);
 
-        userService.changeRole(5L, new UpdateUserRoleRequest(ADMIN_ROLE.id()));
+        userService.changeRole(COMPANY_ID, 5L, new UpdateUserRoleRequest(ADMIN_ROLE.id()));
 
-        verify(repository).updateRole(5L, ADMIN_ROLE.id());
+        verify(repository).updateRole(COMPANY_ID, 5L, ADMIN_ROLE.id());
         verify(sessionUseCase).revokeAllForUser(5L);
     }
 
@@ -159,9 +156,9 @@ class UserServiceTest {
     void blockFailsOnSelfAction() {
         when(currentUser.id()).thenReturn(Optional.of(1L));
         User admin = sampleUser(1L, ADMIN_ROLE, UserStatus.ACTIVE);
-        when(repository.find(1L)).thenReturn(admin);
+        when(repository.find(COMPANY_ID, 1L)).thenReturn(admin);
 
-        assertThatThrownBy(() -> userService.setStatus(1L, UserStatus.BLOCKED))
+        assertThatThrownBy(() -> userService.setStatus(COMPANY_ID, 1L, UserStatus.BLOCKED))
                 .isInstanceOf(ConflictException.class);
     }
 
@@ -169,12 +166,12 @@ class UserServiceTest {
     void blockFailsOnLastUserManager() {
         when(currentUser.id()).thenReturn(Optional.of(100L));
         User admin = sampleUser(1L, ADMIN_ROLE, UserStatus.ACTIVE);
-        when(repository.find(1L)).thenReturn(admin);
+        when(repository.find(COMPANY_ID, 1L)).thenReturn(admin);
         when(roleUseCase.findRolesWithPermission(COMPANY_ID, Permission.USER_EDIT))
                 .thenReturn(List.of(ADMIN_ROLE));
         when(repository.countActiveByRoleIds(COMPANY_ID, List.of(ADMIN_ROLE.id()))).thenReturn(1L);
 
-        assertThatThrownBy(() -> userService.setStatus(1L, UserStatus.BLOCKED))
+        assertThatThrownBy(() -> userService.setStatus(COMPANY_ID, 1L, UserStatus.BLOCKED))
                 .isInstanceOf(ConflictException.class);
     }
 
@@ -182,12 +179,12 @@ class UserServiceTest {
     void unblockSuccess() {
         User blockedUser = sampleUser(5L, OPERATOR_ROLE, UserStatus.BLOCKED);
         User activeUser = sampleUser(5L, OPERATOR_ROLE, UserStatus.ACTIVE);
-        when(repository.find(5L)).thenReturn(blockedUser, activeUser);
+        when(repository.find(COMPANY_ID, 5L)).thenReturn(blockedUser, activeUser);
 
-        UserRow result = userService.setStatus(5L, UserStatus.ACTIVE);
+        UserRow result = userService.setStatus(COMPANY_ID, 5L, UserStatus.ACTIVE);
 
         assertThat(result.status()).isEqualTo(UserStatus.ACTIVE);
-        verify(repository).updateStatus(5L, UserStatus.ACTIVE);
+        verify(repository).updateStatus(COMPANY_ID, 5L, UserStatus.ACTIVE);
         verify(audit).record("USER_UNBLOCK", "user", "5", null);
     }
 }

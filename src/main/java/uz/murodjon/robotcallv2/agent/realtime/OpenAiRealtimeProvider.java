@@ -45,16 +45,16 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
 
     private static final int AUDIO_RATE = 24000;
 
-    private final RealtimeProperties props;
+    private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public OpenAiRealtimeProvider(RealtimeProperties props) {
-        this.props = props;
+    public OpenAiRealtimeProvider(RealtimeProperties realtimeProperties) {
+        this.realtimeProperties = realtimeProperties;
     }
 
     @PostConstruct
     public void init() {
-        OpenAiRealtimeProperties openAi = props.openAi();
+        OpenAiRealtimeProperties openAi = realtimeProperties.openAi();
         if (openAi == null || openAi.apiKey() == null || openAi.apiKey().isBlank()) {
             return;
         }
@@ -88,7 +88,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
     @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
-        OpenAiRealtimeProperties openAi = props.openAi();
+        OpenAiRealtimeProperties openAi = realtimeProperties.openAi();
         if (current == null || openAi == null) {
             throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED,
                     "openai-realtime", "not initialized");

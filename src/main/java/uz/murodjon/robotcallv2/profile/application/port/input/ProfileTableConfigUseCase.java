@@ -6,5 +6,5 @@ public interface ProfileTableConfigUseCase {
 
     JsonNode find(String key);
 
-    JsonNode update(String key, JsonNode value);
+    JsonNode update(long companyId, String key, JsonNode value);
 }

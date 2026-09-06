@@ -9,12 +9,11 @@ import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import uz.murodjon.robotcallv2.audit.application.dto.AuditFilter;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 
 import java.util.List;
 
@@ -27,18 +26,16 @@ public class AuditService implements AuditUseCase {
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
     private final AuditLogRepository repository;
-    private final CurrentCompany company;
 
-    public AuditService(AuditLogRepository repository, CurrentCompany company) {
+    public AuditService(AuditLogRepository repository) {
         this.repository = repository;
-        this.company = company;
     }
 
     @Override
-    public void record(String action, String entity, String entityId, String detail) {
+    public void record(long companyId, String action, String entity, String entityId, String detail) {
         String actor = currentActor();
         try {
-            repository.save(company.id(), AuditLog.entry(actor, action, entity, entityId, detail, currentIp()));
+            repository.save(companyId, AuditLog.entry(actor, action, entity, entityId, detail, currentIp()));
         } catch (Exception e) {
             log.warn("Audit write failed ({} {} {} by {}: {}): {}",
                     action, entity, entityId, actor, detail, e.getMessage());
@@ -46,10 +43,9 @@ public class AuditService implements AuditUseCase {
     }
 
     @Override
-    public List<AuditLog> recent(AuditFilter filter) {
+    public List<AuditLog> recent(long companyId, AuditFilter filter) {
         try {
-            return repository.findByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity(),
-                    filter.pageable());
+            return repository.findByCompanyId(companyId, filter);
         } catch (Exception e) {
             log.warn("Audit read failed: {}", e.getMessage());
             return List.of();
@@ -57,9 +53,9 @@ public class AuditService implements AuditUseCase {
     }
 
     @Override
-    public long count(AuditFilter filter) {
+    public long count(long companyId, AuditFilter filter) {
         try {
-            return repository.countByCompanyId(company.id(), filter.actor(), filter.action(), filter.entity());
+            return repository.countByCompanyId(companyId, filter);
         } catch (Exception e) {
             log.warn("Audit count failed: {}", e.getMessage());
             return 0;

@@ -21,7 +21,6 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
@@ -55,7 +54,6 @@ class CampaignServiceTest {
     private AiAgentUseCase aiAgents;
     private UserService users;
     private CompanyConfigService companyConfig;
-    private CurrentCompany currentCompany;
     private DialerProperties dialerProps;
     private AuditService audit;
     private NotificationService notifications;
@@ -73,16 +71,14 @@ class CampaignServiceTest {
         targetSources = mock(TargetSourceRepository.class);
         users = mock(UserService.class);
         companyConfig = mock(CompanyConfigService.class);
-        currentCompany = mock(CurrentCompany.class);
         dialerProps = new DialerProperties(true, 5, 10, 5, 3, 60, new RetryProperties(180, 15, 1200, true));
         audit = mock(AuditService.class);
         notifications = mock(NotificationService.class);
         ttsWarmup = mock(TtsWarmup.class);
         clock = Clock.systemDefaultZone();
-        when(currentCompany.id()).thenReturn(1L);
 
         service = new CampaignService(campaigns, targets, doNotCallList, aiAgents,
-                users, companyConfig, currentCompany, dialerProps, audit, notifications, ttsWarmup,
+                users, companyConfig, dialerProps, audit, notifications, ttsWarmup,
                 targetSources, mock(TargetApiImporter.class), mock(SecretCipher.class), clock);
     }
 
@@ -99,12 +95,12 @@ class CampaignServiceTest {
         Campaign c = campaign(3, 0);
         CampaignFilter filter = new CampaignFilter(0, 10, null, "test", CampaignStatus.ACTIVE,
                 CampaignType.DEBT_COLLECTION, 1L, null, null, null, null);
-        when(campaigns.findAll(filter)).thenReturn(List.of(c));
-        when(campaigns.count(filter)).thenReturn(1L);
-        when(targets.statsByCampaignIds(Set.of(CAMPAIGN_ID))).thenReturn(
+        when(campaigns.findAll(1L, filter)).thenReturn(List.of(c));
+        when(campaigns.count(1L, filter)).thenReturn(1L);
+        when(targets.statsByCampaignIds(1L, Set.of(CAMPAIGN_ID))).thenReturn(
                 Map.of(CAMPAIGN_ID, new CampaignTargetStats(50, 20, 30, 15)));
 
-        var result = service.filterCampaigns(filter);
+        var result = service.filterCampaigns(1L, filter);
 
         assertThat(result.data()).hasSize(1);
         var row = result.data().getFirst();
@@ -120,11 +116,11 @@ class CampaignServiceTest {
     @Test
     void campaignRowEnrichesTargetStats() {
         Campaign c = campaign(3, 0);
-        when(campaigns.find(CAMPAIGN_ID)).thenReturn(c);
-        when(targets.statsByCampaignId(CAMPAIGN_ID)).thenReturn(
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(c);
+        when(targets.statsByCampaignId(1L, CAMPAIGN_ID)).thenReturn(
                 new CampaignTargetStats(100, 45, 55, 30));
 
-        var row = service.campaignRow(CAMPAIGN_ID);
+        var row = service.campaignRow(1L, CAMPAIGN_ID);
 
         assertThat(row.id()).isEqualTo(CAMPAIGN_ID);
         assertThat(row.totalTargets()).isEqualTo(100L);
@@ -135,11 +131,11 @@ class CampaignServiceTest {
 
     @Test
     void isNullSafeAboutMissingCampaign() {
-        when(targets.find(TARGET_ID)).thenReturn(new CampaignTarget(
+        when(targets.find(1L, TARGET_ID)).thenReturn(new CampaignTarget(
                 TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 5, false));
-        when(campaigns.find(CAMPAIGN_ID)).thenReturn(null);
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(null);
 
-        service.applyOutcome(TARGET_ID, Disposition.NO_ANSWER);
+        service.applyOutcome(1L, TARGET_ID, Disposition.NO_ANSWER);
 
         // Falls back to maxAttempts=3, and 5 attempts is already past it.
         verify(targets).updateStatus(eq(TARGET_ID), eq(TargetStatus.EXHAUSTED), isNull());

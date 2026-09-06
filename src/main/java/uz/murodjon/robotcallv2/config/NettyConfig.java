@@ -29,8 +29,8 @@ public class NettyConfig {
     private static final Logger log = LoggerFactory.getLogger(NettyConfig.class);
 
     @Bean(destroyMethod = "shutdownGracefully")
-    public EventLoopGroup rtpEventLoopGroup(RtpProperties props) {
-        int threads = props.effectiveEventLoopThreads();
+    public EventLoopGroup rtpEventLoopGroup(RtpProperties rtpProperties) {
+        int threads = rtpProperties.effectiveEventLoopThreads();
         log.info("RTP event loop group: {} thread(s)", threads);
         return new NioEventLoopGroup(threads);
     }

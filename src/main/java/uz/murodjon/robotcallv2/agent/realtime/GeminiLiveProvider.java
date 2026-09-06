@@ -66,16 +66,16 @@ public class GeminiLiveProvider implements RealtimeProvider {
      */
     private static final String DEFAULT_LIVE_MODEL = "gemini-3.1-flash-live-preview";
 
-    private final RealtimeProperties props;
+    private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public GeminiLiveProvider(RealtimeProperties props) {
-        this.props = props;
+    public GeminiLiveProvider(RealtimeProperties realtimeProperties) {
+        this.realtimeProperties = realtimeProperties;
     }
 
     @PostConstruct
     public void init() {
-        GeminiLiveProperties live = props.geminiLive();
+        GeminiLiveProperties live = realtimeProperties.geminiLive();
         client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(live.connectTimeoutSeconds()))
                 .build();
@@ -113,7 +113,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
     @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
-        GeminiLiveProperties live = props.geminiLive();
+        GeminiLiveProperties live = realtimeProperties.geminiLive();
         if (current == null) {
             throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED,
                     "gemini-live", "not initialized");

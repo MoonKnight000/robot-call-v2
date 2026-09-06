@@ -9,5 +9,5 @@ public interface ProfileNotificationUseCase {
 
     List<PersonalNotificationMatrixEntry> find();
 
-    List<PersonalNotificationMatrixEntry> update(UpdatePersonalNotificationSettingsRequest r);
+    List<PersonalNotificationMatrixEntry> update(long companyId, UpdatePersonalNotificationSettingsRequest request);
 }

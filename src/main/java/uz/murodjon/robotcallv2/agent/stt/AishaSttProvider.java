@@ -57,18 +57,18 @@ public class AishaSttProvider implements SttProvider {
     private static final String END_EVENT = "{\"event\":\"end\"}";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
-    private final SttProperties props;
+    private final SttProperties sttProperties;
     private final VoiceMetrics metrics;
     private volatile HttpClient client;
 
-    public AishaSttProvider(SttProperties props, VoiceMetrics metrics) {
-        this.props = props;
+    public AishaSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+        this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
 
     @PostConstruct
     public void init() {
-        AishaSttProperties aisha = props.aisha();
+        AishaSttProperties aisha = sttProperties.aisha();
         if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
             log.warn("Aisha STT selected but voice-agent.stt.aisha.api-key is blank — recognition will fail");
             return;
@@ -76,7 +76,7 @@ public class AishaSttProvider implements SttProvider {
         client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
         log.info("Aisha STT ready (url={}, sampleRate={}, interim={})",
                 aisha.url(), SAMPLE_RATE, aisha.interimResults());
-        EndpointingProperties endpointing = props.endpointing();
+        EndpointingProperties endpointing = sttProperties.endpointing();
         if (endpointing != null && endpointing.enabled()) {
             // Aisha only finalizes when it hears the silence after an utterance, and
             // external endpointing shuts the gate a few hundred ms after speech stops —
@@ -106,7 +106,7 @@ public class AishaSttProvider implements SttProvider {
         if (current == null) {
             throw new ExternalServiceException(ErrorCode.STT_AISHA_CONNECT_FAILED, "aisha-stt", "no api key");
         }
-        AishaSttProperties aisha = props.aisha();
+        AishaSttProperties aisha = sttProperties.aisha();
         AtomicBoolean alive = new AtomicBoolean(true);
         URI uri = URI.create(aisha.url() + "?format=pcm&token=" + aisha.apiKey());
         try {
@@ -179,7 +179,7 @@ public class AishaSttProvider implements SttProvider {
         private void emit(JsonNode node) {
             String text = node.path("text").asText("");
             boolean partial = node.path("partial").asBoolean(false);
-            if (text.isBlank() || (partial && !props.aisha().interimResults())) {
+            if (text.isBlank() || (partial && !sttProperties.aisha().interimResults())) {
                 return;
             }
             // Aisha reports no per-alternative confidence, so 0 here means "not reported"

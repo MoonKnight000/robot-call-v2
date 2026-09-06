@@ -20,7 +20,6 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -100,11 +99,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
                                   AiModelConfigService aiModelConfigService,
                                   VoiceSettingsService voiceSettingsService,
                                   CompanyProperties companyProperties,
-                                  @Value("${voice-agent.simulation.personas-path:}") String personasPath,
-                                  @Value("${voice-agent.simulation.scenario-id:0}") long scenarioId,
-                                  @Value("${voice-agent.simulation.language:uz-UZ}") String language,
-                                  @Value("${voice-agent.simulation.max-turns:12}") int maxTurns,
-                                  @Value("${voice-agent.simulation.persona-model:gemini-3.8-flash}") String personaModel) {
+                                  SimulationProperties simulationProperties) {
         this.context = context;
         this.chatModelProvider = chatModelProvider;
         this.promptFactory = promptFactory;
@@ -113,11 +108,11 @@ public class DialogSimulationRunner implements ApplicationRunner {
         this.aiModelConfigService = aiModelConfigService;
         this.voiceSettingsService = voiceSettingsService;
         this.companyProperties = companyProperties;
-        this.personasPath = personasPath;
-        this.scenarioId = scenarioId;
-        this.language = language;
-        this.maxTurns = maxTurns;
-        this.personaModel = personaModel;
+        this.personasPath = simulationProperties.personasPath();
+        this.scenarioId = simulationProperties.scenarioId();
+        this.language = simulationProperties.language();
+        this.maxTurns = simulationProperties.maxTurns();
+        this.personaModel = simulationProperties.personaModel();
     }
 
     @Override
@@ -146,7 +141,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
         try {
             personas = List.of(MAPPER.readValue(Files.readString(Path.of(personasPath)),
                     SimulationPersona[].class));
-            scenario = scenarioService.requireScenario(scenarioId).definition();
+            scenario = scenarioService.requireScenario(companyProperties.defaultId(), scenarioId).definition();
         } catch (Exception e) {
             log.error("Simulation could not start: {}", e.getMessage());
             return 1;

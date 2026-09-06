@@ -77,7 +77,7 @@ public class TurnRunner {
      */
     private static final long RETRY_BACKOFF_MS = 200;
 
-    private final DialogProperties props;
+    private final DialogProperties dialogProperties;
     private final SystemPromptFactory promptFactory;
     private final VoiceMetrics metrics;
     private final ObjectProvider<ChatModel> chatModelProvider;
@@ -86,12 +86,12 @@ public class TurnRunner {
     private final DialogTranscript transcript;
     private final DialogExecutors executors;
     private final SentimentDetector sentimentDetector;
-    private final KnowledgeBaseService knowledgeBase;
+    private final KnowledgeBaseLookup knowledgeBase;
     private final FastPathRouter fastPathRouter;
 
     private volatile ChatClient chatClient;
 
-    public TurnRunner(DialogProperties props,
+    public TurnRunner(DialogProperties dialogProperties,
                       SystemPromptFactory promptFactory,
                       VoiceMetrics metrics,
                       ObjectProvider<ChatModel> chatModelProvider,
@@ -100,9 +100,9 @@ public class TurnRunner {
                       DialogTranscript transcript,
                       DialogExecutors executors,
                       SentimentDetector sentimentDetector,
-                      KnowledgeBaseService knowledgeBase,
+                      KnowledgeBaseLookup knowledgeBase,
                       FastPathRouter fastPathRouter) {
-        this.props = props;
+        this.dialogProperties = dialogProperties;
         this.promptFactory = promptFactory;
         this.metrics = metrics;
         this.chatModelProvider = chatModelProvider;
@@ -142,7 +142,7 @@ public class TurnRunner {
 
     /** Whether a turn could run at all right now. */
     public boolean available() {
-        return props.enabled() && chatClient != null;
+        return dialogProperties.enabled() && chatClient != null;
     }
 
     /** The opening turn: nobody has spoken yet, so the bootstrap line stands in for the caller. */
@@ -191,7 +191,7 @@ public class TurnRunner {
                 closeOnLimit(s, "maksimal davomiylik");
                 return;
             }
-            if (s.incrementTurn() > props.maxTurns()) {
+            if (s.incrementTurn() > dialogProperties.maxTurns()) {
                 closeOnLimit(s, "maksimal turn soni");
                 return;
             }
@@ -235,10 +235,10 @@ public class TurnRunner {
                 log.info("[{}] stitched the cut-off utterance onto this one: {}", s.channelId(), clientText);
             }
             s.history().add(new UserMessage(clientText));
-            int dropped = s.trimHistory(props.historyMaxMessages(), HISTORY_TRIM_BLOCK);
+            int dropped = s.trimHistory(dialogProperties.historyMaxMessages(), HISTORY_TRIM_BLOCK);
             if (dropped > 0) {
                 log.debug("[{}] history trimmed by {} messages (cap {})",
-                        s.channelId(), dropped, props.historyMaxMessages());
+                        s.channelId(), dropped, dialogProperties.historyMaxMessages());
             }
 
             String system = systemPrefix(s);
@@ -269,7 +269,7 @@ public class TurnRunner {
             Timer.Sample llmSample = metrics.startTimer();
             ScheduledFuture<?> filler = speech.scheduleFiller(s);
             try {
-                result = props.streaming()
+                result = dialogProperties.streaming()
                         ? streamTurn(s, system, messages, tools, speculated, model)
                         : blockingTurn(s, system, messages, tools, model);
             } catch (Exception e) {
@@ -426,7 +426,7 @@ public class TurnRunner {
         if (text == null) {
             return;
         }
-        if (!props.preemptive() || !props.streaming()) {
+        if (!dialogProperties.preemptive() || !dialogProperties.streaming()) {
             s.setSpeculationBlocker("preemptive or streaming switched off in config");
             return;
         }
@@ -468,8 +468,8 @@ public class TurnRunner {
         if (s.turnCount() == 0) {
             return "the bot has not spoken yet";
         }
-        if (text.length() < props.preemptiveMinChars()) {
-            return "interim shorter than preemptive-min-chars=" + props.preemptiveMinChars();
+        if (text.length() < dialogProperties.preemptiveMinChars()) {
+            return "interim shorter than preemptive-min-chars=" + dialogProperties.preemptiveMinChars();
         }
         if (!withinSpeculationBudget(s)) {
             return "call token budget nearly spent";
@@ -560,7 +560,7 @@ public class TurnRunner {
      * @return whether the turn was settled here and the LLM should be skipped
      */
     private boolean answerFromFastPath(DialogSession s, String clientText, boolean fromClient) {
-        if (!props.fastPath() || !fromClient) {
+        if (!dialogProperties.fastPath() || !fromClient) {
             return false;
         }
         FastPathResult fastPath = fastPathRouter.evaluate(s, clientText);
@@ -605,7 +605,7 @@ public class TurnRunner {
      * @return whether the turn was answered here and the LLM should be skipped
      */
     private boolean answerFromKnowledgeBase(DialogSession s, String clientText, boolean fromClient) {
-        if (!props.knowledgeBase() || !fromClient) {
+        if (!dialogProperties.knowledgeBase() || !fromClient) {
             return false;
         }
         String answer = knowledgeBase.findRelevantKnowledge(s.companyId(), clientText, s.language());
@@ -635,7 +635,7 @@ public class TurnRunner {
      * {@code fast-model} disables the whole thing, and the greeting never uses it.
      */
     private String modelFor(String clientText, boolean fromClient) {
-        String fast = props.fastModel();
+        String fast = dialogProperties.fastModel();
         if (fast == null || fast.isBlank() || !fromClient || clientText == null) {
             return null;
         }
@@ -643,7 +643,7 @@ public class TurnRunner {
         if (trimmed.isEmpty()) {
             return null;
         }
-        return trimmed.split("\\s+").length <= props.fastModelMaxWords() ? fast : null;
+        return trimmed.split("\\s+").length <= dialogProperties.fastModelMaxWords() ? fast : null;
     }
 
     /**
@@ -657,7 +657,7 @@ public class TurnRunner {
      */
     private void warmFirstSentence(DialogSession s, ChatResponse response,
                                    StringBuilder guessed, AtomicBoolean warmed) {
-        if (!props.preemptiveTts() || warmed.get()) {
+        if (!dialogProperties.preemptiveTts() || warmed.get()) {
             return;
         }
         String chunk = textOf(response);
@@ -691,7 +691,7 @@ public class TurnRunner {
     private Flux<ChatResponse> adoptSpeculation(DialogSession s, String clientText, boolean fromClient) {
         Speculation parked = s.takeSpeculation();
         try {
-            if (!fromClient || !props.preemptive() || !props.streaming()) {
+            if (!fromClient || !dialogProperties.preemptive() || !dialogProperties.streaming()) {
                 // Nothing was guessed at and nothing was meant to be: the greeting has no
                 // caller utterance in front of it, and a switched-off feature reporting
                 // itself every turn is noise, not a diagnostic.
@@ -746,11 +746,11 @@ public class TurnRunner {
      * runs, nobody spoke, and the caller is sitting in a silence the bot created.
      */
     public void scheduleFalseInterruptionCheck(DialogSession s, int turn, Runnable onFalseInterruption) {
-        if (props.falseInterruptionTimeoutMs() <= 0) {
+        if (dialogProperties.falseInterruptionTimeoutMs() <= 0) {
             return;
         }
         executors.scheduleOnWorker(() -> runIfFalseInterruption(s, turn, onFalseInterruption),
-                props.falseInterruptionTimeoutMs());
+                dialogProperties.falseInterruptionTimeoutMs());
     }
 
     /** Carry out {@code onFalseInterruption} if the call is still where the barge-in left it. */
@@ -758,7 +758,7 @@ public class TurnRunner {
         if (s.isEnded() || s.turnCount() != turn || s.busy().get() || s.endpoint().isPlaying()) {
             return; // the caller really was speaking, or something else is talking to them
         }
-        if (s.heardCallerWithin(props.falseInterruptionTimeoutMs())) {
+        if (s.heardCallerWithin(dialogProperties.falseInterruptionTimeoutMs())) {
             // Interims are still arriving: the caller is mid-sentence and the final that
             // ends it has simply not come yet. Resuming the reply now would talk over them —
             // which is the cut-off this check exists to avoid. Ask again later.
@@ -768,7 +768,7 @@ public class TurnRunner {
         }
         metrics.falseBargeIn();
         log.info("[{}] no speech followed the barge-in after {} ms — treating it as noise",
-                s.channelId(), props.falseInterruptionTimeoutMs());
+                s.channelId(), dialogProperties.falseInterruptionTimeoutMs());
         // The model was never actually cut off, so the next turn must not be told it was.
         s.setInterrupted(false);
         s.setCancelled(false);
@@ -904,7 +904,7 @@ public class TurnRunner {
         try {
             // No speculation this time: the guess was consumed by the attempt that failed.
             // No model override either — see above.
-            return props.streaming()
+            return dialogProperties.streaming()
                     ? streamTurn(s, system, messages, tools, null, null)
                     : blockingTurn(s, system, messages, tools, null);
         } catch (Exception e) {
@@ -978,7 +978,7 @@ public class TurnRunner {
         StreamedReply retry = consume(s, chatClient.prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
-                .options(turnTools.buildOptions(s, List.of(), props.fastModel()))
+                .options(turnTools.buildOptions(s, List.of(), dialogProperties.fastModel()))
                 .stream()
                 .chatResponse(), retryUsage, new ArrayList<>());
         publishUsage(s, retryUsage);
@@ -1150,7 +1150,7 @@ public class TurnRunner {
     );
 
     private void maybeSpeakPreToolSpeech(DialogSession s, List<AssistantMessage.ToolCall> calls, boolean alreadySpoken) {
-        if (!props.preToolSpeech() || s.isCancelled() || s.isEnded() || calls == null || calls.isEmpty()) {
+        if (!dialogProperties.preToolSpeech() || s.isCancelled() || s.isEnded() || calls == null || calls.isEmpty()) {
             return;
         }
         for (AssistantMessage.ToolCall call : calls) {
@@ -1183,7 +1183,7 @@ public class TurnRunner {
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
                 // Fast model, no tools — same reasoning as the streaming path above.
-                .options(turnTools.buildOptions(s, List.of(), props.fastModel()))
+                .options(turnTools.buildOptions(s, List.of(), dialogProperties.fastModel()))
                 .call()
                 .chatResponse();
         TokenUsage retryUsage = new TokenUsage();
@@ -1275,7 +1275,9 @@ public class TurnRunner {
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
             return null;
         }
-        return response.getResult().getOutput().getText();
+        // The one place model text enters, streaming and blocking alike, so it is where a
+        // character no telephone voice can say is dropped before anything reads the line.
+        return SpeechSanitizer.stripUnspeakableCharacters(response.getResult().getOutput().getText());
     }
 
     private static final Set<String> ABBREVIATIONS = Set.of(

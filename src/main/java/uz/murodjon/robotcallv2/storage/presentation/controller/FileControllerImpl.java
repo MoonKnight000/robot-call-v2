@@ -7,29 +7,29 @@ import org.springframework.web.multipart.MultipartFile;
 
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.storage.application.dto.FileUploadResponse;
-import uz.murodjon.robotcallv2.storage.application.service.FileStorageService;
-import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
+import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
 import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
 
 @RestController
 public class FileControllerImpl implements FileController {
 
-    private final FileStorageService files;
-    private final FileResponseFactory responseFactory;
+    private final FileStorageUseCase fileStorageUseCase;
+    private final FileResponseFactory fileResponseFactory;
 
-    public FileControllerImpl(FileStorageService files, FileResponseFactory responseFactory) {
-        this.files = files;
-        this.responseFactory = responseFactory;
+    public FileControllerImpl(FileStorageUseCase fileStorageUseCase, FileResponseFactory fileResponseFactory) {
+        this.fileStorageUseCase = fileStorageUseCase;
+        this.fileResponseFactory = fileResponseFactory;
     }
 
     @Override
-    public ResponseEntity<Resource> download(long id, String range) {
-        return responseFactory.toResponse(files.download(id), range);
+    public ResponseEntity<Resource> download(long callerCompanyId, long id, String range) {
+        return fileResponseFactory.toResponse(fileStorageUseCase.download(callerCompanyId, id), range);
     }
 
     @Override
-    public ResponseEntity<ResponseData<FileUploadResponse>> upload(MultipartFile file, FileCategory category, Long companyId) {
-        StoredFile stored = files.upload(file, companyId, category);
-        return ResponseEntity.ok(ResponseData.ok(FileUploadResponse.of(stored)));
+    public ResponseEntity<ResponseData<FileUploadResponse>> upload(long callerCompanyId, MultipartFile file,
+                                                                   FileCategory category, Long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(
+                fileStorageUseCase.upload(callerCompanyId, file, companyId, category)));
     }
 }

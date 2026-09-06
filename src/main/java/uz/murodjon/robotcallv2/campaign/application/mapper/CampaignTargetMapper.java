@@ -12,7 +12,7 @@ import java.time.Instant;
 @Component
 public class CampaignTargetMapper {
 
-    public CampaignTarget toDomain(CampaignTargetEntity e) {
+    public CampaignTarget toCampaignTarget(CampaignTargetEntity e) {
         if (e == null) return null;
         return new CampaignTarget(
                 e.getId(),

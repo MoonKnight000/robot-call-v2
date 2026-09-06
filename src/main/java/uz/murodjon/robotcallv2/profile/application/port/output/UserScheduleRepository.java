@@ -8,5 +8,5 @@ public interface UserScheduleRepository {
 
     List<ScheduleSlot> find(long userId);
 
-    List<ScheduleSlot> save(long userId, List<ScheduleSlot> slots);
+    List<ScheduleSlot> save(long companyId, long userId, List<ScheduleSlot> slots);
 }

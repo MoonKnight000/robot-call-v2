@@ -11,20 +11,20 @@ import java.util.Optional;
 @Component
 public class PaymentTopupRepositoryAdapter implements PaymentTopupRepository {
 
-    private final PaymentTopupJpaRepository jpa;
+    private final PaymentTopupJpaRepository jpaRepository;
 
-    public PaymentTopupRepositoryAdapter(PaymentTopupJpaRepository jpa) {
-        this.jpa = jpa;
+    public PaymentTopupRepositoryAdapter(PaymentTopupJpaRepository jpaRepository) {
+        this.jpaRepository = jpaRepository;
     }
 
     @Override
     public PaymentTopup save(PaymentTopup topup) {
         PaymentTopupEntity entity = PaymentTopupEntity.fromDomain(topup);
-        return jpa.save(entity).toDomain();
+        return jpaRepository.save(entity).toDomain();
     }
 
     @Override
     public Optional<PaymentTopup> findByPaymentId(String paymentId) {
-        return jpa.findByPaymentId(paymentId).map(PaymentTopupEntity::toDomain);
+        return jpaRepository.findByPaymentId(paymentId).map(PaymentTopupEntity::toDomain);
     }
 }

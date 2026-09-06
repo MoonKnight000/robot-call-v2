@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.engine.application.dto.EngineOptions;
 import uz.murodjon.robotcallv2.engine.application.dto.UpdateEngineConfigRequest;
 import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
 import uz.murodjon.robotcallv2.engine.domain.entity.EngineConfig;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 /**
@@ -22,11 +23,11 @@ public interface EngineConfigController {
 
     @PreAuthorize("hasAuthority('ENGINE_READ')")
     @GetMapping
-    ResponseEntity<ResponseData<EngineConfig>> get();
+    ResponseEntity<ResponseData<EngineConfig>> get(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('ENGINE_READ')")
     @GetMapping("/effective")
-    ResponseEntity<ResponseData<EffectiveEngineConfig>> getEffective();
+    ResponseEntity<ResponseData<EffectiveEngineConfig>> getEffective(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('ENGINE_READ')")
     @GetMapping("/options")
@@ -34,5 +35,6 @@ public interface EngineConfigController {
 
     @PreAuthorize("hasAuthority('ENGINE_EDIT')")
     @PutMapping
-    ResponseEntity<ResponseData<EngineConfig>> update(@Valid @RequestBody UpdateEngineConfigRequest request);
+    ResponseEntity<ResponseData<EngineConfig>> update(@CurrentCompanyId long companyId,
+                                                      @Valid @RequestBody UpdateEngineConfigRequest request);
 }

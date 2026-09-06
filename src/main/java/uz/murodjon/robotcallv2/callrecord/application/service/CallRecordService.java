@@ -11,12 +11,18 @@ import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRep
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTechnicalRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallResult;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTechnical;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTranscript;
+import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,7 +44,7 @@ public class CallRecordService {
     private final CallTranscriptRepository transcripts;
     private final CallResultRepository results;
     private final CallTechnicalRepository technicalDetails;
-    private final CurrentCompany company;
+    private final CompanyProperties companyProperties;
 
     /** Sequence counter per active call, evicted at attempt finish. */
     private final Map<Long, AtomicInteger> seqCounters = new ConcurrentHashMap<>();
@@ -56,29 +62,29 @@ public class CallRecordService {
                              CallTranscriptRepository transcripts,
                              CallResultRepository results,
                              CallTechnicalRepository technicalDetails,
-                             CurrentCompany company) {
+                             CompanyProperties companyProperties) {
         this.callAttempts = callAttempts;
         this.transcripts = transcripts;
         this.results = results;
         this.technicalDetails = technicalDetails;
-        this.company = company;
+        this.companyProperties = companyProperties;
     }
 
     /**
      * The company that owns {@code callAttemptId}. Read by {@code AriService.setupMedia}
      * so it can resolve the engine settings (cascade vs realtime, §11) for this specific
-     * tenant rather than looking at any ambient request state.
+     * tenant. Falls back to the default company only when there is no attempt row to ask.
      */
     public long companyIdOf(long callAttemptId) {
         if (callAttemptId == 0) {
-            return company.id();
+            return companyProperties.defaultId();
         }
         try {
             Long cid = callAttempts.findCompanyIdById(callAttemptId);
-            return cid != null ? cid : company.id();
+            return cid != null ? cid : companyProperties.defaultId();
         } catch (Exception e) {
             log.warn("companyIdOf failed for call {}: {}", callAttemptId, e.getMessage());
-            return company.id();
+            return companyProperties.defaultId();
         }
     }
 
@@ -177,7 +183,7 @@ public class CallRecordService {
             return 0;
         }
         try {
-            return callAttempts.startAttempt(targetId, channelId, phone, language, inboundRouteId, companyId);
+            return callAttempts.create(CallAttempt.starting(companyId, targetId, channelId, phone, language, inboundRouteId));
         } catch (Exception e) {
             log.warn("startAttempt failed for {}: {}", channelId, e.getMessage());
             return 0;
@@ -198,7 +204,7 @@ public class CallRecordService {
             return 0;
         }
         try {
-            return callAttempts.recordUnplacedAttempt(companyId, targetId, phone, language, disposition, reason);
+            return callAttempts.create(CallAttempt.unplaced(companyId, targetId, phone, language, disposition, reason));
         } catch (Exception e) {
             log.warn("recordUnplacedAttempt failed for target {} ({}): {}", targetId, phone, e.getMessage());
             return 0;
@@ -247,7 +253,7 @@ public class CallRecordService {
         }
         int seq = seqCounters.computeIfAbsent(callId, k -> new AtomicInteger()).incrementAndGet();
         try {
-            transcripts.save(callId, seq, role, text, dialogState, tsOffsetMs, confidence);
+            transcripts.save(CallTranscript.line(callId, seq, role, text, dialogState, tsOffsetMs, confidence));
         } catch (Exception e) {
             log.warn("addTranscript failed for call {}: {}", callId, e.getMessage());
         }
@@ -311,7 +317,7 @@ public class CallRecordService {
         }
         try {
             StringBuilder sb = new StringBuilder();
-            for (String line : transcripts.transcriptLines(callId)) {
+            for (String line : transcripts.findTranscriptLines(callId)) {
                 sb.append(line).append('\n');
             }
             return sb.toString();
@@ -362,26 +368,38 @@ public class CallRecordService {
             return;
         }
         try {
-            results.insertIgnoringConflict(
+            results.insertIgnoringConflict(CallResult.summaryOf(
                     callId,
                     s.summary() != null ? s.summary() : "",
-                    asString(s.outcome().get("reasonCode")),
+                    asReasonCode(s.outcome().get("reasonCode")),
                     asDate(s.outcome().get("promisedDate")),
                     asAmount(s.outcome().get("promisedAmount")),
-                    s.sentiment() != null ? s.sentiment().name() : null,
+                    s.sentiment(),
                     s.needsFollowUp(),
                     s.followUpNote(),
                     escalated,
                     crmNoteId,
-                    toJson(s.outcome()));
+                    toJson(s.outcome())));
             log.info("call_result written for call {} (disposition-escalated={})", callId, escalated);
         } catch (Exception e) {
             log.warn("writeResult failed for call {}: {}", callId, e.getMessage());
         }
     }
 
-    private static String asString(Object value) {
-        return value == null ? null : value.toString();
+    /**
+     * The model answers with free text, so an unrecognised code is dropped rather than
+     * stored: the column is an enum, and a value outside it cannot be read back at all.
+     */
+    private static ReasonCode asReasonCode(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return ReasonCode.valueOf(value.toString().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            log.warn("outcome.reasonCode '{}' is not a known ReasonCode", value);
+            return null;
+        }
     }
 
     private static LocalDate asDate(Object value) {
@@ -429,8 +447,15 @@ public class CallRecordService {
             return;
         }
         try {
-            technicalDetails.save(callId, channelName, trunk, amdResult, sttProvider, ttsProvider, ttsVoice,
-                    llmModel, technical);
+            CallTechnical row = CallTechnical.of(callId, channelName, trunk, amdResult, sttProvider, ttsProvider,
+                    ttsVoice, llmModel);
+            if (technical != null) {
+                row = row.withCounters((int) technical.promptTokens(), (int) technical.completionTokens(),
+                        (int) technical.cachedTokens(), technical.turnCount(),
+                        technical.avgTurnLatencyMs(), technical.maxTurnLatencyMs(),
+                        technical.avgLlmLatencyMs(), technical.maxLlmLatencyMs());
+            }
+            technicalDetails.save(row);
         } catch (Exception e) {
             log.warn("writeTechnicalDetail failed for call {}: {}", callId, e.getMessage());
         }

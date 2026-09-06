@@ -48,8 +48,8 @@ public class TtsWarmup {
 
     private static final Logger log = LoggerFactory.getLogger(TtsWarmup.class);
 
-    private final TtsProperties ttsProps;
-    private final DialogProperties dialogProps;
+    private final TtsProperties ttsProperties;
+    private final DialogProperties dialogProperties;
     private final TtsRouter router;
     private final TtsCache cache;
     private final CompanyService companyService;
@@ -62,14 +62,14 @@ public class TtsWarmup {
 
     private final Set<Long> warmedCampaigns = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-    public TtsWarmup(TtsProperties ttsProps, DialogProperties dialogProps, TtsRouter router,
+    public TtsWarmup(TtsProperties ttsProperties, DialogProperties dialogProperties, TtsRouter router,
                      TtsCache cache, CompanyService companyService,
                      CompanyConfigService companyConfigService,
                      VoiceSettingsService voiceSettingsService, ScenarioService scenarioService,
                      EngineConfigService engineConfigService, CampaignRepository campaignRepository,
                      AiAgentUseCase aiAgentService) {
-        this.ttsProps = ttsProps;
-        this.dialogProps = dialogProps;
+        this.ttsProperties = ttsProperties;
+        this.dialogProperties = dialogProperties;
         this.router = router;
         this.cache = cache;
         this.companyService = companyService;
@@ -83,7 +83,7 @@ public class TtsWarmup {
 
     @EventListener(ApplicationReadyEvent.class)
     public void warmUp() {
-        if (!ttsProps.enabled() || !cache.prewarmEnabled()) {
+        if (!ttsProperties.enabled() || !cache.prewarmEnabled()) {
             return;
         }
         Thread.ofVirtual().name("tts-warmup-startup").start(this::synthesizeFixedLines);
@@ -93,15 +93,15 @@ public class TtsWarmup {
      * Pre-warms TTS audio specifically for a campaign prior to dialing.
      * Bypassed if the company runs in REALTIME mode.
      */
-    public void warmUpForCampaign(long campaignId) {
-        if (!ttsProps.enabled() || !cache.prewarmEnabled()) {
+    public void warmUpForCampaign(long companyId, long campaignId) {
+        if (!ttsProperties.enabled() || !cache.prewarmEnabled()) {
             return;
         }
         if (warmedCampaigns.contains(campaignId)) {
             return;
         }
         Thread.ofVirtual().name("tts-warmup-camp-" + campaignId).start(() -> {
-            Campaign c = campaignRepository.find(campaignId);
+            Campaign c = campaignRepository.find(companyId, campaignId);
             if (c != null) {
                 warmUpForCampaign(c, aiAgentService.requireAgent(c.companyId(), c.aiAgentId()));
             }
@@ -120,7 +120,7 @@ public class TtsWarmup {
      * for a given campaign.
      */
     public void warmUpForCampaign(Campaign campaign, AiAgent agent) {
-        if (campaign == null || agent == null || !ttsProps.enabled() || !cache.prewarmEnabled()) {
+        if (campaign == null || agent == null || !ttsProperties.enabled() || !cache.prewarmEnabled()) {
             return;
         }
         if (!warmedCampaigns.add(campaign.id())) {
@@ -138,7 +138,7 @@ public class TtsWarmup {
         CompanyConfig config = companyConfigService.find(campaign.companyId());
         EffectiveVoiceSettings style = voiceSettingsService.effective(campaign.companyId());
 
-        Scenario scenario = scenarioService.findById(agent.scenarioId());
+        Scenario scenario = scenarioService.findById(campaign.companyId(), agent.scenarioId());
         List<Scenario> scenarios = scenario != null ? List.of(scenario) : List.of();
 
         Set<String> languages = new LinkedHashSet<>();
@@ -147,7 +147,7 @@ public class TtsWarmup {
         }
         languages.addAll(agent.languageVoicesOrEmpty().keySet());
         if (languages.isEmpty()) {
-            languages.add(ttsProps.defaultLanguage());
+            languages.add(ttsProperties.defaultLanguage());
         }
 
         int count = 0;
@@ -244,11 +244,11 @@ public class TtsWarmup {
 
     private Set<String> languages() {
         Set<String> languages = new LinkedHashSet<>();
-        if (dialogProps.language() != null && !dialogProps.language().isBlank()) {
-            languages.add(dialogProps.language());
+        if (dialogProperties.language() != null && !dialogProperties.language().isBlank()) {
+            languages.add(dialogProperties.language());
         }
-        if (ttsProps.defaultLanguage() != null && !ttsProps.defaultLanguage().isBlank()) {
-            languages.add(ttsProps.defaultLanguage());
+        if (ttsProperties.defaultLanguage() != null && !ttsProperties.defaultLanguage().isBlank()) {
+            languages.add(ttsProperties.defaultLanguage());
         }
         return languages;
     }

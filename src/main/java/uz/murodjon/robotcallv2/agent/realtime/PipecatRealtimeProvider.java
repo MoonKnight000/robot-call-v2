@@ -40,16 +40,16 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
     private static final Logger log = LoggerFactory.getLogger(PipecatRealtimeProvider.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final RealtimeProperties props;
+    private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public PipecatRealtimeProvider(RealtimeProperties props) {
-        this.props = props;
+    public PipecatRealtimeProvider(RealtimeProperties realtimeProperties) {
+        this.realtimeProperties = realtimeProperties;
     }
 
     @PostConstruct
     public void init() {
-        PipecatRealtimeProperties p = props.pipecat();
+        PipecatRealtimeProperties p = realtimeProperties.pipecat();
         if (p == null) {
             return;
         }
@@ -72,20 +72,20 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
 
     @Override
     public int inputSampleRate() {
-        PipecatRealtimeProperties p = props.pipecat();
+        PipecatRealtimeProperties p = realtimeProperties.pipecat();
         return p != null ? p.sampleRate() : 16000;
     }
 
     @Override
     public int outputSampleRate() {
-        PipecatRealtimeProperties p = props.pipecat();
+        PipecatRealtimeProperties p = realtimeProperties.pipecat();
         return p != null ? p.sampleRate() : 16000;
     }
 
     @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
-        PipecatRealtimeProperties p = props.pipecat();
+        PipecatRealtimeProperties p = realtimeProperties.pipecat();
         if (current == null || p == null) {
             throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "pipecat", "not initialized");
         }

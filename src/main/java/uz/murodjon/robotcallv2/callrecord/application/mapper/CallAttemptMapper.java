@@ -8,13 +8,15 @@ public final class CallAttemptMapper {
     private CallAttemptMapper() {
     }
 
-    public static CallAttempt toDomain(CallAttemptEntity entity) {
+    public static CallAttempt toCallAttempt(CallAttemptEntity entity) {
         if (entity == null) {
             return null;
         }
         return new CallAttempt(
                 entity.getId(),
+                entity.getCompanyId(),
                 entity.getTarget() != null ? entity.getTarget().getId() : 0L,
+                entity.getPhone(),
                 entity.getSipCallId(),
                 entity.getAsteriskChannel(),
                 entity.getLanguage(),
@@ -28,7 +30,6 @@ public final class CallAttemptMapper {
                 entity.getErrorMessage(),
                 entity.getCreatedAt(),
                 entity.getFinalizeAttempts(),
-                entity.getCompanyId(),
                 entity.getInboundRouteId(),
                 entity.getOperatorUserId()
         );

@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.role.application.dto.CreateRoleRequest;
 import uz.murodjon.robotcallv2.role.application.dto.PermissionGroupRow;
 import uz.murodjon.robotcallv2.role.application.dto.RoleRow;
 import uz.murodjon.robotcallv2.role.application.dto.UpdateRoleRequest;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -30,7 +31,7 @@ public interface RoleController {
     /** Every role of the current company, each with how many users hold it. */
     @GetMapping
     @PreAuthorize("hasAuthority('ROLE_READ')")
-    ResponseEntity<ResponseData<List<RoleRow>>> list();
+    ResponseEntity<ResponseData<List<RoleRow>>> list(@CurrentCompanyId long companyId);
 
     /** The permission catalog grouped by page — what the role editor renders. */
     @GetMapping("/permissions")
@@ -39,11 +40,12 @@ public interface RoleController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_READ')")
-    ResponseEntity<ResponseData<RoleRow>> get(@PathVariable long id);
+    ResponseEntity<ResponseData<RoleRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_EDIT')")
-    ResponseEntity<ResponseData<RoleRow>> create(@Valid @RequestBody CreateRoleRequest request);
+    ResponseEntity<ResponseData<RoleRow>> create(@CurrentCompanyId long companyId,
+                                                 @Valid @RequestBody CreateRoleRequest request);
 
     /**
      * Replaces the role name, description and permission set. Everyone holding the role is
@@ -51,11 +53,11 @@ public interface RoleController {
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_EDIT')")
-    ResponseEntity<ResponseData<RoleRow>> update(@PathVariable long id,
+    ResponseEntity<ResponseData<RoleRow>> update(@CurrentCompanyId long companyId, @PathVariable long id,
                                                  @Valid @RequestBody UpdateRoleRequest request);
 
     /** Refused with 409 while any user still holds the role. */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_EDIT')")
-    ResponseEntity<ResponseData<Void>> delete(@PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
 }

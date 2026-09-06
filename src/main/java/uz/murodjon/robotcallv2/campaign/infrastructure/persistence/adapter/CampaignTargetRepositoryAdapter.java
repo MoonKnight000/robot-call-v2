@@ -12,7 +12,6 @@ import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.Campai
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetSummaryProjection;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.contact.infrastructure.persistence.entity.ContactEntity;
@@ -27,106 +26,103 @@ import java.util.Map;
 @Component
 public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository {
 
-    private final CampaignTargetJpaRepository jpa;
-    private final CampaignJpaRepository campaigns;
-    private final ContactJpaRepository contacts;
-    private final CompanyJpaRepository companies;
-    private final CurrentCompany company;
+    private final CampaignTargetJpaRepository campaignTargetJpaRepository;
+    private final CampaignJpaRepository campaignJpaRepository;
+    private final ContactJpaRepository contactJpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
     private final CampaignTargetMapper mapper;
 
-    public CampaignTargetRepositoryAdapter(CampaignTargetJpaRepository jpa,
-                                         CampaignJpaRepository campaigns,
-                                         ContactJpaRepository contacts,
-                                         CompanyJpaRepository companies,
-                                         CurrentCompany company,
+    public CampaignTargetRepositoryAdapter(CampaignTargetJpaRepository campaignTargetJpaRepository,
+                                         CampaignJpaRepository campaignJpaRepository,
+                                         ContactJpaRepository contactJpaRepository,
+                                         CompanyJpaRepository companyJpaRepository,
                                          CampaignTargetMapper mapper) {
-        this.jpa = jpa;
-        this.campaigns = campaigns;
-        this.contacts = contacts;
-        this.companies = companies;
-        this.company = company;
+        this.campaignTargetJpaRepository = campaignTargetJpaRepository;
+        this.campaignJpaRepository = campaignJpaRepository;
+        this.contactJpaRepository = contactJpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
     }
 
     @Override
-    public long add(long campaignId, long clientId, String phone, String language, String contextDataJson) {
-        CampaignEntity campaign = campaigns.getReferenceById(campaignId);
-        ContactEntity contact = contacts.getReferenceById(clientId);
-        CompanyEntity comp = companies.getReferenceById(company.id());
+    public long add(long companyId, CampaignTarget target) {
+        CampaignEntity campaign = campaignJpaRepository.getReferenceById(target.campaignId());
+        ContactEntity contact = contactJpaRepository.getReferenceById(target.clientId());
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         CampaignTargetEntity entity = new CampaignTargetEntity();
         entity.setCampaign(campaign);
         entity.setContact(contact);
         entity.setCompany(comp);
-        entity.setPhone(phone);
-        entity.setLanguage(language);
-        entity.setContextData(contextDataJson != null ? contextDataJson : "{}");
-        entity.setStatus(TargetStatus.PENDING);
-        entity.setAttempts(0);
-        entity.setDoNotCall(false);
+        entity.setPhone(target.phone());
+        entity.setLanguage(target.language());
+        entity.setContextData(target.contextData() != null ? target.contextData() : "{}");
+        entity.setStatus(target.status());
+        entity.setAttempts(target.attempts());
+        entity.setDoNotCall(target.doNotCall());
         entity.setCreatedAt(Instant.now());
-        return jpa.save(entity).getId();
+        return campaignTargetJpaRepository.save(entity).getId();
     }
 
     @Override
-    public CampaignTarget find(long id) {
-        return jpa.findByIdAndCompanyId(id, company.id()).map(mapper::toDomain).orElse(null);
+    public CampaignTarget find(long companyId, long id) {
+        return campaignTargetJpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::toCampaignTarget).orElse(null);
     }
 
     @Override
     public void resetTargetsForRecurrence(long campaignId) {
-        jpa.resetTargetsForRecurrence(campaignId);
+        campaignTargetJpaRepository.resetTargetsForRecurrence(campaignId);
     }
 
     @Override
-    public List<CampaignTarget> findByCampaign(long campaignId, TargetFilter filter) {
-        return jpa.findByCampaignIdAndCompanyId(campaignId, company.id(), filter.pageable()).stream()
-                .map(mapper::toDomain)
+    public List<CampaignTarget> findByCampaign(long companyId, long campaignId, TargetFilter filter) {
+        return campaignTargetJpaRepository.findByCampaignIdAndCompanyId(campaignId, companyId, filter.pageable()).stream()
+                .map(mapper::toCampaignTarget)
                 .toList();
     }
 
     @Override
-    public long countByCampaign(long campaignId) {
-        return jpa.countByCampaignIdAndCompanyId(campaignId, company.id());
+    public long countByCampaign(long companyId, long campaignId) {
+        return campaignTargetJpaRepository.countByCampaignIdAndCompanyId(campaignId, companyId);
     }
 
     @Override
     public long countActive(long campaignId) {
-        return jpa.countByCampaignIdAndStatusIn(campaignId, List.of(TargetStatus.PENDING, TargetStatus.IN_PROGRESS));
+        return campaignTargetJpaRepository.countByCampaignIdAndStatusIn(campaignId, List.of(TargetStatus.PENDING, TargetStatus.IN_PROGRESS));
     }
 
     @Override
     public List<CampaignTarget> claimDue(long campaignId, int limit) {
-        return jpa.claimDue(campaignId, limit).stream().map(mapper::toDomain).toList();
+        return campaignTargetJpaRepository.claimDue(campaignId, limit).stream().map(mapper::toCampaignTarget).toList();
     }
 
     @Override
     public int clearSchedule(long campaignId) {
-        return jpa.clearSchedule(campaignId);
+        return campaignTargetJpaRepository.clearSchedule(campaignId);
     }
 
     @Override
     public void updateStatus(long id, TargetStatus status, Instant nextAttemptAt) {
-        jpa.updateStatus(id, status, nextAttemptAt);
+        campaignTargetJpaRepository.updateStatus(id, status, nextAttemptAt);
     }
 
     @Override
-    public void setDoNotCall(long id) {
-        jpa.setDoNotCall(id, company.id());
+    public void setDoNotCall(long companyId, long id) {
+        campaignTargetJpaRepository.setDoNotCall(id, companyId);
     }
 
     @Override
-    public int deleteByCampaignId(long campaignId) {
-        return jpa.deleteByCampaignId(campaignId, company.id());
+    public int deleteByCampaignId(long companyId, long campaignId) {
+        return campaignTargetJpaRepository.deleteByCampaignId(campaignId, companyId);
     }
 
     @Override
-    public Map<Long, CampaignTargetStats> statsByCampaignIds(Collection<Long> campaignIds) {
+    public Map<Long, CampaignTargetStats> statsByCampaignIds(long companyId, Collection<Long> campaignIds) {
         if (campaignIds == null || campaignIds.isEmpty()) {
             return Map.of();
         }
         List<CampaignTargetSummaryProjection> summaries =
-                jpa.summarizeByCampaignIdsAndCompanyId(campaignIds, company.id());
+                campaignTargetJpaRepository.summarizeByCampaignIdsAndCompanyId(campaignIds, companyId);
         Map<Long, CampaignTargetStats> result = new HashMap<>();
         for (CampaignTargetSummaryProjection s : summaries) {
             if (s.getCampaignId() != null) {
@@ -142,8 +138,8 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     }
 
     @Override
-    public CampaignTargetStats statsByCampaignId(long campaignId) {
-        return jpa.summarizeByCampaignIdAndCompanyId(campaignId, company.id())
+    public CampaignTargetStats statsByCampaignId(long companyId, long campaignId) {
+        return campaignTargetJpaRepository.summarizeByCampaignIdAndCompanyId(campaignId, companyId)
                 .map(s -> new CampaignTargetStats(
                         s.getTotalTargets(),
                         s.getCalledTargets(),

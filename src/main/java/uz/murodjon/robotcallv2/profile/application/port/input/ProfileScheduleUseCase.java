@@ -9,5 +9,5 @@ public interface ProfileScheduleUseCase {
 
     List<ScheduleSlot> find();
 
-    List<ScheduleSlot> update(UpdateScheduleRequest r);
+    List<ScheduleSlot> update(long companyId, UpdateScheduleRequest request);
 }

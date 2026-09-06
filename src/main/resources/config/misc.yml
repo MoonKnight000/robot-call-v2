@@ -53,8 +53,7 @@ voice-agent:
     audio-level-enabled: ${LIVE_AUDIO_LEVEL_ENABLED:false}
     kpi-poll-ms: ${LIVE_KPI_POLL_MS:2000}
   company:
-    # Fallback only, for the two global bootstrap X-Api-Key secrets (voice-agent
-    # .security.api-key/read-api-key) — real per-request resolution exists for JWT
-    # logins (JwtCurrentCompanyResolver, ROADMAP E.1). See CurrentCompany/DefaultCompanyResolver.
-    # Matches the bootstrap row R__seed_data.sql seeds as id 1.
+    # The company that owns startup-time work with no request behind it (CompanyBootstrap,
+    # TtsWarmup, DialogSimulationRunner). A request's company always comes from its token
+    # instead (@CurrentCompanyId). Matches the bootstrap row R__seed_data.sql seeds as id 1.
     default-id: ${COMPANY_DEFAULT_ID:1}

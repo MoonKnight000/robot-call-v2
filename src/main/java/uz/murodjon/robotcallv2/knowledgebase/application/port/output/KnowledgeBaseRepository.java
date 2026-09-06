@@ -1,8 +1,7 @@
 package uz.murodjon.robotcallv2.knowledgebase.application.port.output;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,7 +16,9 @@ public interface KnowledgeBaseRepository {
 
     List<KnowledgeItem> findAllActiveByCompanyId(long companyId);
 
-    Page<KnowledgeItem> findAllByCompanyId(long companyId, String search, Pageable pageable);
+    List<KnowledgeItem> findAllByCompanyId(long companyId, KnowledgeItemFilter filter);
+
+    long countByCompanyId(long companyId, KnowledgeItemFilter filter);
 
     void deleteByIdAndCompanyId(long id, long companyId);
 }

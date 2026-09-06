@@ -8,9 +8,10 @@ import java.util.Map;
 
 public interface ClientMemoryUseCase {
 
-    ClientMemory findForCurrentCompany(String phone);
+    /** 404 when nothing is remembered — the operator asked for a specific client. */
+    ClientMemory requireByCompanyIdAndPhone(long companyId, String phone);
 
-    ClientMemory updateForCurrentCompany(String phone, UpdateClientMemoryRequest request);
+    ClientMemory updateByCompanyIdAndPhone(long companyId, String phone, UpdateClientMemoryRequest request);
 
     /** Read by the call pipeline before dialing / on answer; {@code null} when there is nothing to tell. */
     ClientMemory findByCompanyIdAndPhone(long companyId, String phone);

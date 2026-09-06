@@ -34,15 +34,15 @@ public class TtsRouter {
     private static final Logger log = LoggerFactory.getLogger(TtsRouter.class);
 
     private final TtsProviderSelector selector;
-    private final TtsProperties props;
+    private final TtsProperties ttsProperties;
     private final VoiceMetrics metrics;
     private final TtsCache cache;
     private final TtsVoiceService catalog;
 
-    public TtsRouter(TtsProviderSelector selector, TtsProperties props, VoiceMetrics metrics,
+    public TtsRouter(TtsProviderSelector selector, TtsProperties ttsProperties, VoiceMetrics metrics,
                      TtsCache cache, TtsVoiceService catalog) {
         this.selector = selector;
-        this.props = props;
+        this.ttsProperties = ttsProperties;
         this.metrics = metrics;
         this.cache = cache;
         this.catalog = catalog;
@@ -180,7 +180,7 @@ public class TtsRouter {
     }
 
     private Routed route(String language, String voiceId, EffectiveVoiceSettings style) {
-        String lang = (language == null || language.isBlank()) ? props.defaultLanguage() : language;
+        String lang = (language == null || language.isBlank()) ? ttsProperties.defaultLanguage() : language;
         EffectiveVoiceSettings settings = style != null ? style : EffectiveVoiceSettings.NONE;
 
         // A voice a campaign picked speaks through its own provider, not the company's

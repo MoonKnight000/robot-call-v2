@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallFilter;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.application.mapper.DoNotCallMapper;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
 import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCall;

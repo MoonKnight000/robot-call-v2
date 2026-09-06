@@ -38,15 +38,15 @@ public class SilenceWatchdogRunner {
      */
     private static final Duration WATCHDOG_TICK = Duration.ofSeconds(1);
 
-    private final DialogProperties props;
+    private final DialogProperties dialogProperties;
     private final VoiceMetrics metrics;
     private final DialogTranscript transcript;
     private final SpeechOutput speech;
     private final DialogExecutors executors;
 
-    public SilenceWatchdogRunner(DialogProperties props, VoiceMetrics metrics, DialogTranscript transcript,
+    public SilenceWatchdogRunner(DialogProperties dialogProperties, VoiceMetrics metrics, DialogTranscript transcript,
                                  SpeechOutput speech, DialogExecutors executors) {
-        this.props = props;
+        this.dialogProperties = dialogProperties;
         this.metrics = metrics;
         this.transcript = transcript;
         this.speech = speech;
@@ -55,11 +55,11 @@ public class SilenceWatchdogRunner {
 
     /** A silence watchdog for a new call, or {@code null} when it is switched off. */
     public NoInputWatchdog createWatchdog() {
-        if (props.noInputSeconds() <= 0) {
+        if (dialogProperties.noInputSeconds() <= 0) {
             return null;
         }
-        return new NoInputWatchdog(Duration.ofSeconds(props.noInputSeconds()),
-                props.noInputMaxPrompts(), Instant.now());
+        return new NoInputWatchdog(Duration.ofSeconds(dialogProperties.noInputSeconds()),
+                dialogProperties.noInputMaxPrompts(), Instant.now());
     }
 
     /** Begin ticking for {@code s}; the handle is kept on the session so teardown can cancel it. */
@@ -81,7 +81,7 @@ public class SilenceWatchdogRunner {
                 return;
             }
             long elapsedSec = java.time.Duration.between(s.startedAt(), Instant.now()).getSeconds();
-            int maxSec = s.aiModel() != null ? s.aiModel().maxCallSeconds() : props.maxCallSeconds();
+            int maxSec = s.aiModel() != null ? s.aiModel().maxCallSeconds() : dialogProperties.maxCallSeconds();
             if (maxSec > 0 && elapsedSec >= maxSec) {
                 log.warn("[{}] hard max call duration exceeded ({}s >= {}s) - force closing call",
                         s.channelId(), elapsedSec, maxSec);
@@ -127,7 +127,7 @@ public class SilenceWatchdogRunner {
             String line = DialogPhrases.stillThere(s.language());
             String question = DialogLines.lastQuestion(s.lastAgentText());
             log.info("[{}] no input for {}s — prompting ({}/{}){}", s.channelId(),
-                    props.noInputSeconds(), s.watchdog().prompts(), props.noInputMaxPrompts(),
+                    dialogProperties.noInputSeconds(), s.watchdog().prompts(), dialogProperties.noInputMaxPrompts(),
                     question != null ? ", repeating the question" : "");
             boolean spoken = speech.speakChunk(s, line);
             // Two chunks rather than one string: each is a cache key of its own, and both

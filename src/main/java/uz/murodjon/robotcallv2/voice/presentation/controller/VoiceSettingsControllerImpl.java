@@ -18,12 +18,12 @@ public class VoiceSettingsControllerImpl implements VoiceSettingsController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<VoiceSettings>> get() {
-        return ResponseEntity.ok(ResponseData.ok(voiceSettingsUseCase.find()));
+    public ResponseEntity<ResponseData<VoiceSettings>> get(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(voiceSettingsUseCase.findByCompanyId(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<VoiceSettings>> update(UpdateVoiceSettingsRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(voiceSettingsUseCase.update(r)));
+    public ResponseEntity<ResponseData<VoiceSettings>> update(long companyId, UpdateVoiceSettingsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(voiceSettingsUseCase.updateByCompanyId(companyId, request)));
     }
 }

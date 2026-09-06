@@ -1,21 +1,36 @@
 ### Qarzdorlik (debt collection) oqimi — bitta kampaniya, bitta raqam, qo'ng'iroq
 ### IntelliJ IDEA "HTTP Client" bilan ishlaydi: har bir so'rovni ustidagi "Run" tugmasi
-### bilan ketma-ket bosing (1 -> 2 -> 3 -> 4). Javobdagi id'lar keyingi so'rovga
+### bilan ketma-ket bosing (0 -> 1 -> 2 -> 3 -> 4). Javobdagi id'lar keyingi so'rovga
 ### avtomatik o'tadi (client.global.set orqali).
 
 @baseUrl = http://localhost:8080
-@apiKey = 9ecb07190a31f570e25aa8569745a61540b3c9d8c5a53a598d7ad2c02d0dfbcd
+@username = admin
+@password = 
+
+### 0. Login — token olish (qolgan so'rovlar shu tokendan foydalanadi)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+> {%
+    client.global.set("token", response.body.data.accessToken);
+%}
+
 
 ### 1. TTS ovozlar katalogi (ixtiyoriy) — ttsVoice uchun mavjud id'larni ko'rish
 GET {{baseUrl}}/api/tts/voices?language=uz-UZ
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 
 
 ### 2. Qarzdorlik kampaniyasini yaratish
 # Faqat "name" majburiy — qolgani berilmasa default bilan to'ladi
 # (defaultLanguage=uz-UZ, dialWindowStart=09:00, dialWindowEnd=20:00,
 POST {{baseUrl}}/api/campaigns
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -39,7 +54,7 @@ Content-Type: application/json
 # "phone"ni haqiqiy test raqamiga almashtiring. contextData — agent qo'ng'iroqda
 # ishlatadigan faktlar (qarzdor ismi, summa, valyuta, muddat, shartnoma raqami).
 POST {{baseUrl}}/api/campaigns/{{campaignId}}/targets
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 [
@@ -64,22 +79,22 @@ Content-Type: application/json
 
 ### 4. Kampaniyani ishga tushirish — dialer navbatdagi tikida (~5 sek) o'zi chaqiradi
 POST {{baseUrl}}/api/campaigns/{{campaignId}}/start
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 
 
 ### 5. (kuzatuv) Hozir davom etayotgan qo'ng'iroqlar
 GET {{baseUrl}}/api/calls/live
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 
 
 ### 6. (kuzatuv) Kampaniya statistikasi — necha nishon PENDING/DONE, dispositionlar
 GET {{baseUrl}}/api/reports/campaigns/{{campaignId}}
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 
 
 ### 7. (kuzatuv) Kampaniyaning qo'ng'iroqlari — natija, transkript uchun callId
 POST {{baseUrl}}/api/reports/campaigns/{{campaignId}}/calls/list
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "page": 0, "size": 20 }
@@ -87,7 +102,7 @@ Content-Type: application/json
 
 ### 8. (ixtiyoriy) Pauza qilish
 # POST {{baseUrl}}/api/campaigns/{{campaignId}}/pause
-# X-Api-Key: {{apiKey}}
+# Authorization: Bearer {{token}}
 
 
 ### --- Muqobil: kampaniyasiz, darhol bitta qo'lda test qo'ng'irog'i ---
@@ -95,7 +110,7 @@ Content-Type: application/json
 
 ### 9. Qo'lda qo'ng'iroq boshlash
 POST {{baseUrl}}/api/calls?number=998953692029
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}
 
 > {%
     client.global.set("channelId", response.body.data.channelId);
@@ -103,4 +118,4 @@ X-Api-Key: {{apiKey}}
 
 ### 10. Ulangan kanalga qarzdorlik matnini o'qitish (test uchun)
 POST {{baseUrl}}/api/calls/{{channelId}}/say?text=Assalomu alaykum, sizda 1 500 000 som qarz mavjud&language=uz-UZ
-X-Api-Key: {{apiKey}}
+Authorization: Bearer {{token}}

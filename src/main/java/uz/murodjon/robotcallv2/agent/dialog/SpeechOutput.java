@@ -47,17 +47,17 @@ public class SpeechOutput {
     /** Cap on waiting for queued audio to drain before hanging up anyway. */
     private static final Duration MAX_DRAIN = Duration.ofSeconds(30);
 
-    private final DialogProperties props;
-    private final TtsProperties ttsProps;
+    private final DialogProperties dialogProperties;
+    private final TtsProperties ttsProperties;
     private final TtsRouter ttsRouter;
     private final VoiceMetrics metrics;
     private final DialogExecutors executors;
     private final VoiceEmotionResolver emotionResolver;
 
-    public SpeechOutput(DialogProperties props, TtsProperties ttsProps, TtsRouter ttsRouter,
+    public SpeechOutput(DialogProperties dialogProperties, TtsProperties ttsProperties, TtsRouter ttsRouter,
                         VoiceMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver) {
-        this.props = props;
-        this.ttsProps = ttsProps;
+        this.dialogProperties = dialogProperties;
+        this.ttsProperties = ttsProperties;
         this.ttsRouter = ttsRouter;
         this.metrics = metrics;
         this.executors = executors;
@@ -143,7 +143,7 @@ public class SpeechOutput {
 
     /** Why {@code text} must not be spoken, or {@code null} when it may be. */
     private SpeechOutcome refusal(DialogSession s, String text) {
-        if (!ttsProps.enabled() || text == null || text.isBlank()) {
+        if (!ttsProperties.enabled() || text == null || text.isBlank()) {
             return SpeechOutcome.SKIPPED;
         }
         if (s.isCancelled()) {
@@ -159,7 +159,7 @@ public class SpeechOutput {
                     s.channelId(), s.state(), text);
             return SpeechOutcome.SKIPPED;
         }
-        if (props.factGuard()) {
+        if (dialogProperties.factGuard()) {
             List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
             if (!bad.isEmpty()) {
                 // Not spoken, not recorded as said: the caller must never hear a sum
@@ -266,7 +266,7 @@ public class SpeechOutput {
      * Watch {@code voice.tts.chars.synthesized} against {@code voice.tts.chars.saved}.
      */
     public void warmSentence(DialogSession s, String text) {
-        if (!ttsProps.enabled() || text == null || text.isBlank() || s.isEnded() || s.isCancelled()
+        if (!ttsProperties.enabled() || text == null || text.isBlank() || s.isEnded() || s.isCancelled()
                 || SpeechSanitizer.isUnspeakable(text)) {
             return;
         }
@@ -299,7 +299,7 @@ public class SpeechOutput {
      *             picks the phrase, so the same one is not repeated twice running
      */
     public void speakBackchannel(DialogSession s, int turn) {
-        if (props.backchannelAfterMs() <= 0 || !ttsProps.enabled() || !backchannelStillWanted(s)) {
+        if (dialogProperties.backchannelAfterMs() <= 0 || !ttsProperties.enabled() || !backchannelStillWanted(s)) {
             return;
         }
         try {
@@ -309,7 +309,7 @@ public class SpeechOutput {
             if (!backchannelStillWanted(s)) {
                 return; // the caller finished while this was being synthesized
             }
-            s.endpoint().enqueuePcm(attenuate(pcm, props.backchannelVolumePercent()));
+            s.endpoint().enqueuePcm(attenuate(pcm, dialogProperties.backchannelVolumePercent()));
             metrics.backchannelPlayed();
             log.debug("[{}] backchannel over a long answer: {}", s.channelId(), line);
         } catch (Exception e) {
@@ -330,7 +330,7 @@ public class SpeechOutput {
      * the model will answer, and it will answer it in full.
      */
     public void interject(DialogSession s) {
-        if (props.interjectAfterMs() <= 0 || !ttsProps.enabled() || !backchannelStillWanted(s)) {
+        if (dialogProperties.interjectAfterMs() <= 0 || !ttsProperties.enabled() || !backchannelStillWanted(s)) {
             return;
         }
         try {
@@ -342,7 +342,7 @@ public class SpeechOutput {
             s.endpoint().enqueuePcm(pcm);
             metrics.interjected();
             log.info("[{}] caller has been talking for over {} ms — cutting in: {}",
-                    s.channelId(), props.interjectAfterMs(), line);
+                    s.channelId(), dialogProperties.interjectAfterMs(), line);
         } catch (Exception e) {
             log.debug("[{}] interjection failed: {}", s.channelId(), e.getMessage());
         }
@@ -390,10 +390,10 @@ public class SpeechOutput {
      */
     public ScheduledFuture<?> scheduleFiller(DialogSession s) {
         int turn = s.turnCount();
-        if (props.fillerDelayMs() <= 0 || !ttsProps.enabled() || !s.isFirstAudioPending()) {
+        if (dialogProperties.fillerDelayMs() <= 0 || !ttsProperties.enabled() || !s.isFirstAudioPending()) {
             return null;
         }
-        return executors.scheduleOnWorker(() -> speakFiller(s, turn), props.fillerDelayMs());
+        return executors.scheduleOnWorker(() -> speakFiller(s, turn), dialogProperties.fillerDelayMs());
     }
 
     /**
@@ -426,7 +426,7 @@ public class SpeechOutput {
             s.endpoint().enqueuePcm(pcm);
             metrics.fillerPlayed();
             log.debug("[{}] filler played after {} ms of silence: {}",
-                    s.channelId(), props.fillerDelayMs(), line);
+                    s.channelId(), dialogProperties.fillerDelayMs(), line);
         } catch (Exception e) {
             // A filler is a comfort, never a requirement — losing one costs nothing.
             log.debug("[{}] filler skipped: {}", s.channelId(), e.getMessage());

@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.search.application.service;
 
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
-import uz.murodjon.robotcallv2.report.application.dto.CallFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.CallRow;
 import uz.murodjon.robotcallv2.search.application.dto.SearchItem;
@@ -29,14 +29,14 @@ public class SearchService implements SearchUseCase {
     }
 
     @Override
-    public SearchResult search(String q) {
+    public SearchResult search(long companyId, String q) {
         SearchValidator.validateQuery(q);
 
-        List<SearchItem> campaignResults = campaignRepository.searchByName(q, GROUP_LIMIT).stream()
+        List<SearchItem> campaignResults = campaignRepository.searchByName(companyId, q, GROUP_LIMIT).stream()
                 .map(c -> new SearchItem(c.id(), c.name(), c.status().name()))
                 .toList();
         CallFilter callFilter = new CallFilter(0, GROUP_LIMIT, null, q, null, null, null, null, null, null, null);
-        List<SearchItem> callResults = reportRepository.recentCalls(callFilter).stream()
+        List<SearchItem> callResults = reportRepository.recentCalls(companyId, callFilter).stream()
                 .map(SearchService::toCallItem)
                 .toList();
         return new SearchResult(campaignResults, callResults);

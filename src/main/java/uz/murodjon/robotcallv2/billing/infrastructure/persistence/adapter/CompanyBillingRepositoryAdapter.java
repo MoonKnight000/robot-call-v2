@@ -12,26 +12,26 @@ import java.util.Optional;
 @Component
 public class CompanyBillingRepositoryAdapter implements CompanyBillingRepository {
 
-    private final CompanyBillingJpaRepository jpa;
+    private final CompanyBillingJpaRepository jpaRepository;
 
-    public CompanyBillingRepositoryAdapter(CompanyBillingJpaRepository jpa) {
-        this.jpa = jpa;
+    public CompanyBillingRepositoryAdapter(CompanyBillingJpaRepository jpaRepository) {
+        this.jpaRepository = jpaRepository;
     }
 
     @Override
     public Optional<CompanyBilling> findByCompanyId(long companyId) {
-        return jpa.findByCompanyId(companyId).map(CompanyBillingEntity::toDomain);
+        return jpaRepository.findByCompanyId(companyId).map(CompanyBillingEntity::toDomain);
     }
 
     @Override
     public CompanyBilling save(CompanyBilling billing) {
         CompanyBillingEntity entity = CompanyBillingEntity.fromDomain(billing);
-        return jpa.save(entity).toDomain();
+        return jpaRepository.save(entity).toDomain();
     }
 
     @Override
     @Transactional
     public void addBalance(long companyId, long amountUzs) {
-        jpa.addBalance(companyId, amountUzs);
+        jpaRepository.addBalance(companyId, amountUzs);
     }
 }

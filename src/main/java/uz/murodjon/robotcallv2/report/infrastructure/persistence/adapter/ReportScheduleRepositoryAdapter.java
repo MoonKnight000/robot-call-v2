@@ -4,10 +4,9 @@ import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.report.application.dto.CreateReportScheduleRequest;
-import uz.murodjon.robotcallv2.report.application.dto.ReportScheduleFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
 import uz.murodjon.robotcallv2.report.application.mapper.ReportScheduleMapper;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportScheduleRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSchedule;
@@ -20,23 +19,21 @@ import java.util.List;
 @Component
 public class ReportScheduleRepositoryAdapter implements ReportScheduleRepository {
 
-    private final ReportScheduleJpaRepository jpa;
-    private final CurrentCompany company;
+    private final ReportScheduleJpaRepository jpaRepository;
     private final ReportScheduleMapper mapper;
     private final EntityManager em;
 
-    public ReportScheduleRepositoryAdapter(ReportScheduleJpaRepository jpa, CurrentCompany company,
+    public ReportScheduleRepositoryAdapter(ReportScheduleJpaRepository jpaRepository,
                                            ReportScheduleMapper mapper, EntityManager em) {
-        this.jpa = jpa;
-        this.company = company;
+        this.jpaRepository = jpaRepository;
         this.mapper = mapper;
         this.em = em;
     }
 
     @Override
-    public long create(CreateReportScheduleRequest r) {
+    public long create(long companyId, CreateReportScheduleRequest r) {
         ReportScheduleEntity entity = new ReportScheduleEntity();
-        entity.setCompany(em.getReference(CompanyEntity.class, company.id()));
+        entity.setCompany(em.getReference(CompanyEntity.class, companyId));
         entity.setEmail(r.email());
         entity.setPeriodicity(r.periodicity());
         entity.setFormat(r.format() != null && !r.format().isBlank() ? r.format().toLowerCase() : "pdf");
@@ -45,44 +42,44 @@ public class ReportScheduleRepositoryAdapter implements ReportScheduleRepository
         }
         entity.setEnabled(true);
         entity.setCreatedAt(Instant.now());
-        return jpa.save(entity).getId();
+        return jpaRepository.save(entity).getId();
     }
 
     @Override
-    public ReportSchedule find(long id) {
-        return jpa.findByIdAndCompany_Id(id, company.id()).map(mapper::toDomain).orElse(null);
+    public ReportSchedule find(long companyId, long id) {
+        return jpaRepository.findByIdAndCompany_Id(id, companyId).map(mapper::toReportSchedule).orElse(null);
     }
 
     @Override
-    public List<ReportSchedule> findAll(ReportScheduleFilter filter) {
-        return jpa.findByCompany_Id(company.id(), filter.pageable()).stream()
-                .map(mapper::toDomain)
+    public List<ReportSchedule> findAll(long companyId, ReportScheduleFilter filter) {
+        return jpaRepository.findByCompany_Id(companyId, filter.pageable()).stream()
+                .map(mapper::toReportSchedule)
                 .toList();
     }
 
     @Override
-    public long count(ReportScheduleFilter filter) {
-        return jpa.countByCompany_Id(company.id());
+    public long count(long companyId, ReportScheduleFilter filter) {
+        return jpaRepository.countByCompany_Id(companyId);
     }
 
     @Override
-    public void disable(long id) {
-        jpa.findByIdAndCompany_Id(id, company.id()).ifPresent(entity -> {
+    public void disable(long companyId, long id) {
+        jpaRepository.findByIdAndCompany_Id(id, companyId).ifPresent(entity -> {
             entity.setEnabled(false);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
     public List<ReportSchedule> findEnabled() {
-        return jpa.findByEnabledTrue().stream().map(mapper::toDomain).toList();
+        return jpaRepository.findByEnabledTrue().stream().map(mapper::toReportSchedule).toList();
     }
 
     @Override
     public void markSent(long id, Instant sentAt) {
-        jpa.findById(id).ifPresent(entity -> {
+        jpaRepository.findById(id).ifPresent(entity -> {
             entity.setLastSentAt(sentAt);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 }

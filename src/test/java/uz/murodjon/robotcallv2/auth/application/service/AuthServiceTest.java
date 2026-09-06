@@ -8,7 +8,6 @@ import uz.murodjon.robotcallv2.auth.application.dto.IssuedToken;
 import uz.murodjon.robotcallv2.auth.application.dto.LoginRequest;
 import uz.murodjon.robotcallv2.auth.application.dto.LoginResponse;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
@@ -35,7 +34,6 @@ class AuthServiceTest {
 
     private UserRepository users;
     private CompanyRepository companies;
-    private CurrentCompany currentCompany;
     private PasswordEncoder passwordEncoder;
     private JwtTokenService tokens;
     private CurrentUser currentUser;
@@ -49,7 +47,6 @@ class AuthServiceTest {
     void setUp() {
         users = mock(UserRepository.class);
         companies = mock(CompanyRepository.class);
-        currentCompany = mock(CurrentCompany.class);
         passwordEncoder = mock(PasswordEncoder.class);
         tokens = mock(JwtTokenService.class);
         currentUser = mock(CurrentUser.class);
@@ -60,7 +57,7 @@ class AuthServiceTest {
         when(roleUseCase.findRole(1L, ADMIN_ROLE.id())).thenReturn(ADMIN_ROLE);
 
         authService = new AuthService(
-                users, companies, currentCompany, passwordEncoder, tokens,
+                users, companies, passwordEncoder, tokens,
                 currentUser, audit, sessions, resetMail, roleUseCase
         );
     }

@@ -27,18 +27,18 @@ public class IntegrationControllerImpl implements IntegrationController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<CrmIntegrationRow>> get() {
-        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.find()));
+    public ResponseEntity<ResponseData<CrmIntegrationRow>> get(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.findByCompanyId(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<CrmIntegrationRow>> connect(ConnectIntegrationRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.connect(r)));
+    public ResponseEntity<ResponseData<CrmIntegrationRow>> connect(long companyId, ConnectIntegrationRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.connect(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl() {
-        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.buildAuthorizeUrl()));
+    public ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.buildAuthorizeUrl(companyId)));
     }
 
     @Override
@@ -48,8 +48,8 @@ public class IntegrationControllerImpl implements IntegrationController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> disconnect() {
-        crmIntegrationUseCase.disconnect();
+    public ResponseEntity<ResponseData<Void>> disconnect(long companyId) {
+        crmIntegrationUseCase.disconnect(companyId);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 }

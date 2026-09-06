@@ -21,28 +21,28 @@ public class AiAgentControllerImpl implements AiAgentController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<AiAgentRow>> create(CreateAiAgentRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.createAgent(request)));
+    public ResponseEntity<ResponseData<AiAgentRow>> create(long companyId, CreateAiAgentRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.createAgent(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<AiAgentRow>>> filter(AiAgentFilter filter) {
-        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.filterAgents(filter)));
+    public ResponseEntity<ResponseData<PageableData<AiAgentRow>>> filter(long companyId, AiAgentFilter filter) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.filterAgents(companyId, filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<AiAgentRow>> get(long id) {
-        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.findAgentRow(id)));
+    public ResponseEntity<ResponseData<AiAgentRow>> get(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.findAgentRow(companyId, id)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<AiAgentRow>> update(long id, UpdateAiAgentRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.updateAgent(id, request)));
+    public ResponseEntity<ResponseData<AiAgentRow>> update(long companyId, long id, UpdateAiAgentRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.updateAgent(companyId, id, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> delete(long id) {
-        aiAgentUseCase.deleteAgent(id);
+    public ResponseEntity<ResponseData<Void>> delete(long companyId, long id) {
+        aiAgentUseCase.deleteAgent(companyId, id);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 }

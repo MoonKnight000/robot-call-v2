@@ -36,42 +36,44 @@ docker compose logs app | Select-String "sched-"
 curl.exe http://localhost:8080/actuator/health
 ```
 
-## API kaliti
+## Kirish tokeni
 
-`/api/**` va `/actuator/**` `X-Api-Key` sarlavhasini talab qiladi — `POST /api/calls`
-real trunk orqali qo'ng'iroq qiladi, shuning uchun hech qachon ochiq qolmaydi.
-Kalit `.env` dagi `API_KEY` dan olinadi (`openssl rand -hex 32` bilan yangilanadi).
-Kalit qo'yilmasa app ishga tushadi, lekin hamma so'rovga `401` qaytaradi.
+`/api/**` va `/actuator/**` `Authorization: Bearer <token>` talab qiladi —
+`POST /api/calls` real trunk orqali qo'ng'iroq qiladi, shuning uchun hech qachon
+ochiq qolmaydi. Token `POST /api/auth/login` dan olinadi; birinchi admin hisobi
+`.env` dagi `BOOTSTRAP_ADMIN_*` bilan seed qilinadi. `JWT_SECRET` qo'yilmasa app
+ishga tushadi, lekin hech kim login qila olmaydi va hamma so'rov `401` bo'ladi.
 
 ```powershell
-$key = (Select-String -Path .env -Pattern '^API_KEY=(.*)$').Matches.Groups[1].Value
+$token = (curl.exe -s -X POST -H "Content-Type: application/json" `
+  -d '{"username":"admin","password":"..."}' `
+  http://localhost:8080/api/auth/login | ConvertFrom-Json).data.accessToken
 
-# kalitsiz -> 401
+# tokensiz -> 401
 curl.exe -i -X POST "http://localhost:8080/api/calls?number=600"
 
-# kalit bilan -> 200
-curl.exe -X POST -H "X-Api-Key: $key" "http://localhost:8080/api/calls?number=600"
+# token bilan -> 200
+curl.exe -X POST -H "Authorization: Bearer $token" "http://localhost:8080/api/calls?number=600"
 ```
 
-Test paneli (`http://localhost:8080/`) kalitsiz ochiladi, lekin yuqoridagi **Key**
-maydoniga kalitni kiritish kerak — u `localStorage` da saqlanadi va har bir so'rovga
+Test paneli (`http://localhost:8080/`) tokensiz ochiladi, lekin yuqoridagi **Token**
+maydoniga tokenni kiritish kerak — u `localStorage` da saqlanadi va har bir so'rovga
 qo'shiladi.
 
-### Faqat o'qish uchun kalit
+### Faqat o'qish huquqi
 
-`.env` dagi ixtiyoriy `READ_API_KEY` ikkinchi kalit beradi: u faqat `/api/reports/**`
-va `/actuator/**` ni ochadi. Kundalik ishda kerak bo'ladigan narsa — natijalar,
-transkriptlar, yozuvlar — shu kalit bilan olinadi, ya'ni ularni ko'rish uchun 50 000
-abonentga qo'ng'iroq qila oladigan kalitni tarqatish shart emas.
+Tashqi xizmatga yoki hisobot ko'radigan xodimga alohida foydalanuvchi ochiladi va
+unga `VIEWER` roli beriladi: u `*_READ` permissionlarni oladi, ya'ni natijalar,
+transkriptlar va yozuvlarni ko'ra oladi, lekin qo'ng'iroq qila olmaydi.
 
 ```powershell
-$read = "..."   # READ_API_KEY
+$read = "..."   # VIEWER foydalanuvchining tokeni
 
 # ruxsat: hisobotlar
-curl.exe -s -H "X-Api-Key: $read" http://localhost:8080/api/reports/calls?limit=5
+curl.exe -s -H "Authorization: Bearer $read" http://localhost:8080/api/reports/calls?limit=5
 
 # rad etiladi (403): qo'ng'iroq qilish yoki kampaniya boshqarish
-curl.exe -i -X POST -H "X-Api-Key: $read" "http://localhost:8080/api/calls?number=600"
+curl.exe -i -X POST -H "Authorization: Bearer $read" "http://localhost:8080/api/calls?number=600"
 ```
 
 Kim nima qilgani `audit_log` ga yoziladi (`GET /api/reports/audit`) — kampaniya
@@ -117,10 +119,10 @@ Ro'yxatdan o'tgach ikki yo'nalishni ham sinash mumkin:
 # 1. Kiruvchi: softphone'dan 600 ni tering -> AI javob beradi
 
 # 2. Chiquvchi: app o'zi softphone'ni chaqiradi (trunk daqiqasi sarflanmaydi)
-curl.exe -X POST -H "X-Api-Key: $key" "http://localhost:8080/api/calls?number=600"
+curl.exe -X POST -H "Authorization: Bearer $token" "http://localhost:8080/api/calls?number=600"
 
 # 3. Chiquvchi, real raqam (trunk orqali) — `+` belgisisiz
-curl.exe -X POST -H "X-Api-Key: $key" "http://localhost:8080/api/calls?number=998953692029"
+curl.exe -X POST -H "Authorization: Bearer $token" "http://localhost:8080/api/calls?number=998953692029"
 ```
 
 3-4 xonali raqamlar softphone'ga, uzunroqlari trunk'ga yo'naltiriladi
@@ -140,12 +142,12 @@ docker exec robot-call-asterisk asterisk -rx "module show like srtp"
 docker exec robot-call-asterisk asterisk -rx "pjsip show endpoint webtest"
 
 # 2. Sessiya ochish (frontend'siz)
-curl.exe -X POST -H "X-Api-Key: $key" -H "Content-Type: application/json" `
+curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" `
   -d '{"campaignId": 1}' "http://localhost:8080/api/calls/web-test"
 ```
 
 Frontend'siz to'liq sinov: `docs/web-test.html` ni Chrome'da oching (`file://`
-ham bo'ladi), API manzili + kalit/token va `campaignId` ni kiriting, **Boshlash**.
+ham bo'ladi), API manzili + token va `campaignId` ni kiriting, **Boshlash**.
 AI salomlashadi, siz gapirasiz. Qo'ng'iroq `GET /api/calls/live` da `phone =
 WEB-TEST` bilan ko'rinadi, `call_attempt` va WAV yozuvi odatdagidek paydo bo'ladi.
 
@@ -174,15 +176,15 @@ provayderni ham belgilaydi; hech narsa tanlanmasa, eski sozlama bo'yicha
 
 ```powershell
 # mavjud ovozlar (til bo'yicha filtr — ixtiyoriy)
-curl.exe -H "X-Api-Key: $key" "http://localhost:8080/api/tts/voices?language=uz-UZ"
+curl.exe -H "Authorization: Bearer $token" "http://localhost:8080/api/tts/voices?language=uz-UZ"
 
 # kampaniyani tanlangan ovoz bilan yaratish (noto'g'ri id -> 400)
-curl.exe -X POST -H "X-Api-Key: $key" -H "Content-Type: application/json" `
+curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" `
   -d '{\"name\":\"Iyul\",\"defaultLanguage\":\"uz-UZ\",\"ttsVoice\":\"nigora\"}' `
   http://localhost:8080/api/campaigns
 
 # kampaniyagacha ovozni tinglab ko'rish (faol qo'ng'iroqda)
-curl.exe -X POST -H "X-Api-Key: $key" `
+curl.exe -X POST -H "Authorization: Bearer $token" `
   "http://localhost:8080/api/calls/$chid/say?text=Assalomu%20alaykum&language=uz-UZ&voice=nigora"
 ```
 
@@ -220,8 +222,8 @@ Yandex STT — oqimga uzatilgan audio-sekund. Har biri uchun tejash yoqilgan va 
 metrika bilan o'lchanadi. Prometheus'dan ko'rish:
 
 ```powershell
-$key = "..."   # API_KEY
-curl.exe -s -H "X-Api-Key: $key" http://localhost:8080/actuator/prometheus |
+$token = "..."   # POST /api/auth/login dan
+curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/actuator/prometheus |
   Select-String "voice_llm_tokens|voice_tts_chars|voice_stt_audio|voice_tts_cache"
 ```
 
@@ -300,7 +302,7 @@ bo'lib chiqadi:
 ```
 
 ```powershell
-curl.exe -s -H "X-Api-Key: $key" http://localhost:8080/actuator/prometheus |
+curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/actuator/prometheus |
   Select-String "voice_rtp"
 ```
 
@@ -428,19 +430,19 @@ Kuzatiladigan narsalar:
 Panelning **6 · Natijalar** bo'limi, yoki to'g'ridan-to'g'ri:
 
 ```powershell
-$key = "..."
+$token = "..."   # POST /api/auth/login dan
 
 # kampaniya natijasi: disposition taqsimoti, va'da foizi, o'rtacha davomiylik
-curl.exe -s -H "X-Api-Key: $key" http://localhost:8080/api/reports/campaigns/1
+curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/api/reports/campaigns/1
 
 # oxirgi qo'ng'iroqlar
-curl.exe -s -H "X-Api-Key: $key" "http://localhost:8080/api/reports/calls?limit=20"
+curl.exe -s -H "Authorization: Bearer $token" "http://localhost:8080/api/reports/calls?limit=20"
 
 # bitta suhbat + to'liq transkript
-curl.exe -s -H "X-Api-Key: $key" http://localhost:8080/api/reports/calls/12
+curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/api/reports/calls/12
 
 # yozuvni yuklab olish (§11.3 — nizoda dalil)
-curl.exe -s -H "X-Api-Key: $key" -o call-12.wav `
+curl.exe -s -H "Authorization: Bearer $token" -o call-12.wav `
   http://localhost:8080/api/reports/calls/12/recording
 ```
 
@@ -460,7 +462,7 @@ Ustunlar **nom bo'yicha** topiladi (tartib muhim emas), noto'g'ri satrlar alohid
 qaytariladi va qolganlari yuklanadi:
 
 ```powershell
-curl.exe -X POST -H "X-Api-Key: $key" -H "Content-Type: text/csv" `
+curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: text/csv" `
   --data-binary "@targets.csv" http://localhost:8080/api/campaigns/1/targets/csv
 ```
 

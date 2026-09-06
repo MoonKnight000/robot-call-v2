@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.profile.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.profile.application.port.output.TableConfigRepository;
@@ -19,44 +18,41 @@ import java.time.Instant;
 @Component
 public class TableConfigRepositoryAdapter implements TableConfigRepository {
 
-    private final TableConfigJpaRepository jpa;
-    private final UserJpaRepository userJpa;
-    private final CompanyJpaRepository companyJpa;
-    private final CurrentCompany company;
+    private final TableConfigJpaRepository tableConfigJpaRepository;
+    private final UserJpaRepository userJpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public TableConfigRepositoryAdapter(TableConfigJpaRepository jpa,
-                                        UserJpaRepository userJpa,
-                                        CompanyJpaRepository companyJpa,
-                                        CurrentCompany company) {
-        this.jpa = jpa;
-        this.userJpa = userJpa;
-        this.companyJpa = companyJpa;
-        this.company = company;
+    public TableConfigRepositoryAdapter(TableConfigJpaRepository tableConfigJpaRepository,
+                                        UserJpaRepository userJpaRepository,
+                                        CompanyJpaRepository companyJpaRepository) {
+        this.tableConfigJpaRepository = tableConfigJpaRepository;
+        this.userJpaRepository = userJpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
     public String find(long userId, String configKey) {
-        return jpa.findByUserIdAndConfigKey(userId, configKey).map(TableConfigEntity::getConfigValue).orElse(null);
+        return tableConfigJpaRepository.findByUserIdAndConfigKey(userId, configKey).map(TableConfigEntity::getConfigValue).orElse(null);
     }
 
     @Override
     @Transactional
-    public String save(long userId, String configKey, String configValueJson) {
+    public String save(long companyId, long userId, String configKey, String configValueJson) {
         if (configValueJson == null) {
-            jpa.deleteByUserIdAndConfigKey(userId, configKey);
+            tableConfigJpaRepository.deleteByUserIdAndConfigKey(userId, configKey);
             return null;
         }
-        UserEntity user = userJpa.findById(userId)
+        UserEntity user = userJpaRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity comp = companyJpa.findById(company.id())
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, company.id()));
+        CompanyEntity comp = companyJpaRepository.findById(companyId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
 
-        TableConfigEntity entity = jpa.findByUserIdAndConfigKey(userId, configKey).orElseGet(TableConfigEntity::new);
+        TableConfigEntity entity = tableConfigJpaRepository.findByUserIdAndConfigKey(userId, configKey).orElseGet(TableConfigEntity::new);
         entity.setCompany(comp);
         entity.setUser(user);
         entity.setConfigKey(configKey);
         entity.setConfigValue(configValueJson);
         entity.setUpdatedAt(Instant.now());
-        return jpa.save(entity).getConfigValue();
+        return tableConfigJpaRepository.save(entity).getConfigValue();
     }
 }

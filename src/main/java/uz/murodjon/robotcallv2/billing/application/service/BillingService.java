@@ -16,7 +16,6 @@ import uz.murodjon.robotcallv2.billing.domain.entity.PaymentTopup;
 import uz.murodjon.robotcallv2.billing.domain.enums.PaymentMethod;
 import uz.murodjon.robotcallv2.billing.domain.enums.TopupStatus;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -35,51 +34,47 @@ import java.util.UUID;
 @Service
 public class BillingService implements BillingUseCase {
 
-    private final CompanyBillingRepository billingRepo;
-    private final BillingUsageRepository usageRepo;
-    private final InvoiceRepository invoiceRepo;
-    private final PaymentTopupRepository topupRepo;
-    private final CurrentCompany currentCompany;
+    private final CompanyBillingRepository companyBillingRepository;
+    private final BillingUsageRepository billingUsageRepository;
+    private final InvoiceRepository invoiceRepository;
+    private final PaymentTopupRepository paymentTopupRepository;
     private final CurrentUser currentUser;
-    private final CompanyRepository companyRepo;
+    private final CompanyRepository companyRepository;
     private final InvoicePdfService pdfService;
     private final AuditService audit;
 
     public BillingService(
-            CompanyBillingRepository billingRepo,
-            BillingUsageRepository usageRepo,
-            InvoiceRepository invoiceRepo,
-            PaymentTopupRepository topupRepo,
-            CurrentCompany currentCompany,
+            CompanyBillingRepository companyBillingRepository,
+            BillingUsageRepository billingUsageRepository,
+            InvoiceRepository invoiceRepository,
+            PaymentTopupRepository paymentTopupRepository,
             CurrentUser currentUser,
-            CompanyRepository companyRepo,
+            CompanyRepository companyRepository,
             InvoicePdfService pdfService,
             AuditService audit
     ) {
-        this.billingRepo = billingRepo;
-        this.usageRepo = usageRepo;
-        this.invoiceRepo = invoiceRepo;
-        this.topupRepo = topupRepo;
-        this.currentCompany = currentCompany;
+        this.companyBillingRepository = companyBillingRepository;
+        this.billingUsageRepository = billingUsageRepository;
+        this.invoiceRepository = invoiceRepository;
+        this.paymentTopupRepository = paymentTopupRepository;
         this.currentUser = currentUser;
-        this.companyRepo = companyRepo;
+        this.companyRepository = companyRepository;
         this.pdfService = pdfService;
         this.audit = audit;
     }
 
     @Override
     @Transactional
-    public BillingOverviewResponse overview() {
-        long companyId = currentCompany.id();
-        CompanyBilling billing = billingRepo.findByCompanyId(companyId)
-                .orElseGet(() -> billingRepo.save(CompanyBilling.defaultFor(companyId)));
+    public BillingOverviewResponse overview(long companyId) {
+        CompanyBilling billing = companyBillingRepository.findByCompanyId(companyId)
+                .orElseGet(() -> companyBillingRepository.save(CompanyBilling.defaultFor(companyId)));
 
         String currentPeriod = DateTimeFormatter.ofPattern("yyyy-MM")
                 .withZone(ZoneId.of("Asia/Tashkent"))
                 .format(Instant.now());
 
-        BillingUsage usage = usageRepo.findByCompanyIdAndPeriod(companyId, currentPeriod)
-                .orElseGet(() -> usageRepo.save(BillingUsage.defaultFor(companyId, currentPeriod)));
+        BillingUsage usage = billingUsageRepository.findByCompanyIdAndPeriod(companyId, currentPeriod)
+                .orElseGet(() -> billingUsageRepository.save(BillingUsage.defaultFor(companyId, currentPeriod)));
 
         BillingMetricsDto metrics = new BillingMetricsDto(
                 new BillingMetricItemDto(usage.usedMinutes(), usage.limitMinutes(), "daqiqa", usage.overagePriceMinute()),
@@ -99,10 +94,9 @@ public class BillingService implements BillingUseCase {
     }
 
     @Override
-    public List<SpendMonthDto> spendChart(int months) {
+    public List<SpendMonthDto> spendChart(long companyId, int months) {
         int limit = months <= 0 ? 6 : Math.min(months, 24);
-        long companyId = currentCompany.id();
-        List<BillingUsage> usages = usageRepo.findRecentByCompanyId(companyId, limit);
+        List<BillingUsage> usages = billingUsageRepository.findRecentByCompanyId(companyId, limit);
 
         if (usages.isEmpty()) {
             // Provide sensible past months sequence if empty
@@ -122,12 +116,11 @@ public class BillingService implements BillingUseCase {
     }
 
     @Override
-    public PageableData<InvoiceDto> invoices(int page, int size) {
-        long companyId = currentCompany.id();
+    public PageableData<InvoiceDto> invoices(long companyId, int page, int size) {
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 ? 10 : Math.min(size, 100);
 
-        PageableData<Invoice> pageResult = invoiceRepo.findAllByCompanyId(companyId, safePage, safeSize);
+        PageableData<Invoice> pageResult = invoiceRepository.findAllByCompanyId(companyId, safePage, safeSize);
         List<InvoiceDto> dtoList = pageResult.data().stream()
                 .map(this::toInvoiceDto)
                 .toList();
@@ -136,16 +129,15 @@ public class BillingService implements BillingUseCase {
     }
 
     @Override
-    public byte[] invoicePdf(String invoiceId) {
-        long companyId = currentCompany.id();
-        Invoice invoice = invoiceRepo.findById(invoiceId)
+    public byte[] invoicePdf(long companyId, String invoiceId) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.INVOICE_NOT_FOUND, invoiceId));
 
         if (invoice.companyId() != companyId) {
             throw new ForbiddenException(ErrorCode.CROSS_COMPANY_ACCESS_FORBIDDEN);
         }
 
-        Company company = companyRepo.find(companyId);
+        Company company = companyRepository.find(companyId);
         String companyName = company != null ? company.name() : null;
 
         return pdfService.generateInvoicePdf(invoice, companyName);
@@ -153,8 +145,7 @@ public class BillingService implements BillingUseCase {
 
     @Override
     @Transactional
-    public TopupResponse topup(TopupRequest request) {
-        long companyId = currentCompany.id();
+    public TopupResponse topup(long companyId, TopupRequest request) {
         Long userId = currentUser.id().orElse(null);
 
         String paymentId = "PAY-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
@@ -173,8 +164,8 @@ public class BillingService implements BillingUseCase {
                 null
         );
 
-        topupRepo.save(topup);
-        audit.record("BILLING_TOPUP_INITIATED", "company", String.valueOf(companyId),
+        paymentTopupRepository.save(topup);
+        audit.record(companyId, "BILLING_TOPUP_INITIATED", "company", String.valueOf(companyId),
                 "Amount: " + request.amountUzs() + " UZS, Method: " + request.paymentMethod());
 
         return new TopupResponse(paymentId, checkoutUrl);

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import uz.murodjon.robotcallv2.auth.application.dto.*;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -17,29 +18,29 @@ import java.util.List;
 public interface AuthController {
 
     @PostMapping("/auth/login")
-    ResponseEntity<ResponseData<LoginResponse>> login(@Valid @RequestBody LoginRequest r);
+    ResponseEntity<ResponseData<LoginResponse>> login(@Valid @RequestBody LoginRequest request);
 
     @PostMapping("/auth/activate")
-    ResponseEntity<ResponseData<LoginResponse>> activate(@Valid @RequestBody ActivateRequest r);
+    ResponseEntity<ResponseData<LoginResponse>> activate(@Valid @RequestBody ActivateRequest request);
 
     @PostMapping("/auth/forgot-password")
-    ResponseEntity<ResponseData<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest r);
+    ResponseEntity<ResponseData<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request);
 
     @PostMapping("/auth/reset-password")
-    ResponseEntity<ResponseData<LoginResponse>> resetPassword(@Valid @RequestBody ResetPasswordRequest r);
+    ResponseEntity<ResponseData<LoginResponse>> resetPassword(@Valid @RequestBody ResetPasswordRequest request);
 
     @PostMapping("/auth/refresh")
-    ResponseEntity<ResponseData<LoginResponse>> refresh(@Valid @RequestBody RefreshTokenRequest r);
+    ResponseEntity<ResponseData<LoginResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request);
 
     @PostMapping("/auth/logout")
     ResponseEntity<ResponseData<Void>> logout();
 
     @GetMapping("/auth/me")
-    ResponseEntity<ResponseData<CurrentUserResponse>> me();
+    ResponseEntity<ResponseData<CurrentUserResponse>> me(@CurrentCompanyId long companyId);
 
     @PostMapping("/auth/uysot/callback")
     ResponseEntity<ResponseData<LoginResponse>> uysotCallback();
 
     @GetMapping("/companies")
-    ResponseEntity<ResponseData<List<Company>>> companies();
+    ResponseEntity<ResponseData<List<Company>>> companies(@CurrentCompanyId long companyId);
 }

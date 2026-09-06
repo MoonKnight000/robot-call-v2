@@ -9,30 +9,25 @@ import java.util.List;
 
 public interface CampaignRepository {
 
-    long create(Campaign row);
+    long create(long companyId, Campaign row);
 
-    Campaign find(long id);
+    Campaign find(long companyId, long id);
 
-    List<Campaign> findAll(CampaignFilter filter);
+    List<Campaign> findAll(long companyId, CampaignFilter filter);
 
-    long count();
+    long count(long companyId);
 
-    long count(CampaignFilter filter);
+    long count(long companyId, CampaignFilter filter);
 
-    List<Campaign> searchByName(String q, int limit);
+    List<Campaign> searchByName(long companyId, String q, int limit);
 
     List<Campaign> findActive();
 
     List<Campaign> findRecurring();
 
-    /**
-     * The company is an argument, not ambient state: the dialer changes a campaign's
-     * status from a scheduled thread, where the request-scoped current company resolves
-     * to the platform default and would scope the update to the wrong tenant.
-     */
     void updateStatus(long companyId, long id, CampaignStatus status);
 
     void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status);
 
-    void update(long id, Campaign row);
+    void update(long companyId, long id, Campaign row);
 }

@@ -4,7 +4,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.memory.application.dto.UpdateClientMemoryRequest;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
@@ -42,10 +41,8 @@ class ClientMemoryServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(ClientMemoryRepository.class);
-        CurrentCompany currentCompany = mock(CurrentCompany.class);
-        when(currentCompany.id()).thenReturn(COMPANY);
         when(repository.upsert(eq(COMPANY), any())).thenAnswer(inv -> inv.getArgument(1));
-        service = new ClientMemoryService(repository, currentCompany, mock(AuditService.class));
+        service = new ClientMemoryService(repository, mock(AuditService.class));
     }
 
     @Test
@@ -108,7 +105,7 @@ class ClientMemoryServiceTest {
         when(repository.findByCompanyIdAndPhone(COMPANY, PHONE)).thenReturn(
                 new ClientMemory(1, COMPANY, PHONE, "Aziz aka", "uz-UZ", "old notes", List.of(), Map.of(), Instant.now()));
 
-        ClientMemory updated = service.updateForCurrentCompany("998901234567",
+        ClientMemory updated = service.updateByCompanyIdAndPhone(COMPANY, "998901234567",
                 new UpdateClientMemoryRequest(null, "", "  new notes  "));
 
         assertThat(updated.preferredName()).isEqualTo("Aziz aka");
@@ -118,8 +115,10 @@ class ClientMemoryServiceTest {
 
     @Test
     void lookupOfUnknownClientIs404AndBadPhoneIs400() {
-        assertThatThrownBy(() -> service.findForCurrentCompany(PHONE)).isInstanceOf(NotFoundException.class);
-        assertThatThrownBy(() -> service.findForCurrentCompany("not-a-phone")).isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> service.requireByCompanyIdAndPhone(COMPANY, PHONE))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.requireByCompanyIdAndPhone(COMPANY, "not-a-phone"))
+                .isInstanceOf(ValidationException.class);
     }
 
     private ClientMemory savedMemory() {

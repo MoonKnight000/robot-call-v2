@@ -4,11 +4,11 @@
 
 Kompaniya — platformadagi tenant chegarasi (ROADMAP Bosqich B): kampaniya,
 ssenariy, kontakt, DNC, audit va h.k. hammasi `company_id` bilan shu qatorga
-bog'langan. Real per-request kompaniya aniqlash ishlaydi (ROADMAP E.1) —
-JWT bilan kirgan foydalanuvchi uchun `CurrentCompany` uning `app_user.company_id`
-qiymatiga (`JwtCurrentCompanyResolver`) ishora qiladi; faqat ikkita global
-bootstrap `X-Api-Key` uchun `voice-agent.company.default-id`dagi statik
-qiymatga tushadi (`DefaultCompanyResolver`, faqat fallback).
+bog'langan. Kompaniya har bir so'rovda tokendan olinadi: JWT ichidagi
+`app_user.company_id` controller kirishida `@CurrentCompanyId` bilan argumentga
+aylanadi. Tokensiz so'rov uchun default kompaniya **yo'q** — bunday so'rov rad
+etiladi (`NO_USER_SESSION`). `voice-agent.company.default-id` faqat startupdagi
+so'rovsiz ishlar uchun (bootstrap, TTS warmup, simulyatsiya).
 
 **Rol bo'linishi (report #3):** `SUPERADMIN` — platforma xodimi, hech qaysi
 kompaniyaga tegishli emas, faqat tenantlarni boshqaradi (yaratish, ro'yxat,
@@ -153,8 +153,8 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
 {
   "id": 5,
   "companyId": 2,
-  "dialWindowStart": "09:00",
-  "dialWindowEnd": "20:00",
+  "dialWindowStart": "07:00",
+  "dialWindowEnd": "23:00",
   "timezone": "Asia/Tashkent",
   "defaultLanguage": "uz-UZ",
   "supportedLanguages": ["uz-UZ", "ru-RU"],

@@ -13,44 +13,35 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
-import java.time.LocalTime;
 import java.util.List;
 
 @Service
 public class CompanyConfigService implements CompanyConfigUseCase {
 
-    private static final Language DEFAULT_LANGUAGE = Language.UZ_UZ;
-    private static final List<Language> DEFAULT_LANGUAGES = List.of(DEFAULT_LANGUAGE);
-    private static final LocalTime DEFAULT_WINDOW_START = LocalTime.of(9, 0);
-    private static final LocalTime DEFAULT_WINDOW_END = LocalTime.of(20, 0);
-    private static final String DEFAULT_TIMEZONE = "Asia/Tashkent";
-    private static final String DEFAULT_DISCLOSURE_TEXT =
-            "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.";
-
-    private final CompanyConfigRepository repo;
+    private final CompanyConfigRepository companyConfigRepository;
     private final CompanyAccessGuard access;
     private final AuditService audit;
 
-    public CompanyConfigService(CompanyConfigRepository repo, CompanyAccessGuard access, AuditService audit) {
-        this.repo = repo;
+    public CompanyConfigService(CompanyConfigRepository companyConfigRepository, CompanyAccessGuard access,
+                                AuditService audit) {
+        this.companyConfigRepository = companyConfigRepository;
         this.access = access;
         this.audit = audit;
     }
 
     @Override
     public void createDefault(long companyId) {
-        repo.create(companyId, DEFAULT_WINDOW_START, DEFAULT_WINDOW_END, DEFAULT_TIMEZONE,
-                DEFAULT_LANGUAGE, DEFAULT_LANGUAGES, DEFAULT_DISCLOSURE_TEXT);
+        companyConfigRepository.create(companyId, CompanyConfig.defaults());
     }
 
     @Override
     public CompanyConfig find(long companyId) {
-        return repo.find(companyId);
+        return companyConfigRepository.find(companyId);
     }
 
     @Override
     public CompanyConfig requireConfig(long companyId) {
-        CompanyConfig row = repo.find(companyId);
+        CompanyConfig row = companyConfigRepository.find(companyId);
         if (row == null) {
             throw new NotFoundException(ErrorCode.COMPANY_CONFIG_NOT_FOUND, companyId);
         }
@@ -58,22 +49,23 @@ public class CompanyConfigService implements CompanyConfigUseCase {
     }
 
     @Override
-    public CompanyConfig requireConfigForApi(long companyId) {
-        access.requireOwnOrSuperadmin(companyId);
+    public CompanyConfig requireConfigForApi(long callerCompanyId, long companyId) {
+        access.requireOwnOrSuperadmin(callerCompanyId, companyId);
         return requireConfig(companyId);
     }
 
     @Override
-    public CompanyConfig update(long companyId, UpdateCompanyConfigRequest r) {
-        access.requireOwnOrSuperadmin(companyId);
+    public CompanyConfig update(long callerCompanyId, long companyId, UpdateCompanyConfigRequest request) {
+        access.requireOwnOrSuperadmin(callerCompanyId, companyId);
         requireConfig(companyId);
-        CompanyValidator.validateLanguages(r.defaultLanguage(), r.supportedLanguages());
-        CompanyValidator.validateDisclosure(r.disclosureText());
+        CompanyValidator.validateLanguages(request.defaultLanguage(), request.supportedLanguages());
+        CompanyValidator.validateDisclosure(request.disclosureText());
 
-        repo.update(companyId, r.dialWindowStart(), r.dialWindowEnd(), r.timezone(),
-                r.defaultLanguage(), r.supportedLanguages(), r.disclosureText());
-        audit.record("COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
-                codesOf(r.supportedLanguages()).toString());
+        companyConfigRepository.update(companyId, CompanyConfig.settings(
+                request.dialWindowStart(), request.dialWindowEnd(), request.timezone(),
+                request.defaultLanguage(), request.supportedLanguages(), request.disclosureText()));
+        audit.record(companyId, "COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
+                codesOf(request.supportedLanguages()).toString());
         return requireConfig(companyId);
     }
 
@@ -83,12 +75,7 @@ public class CompanyConfigService implements CompanyConfigUseCase {
         if (requested == null || requested.isBlank()) {
             return config.defaultLanguage().code();
         }
-        Language language;
-        try {
-            language = Language.fromCode(requested);
-        } catch (IllegalArgumentException e) {
-            throw new ValidationException(ErrorCode.LANGUAGE_CODE_INVALID, e.getMessage());
-        }
+        Language language = Language.fromCode(requested);
         if (!config.supportedLanguages().contains(language)) {
             throw new ValidationException(ErrorCode.COMPANY_CONFIG_LANGUAGE_NOT_SUPPORTED,
                     requested, codesOf(config.supportedLanguages()));

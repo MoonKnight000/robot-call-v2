@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.scenario.application.port.input;
 import uz.murodjon.robotcallv2.scenario.application.dto.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioValidationResult;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
@@ -12,25 +13,25 @@ import java.util.Map;
 
 public interface ScenarioUseCase {
 
-    ScenarioRow create(CreateScenarioRequest r);
+    ScenarioRow create(long companyId, CreateScenarioRequest request);
 
-    ScenarioRow update(long id, UpdateScenarioRequest r);
+    ScenarioRow update(long companyId, long id, UpdateScenarioRequest request);
 
-    ScenarioRow clone(long id, CloneScenarioRequest r);
+    ScenarioRow clone(long companyId, long id, CloneScenarioRequest request);
 
     ScenarioValidationResult validate(ScenarioDefinition definition);
 
-    PageableData<ScenarioRow> list(ScenarioFilter filter);
+    PageableData<ScenarioRow> list(long companyId, ScenarioFilter filter);
 
-    ScenarioRow scenarioRow(long id);
+    ScenarioRow scenarioRow(long companyId, long id);
 
-    Scenario requireScenario(long id);
+    Scenario requireScenario(long companyId, long id);
 
-    Scenario findById(long id);
+    Scenario findById(long companyId, long id);
 
     Scenario requireScenarioByKey(String scenarioKey);
 
     List<Scenario> findAllActiveForWarmup();
 
-    Map<Long, String> scenarioNamesByIds(Collection<Long> ids);
+    Map<Long, String> scenarioNamesByIds(long companyId, Collection<Long> ids);
 }

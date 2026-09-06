@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.integration.application.dto.AuthorizeUrlResponse;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmCatalogEntry;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -24,20 +25,21 @@ public interface IntegrationController {
 
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping
-    ResponseEntity<ResponseData<CrmIntegrationRow>> get();
+    ResponseEntity<ResponseData<CrmIntegrationRow>> get(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @PutMapping("/uysot")
-    ResponseEntity<ResponseData<CrmIntegrationRow>> connect(@Valid @RequestBody ConnectIntegrationRequest r);
+    ResponseEntity<ResponseData<CrmIntegrationRow>> connect(@CurrentCompanyId long companyId,
+            @Valid @RequestBody ConnectIntegrationRequest request);
 
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/uysot/authorize-url")
-    ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl();
+    ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl(@CurrentCompanyId long companyId);
 
     @GetMapping("/uysot/callback")
     ResponseEntity<ResponseData<Void>> callback(@RequestParam String code, @RequestParam String state);
 
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @DeleteMapping("/uysot")
-    ResponseEntity<ResponseData<Void>> disconnect();
+    ResponseEntity<ResponseData<Void>> disconnect(@CurrentCompanyId long companyId);
 }

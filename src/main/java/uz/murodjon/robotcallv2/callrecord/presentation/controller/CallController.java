@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import uz.murodjon.robotcallv2.callrecord.application.dto.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -31,6 +32,7 @@ public interface CallController {
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping
     ResponseEntity<ResponseData<CallOriginateResponse>> call(
+            @CurrentCompanyId long companyId,
             @RequestParam String number,
             @RequestParam(required = false) Long scenarioId,
             @RequestParam(required = false) Long sipTrunkId);
@@ -42,6 +44,7 @@ public interface CallController {
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping("/test")
     ResponseEntity<ResponseData<CallOriginateResponse>> testCall(
+            @CurrentCompanyId long companyId,
             @RequestParam String number,
             @RequestParam(required = false) Long sipTrunkId,
             @RequestBody ScenarioDefinition definition);
@@ -53,7 +56,7 @@ public interface CallController {
      */
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping("/web-test")
-    ResponseEntity<ResponseData<WebTestCallResponse>> webTest(@RequestBody WebTestCallRequest request);
+    ResponseEntity<ResponseData<WebTestCallResponse>> webTest(@CurrentCompanyId long companyId, @RequestBody WebTestCallRequest request);
 
     @PreAuthorize("hasAuthority('LIVE_EDIT')")
     @PostMapping("/{channelId}/play")
@@ -74,17 +77,17 @@ public interface CallController {
     /** "Tugatish" (§10.3) — force-end a live channel. */
     @PreAuthorize("hasAuthority('LIVE_EDIT')")
     @PostMapping("/{channelId}/hangup")
-    ResponseEntity<ResponseData<HangupResponse>> hangup(@PathVariable String channelId);
+    ResponseEntity<ResponseData<HangupResponse>> hangup(@CurrentCompanyId long companyId, @PathVariable String channelId);
 
     /** "Operatorga uzatish" (§10.3, §11.6) — bridge a live channel to a human operator. */
     @PreAuthorize("hasAuthority('LIVE_EDIT')")
     @PostMapping("/{channelId}/transfer")
-    ResponseEntity<ResponseData<TransferResponse>> transfer(@PathVariable String channelId);
+    ResponseEntity<ResponseData<TransferResponse>> transfer(@CurrentCompanyId long companyId, @PathVariable String channelId);
 
     /**
      * "Tinglash" (§10.3) — join a live channel as a listener.
      */
     @PreAuthorize("hasAuthority('LIVE_READ')")
     @GetMapping(value = "/{channelId}/listen", produces = "audio/wav")
-    ResponseEntity<StreamingResponseBody> listen(@PathVariable String channelId);
+    ResponseEntity<StreamingResponseBody> listen(@CurrentCompanyId long companyId, @PathVariable String channelId);
 }

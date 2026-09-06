@@ -3,67 +3,65 @@ package uz.murodjon.robotcallv2.auth.presentation.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.auth.application.dto.*;
-import uz.murodjon.robotcallv2.auth.application.service.AuthService;
+import uz.murodjon.robotcallv2.auth.application.port.input.AuthUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
 import java.util.List;
 
 @RestController
 public class AuthControllerImpl implements AuthController {
 
-    private final AuthService service;
+    private final AuthUseCase authUseCase;
 
-    public AuthControllerImpl(AuthService service) {
-        this.service = service;
+    public AuthControllerImpl(AuthUseCase authUseCase) {
+        this.authUseCase = authUseCase;
     }
 
     @Override
-    public ResponseEntity<ResponseData<LoginResponse>> login(LoginRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(service.login(r)));
+    public ResponseEntity<ResponseData<LoginResponse>> login(LoginRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.login(request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<LoginResponse>> activate(ActivateRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(service.activate(r)));
+    public ResponseEntity<ResponseData<LoginResponse>> activate(ActivateRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.activate(request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> forgotPassword(ForgotPasswordRequest r) {
-        service.forgotPassword(r);
+    public ResponseEntity<ResponseData<Void>> forgotPassword(ForgotPasswordRequest request) {
+        authUseCase.forgotPassword(request);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 
     @Override
-    public ResponseEntity<ResponseData<LoginResponse>> resetPassword(ResetPasswordRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(service.resetPassword(r)));
+    public ResponseEntity<ResponseData<LoginResponse>> resetPassword(ResetPasswordRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.resetPassword(request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<LoginResponse>> refresh(RefreshTokenRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(service.refresh(r)));
+    public ResponseEntity<ResponseData<LoginResponse>> refresh(RefreshTokenRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.refresh(request)));
     }
 
     @Override
     public ResponseEntity<ResponseData<Void>> logout() {
-        service.logout();
+        authUseCase.logout();
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 
     @Override
-    public ResponseEntity<ResponseData<CurrentUserResponse>> me() {
-        return ResponseEntity.ok(ResponseData.ok(service.me()));
+    public ResponseEntity<ResponseData<CurrentUserResponse>> me(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.me(companyId)));
     }
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> uysotCallback() {
-        throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_LOGIN_NOT_AVAILABLE, "uysot-oauth");
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.loginWithUysotCallback()));
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<Company>>> companies() {
-        return ResponseEntity.ok(ResponseData.ok(service.myCompanies()));
+    public ResponseEntity<ResponseData<List<Company>>> companies(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.findMyCompanies(companyId)));
     }
 }

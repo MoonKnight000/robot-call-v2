@@ -11,15 +11,15 @@ import java.util.List;
 
 public interface ProfileUseCase {
 
-    Profile find();
+    Profile find(long companyId);
 
-    Profile update(UpdateProfileRequest r);
+    Profile update(long companyId, UpdateProfileRequest request);
 
-    Profile uploadAvatar(MultipartFile file);
+    Profile uploadAvatar(long companyId, MultipartFile file);
 
-    void changePassword(ChangePasswordRequest r);
+    void changePassword(long companyId, ChangePasswordRequest request);
 
-    List<String> updateCallColumns(UpdateCallColumnsRequest r);
+    List<String> updateCallColumns(long companyId, UpdateCallColumnsRequest request);
 
-    TodayStats todayStats();
+    TodayStats todayStats(long companyId);
 }

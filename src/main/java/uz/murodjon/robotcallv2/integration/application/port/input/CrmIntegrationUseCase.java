@@ -12,15 +12,15 @@ public interface CrmIntegrationUseCase {
 
     List<CrmCatalogEntry> catalog();
 
-    CrmIntegrationRow find();
+    CrmIntegrationRow findByCompanyId(long companyId);
 
-    CrmIntegrationRow connect(ConnectIntegrationRequest r);
+    CrmIntegrationRow connect(long companyId, ConnectIntegrationRequest request);
 
-    AuthorizeUrlResponse buildAuthorizeUrl();
+    AuthorizeUrlResponse buildAuthorizeUrl(long companyId);
 
     void handleCallback(String code, String state);
 
     Optional<String> currentAccessToken(long companyId);
 
-    void disconnect();
+    void disconnect(long companyId);
 }

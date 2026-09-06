@@ -88,7 +88,7 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      # /actuator/health stays reachable without a key (orchestrator probes), but the
+      # /actuator/health stays reachable without a token (orchestrator probes), but the
       # component breakdown — DB/Redis/Rabbit hosts and state — only for authenticated callers.
       show-details: when-authorized
   metrics:

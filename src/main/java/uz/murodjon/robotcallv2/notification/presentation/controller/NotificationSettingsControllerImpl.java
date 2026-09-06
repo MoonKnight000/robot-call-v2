@@ -18,12 +18,14 @@ public class NotificationSettingsControllerImpl implements NotificationSettingsC
     }
 
     @Override
-    public ResponseEntity<ResponseData<NotificationSettings>> get() {
-        return ResponseEntity.ok(ResponseData.ok(notificationSettingsUseCase.find()));
+    public ResponseEntity<ResponseData<NotificationSettings>> get(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(notificationSettingsUseCase.findByCompanyId(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<NotificationSettings>> update(UpdateNotificationSettingsRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(notificationSettingsUseCase.update(r)));
+    public ResponseEntity<ResponseData<NotificationSettings>> update(long companyId,
+                                                                      UpdateNotificationSettingsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(
+                notificationSettingsUseCase.updateByCompanyId(companyId, request)));
     }
 }

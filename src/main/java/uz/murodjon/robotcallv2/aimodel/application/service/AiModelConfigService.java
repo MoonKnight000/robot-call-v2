@@ -10,7 +10,6 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.domain.service.AiModelConfigValidator;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 
 /**
  * Per-company AI model overrides (§11 settings).
@@ -21,29 +20,27 @@ public class AiModelConfigService implements AiModelConfigUseCase {
     private final AiModelConfigRepository repository;
     private final AuditService auditService;
     private final DialogProperties dialogProperties;
-    private final CurrentCompany currentCompany;
 
     public AiModelConfigService(AiModelConfigRepository repository, AuditService auditService,
-                                DialogProperties dialogProperties, CurrentCompany currentCompany) {
+                                DialogProperties dialogProperties) {
         this.repository = repository;
         this.auditService = auditService;
         this.dialogProperties = dialogProperties;
-        this.currentCompany = currentCompany;
     }
 
     @Override
-    public AiModelConfig findForCurrentCompany() {
-        return repository.findByCompanyId(currentCompany.id());
+    public AiModelConfig findByCompanyId(long companyId) {
+        return repository.findByCompanyId(companyId);
     }
 
     @Override
-    public AiModelConfig updateForCurrentCompany(UpdateAiModelConfigRequest request) {
+    public AiModelConfig updateByCompanyId(long companyId, UpdateAiModelConfigRequest request) {
         AiModelConfigValidator.validate(request.temperature(), request.maxOutputTokens(),
                 request.maxCallSeconds(), request.maxTokensPerCall());
-        AiModelConfig saved = repository.upsert(currentCompany.id(),
+        AiModelConfig saved = repository.upsert(companyId,
                 AiModelConfig.overrides(request.model(), request.temperature(), request.maxOutputTokens(),
                         request.maxCallSeconds(), request.maxTokensPerCall()));
-        auditService.record("AI_MODEL_CONFIG_UPDATE", "ai_model_config",
+        auditService.record(companyId, "AI_MODEL_CONFIG_UPDATE", "ai_model_config",
                 String.valueOf(saved.companyId()), request.model());
         return saved;
     }

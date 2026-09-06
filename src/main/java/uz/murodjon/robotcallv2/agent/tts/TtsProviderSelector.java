@@ -23,11 +23,11 @@ public class TtsProviderSelector {
     private final Map<String, TtsProvider> byName = new LinkedHashMap<>();
     private final TtsProvider defaultProvider;
 
-    public TtsProviderSelector(List<TtsProvider> providers, TtsProperties props) {
+    public TtsProviderSelector(List<TtsProvider> providers, TtsProperties ttsProperties) {
         for (TtsProvider provider : providers) {
             byName.put(provider.name().toLowerCase(), provider);
         }
-        this.defaultProvider = choose(providers, props.provider());
+        this.defaultProvider = choose(providers, ttsProperties.provider());
     }
 
     private static TtsProvider choose(List<TtsProvider> providers, String configured) {

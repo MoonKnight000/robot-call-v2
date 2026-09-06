@@ -45,16 +45,16 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
     private static final int INPUT_RATE = 16000;
     private static final int OUTPUT_RATE = 24000;
 
-    private final RealtimeProperties props;
+    private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public QwenOmniRealtimeProvider(RealtimeProperties props) {
-        this.props = props;
+    public QwenOmniRealtimeProvider(RealtimeProperties realtimeProperties) {
+        this.realtimeProperties = realtimeProperties;
     }
 
     @PostConstruct
     public void init() {
-        QwenOmniRealtimeProperties q = props.qwenOmni();
+        QwenOmniRealtimeProperties q = realtimeProperties.qwenOmni();
         if (q == null || q.apiKey() == null || q.apiKey().isBlank()) {
             return;
         }
@@ -88,7 +88,7 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
     @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
-        QwenOmniRealtimeProperties q = props.qwenOmni();
+        QwenOmniRealtimeProperties q = realtimeProperties.qwenOmni();
         if (current == null || q == null) {
             throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "qwen-omni", "not initialized");
         }

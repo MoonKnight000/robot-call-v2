@@ -25,26 +25,26 @@ public class UserBootstrap {
 
     private final UserRepository users;
     private final RoleUseCase roleUseCase;
-    private final CompanyProperties companyProps;
-    private final UserBootstrapProperties props;
+    private final CompanyProperties companyProperties;
+    private final UserBootstrapProperties userBootstrapProperties;
     private final PasswordEncoder passwordEncoder;
 
-    public UserBootstrap(UserRepository users, RoleUseCase roleUseCase, CompanyProperties companyProps,
-                         UserBootstrapProperties props, PasswordEncoder passwordEncoder) {
+    public UserBootstrap(UserRepository users, RoleUseCase roleUseCase, CompanyProperties companyProperties,
+                         UserBootstrapProperties userBootstrapProperties, PasswordEncoder passwordEncoder) {
         this.users = users;
         this.roleUseCase = roleUseCase;
-        this.companyProps = companyProps;
-        this.props = props;
+        this.companyProperties = companyProperties;
+        this.userBootstrapProperties = userBootstrapProperties;
         this.passwordEncoder = passwordEncoder;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void seedFirstAdmin() {
-        long companyId = companyProps.defaultId();
+        long companyId = companyProperties.defaultId();
         if (users.hasAnyUser(companyId)) {
             return;
         }
-        if (!props.configured()) {
+        if (!userBootstrapProperties.configured()) {
             log.warn("No app_user rows and voice-agent.user.bootstrap-admin-email/-password are "
                     + "blank — nobody can log in until one is created directly in the database "
                     + "or the bootstrap properties are set and the app restarted.");
@@ -56,11 +56,11 @@ public class UserBootstrap {
                     + "should have created it)", companyId, SystemRole.ADMIN);
             return;
         }
-        String name = props.bootstrapAdminName() == null || props.bootstrapAdminName().isBlank()
-                ? "Admin" : props.bootstrapAdminName();
-        long id = users.createForCompany(companyId, name, props.bootstrapAdminUsername(),
-                props.bootstrapAdminEmail(), passwordEncoder.encode(props.bootstrapAdminPassword()),
+        String name = userBootstrapProperties.bootstrapAdminName() == null || userBootstrapProperties.bootstrapAdminName().isBlank()
+                ? "Admin" : userBootstrapProperties.bootstrapAdminName();
+        long id = users.create(companyId, name, userBootstrapProperties.bootstrapAdminUsername(),
+                userBootstrapProperties.bootstrapAdminEmail(), passwordEncoder.encode(userBootstrapProperties.bootstrapAdminPassword()),
                 adminRole.id(), UserStatus.ACTIVE);
-        log.info("Seeded first admin user {} ({}) for company {}", id, props.bootstrapAdminEmail(), companyId);
+        log.info("Seeded first admin user {} ({}) for company {}", id, userBootstrapProperties.bootstrapAdminEmail(), companyId);
     }
 }

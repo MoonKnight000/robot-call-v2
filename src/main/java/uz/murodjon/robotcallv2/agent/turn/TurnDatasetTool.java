@@ -237,10 +237,10 @@ public final class TurnDatasetTool {
      * fire again a few windows later, and the runs would come back shredded.
      */
     private static List<Run> speechRuns(short[] pcm, String channelId, Settings settings) {
-        VadProperties props = new VadProperties(true, settings.vadModel, CALL_RATE,
+        VadProperties vadProperties = new VadProperties(true, settings.vadModel, CALL_RATE,
                 settings.windowSamples, settings.vadThreshold, settings.vadMinSpeechMs,
                 settings.vadSilenceResetMs, null, 0.35f, 150.0, 2.5);
-        SileroVad vad = new SileroVad(props);
+        SileroVad vad = new SileroVad(vadProperties);
         vad.init();
         if (!vad.available()) {
             System.err.println("VAD model could not be loaded: " + settings.vadModel);
@@ -250,7 +250,7 @@ public final class TurnDatasetTool {
         List<Long> onsets = new ArrayList<>();
         List<Long> ends = new ArrayList<>();
         long[] clock = {0};
-        VadStream stream = new VadStream(vad, props, channelId,
+        VadStream stream = new VadStream(vad, vadProperties, channelId,
                 () -> {
                     // Confirmed only after minSpeechMs of speech, so the sound itself
                     // started that much earlier — and that is where the clip's audio has

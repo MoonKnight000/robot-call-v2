@@ -48,29 +48,29 @@ public class CrmClient {
      */
     private static final Duration WRITE_TIMEOUT = Duration.ofSeconds(10);
 
-    private final CrmProperties props;
+    private final CrmProperties crmProperties;
     private final CrmIntegrationService integrations;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .build();
 
-    public CrmClient(CrmProperties props, CrmIntegrationService integrations) {
-        this.props = props;
+    public CrmClient(CrmProperties crmProperties, CrmIntegrationService integrations) {
+        this.crmProperties = crmProperties;
         this.integrations = integrations;
     }
 
     public boolean enabled() {
-        return props.enabled() && props.baseUrl() != null && !props.baseUrl().isBlank();
+        return crmProperties.enabled() && crmProperties.baseUrl() != null && !crmProperties.baseUrl().isBlank();
     }
 
     public CrmClientSnapshot fetchClient(long companyId, Long clientId) {
         if (!enabled() || clientId == null || clientId == 0
-                || props.clientPath() == null || props.clientPath().isBlank()) {
+                || crmProperties.clientPath() == null || crmProperties.clientPath().isBlank()) {
             return null;
         }
         try {
-            String path = props.clientPath().replace("{id}", String.valueOf(clientId));
+            String path = crmProperties.clientPath().replace("{id}", String.valueOf(clientId));
             HttpRequest.Builder req = HttpRequest.newBuilder()
                     .uri(URI.create(resolve(path)))
                     .timeout(LOOKUP_TIMEOUT)
@@ -94,11 +94,11 @@ public class CrmClient {
 
     public CrmClientSnapshot findByPhone(long companyId, String phone) {
         if (!enabled() || phone == null || phone.isBlank()
-                || props.clientByPhonePath() == null || props.clientByPhonePath().isBlank()) {
+                || crmProperties.clientByPhonePath() == null || crmProperties.clientByPhonePath().isBlank()) {
             return null;
         }
         try {
-            String path = props.clientByPhonePath().replace("{phone}", phone);
+            String path = crmProperties.clientByPhonePath().replace("{phone}", phone);
             HttpRequest.Builder req = HttpRequest.newBuilder()
                     .uri(URI.create(resolve(path)))
                     .timeout(LOOKUP_TIMEOUT)
@@ -160,8 +160,8 @@ public class CrmClient {
                 body.set("details", mapper.valueToTree(summary.outcome()));
             }
 
-            String path = props.notePath() != null
-                    ? props.notePath().replace("{id}", String.valueOf(clientId))
+            String path = crmProperties.notePath() != null
+                    ? crmProperties.notePath().replace("{id}", String.valueOf(clientId))
                     : "v1/open-api/lead/" + clientId + "/note";
 
             HttpRequest.Builder req = HttpRequest.newBuilder()
@@ -189,7 +189,7 @@ public class CrmClient {
 
     public boolean postCallHistory(long companyId, String phone, String callDirection,
                                    int durationSeconds, String disposition, String recordingUrl) {
-        if (!enabled() || props.callHistoryPath() == null || props.callHistoryPath().isBlank()) {
+        if (!enabled() || crmProperties.callHistoryPath() == null || crmProperties.callHistoryPath().isBlank()) {
             return false;
         }
         try {
@@ -202,7 +202,7 @@ public class CrmClient {
                 body.put("recordUrl", recordingUrl);
             }
             HttpRequest.Builder req = HttpRequest.newBuilder()
-                    .uri(URI.create(resolve(props.callHistoryPath())))
+                    .uri(URI.create(resolve(crmProperties.callHistoryPath())))
                     .timeout(WRITE_TIMEOUT)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));
@@ -224,7 +224,7 @@ public class CrmClient {
     }
 
     private String resolve(String path) {
-        String base = props.baseUrl().endsWith("/") ? props.baseUrl() : props.baseUrl() + "/";
+        String base = crmProperties.baseUrl().endsWith("/") ? crmProperties.baseUrl() : crmProperties.baseUrl() + "/";
         return base + (path.startsWith("/") ? path.substring(1) : path);
     }
 
@@ -233,8 +233,8 @@ public class CrmClient {
         if (connected.isPresent()) {
             return connected;
         }
-        return props.apiToken() != null && !props.apiToken().isBlank()
-                ? Optional.of(props.apiToken())
+        return crmProperties.apiToken() != null && !crmProperties.apiToken().isBlank()
+                ? Optional.of(crmProperties.apiToken())
                 : Optional.empty();
     }
 }

@@ -11,7 +11,7 @@ import java.time.Instant;
  * @param periodicity how often ({@link ReportPeriodicity#span()} is both the interval
  *                    and the window the attached report covers)
  * @param format      {@code csv}, {@code pdf}, or {@code xlsx} ({@link
- *                    uz.murodjon.robotcallv2.report.controller.ReportExportFactory})
+ *                    uz.murodjon.robotcallv2.report.application.service.ReportExportService})
  * @param campaignId  narrows the report to one campaign, or null for every campaign
  * @param enabled     paused schedules are skipped by the dispatch sweep, never deleted
  * @param lastSentAt  when the last email actually went out, or null if never

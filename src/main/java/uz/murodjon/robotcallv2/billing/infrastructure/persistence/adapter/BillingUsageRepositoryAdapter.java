@@ -14,20 +14,20 @@ import java.util.Optional;
 @Component
 public class BillingUsageRepositoryAdapter implements BillingUsageRepository {
 
-    private final BillingUsageJpaRepository jpa;
+    private final BillingUsageJpaRepository jpaRepository;
 
-    public BillingUsageRepositoryAdapter(BillingUsageJpaRepository jpa) {
-        this.jpa = jpa;
+    public BillingUsageRepositoryAdapter(BillingUsageJpaRepository jpaRepository) {
+        this.jpaRepository = jpaRepository;
     }
 
     @Override
     public Optional<BillingUsage> findByCompanyIdAndPeriod(long companyId, String billingPeriod) {
-        return jpa.findByCompanyIdAndBillingPeriod(companyId, billingPeriod).map(BillingUsageEntity::toDomain);
+        return jpaRepository.findByCompanyIdAndBillingPeriod(companyId, billingPeriod).map(BillingUsageEntity::toDomain);
     }
 
     @Override
     public List<BillingUsage> findRecentByCompanyId(long companyId, int limit) {
-        List<BillingUsageEntity> list = jpa.findRecentByCompanyId(companyId, PageRequest.of(0, limit));
+        List<BillingUsageEntity> list = jpaRepository.findRecentByCompanyId(companyId, PageRequest.of(0, limit));
         // Reverse so that list is chronological (oldest to newest)
         List<BillingUsage> result = new java.util.ArrayList<>(list.stream().map(BillingUsageEntity::toDomain).toList());
         Collections.reverse(result);
@@ -37,6 +37,6 @@ public class BillingUsageRepositoryAdapter implements BillingUsageRepository {
     @Override
     public BillingUsage save(BillingUsage usage) {
         BillingUsageEntity entity = BillingUsageEntity.fromDomain(usage);
-        return jpa.save(entity).toDomain();
+        return jpaRepository.save(entity).toDomain();
     }
 }

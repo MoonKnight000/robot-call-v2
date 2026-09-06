@@ -4,7 +4,7 @@ import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
 
 public interface SmsUseCase {
 
-    boolean sendSms(SmsSendRequest req);
+    boolean sendSms(long companyId, SmsSendRequest request);
 
     boolean isEnabled();
 }

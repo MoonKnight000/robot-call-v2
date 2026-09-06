@@ -214,5 +214,6 @@ so'rovda `401` olib, qayta login qiladilar.
 `/api/auth/me`, `/api/auth/logout`, `/api/profile/**`, `/api/notifications/**`,
 `/api/files/**`, `/api/search`, `/api/tts/voices` katalogi.
 
-**M2M kalitlar:** `X-Api-Key` (to'liq) barcha kompaniya permissionlarini oladi,
-`read-api-key` esa faqat `*_READ` larni. Ikkalasi ham `PLATFORM_ADMIN` ni **olmaydi**.
+**M2M kirish:** alohida kalit yo'q — tashqi xizmat ham oddiy foydalanuvchi sifatida
+`POST /api/auth/login` orqali kiradi va o'ziga berilgan rol permissionlarini oladi.
+Faqat o'qish kerak bo'lsa — `VIEWER` roli.

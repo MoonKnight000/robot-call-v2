@@ -24,7 +24,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.dialer.domain.service.RetrySchedule;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
@@ -60,8 +59,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     private final AiAgentUseCase aiAgents;
     private final UserService users;
     private final CompanyConfigService companyConfig;
-    private final CurrentCompany currentCompany;
-    private final DialerProperties dialerProps;
+    private final DialerProperties dialerProperties;
     private final AuditService audit;
     private final NotificationService notifications;
     private final TtsWarmup ttsWarmup;
@@ -72,8 +70,8 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
 
     public CampaignService(CampaignRepository campaigns, CampaignTargetRepository targets,
                            DoNotCallRepository doNotCallList, AiAgentUseCase aiAgents,
-                           UserService users, CompanyConfigService companyConfig, CurrentCompany currentCompany,
-                           DialerProperties dialerProps, AuditService audit, NotificationService notifications,
+                           UserService users, CompanyConfigService companyConfig,
+                           DialerProperties dialerProperties, AuditService audit, NotificationService notifications,
                            TtsWarmup ttsWarmup, TargetSourceRepository targetSources,
                            TargetApiImporter targetApiImporter, SecretCipher secretCipher, Clock clock
     ) {
@@ -83,8 +81,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         this.aiAgents = aiAgents;
         this.users = users;
         this.companyConfig = companyConfig;
-        this.currentCompany = currentCompany;
-        this.dialerProps = dialerProps;
+        this.dialerProperties = dialerProperties;
         this.audit = audit;
         this.notifications = notifications;
         this.ttsWarmup = ttsWarmup;
@@ -98,8 +95,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
             DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY);
 
     @Override
-    public CreateCampaignResponse createCampaign(CreateCampaignRequest r) {
-        long companyId = currentCompany.id();
+    public CreateCampaignResponse createCampaign(long companyId, CreateCampaignRequest r) {
         AiAgent agent = aiAgents.requireAgent(companyId, r.aiAgentId());
         int dailyCallCap = Math.max(0, r.dailyCallCap());
         LocalTime dialWindowStart = r.dialWindowStart() != null ? r.dialWindowStart() : LocalTime.of(9, 0);
@@ -125,16 +121,16 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 r.cronExpression(),
                 r.autoResetTargetsOrDefault(),
                 null);
-        long id = campaigns.create(row);
-        audit.record("CAMPAIGN_CREATE", "campaign", String.valueOf(id),
+        long id = campaigns.create(companyId, row);
+        audit.record(companyId, "CAMPAIGN_CREATE", "campaign", String.valueOf(id),
                 r.name() + " (agent " + agent.name() + ", cap/day=" + dailyCallCap
                         + ", recurrence=" + r.recurrenceTypeOrDefault() + ")");
         return new CreateCampaignResponse(id, CampaignStatus.DRAFT);
     }
 
     @Override
-    public CampaignRow updateCampaign(long id, UpdateCampaignRequest r) {
-        Campaign existing = requireCampaign(id);
+    public CampaignRow updateCampaign(long companyId, long id, UpdateCampaignRequest r) {
+        Campaign existing = requireCampaign(companyId, id);
         AiAgent agent = aiAgents.requireAgent(existing.companyId(), r.aiAgentId());
         requireWindowWithinCompany(existing.companyId(), r.dialWindowStart(), r.dialWindowEnd());
         Campaign row = new Campaign(
@@ -157,14 +153,14 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 r.cronExpression(),
                 r.autoResetTargetsOrDefault(),
                 existing.lastRunAt());
-        campaigns.update(id, row);
-        audit.record("CAMPAIGN_UPDATE", "campaign", String.valueOf(id), r.name());
-        return campaignRow(id);
+        campaigns.update(companyId, id, row);
+        audit.record(companyId, "CAMPAIGN_UPDATE", "campaign", String.valueOf(id), r.name());
+        return campaignRow(companyId, id);
     }
 
     @Override
-    public CampaignRow clone(long id) {
-        Campaign source = requireCampaign(id);
+    public CampaignRow clone(long companyId, long id) {
+        Campaign source = requireCampaign(companyId, id);
         Campaign row = new Campaign(
                 0,
                 source.name() + " (nusxa)",
@@ -185,9 +181,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 source.cronExpression(),
                 source.autoResetTargets(),
                 null);
-        long newId = campaigns.create(row);
-        audit.record("CAMPAIGN_CLONE", "campaign", String.valueOf(newId), "from " + id);
-        return campaignRow(newId);
+        long newId = campaigns.create(companyId, row);
+        audit.record(companyId, "CAMPAIGN_CLONE", "campaign", String.valueOf(newId), "from " + id);
+        return campaignRow(companyId, newId);
     }
 
     private void requireWindowWithinCompany(long companyId, LocalTime start, LocalTime end) {
@@ -205,33 +201,35 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public long addTarget(long campaignId, long clientId, String phone, String language, JsonNode contextData) {
+    public long addTarget(long companyId, long campaignId, long clientId, String phone, String language,
+                          JsonNode contextData) {
         String json = contextData != null && !contextData.isNull() ? contextData.toString() : "{}";
-        return targets.add(campaignId, clientId, PhoneNumbers.require(phone), language, json);
+        return targets.add(companyId,
+                CampaignTarget.queued(campaignId, clientId, PhoneNumbers.require(phone), language, json));
     }
 
     @Override
-    public AddTargetsResponse addTargets(long campaignId, List<AddTargetRequest> requests) {
+    public AddTargetsResponse addTargets(long companyId, long campaignId, List<AddTargetRequest> requests) {
         List<Long> ids = requests.stream()
-                .map(t -> addTarget(campaignId, t.clientId(), t.phone(), t.language(), t.contextData()))
+                .map(t -> addTarget(companyId, campaignId, t.clientId(), t.phone(), t.language(), t.contextData()))
                 .toList();
         return new AddTargetsResponse(campaignId, ids.size(), ids);
     }
 
     @Override
-    public TargetImportResult importTargetsCsv(long campaignId, String csv) {
+    public TargetImportResult importTargetsCsv(long companyId, long campaignId, String csv) {
         TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
         List<Long> added = new ArrayList<>();
         List<CsvRowError> errors = new ArrayList<>(parsed.errors());
         for (ParsedTarget t : parsed.targets()) {
             try {
-                added.add(targets.add(campaignId, t.clientId(), PhoneNumbers.require(t.phone()),
-                        t.language(), t.contextJson()));
+                added.add(targets.add(companyId, CampaignTarget.queued(campaignId, t.clientId(),
+                        PhoneNumbers.require(t.phone()), t.language(), t.contextJson())));
             } catch (Exception e) {
                 errors.add(new CsvRowError(t.line(), e.getMessage()));
             }
         }
-        audit.record("TARGETS_IMPORT", "campaign", String.valueOf(campaignId),
+        audit.record(companyId, "TARGETS_IMPORT", "campaign", String.valueOf(campaignId),
                 added.size() + " added, " + errors.size() + " rejected");
         log.info("CSV import into campaign {}: {} added, {} rejected, unknown columns {}",
                 campaignId, added.size(), errors.size(), parsed.unknownColumns());
@@ -239,8 +237,8 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public TargetCsvPreview previewTargetsCsv(long campaignId, String csv) {
-        requireCampaign(campaignId);
+    public TargetCsvPreview previewTargetsCsv(long companyId, long campaignId, String csv) {
+        requireCampaign(companyId, campaignId);
         List<CsvColumnMapping> columns = TargetCsvImporter.mapColumns(csv);
         TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
         List<ParsedTarget> sample = parsed.targets().stream().limit(10).toList();
@@ -248,15 +246,15 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public TargetSourceRow findTargetSource(long campaignId) {
-        requireCampaign(campaignId);
+    public TargetSourceRow findTargetSource(long companyId, long campaignId) {
+        requireCampaign(companyId, campaignId);
         TargetSource source = targetSources.findByCampaignId(campaignId);
         return source != null ? TargetSourceRow.of(source) : null;
     }
 
     @Override
-    public TargetSourceRow updateTargetSource(long campaignId, UpdateTargetSourceRequest r) {
-        requireCampaign(campaignId);
+    public TargetSourceRow updateTargetSource(long companyId, long campaignId, UpdateTargetSourceRequest r) {
+        requireCampaign(companyId, campaignId);
         TargetSource existing = targetSources.findByCampaignId(campaignId);
         // Omitted on an edit means "keep the secret you already have" — the API never
         // hands it back out, so a client re-saving the form has nothing to send back.
@@ -280,25 +278,25 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 existing != null ? existing.lastSyncAt() : null,
                 existing != null ? existing.lastSyncAdded() : null,
                 existing != null ? existing.lastSyncError() : null));
-        audit.record("TARGET_SOURCE_UPDATE", "campaign", String.valueOf(campaignId), saved.url());
+        audit.record(companyId, "TARGET_SOURCE_UPDATE", "campaign", String.valueOf(campaignId), saved.url());
         return TargetSourceRow.of(saved);
     }
 
     @Override
-    public void deleteTargetSource(long campaignId) {
-        requireCampaign(campaignId);
+    public void deleteTargetSource(long companyId, long campaignId) {
+        requireCampaign(companyId, campaignId);
         targetSources.delete(campaignId);
-        audit.record("TARGET_SOURCE_DELETE", "campaign", String.valueOf(campaignId), null);
+        audit.record(companyId, "TARGET_SOURCE_DELETE", "campaign", String.valueOf(campaignId), null);
     }
 
     @Override
-    public TargetSyncResult syncTargetsFromSource(long campaignId) {
-        requireCampaign(campaignId);
+    public TargetSyncResult syncTargetsFromSource(long companyId, long campaignId) {
+        requireCampaign(companyId, campaignId);
         TargetSource source = targetSources.findByCampaignId(campaignId);
         if (source == null) {
             throw new NotFoundException(ErrorCode.TARGET_SOURCE_NOT_FOUND, campaignId);
         }
-        return importFromSource(source);
+        return importFromSource(companyId, source);
     }
 
     /**
@@ -306,7 +304,7 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
      *         endpoint could not be read — deliberately not swallowed, so a manual sync
      *         says what went wrong and leaves the existing list untouched
      */
-    private TargetSyncResult importFromSource(TargetSource source) {
+    private TargetSyncResult importFromSource(long companyId, TargetSource source) {
         long campaignId = source.campaignId();
         List<CsvRowError> errors = new ArrayList<>();
         List<ParsedTarget> fetched;
@@ -318,18 +316,18 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         }
         // Only once the endpoint has answered: clearing first would empty the campaign on
         // every failed fetch, and a campaign with no targets dials nobody all day.
-        int removed = source.replaceTargets() ? targets.deleteByCampaignId(campaignId) : 0;
+        int removed = source.replaceTargets() ? targets.deleteByCampaignId(companyId, campaignId) : 0;
         List<Long> added = new ArrayList<>();
         for (ParsedTarget t : fetched) {
             try {
-                added.add(targets.add(campaignId, t.clientId(), PhoneNumbers.require(t.phone()),
-                        t.language(), t.contextJson()));
+                added.add(targets.add(companyId, CampaignTarget.queued(campaignId, t.clientId(),
+                        PhoneNumbers.require(t.phone()), t.language(), t.contextJson())));
             } catch (Exception e) {
                 errors.add(new CsvRowError(t.line(), e.getMessage()));
             }
         }
         targetSources.recordSync(campaignId, Instant.now(clock), added.size(), null);
-        audit.record("TARGETS_SYNC", "campaign", String.valueOf(campaignId),
+        audit.record(companyId, "TARGETS_SYNC", "campaign", String.valueOf(campaignId),
                 added.size() + " added, " + removed + " removed, " + errors.size() + " rejected");
         log.info("Target source sync for campaign {}: {} fetched, {} added, {} removed, {} rejected",
                 campaignId, fetched.size(), added.size(), removed, errors.size());
@@ -351,23 +349,23 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public PageableData<CampaignRow> filterCampaigns(CampaignFilter filter) {
-        List<Campaign> rows = campaigns.findAll(filter);
-        long total = campaigns.count(filter);
-        return PageableData.of(toRows(rows), filter.pageOrDefault(), filter.sizeOrDefault(), total);
+    public PageableData<CampaignRow> filterCampaigns(long companyId, CampaignFilter filter) {
+        List<Campaign> rows = campaigns.findAll(companyId, filter);
+        long total = campaigns.count(companyId, filter);
+        return PageableData.of(toRows(companyId, rows), filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     @Override
-    public PageableData<CampaignRow> listCampaigns(CampaignFilter filter) {
-        return filterCampaigns(filter);
+    public PageableData<CampaignRow> listCampaigns(long companyId, CampaignFilter filter) {
+        return filterCampaigns(companyId, filter);
     }
 
-    private List<CampaignRow> toRows(List<Campaign> rows) {
+    private List<CampaignRow> toRows(long companyId, List<Campaign> rows) {
         Set<Long> campaignIds = rows.stream().map(Campaign::id).collect(Collectors.toSet());
-        Map<Long, CampaignTargetStats> statsMap = targets.statsByCampaignIds(campaignIds);
+        Map<Long, CampaignTargetStats> statsMap = targets.statsByCampaignIds(companyId, campaignIds);
         Map<Long, String> agentNames = aiAgents.findNamesByIds(
                 rows.stream().map(Campaign::aiAgentId).collect(Collectors.toSet()));
-        Map<Long, String> creatorNames = users.namesByIds(
+        Map<Long, String> creatorNames = users.namesByIds(companyId,
                 rows.stream().map(Campaign::createdBy).filter(Objects::nonNull).collect(Collectors.toSet()));
         return rows.stream()
                 .map(c -> CampaignRow.of(c, agentNames.get(c.aiAgentId()),
@@ -377,24 +375,24 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public CampaignRow campaignRow(long id) {
-        Campaign c = requireCampaign(id);
+    public CampaignRow campaignRow(long companyId, long id) {
+        Campaign c = requireCampaign(companyId, id);
         String agentName = aiAgents.findNamesByIds(List.of(c.aiAgentId())).get(c.aiAgentId());
         String createdByName = c.createdBy() != null
-                ? users.namesByIds(List.of(c.createdBy())).get(c.createdBy())
+                ? users.namesByIds(companyId, List.of(c.createdBy())).get(c.createdBy())
                 : null;
-        CampaignTargetStats stats = targets.statsByCampaignId(id);
+        CampaignTargetStats stats = targets.statsByCampaignId(companyId, id);
         return CampaignRow.of(c, agentName, createdByName, stats);
     }
 
     @Override
-    public Campaign getCampaign(long id) {
-        return campaigns.find(id);
+    public Campaign getCampaign(long companyId, long id) {
+        return campaigns.find(companyId, id);
     }
 
     @Override
-    public Campaign requireCampaign(long id) {
-        Campaign campaign = getCampaign(id);
+    public Campaign requireCampaign(long companyId, long id) {
+        Campaign campaign = getCampaign(companyId, id);
         if (campaign == null) {
             throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id);
         }
@@ -402,15 +400,15 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public PageableData<CampaignTarget> listTargets(long campaignId, TargetFilter filter) {
-        List<CampaignTarget> rows = targets.findByCampaign(campaignId, filter);
-        long total = targets.countByCampaign(campaignId);
+    public PageableData<CampaignTarget> listTargets(long companyId, long campaignId, TargetFilter filter) {
+        List<CampaignTarget> rows = targets.findByCampaign(companyId, campaignId, filter);
+        long total = targets.countByCampaign(companyId, campaignId);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     @Override
-    public CampaignTarget requireTarget(long campaignId, long targetId) {
-        CampaignTarget target = targets.find(targetId);
+    public CampaignTarget requireTarget(long companyId, long campaignId, long targetId) {
+        CampaignTarget target = targets.find(companyId, targetId);
         if (target == null || target.campaignId() != campaignId) {
             throw new NotFoundException(ErrorCode.TARGET_NOT_FOUND, targetId);
         }
@@ -419,12 +417,12 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
 
     public void setStatus(long companyId, long campaignId, CampaignStatus status) {
         campaigns.updateStatus(companyId, campaignId, status);
-        audit.record("CAMPAIGN_" + status.name(), "campaign", String.valueOf(campaignId), null);
+        audit.record(companyId, "CAMPAIGN_" + status.name(), "campaign", String.valueOf(campaignId), null);
     }
 
     @Override
-    public CampaignStatusResponse start(long campaignId, boolean immediate) {
-        setStatus(currentCompany.id(), campaignId, CampaignStatus.ACTIVE);
+    public CampaignStatusResponse start(long companyId, long campaignId, boolean immediate) {
+        setStatus(companyId, campaignId, CampaignStatus.ACTIVE);
         if (immediate) {
             // A target waiting on a retry interval — or on a pause that lasted past its
             // slot — stays unclaimable until its own time comes, so a resumed campaign can
@@ -432,54 +430,54 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
             // waiting targets due at the next tick. The dial window still governs: this
             // says "as soon as calling is allowed", never "call outside the window".
             int released = targets.clearSchedule(campaignId);
-            audit.record("CAMPAIGN_START_IMMEDIATE", "campaign", String.valueOf(campaignId),
+            audit.record(companyId, "CAMPAIGN_START_IMMEDIATE", "campaign", String.valueOf(campaignId),
                     released + " targets released");
         }
-        ttsWarmup.warmUpForCampaign(campaignId);
+        ttsWarmup.warmUpForCampaign(companyId, campaignId);
         return new CampaignStatusResponse(campaignId, CampaignStatus.ACTIVE);
     }
 
     @Override
-    public CampaignStatusResponse pause(long campaignId) {
-        setStatus(currentCompany.id(), campaignId, CampaignStatus.PAUSED);
+    public CampaignStatusResponse pause(long companyId, long campaignId) {
+        setStatus(companyId, campaignId, CampaignStatus.PAUSED);
         return new CampaignStatusResponse(campaignId, CampaignStatus.PAUSED);
     }
 
     @Override
-    public CampaignStatusResponse archive(long campaignId) {
-        requireCampaign(campaignId);
-        setStatus(currentCompany.id(), campaignId, CampaignStatus.ARCHIVED);
+    public CampaignStatusResponse archive(long companyId, long campaignId) {
+        requireCampaign(companyId, campaignId);
+        setStatus(companyId, campaignId, CampaignStatus.ARCHIVED);
         return new CampaignStatusResponse(campaignId, CampaignStatus.ARCHIVED);
     }
 
     @Override
     @Transactional
-    public void doNotCall(long targetId) {
-        CampaignTarget t = targets.find(targetId);
+    public void doNotCall(long companyId, long targetId) {
+        CampaignTarget t = targets.find(companyId, targetId);
         if (t != null) {
-            doNotCallList.add(currentCompany.id(), t.phone(), "opted out via API", DoNotCallSource.MANUAL);
+            doNotCallList.add(companyId, t.phone(), "opted out via API", DoNotCallSource.MANUAL);
         }
-        targets.setDoNotCall(targetId);
-        audit.record("TARGET_DO_NOT_CALL", "target", String.valueOf(targetId),
+        targets.setDoNotCall(companyId, targetId);
+        audit.record(companyId, "TARGET_DO_NOT_CALL", "target", String.valueOf(targetId),
                 t != null ? t.phone() : null);
     }
 
     @Override
-    public DoNotCallResponse markDoNotCall(long targetId) {
-        doNotCall(targetId);
+    public DoNotCallResponse markDoNotCall(long companyId, long targetId) {
+        doNotCall(companyId, targetId);
         return new DoNotCallResponse(targetId, true);
     }
 
     @Override
     @Transactional
-    public void triggerRecurrenceRun(long campaignId, boolean resetTargets) {
+    public void triggerRecurrenceRun(long companyId, long campaignId, boolean resetTargets) {
         if (resetTargets) {
             targets.resetTargetsForRecurrence(campaignId);
             log.info("Reset targets for recurring campaign {}", campaignId);
         }
-        syncFromSourceQuietly(campaignId);
+        syncFromSourceQuietly(companyId, campaignId);
         campaigns.recordRecurrenceRun(campaignId, Instant.now(clock), CampaignStatus.ACTIVE);
-        ttsWarmup.warmUpForCampaign(campaignId);
+        ttsWarmup.warmUpForCampaign(companyId, campaignId);
         log.info("Triggered recurring run for campaign {}", campaignId);
     }
 
@@ -491,13 +489,13 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
      * must not stop the others' campaigns from starting. The campaign then runs over the
      * list it already had — {@code replaceTargets} never clears it on a failed fetch.
      */
-    private void syncFromSourceQuietly(long campaignId) {
+    private void syncFromSourceQuietly(long companyId, long campaignId) {
         TargetSource source = targetSources.findByCampaignId(campaignId);
         if (source == null || !source.enabled() || !source.syncOnRecurrence()) {
             return;
         }
         try {
-            importFromSource(source);
+            importFromSource(companyId, source);
         } catch (Exception e) {
             log.error("Target source sync failed for campaign {} — running over the existing list: {}",
                     campaignId, e.getMessage());
@@ -505,23 +503,23 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public void applyOutcome(long targetId, Disposition disposition) {
-        CampaignTarget t = targets.find(targetId);
+    public void applyOutcome(long companyId, long targetId, Disposition disposition) {
+        CampaignTarget t = targets.find(companyId, targetId);
         if (t == null) {
             return;
         }
         if (isTerminal(disposition)) {
             targets.updateStatus(targetId, TargetStatus.DONE, null);
             log.info("Target {} DONE ({})", targetId, disposition);
-            checkCompletion(t.campaignId());
+            checkCompletion(companyId, t.campaignId());
             return;
         }
-        Campaign c = campaigns.find(t.campaignId());
+        Campaign c = campaigns.find(companyId, t.campaignId());
         int maxAttempts = c != null ? c.maxAttempts() : 3;
         if (t.attempts() >= maxAttempts) {
             targets.updateStatus(targetId, TargetStatus.EXHAUSTED, null);
             log.info("Target {} EXHAUSTED after {} attempts", targetId, t.attempts());
-            checkCompletion(t.campaignId());
+            checkCompletion(companyId, t.campaignId());
             return;
         }
         Instant next = nextAttemptAt(disposition, c);
@@ -531,14 +529,14 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     }
 
     @Override
-    public void scheduleCallback(long targetId, Instant callbackAt) {
-        CampaignTarget t = targets.find(targetId);
+    public void scheduleCallback(long companyId, long targetId, Instant callbackAt) {
+        CampaignTarget t = targets.find(companyId, targetId);
         if (t == null || callbackAt == null) {
             return;
         }
-        Campaign c = campaigns.find(t.campaignId());
+        Campaign c = campaigns.find(companyId, t.campaignId());
         ZonedDateTime candidate = callbackAt.atZone(ZoneId.of("Asia/Tashkent"));
-        RetryProperties retry = dialerProps.retry();
+        RetryProperties retry = dialerProperties.retry();
         Instant finalInstant = candidate.toInstant();
         if (c != null && retry != null && retry.respectDialWindow()) {
             finalInstant = RetrySchedule.intoWindow(candidate, c.allowedDays(),
@@ -550,9 +548,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
 
     private Instant nextAttemptAt(Disposition disposition, Campaign campaign) {
         int retryMinutes = campaign != null ? campaign.retryIntervalMinutes() : 0;
-        Duration delay = RetrySchedule.delayFor(disposition, dialerProps.retry(), retryMinutes);
+        Duration delay = RetrySchedule.delayFor(disposition, dialerProperties.retry(), retryMinutes);
         ZonedDateTime candidate = ZonedDateTime.now(clock).plus(delay);
-        RetryProperties retry = dialerProps.retry();
+        RetryProperties retry = dialerProperties.retry();
         if (campaign == null || retry == null || !retry.respectDialWindow()) {
             return candidate.toInstant();
         }
@@ -560,8 +558,8 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 campaign.dialWindowStart(), campaign.dialWindowEnd()).toInstant();
     }
 
-    private void checkCompletion(long campaignId) {
-        Campaign c = campaigns.find(campaignId);
+    private void checkCompletion(long companyId, long campaignId) {
+        Campaign c = campaigns.find(companyId, campaignId);
         if (c == null || c.status() != CampaignStatus.ACTIVE || targets.countActive(campaignId) > 0) {
             return;
         }

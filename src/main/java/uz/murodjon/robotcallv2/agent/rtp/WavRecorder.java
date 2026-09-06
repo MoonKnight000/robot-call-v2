@@ -29,15 +29,6 @@ import java.util.concurrent.BlockingQueue;
  */
 public class WavRecorder implements Closeable {
 
-    public enum RecordingMode {
-        /** Hard channel separation: Left = Caller, Right = Bot. */
-        STEREO,
-        /** Natural spatial cross-feed: Left = Caller + 0.35*Bot, Right = Bot + 0.35*Caller. Eliminates dead-ear silence. */
-        SPATIAL_STEREO,
-        /** Mixed into both channels: (Caller + Bot) / 2. */
-        DUAL_MONO
-    }
-
     private static final int CHANNELS = 2;
     private static final int BYTES_PER_FRAME = CHANNELS * 2;
 

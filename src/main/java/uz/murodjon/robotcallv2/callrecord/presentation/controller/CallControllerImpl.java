@@ -25,18 +25,19 @@ public class CallControllerImpl implements CallController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<CallOriginateResponse>> call(String number, Long scenarioId, Long sipTrunkId) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.originate(number, scenarioId, sipTrunkId)));
+    public ResponseEntity<ResponseData<CallOriginateResponse>> call(long companyId, String number, Long scenarioId, Long sipTrunkId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.originate(companyId, number, scenarioId, sipTrunkId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<CallOriginateResponse>> testCall(String number, Long sipTrunkId, ScenarioDefinition definition) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.originateTestCall(number, definition, sipTrunkId)));
+    public ResponseEntity<ResponseData<CallOriginateResponse>> testCall(long companyId, String number, Long sipTrunkId, ScenarioDefinition definition) {
+        return ResponseEntity.ok(ResponseData.ok(
+                useCase.originateTestCall(companyId, number, definition, sipTrunkId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<WebTestCallResponse>> webTest(WebTestCallRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.startWebTest(request)));
+    public ResponseEntity<ResponseData<WebTestCallResponse>> webTest(long companyId, WebTestCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.startWebTest(companyId, request)));
     }
 
     @Override
@@ -50,17 +51,17 @@ public class CallControllerImpl implements CallController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<HangupResponse>> hangup(String channelId) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.hangup(channelId)));
+    public ResponseEntity<ResponseData<HangupResponse>> hangup(long companyId, String channelId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.hangup(companyId, channelId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<TransferResponse>> transfer(String channelId) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.transfer(channelId)));
+    public ResponseEntity<ResponseData<TransferResponse>> transfer(long companyId, String channelId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.transfer(companyId, channelId)));
     }
 
     @Override
-    public ResponseEntity<StreamingResponseBody> listen(String channelId) {
-        return ResponseEntity.ok(useCase.listen(channelId));
+    public ResponseEntity<StreamingResponseBody> listen(long companyId, String channelId) {
+        return ResponseEntity.ok(useCase.listen(companyId, channelId));
     }
 }

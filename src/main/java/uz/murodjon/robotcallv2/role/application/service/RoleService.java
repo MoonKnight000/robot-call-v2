@@ -4,7 +4,6 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.role.application.dto.CreateRoleRequest;
 import uz.murodjon.robotcallv2.role.application.dto.PermissionGroupRow;
@@ -31,23 +30,20 @@ import java.util.Map;
 public class RoleService implements RoleUseCase {
 
     private final RoleRepository repository;
-    private final CurrentCompany company;
     private final CompanyProperties companyProperties;
     private final SessionUseCase sessionUseCase;
     private final AuditService audit;
 
-    public RoleService(RoleRepository repository, CurrentCompany company, CompanyProperties companyProperties,
+    public RoleService(RoleRepository repository, CompanyProperties companyProperties,
                        SessionUseCase sessionUseCase, AuditService audit) {
         this.repository = repository;
-        this.company = company;
         this.companyProperties = companyProperties;
         this.sessionUseCase = sessionUseCase;
         this.audit = audit;
     }
 
     @Override
-    public List<RoleRow> listForCurrentCompany() {
-        long companyId = company.id();
+    public List<RoleRow> findByCompanyId(long companyId) {
         Map<Long, Long> userCounts = repository.countUsersByRole(companyId);
         return repository.findByCompanyId(companyId).stream()
                 .map(role -> RoleRow.of(role, userCounts.getOrDefault(role.id(), 0L)))
@@ -55,26 +51,24 @@ public class RoleService implements RoleUseCase {
     }
 
     @Override
-    public RoleRow get(long id) {
-        Role role = requireRole(id);
-        return RoleRow.of(role, repository.countUsersByRole(company.id()).getOrDefault(id, 0L));
+    public RoleRow get(long companyId, long id) {
+        Role role = requireRole(companyId, id);
+        return RoleRow.of(role, repository.countUsersByRole(companyId).getOrDefault(id, 0L));
     }
 
     @Override
-    public RoleRow create(CreateRoleRequest request) {
-        long companyId = company.id();
+    public RoleRow create(long companyId, CreateRoleRequest request) {
         RoleValidator.validateCreate(request.permissions(), repository.countCustomByCompanyId(companyId));
         requireNameFree(companyId, request.name(), null);
         Role created = repository.create(companyId,
                 Role.custom(request.name(), request.description(), request.permissions()));
-        audit.record("ROLE_CREATE", "role", String.valueOf(created.id()), created.name());
+        audit.record(companyId, "ROLE_CREATE", "role", String.valueOf(created.id()), created.name());
         return RoleRow.of(created, 0L);
     }
 
     @Override
-    public RoleRow update(long id, UpdateRoleRequest request) {
-        long companyId = company.id();
-        Role existing = requireRole(id);
+    public RoleRow update(long companyId, long id, UpdateRoleRequest request) {
+        Role existing = requireRole(companyId, id);
         RoleValidator.validateEditable(existing);
         RoleValidator.validatePermissions(request.permissions());
         requireNameFree(companyId, request.name(), id);
@@ -85,18 +79,17 @@ public class RoleService implements RoleUseCase {
         // carries the old set — the only honest way to apply a narrowed role immediately is
         // to make its holders log in again.
         revokeSessions(companyId, id);
-        audit.record("ROLE_UPDATE", "role", String.valueOf(id), updated.name());
+        audit.record(companyId, "ROLE_UPDATE", "role", String.valueOf(id), updated.name());
         return RoleRow.of(updated, repository.countUsersByRole(companyId).getOrDefault(id, 0L));
     }
 
     @Override
-    public void delete(long id) {
-        long companyId = company.id();
-        Role existing = requireRole(id);
+    public void delete(long companyId, long id) {
+        Role existing = requireRole(companyId, id);
         RoleValidator.validateEditable(existing);
         RoleValidator.validateNotInUse(existing, repository.countUsersByRole(companyId).getOrDefault(id, 0L));
         repository.delete(companyId, id);
-        audit.record("ROLE_DELETE", "role", String.valueOf(id), existing.name());
+        audit.record(companyId, "ROLE_DELETE", "role", String.valueOf(id), existing.name());
     }
 
     @Override
@@ -145,8 +138,8 @@ public class RoleService implements RoleUseCase {
         }
     }
 
-    private Role requireRole(long id) {
-        Role role = repository.find(company.id(), id);
+    private Role requireRole(long companyId, long id) {
+        Role role = repository.find(companyId, id);
         if (role == null) {
             throw new NotFoundException(ErrorCode.ROLE_NOT_FOUND, id);
         }

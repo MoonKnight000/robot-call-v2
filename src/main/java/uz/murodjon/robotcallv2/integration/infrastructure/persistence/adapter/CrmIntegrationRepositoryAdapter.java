@@ -16,22 +16,22 @@ import java.util.Optional;
 @Component
 public class CrmIntegrationRepositoryAdapter implements CrmIntegrationRepository {
 
-    private final CrmIntegrationJpaRepository jpa;
+    private final CrmIntegrationJpaRepository jpaRepository;
     private final CrmIntegrationMapper mapper;
 
-    public CrmIntegrationRepositoryAdapter(CrmIntegrationJpaRepository jpa, CrmIntegrationMapper mapper) {
-        this.jpa = jpa;
+    public CrmIntegrationRepositoryAdapter(CrmIntegrationJpaRepository jpaRepository, CrmIntegrationMapper mapper) {
+        this.jpaRepository = jpaRepository;
         this.mapper = mapper;
     }
 
     @Override
     public Optional<CrmIntegration> find(long companyId) {
-        return jpa.findByCompanyId(companyId).map(mapper::entityToDomain);
+        return jpaRepository.findByCompanyId(companyId).map(mapper::entityToDomain);
     }
 
     @Override
     public CrmIntegration saveAppInfo(long companyId, String appName, String grantsJson) {
-        CrmIntegrationEntity entity = jpa.findByCompanyId(companyId).orElseGet(() -> {
+        CrmIntegrationEntity entity = jpaRepository.findByCompanyId(companyId).orElseGet(() -> {
             CrmIntegrationEntity fresh = new CrmIntegrationEntity();
             fresh.setCompanyId(companyId);
             fresh.setProvider(CrmProvider.UYSOT);
@@ -45,13 +45,13 @@ public class CrmIntegrationRepositoryAdapter implements CrmIntegrationRepository
         entity.setTokenExpiresAt(null);
         entity.setConnectedAt(null);
         entity.setStatus(CrmIntegrationStatus.NOT_CONNECTED);
-        return mapper.entityToDomain(jpa.save(entity));
+        return mapper.entityToDomain(jpaRepository.save(entity));
     }
 
     @Override
     public CrmIntegration applyTokenResponse(long companyId, String accessTokenEnc, String refreshTokenEnc,
                                               Instant tokenExpiresAt) {
-        return jpa.findByCompanyId(companyId).map(entity -> {
+        return jpaRepository.findByCompanyId(companyId).map(entity -> {
             entity.setAccessTokenEnc(accessTokenEnc);
             if (refreshTokenEnc != null) {
                 entity.setRefreshTokenEnc(refreshTokenEnc);
@@ -59,27 +59,27 @@ public class CrmIntegrationRepositoryAdapter implements CrmIntegrationRepository
             entity.setTokenExpiresAt(tokenExpiresAt);
             entity.setStatus(CrmIntegrationStatus.CONNECTED);
             entity.setConnectedAt(Instant.now());
-            return mapper.entityToDomain(jpa.save(entity));
+            return mapper.entityToDomain(jpaRepository.save(entity));
         }).orElse(null);
     }
 
     @Override
     public void markError(long companyId) {
-        jpa.findByCompanyId(companyId).ifPresent(entity -> {
+        jpaRepository.findByCompanyId(companyId).ifPresent(entity -> {
             entity.setStatus(CrmIntegrationStatus.ERROR);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
     public void disconnect(long companyId) {
-        jpa.findByCompanyId(companyId).ifPresent(entity -> {
+        jpaRepository.findByCompanyId(companyId).ifPresent(entity -> {
             entity.setAccessTokenEnc(null);
             entity.setRefreshTokenEnc(null);
             entity.setTokenExpiresAt(null);
             entity.setConnectedAt(null);
             entity.setStatus(CrmIntegrationStatus.NOT_CONNECTED);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 }

@@ -13,34 +13,35 @@ import java.util.List;
 
 public interface CampaignTargetUseCase {
 
-    long addTarget(long campaignId, long clientId, String phone, String language, JsonNode contextData);
+    long addTarget(long companyId, long campaignId, long clientId, String phone, String language,
+                   JsonNode contextData);
 
-    AddTargetsResponse addTargets(long campaignId, List<AddTargetRequest> requests);
+    AddTargetsResponse addTargets(long companyId, long campaignId, List<AddTargetRequest> requests);
 
-    TargetImportResult importTargetsCsv(long campaignId, String csv);
+    TargetImportResult importTargetsCsv(long companyId, long campaignId, String csv);
 
-    TargetCsvPreview previewTargetsCsv(long campaignId, String csv);
+    TargetCsvPreview previewTargetsCsv(long companyId, long campaignId, String csv);
 
     /** The campaign's target source, or null when it has none. */
-    TargetSourceRow findTargetSource(long campaignId);
+    TargetSourceRow findTargetSource(long companyId, long campaignId);
 
-    TargetSourceRow updateTargetSource(long campaignId, UpdateTargetSourceRequest request);
+    TargetSourceRow updateTargetSource(long companyId, long campaignId, UpdateTargetSourceRequest request);
 
-    void deleteTargetSource(long campaignId);
+    void deleteTargetSource(long companyId, long campaignId);
 
     /** Fetches the list now, as the recurrence sweep does on its own. */
-    TargetSyncResult syncTargetsFromSource(long campaignId);
+    TargetSyncResult syncTargetsFromSource(long companyId, long campaignId);
 
-    PageableData<CampaignTarget> listTargets(long campaignId, TargetFilter filter);
+    PageableData<CampaignTarget> listTargets(long companyId, long campaignId, TargetFilter filter);
 
     /** The target, which must belong to the campaign — 404 otherwise. */
-    CampaignTarget requireTarget(long campaignId, long targetId);
+    CampaignTarget requireTarget(long companyId, long campaignId, long targetId);
 
-    void doNotCall(long targetId);
+    void doNotCall(long companyId, long targetId);
 
-    DoNotCallResponse markDoNotCall(long targetId);
+    DoNotCallResponse markDoNotCall(long companyId, long targetId);
 
-    void applyOutcome(long targetId, Disposition disposition);
+    void applyOutcome(long companyId, long targetId, Disposition disposition);
 
-    void scheduleCallback(long targetId, Instant callbackAt);
+    void scheduleCallback(long companyId, long targetId, Instant callbackAt);
 }

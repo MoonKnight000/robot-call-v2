@@ -123,9 +123,9 @@ public class SttComparisonTool {
         if (geminiKey != null && !geminiKey.isBlank()) {
             try {
                 GeminiSttProperties geminiProps = new GeminiSttProperties(geminiKey, null, "gemini-3.5-transcribe-live", 16000, 10);
-                SttProperties props = new SttProperties(true, "gemini", language, List.of(), null, null, 0,
+                SttProperties sttProperties = new SttProperties(true, "gemini", language, List.of(), null, null, 0,
                         geminiProps, null, null, null, null);
-                GeminiSttProvider gemini = new GeminiSttProvider(props, metrics);
+                GeminiSttProvider gemini = new GeminiSttProvider(sttProperties, metrics);
                 gemini.init();
                 list.add(gemini);
             } catch (Exception e) {
@@ -141,9 +141,9 @@ public class SttComparisonTool {
                 YandexSttProperties yandexProps = new YandexSttProperties(
                         yandexKey, yandexFolder, "stt.api.cloud.yandex.net", 443, 8000, "general",
                         null, true, EouSensitivity.DEFAULT, 0, 0);
-                SttProperties props = new SttProperties(true, "yandex", language, List.of(), null, null, 0,
+                SttProperties sttProperties = new SttProperties(true, "yandex", language, List.of(), null, null, 0,
                         null, null, yandexProps, null, null);
-                YandexSttProvider yandex = new YandexSttProvider(props, metrics);
+                YandexSttProvider yandex = new YandexSttProvider(sttProperties, metrics);
                 yandex.init();
                 list.add(yandex);
             } catch (Exception e) {
@@ -157,9 +157,9 @@ public class SttComparisonTool {
             try {
                 AishaSttProperties aishaProps = new AishaSttProperties(
                         aishaKey, "https://back.aisha.group/api/v1/stt/realtime", true);
-                SttProperties props = new SttProperties(true, "aisha", language, List.of(), null, null, 0,
+                SttProperties sttProperties = new SttProperties(true, "aisha", language, List.of(), null, null, 0,
                         null, null, null, aishaProps, null);
-                AishaSttProvider aisha = new AishaSttProvider(props, metrics);
+                AishaSttProvider aisha = new AishaSttProvider(sttProperties, metrics);
                 aisha.init();
                 list.add(aisha);
             } catch (Exception e) {

@@ -9,19 +9,21 @@ import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
 @Component
 public class CompanyAccessGuard {
 
-    private final CurrentCompany company;
     private final CurrentUser currentUser;
 
-    public CompanyAccessGuard(CurrentCompany company, CurrentUser currentUser) {
-        this.company = company;
+    public CompanyAccessGuard(CurrentUser currentUser) {
         this.currentUser = currentUser;
     }
 
-    public void requireOwnOrSuperadmin(long companyId) {
+    /**
+     * Refuses an endpoint that names a company other than the caller's own. Answering 404
+     * rather than 403 keeps the existence of another tenant's row from leaking.
+     */
+    public void requireOwnOrSuperadmin(long callerCompanyId, long companyId) {
         if (currentUser.hasPermission(Permission.PLATFORM_ADMIN)) {
             return;
         }
-        if (companyId != company.id()) {
+        if (companyId != callerCompanyId) {
             throw new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId);
         }
     }

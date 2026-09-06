@@ -24,14 +24,15 @@ public class SpeechPreviewControllerImpl implements SpeechPreviewController {
     }
 
     @Override
-    public ResponseEntity<Resource> previewVoice(String id, PreviewVoiceRequest request) {
+    public ResponseEntity<Resource> previewVoice(long companyId, String id, PreviewVoiceRequest request) {
         return ResponseEntity.ok().contentType(AUDIO_WAV)
-                .body(new ByteArrayResource(speechPreviewUseCase.previewVoice(id, request.text())));
+                .body(new ByteArrayResource(speechPreviewUseCase.previewVoice(companyId, id, request.text())));
     }
 
     @Override
-    public ResponseEntity<ResponseData<SttPreviewResponse>> previewStt(MultipartFile file, String provider,
-                                                                        String language) {
-        return ResponseEntity.ok(ResponseData.ok(speechPreviewUseCase.previewStt(file, provider, language)));
+    public ResponseEntity<ResponseData<SttPreviewResponse>> previewStt(long companyId, MultipartFile file,
+                                                                        String provider, String language) {
+        return ResponseEntity.ok(ResponseData.ok(
+                speechPreviewUseCase.previewStt(companyId, file, provider, language)));
     }
 }

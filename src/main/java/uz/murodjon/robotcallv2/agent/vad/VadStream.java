@@ -90,25 +90,25 @@ public class VadStream implements AudioListener {
      *                    recognizer, not a {@link SpeechGate}, decides where the
      *                    utterance ends; null to report nothing
      */
-    public VadStream(SileroVad model, VadProperties props, String channelId, BooleanSupplier onBargeIn,
+    public VadStream(SileroVad model, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
                      SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd) {
         this.model = model;
         this.channelId = channelId;
-        this.threshold = props.threshold();
-        this.listeningThreshold = props.listeningThreshold() > 0f ? props.listeningThreshold() : 0.35f;
-        this.minEnergyRms = props.minEnergyRms() > 0 ? props.minEnergyRms() : 150.0;
-        this.noiseFloorMargin = props.noiseFloorMargin() > 0 ? props.noiseFloorMargin() : DEFAULT_NOISE_FLOOR_MARGIN;
+        this.threshold = vadProperties.threshold();
+        this.listeningThreshold = vadProperties.listeningThreshold() > 0f ? vadProperties.listeningThreshold() : 0.35f;
+        this.minEnergyRms = vadProperties.minEnergyRms() > 0 ? vadProperties.minEnergyRms() : 150.0;
+        this.noiseFloorMargin = vadProperties.noiseFloorMargin() > 0 ? vadProperties.noiseFloorMargin() : DEFAULT_NOISE_FLOOR_MARGIN;
         this.noiseFloorRms = this.minEnergyRms;
         this.onBargeIn = onBargeIn;
         this.gate = gate;
         this.amd = amd;
         this.onSpeechEnd = onSpeechEnd != null ? onSpeechEnd : ms -> { };
-        this.window = new float[props.windowSamples()];
+        this.window = new float[vadProperties.windowSamples()];
         this.state = model.newState();
         this.context = model.newContext();
-        int frameMs = Math.max(1, props.windowSamples() * 1000 / props.sampleRate());
-        this.minSpeechWindows = Math.max(1, props.minSpeechMs() / frameMs);
-        this.silenceResetWindows = Math.max(1, props.silenceResetMs() / frameMs);
+        int frameMs = Math.max(1, vadProperties.windowSamples() * 1000 / vadProperties.sampleRate());
+        this.minSpeechWindows = Math.max(1, vadProperties.minSpeechMs() / frameMs);
+        this.silenceResetWindows = Math.max(1, vadProperties.silenceResetMs() / frameMs);
         this.speechEndWaitMs = silenceResetWindows * frameMs;
     }
 

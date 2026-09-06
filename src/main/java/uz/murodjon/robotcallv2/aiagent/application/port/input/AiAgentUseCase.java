@@ -12,21 +12,17 @@ import java.util.Map;
 
 public interface AiAgentUseCase {
 
-    AiAgentRow createAgent(CreateAiAgentRequest request);
+    AiAgentRow createAgent(long companyId, CreateAiAgentRequest request);
 
-    AiAgentRow updateAgent(long id, UpdateAiAgentRequest request);
+    AiAgentRow updateAgent(long companyId, long id, UpdateAiAgentRequest request);
 
-    AiAgentRow findAgentRow(long id);
+    AiAgentRow findAgentRow(long companyId, long id);
 
-    PageableData<AiAgentRow> filterAgents(AiAgentFilter filter);
+    PageableData<AiAgentRow> filterAgents(long companyId, AiAgentFilter filter);
 
-    void deleteAgent(long id);
+    void deleteAgent(long companyId, long id);
 
-    /**
-     * The agent a call runs under. Takes the company explicitly rather than reading the
-     * request's, because its callers are the dialer sweep and the ARI event loop — threads
-     * that serve every tenant and have no current company of their own.
-     */
+    /** The agent a call runs under — also reached from the dialer sweep and the ARI event loop. */
     AiAgent requireAgent(long companyId, long id);
 
     Map<Long, String> findNamesByIds(Collection<Long> ids);

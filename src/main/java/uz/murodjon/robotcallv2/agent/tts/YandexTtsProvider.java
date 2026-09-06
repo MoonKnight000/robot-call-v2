@@ -76,16 +76,16 @@ public class YandexTtsProvider implements TtsProvider {
             "whisper", List.of("whisper"),
             "sad", List.of("sad"));
 
-    private final TtsProperties props;
+    private final TtsProperties ttsProperties;
     private volatile ManagedChannel channel;
 
-    public YandexTtsProvider(TtsProperties props) {
-        this.props = props;
+    public YandexTtsProvider(TtsProperties ttsProperties) {
+        this.ttsProperties = ttsProperties;
     }
 
     @PostConstruct
     public void init() {
-        YandexTtsProperties y = props.yandex();
+        YandexTtsProperties y = ttsProperties.yandex();
         if (y.apiKey() == null || y.apiKey().isBlank()) {
             log.warn("Yandex TTS selected but voice-agent.tts.yandex.api-key is blank — synthesis will fail");
             return;
@@ -215,7 +215,7 @@ public class YandexTtsProvider implements TtsProvider {
         if (current == null) {
             throw new ExternalServiceException(ErrorCode.TTS_YANDEX_CHANNEL_UNAVAILABLE, "yandex-tts");
         }
-        YandexTtsProperties y = props.yandex();
+        YandexTtsProperties y = ttsProperties.yandex();
         String chosen = (voice != null && !voice.isBlank()) ? voice : voiceFor(language);
 
         Tts.UtteranceSynthesisRequest.Builder request = Tts.UtteranceSynthesisRequest.newBuilder()
@@ -281,7 +281,7 @@ public class YandexTtsProvider implements TtsProvider {
 
     /** Roles configured for {@code voice}; empty for a voice that takes none (Nigora). */
     private Set<String> supportedRoles(String voice) {
-        Map<String, List<String>> configured = props.yandex().voiceRoles();
+        Map<String, List<String>> configured = ttsProperties.yandex().voiceRoles();
         if (configured == null || configured.isEmpty()) {
             return Set.of();
         }
@@ -304,7 +304,7 @@ public class YandexTtsProvider implements TtsProvider {
         if (language == null) {
             return "";
         }
-        Map<String, String> voices = props.yandex().voices();
+        Map<String, String> voices = ttsProperties.yandex().voices();
         if (voices != null && !voices.isEmpty()) {
             String exact = voices.get(language);
             if (exact != null && !exact.isBlank()) {
@@ -318,7 +318,7 @@ public class YandexTtsProvider implements TtsProvider {
                 }
             }
         }
-        String fallback = props.yandex().voice();
+        String fallback = ttsProperties.yandex().voice();
         return language.startsWith("ru") && fallback != null ? fallback : "";
     }
 

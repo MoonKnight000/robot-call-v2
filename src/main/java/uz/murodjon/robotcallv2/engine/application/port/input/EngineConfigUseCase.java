@@ -7,13 +7,11 @@ import uz.murodjon.robotcallv2.engine.domain.entity.EngineConfig;
 
 public interface EngineConfigUseCase {
 
-    EngineConfig findForCurrentCompany();
+    EngineConfig findByCompanyId(long companyId);
 
-    EffectiveEngineConfig findEffectiveForCurrentCompany();
+    EffectiveEngineConfig findEffectiveByCompanyId(long companyId);
 
     EngineOptions findOptions();
 
-    EngineConfig updateForCurrentCompany(UpdateEngineConfigRequest request);
-
-    EffectiveEngineConfig findEffectiveByCompanyId(long companyId);
+    EngineConfig updateByCompanyId(long companyId, UpdateEngineConfigRequest request);
 }

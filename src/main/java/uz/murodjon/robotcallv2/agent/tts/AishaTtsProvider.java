@@ -59,7 +59,7 @@ public class AishaTtsProvider implements TtsProvider {
     /** Rate of the WAV Aisha returns; anything else means the API changed under us. */
     private static final int AISHA_SAMPLE_RATE = 16000;
 
-    private final TtsProperties props;
+    private final TtsProperties ttsProperties;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
 
     /** Lines waiting for their audio, by {@code request_id}. */
@@ -70,13 +70,13 @@ public class AishaTtsProvider implements TtsProvider {
     private volatile WebSocket webSocket;
     private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
-    public AishaTtsProvider(TtsProperties props) {
-        this.props = props;
+    public AishaTtsProvider(TtsProperties ttsProperties) {
+        this.ttsProperties = ttsProperties;
     }
 
     @PostConstruct
     public void init() {
-        AishaTtsProperties aisha = props.aisha();
+        AishaTtsProperties aisha = ttsProperties.aisha();
         if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
             log.warn("Aisha TTS selected but voice-agent.tts.aisha.api-key is blank — synthesis will fail");
             return;
@@ -112,7 +112,7 @@ public class AishaTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
-        AishaTtsProperties aisha = props.aisha();
+        AishaTtsProperties aisha = ttsProperties.aisha();
         String requestId = UUID.randomUUID().toString();
         CompletableFuture<byte[]> audio = new CompletableFuture<>();
         pending.put(requestId, audio);
@@ -155,7 +155,7 @@ public class AishaTtsProvider implements TtsProvider {
 
     /** Aisha takes a bare language ({@code uz}, {@code ru}, {@code en}), not a BCP-47 tag. */
     private String languageTag(String language) {
-        String tag = (language == null || language.isBlank()) ? props.defaultLanguage() : language;
+        String tag = (language == null || language.isBlank()) ? ttsProperties.defaultLanguage() : language;
         int dash = tag.indexOf('-');
         return (dash > 0 ? tag.substring(0, dash) : tag).toLowerCase(Locale.ROOT);
     }
@@ -167,23 +167,23 @@ public class AishaTtsProvider implements TtsProvider {
     private String speakerFor(String language, String voice, EffectiveVoiceSettings style) {
         if (style != null && style.role() != null && !style.role().isBlank()) {
             String mood = normalizeAishaSpeaker(style.role());
-            List<String> moods = props.aisha().moods();
+            List<String> moods = ttsProperties.aisha().moods();
             if (moods == null || moods.isEmpty() || moods.contains(mood)) {
                 return mood;
             }
-            log.debug("Aisha has no mood '{}' — speaking the line as '{}'", mood, props.aisha().speaker());
+            log.debug("Aisha has no mood '{}' — speaking the line as '{}'", mood, ttsProperties.aisha().speaker());
         }
         if (voice != null && !voice.isBlank()) {
             return normalizeAishaSpeaker(voice);
         }
-        Map<String, String> speakers = props.aisha().speakers();
+        Map<String, String> speakers = ttsProperties.aisha().speakers();
         if (speakers != null && language != null) {
             String exact = speakers.get(language);
             if (exact != null && !exact.isBlank()) {
                 return normalizeAishaSpeaker(exact);
             }
         }
-        return normalizeAishaSpeaker(props.aisha().speaker());
+        return normalizeAishaSpeaker(ttsProperties.aisha().speaker());
     }
 
     private static String normalizeAishaSpeaker(String speaker) {
@@ -248,7 +248,7 @@ public class AishaTtsProvider implements TtsProvider {
         if (current != null && !current.isOutputClosed() && !current.isInputClosed()) {
             return current;
         }
-        AishaTtsProperties aisha = props.aisha();
+        AishaTtsProperties aisha = ttsProperties.aisha();
         if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_CONNECT_FAILED, "aisha-tts", "no api key");
         }

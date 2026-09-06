@@ -53,8 +53,8 @@ public class DialerService {
 
     private static final Logger log = LoggerFactory.getLogger(DialerService.class);
 
-    private final DialerProperties props;
-    private final RtpProperties rtpProps;
+    private final DialerProperties dialerProperties;
+    private final RtpProperties rtpProperties;
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
     private final CampaignService campaignService;
@@ -72,15 +72,15 @@ public class DialerService {
 
     private final Map<Long, AtomicInteger> campaignTrunkCounters = new ConcurrentHashMap<>();
 
-    public DialerService(DialerProperties props, RtpProperties rtpProps, CampaignRepository campaigns,
+    public DialerService(DialerProperties dialerProperties, RtpProperties rtpProperties, CampaignRepository campaigns,
                          CampaignTargetRepository targets, CampaignService campaignService,
                          CompanyConfigService companyConfig, SipTrunkUseCase sipTrunks,
                          RabbitTemplate rabbit, DialerState state,
                          OutboundCallRegistry registry, AriService ariService,
                          GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock,
                          CampaignVariantUseCase campaignVariants, AiAgentUseCase aiAgents) {
-        this.props = props;
-        this.rtpProps = rtpProps;
+        this.dialerProperties = dialerProperties;
+        this.rtpProperties = rtpProperties;
         this.campaigns = campaigns;
         this.targets = targets;
         this.campaignService = campaignService;
@@ -99,14 +99,14 @@ public class DialerService {
 
     @Scheduled(fixedDelayString = "#{${voice-agent.dialer.tick-seconds:5} * 1000}")
     public void dispatch() {
-        if (!props.enabled() || shutdown.isDraining()) {
+        if (!dialerProperties.enabled() || shutdown.isDraining()) {
             return; // no new calls while shutting down
         }
         List<Campaign> active = campaigns.findActive();
         if (active.isEmpty()) {
             return;
         }
-        int perCampaign = Math.max(1, props.dispatchBatch() / active.size());
+        int perCampaign = Math.max(1, dialerProperties.dispatchBatch() / active.size());
 
         LocalDate today = LocalDate.now(clock);
         for (Campaign campaign : active) {
@@ -135,19 +135,19 @@ public class DialerService {
             // The platform's ceiling is physical: past the RTP port range a call is
             // answered and then dropped for want of a port, which costs the subscriber a
             // ring and us a connected minute.
-            int freePlatform = Math.min(props.maxConcurrentCalls(), rtpProps.mediaCapacity())
+            int freePlatform = Math.min(dialerProperties.maxConcurrentCalls(), rtpProperties.mediaCapacity())
                     - state.activeTotal();
             if (freePlatform <= 0) {
                 log.debug("Platform concurrency saturated (active={}/max={})",
-                        state.activeTotal(), props.maxConcurrentCalls());
+                        state.activeTotal(), dialerProperties.maxConcurrentCalls());
                 return; // nothing can be dialled this tick, by anyone
             }
             // The company's own share. `continue`, not `return`: one tenant filling its
             // quota is not a reason for the next tenant in this sweep to dial nothing.
-            int freeCompany = props.maxConcurrentCallsPerCompany() - state.active(campaign.companyId());
+            int freeCompany = dialerProperties.maxConcurrentCallsPerCompany() - state.active(campaign.companyId());
             if (freeCompany <= 0) {
                 log.debug("Company {} concurrency saturated (active={}/max={})", campaign.companyId(),
-                        state.active(campaign.companyId()), props.maxConcurrentCallsPerCompany());
+                        state.active(campaign.companyId()), dialerProperties.maxConcurrentCallsPerCompany());
                 continue;
             }
             int free = Math.min(freePlatform, freeCompany);
@@ -243,11 +243,11 @@ public class DialerService {
 
     @Scheduled(fixedDelay = 30_000)
     public void reclaimStale() {
-        for (String channelId : registry.staleUnanswered(Duration.ofSeconds(props.reclaimAfterSec()))) {
+        for (String channelId : registry.staleUnanswered(Duration.ofSeconds(dialerProperties.reclaimAfterSec()))) {
             OutboundCall oc = registry.remove(channelId);
             if (oc != null) {
                 state.release(oc.companyId());
-                campaignService.applyOutcome(oc.targetId(), Disposition.NO_ANSWER);
+                campaignService.applyOutcome(oc.companyId(), oc.targetId(), Disposition.NO_ANSWER);
                 ariService.hangupChannel(channelId);
                 log.info("Reclaimed unanswered call {} (target {})", channelId, oc.targetId());
             }

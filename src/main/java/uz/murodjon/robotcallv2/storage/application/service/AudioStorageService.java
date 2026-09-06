@@ -21,11 +21,11 @@ public class AudioStorageService {
     private static final String CONTENT_TYPE = "audio/wav";
 
     private final FileStorageService files;
-    private final AudioStorageProperties props;
+    private final AudioStorageProperties audioStorageProperties;
 
-    public AudioStorageService(FileStorageService files, AudioStorageProperties props) {
+    public AudioStorageService(FileStorageService files, AudioStorageProperties audioStorageProperties) {
         this.files = files;
-        this.props = props;
+        this.audioStorageProperties = audioStorageProperties;
     }
 
     public StoredFile upload(Path file, long companyId, String originalName) {
@@ -33,7 +33,7 @@ public class AudioStorageService {
     }
 
     public void deleteLocalCopy(Path file) {
-        if (!props.deleteLocalAfterUpload() || file == null) {
+        if (!audioStorageProperties.deleteLocalAfterUpload() || file == null) {
             return;
         }
         try {

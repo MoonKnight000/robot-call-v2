@@ -34,7 +34,7 @@ public class DialogEngine implements CallDialog {
 
     private static final Logger log = LoggerFactory.getLogger(DialogEngine.class);
 
-    private final DialogProperties props;
+    private final DialogProperties dialogProperties;
     private final CallRecordService records;
     private final AiModelConfigService aiModelConfigService;
     private final VoiceSettingsService voiceSettingsService;
@@ -50,7 +50,7 @@ public class DialogEngine implements CallDialog {
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
-    public DialogEngine(DialogProperties props,
+    public DialogEngine(DialogProperties dialogProperties,
                         CallRecordService records,
                         AiModelConfigService aiModelConfigService,
                         VoiceSettingsService voiceSettingsService,
@@ -62,7 +62,7 @@ public class DialogEngine implements CallDialog {
                         ClientInputGate inputGate,
                         SilenceWatchdogRunner watchdogRunner,
                         DialogExecutors executors) {
-        this.props = props;
+        this.dialogProperties = dialogProperties;
         this.records = records;
         this.aiModelConfigService = aiModelConfigService;
         this.voiceSettingsService = voiceSettingsService;
@@ -137,11 +137,11 @@ public class DialogEngine implements CallDialog {
     }
 
     private boolean awaitCallerReady(DialogSession s) {
-        if (props.greetingDelayMs() <= 0) {
+        if (dialogProperties.greetingDelayMs() <= 0) {
             return true;
         }
         try {
-            Thread.sleep(props.greetingDelayMs());
+            Thread.sleep(dialogProperties.greetingDelayMs());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -150,7 +150,7 @@ public class DialogEngine implements CallDialog {
     }
 
     private void speakDisclosure(DialogSession s) {
-        if (!props.mandatoryDisclosure() || !s.disclosureEnabled() || s.agentPersona() == AgentPersona.HUMAN_LIKE) {
+        if (!dialogProperties.mandatoryDisclosure() || !s.disclosureEnabled() || s.agentPersona() == AgentPersona.HUMAN_LIKE) {
             return;
         }
         String line = DialogLines.disclosure(s);
@@ -180,7 +180,7 @@ public class DialogEngine implements CallDialog {
         }
         session.latency().clientFinal();
         session.clientAnswerEnded();
-        float floor = props.lowConfidenceThreshold();
+        float floor = dialogProperties.lowConfidenceThreshold();
         // Zero means the provider does not report confidence at all; treating that as
         // "unsure" would put the confirmation on every single turn.
         session.setLowConfidenceInput(floor > 0 && confidence > 0 && confidence < floor);
@@ -212,13 +212,13 @@ public class DialogEngine implements CallDialog {
         // sentence — on a real call, 370ms before their final arrived.
         session.touchActivity();
         session.noteInterim();
-        if (session.claimBackchannel(props.backchannelAfterMs())) {
+        if (session.claimBackchannel(dialogProperties.backchannelAfterMs())) {
             // Off the recognizer's thread: synthesis can take a network round trip, and
             // this one is holding the rest of the caller's audio behind it.
             int turn = session.turnCount();
             executors.submit(() -> speech.speakBackchannel(session, turn));
         }
-        if (session.claimInterjection(props.interjectAfterMs())) {
+        if (session.claimInterjection(dialogProperties.interjectAfterMs())) {
             executors.submit(() -> speech.interject(session));
         }
         turnRunner.speculate(session, text);

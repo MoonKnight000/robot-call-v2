@@ -53,11 +53,11 @@ public class TurnTools {
     private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
             Set.of("transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall");
 
-    private final DialogProperties props;
+    private final DialogProperties dialogProperties;
     private final ObjectProvider<ChatModel> chatModelProvider;
 
-    public TurnTools(DialogProperties props, ObjectProvider<ChatModel> chatModelProvider) {
-        this.props = props;
+    public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
+        this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
     }
 
@@ -95,7 +95,7 @@ public class TurnTools {
                 }
             }
         }
-        if (!props.stateScopedTools()) {
+        if (!dialogProperties.stateScopedTools()) {
             return callbacks;
         }
         Set<String> allowed = allowedTools(s);

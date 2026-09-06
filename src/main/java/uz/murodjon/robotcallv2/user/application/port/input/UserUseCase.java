@@ -13,17 +13,17 @@ import java.util.Map;
 
 public interface UserUseCase {
 
-    InviteUserResponse invite(InviteUserRequest r);
+    InviteUserResponse invite(long companyId, InviteUserRequest request);
 
-    List<UserRow> list();
+    List<UserRow> list(long companyId);
 
-    UserRow get(long id);
+    UserRow get(long companyId, long id);
 
-    User requireUser(long id);
+    User requireUser(long companyId, long id);
 
-    UserRow changeRole(long id, UpdateUserRoleRequest r);
+    UserRow changeRole(long companyId, long id, UpdateUserRoleRequest request);
 
-    UserRow setStatus(long id, UserStatus status);
+    UserRow setStatus(long companyId, long id, UserStatus status);
 
-    Map<Long, String> namesByIds(Collection<Long> ids);
+    Map<Long, String> namesByIds(long companyId, Collection<Long> ids);
 }

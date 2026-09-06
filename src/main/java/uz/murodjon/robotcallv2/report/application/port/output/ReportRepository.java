@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.report.application.port.output;
 
 import uz.murodjon.robotcallv2.contact.application.dto.ContactCallHistoryRow;
-import uz.murodjon.robotcallv2.report.application.dto.CallFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 
 import java.time.Instant;
@@ -12,44 +12,46 @@ import java.util.List;
  */
 public interface ReportRepository {
 
-    CampaignStats campaignStats(long campaignId);
+    CampaignStats campaignStats(long companyId, long campaignId);
 
-    InboundRouteStats inboundRouteStats(long inboundRouteId);
+    InboundRouteStats inboundRouteStats(long companyId, long inboundRouteId);
 
-    List<CallRow> callsOfCampaign(long campaignId, CallFilter filter);
+    List<CallRow> callsOfCampaign(long companyId, long campaignId, CallFilter filter);
 
-    long countCallsOfCampaign(long campaignId);
+    long countCallsOfCampaign(long companyId, long campaignId);
 
-    List<CallRow> recentCalls(CallFilter filter);
+    List<CallRow> recentCalls(long companyId, CallFilter filter);
 
-    List<CallRow> exportCalls(CallFilter filter);
+    List<CallRow> exportCalls(long companyId, CallFilter filter);
 
-    long countRecentCalls(CallFilter filter);
+    long countRecentCalls(long companyId, CallFilter filter);
 
-    CallRow findCall(long callId);
+    CallRow findCall(long companyId, long callId);
 
-    CallDetail callDetail(long callId);
+    CallDetail callDetail(long companyId, long callId);
 
-    DashboardTotals dashboardTotals(Instant from, Instant to, Long campaignId);
+    DashboardTotals dashboardTotals(long companyId, Instant from, Instant to, Long campaignId);
 
-    DashboardTotals operatorTotals(Instant from, Instant to, long operatorUserId);
+    DashboardTotals operatorTotals(long companyId, Instant from, Instant to, long operatorUserId);
 
-    List<DashboardBucket> dashboardBuckets(Instant from, Instant to, Long campaignId, String granularity);
+    List<DashboardBucket> dashboardBuckets(long companyId, Instant from, Instant to, Long campaignId,
+                                           String granularity);
 
-    List<DashboardBucket> dynamicsBuckets(Instant from, Instant to, Long campaignId, Long scenarioId,
-                                          Boolean escalated, String granularity);
+    List<DashboardBucket> dynamicsBuckets(long companyId, Instant from, Instant to, Long campaignId,
+                                          Long scenarioId, Boolean escalated, String granularity);
 
-    List<DashboardOutcome> dashboardOutcomes(Instant from, Instant to, Long campaignId);
+    List<DashboardOutcome> dashboardOutcomes(long companyId, Instant from, Instant to, Long campaignId);
 
-    List<HourlyHeatmapCell> hourlyHeatmap(Instant from, Instant to, Long campaignId);
+    List<HourlyHeatmapCell> hourlyHeatmap(long companyId, Instant from, Instant to, Long campaignId);
 
-    List<CampaignComparisonRow> campaignComparison(Instant from, Instant to, List<Long> campaignIds);
+    List<CampaignComparisonRow> campaignComparison(long companyId, Instant from, Instant to,
+                                                   List<Long> campaignIds);
 
-    List<DurationHistogramBucket> durationHistogram(Instant from, Instant to, Long campaignId);
+    List<DurationHistogramBucket> durationHistogram(long companyId, Instant from, Instant to, Long campaignId);
 
-    List<FunnelStage> funnel(Instant from, Instant to, Long campaignId);
+    List<FunnelStage> funnel(long companyId, Instant from, Instant to, Long campaignId);
 
-    List<ContactCallHistoryRow> callsForPhone(String phone, int limit);
+    List<ContactCallHistoryRow> callsForPhone(long companyId, String phone, int limit);
 
-    Long recordingFileId(long callId);
+    Long recordingFileId(long companyId, long callId);
 }

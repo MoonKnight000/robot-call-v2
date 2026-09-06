@@ -1,12 +1,12 @@
 package uz.murodjon.robotcallv2.audit.infrastructure.persistence.adapter;
 
 import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.audit.application.mapper.AuditLogMapper;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.audit.infrastructure.persistence.entity.AuditLogEntity;
 import uz.murodjon.robotcallv2.audit.infrastructure.persistence.repository.AuditLogJpaRepository;
@@ -22,14 +22,14 @@ import java.util.List;
 @Component
 public class AuditLogRepositoryAdapter implements AuditLogRepository {
 
-    private final AuditLogJpaRepository jpaRepository;
+    private final AuditLogJpaRepository auditLogJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
     private final AuditLogMapper mapper;
 
-    public AuditLogRepositoryAdapter(AuditLogJpaRepository jpaRepository,
+    public AuditLogRepositoryAdapter(AuditLogJpaRepository auditLogJpaRepository,
                                      CompanyJpaRepository companyJpaRepository,
                                      AuditLogMapper mapper) {
-        this.jpaRepository = jpaRepository;
+        this.auditLogJpaRepository = auditLogJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
     }
@@ -48,25 +48,27 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
         entity.setDetail(log.detail());
         entity.setCreatedAt(Instant.now());
         entity.setIpAddress(truncate(log.ipAddress(), 45));
-        return mapper.entityToDomain(jpaRepository.save(entity));
+        return mapper.entityToDomain(auditLogJpaRepository.save(entity));
     }
 
     @Override
-    public List<AuditLog> findByCompanyId(long companyId, String actor, String action, String entity,
-                                           Pageable pageable) {
-        Specification<AuditLogEntity> spec = buildSpecification(companyId, actor, action, entity);
-        return jpaRepository.findAll(spec, pageable).stream()
+    public List<AuditLog> findByCompanyId(long companyId, AuditFilter filter) {
+        Specification<AuditLogEntity> spec = buildSpecification(companyId, filter);
+        return auditLogJpaRepository.findAll(spec, filter.pageable()).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }
 
     @Override
-    public long countByCompanyId(long companyId, String actor, String action, String entity) {
-        Specification<AuditLogEntity> spec = buildSpecification(companyId, actor, action, entity);
-        return jpaRepository.count(spec);
+    public long countByCompanyId(long companyId, AuditFilter filter) {
+        Specification<AuditLogEntity> spec = buildSpecification(companyId, filter);
+        return auditLogJpaRepository.count(spec);
     }
 
-    private static Specification<AuditLogEntity> buildSpecification(long companyId, String actor, String action, String entity) {
+    private static Specification<AuditLogEntity> buildSpecification(long companyId, AuditFilter filter) {
+        String actor = filter.actor();
+        String action = filter.action();
+        String entity = filter.entity();
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("company").get("id"), companyId));

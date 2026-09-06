@@ -29,7 +29,7 @@ class SmsServiceTest {
 
         when(externalSmsClient.send("+998901234567", "To'lov linki: https://pay.uz/123")).thenReturn(true);
 
-        boolean result = service.sendSms(req);
+        boolean result = service.sendSms(1L, req);
 
         assertThat(result).isTrue();
         verify(externalSmsClient).send("+998901234567", "To'lov linki: https://pay.uz/123");
@@ -41,7 +41,7 @@ class SmsServiceTest {
         SmsService service = new SmsService(false, externalSmsClient, auditService);
         SmsSendRequest req = new SmsSendRequest("+998901234567", "Test message");
 
-        boolean result = service.sendSms(req);
+        boolean result = service.sendSms(1L, req);
 
         assertThat(result).isTrue();
         assertThat(service.isEnabled()).isFalse();
@@ -56,7 +56,7 @@ class SmsServiceTest {
 
         when(externalSmsClient.send(anyString(), anyString())).thenThrow(new RuntimeException("SMS Gateway Timeout"));
 
-        boolean result = service.sendSms(req);
+        boolean result = service.sendSms(1L, req);
 
         assertThat(result).isFalse();
         verifyNoInteractions(auditService);
@@ -67,7 +67,7 @@ class SmsServiceTest {
         SmsService service = new SmsService(true, externalSmsClient, auditService);
         SmsSendRequest req = new SmsSendRequest("", "Test message");
 
-        assertThatThrownBy(() -> service.sendSms(req))
+        assertThatThrownBy(() -> service.sendSms(1L, req))
                 .isInstanceOf(ValidationException.class);
     }
 }

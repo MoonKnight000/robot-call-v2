@@ -3,14 +3,13 @@ package uz.murodjon.robotcallv2.inbound.application.service;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.inbound.application.dto.CreateInboundRouteRequest;
-import uz.murodjon.robotcallv2.inbound.application.dto.InboundRouteFilter;
+import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.application.dto.InboundRouteRow;
 import uz.murodjon.robotcallv2.inbound.application.dto.UpdateInboundRouteRequest;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.application.port.output.InboundRouteRepository;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.service.InboundRouteValidator;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
@@ -33,63 +32,60 @@ public class InboundRouteService implements InboundRouteUseCase {
 
     private final InboundRouteRepository routes;
     private final AiAgentUseCase aiAgents;
-    private final CurrentCompany currentCompany;
     private final ReportRepository reports;
     private final AuditService audit;
 
     public InboundRouteService(InboundRouteRepository routes, AiAgentUseCase aiAgents,
-                               CurrentCompany currentCompany,
                                ReportRepository reports, AuditService audit) {
         this.routes = routes;
         this.aiAgents = aiAgents;
-        this.currentCompany = currentCompany;
         this.reports = reports;
         this.audit = audit;
     }
 
     @Override
-    public InboundRouteRow create(CreateInboundRouteRequest r) {
+    public InboundRouteRow create(long companyId, CreateInboundRouteRequest r) {
         InboundRouteValidator.validateBusinessHours(r.businessHoursStart(), r.businessHoursEnd());
         String did = PhoneNumbers.require(r.didNumber());
         if (r.aiAgentId() != null) {
-            aiAgents.requireAgent(currentCompany.id(), r.aiAgentId());
+            aiAgents.requireAgent(companyId, r.aiAgentId());
         }
         if (routes.existsEnabledByDid(did)) {
             throw new ConflictException(ErrorCode.INBOUND_ROUTE_DID_EXISTS, did);
         }
-        long id = routes.create(r);
-        audit.record("INBOUND_ROUTE_CREATE", "inbound_route", String.valueOf(id), did);
-        return routeRow(id);
+        long id = routes.create(companyId, r);
+        audit.record(companyId, "INBOUND_ROUTE_CREATE", "inbound_route", String.valueOf(id), did);
+        return routeRow(companyId, id);
     }
 
     @Override
-    public InboundRouteRow update(long id, UpdateInboundRouteRequest r) {
+    public InboundRouteRow update(long companyId, long id, UpdateInboundRouteRequest r) {
         InboundRouteValidator.validateBusinessHours(r.businessHoursStart(), r.businessHoursEnd());
-        requireRoute(id);
+        requireRoute(companyId, id);
         String did = PhoneNumbers.require(r.didNumber());
         if (r.aiAgentId() != null) {
-            aiAgents.requireAgent(currentCompany.id(), r.aiAgentId());
+            aiAgents.requireAgent(companyId, r.aiAgentId());
         }
         if (r.enabled() && routes.existsEnabledByDidExcluding(did, id)) {
             throw new ConflictException(ErrorCode.INBOUND_ROUTE_DID_EXISTS, did);
         }
-        routes.update(id, r);
-        audit.record("INBOUND_ROUTE_UPDATE", "inbound_route", String.valueOf(id), did);
-        return routeRow(id);
+        routes.update(companyId, id, r);
+        audit.record(companyId, "INBOUND_ROUTE_UPDATE", "inbound_route", String.valueOf(id), did);
+        return routeRow(companyId, id);
     }
 
     @Override
-    public InboundRouteRow disable(long id) {
-        requireRoute(id);
-        routes.disable(id);
-        audit.record("INBOUND_ROUTE_DISABLE", "inbound_route", String.valueOf(id), null);
-        return routeRow(id);
+    public InboundRouteRow disable(long companyId, long id) {
+        requireRoute(companyId, id);
+        routes.disable(companyId, id);
+        audit.record(companyId, "INBOUND_ROUTE_DISABLE", "inbound_route", String.valueOf(id), null);
+        return routeRow(companyId, id);
     }
 
     @Override
-    public PageableData<InboundRouteRow> list(InboundRouteFilter filter) {
-        List<InboundRoute> rows = routes.findAll(filter);
-        long total = routes.count(filter);
+    public PageableData<InboundRouteRow> list(long companyId, InboundRouteFilter filter) {
+        List<InboundRoute> rows = routes.findAll(companyId, filter);
+        long total = routes.count(companyId, filter);
         Set<Long> agentIds = rows.stream()
                 .map(InboundRoute::aiAgentId)
                 .filter(Objects::nonNull)
@@ -105,8 +101,8 @@ public class InboundRouteService implements InboundRouteUseCase {
     }
 
     @Override
-    public InboundRoute requireRoute(long id) {
-        InboundRoute row = routes.find(id);
+    public InboundRoute requireRoute(long companyId, long id) {
+        InboundRoute row = routes.find(companyId, id);
         if (row == null) {
             throw new NotFoundException(ErrorCode.INBOUND_ROUTE_NOT_FOUND, id);
         }
@@ -114,8 +110,8 @@ public class InboundRouteService implements InboundRouteUseCase {
     }
 
     @Override
-    public InboundRouteRow routeRow(long id) {
-        InboundRoute route = requireRoute(id);
+    public InboundRouteRow routeRow(long companyId, long id) {
+        InboundRoute route = requireRoute(companyId, id);
         String agentName = null;
         if (route.aiAgentId() != null) {
             agentName = aiAgents.findNamesByIds(List.of(route.aiAgentId())).get(route.aiAgentId());
@@ -129,8 +125,8 @@ public class InboundRouteService implements InboundRouteUseCase {
     }
 
     @Override
-    public InboundRouteStats stats(long id) {
-        requireRoute(id);
-        return reports.inboundRouteStats(id);
+    public InboundRouteStats stats(long companyId, long id) {
+        requireRoute(companyId, id);
+        return reports.inboundRouteStats(companyId, id);
     }
 }

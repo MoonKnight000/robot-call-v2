@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import uz.murodjon.robotcallv2.memory.application.dto.UpdateClientMemoryRequest;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -22,10 +23,10 @@ public interface ClientMemoryController {
 
     @PreAuthorize("hasAuthority('CONTACT_READ')")
     @GetMapping("/{phone}")
-    ResponseEntity<ResponseData<ClientMemory>> get(@PathVariable String phone);
+    ResponseEntity<ResponseData<ClientMemory>> get(@CurrentCompanyId long companyId, @PathVariable String phone);
 
     @PreAuthorize("hasAuthority('CONTACT_EDIT')")
     @PutMapping("/{phone}")
-    ResponseEntity<ResponseData<ClientMemory>> update(@PathVariable String phone,
+    ResponseEntity<ResponseData<ClientMemory>> update(@CurrentCompanyId long companyId, @PathVariable String phone,
                                                       @Valid @RequestBody UpdateClientMemoryRequest request);
 }

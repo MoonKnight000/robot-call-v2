@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.ami.AmiClient;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
@@ -14,6 +13,7 @@ import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 import uz.murodjon.robotcallv2.siptrunk.domain.service.SipTrunkValidator;
 
@@ -29,26 +29,24 @@ public class SipTrunkService implements SipTrunkUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(SipTrunkService.class);
 
-    private final SipTrunkRepository repo;
+    private final SipTrunkRepository repository;
     private final PjsipConfigWriter pjsipConfig;
     private final SecretCipher cipher;
-    private final CurrentCompany company;
     private final AuditService audit;
     private final AmiClient ami;
 
-    public SipTrunkService(SipTrunkRepository repo, PjsipConfigWriter pjsipConfig, SecretCipher cipher,
-                           CurrentCompany company, AuditService audit, AmiClient ami) {
-        this.repo = repo;
+    public SipTrunkService(SipTrunkRepository repository, PjsipConfigWriter pjsipConfig, SecretCipher cipher,
+                           AuditService audit, AmiClient ami) {
+        this.repository = repository;
         this.pjsipConfig = pjsipConfig;
         this.cipher = cipher;
-        this.company = company;
         this.audit = audit;
         this.ami = ami;
     }
 
     @Override
     @Transactional
-    public SipTrunkRow create(CreateSipTrunkRequest r) {
+    public SipTrunkRow create(long companyId, CreateSipTrunkRequest r) {
         long id;
         if (SipTrunkValidator.isManaged(r.pjsipEndpoint(), r.host())) {
             SipTrunkValidator.requireUsername(r.sipUsername());
@@ -56,22 +54,22 @@ public class SipTrunkService implements SipTrunkUseCase {
             if (r.sipPassword() == null || r.sipPassword().isBlank()) {
                 throw new ValidationException(ErrorCode.SIP_TRUNK_PASSWORD_REQUIRED);
             }
-            id = repo.create(r.name(), pendingEndpoint(), r.callerId(), false,
+            id = repository.create(companyId, r.name(), pendingEndpoint(), r.callerId(), false,
                     r.host(), SipTrunkValidator.portOrDefault(r.port()), r.sipUsername(), encryptPassword(r.sipPassword()),
                     SipTrunkValidator.transportOrDefault(r.transport()), r.codecs());
-            repo.updatePjsipEndpoint(id, generatedEndpoint(id));
+            repository.updatePjsipEndpoint(companyId, id, generatedEndpoint(companyId, id));
         } else {
-            id = repo.create(r.name(), r.pjsipEndpoint(), r.callerId(), false,
+            id = repository.create(companyId, r.name(), r.pjsipEndpoint(), r.callerId(), false,
                     null, 5060, null, null, SipTrunkTransport.UDP, r.codecs());
         }
         pjsipConfig.regenerateAndReload();
-        audit.record("SIP_TRUNK_CREATE", "sip_trunk", String.valueOf(id), r.name());
-        return requireTrunk(id);
+        audit.record(companyId, "SIP_TRUNK_CREATE", "sip_trunk", String.valueOf(id), r.name());
+        return requireTrunk(companyId, id);
     }
 
     @Override
-    public SipTrunkRow update(long id, UpdateSipTrunkRequest r) {
-        SipTrunk existing = requireSipTrunk(id);
+    public SipTrunkRow update(long companyId, long id, UpdateSipTrunkRequest r) {
+        SipTrunk existing = requireSipTrunk(companyId, id);
         if (SipTrunkValidator.isManaged(r.pjsipEndpoint(), r.host())) {
             SipTrunkValidator.requireUsername(r.sipUsername());
             SipTrunkValidator.requireValidTransport(r.transport());
@@ -79,55 +77,55 @@ public class SipTrunkService implements SipTrunkUseCase {
             if (r.sipPassword() != null && !r.sipPassword().isBlank()) {
                 passwordEnc = encryptPassword(r.sipPassword());
             } else if (existing.host() != null) {
-                passwordEnc = null; // repo.update keeps the trunk's current encrypted password
+                passwordEnc = null; // repository.update keeps the trunk's current encrypted password
             } else {
                 throw new ValidationException(ErrorCode.SIP_TRUNK_PASSWORD_REQUIRED_ON_SWITCH);
             }
-            repo.update(id, r.name(), generatedEndpoint(id), r.callerId(), r.enabled(),
+            repository.update(companyId, id, r.name(), generatedEndpoint(companyId, id), r.callerId(), r.enabled(),
                     r.host(), SipTrunkValidator.portOrDefault(r.port()), r.sipUsername(), passwordEnc,
                     SipTrunkValidator.transportOrDefault(r.transport()), r.codecs());
         } else {
-            repo.update(id, r.name(), r.pjsipEndpoint(), r.callerId(), r.enabled(),
+            repository.update(companyId, id, r.name(), r.pjsipEndpoint(), r.callerId(), r.enabled(),
                     null, 5060, null, null, SipTrunkTransport.UDP, r.codecs());
         }
         pjsipConfig.regenerateAndReload();
-        audit.record("SIP_TRUNK_UPDATE", "sip_trunk", String.valueOf(id), r.name());
-        return requireTrunk(id);
+        audit.record(companyId, "SIP_TRUNK_UPDATE", "sip_trunk", String.valueOf(id), r.name());
+        return requireTrunk(companyId, id);
     }
 
     @Override
-    public SipTrunkRow makeDefault(long id) {
-        requireTrunk(id);
-        repo.makeDefault(id);
-        audit.record("SIP_TRUNK_SET_DEFAULT", "sip_trunk", String.valueOf(id), null);
-        return requireTrunk(id);
+    public SipTrunkRow makeDefault(long companyId, long id) {
+        requireTrunk(companyId, id);
+        repository.makeDefault(companyId, id);
+        audit.record(companyId, "SIP_TRUNK_SET_DEFAULT", "sip_trunk", String.valueOf(id), null);
+        return requireTrunk(companyId, id);
     }
 
     @Override
-    public void delete(long id) {
-        SipTrunk trunk = requireSipTrunk(id);
+    public void delete(long companyId, long id) {
+        SipTrunk trunk = requireSipTrunk(companyId, id);
         if (trunk.isDefault()) {
             throw new ConflictException(ErrorCode.SIP_TRUNK_DEFAULT_DELETE_FORBIDDEN);
         }
-        repo.delete(id);
+        repository.delete(companyId, id);
         pjsipConfig.regenerateAndReload();
-        audit.record("SIP_TRUNK_DELETE", "sip_trunk", String.valueOf(id), trunk.name());
+        audit.record(companyId, "SIP_TRUNK_DELETE", "sip_trunk", String.valueOf(id), trunk.name());
     }
 
     @Override
-    public PageableData<SipTrunkRow> list(SipTrunkFilter filter) {
-        List<SipTrunkRow> rows = repo.findAll(filter).stream().map(SipTrunkRow::of).toList();
-        long total = repo.count(filter);
+    public PageableData<SipTrunkRow> list(long companyId, SipTrunkFilter filter) {
+        List<SipTrunkRow> rows = repository.findAll(companyId, filter).stream().map(SipTrunkRow::of).toList();
+        long total = repository.count(companyId, filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 
     @Override
-    public SipTrunkRow requireTrunk(long id) {
-        return SipTrunkRow.of(requireSipTrunk(id));
+    public SipTrunkRow requireTrunk(long companyId, long id) {
+        return SipTrunkRow.of(requireSipTrunk(companyId, id));
     }
 
-    private SipTrunk requireSipTrunk(long id) {
-        SipTrunk trunk = repo.find(id);
+    private SipTrunk requireSipTrunk(long companyId, long id) {
+        SipTrunk trunk = repository.find(companyId, id);
         if (trunk == null) {
             throw new NotFoundException(ErrorCode.SIP_TRUNK_NOT_FOUND, id);
         }
@@ -136,7 +134,7 @@ public class SipTrunkService implements SipTrunkUseCase {
 
     @Override
     public SipTrunkRow findDefaultForCall(long companyId) {
-        SipTrunk trunk = repo.findDefaultForCompany(companyId);
+        SipTrunk trunk = repository.findDefaultForCompany(companyId);
         return trunk == null ? null : SipTrunkRow.of(trunk);
     }
 
@@ -155,7 +153,7 @@ public class SipTrunkService implements SipTrunkUseCase {
         if (candidateTrunkIds == null || candidateTrunkIds.isEmpty()) {
             return findAllEnabledForCompany(companyId);
         }
-        List<SipTrunk> matched = repo.findEnabledByIdsAndCompany(candidateTrunkIds, companyId);
+        List<SipTrunk> matched = repository.findEnabledByIdsAndCompany(candidateTrunkIds, companyId);
         if (matched.isEmpty()) {
             throw new ConflictException(ErrorCode.SIP_TRUNK_SELECTION_UNAVAILABLE, candidateTrunkIds);
         }
@@ -168,9 +166,9 @@ public class SipTrunkService implements SipTrunkUseCase {
 
     @Override
     public List<SipTrunkRow> findAllEnabledForCompany(long companyId) {
-        List<SipTrunk> enabled = repo.findAllEnabledByCompany(companyId);
+        List<SipTrunk> enabled = repository.findAllEnabledByCompany(companyId);
         if (enabled.isEmpty()) {
-            SipTrunk def = repo.findDefaultForCompany(companyId);
+            SipTrunk def = repository.findDefaultForCompany(companyId);
             if (def != null) {
                 return List.of(SipTrunkRow.of(def));
             }
@@ -180,14 +178,14 @@ public class SipTrunkService implements SipTrunkUseCase {
     }
 
     @Override
-    public SipTrunkStatus getStatus(long id) {
-        SipTrunk trunk = requireSipTrunk(id);
+    public SipTrunkStatus getStatus(long companyId, long id) {
+        SipTrunk trunk = requireSipTrunk(companyId, id);
         return evaluateTrunkStatus(trunk);
     }
 
     @Override
-    public List<SipTrunkStatus> getAllStatuses() {
-        List<SipTrunk> trunks = repo.findAll(new SipTrunkFilter(0, 100, null));
+    public List<SipTrunkStatus> getAllStatuses(long companyId) {
+        List<SipTrunk> trunks = repository.findAll(companyId, new SipTrunkFilter(0, 100, null));
         return trunks.stream().map(this::evaluateTrunkStatus).toList();
     }
 
@@ -249,8 +247,8 @@ public class SipTrunkService implements SipTrunkUseCase {
         return cipher.encrypt(plaintext);
     }
 
-    private String generatedEndpoint(long id) {
-        return "trunk_" + company.id() + "_" + id;
+    private String generatedEndpoint(long companyId, long id) {
+        return "trunk_" + companyId + "_" + id;
     }
 
     private static String pendingEndpoint() {

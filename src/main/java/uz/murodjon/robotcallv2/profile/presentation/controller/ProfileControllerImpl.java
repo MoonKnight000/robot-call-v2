@@ -37,23 +37,23 @@ public class ProfileControllerImpl implements ProfileController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Profile>> get() {
-        return ResponseEntity.ok(ResponseData.ok(profile.find()));
+    public ResponseEntity<ResponseData<Profile>> get(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(profile.find(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Profile>> update(UpdateProfileRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(profile.update(r)));
+    public ResponseEntity<ResponseData<Profile>> update(long companyId, UpdateProfileRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(profile.update(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Profile>> uploadAvatar(MultipartFile file) {
-        return ResponseEntity.ok(ResponseData.ok(profile.uploadAvatar(file)));
+    public ResponseEntity<ResponseData<Profile>> uploadAvatar(long companyId, MultipartFile file) {
+        return ResponseEntity.ok(ResponseData.ok(profile.uploadAvatar(companyId, file)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> changePassword(ChangePasswordRequest r) {
-        profile.changePassword(r);
+    public ResponseEntity<ResponseData<Void>> changePassword(long companyId, ChangePasswordRequest request) {
+        profile.changePassword(companyId, request);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 
@@ -63,8 +63,8 @@ public class ProfileControllerImpl implements ProfileController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> revokeSession(long id) {
-        sessions.revoke(id);
+    public ResponseEntity<ResponseData<Void>> revokeSession(long companyId, long id) {
+        sessions.revoke(companyId, id);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 
@@ -75,8 +75,8 @@ public class ProfileControllerImpl implements ProfileController {
 
     @Override
     public ResponseEntity<ResponseData<List<PersonalNotificationMatrixEntry>>> updateNotifications(
-            UpdatePersonalNotificationSettingsRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(notifications.update(r)));
+            long companyId, UpdatePersonalNotificationSettingsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(notifications.update(companyId, request)));
     }
 
     @Override
@@ -85,18 +85,18 @@ public class ProfileControllerImpl implements ProfileController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<ScheduleSlot>>> updateSchedule(UpdateScheduleRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(schedule.update(r)));
+    public ResponseEntity<ResponseData<List<ScheduleSlot>>> updateSchedule(long companyId, UpdateScheduleRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(schedule.update(companyId, request)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<TodayStats>> todayStats() {
-        return ResponseEntity.ok(ResponseData.ok(profile.todayStats()));
+    public ResponseEntity<ResponseData<TodayStats>> todayStats(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(profile.todayStats(companyId)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<String>>> updateCallColumns(UpdateCallColumnsRequest r) {
-        return ResponseEntity.ok(ResponseData.ok(profile.updateCallColumns(r)));
+    public ResponseEntity<ResponseData<List<String>>> updateCallColumns(long companyId, UpdateCallColumnsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(profile.updateCallColumns(companyId, request)));
     }
 
     @Override
@@ -105,7 +105,7 @@ public class ProfileControllerImpl implements ProfileController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<JsonNode>> updateTableConfig(String key, JsonNode value) {
-        return ResponseEntity.ok(ResponseData.ok(tableConfig.update(key, value)));
+    public ResponseEntity<ResponseData<JsonNode>> updateTableConfig(long companyId, String key, JsonNode value) {
+        return ResponseEntity.ok(ResponseData.ok(tableConfig.update(companyId, key, value)));
     }
 }

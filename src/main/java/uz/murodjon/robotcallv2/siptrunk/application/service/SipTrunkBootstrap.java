@@ -7,6 +7,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.ari.AsteriskProperties;
+import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 
@@ -19,15 +20,19 @@ public class SipTrunkBootstrap {
 
     private final SipTrunkRepository trunks;
     private final AsteriskProperties asterisk;
+    private final CompanyProperties companyProperties;
 
-    public SipTrunkBootstrap(SipTrunkRepository trunks, AsteriskProperties asterisk) {
+    public SipTrunkBootstrap(SipTrunkRepository trunks, AsteriskProperties asterisk,
+                             CompanyProperties companyProperties) {
         this.trunks = trunks;
         this.asterisk = asterisk;
+        this.companyProperties = companyProperties;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void seedDefaultTrunkFromConfig() {
-        if (trunks.hasDefault()) {
+        long companyId = companyProperties.defaultId();
+        if (trunks.hasDefault(companyId)) {
             return;
         }
         if (asterisk.trunkEndpoint() == null || asterisk.trunkEndpoint().isBlank()) {
@@ -36,7 +41,7 @@ public class SipTrunkBootstrap {
             return;
         }
         String callerId = asterisk.callerId() == null || asterisk.callerId().isBlank() ? null : asterisk.callerId();
-        long id = trunks.create("Default", asterisk.trunkEndpoint(), callerId, true,
+        long id = trunks.create(companyId, "Default", asterisk.trunkEndpoint(), callerId, true,
                 null, 5060, null, null, SipTrunkTransport.UDP, List.of("alaw", "ulaw"));
         log.info("Seeded default SIP trunk {} (endpoint '{}') from voice-agent.asterisk.trunk-endpoint",
                 id, asterisk.trunkEndpoint());

@@ -30,7 +30,7 @@ public final class WavReader {
 
     /**
      * The same file with its channels kept apart — for a call recording, where the left
-     * channel is the caller and the right is the bot ({@link WavRecorder.RecordingMode}) and the
+     * channel is the caller and the right is the bot ({@link RecordingMode}) and the
      * down-mix {@link #read} performs would throw away the half that says who was
      * talking.
      */

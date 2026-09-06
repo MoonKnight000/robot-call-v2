@@ -241,6 +241,8 @@ Operator davom etayotgan jonli suhbatni eshitib turib, robotga maxfiy ko'rsatma 
 }
 ```
 
+`instruction` majburiy va bo'sh bo'lmasligi kerak — aks holda `400 VALIDATION_FAILED`.
+
 **Response**:
 ```json
 {

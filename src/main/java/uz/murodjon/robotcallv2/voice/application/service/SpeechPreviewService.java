@@ -15,7 +15,6 @@ import uz.murodjon.robotcallv2.agent.stt.TranscriptListener;
 import uz.murodjon.robotcallv2.agent.tts.SpeechTextNormalizer;
 import uz.murodjon.robotcallv2.agent.tts.TtsProvider;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -67,12 +66,11 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
     private final SttProperties sttProperties;
     private final AudioTranscoder audioTranscoder;
     private final EngineConfigService engineConfigService;
-    private final CurrentCompany currentCompany;
 
     public SpeechPreviewService(TtsVoiceRepository ttsVoiceRepository, TtsProviderSelector ttsProviderSelector,
                                 VoiceSettingsUseCase voiceSettingsUseCase, SttProviderSelector sttProviderSelector,
                                 SttProperties sttProperties, AudioTranscoder audioTranscoder,
-                                EngineConfigService engineConfigService, CurrentCompany currentCompany) {
+                                EngineConfigService engineConfigService) {
         this.ttsVoiceRepository = ttsVoiceRepository;
         this.ttsProviderSelector = ttsProviderSelector;
         this.voiceSettingsUseCase = voiceSettingsUseCase;
@@ -80,11 +78,10 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         this.sttProperties = sttProperties;
         this.audioTranscoder = audioTranscoder;
         this.engineConfigService = engineConfigService;
-        this.currentCompany = currentCompany;
     }
 
     @Override
-    public byte[] previewVoice(String voiceId, String text) {
+    public byte[] previewVoice(long companyId, String voiceId, String text) {
         TtsVoice voice = ttsVoiceRepository.find(voiceId);
         if (voice == null) {
             throw new NotFoundException(ErrorCode.TTS_VOICE_NOT_FOUND, voiceId);
@@ -94,14 +91,14 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
             // A realtime engine's voice, or a TTS vendor whose credentials are not configured.
             throw new ConflictException(ErrorCode.TTS_VOICE_PROVIDER_UNAVAILABLE, voiceId, voice.provider());
         }
-        EffectiveVoiceSettings style = voiceSettingsUseCase.effective(currentCompany.id()).withRole(voice.role());
+        EffectiveVoiceSettings style = voiceSettingsUseCase.effective(companyId).withRole(voice.role());
         String speech = SpeechTextNormalizer.normalize(text, voice.language());
         short[] pcm = provider.synthesize(speech, voice.language(), voice.name(), style);
         return toWav(pcm);
     }
 
     @Override
-    public SttPreviewResponse previewStt(MultipartFile file, String providerName, String language) {
+    public SttPreviewResponse previewStt(long companyId, MultipartFile file, String providerName, String language) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException(ErrorCode.AUDIO_UPLOAD_FILE_MISSING);
         }
@@ -111,7 +108,7 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         } catch (IOException e) {
             throw new ValidationException(ErrorCode.AUDIO_UPLOAD_INVALID, e.getMessage());
         }
-        SttProvider provider = resolveSttProvider(providerName);
+        SttProvider provider = resolveSttProvider(companyId, providerName);
         short[] samples = audioTranscoder.decode(upload, provider.sampleRate());
         long audioMs = samples.length * 1000L / provider.sampleRate();
         if (audioMs > MAX_AUDIO_SECONDS * 1000L) {
@@ -135,7 +132,7 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         return new SttPreviewResponse(provider.name(), lang, collector.transcript(), audioMs);
     }
 
-    private SttProvider resolveSttProvider(String providerName) {
+    private SttProvider resolveSttProvider(long companyId, String providerName) {
         boolean chosenExplicitly = providerName != null && !providerName.isBlank();
         if (chosenExplicitly && !sttProviderSelector.exists(providerName)) {
             throw new ValidationException(ErrorCode.ENGINE_STT_PROVIDER_UNKNOWN, providerName,
@@ -143,7 +140,7 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         }
         String chosen = chosenExplicitly
                 ? providerName
-                : engineConfigService.findEffectiveByCompanyId(currentCompany.id()).sttProvider();
+                : engineConfigService.findEffectiveByCompanyId(companyId).sttProvider();
         SttProvider provider = sttProviderSelector.findForCall(chosen);
         if (provider == null) {
             throw new ConflictException(ErrorCode.STT_PROVIDER_UNAVAILABLE);

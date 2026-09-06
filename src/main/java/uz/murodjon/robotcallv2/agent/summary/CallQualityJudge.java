@@ -12,7 +12,6 @@ import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
@@ -75,16 +74,13 @@ public class CallQualityJudge {
 
     public CallQualityJudge(ObjectProvider<ChatModel> chatModelProvider,
                             VoiceMetrics metrics,
-                            @Value("${voice-agent.quality.enabled:false}") boolean enabled,
-                            @Value("${voice-agent.quality.sample-rate:1.0}") double sampleRate,
-                            @Value("${voice-agent.quality.model:gemini-3.8-flash}") String model,
-                            @Value("${voice-agent.quality.max-tokens:512}") int maxTokens) {
+                            QualityProperties qualityProperties) {
         this.chatModelProvider = chatModelProvider;
         this.metrics = metrics;
-        this.enabled = enabled;
-        this.sampleRate = sampleRate;
-        this.model = model;
-        this.maxTokens = maxTokens;
+        this.enabled = qualityProperties.enabled();
+        this.sampleRate = qualityProperties.sampleRate();
+        this.model = qualityProperties.model();
+        this.maxTokens = qualityProperties.maxTokens();
     }
 
     @PostConstruct

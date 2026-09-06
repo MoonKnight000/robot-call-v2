@@ -41,7 +41,7 @@ public class SmartTurnDetector {
     /** The rate the model was trained at; the caller resamples to it. */
     static final int SAMPLE_RATE = 16000;
 
-    private final SmartTurnProperties props;
+    private final SmartTurnProperties smartTurnProperties;
 
     private OrtEnvironment env;
     private volatile OrtSession session;
@@ -50,13 +50,13 @@ public class SmartTurnDetector {
     private WhisperFeatures features;
     private int audioSamples;
 
-    public SmartTurnDetector(SmartTurnProperties props) {
-        this.props = props;
+    public SmartTurnDetector(SmartTurnProperties smartTurnProperties) {
+        this.smartTurnProperties = smartTurnProperties;
     }
 
     @PostConstruct
     public void init() {
-        String path = props.modelPath();
+        String path = smartTurnProperties.modelPath();
         if (path == null || path.isBlank()) {
             log.warn("Smart Turn model path not set (voice-agent.turn.model-path); "
                     + "semantic end-of-turn detection disabled");
@@ -77,7 +77,7 @@ public class SmartTurnDetector {
             log.info("Smart Turn ready (model={}, input={}, {}, languages={}, threshold={})",
                     path, inputName, features == null ? audioSamples + " raw samples"
                             : features.nMels() + "x" + features.frames() + " log-mel",
-                    props.languages(), props.threshold());
+                    smartTurnProperties.languages(), smartTurnProperties.threshold());
         } catch (Exception e) {
             log.error("Failed to load the Smart Turn model {}: {}", path, e.getMessage());
             session = null;
@@ -107,7 +107,7 @@ public class SmartTurnDetector {
         if (shape.length == 2) {
             // Raw audio: the preprocessing is baked into the graph, so there is nothing
             // for WhisperFeatures to get wrong.
-            audioSamples = (int) (shape[1] > 0 ? shape[1] : (long) props.frames() * props.hopSamples());
+            audioSamples = (int) (shape[1] > 0 ? shape[1] : (long) smartTurnProperties.frames() * smartTurnProperties.hopSamples());
             features = null;
             return true;
         }
@@ -117,8 +117,8 @@ public class SmartTurnDetector {
             return false;
         }
         try {
-            features = new WhisperFeatures(SAMPLE_RATE, props.nFft(), props.hopSamples(),
-                    props.mels(), props.frames());
+            features = new WhisperFeatures(SAMPLE_RATE, smartTurnProperties.nFft(), smartTurnProperties.hopSamples(),
+                    smartTurnProperties.mels(), smartTurnProperties.frames());
         } catch (IllegalArgumentException e) {
             log.error("Smart Turn features cannot be built: {} — detection disabled", e.getMessage());
             return false;
@@ -163,7 +163,7 @@ public class SmartTurnDetector {
      */
     public boolean isComplete(short[] pcm, int length) {
         float probability = completion(pcm, length);
-        return probability < 0 || probability >= props.threshold();
+        return probability < 0 || probability >= smartTurnProperties.threshold();
     }
 
     /**
@@ -178,7 +178,7 @@ public class SmartTurnDetector {
      */
     public boolean isConfidentlyComplete(short[] pcm, int length) {
         float probability = completion(pcm, length);
-        return probability >= 0 && probability >= props.earlyThreshold();
+        return probability >= 0 && probability >= smartTurnProperties.earlyThreshold();
     }
 
     /**

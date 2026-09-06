@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
@@ -17,5 +18,6 @@ import java.util.List;
 public interface TtsVoiceController {
 
     @GetMapping("/voices")
-    ResponseEntity<ResponseData<List<TtsVoice>>> voices(@RequestParam(required = false) String language);
+    ResponseEntity<ResponseData<List<TtsVoice>>> voices(@CurrentCompanyId long companyId,
+                                                         @RequestParam(required = false) String language);
 }

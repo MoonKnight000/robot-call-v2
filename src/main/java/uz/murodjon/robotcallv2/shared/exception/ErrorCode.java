@@ -71,7 +71,7 @@ public enum ErrorCode {
     CSV_NAME_EMPTY("name is empty"),
     CSV_CLIENT_ID_NOT_NUMBER("clientId '%s' is not a number"),
     COMPANY_CONFIG_DEFAULT_LANGUAGE_NOT_IN_SUPPORTED("defaultLanguage '%s' must be one of supportedLanguages %s"),
-    LANGUAGE_CODE_INVALID("%s"),
+    LANGUAGE_CODE_INVALID("Unknown language '%s'; supported: %s"),
     COMPANY_CONFIG_LANGUAGE_NOT_SUPPORTED("Language '%s' is not supported by this company; supported: %s"),
     COMPANY_CONFIG_DISCLOSURE_INCOMPLETE(
             "disclosureText qo'ng'iroq avtomatik ekanini va yozib olinayotganini aytishi shart (§11.1); "
@@ -116,6 +116,7 @@ public enum ErrorCode {
     PLAYBACK_FILE_NOT_FOUND("No such playback file: %s"),
     SAY_TEXT_BLANK("text must not be blank"),
     SAY_TEXT_TOO_LONG("text is longer than %s characters"),
+    VOICE_SPEED_OUT_OF_RANGE("speed must be between 0.25 and 4.0, got %s"),
     AI_AGENT_TEMPERATURE_OUT_OF_RANGE("temperature must be between 0 and 2, got %s"),
     AI_AGENT_MAX_OUTPUT_TOKENS_OUT_OF_RANGE("maxOutputTokens must be between 1 and 4096, got %s"),
     TARGET_SOURCE_URL_INVALID("target source url must be an http(s) address, got '%s'"),
@@ -181,6 +182,8 @@ public enum ErrorCode {
     ENCRYPTION_KEY_NOT_SET("voice-agent.encryption.secret-key is not set"),
     REPORT_PDF_RENDER_FAILED("Failed to render report PDF: %s"),
     REPORT_XLSX_RENDER_FAILED("Failed to render report XLSX: %s"),
+    INVOICE_PDF_RENDER_FAILED("Failed to render invoice PDF: %s"),
+    JWT_KEY_NOT_SET("voice-agent.security.jwt.secret is not set"),
     IMAGE_UPLOAD_STORAGE_UNAVAILABLE("image upload failed — storage unavailable"),
     FILE_READ_FAILED("could not read file %s"),
 

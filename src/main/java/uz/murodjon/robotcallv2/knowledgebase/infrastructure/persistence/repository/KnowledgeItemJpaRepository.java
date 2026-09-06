@@ -30,5 +30,13 @@ public interface KnowledgeItemJpaRepository extends JpaRepository<KnowledgeItemE
                                               @Param("search") String search,
                                               Pageable pageable);
 
+    @Query("SELECT count(k) FROM KnowledgeItemEntity k WHERE k.companyId = :companyId AND "
+            + "(:search IS NULL OR :search = '' OR "
+            + "LOWER(k.itemKey) LIKE LOWER(CONCAT('%', :search, '%')) OR "
+            + "LOWER(k.title) LIKE LOWER(CONCAT('%', :search, '%')) OR "
+            + "LOWER(k.keywords) LIKE LOWER(CONCAT('%', :search, '%')) OR "
+            + "LOWER(k.topic) LIKE LOWER(CONCAT('%', :search, '%')))")
+    long countSearchByCompany(@Param("companyId") Long companyId, @Param("search") String search);
+
     void deleteByIdAndCompanyId(Long id, Long companyId);
 }

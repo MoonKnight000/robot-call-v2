@@ -7,27 +7,27 @@ import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 public interface CampaignUseCase {
 
-    CreateCampaignResponse createCampaign(CreateCampaignRequest r);
+    CreateCampaignResponse createCampaign(long companyId, CreateCampaignRequest request);
 
-    CampaignRow updateCampaign(long id, UpdateCampaignRequest r);
+    CampaignRow updateCampaign(long companyId, long id, UpdateCampaignRequest request);
 
-    CampaignRow clone(long id);
+    CampaignRow clone(long companyId, long id);
 
-    CampaignRow campaignRow(long id);
+    CampaignRow campaignRow(long companyId, long id);
 
-    Campaign getCampaign(long id);
+    Campaign getCampaign(long companyId, long id);
 
-    Campaign requireCampaign(long id);
+    Campaign requireCampaign(long companyId, long id);
 
-    PageableData<CampaignRow> filterCampaigns(CampaignFilter filter);
+    PageableData<CampaignRow> filterCampaigns(long companyId, CampaignFilter filter);
 
-    PageableData<CampaignRow> listCampaigns(CampaignFilter filter);
+    PageableData<CampaignRow> listCampaigns(long companyId, CampaignFilter filter);
 
-    CampaignStatusResponse start(long campaignId, boolean immediate);
+    CampaignStatusResponse start(long companyId, long campaignId, boolean immediate);
 
-    CampaignStatusResponse pause(long campaignId);
+    CampaignStatusResponse pause(long companyId, long campaignId);
 
-    CampaignStatusResponse archive(long campaignId);
+    CampaignStatusResponse archive(long companyId, long campaignId);
 
-    void triggerRecurrenceRun(long campaignId, boolean resetTargets);
+    void triggerRecurrenceRun(long companyId, long campaignId, boolean resetTargets);
 }

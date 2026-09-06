@@ -15,20 +15,20 @@ import java.util.Optional;
 @Component
 public class InvoiceRepositoryAdapter implements InvoiceRepository {
 
-    private final InvoiceJpaRepository jpa;
+    private final InvoiceJpaRepository jpaRepository;
 
-    public InvoiceRepositoryAdapter(InvoiceJpaRepository jpa) {
-        this.jpa = jpa;
+    public InvoiceRepositoryAdapter(InvoiceJpaRepository jpaRepository) {
+        this.jpaRepository = jpaRepository;
     }
 
     @Override
     public Optional<Invoice> findById(String id) {
-        return jpa.findById(id).map(InvoiceEntity::toDomain);
+        return jpaRepository.findById(id).map(InvoiceEntity::toDomain);
     }
 
     @Override
     public PageableData<Invoice> findAllByCompanyId(long companyId, int page, int size) {
-        Page<InvoiceEntity> p = jpa.findAllByCompanyIdOrderByCreatedAtDesc(companyId, PageRequest.of(page, size));
+        Page<InvoiceEntity> p = jpaRepository.findAllByCompanyIdOrderByCreatedAtDesc(companyId, PageRequest.of(page, size));
         List<Invoice> list = p.getContent().stream().map(InvoiceEntity::toDomain).toList();
         return new PageableData<>(p.getTotalPages(), p.getNumber(), p.getTotalElements(), list);
     }
@@ -36,6 +36,6 @@ public class InvoiceRepositoryAdapter implements InvoiceRepository {
     @Override
     public Invoice save(Invoice invoice) {
         InvoiceEntity entity = InvoiceEntity.fromDomain(invoice);
-        return jpa.save(entity).toDomain();
+        return jpaRepository.save(entity).toDomain();
     }
 }

@@ -11,6 +11,8 @@ import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
 import uz.murodjon.robotcallv2.auth.application.dto.IssuedToken;
 import uz.murodjon.robotcallv2.auth.infrastructure.config.JwtProperties;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -31,23 +33,23 @@ public class JwtTokenService {
     /** Comma-separated {@link Permission#code()} values — the short form keeps the token small. */
     private static final String PERMISSIONS_CLAIM = "perms";
 
-    private final JwtProperties props;
+    private final JwtProperties jwtProperties;
     private final SecretKey key;
 
-    public JwtTokenService(JwtProperties props) {
-        this.props = props;
-        this.key = props.configured() ? Keys.hmacShaKeyFor(sha256(props.secret())) : null;
-        if (!props.configured()) {
+    public JwtTokenService(JwtProperties jwtProperties) {
+        this.jwtProperties = jwtProperties;
+        this.key = jwtProperties.configured() ? Keys.hmacShaKeyFor(sha256(jwtProperties.secret())) : null;
+        if (!jwtProperties.configured()) {
             log.error("voice-agent.security.jwt.secret is not set — no user can log in until it is.");
         }
     }
 
     public IssuedToken issue(AuthenticatedUser user) {
         if (key == null) {
-            throw new IllegalStateException("JWT signing key is not configured");
+            throw new ExternalServiceException(ErrorCode.JWT_KEY_NOT_SET, "auth");
         }
         Instant now = Instant.now();
-        Instant expiresAt = now.plus(props.expiryMinutesOrDefault(), ChronoUnit.MINUTES);
+        Instant expiresAt = now.plus(jwtProperties.expiryMinutesOrDefault(), ChronoUnit.MINUTES);
         String token = Jwts.builder()
                 .subject(String.valueOf(user.userId()))
                 .claim("companyId", user.companyId())

@@ -4,5 +4,5 @@ public interface TableConfigRepository {
 
     String find(long userId, String configKey);
 
-    String save(long userId, String configKey, String configValueJson);
+    String save(long companyId, long userId, String configKey, String configValueJson);
 }

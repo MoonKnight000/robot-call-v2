@@ -1,7 +1,8 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.adapter;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.company.application.dto.CompanyFilter;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.application.mapper.CompanyMapper;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
@@ -15,68 +16,88 @@ import java.util.List;
 @Component
 public class CompanyRepositoryAdapter implements CompanyRepository {
 
-    private final CompanyJpaRepository jpa;
+    private final CompanyJpaRepository jpaRepository;
+    private final JdbcTemplate jdbcTemplate;
     private final CompanyMapper mapper;
 
-    public CompanyRepositoryAdapter(CompanyJpaRepository jpa, CompanyMapper mapper) {
-        this.jpa = jpa;
+    public CompanyRepositoryAdapter(CompanyJpaRepository jpaRepository, JdbcTemplate jdbcTemplate,
+                                    CompanyMapper mapper) {
+        this.jpaRepository = jpaRepository;
+        this.jdbcTemplate = jdbcTemplate;
         this.mapper = mapper;
     }
 
     @Override
-    public long create(String name) {
+    public long create(Company company) {
         CompanyEntity entity = new CompanyEntity();
-        entity.setName(name);
+        entity.setName(company.name());
         entity.setStatus(CompanyStatus.ACTIVE);
         entity.setCreatedAt(Instant.now());
-        return jpa.save(entity).getId();
+        return jpaRepository.save(entity).getId();
+    }
+
+    /**
+     * Native SQL rather than JPA: {@code company.id} is {@code GenerationType.IDENTITY},
+     * so a persist would discard the caller's id and let the sequence pick another one.
+     */
+    @Override
+    public void createWithId(long id, String name) {
+        jdbcTemplate.update(
+                "INSERT INTO company(id, name, status, created_at) VALUES (?, ?, ?, now()) "
+                        + "ON CONFLICT (id) DO NOTHING",
+                id, name, CompanyStatus.ACTIVE.name());
+    }
+
+    @Override
+    public boolean existsById(long id) {
+        return jpaRepository.existsById(id);
     }
 
     @Override
     public Company find(long id) {
-        return jpa.findById(id).map(mapper::entityToDomain).orElse(null);
+        return jpaRepository.findById(id).map(mapper::entityToDomain).orElse(null);
     }
 
     @Override
-    public void update(long id, String name, String address) {
-        jpa.findById(id).ifPresent(entity -> {
-            entity.setName(name);
-            entity.setAddress(address);
-            jpa.save(entity);
+    public void update(long id, Company company) {
+        jpaRepository.findById(id).ifPresent(entity -> {
+            entity.setName(company.name());
+            entity.setAddress(company.address());
+            jpaRepository.save(entity);
         });
     }
 
     @Override
     public void updateLogoFileId(long id, Long logoFileId) {
-        jpa.findById(id).ifPresent(entity -> {
+        jpaRepository.findById(id).ifPresent(entity -> {
             entity.setLogoFileId(logoFileId);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
     public void updateStatus(long id, CompanyStatus status) {
-        jpa.findById(id).ifPresent(entity -> {
+        jpaRepository.findById(id).ifPresent(entity -> {
             entity.setStatus(status);
-            jpa.save(entity);
+            jpaRepository.save(entity);
         });
     }
 
     @Override
     public List<Company> findAll() {
-        return jpa.findAll().stream().map(mapper::entityToDomain).toList();
+        return jpaRepository.findAll().stream().map(mapper::entityToDomain).toList();
     }
 
     @Override
     public List<Company> findAll(CompanyFilter filter) {
-        return jpa.search(likePattern(filter.search()), filter.pageable()).stream()
+        return jpaRepository.search(likePattern(filter.search()), filter.pageable()).stream()
                 .map(mapper::entityToDomain)
                 .toList();
     }
 
     @Override
     public long count(CompanyFilter filter) {
-        return jpa.countSearch(likePattern(filter.search()));
+        return jpaRepository.countSearch(likePattern(filter.search()));
     }
 
     private static String likePattern(String search) {

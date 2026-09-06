@@ -40,7 +40,7 @@ public class TtsCache {
     /** Used when {@code max-chars} is absent, so a half-filled cache block is not a dead cache. */
     private static final int DEFAULT_MAX_CHARS = 200;
 
-    private final TtsCacheProperties props;
+    private final TtsCacheProperties ttsCacheProperties;
     private final int maxChars;
 
     /**
@@ -62,9 +62,9 @@ public class TtsCache {
     /** Set after the first Redis failure so an outage is reported once, not per turn. */
     private volatile boolean redisFailureLogged;
 
-    public TtsCache(TtsProperties ttsProps, ObjectProvider<RedisConnectionFactory> connectionFactory) {
-        this.props = ttsProps.cache() != null ? ttsProps.cache() : TtsCacheProperties.disabled();
-        int capacity = props.size();
+    public TtsCache(TtsProperties ttsProperties, ObjectProvider<RedisConnectionFactory> connectionFactory) {
+        this.ttsCacheProperties = ttsProperties.cache() != null ? ttsProperties.cache() : TtsCacheProperties.disabled();
+        int capacity = ttsCacheProperties.size();
         this.memory = capacity > 0
                 ? Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
                     @Override
@@ -73,17 +73,17 @@ public class TtsCache {
                     }
                 })
                 : null;
-        this.maxChars = props.maxChars() > 0 ? props.maxChars() : DEFAULT_MAX_CHARS;
-        this.voiceFingerprint = fingerprint(ttsProps);
-        this.redis = props.redis() ? buildTemplate(connectionFactory.getIfAvailable()) : null;
+        this.maxChars = ttsCacheProperties.maxChars() > 0 ? ttsCacheProperties.maxChars() : DEFAULT_MAX_CHARS;
+        this.voiceFingerprint = fingerprint(ttsProperties);
+        this.redis = ttsCacheProperties.redis() ? buildTemplate(connectionFactory.getIfAvailable()) : null;
         log.info("TTS cache: memory={}, redis={}, maxChars={}, voices={}",
                 capacity > 0 ? capacity + " entries" : "off",
-                redis != null ? "on (ttl " + props.ttlDays() + "d)" : "off",
+                redis != null ? "on (ttl " + ttsCacheProperties.ttlDays() + "d)" : "off",
                 maxChars, voiceFingerprint);
     }
 
     public boolean prewarmEnabled() {
-        return props.prewarm() && (memory != null || redis != null);
+        return ttsCacheProperties.prewarm() && (memory != null || redis != null);
     }
 
     /**
@@ -183,21 +183,21 @@ public class TtsCache {
      * providers are folded into one fingerprint: a voice change is rare, and having it
      * strand a few of the other provider's entries costs one re-synthesis each.
      */
-    private static String fingerprint(TtsProperties props) {
+    private static String fingerprint(TtsProperties ttsProperties) {
         StringBuilder sb = new StringBuilder();
-        YandexTtsProperties yandex = props.yandex();
+        YandexTtsProperties yandex = ttsProperties.yandex();
         if (yandex != null) {
             sb.append(yandex.voice()).append('|').append(sorted(yandex.voices()))
                     .append('|').append(yandex.sampleRate());
         }
         sb.append("//");
-        GeminiTtsProperties gemini = props.gemini();
+        GeminiTtsProperties gemini = ttsProperties.gemini();
         if (gemini != null) {
             sb.append(gemini.model()).append('|').append(gemini.voice()).append('|')
                     .append(sorted(gemini.voices())).append('|').append(gemini.sampleRate());
         }
         sb.append("//");
-        GoogleTtsProperties google = props.google();
+        GoogleTtsProperties google = ttsProperties.google();
         if (google != null) {
             sb.append(sorted(google.voices())).append('|').append(google.speakingRate())
                     .append('|').append(google.pitch()).append('|').append(google.sampleRate());
@@ -233,7 +233,7 @@ public class TtsCache {
         try {
             // Redis rejects a zero expiry, and a misconfigured 0 must not take the
             // whole persistent layer down with it.
-            redis.opsForValue().set(key, toBytes(pcm), Duration.ofDays(Math.max(1, props.ttlDays())));
+            redis.opsForValue().set(key, toBytes(pcm), Duration.ofDays(Math.max(1, ttsCacheProperties.ttlDays())));
         } catch (Exception e) {
             reportRedisFailure("write", e);
         }

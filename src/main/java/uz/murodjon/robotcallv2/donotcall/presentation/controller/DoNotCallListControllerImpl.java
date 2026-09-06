@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.donotcall.presentation.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallFilter;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRemoveResponse;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRow;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
@@ -20,12 +20,12 @@ public class DoNotCallListControllerImpl implements DoNotCallListController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<DoNotCallRow>>> list(DoNotCallFilter filter) {
-        return ResponseEntity.ok(ResponseData.ok(doNotCallUseCase.list(filter)));
+    public ResponseEntity<ResponseData<PageableData<DoNotCallRow>>> list(long companyId, DoNotCallFilter filter) {
+        return ResponseEntity.ok(ResponseData.ok(doNotCallUseCase.list(companyId, filter)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<DoNotCallRemoveResponse>> remove(String phone) {
-        return ResponseEntity.ok(ResponseData.ok(doNotCallUseCase.remove(phone)));
+    public ResponseEntity<ResponseData<DoNotCallRemoveResponse>> remove(long companyId, String phone) {
+        return ResponseEntity.ok(ResponseData.ok(doNotCallUseCase.remove(companyId, phone)));
     }
 }

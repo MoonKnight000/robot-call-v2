@@ -25,18 +25,18 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     private static final Logger log = LoggerFactory.getLogger(CallOutboxRepositoryAdapter.class);
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final CallResultJpaRepository results;
-    private final CallAttemptJpaRepository callAttempts;
+    private final CallResultJpaRepository callResultJpaRepository;
+    private final CallAttemptJpaRepository callAttemptJpaRepository;
 
-    public CallOutboxRepositoryAdapter(CallResultJpaRepository results, CallAttemptJpaRepository callAttempts) {
-        this.results = results;
-        this.callAttempts = callAttempts;
+    public CallOutboxRepositoryAdapter(CallResultJpaRepository callResultJpaRepository, CallAttemptJpaRepository callAttemptJpaRepository) {
+        this.callResultJpaRepository = callResultJpaRepository;
+        this.callAttemptJpaRepository = callAttemptJpaRepository;
     }
 
     @Override
     public List<PendingNote> notesAwaitingCrm(int maxAttempts, int limit) {
         try {
-            return results.notesAwaitingCrm(maxAttempts, PageRequest.of(0, limit)).stream()
+            return callResultJpaRepository.notesAwaitingCrm(maxAttempts, PageRequest.of(0, limit)).stream()
                     .map(row -> {
                         CallResultEntity r = (CallResultEntity) row[0];
                         long clientId = (Long) row[1];
@@ -57,7 +57,7 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     @Override
     public List<PendingSummary> attemptsAwaitingSummary(int maxAttempts, int limit) {
         try {
-            return callAttempts.attemptsAwaitingSummary(maxAttempts, PageRequest.of(0, limit)).stream()
+            return callAttemptJpaRepository.attemptsAwaitingSummary(maxAttempts, PageRequest.of(0, limit)).stream()
                     .map(row -> new PendingSummary((Long) row[0], (Long) row[1], (Long) row[2], (Disposition) row[3]))
                     .toList();
         } catch (Exception e) {
@@ -82,7 +82,7 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     @Override
     public void markCrmPosted(long callId, Long noteId) {
         try {
-            results.markCrmPosted(callId, noteId);
+            callResultJpaRepository.markCrmPosted(callId, noteId);
         } catch (Exception e) {
             log.warn("markCrmPosted failed for call {}: {}", callId, e.getMessage());
         }
@@ -91,7 +91,7 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     @Override
     public void markCrmFailed(long callId, String error) {
         try {
-            results.markCrmFailed(callId, error);
+            callResultJpaRepository.markCrmFailed(callId, error);
         } catch (Exception e) {
             log.warn("markCrmFailed failed for call {}: {}", callId, e.getMessage());
         }
@@ -100,7 +100,7 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     @Override
     public void countSummaryAttempt(long callId) {
         try {
-            callAttempts.countSummaryAttempt(callId);
+            callAttemptJpaRepository.countSummaryAttempt(callId);
         } catch (Exception e) {
             log.warn("countSummaryAttempt failed for call {}: {}", callId, e.getMessage());
         }

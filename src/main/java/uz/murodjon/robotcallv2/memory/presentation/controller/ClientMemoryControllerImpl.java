@@ -17,12 +17,13 @@ public class ClientMemoryControllerImpl implements ClientMemoryController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<ClientMemory>> get(String phone) {
-        return ResponseEntity.ok(ResponseData.ok(clientMemoryUseCase.findForCurrentCompany(phone)));
+    public ResponseEntity<ResponseData<ClientMemory>> get(long companyId, String phone) {
+        return ResponseEntity.ok(ResponseData.ok(clientMemoryUseCase.requireByCompanyIdAndPhone(companyId, phone)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<ClientMemory>> update(String phone, UpdateClientMemoryRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(clientMemoryUseCase.updateForCurrentCompany(phone, request)));
+    public ResponseEntity<ResponseData<ClientMemory>> update(long companyId, String phone, UpdateClientMemoryRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(
+                clientMemoryUseCase.updateByCompanyIdAndPhone(companyId, phone, request)));
     }
 }

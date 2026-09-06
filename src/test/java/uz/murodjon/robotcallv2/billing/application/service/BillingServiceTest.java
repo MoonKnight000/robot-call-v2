@@ -18,7 +18,6 @@ import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
 import uz.murodjon.robotcallv2.billing.domain.enums.InvoiceStatus;
 import uz.murodjon.robotcallv2.billing.domain.enums.PaymentMethod;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -49,9 +48,6 @@ class BillingServiceTest {
     private PaymentTopupRepository topupRepo;
 
     @Mock
-    private CurrentCompany currentCompany;
-
-    @Mock
     private CurrentUser currentUser;
 
     @Mock
@@ -72,13 +68,11 @@ class BillingServiceTest {
                 usageRepo,
                 invoiceRepo,
                 topupRepo,
-                currentCompany,
                 currentUser,
                 companyRepo,
                 pdfService,
                 audit
         );
-        when(currentCompany.id()).thenReturn(1L);
     }
 
     @Test
@@ -90,7 +84,7 @@ class BillingServiceTest {
         when(billingRepo.findByCompanyId(1L)).thenReturn(Optional.of(billing));
         when(usageRepo.findByCompanyIdAndPeriod(eq(1L), anyString())).thenReturn(Optional.of(usage));
 
-        BillingOverviewResponse response = service.overview();
+        BillingOverviewResponse response = service.overview(1L);
 
         assertThat(response.planName()).isEqualTo("Professional (Pro)");
         assertThat(response.planCode()).isEqualTo("PRO_MONTHLY");
@@ -106,7 +100,7 @@ class BillingServiceTest {
         BillingUsage u2 = BillingUsage.defaultFor(1L, "2026-03");
         when(usageRepo.findRecentByCompanyId(1L, 6)).thenReturn(List.of(u1, u2));
 
-        List<SpendMonthDto> chart = service.spendChart(6);
+        List<SpendMonthDto> chart = service.spendChart(1L, 6);
 
         assertThat(chart).hasSize(2);
         assertThat(chart.get(0).month()).isEqualTo("2026-02");
@@ -119,7 +113,7 @@ class BillingServiceTest {
         Invoice inv = new Invoice("INV-001", 1L, "Mart 2026", 1450000L, InvoiceStatus.PAID, Instant.now(), null, Instant.now());
         when(invoiceRepo.findAllByCompanyId(1L, 0, 10)).thenReturn(new PageableData<>(1, 0, 1, List.of(inv)));
 
-        PageableData<InvoiceDto> result = service.invoices(0, 10);
+        PageableData<InvoiceDto> result = service.invoices(1L, 0, 10);
 
         assertThat(result.data()).hasSize(1);
         assertThat(result.data().get(0).id()).isEqualTo("INV-001");
@@ -132,7 +126,7 @@ class BillingServiceTest {
         when(currentUser.id()).thenReturn(Optional.of(10L));
         TopupRequest request = new TopupRequest(500000L, PaymentMethod.PAYME);
 
-        TopupResponse response = service.topup(request);
+        TopupResponse response = service.topup(1L, request);
 
         assertThat(response.paymentId()).startsWith("PAY-");
         assertThat(response.checkoutUrl()).contains("checkout.paycom.uz");
@@ -148,7 +142,7 @@ class BillingServiceTest {
         when(companyRepo.find(1L)).thenReturn(new Company(1L, "Acme Corp", CompanyStatus.ACTIVE, Instant.now(), null, "Tashkent"));
         when(pdfService.generateInvoicePdf(eq(inv), eq("Acme Corp"))).thenReturn(new byte[]{1, 2, 3});
 
-        byte[] bytes = service.invoicePdf("INV-001");
+        byte[] bytes = service.invoicePdf(1L, "INV-001");
 
         assertThat(bytes).containsExactly(1, 2, 3);
     }

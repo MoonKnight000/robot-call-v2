@@ -6,9 +6,9 @@ import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
 
 public interface VoiceSettingsUseCase {
 
-    VoiceSettings find();
+    VoiceSettings findByCompanyId(long companyId);
 
-    VoiceSettings update(UpdateVoiceSettingsRequest r);
+    VoiceSettings updateByCompanyId(long companyId, UpdateVoiceSettingsRequest request);
 
     EffectiveVoiceSettings effective(long companyId);
 }

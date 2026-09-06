@@ -11,15 +11,15 @@ import java.util.List;
 
 public interface RoleUseCase {
 
-    List<RoleRow> listForCurrentCompany();
+    List<RoleRow> findByCompanyId(long companyId);
 
-    RoleRow get(long id);
+    RoleRow get(long companyId, long id);
 
-    RoleRow create(CreateRoleRequest request);
+    RoleRow create(long companyId, CreateRoleRequest request);
 
-    RoleRow update(long id, UpdateRoleRequest request);
+    RoleRow update(long companyId, long id, UpdateRoleRequest request);
 
-    void delete(long id);
+    void delete(long companyId, long id);
 
     /** The full permission catalog, grouped by page — what the role editor renders. */
     List<PermissionGroupRow> listPermissions();

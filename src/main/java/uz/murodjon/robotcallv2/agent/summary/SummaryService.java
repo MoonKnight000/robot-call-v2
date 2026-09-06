@@ -12,7 +12,6 @@ import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
@@ -60,16 +59,12 @@ public class SummaryService {
 
     private volatile ChatClient chatClient;
 
-    public SummaryService(ObjectProvider<ChatModel> chatModelProvider,
-                          @Value("${voice-agent.summary.enabled:true}") boolean enabled,
-                          @Value("${voice-agent.summary.model:gemini-3.8-flash}") String model,
-                          @Value("${voice-agent.summary.reasoning-effort:low}") String reasoningEffort,
-                          @Value("${voice-agent.summary.max-tokens:2048}") int maxTokens) {
+    public SummaryService(ObjectProvider<ChatModel> chatModelProvider, SummaryProperties summaryProperties) {
         this.chatModelProvider = chatModelProvider;
-        this.enabled = enabled;
-        this.model = model;
-        this.reasoningEffort = reasoningEffort;
-        this.maxTokens = maxTokens;
+        this.enabled = summaryProperties.enabled();
+        this.model = summaryProperties.model();
+        this.reasoningEffort = summaryProperties.reasoningEffort();
+        this.maxTokens = summaryProperties.maxTokens();
     }
 
     @PostConstruct

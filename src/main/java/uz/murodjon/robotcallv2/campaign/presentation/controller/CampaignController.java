@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallResponse;
+import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -23,44 +24,50 @@ public interface CampaignController {
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns")
-    ResponseEntity<ResponseData<CreateCampaignResponse>> create(@Valid @RequestBody CreateCampaignRequest r);
+    ResponseEntity<ResponseData<CreateCampaignResponse>> create(@CurrentCompanyId long companyId,
+            @Valid @RequestBody CreateCampaignRequest request);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @PostMapping({"/campaigns/filter", "/campaigns/list"})
-    ResponseEntity<ResponseData<PageableData<CampaignRow>>> filter(@Valid @RequestBody CampaignFilter filter);
+    ResponseEntity<ResponseData<PageableData<CampaignRow>>> filter(@CurrentCompanyId long companyId,
+            @Valid @RequestBody CampaignFilter filter);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping("/campaigns/{id:\\d+}")
-    ResponseEntity<ResponseData<CampaignRow>> get(@PathVariable long id);
+    ResponseEntity<ResponseData<CampaignRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PutMapping("/campaigns/{id:\\d+}")
-    ResponseEntity<ResponseData<CampaignRow>> update(@PathVariable long id, @Valid @RequestBody UpdateCampaignRequest r);
+    ResponseEntity<ResponseData<CampaignRow>> update(@CurrentCompanyId long companyId, @PathVariable long id,
+            @Valid @RequestBody UpdateCampaignRequest request);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @DeleteMapping("/campaigns/{id:\\d+}")
-    ResponseEntity<ResponseData<CampaignStatusResponse>> archive(@PathVariable long id);
+    ResponseEntity<ResponseData<CampaignStatusResponse>> archive(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/clone")
-    ResponseEntity<ResponseData<CampaignRow>> clone(@PathVariable long id);
+    ResponseEntity<ResponseData<CampaignRow>> clone(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/targets")
-    ResponseEntity<ResponseData<AddTargetsResponse>> addTargets(@PathVariable long id, @Valid @RequestBody List<AddTargetRequest> targets);
+    ResponseEntity<ResponseData<AddTargetsResponse>> addTargets(@CurrentCompanyId long companyId, @PathVariable long id,
+            @Valid @RequestBody List<AddTargetRequest> targets);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping(value = "/campaigns/{id:\\d+}/targets/csv", consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
-    ResponseEntity<ResponseData<TargetImportResult>> addTargetsCsv(@PathVariable long id, @RequestBody String csv);
+    ResponseEntity<ResponseData<TargetImportResult>> addTargetsCsv(@CurrentCompanyId long companyId, @PathVariable long id,
+            @RequestBody String csv);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping(value = "/campaigns/{id:\\d+}/targets/csv/preview", consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
-    ResponseEntity<ResponseData<TargetCsvPreview>> previewTargetsCsv(@PathVariable long id, @RequestBody String csv);
+    ResponseEntity<ResponseData<TargetCsvPreview>> previewTargetsCsv(@CurrentCompanyId long companyId, @PathVariable long id,
+            @RequestBody String csv);
 
     /** The campaign's API target source, or {@code null} when it loads its list by hand. */
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping("/campaigns/{id:\\d+}/target-source")
-    ResponseEntity<ResponseData<TargetSourceRow>> targetSource(@PathVariable long id);
+    ResponseEntity<ResponseData<TargetSourceRow>> targetSource(@CurrentCompanyId long companyId, @PathVariable long id);
 
     /**
      * Points the campaign at an endpoint of the company's own that answers with the list
@@ -70,20 +77,22 @@ public interface CampaignController {
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PutMapping("/campaigns/{id:\\d+}/target-source")
     ResponseEntity<ResponseData<TargetSourceRow>> updateTargetSource(
-            @PathVariable long id, @Valid @RequestBody UpdateTargetSourceRequest request);
+            @CurrentCompanyId long companyId, @PathVariable long id,
+            @Valid @RequestBody UpdateTargetSourceRequest request);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @DeleteMapping("/campaigns/{id:\\d+}/target-source")
-    ResponseEntity<ResponseData<Void>> deleteTargetSource(@PathVariable long id);
+    ResponseEntity<ResponseData<Void>> deleteTargetSource(@CurrentCompanyId long companyId, @PathVariable long id);
 
     /** Fetches the list now rather than waiting for the next recurrence run. */
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/targets/sync")
-    ResponseEntity<ResponseData<TargetSyncResult>> syncTargets(@PathVariable long id);
+    ResponseEntity<ResponseData<TargetSyncResult>> syncTargets(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @PostMapping("/campaigns/{id:\\d+}/targets/list")
-    ResponseEntity<ResponseData<PageableData<CampaignTarget>>> targets(@PathVariable long id, @Valid @RequestBody TargetFilter filter);
+    ResponseEntity<ResponseData<PageableData<CampaignTarget>>> targets(@CurrentCompanyId long companyId, @PathVariable long id,
+            @Valid @RequestBody TargetFilter filter);
 
     /**
      * Starts (or resumes) a campaign.
@@ -97,14 +106,15 @@ public interface CampaignController {
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/start")
     ResponseEntity<ResponseData<CampaignStatusResponse>> start(
+            @CurrentCompanyId long companyId,
             @PathVariable long id,
             @RequestParam(defaultValue = "false") boolean immediate);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/pause")
-    ResponseEntity<ResponseData<CampaignStatusResponse>> pause(@PathVariable long id);
+    ResponseEntity<ResponseData<CampaignStatusResponse>> pause(@CurrentCompanyId long companyId, @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/targets/{id:\\d+}/do-not-call")
-    ResponseEntity<ResponseData<DoNotCallResponse>> doNotCall(@PathVariable long id);
+    ResponseEntity<ResponseData<DoNotCallResponse>> doNotCall(@CurrentCompanyId long companyId, @PathVariable long id);
 }

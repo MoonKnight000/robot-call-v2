@@ -32,16 +32,16 @@ public class CartesiaTtsProvider implements TtsProvider {
     private static final Logger log = LoggerFactory.getLogger(CartesiaTtsProvider.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final TtsProperties props;
+    private final TtsProperties ttsProperties;
     private volatile HttpClient client;
 
-    public CartesiaTtsProvider(TtsProperties props) {
-        this.props = props;
+    public CartesiaTtsProvider(TtsProperties ttsProperties) {
+        this.ttsProperties = ttsProperties;
     }
 
     @PostConstruct
     public void init() {
-        CartesiaTtsProperties cartesia = props.cartesia();
+        CartesiaTtsProperties cartesia = ttsProperties.cartesia();
         if (cartesia == null || cartesia.apiKey() == null || cartesia.apiKey().isBlank()) {
             return;
         }
@@ -69,7 +69,7 @@ public class CartesiaTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
-        CartesiaTtsProperties cartesia = props.cartesia();
+        CartesiaTtsProperties cartesia = ttsProperties.cartesia();
         HttpClient current = client;
         if (current == null || cartesia == null || cartesia.apiKey() == null || cartesia.apiKey().isBlank()) {
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "cartesia", "not configured");

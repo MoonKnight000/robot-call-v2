@@ -51,11 +51,11 @@ public class GeminiTtsProvider implements TtsProvider {
             "fenrir", "Fenrir"
     );
 
-    private final TtsProperties props;
+    private final TtsProperties ttsProperties;
     private volatile HttpClient client;
 
-    public GeminiTtsProvider(TtsProperties props) {
-        this.props = props;
+    public GeminiTtsProvider(TtsProperties ttsProperties) {
+        this.ttsProperties = ttsProperties;
     }
 
     @PostConstruct
@@ -65,7 +65,7 @@ public class GeminiTtsProvider implements TtsProvider {
             log.warn("Gemini TTS selected but no API key is available (voice-agent.tts.gemini.api-key or GEMINI_API_KEY)");
             return;
         }
-        int timeoutSeconds = props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10;
+        int timeoutSeconds = ttsProperties.gemini() != null ? ttsProperties.gemini().connectTimeoutSeconds() : 10;
         client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(timeoutSeconds))
                 .build();
@@ -131,7 +131,7 @@ public class GeminiTtsProvider implements TtsProvider {
                 .uri(URI.create(endpoint))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .timeout(Duration.ofSeconds(props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10))
+                .timeout(Duration.ofSeconds(ttsProperties.gemini() != null ? ttsProperties.gemini().connectTimeoutSeconds() : 10))
                 .build();
 
         try {
@@ -209,31 +209,31 @@ public class GeminiTtsProvider implements TtsProvider {
     }
 
     private String resolveApiKey() {
-        if (props.gemini() != null && props.gemini().apiKey() != null && !props.gemini().apiKey().isBlank()) {
-            return props.gemini().apiKey().trim();
+        if (ttsProperties.gemini() != null && ttsProperties.gemini().apiKey() != null && !ttsProperties.gemini().apiKey().isBlank()) {
+            return ttsProperties.gemini().apiKey().trim();
         }
         String env = System.getenv("GEMINI_API_KEY");
         return env != null ? env.trim() : "";
     }
 
     private String resolveModel() {
-        if (props.gemini() != null && props.gemini().model() != null && !props.gemini().model().isBlank()) {
-            String m = props.gemini().model().trim();
+        if (ttsProperties.gemini() != null && ttsProperties.gemini().model() != null && !ttsProperties.gemini().model().isBlank()) {
+            String m = ttsProperties.gemini().model().trim();
             return m.startsWith("models/") ? m.substring("models/".length()) : m;
         }
         return DEFAULT_MODEL;
     }
 
     private String resolveDefaultVoice() {
-        if (props.gemini() != null && props.gemini().voice() != null && !props.gemini().voice().isBlank()) {
-            return props.gemini().voice().trim();
+        if (ttsProperties.gemini() != null && ttsProperties.gemini().voice() != null && !ttsProperties.gemini().voice().isBlank()) {
+            return ttsProperties.gemini().voice().trim();
         }
         return DEFAULT_VOICE;
     }
 
     private int resolveSampleRate() {
-        return (props.gemini() != null && props.gemini().sampleRate() > 0)
-                ? props.gemini().sampleRate()
+        return (ttsProperties.gemini() != null && ttsProperties.gemini().sampleRate() > 0)
+                ? ttsProperties.gemini().sampleRate()
                 : DEFAULT_SAMPLE_RATE;
     }
 
@@ -243,8 +243,8 @@ public class GeminiTtsProvider implements TtsProvider {
             String matched = KNOWN_VOICES.get(trimmed.toLowerCase());
             return matched != null ? matched : trimmed;
         }
-        if (props.gemini() != null && props.gemini().voices() != null && language != null) {
-            String v = props.gemini().voices().get(language);
+        if (ttsProperties.gemini() != null && ttsProperties.gemini().voices() != null && language != null) {
+            String v = ttsProperties.gemini().voices().get(language);
             if (v != null && !v.isBlank()) {
                 return v.trim();
             }
@@ -253,8 +253,8 @@ public class GeminiTtsProvider implements TtsProvider {
     }
 
     private String buildEndpointUri(String apiKey) {
-        String base = (props.gemini() != null && props.gemini().url() != null && !props.gemini().url().isBlank())
-                ? props.gemini().url().trim()
+        String base = (ttsProperties.gemini() != null && ttsProperties.gemini().url() != null && !ttsProperties.gemini().url().isBlank())
+                ? ttsProperties.gemini().url().trim()
                 : "https://generativelanguage.googleapis.com/v1beta/models";
         if (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);

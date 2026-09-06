@@ -23,30 +23,30 @@ public class MinioObjectStorageAdapter implements ObjectStoragePort {
 
     private static final Logger log = LoggerFactory.getLogger(MinioObjectStorageAdapter.class);
 
-    private final AudioStorageProperties props;
+    private final AudioStorageProperties audioStorageProperties;
     private volatile MinioClient client;
     private final Set<String> knownBuckets = ConcurrentHashMap.newKeySet();
 
-    public MinioObjectStorageAdapter(AudioStorageProperties props) {
-        this.props = props;
+    public MinioObjectStorageAdapter(AudioStorageProperties audioStorageProperties) {
+        this.audioStorageProperties = audioStorageProperties;
     }
 
     @PostConstruct
     public void init() {
-        if (!props.enabled()) {
+        if (!audioStorageProperties.enabled()) {
             log.info("Object storage disabled (voice-agent.storage.enabled=false)");
             return;
         }
-        if (props.endpoint() == null || props.endpoint().isBlank()) {
+        if (audioStorageProperties.endpoint() == null || audioStorageProperties.endpoint().isBlank()) {
             log.warn("Object storage enabled but endpoint is blank; uploads will not happen");
             return;
         }
         try {
             client = MinioClient.builder()
-                    .endpoint(props.endpoint())
-                    .credentials(props.accessKey(), props.secretKey())
+                    .endpoint(audioStorageProperties.endpoint())
+                    .credentials(audioStorageProperties.accessKey(), audioStorageProperties.secretKey())
                     .build();
-            log.info("Object storage ready (endpoint={})", props.endpoint());
+            log.info("Object storage ready (endpoint={})", audioStorageProperties.endpoint());
         } catch (Exception e) {
             log.error("Object storage unavailable: {}", e.getMessage());
             client = null;

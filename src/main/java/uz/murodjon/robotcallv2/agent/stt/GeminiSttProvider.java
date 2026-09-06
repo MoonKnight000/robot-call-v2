@@ -58,12 +58,12 @@ public class GeminiSttProvider implements SttProvider {
     private static final int DEFAULT_SAMPLE_RATE = 16000;
     private static final String DEFAULT_MODEL = "gemini-3.5-transcribe-live";
 
-    private final SttProperties props;
+    private final SttProperties sttProperties;
     private final VoiceMetrics metrics;
     private volatile HttpClient client;
 
-    public GeminiSttProvider(SttProperties props, VoiceMetrics metrics) {
-        this.props = props;
+    public GeminiSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+        this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
 
@@ -74,7 +74,7 @@ public class GeminiSttProvider implements SttProvider {
             log.warn("Gemini STT selected but no API key is available (voice-agent.stt.gemini.api-key or GEMINI_API_KEY)");
             return;
         }
-        int timeoutSeconds = props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10;
+        int timeoutSeconds = sttProperties.gemini() != null ? sttProperties.gemini().connectTimeoutSeconds() : 10;
         client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(timeoutSeconds))
                 .build();
@@ -89,8 +89,8 @@ public class GeminiSttProvider implements SttProvider {
 
     @Override
     public int sampleRate() {
-        return (props.gemini() != null && props.gemini().sampleRate() > 0)
-                ? props.gemini().sampleRate()
+        return (sttProperties.gemini() != null && sttProperties.gemini().sampleRate() > 0)
+                ? sttProperties.gemini().sampleRate()
                 : DEFAULT_SAMPLE_RATE;
     }
 
@@ -119,7 +119,7 @@ public class GeminiSttProvider implements SttProvider {
         CountDownLatch ready = new CountDownLatch(1);
 
         ResponseHandler handler = new ResponseHandler(languageCode, listener, alive, ready);
-        int timeoutSeconds = props.gemini() != null ? props.gemini().connectTimeoutSeconds() : 10;
+        int timeoutSeconds = sttProperties.gemini() != null ? sttProperties.gemini().connectTimeoutSeconds() : 10;
 
         try {
             WebSocket webSocket = current.newWebSocketBuilder()
@@ -157,24 +157,24 @@ public class GeminiSttProvider implements SttProvider {
     }
 
     private String resolveApiKey() {
-        if (props.gemini() != null && props.gemini().apiKey() != null && !props.gemini().apiKey().isBlank()) {
-            return props.gemini().apiKey().trim();
+        if (sttProperties.gemini() != null && sttProperties.gemini().apiKey() != null && !sttProperties.gemini().apiKey().isBlank()) {
+            return sttProperties.gemini().apiKey().trim();
         }
         String env = System.getenv("GEMINI_API_KEY");
         return env != null ? env.trim() : "";
     }
 
     private String resolveModel() {
-        if (props.gemini() != null && props.gemini().model() != null && !props.gemini().model().isBlank()) {
-            String m = props.gemini().model().trim();
+        if (sttProperties.gemini() != null && sttProperties.gemini().model() != null && !sttProperties.gemini().model().isBlank()) {
+            String m = sttProperties.gemini().model().trim();
             return m.startsWith("models/") ? m.substring("models/".length()) : m;
         }
         return DEFAULT_MODEL;
     }
 
     private URI buildWebSocketUri(String apiKey) {
-        String base = (props.gemini() != null && props.gemini().url() != null && !props.gemini().url().isBlank())
-                ? props.gemini().url().trim()
+        String base = (sttProperties.gemini() != null && sttProperties.gemini().url() != null && !sttProperties.gemini().url().isBlank())
+                ? sttProperties.gemini().url().trim()
                 : "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
         String separator = base.contains("?") ? "&" : "?";
         return URI.create(base + separator + "key=" + apiKey);

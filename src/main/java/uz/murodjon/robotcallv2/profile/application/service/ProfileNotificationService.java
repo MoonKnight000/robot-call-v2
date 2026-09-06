@@ -16,27 +16,27 @@ import java.util.List;
 @Service
 public class ProfileNotificationService implements ProfileNotificationUseCase {
 
-    private final PersonalNotificationMatrixRepository repo;
+    private final PersonalNotificationMatrixRepository repository;
     private final CurrentUser currentUser;
     private final AuditService audit;
 
-    public ProfileNotificationService(PersonalNotificationMatrixRepository repo, CurrentUser currentUser,
+    public ProfileNotificationService(PersonalNotificationMatrixRepository repository, CurrentUser currentUser,
                                       AuditService audit) {
-        this.repo = repo;
+        this.repository = repository;
         this.currentUser = currentUser;
         this.audit = audit;
     }
 
     @Override
     public List<PersonalNotificationMatrixEntry> find() {
-        return repo.find(requireUserId());
+        return repository.find(requireUserId());
     }
 
     @Override
-    public List<PersonalNotificationMatrixEntry> update(UpdatePersonalNotificationSettingsRequest r) {
+    public List<PersonalNotificationMatrixEntry> update(long companyId, UpdatePersonalNotificationSettingsRequest r) {
         long userId = requireUserId();
-        List<PersonalNotificationMatrixEntry> saved = repo.save(userId, r.matrix());
-        audit.record("PROFILE_NOTIFICATIONS_UPDATE", "app_user", String.valueOf(userId),
+        List<PersonalNotificationMatrixEntry> saved = repository.save(companyId, userId, r.matrix());
+        audit.record(companyId, "PROFILE_NOTIFICATIONS_UPDATE", "app_user", String.valueOf(userId),
                 saved.size() + " matrix cell(s)");
         return saved;
     }

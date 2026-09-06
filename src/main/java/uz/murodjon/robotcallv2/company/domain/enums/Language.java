@@ -2,6 +2,11 @@ package uz.murodjon.robotcallv2.company.domain.enums;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * BCP-47 languages the platform can speak (report #6).
@@ -22,7 +27,7 @@ public enum Language {
         return code;
     }
 
-    /** @throws IllegalArgumentException if code matches none of the supported languages */
+    /** @throws ValidationException if code matches none of the supported languages */
     @JsonCreator
     public static Language fromCode(String code) {
         for (Language language : values()) {
@@ -30,6 +35,10 @@ public enum Language {
                 return language;
             }
         }
-        throw new IllegalArgumentException("Unknown language '" + code + "'; supported: uz-UZ, ru-RU, en-US");
+        throw new ValidationException(ErrorCode.LANGUAGE_CODE_INVALID, code, codes());
+    }
+
+    public static List<String> codes() {
+        return Arrays.stream(values()).map(Language::code).toList();
     }
 }

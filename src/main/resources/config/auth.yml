@@ -1,16 +1,7 @@
 voice-agent:
   security:
-    # Shared secret for every /api/** and /actuator/** request (header: X-Api-Key).
-    # Blank = fail-closed: nothing authenticates and the API answers 401. There is no
-    # sensible default here — POST /api/calls dials the real trunk.
-    api-key: ${API_KEY:}
-    # Optional second secret that may only READ: /api/reports/** and /actuator/**.
-    # Reporting, transcripts and recordings are what most people need day to day, and
-    # handing them the key that can dial 50 000 subscribers to get them is the wrong
-    # trade. Blank = no read-only role (everything needs the admin key, as before).
-    read-api-key: ${READ_API_KEY:}
-    # Serve the static test panel and swagger-ui without a key. The panel still sends
-    # the key with every API call it makes. Set false to hide them too.
+    # Serve the static test panel and swagger-ui without logging in. The panel still
+    # sends its Bearer token with every API call it makes. Set false to hide them too.
     public-ui: ${SECURITY_PUBLIC_UI:true}
     # Browser origins allowed to call the API cross-origin (comma-separated). The bundled
     # static panel is same-origin and never needs this; a separately hosted frontend (e.g.
@@ -34,7 +25,7 @@ voice-agent:
   encryption:
     # AES-256 key (base64, 32 bytes) for secrets that must be read back — Uysot OAuth
     # client_secret/access/refresh tokens (§11 integrations, shared.util.SecretCipher).
-    # Unlike JWT_SECRET/API_KEY, this cannot be "any non-blank value": it is decoded as
+    # Unlike JWT_SECRET, this cannot be "any non-blank value": it is decoded as
     # raw key bytes, so it must be exactly 32 bytes once base64-decoded. Generate one:
     #   openssl rand -base64 32
     # Blank = the integrations feature stays inert (fails closed) rather than storing

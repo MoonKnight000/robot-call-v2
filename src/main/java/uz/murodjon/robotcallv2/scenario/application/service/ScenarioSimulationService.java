@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioSimulationRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioSimulationResponse;
+import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioSimulationUseCase;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.PersonaTestResult;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
@@ -28,7 +29,7 @@ import java.util.Map;
  * Provides text-based and AI-vs-AI automated test simulation for Scenarios.
  */
 @Service
-public class ScenarioSimulationService {
+public class ScenarioSimulationService implements ScenarioSimulationUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(ScenarioSimulationService.class);
 
@@ -41,7 +42,8 @@ public class ScenarioSimulationService {
         this.chatModelProvider = chatModelProvider;
     }
 
-    public ScenarioSimulationResponse simulateTurn(ScenarioSimulationRequest request) {
+    @Override
+    public ScenarioSimulationResponse simulateTurn(long companyId, ScenarioSimulationRequest request) {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
             return new ScenarioSimulationResponse(
@@ -58,7 +60,7 @@ public class ScenarioSimulationService {
 
         ScenarioDefinition definition = request.scenarioDefinition();
         if (definition == null && request.scenarioId() != null) {
-            Scenario s = scenarioService.requireScenario(request.scenarioId());
+            Scenario s = scenarioService.requireScenario(companyId, request.scenarioId());
             definition = s.definition();
         }
         if (definition == null) {
@@ -162,28 +164,29 @@ public class ScenarioSimulationService {
         );
     }
 
-    public List<PersonaTestResult> runPersonaTests(Long scenarioId) {
-        Scenario scenario = scenarioService.requireScenario(scenarioId);
+    @Override
+    public List<PersonaTestResult> runPersonaTests(long companyId, Long scenarioId) {
+        Scenario scenario = scenarioService.requireScenario(companyId, scenarioId);
         ScenarioDefinition def = scenario.definition();
 
         List<PersonaTestResult> results = new ArrayList<>();
 
-        results.add(runSinglePersonaTest(def, "Ijobiy mijoz (To'lovga rozi)",
+        results.add(runSinglePersonaTest(companyId, def, "Ijobiy mijoz (To'lovga rozi)",
                 "Siz qarzdorsiz. Bot qo'ng'iroq qilganda xushmuomala bo'ling va juma kuni to'lashga va'da bering.",
                 List.of("Alo, eshitaman", "Ha, o'ziman", "To'g'ri, esimdan chiqibdi. Juma kunigacha to'lab beraman.", "Rahmat, kelishdik.")));
 
-        results.add(runSinglePersonaTest(def, "Qiyin vaziyatdagi mijoz (Oylik kechikdi)",
+        results.add(runSinglePersonaTest(companyId, def, "Qiyin vaziyatdagi mijoz (Oylik kechikdi)",
                 "Siz qarzdorsiz, lekin oylik kechikkani sababli hozir pulingiz yo'q. Faqat keyingi oyning boshida to'lay olasiz.",
                 List.of("Labbay, kim bu?", "Ha, qanaqa qarz?", "Hozir umuman pulim yo'q, oylik kechikkan. Keyingi oyning 5-sanasida to'lasam maylimi?", "Xo'p, rahmat.")));
 
-        results.add(runSinglePersonaTest(def, "Adashgan raqam (Boshqa odam)",
+        results.add(runSinglePersonaTest(companyId, def, "Adashgan raqam (Boshqa odam)",
                 "Siz bu raqamning yangi egasisiz va so'ralgan odam emassiz. Adashganini aniq ayting.",
                 List.of("Alo?", "Kechirasiz, men u odam emasman, raqamni adashtirdingiz.", "Yo'q, bunaqa odamni tanimayman. Boshqa qo'ng'iroq qilmang.")));
 
         return results;
     }
 
-    private PersonaTestResult runSinglePersonaTest(ScenarioDefinition def, String name, String personaPrompt, List<String> clientTurns) {
+    private PersonaTestResult runSinglePersonaTest(long companyId, ScenarioDefinition def, String name, String personaPrompt, List<String> clientTurns) {
         List<Map<String, String>> transcript = new ArrayList<>();
         String currentState = def.stages() != null && !def.stages().isEmpty()
                 ? def.stages().get(0).id()
@@ -192,7 +195,7 @@ public class ScenarioSimulationService {
         boolean passed = true;
 
         try {
-            ScenarioSimulationResponse botResp = simulateTurn(new ScenarioSimulationRequest(
+            ScenarioSimulationResponse botResp = simulateTurn(companyId, new ScenarioSimulationRequest(
                     null, def, null, currentState, transcript,
                     Map.of("clientName", "Azizbek", "debtAmount", "1,200,000 so'm", "dueDate", "2026-05-01"),
                     "uz"
@@ -204,7 +207,7 @@ public class ScenarioSimulationService {
             for (String turnText : clientTurns) {
                 transcript.add(Map.of("role", "user", "content", turnText));
 
-                botResp = simulateTurn(new ScenarioSimulationRequest(
+                botResp = simulateTurn(companyId, new ScenarioSimulationRequest(
                         null, def, turnText, currentState, transcript,
                         Map.of("clientName", "Azizbek", "debtAmount", "1,200,000 so'm", "dueDate", "2026-05-01"),
                         "uz"

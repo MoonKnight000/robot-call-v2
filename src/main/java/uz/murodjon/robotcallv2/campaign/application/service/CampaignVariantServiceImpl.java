@@ -9,11 +9,10 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 import uz.murodjon.robotcallv2.campaign.domain.service.AbTestSignificance;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignVariantSelector;
-import uz.murodjon.robotcallv2.campaign.presentation.dto.AbTestReportResponse;
-import uz.murodjon.robotcallv2.campaign.presentation.dto.CampaignVariantCreateRequest;
-import uz.murodjon.robotcallv2.campaign.presentation.dto.CampaignVariantResponse;
-import uz.murodjon.robotcallv2.campaign.presentation.dto.CampaignVariantUpdateRequest;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
+import uz.murodjon.robotcallv2.campaign.application.dto.AbTestReportResponse;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateRequest;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
@@ -26,21 +25,17 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
 
     private final CampaignVariantRepository variantRepository;
     private final CampaignRepository campaignRepository;
-    private final CurrentCompany currentCompany;
 
     public CampaignVariantServiceImpl(CampaignVariantRepository variantRepository,
-                                      CampaignRepository campaignRepository,
-                                      CurrentCompany currentCompany) {
+                                      CampaignRepository campaignRepository) {
         this.variantRepository = variantRepository;
         this.campaignRepository = campaignRepository;
-        this.currentCompany = currentCompany;
     }
 
     @Override
     @Transactional
-    public CampaignVariantResponse create(long campaignId, CampaignVariantCreateRequest request) {
-        long companyId = currentCompany.id();
-        Campaign campaign = campaignRepository.find(campaignId);
+    public CampaignVariantResponse create(long companyId, long campaignId, CampaignVariantCreateRequest request) {
+        Campaign campaign = campaignRepository.find(companyId, campaignId);
         if (campaign == null || campaign.companyId() != companyId) {
             throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, campaignId);
         }
@@ -67,8 +62,7 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
     }
 
     @Override
-    public CampaignVariantResponse get(long campaignId, long variantId) {
-        long companyId = currentCompany.id();
+    public CampaignVariantResponse get(long companyId, long campaignId, long variantId) {
         CampaignVariant variant = variantRepository.findByIdAndCompanyId(variantId, companyId)
                 .filter(v -> v.campaignId() == campaignId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CAMPAIGN_VARIANT_NOT_FOUND, variantId));
@@ -77,8 +71,8 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
 
     @Override
     @Transactional
-    public CampaignVariantResponse update(long campaignId, long variantId, CampaignVariantUpdateRequest request) {
-        long companyId = currentCompany.id();
+    public CampaignVariantResponse update(long companyId, long campaignId, long variantId,
+                                          CampaignVariantUpdateRequest request) {
         CampaignVariant existing = variantRepository.findByIdAndCompanyId(variantId, companyId)
                 .filter(v -> v.campaignId() == campaignId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CAMPAIGN_VARIANT_NOT_FOUND, variantId));
@@ -106,8 +100,7 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
 
     @Override
     @Transactional
-    public void delete(long campaignId, long variantId) {
-        long companyId = currentCompany.id();
+    public void delete(long companyId, long campaignId, long variantId) {
         variantRepository.findByIdAndCompanyId(variantId, companyId)
                 .filter(v -> v.campaignId() == campaignId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CAMPAIGN_VARIANT_NOT_FOUND, variantId));
@@ -115,16 +108,14 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
     }
 
     @Override
-    public List<CampaignVariantResponse> list(long campaignId) {
-        long companyId = currentCompany.id();
+    public List<CampaignVariantResponse> list(long companyId, long campaignId) {
         return variantRepository.findAllByCampaignIdAndCompanyId(campaignId, companyId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Override
-    public AbTestReportResponse getReport(long campaignId) {
-        long companyId = currentCompany.id();
+    public AbTestReportResponse getReport(long companyId, long campaignId) {
         List<CampaignVariant> variants = variantRepository.findAllByCampaignIdAndCompanyId(campaignId, companyId);
         int totalCalls = variants.stream().mapToInt(CampaignVariant::callsCount).sum();
         int totalAnswered = variants.stream().mapToInt(CampaignVariant::answeredCount).sum();

@@ -43,8 +43,11 @@ public class DialogTools {
             // (SystemPromptFactory#turnAnnex). Nothing to record and nothing to warn about.
             return;
         }
-        if (!SpeechSanitizer.isUnspeakable(reply)) {
-            session.addToolReply(reply);
+        // Text carried in a tool argument never passed through TurnRunner.textOf, so this
+        // is the second and last door model text comes in by.
+        String speakable = SpeechSanitizer.stripUnspeakableCharacters(reply);
+        if (!SpeechSanitizer.isUnspeakable(speakable)) {
+            session.addToolReply(speakable);
         } else {
             log.warn("[{}] tool dropped unspeakable reply: '{}'", session.channelId(), reply);
         }

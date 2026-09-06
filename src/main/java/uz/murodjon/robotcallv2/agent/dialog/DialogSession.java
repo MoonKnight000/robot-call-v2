@@ -61,7 +61,7 @@ public class DialogSession implements DialogOutcomeSink {
     /** This call's company's TTS overrides (§11 settings/voice), resolved once. */
     private final EffectiveVoiceSettings voiceSettings;
     private final boolean emotionAdaptiveVoice;
-    private volatile uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment lastCustomerSentiment = uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment.NEUTRAL;
+    private volatile CustomerSentiment lastCustomerSentiment = CustomerSentiment.NEUTRAL;
     /** Campaign's own choice on the §11.1 opening disclosure (§10.6); the engine also
      * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
     private final boolean disclosureEnabled;
@@ -306,12 +306,12 @@ public class DialogSession implements DialogOutcomeSink {
         return emotionAdaptiveVoice;
     }
 
-    public uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment lastCustomerSentiment() {
+    public CustomerSentiment lastCustomerSentiment() {
         return lastCustomerSentiment;
     }
 
-    public void setLastCustomerSentiment(uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment sentiment) {
-        this.lastCustomerSentiment = sentiment != null ? sentiment : uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment.NEUTRAL;
+    public void setLastCustomerSentiment(CustomerSentiment sentiment) {
+        this.lastCustomerSentiment = sentiment != null ? sentiment : CustomerSentiment.NEUTRAL;
     }
 
     /** The silence watchdog, or {@code null} when it is disabled. */

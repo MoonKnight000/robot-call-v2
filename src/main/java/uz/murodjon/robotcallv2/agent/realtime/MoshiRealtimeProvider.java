@@ -39,16 +39,16 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
 
     private static final int AUDIO_RATE = 24000;
 
-    private final RealtimeProperties props;
+    private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public MoshiRealtimeProvider(RealtimeProperties props) {
-        this.props = props;
+    public MoshiRealtimeProvider(RealtimeProperties realtimeProperties) {
+        this.realtimeProperties = realtimeProperties;
     }
 
     @PostConstruct
     public void init() {
-        MoshiRealtimeProperties m = props.moshi();
+        MoshiRealtimeProperties m = realtimeProperties.moshi();
         if (m == null) {
             return;
         }
@@ -81,7 +81,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
     @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
-        MoshiRealtimeProperties m = props.moshi();
+        MoshiRealtimeProperties m = realtimeProperties.moshi();
         if (current == null || m == null) {
             throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "moshi", "not initialized");
         }
