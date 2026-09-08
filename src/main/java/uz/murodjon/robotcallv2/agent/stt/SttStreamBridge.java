@@ -2,18 +2,13 @@ package uz.murodjon.robotcallv2.agent.stt;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.Resampler;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 
 import java.io.Closeable;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Deque;
-import java.util.List;
+import java.util.*;
 import java.util.function.IntConsumer;
 
 /**
@@ -95,6 +90,12 @@ public class SttStreamBridge implements AudioListener, Closeable {
     private final TranscriptListener downstream;
     /** Words this call is likely to contain, for a provider that can be biased ({@link SttHints}). */
     private final List<String> hints;
+    /**
+     * The recognition model the agent asked for ({@code ai_agent.stt_model}), or null for the
+     * provider's configured one. Cleared by {@link #failOver()}: a model name belongs to the
+     * vendor it was chosen for, and Deepgram's would be rejected outright by Yandex.
+     */
+    private volatile String model;
     /** Told when an utterance is declared over, with the silence that closed it. */
     private final IntConsumer onUtteranceEnd;
     /** Whether this call ends its own utterances rather than letting the provider do it. */
@@ -148,13 +149,16 @@ public class SttStreamBridge implements AudioListener, Closeable {
      * @param selector          where a replacement provider comes from when this one keeps
      *                          failing. Null leaves the call on the provider it started with,
      *                          which is what an offline tool replaying a fixed recording wants
+     * @param model             the recognition model this agent chose, or null for the provider's
+     *                          own ({@code ai_agent.stt_model})
      */
     public SttStreamBridge(SttProvider provider, int targetSampleRate, int sourceSampleRate, String channelId,
                            String language, List<String> alternativeLanguages, TranscriptListener listener,
                            SpeechGate gate, VoiceMetrics metrics, EndpointingProperties endpointing,
                            int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
-                           SttProviderSelector selector) {
+                           SttProviderSelector selector, String model) {
         this.selector = selector;
+        this.model = (model == null || model.isBlank()) ? null : model.trim();
         this.channelId = channelId;
         this.hints = hints == null ? List.of() : List.copyOf(hints);
         this.onUtteranceEnd = onUtteranceEnd != null ? onUtteranceEnd : ms -> { };
@@ -198,7 +202,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.responseTimeoutMs = Math.max(0, responseTimeoutMs);
         this.lastResponseAt = System.currentTimeMillis();
         this.streamOpenedAt = this.lastResponseAt;
-        this.session = provider.startStream(language, this.alternativeLanguages, this.listener, externalEndpointing, this.hints);
+        this.session = provider.startStream(language, this.alternativeLanguages, this.listener, externalEndpointing, this.hints, this.model);
     }
 
     @Override
@@ -272,6 +276,9 @@ public class SttStreamBridge implements AudioListener, Closeable {
         int len;
         if (targetSampleRate == 16000) {
             samples = Resampler.upsample8kTo16k(pcm, length);
+            len = samples.length;
+        } else if (targetSampleRate == 24000) {
+            samples = Resampler.upsample8kTo24k(pcm, length);
             len = samples.length;
         } else {
             samples = pcm;
@@ -425,7 +432,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         }
         try {
             utteranceSamples = 0;
-            session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints);
+            session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints, model);
             lastResponseAt = now;
             streamOpenedAt = now;
             everReady = false;
@@ -481,6 +488,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         metrics.sttFailover(provider.name(), replacement.name());
         provider = replacement;
         targetSampleRate = replacement.sampleRate();
+        model = null;
         providerFailures = 0;
     }
 

@@ -40,7 +40,7 @@ public interface DoNotCallJpaRepository extends JpaRepository<DoNotCallEntity, L
     @Modifying
     @Transactional
     @Query("UPDATE DoNotCallEntity e SET e.removedAt = :removedAt, e.removedBy = :removedBy "
-            + "WHERE e.companyId = :companyId AND e.phone = :phone AND e.removedAt IS NULL")
+            + "WHERE e.company.id = :companyId AND e.phone = :phone AND e.removedAt IS NULL")
     int remove(@Param("companyId") long companyId,
                @Param("phone") String phone,
                @Param("removedAt") Instant removedAt,

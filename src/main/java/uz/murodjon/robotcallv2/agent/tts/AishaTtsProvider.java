@@ -45,7 +45,7 @@ import java.util.concurrent.*;
  * ahead: {@link #synthesizeStreaming} stays with the default single-chunk delivery.
  *
  * <p>Registered whenever {@code voice-agent.tts.aisha.api-key} is set — a company picks
- * this provider per-call via {@code engine_config.tts_provider} (§11 settings), it does
+ * this provider per-call via {@code ai_agent.tts_provider}, it does
  * not have to be the process-wide {@code voice-agent.tts.provider} default.
  */
 @Component

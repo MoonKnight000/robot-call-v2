@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.storage.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.storage.application.mapper.StoredFileMapper;
 import uz.murodjon.robotcallv2.storage.application.port.output.StoredFileRepository;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
@@ -17,17 +18,20 @@ public class StoredFileRepositoryAdapter implements StoredFileRepository {
 
     private final StoredFileJpaRepository jpaRepository;
     private final StoredFileMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public StoredFileRepositoryAdapter(StoredFileJpaRepository jpaRepository, StoredFileMapper mapper) {
+    public StoredFileRepositoryAdapter(StoredFileJpaRepository jpaRepository, StoredFileMapper mapper,
+                                       CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
     public long create(long companyId, FileCategory category, String originalName, String path,
                        String bucket, String format, long sizeBytes) {
         StoredFileEntity entity = new StoredFileEntity();
-        entity.setCompanyId(companyId);
+        entity.setCompany(companyJpaRepository.getReferenceById(companyId));
         entity.setCategory(category);
         entity.setOriginalName(originalName);
         entity.setPath(path);

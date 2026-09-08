@@ -48,6 +48,37 @@ public final class Resampler {
     }
 
     /**
+     * Upsample 8 kHz PCM to 24 kHz by inserting two linearly interpolated samples between
+     * each pair of input samples (3x).
+     *
+     * <p>The 2x path's reasoning applies unchanged: interpolation invents no detail the
+     * telephone band did not carry, it only presents the same signal at the rate a
+     * recognizer insists on. OpenAI's transcription sessions are specified at 24 kHz, and
+     * a stream labelled 24 kHz while carrying 8 kHz samples is heard as speech at a third
+     * of its true pitch and speed.
+     *
+     * @param in     source samples at 8 kHz
+     * @param length number of valid samples in {@code in}
+     * @return a new array of {@code length * 3} samples at 24 kHz
+     */
+    public static short[] upsample8kTo24k(short[] in, int length) {
+        if (in == null || length <= 0) {
+            return new short[0];
+        }
+        int validLen = Math.min(in.length, length);
+        short[] out = new short[validLen * 3];
+        for (int i = 0; i < validLen; i++) {
+            short current = in[i];
+            short next = (i + 1 < validLen) ? in[i + 1] : current;
+            int step = (next - current) / 3;
+            out[i * 3] = current;
+            out[i * 3 + 1] = (short) (current + step);
+            out[i * 3 + 2] = (short) (current + 2 * step);
+        }
+        return out;
+    }
+
+    /**
      * Downsample 16 kHz PCM to the 8 kHz telephone rate using an anti-aliasing symmetric FIR
      * low-pass filter (cutoff ~3.6 kHz).
      *

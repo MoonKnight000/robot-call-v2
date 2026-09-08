@@ -31,7 +31,8 @@ public final class CallAttemptMapper {
                 entity.getCreatedAt(),
                 entity.getFinalizeAttempts(),
                 entity.getInboundRouteId(),
-                entity.getOperatorUserId()
+                entity.getOperatorUserId(),
+                entity.getVariantId()
         );
     }
 }

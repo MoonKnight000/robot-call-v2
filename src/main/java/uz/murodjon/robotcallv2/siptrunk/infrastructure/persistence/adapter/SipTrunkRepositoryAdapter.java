@@ -2,10 +2,11 @@ package uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.siptrunk.application.mapper.SipTrunkMapper;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.repository.SipTrunkJpaRepository;
@@ -19,10 +20,13 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
 
     private final SipTrunkJpaRepository jpaRepository;
     private final SipTrunkMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public SipTrunkRepositoryAdapter(SipTrunkJpaRepository jpaRepository, SipTrunkMapper mapper) {
+    public SipTrunkRepositoryAdapter(SipTrunkJpaRepository jpaRepository, SipTrunkMapper mapper,
+                                     CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
@@ -35,7 +39,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
             jpaRepository.clearDefault(companyId);
         }
         SipTrunkEntity entity = new SipTrunkEntity();
-        entity.setCompanyId(companyId);
+        entity.setCompany(companyJpaRepository.getReferenceById(companyId));
         entity.setName(name);
         entity.setPjsipEndpoint(pjsipEndpoint);
         entity.setCallerId(callerId);

@@ -2,9 +2,7 @@ package uz.murodjon.robotcallv2.agent.turn;
 
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.within;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * The features are the one part of the turn detector that can be wrong without anything

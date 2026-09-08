@@ -16,10 +16,10 @@ import java.util.Optional;
 @Repository
 public interface NotificationRecipientJpaRepository extends JpaRepository<NotificationRecipientEntity, Long> {
 
-    @Query("SELECT r FROM NotificationRecipientEntity r JOIN FETCH r.notification WHERE r.userId = :userId ORDER BY r.id DESC")
+    @Query("SELECT r FROM NotificationRecipientEntity r JOIN FETCH r.notification WHERE r.user.id = :userId ORDER BY r.id DESC")
     List<NotificationRecipientEntity> findByUserId(@Param("userId") long userId);
 
-    @Query("SELECT r FROM NotificationRecipientEntity r WHERE r.notification.id = :notificationId AND r.userId = :userId")
+    @Query("SELECT r FROM NotificationRecipientEntity r WHERE r.notification.id = :notificationId AND r.user.id = :userId")
     Optional<NotificationRecipientEntity> findByNotificationIdAndUserId(@Param("notificationId") long notificationId, @Param("userId") long userId);
 
     long countByUserIdAndReadAtIsNull(long userId);
@@ -27,7 +27,7 @@ public interface NotificationRecipientJpaRepository extends JpaRepository<Notifi
     @Modifying
     @Transactional
     @Query("UPDATE NotificationRecipientEntity r SET r.readAt = :at "
-            + "WHERE r.notification.id = :notificationId AND r.userId = :userId")
+            + "WHERE r.notification.id = :notificationId AND r.user.id = :userId")
     void markRead(@Param("notificationId") long notificationId, @Param("userId") long userId,
                   @Param("at") Instant at);
 }

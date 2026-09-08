@@ -17,6 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param yandex          Yandex SpeechKit settings
  * @param aisha           Aisha settings
  * @param cartesia        Cartesia Sonic ultra-low latency TTS settings
+ * @param openAi          OpenAI speech settings (gpt-4o-mini-tts)
  */
 @ConfigurationProperties(prefix = "voice-agent.tts")
 public record TtsProperties(
@@ -28,6 +29,7 @@ public record TtsProperties(
         GoogleTtsProperties google,
         YandexTtsProperties yandex,
         AishaTtsProperties aisha,
-        CartesiaTtsProperties cartesia
+        CartesiaTtsProperties cartesia,
+        OpenAiTtsProperties openAi
 ) {
 }

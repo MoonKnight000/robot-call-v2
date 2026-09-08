@@ -61,9 +61,10 @@ public class KnowledgeBaseLookup {
     );
 
     /**
-     * Finds the most relevant knowledge snippet for the given caller question or objection.
+     * Finds the most relevant knowledge snippet for the given caller question or objection,
+     * narrowed to what this agent may answer from: its own items plus the company-wide ones.
      */
-    public String findRelevantKnowledge(long companyId, String query, String language) {
+    public String findRelevantKnowledge(long companyId, Long agentId, String query, String language) {
         if (query == null || query.isBlank()) {
             return null;
         }
@@ -73,8 +74,7 @@ public class KnowledgeBaseLookup {
 
         // 1. Dynamic database lookup for the company
         try {
-            List<KnowledgeItem> dbItems =
-                    repository.findAllActiveByCompanyId(companyId);
+            List<KnowledgeItem> dbItems = repository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
             for (var item : dbItems) {
                 if (matchesDbItem(lower, item)) {
                     log.debug("Knowledge base matched company DB item '{}'", item.key());

@@ -1,21 +1,9 @@
 package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity;
 
-import jakarta.persistence.CollectionTable;
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
@@ -90,8 +78,9 @@ public class CampaignEntity {
     @JoinColumn(name = "company_id", nullable = false)
     private CompanyEntity company;
 
-    @Column(name = "ai_agent_id", nullable = false)
-    private long aiAgentId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ai_agent_id", nullable = false)
+    private AiAgentEntity aiAgent;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "recurrence_type", nullable = false)
@@ -213,10 +202,15 @@ public class CampaignEntity {
         return dialDays;
     }
 
+    /** In place: a swapped collection-table instance is re-inserted over rows that already exist. */
     public void setDialDays(Set<DayOfWeek> dialDays) {
-        this.dialDays = (dialDays == null || dialDays.isEmpty())
-                ? EnumSet.noneOf(DayOfWeek.class)
-                : EnumSet.copyOf(dialDays);
+        if (dialDays == this.dialDays) {
+            return;
+        }
+        this.dialDays.clear();
+        if (dialDays != null) {
+            this.dialDays.addAll(dialDays);
+        }
     }
 
     public int getDailyCallCap() {
@@ -239,12 +233,16 @@ public class CampaignEntity {
         return company != null ? company.getId() : 0L;
     }
 
-    public long getAiAgentId() {
-        return aiAgentId;
+    public AiAgentEntity getAiAgent() {
+        return aiAgent;
     }
 
-    public void setAiAgentId(long aiAgentId) {
-        this.aiAgentId = aiAgentId;
+    public void setAiAgent(AiAgentEntity aiAgent) {
+        this.aiAgent = aiAgent;
+    }
+
+    public long getAiAgentId() {
+        return aiAgent != null ? aiAgent.getId() : 0L;
     }
 
     public RecurrenceType getRecurrenceType() {

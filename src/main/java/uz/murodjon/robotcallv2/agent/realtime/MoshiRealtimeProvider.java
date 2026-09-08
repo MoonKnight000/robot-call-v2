@@ -79,6 +79,12 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
     }
 
     @Override
+    public String resolveModel(RealtimeCallConfig config) {
+        MoshiRealtimeProperties m = realtimeProperties.moshi();
+        return config.modelOr(m == null ? null : m.model());
+    }
+
+    @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
         MoshiRealtimeProperties m = realtimeProperties.moshi();

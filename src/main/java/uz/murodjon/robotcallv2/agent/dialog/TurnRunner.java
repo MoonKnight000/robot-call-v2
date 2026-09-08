@@ -16,12 +16,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
-
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
-import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -51,7 +52,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * that arrives while a turn is still in flight.
  *
  * <p>Owns the call's {@link ChatClient}, and therefore whether dialog is possible at all:
- * without an LLM ChatModel bean (no {@code GEMINI_API_KEY} or {@code GROQ_API_KEY}) the app still starts and
+ * without an LLM ChatModel bean (no {@code GEMINI_API_KEY} or {@code OPENAI_API_KEY}) the app still starts and
  * {@link #available()} is false.
  */
 @Component
@@ -88,6 +89,7 @@ public class TurnRunner {
     private final SentimentDetector sentimentDetector;
     private final KnowledgeBaseLookup knowledgeBase;
     private final FastPathRouter fastPathRouter;
+    private final KnowledgeRetrievalUseCase knowledgeRetrieval;
 
     private volatile ChatClient chatClient;
 
@@ -101,7 +103,8 @@ public class TurnRunner {
                       DialogExecutors executors,
                       SentimentDetector sentimentDetector,
                       KnowledgeBaseLookup knowledgeBase,
-                      FastPathRouter fastPathRouter) {
+                      FastPathRouter fastPathRouter,
+                      KnowledgeRetrievalUseCase knowledgeRetrieval) {
         this.dialogProperties = dialogProperties;
         this.promptFactory = promptFactory;
         this.metrics = metrics;
@@ -113,6 +116,7 @@ public class TurnRunner {
         this.sentimentDetector = sentimentDetector;
         this.knowledgeBase = knowledgeBase;
         this.fastPathRouter = fastPathRouter;
+        this.knowledgeRetrieval = knowledgeRetrieval;
     }
 
     @PostConstruct
@@ -136,7 +140,7 @@ public class TurnRunner {
             chatClient = ChatClient.create(model);
             log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
         } else {
-            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY); dialog disabled");
+            log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY or OPENAI_API_KEY); dialog disabled");
         }
     }
 
@@ -147,6 +151,15 @@ public class TurnRunner {
 
     /** The opening turn: nobody has spoken yet, so the bootstrap line stands in for the caller. */
     public void startGreeting(DialogSession s) {
+        if (s.firstMessage() != null && !s.firstMessage().isBlank()) {
+            String opening = s.firstMessage().trim();
+            log.info("[{}] AGENT (firstMessage): {}", s.channelId(), opening);
+            speech.speakChunk(s, opening);
+            s.history().add(new AssistantMessage(opening));
+            s.setLastAgentText(opening);
+            transcript.recordAgentLine(s, opening);
+            return;
+        }
         advance(s, GREETING_BOOTSTRAP, false);
     }
 
@@ -242,6 +255,8 @@ public class TurnRunner {
             }
 
             String system = systemPrefix(s);
+            // Looked up before the annex is built, because that is where the passages go.
+            retrieveKnowledge(s, clientText, fromClient);
             // The state block goes after the history, not into the system message, so
             // the cached prefix stays append-only (see SystemPromptFactory).
             List<Message> messages = new ArrayList<>(s.history());
@@ -264,10 +279,11 @@ public class TurnRunner {
             Flux<ChatResponse> speculated = adoptSpeculation(s, clientText, fromClient);
 
             TurnResult result;
-            String model = modelFor(clientText, fromClient);
+            String model = modelFor(s, clientText, fromClient);
             s.latency().llmRequested();
             Timer.Sample llmSample = metrics.startTimer();
             ScheduledFuture<?> filler = speech.scheduleFiller(s);
+            s.endpoint().startThinking();
             try {
                 result = dialogProperties.streaming()
                         ? streamTurn(s, system, messages, tools, speculated, model)
@@ -286,6 +302,7 @@ public class TurnRunner {
                     // A filler already in flight is stopped by its own guards instead.
                     filler.cancel(false);
                 }
+                s.endpoint().stopThinking();
                 long elapsedNanos = metrics.stopLlmTurn(llmSample);
                 s.recordLlmLatency(Duration.ofNanos(elapsedNanos).toMillis());
             }
@@ -394,6 +411,22 @@ public class TurnRunner {
             String farewell = DialogLines.farewell(s);
             transcript.recordAgentLine(s, farewell);
             speech.speakChunk(s, farewell);
+            speech.finishWhenSpoken(s);
+        } finally {
+            s.busy().set(false);
+            MDC.remove("channelId");
+        }
+    }
+
+    public void leaveVoicemailAndClose(DialogSession s, String message) {
+        if (s.isEnded() || !s.busy().compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            MDC.put("channelId", s.channelId());
+            s.end(Disposition.VOICEMAIL);
+            transcript.recordAgentLine(s, message);
+            speech.speakChunk(s, message);
             speech.finishWhenSpoken(s);
         } finally {
             s.busy().set(false);
@@ -518,7 +551,7 @@ public class TurnRunner {
             Flux<ChatResponse> responses = chatClient.prompt()
                     .system(systemPrefix(s))
                     .messages(messages)
-                    .options(turnTools.buildOptions(s, turnTools.build(s), modelFor(text, true)))
+                    .options(turnTools.buildOptions(s, turnTools.build(s), modelFor(s, text, true)))
                     .stream()
                     .chatResponse()
                     .cache();
@@ -604,11 +637,47 @@ public class TurnRunner {
      *
      * @return whether the turn was answered here and the LLM should be skipped
      */
+    /** Null on a call with no agent behind it — a manual test line — which reads as "do not narrow". */
+    private static Long agentIdOf(DialogSession s) {
+        return s.agent() != null ? s.agent().id() : null;
+    }
+
+    /**
+     * Puts the company's own documents behind this turn, for agents that asked for it.
+     *
+     * <p>Off unless the agent has {@code useRag}: a search costs one embedding round trip
+     * inside a turnaround budget the caller is sitting through, and an agent working from
+     * a scripted scenario has nothing to look up. Cleared rather than left alone when it
+     * is off or finds nothing, so the previous turn's passages never answer this one's
+     * question.
+     *
+     * <p>Never allowed to fail the turn: a knowledge base that is down is a turn answered
+     * without it, not a call that stops.
+     */
+    private void retrieveKnowledge(DialogSession s, String clientText, boolean fromClient) {
+        if (!fromClient || s.agent() == null || !s.agent().useRag()) {
+            s.setKnowledgePassages(List.of());
+            return;
+        }
+        try {
+            List<KnowledgePassage> passages = knowledgeRetrieval.findRelevantPassages(
+                    s.companyId(), agentIdOf(s), clientText, dialogProperties.knowledgePassages());
+            s.setKnowledgePassages(passages);
+            if (!passages.isEmpty()) {
+                log.debug("[{}] knowledge base contributed {} passages (best {})",
+                        s.channelId(), passages.size(), String.format("%.2f", passages.getFirst().score()));
+            }
+        } catch (Exception e) {
+            s.setKnowledgePassages(List.of());
+            log.warn("[{}] knowledge search failed, answering without it: {}", s.channelId(), e.getMessage());
+        }
+    }
+
     private boolean answerFromKnowledgeBase(DialogSession s, String clientText, boolean fromClient) {
         if (!dialogProperties.knowledgeBase() || !fromClient) {
             return false;
         }
-        String answer = knowledgeBase.findRelevantKnowledge(s.companyId(), clientText, s.language());
+        String answer = knowledgeBase.findRelevantKnowledge(s.companyId(), agentIdOf(s), clientText, s.language());
         if (answer == null) {
             return false;
         }
@@ -631,11 +700,13 @@ public class TurnRunner {
      * the larger model are the ones where the caller argues, and those are not short.
      *
      * <p>Word count rather than intent on purpose: an intent classifier is another model
-     * call in front of the model call it was supposed to save. Blank
-     * {@code fast-model} disables the whole thing, and the greeting never uses it.
+     * call in front of the model call it was supposed to save. The single exception is a
+     * lexical one, not a classifier — a short answer that names a number goes to the full
+     * model regardless of length (see below). Blank {@code fast-model} disables the whole
+     * thing, and the greeting never uses it.
      */
-    private String modelFor(String clientText, boolean fromClient) {
-        String fast = dialogProperties.fastModel();
+    private String modelFor(DialogSession s, String clientText, boolean fromClient) {
+        String fast = fastModelOf(s);
         if (fast == null || fast.isBlank() || !fromClient || clientText == null) {
             return null;
         }
@@ -643,7 +714,32 @@ public class TurnRunner {
         if (trimmed.isEmpty()) {
             return null;
         }
+        // A number is the one short answer that is not cheap. On a recorded call the
+        // caller answered "yetti" — one word, so the fast model took it — and the reply
+        // that came back was "Oyning 7-sanasini aytyapsizftmi?": a mangled word the
+        // synthesizer read out as it was written, on the turn that decides which day the
+        // payment is promised for and may call recordPaymentPromise. Short and numeric is
+        // exactly the shape this optimisation must not cover, so it is the one exception
+        // to word count. Only numbers: a relative date word ("ertaga") carries the same
+        // stakes and is still on the fast path — add it here if it starts costing turns.
+        if (UzbekNumberParser.containsNumber(trimmed)) {
+            return null;
+        }
         return trimmed.split("\\s+").length <= dialogProperties.fastModelMaxWords() ? fast : null;
+    }
+
+    /**
+     * The cheap model for this call: the agent's own if it named one, otherwise the
+     * installation's {@code dialog.fast-model}.
+     *
+     * <p>An agent that wants no downgrade sets its fast model to the same id as its
+     * {@code llmModel} — there is no separate off switch, because "the cheap model is the
+     * same as the careful one" already says it and one field cannot then disagree with
+     * another.
+     */
+    private String fastModelOf(DialogSession s) {
+        String agentModel = s.fastModel();
+        return agentModel != null && !agentModel.isBlank() ? agentModel : dialogProperties.fastModel();
     }
 
     /**
@@ -978,7 +1074,7 @@ public class TurnRunner {
         StreamedReply retry = consume(s, chatClient.prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
-                .options(turnTools.buildOptions(s, List.of(), dialogProperties.fastModel()))
+                .options(turnTools.buildOptions(s, List.of(), fastModelOf(s)))
                 .stream()
                 .chatResponse(), retryUsage, new ArrayList<>());
         publishUsage(s, retryUsage);
@@ -1183,7 +1279,7 @@ public class TurnRunner {
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
                 // Fast model, no tools — same reasoning as the streaming path above.
-                .options(turnTools.buildOptions(s, List.of(), dialogProperties.fastModel()))
+                .options(turnTools.buildOptions(s, List.of(), fastModelOf(s)))
                 .call()
                 .chatResponse();
         TokenUsage retryUsage = new TokenUsage();

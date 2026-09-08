@@ -2,11 +2,11 @@ package uz.murodjon.robotcallv2.campaign.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.dto.AbTestReportResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateRequest;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;

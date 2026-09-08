@@ -1,93 +1,187 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
-import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
-import java.util.Map;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
- * Who speaks a call, as opposed to what is said ({@code Scenario}) and who is called
- * ({@code Campaign}).
+ * An AI agent: the voice, persona, model, speech engine and limits a call is run with.
  *
- * <p>Every call in the system resolves through exactly one of these, in either direction:
- * a campaign names the agent its targets are dialled by, an inbound route names the agent
- * its DID is answered by. That is the whole point of the type — before it, an outbound
- * call read its voice and persona off the campaign and an inbound call off the scenario,
- * so the same script answered the phone as a different character than it called with.
- *
- * <p>The three model fields are overrides and may be null; null means the company's
- * {@code ai_model_config}. Everything else is decided here: a value nobody set is this
- * record's own default, not somebody else's.
- *
- * @param scenarioId     the script this agent runs. One scenario can be spoken by several
- *                       agents — an Uzbek one and a Russian one, a careful collections
- *                       agent and a cheap survey agent — which is why it is a reference
- *                       and not a copy
- * @param language       the language a call starts in when the target does not name one
- * @param ttsVoice       voice for that language, and for any language {@code languageVoices}
- *                       does not name
- * @param languageVoices voice per call language ({@code {"uz-UZ": "nigora", "ru-RU": "alena"}});
- *                       the language the caller turns out to speak switches it mid-call
- * @param sipTrunkIds    trunks this agent may dial out from; empty balances across every
- *                       enabled trunk of the company
+ * <p>Most of what an agent is arrives in groups — {@link AiAgentVoice}, {@link
+ * AiAgentSpeechEngine}, {@link AiAgentAmbience}, {@link AiAgentCallBehaviour}, {@link
+ * AiAgentLimits}, {@link AiAgentDataPolicy}, {@link AiAgentScript}. Each of those owns its
+ * own defaults, so an agent read from a half-filled row still comes out usable, and each
+ * groups settings that are only meaningful together. What stays here is what identifies
+ * the agent, what every part of it needs (the language, the persona), and the model.
  */
 public record AiAgent(
-        long id,
-        long companyId,
+        Long id,
+        Long companyId,
         String name,
         String description,
-        long scenarioId,
         String language,
-        String ttsVoice,
-        Map<String, String> languageVoices,
         AgentPersona persona,
+        AiAgentScript script,
+        AiAgentSpeechEngine speechEngine,
+        AiAgentVoice voice,
+        AiAgentAmbience ambience,
+        AiAgentCallBehaviour callBehaviour,
+        AiAgentLimits limits,
+        AiAgentDataPolicy dataPolicy,
         String llmModel,
+        String fastLlmModel,
         Double temperature,
         Integer maxOutputTokens,
-        AmbientSound ambientSound,
-        boolean emotionAdaptiveVoice,
-        boolean dtmfInputEnabled,
-        VoicemailAction voicemailAction,
-        String voicemailMessage,
-        boolean midCallSmsEnabled,
-        String midCallSmsTemplate,
+        boolean preemptiveGeneration,
+        boolean ivrNavigationEnabled,
+        boolean useRag,
+        List<DataExtractionField> dataNeeded,
+        List<DataEvaluationCriterion> dataEvaluation,
+        AgentWebhookConfig initiationWebhook,
+        AgentWebhookConfig postCallWebhook,
+        List<PronunciationRule> pronunciationRules,
+        List<PostCallAction> postCallActions,
         Set<Long> sipTrunkIds,
         boolean enabled,
         Instant createdAt,
         Long createdBy
 ) {
 
-    /** The voice a call in {@code language} speaks with; this agent's default otherwise. */
-    public String voiceFor(String language) {
-        if (language != null && languageVoices != null) {
-            String voice = languageVoices.get(language);
-            if (voice != null && !voice.isBlank()) {
-                return voice;
-            }
+    public AiAgent {
+        Objects.requireNonNull(name, "Agent name cannot be null");
+        if (language == null || language.isBlank()) {
+            language = "uz-UZ";
         }
-        return ttsVoice;
-    }
-
-    public AgentPersona personaOrDefault() {
-        return persona != null ? persona : AgentPersona.AI_ASSISTANT;
+        if (persona == null) {
+            persona = AgentPersona.AI_ASSISTANT;
+        }
+        if (temperature == null) {
+            temperature = 0.3;
+        }
+        if (maxOutputTokens == null) {
+            maxOutputTokens = 300;
+        }
+        // A group is never null: every reader reaches through one, and making them prove
+        // it first would put the same null check in every caller instead of here once.
+        if (script == null) {
+            script = new AiAgentScript(null, null, null, null, null, null);
+        }
+        if (speechEngine == null) {
+            speechEngine = new AiAgentSpeechEngine(null, null, null, null, null, null, null, null, null);
+        }
+        if (voice == null) {
+            voice = new AiAgentVoice(null, null, null, null, null, true);
+        }
+        if (ambience == null) {
+            ambience = new AiAgentAmbience(null, null, null, null, null, true, null);
+        }
+        if (callBehaviour == null) {
+            callBehaviour = new AiAgentCallBehaviour(null, 0, false, null, null, false, null, null, null);
+        }
+        if (limits == null) {
+            limits = AiAgentLimits.NONE;
+        }
+        if (dataPolicy == null) {
+            dataPolicy = new AiAgentDataPolicy(false, true, null);
+        }
+        sipTrunkIds = sipTrunkIds == null ? Set.of() : Set.copyOf(sipTrunkIds);
+        dataNeeded = dataNeeded == null ? List.of() : List.copyOf(dataNeeded);
+        dataEvaluation = dataEvaluation == null ? List.of() : List.copyOf(dataEvaluation);
+        pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
+        postCallActions = postCallActions == null ? List.of() : List.copyOf(postCallActions);
     }
 
     /**
-     * Whether calls by this agent open with the §11.1 disclosure. An agent that introduces
-     * itself as a person has already answered that question the other way.
+     * Whether calls by this agent open with the §11.1 disclosure.
      */
     public boolean disclosureEnabled() {
-        return personaOrDefault() == AgentPersona.AI_ASSISTANT;
+        return persona == AgentPersona.AI_ASSISTANT;
     }
 
-    public Set<Long> sipTrunkIdsOrEmpty() {
-        return sipTrunkIds == null ? Set.of() : sipTrunkIds;
+    /** The voice a call in {@code language} speaks with; this agent's default otherwise. */
+    public String voiceFor(String callLanguage) {
+        return voice.forLanguage(callLanguage);
     }
 
-    public Map<String, String> languageVoicesOrEmpty() {
-        return languageVoices == null ? Map.of() : languageVoices;
+    public AiAgent withFirstMessage(String newFirstMessage) {
+        return withScript(script.withFirstMessage(newFirstMessage));
     }
+
+    public AiAgent withScenario(AiAgentScript newScript) {
+        return withScript(newScript);
+    }
+
+    public AiAgent withAnalysis(List<DataExtractionField> newDataNeeded,
+                                List<DataEvaluationCriterion> newDataEvaluation) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                newDataNeeded, newDataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+    }
+
+    public AiAgent withLimits(AiAgentLimits newLimits) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, newLimits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+    }
+
+    /** Everything the "advanced" settings screen owns, in one write. */
+    public AiAgent withAdvanced(AiAgentAmbience newAmbience,
+                                AiAgentCallBehaviour newCallBehaviour,
+                                AiAgentDataPolicy newDataPolicy,
+                                AiAgentVoice newVoice,
+                                boolean newPreemptiveGeneration,
+                                boolean newIvrNavigationEnabled,
+                                boolean newUseRag,
+                                AgentWebhookConfig newInitiationWebhook,
+                                AgentWebhookConfig newPostCallWebhook) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, newVoice, newAmbience, newCallBehaviour, limits, newDataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                newPreemptiveGeneration, newIvrNavigationEnabled, newUseRag,
+                dataNeeded, dataEvaluation, newInitiationWebhook, newPostCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+    }
+
+    public AiAgent withPronunciationRules(List<PronunciationRule> rules) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                rules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+    }
+
+    public AiAgent withPostCallActions(List<PostCallAction> actions) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, actions, sipTrunkIds, enabled, createdAt, createdBy);
+    }
+
+    private AiAgent withScript(AiAgentScript newScript) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                newScript, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+    }
+
 }

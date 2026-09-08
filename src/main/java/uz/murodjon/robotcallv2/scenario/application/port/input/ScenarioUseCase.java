@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.scenario.application.port.input;
 
-import uz.murodjon.robotcallv2.scenario.application.dto.*;
+import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
+import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
+import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioRow;
+import uz.murodjon.robotcallv2.scenario.application.dto.UpdateScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;

@@ -39,9 +39,9 @@ class TurnToolsTest {
     }
 
     @Test
-    void returnsOpenAiChatOptionsWhenModelIsGroqLlama() {
+    void returnsOpenAiChatOptionsWhenModelIsOpenAi() {
         EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
-                "llama-3.3-70b-versatile", 0.6, 120, 300, 100000L
+                "gpt-5.6-luna", 0.6, 120, 300, 100000L
         );
         when(session.aiModel()).thenReturn(aiModel);
 
@@ -49,7 +49,7 @@ class TurnToolsTest {
 
         assertThat(options).isInstanceOf(OpenAiChatOptions.class);
         OpenAiChatOptions openAiOptions = (OpenAiChatOptions) options;
-        assertThat(openAiOptions.getModel()).isEqualTo("llama-3.3-70b-versatile");
+        assertThat(openAiOptions.getModel()).isEqualTo("gpt-5.6-luna");
         assertThat(openAiOptions.getTemperature()).isEqualTo(0.6);
         assertThat(openAiOptions.getMaxTokens()).isEqualTo(120);
         assertThat(openAiOptions.getInternalToolExecutionEnabled()).isFalse();

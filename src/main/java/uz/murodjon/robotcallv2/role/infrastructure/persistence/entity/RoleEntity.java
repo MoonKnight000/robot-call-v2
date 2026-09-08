@@ -1,17 +1,7 @@
 package uz.murodjon.robotcallv2.role.infrastructure.persistence.entity;
 
-import jakarta.persistence.CollectionTable;
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
 import java.time.Instant;
@@ -27,7 +17,12 @@ public class RoleEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
     /** Set only for a system role (DEVELOPER, ADMIN, …); null for a role the company defined. */
@@ -62,12 +57,16 @@ public class RoleEntity {
         this.id = id;
     }
 
-    public Long getCompanyId() {
-        return companyId;
+    public CompanyEntity getCompany() {
+        return company;
     }
 
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
+    public void setCompany(CompanyEntity company) {
+        this.company = company;
+    }
+
+    public Long getCompanyId() {
+        return company != null ? company.getId() : null;
     }
 
     public String getCode() {
@@ -106,8 +105,15 @@ public class RoleEntity {
         return permissions;
     }
 
+    /** In place: a swapped collection-table instance is re-inserted over rows that already exist. */
     public void setPermissions(Set<Permission> permissions) {
-        this.permissions = permissions;
+        if (permissions == this.permissions) {
+            return;
+        }
+        this.permissions.clear();
+        if (permissions != null) {
+            this.permissions.addAll(permissions);
+        }
     }
 
     public Instant getCreatedAt() {

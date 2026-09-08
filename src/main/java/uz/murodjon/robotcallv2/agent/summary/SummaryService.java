@@ -14,6 +14,9 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
@@ -28,7 +31,8 @@ import java.util.Set;
  * (PROJECT.md §4.3, MASTER_ROADMAP.md §10). A single LLM call with a stronger model.
  * The fields every scenario gets ({@code summary}/{@code sentiment}/{@code needsFollowUp}/
  * {@code followUpNote}/{@code callbackAt}/{@code qaScore}/{@code commitmentScore}) are fixed;
- * everything else asked for comes from the call's {@code ScenarioDefinition.outcomeSchema()}.
+ * everything else asked for comes from the call's {@code ScenarioDefinition.outcomeSchema()}
+ * and the agent's {@code dataNeeded} / {@code dataEvaluation} analysis configuration.
  */
 @Service
 public class SummaryService {
@@ -78,12 +82,20 @@ public class SummaryService {
             chatClient = ChatClient.create(cm);
             log.info("Summary service ready (model={})", model);
         } else {
-            log.warn("Summary service has no LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY); summaries disabled");
+            log.warn("Summary service has no LLM ChatModel (set GEMINI_API_KEY or OPENAI_API_KEY); summaries disabled");
         }
     }
 
     /** Summarize {@code transcript} against {@code scenario}'s outcomeSchema; {@code null} on empty input or failure. */
     public CallSummary summarize(String transcript, ScenarioDefinition scenario) {
+        return summarize(transcript, scenario, null);
+    }
+
+    /**
+     * Summarizes {@code transcript} against {@code scenario}'s outcomeSchema and agent's
+     * {@code dataNeeded} & {@code dataEvaluation} analysis configuration.
+     */
+    public CallSummary summarize(String transcript, ScenarioDefinition scenario, AiAgent agent) {
         if (chatClient == null || transcript == null || transcript.isBlank()) {
             return null;
         }
@@ -107,25 +119,43 @@ public class SummaryService {
             }
             Map<String, Object> raw = chatClient.prompt()
                     .options(options)
-                    .system(systemPrompt(scenario) + "\nBUGUNGI SANA VA VAQT: " + java.time.LocalDateTime.now() + ".")
+                    .system(systemPrompt(scenario, agent) + "\nBUGUNGI SANA VA VAQT: " + java.time.LocalDateTime.now() + ".")
                     .user(transcript)
                     .call()
                     .entity(new MapOutputConverter());
-            return toCallSummary(raw, scenario);
+            return toCallSummary(raw, scenario, agent);
         } catch (Exception e) {
             log.warn("Summary generation failed: {}", e.getMessage());
             return null;
         }
     }
 
-    /** The fixed fields every scenario gets, plus one instruction line per {@code outcomeSchema} field. */
-    private static String systemPrompt(ScenarioDefinition scenario) {
+    /** The fixed fields every scenario gets, plus instructions for outcomeSchema, dataNeeded, and dataEvaluation. */
+    private static String systemPrompt(ScenarioDefinition scenario, AiAgent agent) {
         StringBuilder sb = new StringBuilder(SYSTEM_PROMPT_HEADER);
-        List<OutcomeField> outcomeSchema = scenario.outcomeSchema();
-        if (outcomeSchema != null) {
-            for (OutcomeField f : outcomeSchema) {
-                sb.append("- ").append(f.name()).append(" (").append(f.type()).append("): ")
-                        .append(f.description() != null ? f.description() : "").append('\n');
+        if (scenario != null) {
+            List<OutcomeField> outcomeSchema = scenario.outcomeSchema();
+            if (outcomeSchema != null) {
+                for (OutcomeField f : outcomeSchema) {
+                    sb.append("- ").append(f.name()).append(" (").append(f.type()).append("): ")
+                            .append(f.description() != null ? f.description() : "").append('\n');
+                }
+            }
+        }
+        if (agent != null) {
+            if (agent.dataNeeded() != null && !agent.dataNeeded().isEmpty()) {
+                sb.append("\nQuyidagi maydonlarni transkriptdan ajratib oling (data_needed):\n");
+                for (DataExtractionField f : agent.dataNeeded()) {
+                    sb.append("- ").append(f.name()).append(" (").append(f.type()).append("): ")
+                            .append(f.description() != null ? f.description() : "").append('\n');
+                }
+            }
+            if (agent.dataEvaluation() != null && !agent.dataEvaluation().isEmpty()) {
+                sb.append("\nQuyidagi sifat mezonlari bo'yicha baholang (data_evaluation):\n");
+                for (DataEvaluationCriterion c : agent.dataEvaluation()) {
+                    sb.append("- ").append(c.name()).append(": ")
+                            .append(c.criteria() != null ? c.criteria() : "").append('\n');
+                }
             }
         }
         sb.append("Ma'lum bo'lmagan maydonni null qoldiring. Transkriptda nisbiy sana bo'lsa ")
@@ -134,8 +164,8 @@ public class SummaryService {
         return sb.toString();
     }
 
-    /** Splits the model's raw JSON map into the fixed fields plus a scenario-shaped outcome map. */
-    private static CallSummary toCallSummary(Map<String, Object> raw, ScenarioDefinition scenario) {
+    /** Splits the model's raw JSON map into the fixed fields plus a scenario-shaped outcome map and agent analysis. */
+    private static CallSummary toCallSummary(Map<String, Object> raw, ScenarioDefinition scenario, AiAgent agent) {
         if (raw == null) {
             return null;
         }
@@ -148,12 +178,32 @@ public class SummaryService {
         Integer commitmentScore = integer(raw.get("commitmentScore"), 50);
 
         Map<String, Object> outcome = new HashMap<>();
-        List<OutcomeField> outcomeSchema = scenario.outcomeSchema();
-        if (outcomeSchema != null) {
-            for (OutcomeField f : outcomeSchema) {
-                Object value = raw.get(f.name());
-                if (value != null && !FIXED_FIELDS.contains(f.name())) {
-                    outcome.put(f.name(), value);
+        if (scenario != null) {
+            List<OutcomeField> outcomeSchema = scenario.outcomeSchema();
+            if (outcomeSchema != null) {
+                for (OutcomeField f : outcomeSchema) {
+                    Object value = raw.get(f.name());
+                    if (value != null && !FIXED_FIELDS.contains(f.name())) {
+                        outcome.put(f.name(), value);
+                    }
+                }
+            }
+        }
+        if (agent != null) {
+            if (agent.dataNeeded() != null) {
+                for (DataExtractionField f : agent.dataNeeded()) {
+                    Object value = raw.get(f.name());
+                    if (value != null) {
+                        outcome.put(f.name(), value);
+                    }
+                }
+            }
+            if (agent.dataEvaluation() != null) {
+                for (DataEvaluationCriterion c : agent.dataEvaluation()) {
+                    Object value = raw.get(c.name());
+                    if (value != null) {
+                        outcome.put(c.name(), value);
+                    }
                 }
             }
         }
@@ -191,13 +241,12 @@ public class SummaryService {
     }
 
     private GoogleGenAiThinkingLevel thinkingLevel() {
-        if (reasoningEffort == null) {
+        if (reasoningEffort == null || reasoningEffort.isBlank()) {
             return GoogleGenAiThinkingLevel.LOW;
         }
-        return switch (reasoningEffort.trim().toUpperCase()) {
-            case "HIGH" -> GoogleGenAiThinkingLevel.HIGH;
-            case "LOW" -> GoogleGenAiThinkingLevel.LOW;
-            default -> GoogleGenAiThinkingLevel.THINKING_LEVEL_UNSPECIFIED;
+        return switch (reasoningEffort.trim().toLowerCase()) {
+            case "high" -> GoogleGenAiThinkingLevel.HIGH;
+            default -> GoogleGenAiThinkingLevel.LOW;
         };
     }
 }

@@ -2,27 +2,20 @@ package uz.murodjon.robotcallv2.campaign.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.campaign.application.service.RecurringCampaignScheduler;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
-import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 
-import java.time.Clock;
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class RecurringCampaignSchedulerTest {
 

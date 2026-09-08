@@ -2,12 +2,11 @@ package uz.murodjon.robotcallv2.inbound.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-
 import uz.murodjon.robotcallv2.inbound.application.dto.CreateInboundRouteRequest;
-import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.application.dto.InboundRouteRow;
 import uz.murodjon.robotcallv2.inbound.application.dto.UpdateInboundRouteRequest;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
+import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;

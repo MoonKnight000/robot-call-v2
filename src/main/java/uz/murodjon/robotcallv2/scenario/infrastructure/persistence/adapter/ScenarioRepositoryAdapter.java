@@ -1,12 +1,12 @@
 package uz.murodjon.robotcallv2.scenario.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.scenario.application.mapper.ScenarioMapper;
 import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
 
@@ -21,10 +21,13 @@ public class ScenarioRepositoryAdapter implements ScenarioRepository {
 
     private final ScenarioJpaRepository jpaRepository;
     private final ScenarioMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public ScenarioRepositoryAdapter(ScenarioJpaRepository jpaRepository, ScenarioMapper mapper) {
+    public ScenarioRepositoryAdapter(ScenarioJpaRepository jpaRepository, ScenarioMapper mapper,
+                                     CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
@@ -46,7 +49,7 @@ public class ScenarioRepositoryAdapter implements ScenarioRepository {
         entity.setDefinition(mapper.writeDefinition(definition));
         entity.setCreatedBy(createdBy);
         entity.setCreatedAt(Instant.now());
-        entity.setCompanyId(builtin ? null : companyId);
+        entity.setCompany(builtin ? null : companyJpaRepository.getReferenceById(companyId));
         return jpaRepository.save(entity).getId();
     }
 

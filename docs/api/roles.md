@@ -1,3 +1,5 @@
+| `BILLING` | `BILLING_READ` | `BILLING_EDIT` |
+| `API_KEY` | `API_KEY_READ` | `API_KEY_EDIT` |
 # Rollar va huquqlar API
 
 `uz.murodjon.robotcallv2.role` · huquq: **ROLE_READ** (o'qish) / **ROLE_EDIT** (yozish)
@@ -208,12 +210,18 @@ so'rovda `401` olib, qayta login qiladilar.
 | `NOTIFICATION_SETTINGS` | `NOTIFICATION_SETTINGS_READ` | `NOTIFICATION_SETTINGS_EDIT` |
 | `INTEGRATION` | `INTEGRATION_READ` | `INTEGRATION_EDIT` |
 | `BILLING` | `BILLING_READ` | `BILLING_EDIT` |
+| `API_KEY` | `API_KEY_READ` | `API_KEY_EDIT` |
 | `PLATFORM` | — | `PLATFORM_ADMIN` (faqat SUPERADMIN) |
 
 **Permissionsiz endpointlar** (har qanday login qilgan foydalanuvchi uchun ochiq):
 `/api/auth/me`, `/api/auth/logout`, `/api/profile/**`, `/api/notifications/**`,
-`/api/files/**`, `/api/search`, `/api/tts/voices` katalogi.
+`/api/files/**`, `/api/search`, `/api/tts/voices` katalogi. Bulardan "mening
+qatorlarim" bilan ishlaydiganlari (`/api/profile/**`, `/api/notifications/**`) API
+kalitiga ochiq emas — kalit odam emas va `403 NO_USER_SESSION` oladi.
 
-**M2M kirish:** alohida kalit yo'q — tashqi xizmat ham oddiy foydalanuvchi sifatida
-`POST /api/auth/login` orqali kiradi va o'ziga berilgan rol permissionlarini oladi.
+**M2M kirish:** tashqi xizmat `X-Api-Key` bilan kiradi ([api-keys.md](api-keys.md)).
+Kalitning huquqlari qat'iy ro'yxat bilan kesiladi: u ma'lumot bilan ishlaydi
+(kontakt, kampaniya, DNC, bilimlar bazasi) va natijalarni o'qiydi, lekin
+konfiguratsiyani ham, billingni ham o'zgartira olmaydi. `API_KEY_*` ning o'zi ham
+kalitga berilmaydi — kalit yangi kalit yarata olmaydi.
 Faqat o'qish kerak bo'lsa — `VIEWER` roli.

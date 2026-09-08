@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * (TLS); each call opens its own stream with a fresh {@code x-client-request-id}.
  * Auth is an API key in the {@code authorization: Api-Key ...} gRPC metadata.
  * Registered whenever {@code voice-agent.stt.yandex.api-key} is set — a company picks
- * this provider per-call via {@code engine_config.stt_provider} (§11 settings), it does
+ * this provider per-call via {@code ai_agent.stt_provider}, it does
  * not have to be the process-wide {@code voice-agent.stt.provider} default.
  */
 @Component
@@ -95,6 +95,13 @@ public class YandexSttProvider implements SttProvider {
     @Override
     public SttSession startStream(String languageCode, List<String> alternativeLanguages,
                                   TranscriptListener listener, boolean externalEndpointing) {
+        return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, List.of(), null);
+    }
+
+    @Override
+    public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                  TranscriptListener listener, boolean externalEndpointing,
+                                  List<String> hints, String model) {
         ManagedChannel current = channel;
         if (current == null) {
             throw new ExternalServiceException(ErrorCode.STT_YANDEX_CHANNEL_UNAVAILABLE, "yandex-stt");
@@ -124,7 +131,7 @@ public class YandexSttProvider implements SttProvider {
                 (ClientCallStreamObserver<Stt.StreamingRequest>) stub.recognizeStreaming(responseObserver);
 
         // First message on the stream: the session options (model, audio format, language).
-        requestObserver.onNext(sessionOptions(languageCode, alternativeLanguages, y, externalEndpointing));
+        requestObserver.onNext(sessionOptions(languageCode, alternativeLanguages, y, externalEndpointing, model));
         log.info("Opened Yandex STT v3 stream for {}{} (endpointing: {})",
                 languageCode,
                 (alternativeLanguages == null || alternativeLanguages.isEmpty())
@@ -142,7 +149,8 @@ public class YandexSttProvider implements SttProvider {
      * per sentence using the language restriction whitelist.
      */
     private static Stt.StreamingRequest sessionOptions(String languageCode, List<String> alternativeLanguages,
-                                                       YandexSttProperties y, boolean externalEndpointing) {
+                                                       YandexSttProperties y, boolean externalEndpointing,
+                                                       String requestedModel) {
         Stt.LanguageRestrictionOptions.Builder languages = Stt.LanguageRestrictionOptions.newBuilder()
                 .setRestrictionType(Stt.LanguageRestrictionOptions.LanguageRestrictionType.WHITELIST)
                 .addLanguageCode(languageCode);
@@ -163,10 +171,18 @@ public class YandexSttProvider implements SttProvider {
                                 .setAudioChannelCount(1)))
                 .setLanguageRestriction(languages)
                 .setAudioProcessingType(Stt.RecognitionModelOptions.AudioProcessingType.REAL_TIME);
-        String chosenModel = detecting && y.autoDetectModel() != null && !y.autoDetectModel().isBlank()
-                && !"auto".equalsIgnoreCase(y.autoDetectModel())
-                ? y.autoDetectModel()
-                : y.model();
+        String chosenModel;
+        if (requestedModel != null && !requestedModel.isBlank()) {
+            // The agent named the model; a bilingual call does not override that choice,
+            // because the whole point of naming it is that this agent knows better than
+            // the deployment which model hears its callers.
+            chosenModel = requestedModel.trim();
+        } else {
+            chosenModel = detecting && y.autoDetectModel() != null && !y.autoDetectModel().isBlank()
+                    && !"auto".equalsIgnoreCase(y.autoDetectModel())
+                    ? y.autoDetectModel()
+                    : y.model();
+        }
         if (chosenModel != null && !chosenModel.isBlank() && !"auto".equalsIgnoreCase(chosenModel)) {
             model.setModel(chosenModel);
         }

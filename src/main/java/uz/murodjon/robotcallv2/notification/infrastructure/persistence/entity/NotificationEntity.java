@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.notification.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 
 import java.time.Instant;
@@ -14,8 +15,9 @@ public class NotificationEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_id", nullable = false)
-    private long companyId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -41,12 +43,16 @@ public class NotificationEntity {
         this.id = id;
     }
 
-    public long getCompanyId() {
-        return companyId;
+    public CompanyEntity getCompany() {
+        return company;
     }
 
-    public void setCompanyId(long companyId) {
-        this.companyId = companyId;
+    public void setCompany(CompanyEntity company) {
+        this.company = company;
+    }
+
+    public long getCompanyId() {
+        return company != null ? company.getId() : 0L;
     }
 
     public NotificationType getType() {

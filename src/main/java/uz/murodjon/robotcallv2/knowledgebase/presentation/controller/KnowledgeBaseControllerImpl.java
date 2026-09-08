@@ -2,11 +2,11 @@ package uz.murodjon.robotcallv2.knowledgebase.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeBaseUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemCreateRequest;
-import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemResponse;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemUpdateRequest;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeBaseUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 

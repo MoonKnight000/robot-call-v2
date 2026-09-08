@@ -4,6 +4,7 @@ import org.springframework.ai.tool.ToolCallback;
 
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -31,6 +32,9 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private final String channelId;
     private final String language;
     private final long callAttemptId;
+    private final long companyId;
+    /** The agent behind this call; null on a manual test line that names none. */
+    private final AiAgent agent;
     private final ScenarioDefinition scenario;
     private final CallContext context;
     private final RtpEndpoint endpoint;
@@ -60,13 +64,19 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile boolean ended;
     /** Turns the engine completed — the closest realtime equivalent of an LLM turn count. */
     private volatile int turnCount;
+    /** What the call actually ran on, recorded at connect — see {@link #setEngineIdentity}. */
+    private volatile String engineName;
+    private volatile String llmModel;
+    private volatile String ttsVoice;
 
-    public RealtimeDialogSession(String channelId, String language, long callAttemptId,
-                                 ScenarioDefinition scenario, CallContext context, RtpEndpoint endpoint,
-                                 Runnable hangup, Runnable transfer) {
+    public RealtimeDialogSession(String channelId, String language, long callAttemptId, long companyId,
+                                 AiAgent agent, ScenarioDefinition scenario, CallContext context,
+                                 RtpEndpoint endpoint, Runnable hangup, Runnable transfer) {
         this.channelId = channelId;
         this.language = language;
         this.callAttemptId = callAttemptId;
+        this.companyId = companyId;
+        this.agent = agent;
         this.scenario = scenario;
         this.context = context;
         this.endpoint = endpoint;
@@ -139,6 +149,14 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         return callAttemptId;
     }
 
+    public long companyId() {
+        return companyId;
+    }
+
+    public AiAgent agent() {
+        return agent;
+    }
+
     public ScenarioDefinition scenario() {
         return scenario;
     }
@@ -197,6 +215,29 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     public void setEngine(RealtimeSession engine) {
         this.engine = engine;
+    }
+
+    /**
+     * What this call is running on, for the "Texnik" tab (§10.5): the engine's id, the
+     * model it was opened with, and the catalog voice it accepted — {@code null} when the
+     * engine kept its own default voice, so the tab does not name a voice nobody heard.
+     */
+    public void setEngineIdentity(String engineName, String llmModel, String ttsVoice) {
+        this.engineName = engineName;
+        this.llmModel = llmModel;
+        this.ttsVoice = ttsVoice;
+    }
+
+    public String engineName() {
+        return engineName;
+    }
+
+    public String llmModel() {
+        return llmModel;
+    }
+
+    public String ttsVoice() {
+        return ttsVoice;
     }
 
     public int turnCount() {

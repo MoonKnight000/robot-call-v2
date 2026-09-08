@@ -38,6 +38,7 @@ public record SttProperties(
         GoogleSttProperties google,
         YandexSttProperties yandex,
         AishaSttProperties aisha,
-        DeepgramSttProperties deepgram
+        DeepgramSttProperties deepgram,
+        OpenAiSttProperties openAi
 ) {
 }

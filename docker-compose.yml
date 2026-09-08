@@ -184,6 +184,27 @@ services:
       MINIO_PASSWORD: ${MINIO_PASSWORD:-robot_call}
       MINIO_BUCKET: ${MINIO_BUCKET:-files}
       STORAGE_ENABLED: ${STORAGE_ENABLED:-true}
+      # Uysot CRM and its OAuth app. These must be listed here or a value set in .env never
+      # reaches the container — and for the OAuth hosts that would mean the browser being
+      # sent to the production consent page while everything else points at dev.
+      #
+      # The URLs repeat config/integrations.yml's defaults rather than falling back to them:
+      # an env var set to the empty string is still *set*, so `${VAR:-}` here would override
+      # the YAML default with a blank and leave the flow unconfigured. Keep the two in step.
+      #
+      # CRM_API_TOKEN is only the fallback for a company that has not connected through
+      # Settings > Integrations; once the OAuth flow has run, that company's stored token wins.
+      CRM_ENABLED: ${CRM_ENABLED:-true}
+      CRM_BASE_URL: ${CRM_BASE_URL:-https://api.service.app.uysot.uz}
+      CRM_API_TOKEN: ${CRM_API_TOKEN:-}
+      CRM_CALL_HISTORY_EMPLOYEE_ID: ${CRM_CALL_HISTORY_EMPLOYEE_ID:-}
+      UYSOT_OAUTH_AUTHORIZE_URL: ${UYSOT_OAUTH_AUTHORIZE_URL:-https://app.uysotdev.aws.softex.uz/oauth/authorize}
+      UYSOT_OAUTH_TOKEN_URL: ${UYSOT_OAUTH_TOKEN_URL:-https://service.app.uysot.uz/v1/open-api/oauth/token}
+      UYSOT_OAUTH_REVOKE_URL: ${UYSOT_OAUTH_REVOKE_URL:-https://service.app.uysot.uz/v1/open-api/oauth/revoke}
+      UYSOT_OAUTH_REDIRECT_URI: ${UYSOT_OAUTH_REDIRECT_URI:-http://localhost:5173/settings/integrations}
+      UYSOT_OAUTH_CALLBACK_REDIRECT_URL: ${UYSOT_OAUTH_CALLBACK_REDIRECT_URL:-http://localhost:5173/settings/integrations}
+      UYSOT_OAUTH_CLIENT_ID: ${UYSOT_OAUTH_CLIENT_ID:-}
+      UYSOT_OAUTH_CLIENT_SECRET: ${UYSOT_OAUTH_CLIENT_SECRET:-}
       # Credentials (see .env.example). Default provider is Yandex (no Google file
       # needed). For Google STT/TTS, uncomment GOOGLE_APPLICATION_CREDENTIALS below
       # AND the gcp.json mount.

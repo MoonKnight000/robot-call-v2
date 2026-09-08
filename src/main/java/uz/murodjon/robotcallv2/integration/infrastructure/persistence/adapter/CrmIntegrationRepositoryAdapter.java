@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.integration.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.integration.application.mapper.CrmIntegrationMapper;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
@@ -18,10 +19,13 @@ public class CrmIntegrationRepositoryAdapter implements CrmIntegrationRepository
 
     private final CrmIntegrationJpaRepository jpaRepository;
     private final CrmIntegrationMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public CrmIntegrationRepositoryAdapter(CrmIntegrationJpaRepository jpaRepository, CrmIntegrationMapper mapper) {
+    public CrmIntegrationRepositoryAdapter(CrmIntegrationJpaRepository jpaRepository, CrmIntegrationMapper mapper,
+                                           CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
@@ -33,7 +37,7 @@ public class CrmIntegrationRepositoryAdapter implements CrmIntegrationRepository
     public CrmIntegration saveAppInfo(long companyId, String appName, String grantsJson) {
         CrmIntegrationEntity entity = jpaRepository.findByCompanyId(companyId).orElseGet(() -> {
             CrmIntegrationEntity fresh = new CrmIntegrationEntity();
-            fresh.setCompanyId(companyId);
+            fresh.setCompany(companyJpaRepository.getReferenceById(companyId));
             fresh.setProvider(CrmProvider.UYSOT);
             fresh.setCreatedAt(Instant.now());
             return fresh;

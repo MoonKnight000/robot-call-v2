@@ -1,9 +1,10 @@
 package uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.adapter;
 
-
-
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiAgentJpaRepository;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
@@ -18,9 +19,15 @@ import java.util.Optional;
 public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
 
     private final KnowledgeItemJpaRepository jpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
+    private final AiAgentJpaRepository aiAgentJpaRepository;
 
-    public KnowledgeBaseRepositoryAdapter(KnowledgeItemJpaRepository jpaRepository) {
+    public KnowledgeBaseRepositoryAdapter(KnowledgeItemJpaRepository jpaRepository,
+                                          CompanyJpaRepository companyJpaRepository,
+                                          AiAgentJpaRepository aiAgentJpaRepository) {
         this.jpaRepository = jpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
+        this.aiAgentJpaRepository = aiAgentJpaRepository;
     }
 
     @Override
@@ -33,7 +40,8 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
         } else {
             entity = new KnowledgeItemEntity();
         }
-        entity.setCompanyId(item.companyId());
+        entity.setCompany(companyJpaRepository.getReferenceById(item.companyId()));
+        entity.setAgent(aiAgentReference(item.agentId()));
         entity.setItemKey(item.key());
         entity.setTopic(item.topic());
         entity.setTitle(item.title());
@@ -59,22 +67,35 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
     }
 
     @Override
-    public List<KnowledgeItem> findAllActiveByCompanyId(long companyId) {
-        return jpaRepository.findAllByCompanyIdAndActiveTrue(companyId).stream()
+    public List<KnowledgeItem> findAllActiveByCompanyIdAndAgentId(long companyId, Long agentId) {
+        return jpaRepository.findAllActiveByCompanyIdAndAgentId(companyId, agentId).stream()
                 .map(this::toKnowledgeItem)
                 .toList();
     }
 
     @Override
     public List<KnowledgeItem> findAllByCompanyId(long companyId, KnowledgeItemFilter filter) {
-        return jpaRepository.searchByCompany(companyId, filter.search(), filter.pageable()).stream()
+        return jpaRepository.searchByCompany(companyId, filter.agentId(), searchPattern(filter), filter.pageable())
+                .stream()
                 .map(this::toKnowledgeItem)
                 .toList();
     }
 
     @Override
     public long countByCompanyId(long companyId, KnowledgeItemFilter filter) {
-        return jpaRepository.countSearchByCompany(companyId, filter.search());
+        return jpaRepository.countSearchByCompany(companyId, filter.agentId(), searchPattern(filter));
+    }
+
+    /**
+     * The query compares against a ready LIKE pattern rather than building one with
+     * CONCAT, so the lowercasing and the wildcards happen once here instead of per row.
+     * A blank search is passed as null, which the query reads as "do not narrow".
+     */
+    private static String searchPattern(KnowledgeItemFilter filter) {
+        if (filter.search() == null || filter.search().isBlank()) {
+            return null;
+        }
+        return "%" + filter.search().trim().toLowerCase() + "%";
     }
 
     @Override
@@ -87,6 +108,7 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
         return new KnowledgeItem(
                 entity.getId() != null ? entity.getId() : 0L,
                 entity.getCompanyId(),
+                entity.getAgentId(),
                 entity.getItemKey(),
                 entity.getTopic(),
                 entity.getTitle(),
@@ -98,5 +120,10 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
+    }
+
+    /** Null for a company-wide item that every agent reads. */
+    private AiAgentEntity aiAgentReference(Long id) {
+        return id != null ? aiAgentJpaRepository.getReferenceById(id) : null;
     }
 }

@@ -2,6 +2,12 @@ package uz.murodjon.robotcallv2.campaign.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.billing.application.port.input.BillingUseCase;
+import uz.murodjon.robotcallv2.billing.domain.entity.VariantSpend;
+import uz.murodjon.robotcallv2.campaign.application.dto.AbTestReportResponse;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateRequest;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignVariantRepository;
@@ -9,27 +15,33 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 import uz.murodjon.robotcallv2.campaign.domain.service.AbTestSignificance;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignVariantSelector;
-import uz.murodjon.robotcallv2.campaign.application.dto.AbTestReportResponse;
-import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateRequest;
-import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
-import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
+import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
+import uz.murodjon.robotcallv2.conversion.domain.entity.VariantConversions;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
 
     private final CampaignVariantRepository variantRepository;
     private final CampaignRepository campaignRepository;
+    private final ConversionUseCase conversionUseCase;
+    private final BillingUseCase billingUseCase;
 
     public CampaignVariantServiceImpl(CampaignVariantRepository variantRepository,
-                                      CampaignRepository campaignRepository) {
+                                      CampaignRepository campaignRepository,
+                                      ConversionUseCase conversionUseCase,
+                                      BillingUseCase billingUseCase) {
         this.variantRepository = variantRepository;
         this.campaignRepository = campaignRepository;
+        this.conversionUseCase = conversionUseCase;
+        this.billingUseCase = billingUseCase;
     }
 
     @Override
@@ -135,8 +147,19 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
                 .orElse(null);
         CampaignVariant winner = AbTestSignificance.findWinner(variants);
 
+        // What the calls actually earned and cost, beside what the bot recorded. Both
+        // maps are empty for a company that has configured no conversion goals, which is
+        // why the disposition columns above are still computed and still shown.
+        Map<Long, VariantConversions> conversions = conversionUseCase
+                .findVariantConversions(companyId, campaignId).stream()
+                .filter(row -> row.variantId() != null)
+                .collect(Collectors.toMap(VariantConversions::variantId, row -> row));
+        Map<Long, VariantSpend> spend = billingUseCase.findVariantSpend(companyId, campaignId).stream()
+                .filter(row -> row.variantId() != null)
+                .collect(Collectors.toMap(VariantSpend::variantId, row -> row));
+
         List<CampaignVariantResponse> variantResponses = variants.stream()
-                .map(this::toResponse)
+                .map(variant -> toResponse(variant, conversions, spend))
                 .toList();
 
         return new AbTestReportResponse(
@@ -185,6 +208,19 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
     }
 
     private CampaignVariantResponse toResponse(CampaignVariant v) {
+        return toResponse(v, Map.of(), Map.of());
+    }
+
+    /**
+     * One variant with the money beside it. The two maps are read once per report rather
+     * than per variant: they come from other features and a query each would turn a
+     * four-variant report into nine round trips.
+     */
+    private CampaignVariantResponse toResponse(CampaignVariant v, Map<Long, VariantConversions> conversions,
+                                               Map<Long, VariantSpend> spend) {
+        long attributed = conversions.containsKey(v.id()) ? conversions.get(v.id()).conversions() : 0L;
+        long value = conversions.containsKey(v.id()) ? conversions.get(v.id()).attributedValueUzs() : 0L;
+        long spent = spend.containsKey(v.id()) ? spend.get(v.id()).spentUzs() : 0L;
         return new CampaignVariantResponse(
                 v.id(),
                 v.campaignId(),
@@ -199,6 +235,10 @@ public class CampaignVariantServiceImpl implements CampaignVariantUseCase {
                 v.convertedCount(),
                 v.answerRate(),
                 v.conversionRate(),
+                attributed,
+                value,
+                spent,
+                attributed > 0 ? spent / attributed : null,
                 v.active(),
                 v.createdAt(),
                 v.updatedAt()

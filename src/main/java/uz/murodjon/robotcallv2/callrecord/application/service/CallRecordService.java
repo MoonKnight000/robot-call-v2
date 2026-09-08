@@ -4,17 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTechnicalRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallResult;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTechnical;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTranscript;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.*;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
@@ -22,6 +18,7 @@ import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -88,6 +85,24 @@ public class CallRecordService {
         }
     }
 
+    /**
+     * Answered calls this company made to that number between two instants, newest first.
+     *
+     * <p>Exposed for conversion attribution: an event reported days after a call has to
+     * find the call that could have caused it, and that search is by number and time.
+     */
+    public List<AnsweredCall> findAnsweredCalls(long companyId, String phone, Instant from, Instant to) {
+        if (phone == null || phone.isBlank() || from == null || to == null) {
+            return List.of();
+        }
+        try {
+            return callAttempts.findAnsweredByPhone(companyId, phone, from, to);
+        } catch (Exception e) {
+            log.warn("findAnsweredCalls failed for {}: {}", phone, e.getMessage());
+            return List.of();
+        }
+    }
+
     public long targetIdOf(long callAttemptId) {
         if (callAttemptId == 0) {
             return 0L;
@@ -98,6 +113,23 @@ public class CallRecordService {
         } catch (Exception e) {
             log.warn("targetIdOf failed for call {}: {}", callAttemptId, e.getMessage());
             return 0L;
+        }
+    }
+
+    /**
+     * Whether the call came in rather than went out. Unknown attempts read as outbound:
+     * this platform places far more calls than it answers, and the answer only labels a
+     * CRM call-history row.
+     */
+    public boolean isInbound(long callAttemptId) {
+        if (callAttemptId == 0) {
+            return false;
+        }
+        try {
+            return Boolean.TRUE.equals(callAttempts.findInboundById(callAttemptId));
+        } catch (Exception e) {
+            log.warn("isInbound failed for call {}: {}", callAttemptId, e.getMessage());
+            return false;
         }
     }
 
@@ -176,14 +208,19 @@ public class CallRecordService {
      *                     is one of the MANUAL/INBOUND placeholders
      * @param inboundRouteId the route this call matched (ROADMAP C.1, §10.9 stats
      *                       drawer), or null for an outbound/manual call
+     * @param variantId      the A/B variant this call runs, or null when its campaign is
+     *                       not testing. Written now rather than derived later: a
+     *                       conversion reported days afterwards has to be creditable to
+     *                       the script that earned it
      */
     public long startAttempt(long companyId, long targetId, String channelId, String phone,
-                             String language, Long inboundRouteId) {
+                             String language, Long inboundRouteId, Long variantId) {
         if (targetId == 0) {
             return 0;
         }
         try {
-            return callAttempts.create(CallAttempt.starting(companyId, targetId, channelId, phone, language, inboundRouteId));
+            return callAttempts.create(
+                    CallAttempt.starting(companyId, targetId, channelId, phone, language, inboundRouteId, variantId));
         } catch (Exception e) {
             log.warn("startAttempt failed for {}: {}", channelId, e.getMessage());
             return 0;
@@ -363,7 +400,7 @@ public class CallRecordService {
      * {@code call_id}. Whichever writes first wins — they are summarizing the same
      * transcript.
      */
-    public void writeResult(long callId, CallSummary s, boolean escalated, Long crmNoteId) {
+    public void writeResult(long callId, CallSummary s, boolean escalated, String crmNoteId) {
         if (callId == 0 || s == null) {
             return;
         }

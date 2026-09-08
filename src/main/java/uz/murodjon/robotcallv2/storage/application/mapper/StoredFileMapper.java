@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.storage.application.mapper;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 
@@ -25,13 +26,13 @@ public class StoredFileMapper {
         );
     }
 
-    public StoredFileEntity domainToEntity(StoredFile domain) {
+    public StoredFileEntity domainToEntity(StoredFile domain, CompanyEntity company) {
         if (domain == null) {
             return null;
         }
         StoredFileEntity entity = new StoredFileEntity();
         entity.setId(domain.id());
-        entity.setCompanyId(domain.companyId());
+        entity.setCompany(company);
         entity.setCategory(domain.category());
         entity.setOriginalName(domain.originalName());
         entity.setPath(domain.path());

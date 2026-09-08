@@ -88,16 +88,18 @@ REALTIME_PIPECAT_AGENT=phone-agent
 
 ---
 
-## 6. 5-qadam: Har bir kompaniya o'z dvijoklarini tanlashi
+## 6. 5-qadam: Har bir agent o'z dvijoklarini tanlashi
 
-`robot-call-v2` da har bir kompaniya o'zining shaxsiy kabinetida (**Sozlamalar $\to$ Nutq Dvijogi** / `PUT /api/settings/engine`) Pipecat ichidagi dvijoklarni mustaqil tanlay oladi:
+`robot-call-v2` da dvijok **AI agent** darajasida tanlanadi — kompaniya darajasidagi
+`engine_config` olib tashlangan (`V9__agent_speech_engine.sql`), shuning uchun bitta
+kompaniya bir vaqtda cascade va realtime agentlarni yonma-yon ishlata oladi:
 
 ```http
-PUT /api/settings/engine
+PUT /api/ai-agents/{id}
 Content-Type: application/json
 
 {
-  "mode": "REALTIME",
+  "pipelineMode": "REALTIME",
   "realtimeProvider": "pipecat",
   "pipecatStt": "deepgram",
   "pipecatLlm": "claude-3-5-haiku",

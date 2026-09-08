@@ -11,16 +11,15 @@ import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.*;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -32,8 +31,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.function.Consumer;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * Drives a call that runs on a speech-to-speech engine ({@code PipelineMode.REALTIME}) —
@@ -66,7 +65,6 @@ public class RealtimeDialogEngine implements CallDialog {
             "[TIZIM: qo'ng'iroq boshlandi, mijoz go'shakni ko'tardi. Suhbatni boshlang.]";
 
     private final RealtimeProviderRegistry registry;
-    private final EngineConfigService engineConfigService;
     private final RealtimeSystemPromptFactory promptFactory;
     private final CallRecordService records;
     private final CompanyService companyService;
@@ -75,6 +73,7 @@ public class RealtimeDialogEngine implements CallDialog {
     private final RealtimeProperties realtimeProperties;
     private final VoiceMetrics metrics;
     private final TtsVoiceService voiceCatalog;
+    private final KnowledgeRetrievalUseCase knowledgeRetrieval;
 
     private final Map<String, RealtimeDialogSession> sessions = new ConcurrentHashMap<>();
     /**
@@ -84,13 +83,13 @@ public class RealtimeDialogEngine implements CallDialog {
      */
     private final ExecutorService toolExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
-    public RealtimeDialogEngine(RealtimeProviderRegistry registry, EngineConfigService engineConfigService,
+    public RealtimeDialogEngine(RealtimeProviderRegistry registry,
                                 RealtimeSystemPromptFactory promptFactory, CallRecordService records,
                                 CompanyService companyService, CompanyConfigService companyConfigService,
                                 DialogProperties dialogProperties, RealtimeProperties realtimeProperties,
-                                VoiceMetrics metrics, TtsVoiceService voiceCatalog) {
+                                VoiceMetrics metrics, TtsVoiceService voiceCatalog,
+                                KnowledgeRetrievalUseCase knowledgeRetrieval) {
         this.registry = registry;
-        this.engineConfigService = engineConfigService;
         this.promptFactory = promptFactory;
         this.records = records;
         this.companyService = companyService;
@@ -99,6 +98,7 @@ public class RealtimeDialogEngine implements CallDialog {
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
         this.voiceCatalog = voiceCatalog;
+        this.knowledgeRetrieval = knowledgeRetrieval;
     }
 
     @Override
@@ -131,17 +131,19 @@ public class RealtimeDialogEngine implements CallDialog {
                              RealtimeAudioBridge bridge, Runnable fallback,
                              Consumer<String> dtmf) {
         boolean disclosureEnabled = agent == null || agent.disclosureEnabled();
-        AgentPersona agentPersona = agent != null ? agent.personaOrDefault() : AgentPersona.AI_ASSISTANT;
+        AgentPersona agentPersona = agent != null ? agent.persona() : AgentPersona.AI_ASSISTANT;
         long companyId = records.companyIdOf(callAttemptId);
-        EffectiveEngineConfig effective = engineConfigService.findEffectiveByCompanyId(companyId);
-        RealtimeProvider provider = registry.findForCall(effective.realtimeProvider());
+        String preferredRealtime = (agent != null && agent.speechEngine().realtimeProvider() != null && !agent.speechEngine().realtimeProvider().isBlank())
+                ? agent.speechEngine().realtimeProvider().trim()
+                : null;
+        RealtimeProvider provider = registry.findForCall(preferredRealtime);
         if (provider == null) {
             log.error("[{}] REALTIME was selected but no engine resolved — call cannot start", channelId);
             return false;
         }
 
         RealtimeDialogSession session = new RealtimeDialogSession(channelId, language, callAttemptId,
-                scenario, context, endpoint, hangup, transfer);
+                companyId, agent, scenario, context, endpoint, hangup, transfer);
         session.setDtmfSender(dtmf);
         Company company = companyService.findById(companyId);
         String companyName = company != null ? company.name() : null;
@@ -154,11 +156,17 @@ public class RealtimeDialogEngine implements CallDialog {
 
         String prompt = promptFactory.build(session, companyName, disclosureText, voice, agentPersona);
         session.setTools(toolsFor(session));
+        RealtimeCallConfig config = new RealtimeCallConfig(channelId, language, prompt,
+                voiceFor(voice, provider), session.tools(),
+                agent != null ? agent.speechEngine().pipecatStt() : null,
+                agent != null ? agent.speechEngine().pipecatLlm() : null,
+                agent != null ? agent.speechEngine().pipecatTts() : null,
+                agent != null ? agent.llmModel() : null);
+        // The catalog id only counts as the call's voice if the engine took it (voiceFor).
+        session.setEngineIdentity(provider.name(), provider.resolveModel(config),
+                config.voice() != null ? voice : null);
         try {
-            RealtimeSession engine = provider.startSession(
-                    new RealtimeCallConfig(channelId, language, prompt, voiceFor(voice, provider), session.tools(),
-                            effective.pipecatStt(), effective.pipecatLlm(), effective.pipecatTts(),
-                            agent != null ? agent.llmModel() : null),
+            RealtimeSession engine = provider.startSession(config,
                     new EngineListener(session, provider.outputSampleRate(), fallback, bridge));
             session.setEngine(engine);
             sessions.put(channelId, session);
@@ -223,6 +231,13 @@ public class RealtimeDialogEngine implements CallDialog {
             callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
                     .toolObjects(new RealtimeFactTools(s)).build().getToolCallbacks()));
         }
+        // Only for agents that asked for it: an engine offered a tool it never needs still
+        // pays for the description in every request, and may call it out of curiosity.
+        if (s.agent() != null && s.agent().useRag()) {
+            callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
+                    .toolObjects(new RealtimeKnowledgeTools(s, knowledgeRetrieval))
+                    .build().getToolCallbacks()));
+        }
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
                 .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
             String name = fixed.getToolDefinition().name();
@@ -252,7 +267,8 @@ public class RealtimeDialogEngine implements CallDialog {
         if (s == null) {
             return DialogTechnicalSnapshot.NONE;
         }
-        return new DialogTechnicalSnapshot(s.turnCount(), 0, 0, 0, null, null, null, null, null, s.language());
+        return new DialogTechnicalSnapshot(s.turnCount(), 0, 0, 0, 0, null, null, null, null,
+                s.ttsVoice(), s.language(), s.engineName(), s.llmModel());
     }
 
     @Override

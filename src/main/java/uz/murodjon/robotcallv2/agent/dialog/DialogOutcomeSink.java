@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -62,4 +64,11 @@ public interface DialogOutcomeSink {
      *         which the tool reports back to the model instead of pretending it pressed a button
      */
     boolean sendDtmf(String digits);
+
+    default AiAgent agent() {
+        return null;
+    }
+
+    default void triggerMidCallSms(String text) {
+    }
 }

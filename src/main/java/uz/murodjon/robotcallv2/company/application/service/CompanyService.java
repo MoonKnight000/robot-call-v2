@@ -2,17 +2,16 @@ package uz.murodjon.robotcallv2.company.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusRequest;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
-import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
+import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;

@@ -82,6 +82,16 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         return p != null ? p.sampleRate() : 16000;
     }
 
+    /** The LLM behind the Pipecat bot: the call's own model, else the company's sub-engine, else the deployed one. */
+    @Override
+    public String resolveModel(RealtimeCallConfig config) {
+        PipecatRealtimeProperties p = realtimeProperties.pipecat();
+        String companyLlm = config.pipecatLlm();
+        return config.modelOr(companyLlm != null && !companyLlm.isBlank()
+                ? companyLlm
+                : (p == null ? null : p.model()));
+    }
+
     @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;

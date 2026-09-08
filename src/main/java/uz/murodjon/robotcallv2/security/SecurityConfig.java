@@ -21,6 +21,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
+import uz.murodjon.robotcallv2.apikey.application.port.input.ApiKeyUseCase;
 import uz.murodjon.robotcallv2.auth.application.service.JwtTokenService;
 import uz.murodjon.robotcallv2.auth.infrastructure.config.JwtProperties;
 
@@ -31,10 +32,12 @@ import java.util.List;
  * originate calls on the real SIP trunk or start a campaign, and {@code /actuator/**}
  * exposes infrastructure state — none of it may be reachable anonymously.
  *
- * <p>A request is authenticated one way only: a per-user {@code Authorization: Bearer} JWT
- * ({@link JwtAuthFilter}, ROADMAP E.1). Sessions and CSRF stay off — the token is stateless.
- * Kubernetes-style liveness/readiness probes stay open so an orchestrator can reach them
- * without a secret.
+ * <p>A request is authenticated two ways: a per-user {@code Authorization: Bearer} JWT
+ * ({@link JwtAuthFilter}, ROADMAP E.1), or a company's {@code X-Api-Key} for its own
+ * systems ({@link ApiKeyAuthFilter}) — a caller with the same shape and fewer permissions,
+ * so nothing downstream has to know which one it was. The JWT wins when both are present.
+ * Sessions and CSRF stay off — both credentials are stateless. Kubernetes-style
+ * liveness/readiness probes stay open so an orchestrator can reach them without a secret.
  *
  * <p><b>This class answers only "who is calling".</b> What that identity may do is decided
  * one endpoint at a time by {@code @PreAuthorize("hasAuthority('<PERMISSION>')")} on each
@@ -72,8 +75,14 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * {@code apiKeyUseCase} is a method parameter rather than a constructor dependency on
+     * purpose: this class also defines the {@link PasswordEncoder} half the application
+     * needs, and asking for a service in the constructor makes that encoder unavailable
+     * until the whole service graph is built.
+     */
     @Bean
-    public SecurityFilterChain apiSecurity(HttpSecurity http) throws Exception {
+    public SecurityFilterChain apiSecurity(HttpSecurity http, ApiKeyUseCase apiKeyUseCase) throws Exception {
         http
                 // Stateless header auth: no session to fix, no form to forge.
                 .csrf(csrf -> csrf.disable())
@@ -86,6 +95,10 @@ public class SecurityConfig {
                 // The filter never rejects on its own, it only populates the context (see its
                 // javadoc); an unauthenticated request is stopped by authorizeHttpRequests below.
                 .addFilterBefore(new JwtAuthFilter(jwtTokenService), UsernamePasswordAuthenticationFilter.class)
+                // After the JWT filter, and it steps aside when that one has already
+                // decided: a request carrying both a Bearer token and a key is the person,
+                // not the key.
+                .addFilterAfter(new ApiKeyAuthFilter(apiKeyUseCase), JwtAuthFilter.class)
                 .authorizeHttpRequests(auth -> {
                     // Preflight carries no Authorization header by design (the browser sends it
                     // without credentials); it must clear the filter chain before the real request.
@@ -103,6 +116,17 @@ public class SecurityConfig {
                     // param authenticates it instead (CrmIntegrationService
                     // #verifyState).
                     auth.requestMatchers(HttpMethod.GET, "/api/settings/integrations/uysot/callback").permitAll();
+                    // The embed script on a customer's own website reads its widget's
+                    // configuration and books its calls before anyone has logged into
+                    // anything. The widget key is the only credential it has, and the
+                    // allowed-origins list on the widget row is what stops that key being
+                    // useful from another site; the agent's own daily and concurrent limits
+                    // cap what a leaked key can spend (AgentWidgetService, WidgetCallGate).
+                    auth.requestMatchers(HttpMethod.GET, "/api/public/widgets/*/config").permitAll();
+                    auth.requestMatchers(HttpMethod.POST, "/api/public/widgets/*/session").permitAll();
+                    // The embed script itself, served from static resources — it is what a
+                    // visitor's browser fetches first, before it knows anything at all.
+                    auth.requestMatchers(HttpMethod.GET, "/widgets/**").permitAll();
                     // Everything else needs an identity; which permission that identity has to
                     // hold is declared on the endpoint itself (@PreAuthorize). Routes with no
                     // annotation — /api/auth/me, /api/profile/**, /api/notifications/**,
@@ -131,6 +155,22 @@ public class SecurityConfig {
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
+
+        // The embed script runs on the customer's own website, which is by definition not
+        // one of our configured origins — locking `allowed-origins` down for the console
+        // would otherwise silently break every widget in the field. These two paths are
+        // therefore open to any origin, and it costs nothing: they carry no cookie and no
+        // Authorization header (credentials are off, and the script sends none), so a
+        // hostile page reading them learns only what it could have read with curl. What
+        // actually decides whether a call may start is the widget's own allowed-origins
+        // list, checked server-side against the Origin header in AgentWidgetService.
+        CorsConfiguration publicWidget = new CorsConfiguration();
+        publicWidget.setAllowedOriginPatterns(List.of("*"));
+        publicWidget.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        publicWidget.setAllowedHeaders(List.of("*"));
+        publicWidget.setAllowCredentials(false);
+        source.registerCorsConfiguration("/api/public/widgets/**", publicWidget);
+        source.registerCorsConfiguration("/widgets/**", publicWidget);
         return source;
     }
 

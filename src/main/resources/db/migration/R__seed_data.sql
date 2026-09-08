@@ -1,6 +1,9 @@
--- Seed data: bootstrap tenant, TTS voice catalog, built-in scenario templates, and the
--- MANUAL/INBOUND placeholder campaigns. Flyway repeatable migration — reruns whenever
--- this file's checksum changes, so every statement below guards against re-insertion.
+-- Seed data: everything a fresh database needs to place and answer a call without a
+-- single API call first — bootstrap tenant and owner, the voice and model catalogs, the
+-- built-in scenario templates, three ready AI agents, the inbound route that answers the
+-- softphone test extension, the MANUAL/INBOUND placeholder campaigns and the knowledge
+-- base. Flyway repeatable migration — reruns whenever this file's checksum changes, so
+-- every statement below guards against re-insertion.
 
 -- Bootstrap tenant every other row below belongs to. Explicit id=1 so it matches
 -- voice-agent.company.default-id's own default.
@@ -110,30 +113,87 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('gemini-tts-kore-ru',   'gemini',   'ru-RU', 'Kore',     'Kore (женский, Gemini TTS)', NULL),
     ('gemini-tts-puck-ru',   'gemini',   'ru-RU', 'Puck',     'Puck (мужской, Gemini TTS)', NULL),
     ('gemini-tts-charon-ru', 'gemini',   'ru-RU', 'Charon',   'Charon (мужской, Gemini TTS)', NULL),
-    ('gemini-tts-fenrir-ru', 'gemini',   'ru-RU', 'Fenrir',   'Fenrir (мужской, Gemini TTS)', NULL)
+    ('gemini-tts-fenrir-ru', 'gemini',   'ru-RU', 'Fenrir',   'Fenrir (мужской, Gemini TTS)', NULL),
+    -- OpenAI TTS (gpt-4o-mini-tts). The endpoint takes no language parameter — a voice
+    -- speaks whatever the text is written in — so each one is listed under both languages
+    -- rather than being split between them. Six of the thirteen: the ones that read as a
+    -- phone operator rather than a narrator.
+    ('openai-alloy-uz',   'openai', 'uz-UZ', 'alloy',   'Alloy — neytral', NULL),
+    ('openai-nova-uz',    'openai', 'uz-UZ', 'nova',    'Nova — ayol', NULL),
+    ('openai-shimmer-uz', 'openai', 'uz-UZ', 'shimmer', 'Shimmer — ayol, yumshoq', NULL),
+    ('openai-sage-uz',    'openai', 'uz-UZ', 'sage',    'Sage — ayol, xotirjam', NULL),
+    ('openai-echo-uz',    'openai', 'uz-UZ', 'echo',    'Echo — erkak', NULL),
+    ('openai-onyx-uz',    'openai', 'uz-UZ', 'onyx',    'Onyx — erkak, past ovoz', NULL),
+    ('openai-alloy-ru',   'openai', 'ru-RU', 'alloy',   'Alloy — нейтральный', NULL),
+    ('openai-nova-ru',    'openai', 'ru-RU', 'nova',    'Nova — женский', NULL),
+    ('openai-shimmer-ru', 'openai', 'ru-RU', 'shimmer', 'Shimmer — женский, мягкий', NULL),
+    ('openai-sage-ru',    'openai', 'ru-RU', 'sage',    'Sage — женский, спокойный', NULL),
+    ('openai-echo-ru',    'openai', 'ru-RU', 'echo',    'Echo — мужской', NULL),
+    ('openai-onyx-ru',    'openai', 'ru-RU', 'onyx',    'Onyx — мужской, низкий', NULL)
 ON CONFLICT (id) DO NOTHING;
 
--- LLM model catalog: what an operator may pick for the company (§11 settings) or for one
--- agent. The label is refreshed on every reseed, the id is not — an id already stored on
--- an agent must keep meaning the same model.
-INSERT INTO ai_model (id, provider, mode, label) VALUES
+-- Model catalog: what an operator may pick for the company (§11 settings) or for one agent —
+-- the chat model (kind LLM), and since the speech engine moved onto the agent, the recognizer
+-- and synthesizer models too (kind STT/TTS). The label is refreshed on every reseed, the id is
+-- not — an id already stored on an agent must keep meaning the same model.
+INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     -- CASCADE: the text LLM behind a turn. Only rows whose provider matches
-    -- spring.ai.model.chat are offered, so a Groq build never lists Gemini and back.
-    ('gemini-3.8-flash',            'google-genai',    'CASCADE',  'Gemini 3.8 Flash — standart, tezkor'),
-    ('gemini-3.5-flash-lite',       'google-genai',    'CASCADE',  'Gemini 3.5 Flash Lite — eng arzon, qisqa javoblar uchun'),
-    ('llama-3.3-70b-versatile',     'openai',          'CASCADE',  'Llama 3.3 70B (Groq) — kuchli, past kechikish'),
-    ('llama-3.1-8b-instant',        'openai',          'CASCADE',  'Llama 3.1 8B (Groq) — eng tezkor'),
+    -- spring.ai.model.chat are offered, so an OpenAI build never lists Gemini and back.
+    ('gemini-3.8-flash',            'LLM', 'google-genai',    'CASCADE',  'Gemini 3.8 Flash — standart, tezkor'),
+    ('gemini-3.6-flash',            'LLM', 'google-genai',    'CASCADE',  'Gemini 3.6 Flash — oldingi avlod'),
+    ('gemini-3.5-flash-lite',       'LLM', 'google-genai',    'CASCADE',  'Gemini 3.5 Flash Lite — eng arzon, qisqa javoblar uchun'),
+    ('gpt-5.6-luna',                'LLM', 'openai',          'CASCADE',  'GPT-5.6 Luna — standart, arzon va tezkor'),
+    ('gpt-5.6-terra',               'LLM', 'openai',          'CASCADE',  'GPT-5.6 Terra — aql va narx muvozanati'),
+    ('gpt-5.6-sol',                 'LLM', 'openai',          'CASCADE',  'GPT-5.6 Sol — murakkab suhbatlar uchun'),
+    ('gpt-6-astra',                 'LLM', 'openai',          'CASCADE',  'GPT-6 Astra — eng kuchli, eng qimmat va sekin'),
+    -- Oldingi avlod. Bu ikki id OpenAI'ning joriy modellar ro'yxatida ham, eskirganlar
+    -- ro'yxatida ham yo'q — agar hisobingiz ularni qabul qilmasa, javob 404
+    -- model_not_found bo'ladi va gpt-5.6-* qatorlaridan birini tanlash kerak.
+    ('gpt-5.5',                     'LLM', 'openai',          'CASCADE',  'GPT-5.5 — oldingi avlod'),
+    ('gpt-5.4-mini',                'LLM', 'openai',          'CASCADE',  'GPT-5.4 mini — oldingi avlod, arzon'),
     -- REALTIME: the speech-to-speech engine's own model. Only rows whose provider is
     -- registered in this build are offered.
-    ('gemini-3.1-flash-live-preview', 'gemini-live',   'REALTIME', 'Gemini 3.1 Flash Live — nativ audio'),
-    ('gpt-4o-realtime-preview',     'openai-realtime', 'REALTIME', 'GPT-4o Realtime'),
-    ('gpt-4o-mini-realtime-preview','openai-realtime', 'REALTIME', 'GPT-4o mini Realtime — arzonroq'),
-    ('qwen-omni-turbo',             'qwen-omni',       'REALTIME', 'Qwen Omni Turbo'),
-    ('moshi',                       'moshi',           'REALTIME', 'Moshi — o''z serveringizda'),
-    ('claude-3-5-haiku-20241022',   'pipecat',         'REALTIME', 'Claude 3.5 Haiku (Pipecat LLM)')
-ON CONFLICT (id) DO UPDATE SET provider = EXCLUDED.provider,
+    ('gemini-3.1-flash-live-preview', 'LLM', 'gemini-live',   'REALTIME', 'Gemini 3.1 Flash Live — standart, nativ audio'),
+    ('gemini-2.5-flash-native-audio-latest', 'LLM', 'gemini-live', 'REALTIME', 'Gemini 2.5 Flash Native Audio — barqarorroq, tool chaqirish ishonchli'),
+    ('gpt-realtime-2.1',            'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 — standart, tool chaqirish bilan'),
+    ('gpt-realtime-2.1-mini',       'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 mini — arzonroq'),
+    ('qwen-omni-turbo',             'LLM', 'qwen-omni',       'REALTIME', 'Qwen Omni Turbo'),
+    ('moshi',                       'LLM', 'moshi',           'REALTIME', 'Moshi — o''z serveringizda'),
+    ('claude-3-5-haiku-20241022',   'LLM', 'pipecat',         'REALTIME', 'Claude 3.5 Haiku (Pipecat LLM)'),
+    -- STT and TTS: the recognizer and synthesizer of one speech provider, offered only
+    -- while that provider is a bean here (its API key is set). Both belong to CASCADE —
+    -- a realtime engine hears and speaks itself and has no separate model to pick.
+    -- Only ids this deployment is configured for are listed; an id nobody has tested is
+    -- worse than none, because the form makes it look supported.
+    ('gemini-3.5-transcribe-live',  'STT', 'gemini',          'CASCADE',  'Gemini 3.5 Transcribe Live — uz/ru, Live API'),
+    ('nova-3',                      'STT', 'deepgram',        'CASCADE',  'Deepgram Nova-3'),
+    ('general',                     'STT', 'yandex',          'CASCADE',  'Yandex SpeechKit general'),
+    ('gpt-live-transcribe',         'STT', 'openai',          'CASCADE',  'OpenAI Live Transcribe — past kechikish, oraliq natijalar bilan'),
+    ('gpt-transcribe',              'STT', 'openai',          'CASCADE',  'OpenAI Transcribe — aniqroq, lekin faqat gap tugagach javob beradi'),
+    ('gemini-3.1-flash-tts-preview','TTS', 'gemini',          'CASCADE',  'Gemini 3.1 Flash TTS — Aoede/Kore ovozlari'),
+    ('sonic-multilingual',          'TTS', 'cartesia',        'CASCADE',  'Cartesia Sonic Multilingual'),
+    ('gpt-4o-mini-tts',             'TTS', 'openai',          'CASCADE',  'OpenAI TTS — 13 ta ovoz, uslub ko''rsatmasi bilan')
+ON CONFLICT (id) DO UPDATE SET kind     = EXCLUDED.kind,
+                               provider = EXCLUDED.provider,
                                mode     = EXCLUDED.mode,
                                label    = EXCLUDED.label;
+
+-- Retired ids. The insert above only ever adds and refreshes, so a model this project has
+-- stopped supporting stays in the picker until it is deleted by name. The Groq llama rows
+-- went when the openai slot stopped pointing at Groq, and the gpt-4o realtime previews were
+-- replaced by the gpt-realtime-2.x line. Anything still pointing at one is cleared first:
+-- a dangling id is handed to the vendor verbatim at call time, which is a call that does
+-- not start — an agent left null falls back to the deployment's own model instead.
+UPDATE ai_agent SET llm_model = NULL
+ WHERE llm_model IN ('llama-3.3-70b-versatile', 'llama-3.1-8b-instant',
+                     'gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview');
+
+UPDATE ai_model_config SET model = NULL
+ WHERE model IN ('llama-3.3-70b-versatile', 'llama-3.1-8b-instant');
+
+DELETE FROM ai_model
+ WHERE id IN ('llama-3.3-70b-versatile', 'llama-3.1-8b-instant',
+              'gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview');
 
 -- Built-in scenario templates. They are read-only through the API
 -- (SCENARIO_BUILTIN_READONLY), so this file owns their text: an already-seeded row has
@@ -149,8 +209,8 @@ $def$
   "stages": [
     {"id": "GREETING", "purpose": "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.", "allowedTransitions": ["IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
     {"id": "IDENTITY_CHECK", "purpose": "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?').", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
-    {"id": "DEBT_NOTICE", "purpose": "Qarz miqdori va muddatini xushmuomala yetkaz VA o'sha javobning o'zida nima uchun to'lanmaganini so'ra. Faqat xabar aytib, tasdiq so'rab ('bu haqda xabaringiz bormidi?') alohida turn sarflama.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
-    {"id": "REASON_INQUIRY", "purpose": "To'lov nega kechikayotganini bilib ol.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
+    {"id": "DEBT_NOTICE", "purpose": "Qarz miqdori va muddatini xushmuomala yetkaz VA o'sha javobning o'zida nima uchun to'lanmaganini so'ra. Faqat xabar aytib, tasdiq so'rab ('bu haqda xabaringiz bormidi?') alohida turn sarflama. Shu gapni aytding — bosqich tugadi: keyingi qadamda REASON_INQUIRY ga o't va sabab savolini ikkinchi marta berma.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
+    {"id": "REASON_INQUIRY", "purpose": "Sabab savoli DEBT_NOTICE da berilgan — uni qayta berma. Mijozning javobini tinglab sababni yozib ol; mijoz sababni umuman aytmagan bo'lsagina bir marta so'ra.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "PAYMENT_DATE", "purpose": "Mijozdan aniq to'lov sanasini ol.", "allowedTransitions": ["CONFIRMATION", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "CONFIRMATION", "purpose": "Kelishilgan sana va summani BITTA xabar gapi bilan takrorla (savol emas, qayta tasdiqlatma) va xayrlash.", "allowedTransitions": ["CLOSING", "PAYMENT_DATE", "ESCALATE_TO_HUMAN"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "CLOSING", "purpose": "Xushmuomala xayrlash.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
@@ -576,14 +636,111 @@ $def$::jsonb,
 ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
     SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
--- The agent every seeded placeholder speaks as (V12). One per company, on the built-in
--- collections scenario: the placeholder campaigns below exist only to give manual and
--- inbound call attempts a parent row, and campaign.ai_agent_id is NOT NULL.
-INSERT INTO ai_agent (company_id, name, description, scenario_id, language)
-SELECT 1, 'Default', 'Seeded default agent',
+-- ---------------------------------------------------------------------------
+-- AI agents. Three, because three is what a working installation needs on day one:
+-- one that answers the phone, and one per pipeline for the calls it places.
+--
+--   Kiruvchi qabulxona      inbound  · CASCADE   · reception scenario
+--   Qarzdorlik (cascade)    outbound · CASCADE   · debt-collection scenario
+--   Qarzdorlik (realtime)   outbound · REALTIME  · debt-collection scenario
+--
+-- The two collection agents deliberately differ in nothing but the engine: the same
+-- scenario, the same guardrails, the same wording, so a call placed by one can be
+-- compared with a call placed by the other and the difference is the pipeline alone.
+--
+-- Looked up by name (there is no unique constraint on it), so a rerun adds nothing and
+-- overwrites nothing an operator has since edited.
+-- ---------------------------------------------------------------------------
+
+-- Answers inbound calls. CASCADE: an inbound caller asks unpredictable questions, and
+-- the cascade pipeline is the one that can search the knowledge base between turns.
+-- voicemail_action IGNORE — a person dialled in, there is no answering machine to detect.
+--
+-- use_rag off, like the other two: it costs an embedding round trip inside every turn the
+-- caller is waiting through, and nothing is uploaded yet for it to find. Turn it on for
+-- this agent once a knowledge source is. The keyword knowledge base seeded at the bottom
+-- of this file answers without it either way.
+INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
+                      first_message, pipeline_mode, stt_provider, tts_provider, llm_model, tts_voice,
+                      ambient_sound, use_rag, voicemail_action, transfer_message)
+SELECT 1, 'Kiruvchi qabulxona',
+       'Kiruvchi qo''ng''iroqlarga javob beradi: savolga bilim bazasidan javob, kerak bo''lsa operatorga uzatadi.',
+       (SELECT id FROM scenario WHERE scenario_key = 'reception' AND is_active LIMIT 1),
+       'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
+       -- Opens with the question, not with a greeting: company_config.disclosure_text is
+       -- spoken from code just before this, and it already says hello.
+       'Sizni tinglayapman, qanday yordam bera olaman?',
+       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'nigora',
+       'OFFICE', false, 'IGNORE',
+       'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
+WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona');
+
+-- Outbound collections, cascade pipeline: Yandex recognition, Gemini for the turn,
+-- Yandex synthesis. The default for placed calls — every tuning knob in
+-- config/speech.yml is calibrated against this chain.
+INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
+                      pipeline_mode, stt_provider, tts_provider, llm_model, tts_voice,
+                      ambient_sound, use_rag, voicemail_action, voicemail_message, transfer_message)
+SELECT 1, 'Qarzdorlik (cascade)',
+       'Chiquvchi qarzdorlik qo''ng''irog''i: STT + LLM + TTS zanjiri (Yandex + Gemini).',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
-       'uz-UZ'
-WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Default');
+       'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
+       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'nigora',
+       'OFFICE', false, 'LEAVE_MESSAGE',
+       -- No amount and no deadline in the machine message: the scenario guardrails forbid
+       -- saying either without the client on the line to confirm who is listening.
+       'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
+       'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
+WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)');
+
+-- The same call on a speech-to-speech engine. llm_model is the realtime model here, not
+-- a text one (RealtimeCallConfig#modelOr), and tts_voice must be a catalog id owned by
+-- the same provider or the engine falls back to the voice it was deployed with.
+INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
+                      pipeline_mode, realtime_provider, llm_model, tts_voice,
+                      ambient_sound, use_rag, voicemail_action, voicemail_message, transfer_message)
+SELECT 1, 'Qarzdorlik (realtime)',
+       'Chiquvchi qarzdorlik qo''ng''irog''i: Gemini Live nativ audio (speech-to-speech).',
+       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
+       'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
+       'REALTIME', 'gemini-live', 'gemini-3.1-flash-live-preview', 'gemini-aoede-uz',
+       'OFFICE', false, 'LEAVE_MESSAGE',
+       'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
+       'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
+WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (realtime)');
+
+-- Which voice each cascade agent speaks a given call language in. The realtime agent is
+-- left out on purpose: its voice has to belong to gemini-live, and one Gemini voice
+-- already covers both languages.
+INSERT INTO ai_agent_voice (ai_agent_id, language, voice_id)
+SELECT a.id, v.language, v.voice_id
+FROM ai_agent a
+CROSS JOIN (VALUES ('uz-UZ', 'nigora'), ('ru-RU', 'alena')) AS v(language, voice_id)
+WHERE a.company_id = 1 AND a.name IN ('Kiruvchi qabulxona', 'Qarzdorlik (cascade)')
+ON CONFLICT (ai_agent_id, language) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Inbound routing. Without a row here an inbound call is hung up on: AriService looks
+-- the dialled number up and, on a miss, has no agent to answer with.
+--
+-- 600 is the softphone test extension from the dialplan ([from-internal] in
+-- asterisk/etc/asterisk/extensions.conf) — a registered softphone dialling it reaches the
+-- full pipeline with no trunk involved, which is the only way to try an inbound call on a
+-- developer machine. A real DID is added through POST /api/inbound-routes; this row is
+-- what makes the installation answer at all out of the box.
+--
+-- business_hours_* stay NULL, which means "always": a seeded route that stopped answering
+-- at 18:00 would look like a broken install to whoever tries it in the evening. Fill them
+-- in once the hours are real — fallback_message below is what a caller then hears.
+-- ---------------------------------------------------------------------------
+INSERT INTO inbound_route (company_id, did_number, ai_agent_id, route_type, queue_strategy,
+                           ring_timeout_sec, failover_action, after_hours_action, fallback_message, enabled)
+SELECT 1, '600',
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona' LIMIT 1),
+       'SCENARIO', 'RING_ALL', 20, 'SCENARIO', 'PLAY_MESSAGE_AND_HANGUP',
+       'Hozir ish vaqtimiz tugagan. Iltimos, dushanbadan jumagacha soat 9:00 dan 18:00 gacha qo''ng''iroq qiling.',
+       true
+WHERE NOT EXISTS (SELECT 1 FROM inbound_route WHERE company_id = 1 AND did_number = '600');
 
 -- Placeholder campaign + target so manually/auto-started calls (Stages 7-9) have a
 -- call_attempt parent before a real campaign exists. Looked up by phone = 'MANUAL'.
@@ -593,7 +750,7 @@ WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Defaul
 INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id)
 SELECT 1, 'MANUAL', 'DEBT_COLLECTION', 'DRAFT',
        '{}',
-       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Default' LIMIT 1)
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE name = 'MANUAL');
 
 INSERT INTO campaign_dial_day (campaign_id, day)
@@ -613,13 +770,172 @@ ORDER BY id LIMIT 1;
 INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id)
 SELECT 1, 'INBOUND', 'DEBT_COLLECTION', 'DRAFT',
        '{}',
-       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Default' LIMIT 1)
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona' LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE name = 'INBOUND');
 
 INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, context_data, status)
 SELECT 1, id, 0, 'INBOUND', '{}', 'IN_PROGRESS'
 FROM campaign WHERE name = 'INBOUND' AND NOT EXISTS (SELECT 1 FROM campaign_target WHERE phone = 'INBOUND')
 ORDER BY id LIMIT 1;
+
+-- ---------------------------------------------------------------------------
+-- The Uysot OAuth connection, half-built: the application's name and the grants its
+-- consent screen will ask for. No tokens — those only exist after somebody opens
+-- GET /api/settings/integrations/uysot/authorize-url, approves on Uysot's page, and the
+-- browser lands back on /api/settings/integrations/uysot/callback. Hence NOT_CONNECTED.
+--
+-- Seeding it is what makes that button work at all: buildAuthorizeUrl refuses with
+-- CRM_INTEGRATION_APP_NOT_CONFIGURED when a company has no row here or an empty grants
+-- list, so without this a fresh install has no way to start the flow except by calling
+-- PUT /api/settings/integrations/uysot first.
+--
+-- The four grants are exactly what this platform calls, and nothing else — the consent
+-- screen shows them to the company, so asking for more than is used is asking to be
+-- refused:
+--
+--   LEAD:READ        GET /lead/{id} and POST /lead/filter — who is being called, and
+--                    identifying an inbound caller by number (CrmClient)
+--   LEAD_NOTE:SAVE   POST /lead-note/{leadId}/list — the summary written after every call
+--   CONTRACT:READ    POST /contract/filter and GET /contract/{id} — the overdue contracts
+--                    the daily campaign below dials, and the lead each one belongs to
+--   CALL:SAVE        POST /call-history — the conversation itself on the lead's history
+--
+-- No LEAD_TASK, no CONTRACT_PAYMENT, and no DELETE anywhere: nothing here removes anything
+-- from a customer's CRM. Grants are editable through PUT /api/settings/integrations/uysot,
+-- so this row is guarded rather than refreshed — a company that narrowed its own list keeps
+-- that list across a reseed.
+-- ---------------------------------------------------------------------------
+INSERT INTO crm_integration (company_id, provider, app_name, grants_json, status)
+VALUES (1, 'UYSOT', 'Uysot Voice Agent',
+        '[{"permission":"LEAD","scope":"READ"},'
+        || '{"permission":"LEAD_NOTE","scope":"SAVE"},'
+        || '{"permission":"CONTRACT","scope":"READ"},'
+        || '{"permission":"CALL","scope":"SAVE"}]',
+        'NOT_CONNECTED')
+ON CONFLICT (company_id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- The daily collections run: every morning at 09:00, call whoever Uysot says is behind.
+--
+-- DRAFT, not ACTIVE, and that is what makes it run rather than what stops it.
+-- RecurringCampaignScheduler only considers a campaign that is *not* currently ACTIVE, so
+-- DRAFT is the resting state between runs: the sweep sees 09:00 has arrived, pulls the
+-- day's list through the target source below, and flips the campaign to ACTIVE itself. It
+-- also means a fresh install does not start dialling before anyone has configured a CRM
+-- token — with no token the sync finds nobody and the campaign runs over an empty list.
+--
+-- dial_window_start is the 09:00 in "starts at 09:00": the sweep runs every minute and a
+-- DAILY campaign becomes due at the first sweep inside its window. dial_window_end is
+-- 18:00 rather than the company's own 23:00 because collections calls at night are how a
+-- company gets complained about, not how it gets paid.
+--
+-- auto_reset_targets stays false on purpose. Resetting would re-queue yesterday's people;
+-- the target source below replaces the list outright, which is what "today's debtors"
+-- means. daily_call_cap is a second belt on top of voice-agent.crm.debtor-import.max-debtors
+-- — the import decides how many numbers are fetched, this decides how many are dialled.
+--
+-- Looked up by name, like the placeholder campaigns above: campaign.name has no unique
+-- constraint, so a rerun must not add a second copy.
+-- ---------------------------------------------------------------------------
+INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id,
+                      dial_window_start, dial_window_end, max_attempts, retry_interval_minutes,
+                      max_concurrent_calls, daily_call_cap, recurrence_type, auto_reset_targets)
+SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
+       '{}',
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
+       '09:00:00', '18:00:00', 3, 120, 10, 200, 'DAILY', false
+WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik');
+
+-- Every day, including the weekend, because that is what was asked for. Drop SATURDAY and
+-- SUNDAY from this list to leave the weekend alone; the campaign then simply is not due on
+-- those days and picks up again on Monday.
+INSERT INTO campaign_dial_day (campaign_id, day)
+SELECT id, day FROM campaign,
+     unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS day
+WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
+ON CONFLICT (campaign_id, day) DO NOTHING;
+
+-- Where that campaign's list comes from: Uysot, read through the three-call chain
+-- UysotDebtorSourceAdapter documents. url and every other request column stay NULL — a
+-- UYSOT_DEBTORS source has no request of its own to describe, and reads voice-agent.crm.*
+-- instead, so switching between the prod and dev hosts is one environment variable.
+--
+-- replace_targets: the sync answers with the whole of today's list, so yesterday's is
+-- cleared — but only once the CRM has answered, so a failed fetch leaves the campaign with
+-- the list it already had rather than with nothing.
+INSERT INTO campaign_target_source (campaign_id, provider, replace_targets, sync_on_recurrence, enabled)
+SELECT id, 'UYSOT_DEBTORS', true, true, true
+FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
+ON CONFLICT (campaign_id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- A worked CHAINED target source, so the shape is visible without reading the code.
+--
+-- The campaign above reads Uysot through a provider compiled into the platform. Every
+-- other CRM splits the same problem the same way — the endpoint that knows who to call is
+-- not the endpoint that knows their number — and CHAINED is that chain as configuration,
+-- settable from the campaign screen for any service. This row is the Uysot chain written
+-- out that way: a company pointing at their own API copies it, changes the three URLs and
+-- the paths in `extract`, and needs nothing from us.
+--
+-- Deliberately inert. The campaign is DRAFT with recurrence ONCE, which
+-- RecurringCampaignScheduler never picks up, and the source is enabled = false, so no
+-- sweep touches it. The host is example.uz and resolves nowhere, so even a hand-run
+-- POST /api/campaigns/{id}/targets/sync fails on the list step and — by design — leaves
+-- the campaign's targets exactly as they were.
+--
+-- Read it alongside docs/api/campaigns.md: `{{page}}` counts up while `paginate` is set,
+-- `{{contractId}}` and `{{leadId}}` come from the `extract` of an earlier step, `filters`
+-- is what stops the two per-row requests from being spent on clients who owe nothing, and
+-- whichever collected variable is not named as the phone, the client id or the language
+-- becomes one of the target's facts.
+-- ---------------------------------------------------------------------------
+INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id,
+                      dial_window_start, dial_window_end, recurrence_type)
+SELECT 1, 'Namuna — CHAINED manba', 'DEBT_COLLECTION', 'DRAFT',
+       '{}',
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
+       '09:00:00', '18:00:00', 'ONCE'
+WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba');
+
+INSERT INTO campaign_target_source (campaign_id, provider, phone_field, client_id_field,
+                                    auth_header_name, replace_targets, sync_on_recurrence, enabled, steps)
+SELECT id, 'CHAINED', 'phone', 'leadId', 'X-Open-Api-Token', true, true, false,
+       '[
+          {
+            "name": "contracts",
+            "method": "POST",
+            "url": "https://crm.example.uz/v1/contract/filter",
+            "body": "{\"page\":{{page}},\"size\":100,\"statuses\":[\"ACTIVE\"]}",
+            "itemsPath": "data.data",
+            "paginate": true,
+            "filters": [
+              {"path": "delay",   "operator": "GTE", "value": "1"},
+              {"path": "residue", "operator": "GT",  "value": "0"}
+            ],
+            "extract": {
+              "contractId": "id",
+              "clientName": "client.name",
+              "debtAmount": "residue",
+              "currency": "currency.ccy",
+              "contractNumber": "number"
+            }
+          },
+          {
+            "name": "contract",
+            "method": "GET",
+            "url": "https://crm.example.uz/v1/contract/{{contractId}}",
+            "extract": {"leadId": "data.lead.id"}
+          },
+          {
+            "name": "lead",
+            "method": "GET",
+            "url": "https://crm.example.uz/v1/lead/{{leadId}}",
+            "extract": {"phone": "data.contacts.0.phones.0"}
+          }
+        ]'::jsonb
+FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba'
+ON CONFLICT (campaign_id) DO NOTHING;
 
 -- Knowledge base: the answers the agent is allowed to give when a caller asks something
 -- the scenario does not script (KnowledgeBaseService). Guardrails forbid it from inventing

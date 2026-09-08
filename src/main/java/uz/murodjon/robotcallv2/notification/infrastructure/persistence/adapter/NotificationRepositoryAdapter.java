@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.notification.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.notification.application.mapper.NotificationMapper;
 import uz.murodjon.robotcallv2.notification.application.port.output.NotificationRepository;
 import uz.murodjon.robotcallv2.notification.domain.entity.Notification;
@@ -13,6 +14,7 @@ import uz.murodjon.robotcallv2.notification.infrastructure.persistence.repositor
 import uz.murodjon.robotcallv2.notification.infrastructure.persistence.repository.NotificationRecipientJpaRepository;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -26,23 +28,29 @@ public class NotificationRepositoryAdapter implements NotificationRepository {
     private final NotificationPreferenceJpaRepository notificationPreferenceJpaRepository;
     private final UserRepository userRepository;
     private final NotificationMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
+    private final UserJpaRepository userJpaRepository;
 
     public NotificationRepositoryAdapter(NotificationJpaRepository notificationJpaRepository,
                                          NotificationRecipientJpaRepository notificationRecipientJpaRepository,
                                          NotificationPreferenceJpaRepository notificationPreferenceJpaRepository,
                                          UserRepository userRepository,
-                                         NotificationMapper mapper) {
+                                         NotificationMapper mapper,
+                                         CompanyJpaRepository companyJpaRepository,
+                                         UserJpaRepository userJpaRepository) {
         this.notificationJpaRepository = notificationJpaRepository;
         this.notificationRecipientJpaRepository = notificationRecipientJpaRepository;
         this.notificationPreferenceJpaRepository = notificationPreferenceJpaRepository;
         this.userRepository = userRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
+        this.userJpaRepository = userJpaRepository;
     }
 
     @Override
     public void notify(long companyId, NotificationType type, String title, String message, String link) {
         NotificationEntity entity = new NotificationEntity();
-        entity.setCompanyId(companyId);
+        entity.setCompany(companyJpaRepository.getReferenceById(companyId));
         entity.setType(type);
         entity.setTitle(title);
         entity.setMessage(message);
@@ -54,7 +62,7 @@ public class NotificationRepositoryAdapter implements NotificationRepository {
             if (isEnabled(user.id(), type)) {
                 NotificationRecipientEntity recipient = new NotificationRecipientEntity();
                 recipient.setNotification(saved);
-                recipient.setUserId(user.id());
+                recipient.setUser(userJpaRepository.getReferenceById(user.id()));
                 notificationRecipientJpaRepository.save(recipient);
             }
         }
@@ -83,7 +91,7 @@ public class NotificationRepositoryAdapter implements NotificationRepository {
     public void setPreference(long userId, NotificationType type, boolean enabled) {
         NotificationPreferenceEntity entity = notificationPreferenceJpaRepository.findByUserIdAndType(userId, type)
                 .orElseGet(NotificationPreferenceEntity::new);
-        entity.setUserId(userId);
+        entity.setUser(userJpaRepository.getReferenceById(userId));
         entity.setType(type);
         entity.setEnabled(enabled);
         notificationPreferenceJpaRepository.save(entity);

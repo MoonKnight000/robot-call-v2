@@ -56,6 +56,23 @@ public record CallContext(Map<String, Object> facts, String goal, ClientMemory m
         return new CallContext(facts, goal, memory);
     }
 
+    public CallContext withMergedFacts(Map<String, Object> additionalFacts) {
+        if (additionalFacts == null || additionalFacts.isEmpty()) {
+            return this;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(facts);
+        merged.putAll(additionalFacts);
+        return new CallContext(merged, goal, memory);
+    }
+
+    public String clientPhone() {
+        Object p = fact("phone");
+        if (p == null) {
+            p = fact("clientPhone");
+        }
+        return p != null ? String.valueOf(p) : null;
+    }
+
     /**
      * Only {@link String} values are touched. A {@code BigDecimal} or {@code LocalDate}
      * has already been parsed into a shape that cannot carry a sentence, and turning one

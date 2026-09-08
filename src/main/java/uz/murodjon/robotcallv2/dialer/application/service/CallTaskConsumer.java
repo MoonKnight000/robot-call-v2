@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
@@ -48,13 +49,14 @@ public class CallTaskConsumer {
     private final ClientMemoryService clientMemoryService;
     private final FactWebhookClient factWebhookClient;
     private final AiAgentUseCase aiAgents;
+    private final CallBillingUseCase callBilling;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
                             CampaignService campaignService, ScenarioService scenarioService,
                             CrmClient crmClient, AuditService audit, DialerState dialerState,
                             DoNotCallRepository doNotCallRepository, CallRecordService callRecordService,
                             ClientMemoryService clientMemoryService, FactWebhookClient factWebhookClient,
-                            AiAgentUseCase aiAgents) {
+                            AiAgentUseCase aiAgents, CallBillingUseCase callBilling) {
         this.ariService = ariService;
         this.registry = registry;
         this.campaignService = campaignService;
@@ -67,6 +69,7 @@ public class CallTaskConsumer {
         this.clientMemoryService = clientMemoryService;
         this.factWebhookClient = factWebhookClient;
         this.aiAgents = aiAgents;
+        this.callBilling = callBilling;
     }
 
     @RabbitListener(queues = RabbitConfig.CALL_TASK_QUEUE)
@@ -85,6 +88,7 @@ public class CallTaskConsumer {
                 log.info("Target {} ({}) is in Do-Not-Call list — skipping call origination",
                         task.targetId(), task.phone());
                 state.release(task.companyId());
+                callBilling.releaseReservation(task.companyId(), task.targetId());
                 callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.DO_NOT_CALL, "number is in the do-not-call list");
                 campaignService.applyOutcome(task.companyId(), task.targetId(), Disposition.DO_NOT_CALL);
@@ -94,7 +98,7 @@ public class CallTaskConsumer {
             // Ahead of everything else, because it decides the script the facts are read
             // against and the voice the call is warmed up for.
             AiAgent agent = aiAgents.requireAgent(task.companyId(), task.aiAgentId());
-            Scenario scenario = scenarioService.requireScenario(task.companyId(), agent.scenarioId());
+            Scenario scenario = aiAgents.resolveScenario(task.companyId(), agent);
             CrmClientSnapshot crm = crmClient.fetchClient(task.companyId(), task.clientId());
             ClientMemory memory = clientMemoryService.findByCompanyIdAndPhone(task.companyId(), task.phone());
             CallContext context = CallContextMapper.merge(
@@ -103,10 +107,12 @@ public class CallTaskConsumer {
             // Last and freshest. Deliberately here rather than once the call is up: the
             // number has not been dialled yet, so a slow endpoint costs this call's place in
             // the queue and not a silence the person who answered has to sit through.
-            context = CallContextMapper.overlayJson(context,
-                    factWebhookClient.fetchFacts(scenario.definition().factWebhook(),
-                            FactWebhookRequest.outbound(task.phone(), task.clientId(), task.campaignId())),
-                    scenario.definition().factSchema());
+            if (scenario.definition().factWebhook() != null) {
+                context = CallContextMapper.overlayJson(context,
+                        factWebhookClient.fetchFacts(scenario.definition().factWebhook(),
+                                FactWebhookRequest.outbound(task.phone(), task.clientId(), task.campaignId())),
+                        scenario.definition().factSchema());
+            }
             String language = resolveLanguage(task, crm, memory);
             // A variant that named a voice is testing that voice, so it wins over the
             // agent's per-language map outright — otherwise the map would silently pick the
@@ -131,6 +137,10 @@ public class CallTaskConsumer {
         } catch (Exception e) {
             log.warn("Originate failed for target {} ({}): {}", task.targetId(), task.phone(), e.getMessage());
             state.release(task.companyId());
+            // The hold is given back either way: a call that never reached Asterisk has no
+            // finalizer to settle it, and one whose originate threw leaves no attempt row
+            // to charge against.
+            callBilling.releaseReservation(task.companyId(), task.targetId());
             if (!originateReached) {
                 callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.FAILED, "call preparation failed: " + e.getMessage());
@@ -141,7 +151,7 @@ public class CallTaskConsumer {
 
     /**
      * Full BCP-47 as the last resort, not a bare "uz": {@code AiAgent.voiceFor} looks the
-     * language up in a map keyed the way {@code ai_agent_language_voice} stores it, so a
+     * language up in a map keyed the way {@code ai_agent_voice} stores it, so a
      * two-letter tag missed every per-language voice and quietly fell back to the agent's
      * single one.
      */

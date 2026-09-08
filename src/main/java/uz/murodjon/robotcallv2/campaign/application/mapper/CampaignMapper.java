@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.campaign.application.mapper;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
@@ -36,7 +37,8 @@ public class CampaignMapper {
                 entity.getLastRunAt());
     }
 
-    public CampaignEntity toEntity(Campaign campaign, CompanyEntity company, UserEntity createdBy) {
+    public CampaignEntity toEntity(Campaign campaign, CompanyEntity company, UserEntity createdBy,
+                                   AiAgentEntity aiAgent) {
         if (campaign == null) {
             return null;
         }
@@ -48,14 +50,14 @@ public class CampaignMapper {
         entity.setCompany(company);
         entity.setCreatedBy(createdBy);
         entity.setLastRunAt(campaign.lastRunAt());
-        applyEditableFields(entity, campaign);
+        applyEditableFields(entity, campaign, aiAgent);
         return entity;
     }
 
     /** Everything an edit may change — the same set {@code PUT /api/campaigns/{id}} sends. */
-    public void applyEditableFields(CampaignEntity entity, Campaign campaign) {
+    public void applyEditableFields(CampaignEntity entity, Campaign campaign, AiAgentEntity aiAgent) {
         entity.setName(campaign.name());
-        entity.setAiAgentId(campaign.aiAgentId());
+        entity.setAiAgent(aiAgent);
         entity.setDialWindowStart(campaign.dialWindowStart());
         entity.setDialWindowEnd(campaign.dialWindowEnd());
         entity.setDialDays(campaign.dialDays());

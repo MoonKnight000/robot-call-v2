@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Registered only when {@code voice-agent.realtime.gemini-live.api-key} is set —
  * which is why the condition is an expression rather than {@code @ConditionalOnProperty}:
  * the key defaults to the empty string, and an empty string counts as "present" there.
- * An unregistered engine leaves {@code EngineOptions.realtime} empty, so no company can
+ * An unregistered engine leaves {@code EngineOptionsResponse.realtime} empty, so no company can
  * select a mode this deployment cannot run.
  */
 @Component
@@ -108,6 +108,11 @@ public class GeminiLiveProvider implements RealtimeProvider {
     @Override
     public int outputSampleRate() {
         return OUTPUT_RATE;
+    }
+
+    @Override
+    public String resolveModel(RealtimeCallConfig config) {
+        return resolveModelName(config.modelOr(realtimeProperties.geminiLive().model()));
     }
 
     @Override

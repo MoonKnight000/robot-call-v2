@@ -4,11 +4,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
+import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignVariantEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetJpaRepository;
+import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignVariantJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.repository.InboundRouteJpaRepository;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -16,6 +19,7 @@ import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.Sto
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Component
@@ -27,19 +31,22 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     private final InboundRouteJpaRepository inboundRouteJpaRepository;
     private final UserJpaRepository userJpaRepository;
     private final StoredFileJpaRepository storedFileJpaRepository;
+    private final CampaignVariantJpaRepository campaignVariantJpaRepository;
 
     public CallAttemptRepositoryAdapter(CallAttemptJpaRepository callAttemptJpaRepository,
                                        CampaignTargetJpaRepository campaignTargetJpaRepository,
                                        CompanyJpaRepository companyJpaRepository,
                                        InboundRouteJpaRepository inboundRouteJpaRepository,
                                        UserJpaRepository userJpaRepository,
-                                       StoredFileJpaRepository storedFileJpaRepository) {
+                                       StoredFileJpaRepository storedFileJpaRepository,
+                                        CampaignVariantJpaRepository campaignVariantJpaRepository) {
         this.callAttemptJpaRepository = callAttemptJpaRepository;
         this.campaignTargetJpaRepository = campaignTargetJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.inboundRouteJpaRepository = inboundRouteJpaRepository;
         this.userJpaRepository = userJpaRepository;
         this.storedFileJpaRepository = storedFileJpaRepository;
+        this.campaignVariantJpaRepository = campaignVariantJpaRepository;
     }
 
     @Override
@@ -55,6 +62,11 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     @Override
     public String findPhoneById(long id) {
         return callAttemptJpaRepository.findPhoneById(id);
+    }
+
+    @Override
+    public Boolean findInboundById(long id) {
+        return callAttemptJpaRepository.findInboundById(id);
     }
 
     @Override
@@ -80,6 +92,7 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
         entity.setStartedAt(now);
         entity.setCreatedAt(now);
         entity.setCompany(companyJpaRepository.getReferenceById(attempt.companyId()));
+        entity.setVariant(variantReference(attempt.variantId()));
         if (attempt.inboundRouteId() != null) {
             entity.setInboundRoute(inboundRouteJpaRepository.getReferenceById(attempt.inboundRouteId()));
         }
@@ -90,6 +103,17 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
             entity.setErrorMessage(attempt.errorMessage());
         }
         return callAttemptJpaRepository.save(entity).getId();
+    }
+
+    @Override
+    public List<AnsweredCall> findAnsweredByPhone(long companyId, String phone, Instant from, Instant to) {
+        return callAttemptJpaRepository.findAnsweredByPhone(companyId, phone, from, to).stream()
+                .map(row -> new AnsweredCall(
+                        ((Number) row[0]).longValue(),
+                        row[1] != null ? ((Number) row[1]).longValue() : null,
+                        row[2] != null ? ((Number) row[2]).longValue() : null,
+                        (Instant) row[3]))
+                .toList();
     }
 
     @Override
@@ -140,5 +164,10 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     @Override
     public void finishAttempt(long callId, Instant endedAt, int durationSec, Disposition disposition, Long recordingFileId) {
         callAttemptJpaRepository.finishAttempt(callId, endedAt, durationSec, disposition, recordingFileId);
+    }
+
+    /** Null for a call the campaign dialled without an A/B variant. */
+    private CampaignVariantEntity variantReference(Long id) {
+        return id != null ? campaignVariantJpaRepository.getReferenceById(id) : null;
     }
 }

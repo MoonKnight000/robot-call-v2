@@ -2,14 +2,13 @@ package uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter;
 
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.report.application.dto.CreateReportScheduleRequest;
-import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
 import uz.murodjon.robotcallv2.report.application.mapper.ReportScheduleMapper;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportScheduleRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSchedule;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
 import uz.murodjon.robotcallv2.report.infrastructure.persistence.entity.ReportScheduleEntity;
 import uz.murodjon.robotcallv2.report.infrastructure.persistence.repository.ReportScheduleJpaRepository;
 

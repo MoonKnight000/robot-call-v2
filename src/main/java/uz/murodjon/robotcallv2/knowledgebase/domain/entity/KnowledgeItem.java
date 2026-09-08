@@ -3,11 +3,14 @@ package uz.murodjon.robotcallv2.knowledgebase.domain.entity;
 import java.time.Instant;
 
 /**
- * Domain entity representing an item in the company's Knowledge Base (RAG).
+ * One hand-written answer in the knowledge base — the half a person types, as opposed to
+ * the documents and links of {@link KnowledgeSource}.
  */
 public record KnowledgeItem(
         long id,
         long companyId,
+        /** Agent this answer belongs to; null leaves it available to every agent of the company. */
+        Long agentId,
         String key,
         String topic,
         String title,

@@ -6,17 +6,15 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
-import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
-import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
-import uz.murodjon.robotcallv2.engine.domain.enums.PipelineMode;
 import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
@@ -40,8 +38,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Warm-up is performed on-demand when a campaign starts (or before calls are dispatched),
  * tailored to that specific campaign's configured language, TTS voice, scenario, and tenant.
  *
- * <p>If a company or campaign runs on {@link PipelineMode#REALTIME}, TTS warm-up is bypassed
+ * <p>If the campaign's agent runs on {@link PipelineMode#REALTIME}, TTS warm-up is bypassed
  * completely because the live S2S engine generates native audio directly over WebSocket.
+ * The startup sweep is not skipped for anyone: since the engine became a per-agent
+ * setting, a company with one realtime agent still has cascade agents to warm for.
  */
 @Component
 public class TtsWarmup {
@@ -56,7 +56,6 @@ public class TtsWarmup {
     private final CompanyConfigService companyConfigService;
     private final VoiceSettingsService voiceSettingsService;
     private final ScenarioService scenarioService;
-    private final EngineConfigService engineConfigService;
     private final CampaignRepository campaignRepository;
     private final AiAgentUseCase aiAgentService;
 
@@ -66,7 +65,7 @@ public class TtsWarmup {
                      TtsCache cache, CompanyService companyService,
                      CompanyConfigService companyConfigService,
                      VoiceSettingsService voiceSettingsService, ScenarioService scenarioService,
-                     EngineConfigService engineConfigService, CampaignRepository campaignRepository,
+                     CampaignRepository campaignRepository,
                      AiAgentUseCase aiAgentService) {
         this.ttsProperties = ttsProperties;
         this.dialogProperties = dialogProperties;
@@ -76,7 +75,6 @@ public class TtsWarmup {
         this.companyConfigService = companyConfigService;
         this.voiceSettingsService = voiceSettingsService;
         this.scenarioService = scenarioService;
-        this.engineConfigService = engineConfigService;
         this.campaignRepository = campaignRepository;
         this.aiAgentService = aiAgentService;
     }
@@ -91,7 +89,7 @@ public class TtsWarmup {
 
     /**
      * Pre-warms TTS audio specifically for a campaign prior to dialing.
-     * Bypassed if the company runs in REALTIME mode.
+     * Bypassed if the campaign's agent runs in REALTIME mode.
      */
     public void warmUpForCampaign(long companyId, long campaignId) {
         if (!ttsProperties.enabled() || !cache.prewarmEnabled()) {
@@ -126,9 +124,8 @@ public class TtsWarmup {
         if (!warmedCampaigns.add(campaign.id())) {
             return;
         }
-        EffectiveEngineConfig engineConfig = engineConfigService.findEffectiveByCompanyId(campaign.companyId());
-        if (engineConfig.mode() == PipelineMode.REALTIME) {
-            log.debug("Skipping TTS warm-up for campaign {} — company {} is in REALTIME mode",
+        if (agent.speechEngine().mode() == PipelineMode.REALTIME) {
+            log.debug("Skipping TTS warm-up for campaign {} — agent is in REALTIME mode",
                     campaign.id(), campaign.companyId());
             return;
         }
@@ -138,14 +135,14 @@ public class TtsWarmup {
         CompanyConfig config = companyConfigService.find(campaign.companyId());
         EffectiveVoiceSettings style = voiceSettingsService.effective(campaign.companyId());
 
-        Scenario scenario = scenarioService.findById(campaign.companyId(), agent.scenarioId());
+        Scenario scenario = scenarioService.findById(campaign.companyId(), agent.script().scenarioId());
         List<Scenario> scenarios = scenario != null ? List.of(scenario) : List.of();
 
         Set<String> languages = new LinkedHashSet<>();
         if (agent.language() != null && !agent.language().isBlank()) {
             languages.add(agent.language());
         }
-        languages.addAll(agent.languageVoicesOrEmpty().keySet());
+        languages.addAll(agent.voice().perLanguage().keySet());
         if (languages.isEmpty()) {
             languages.add(ttsProperties.defaultLanguage());
         }
@@ -204,10 +201,6 @@ public class TtsWarmup {
         }
         Set<Spoken> lines = new LinkedHashSet<>();
         for (Company company : companies) {
-            EffectiveEngineConfig engineConfig = engineConfigService.findEffectiveByCompanyId(company.id());
-            if (engineConfig.mode() == PipelineMode.REALTIME) {
-                continue;
-            }
             CompanyConfig config = companyConfigService.find(company.id());
             lines.addAll(spoken(linesFor(company.name(), language, scenarios,
                             config != null ? config.disclosureText() : null),

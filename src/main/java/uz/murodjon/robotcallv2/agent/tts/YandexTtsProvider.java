@@ -39,7 +39,7 @@ import java.util.concurrent.TimeUnit;
  * fresh {@code x-client-request-id}. Auth is an API key in the
  * {@code authorization: Api-Key ...} gRPC metadata. Registered whenever
  * {@code voice-agent.tts.yandex.api-key} is set — a company picks this provider per-call
- * via {@code engine_config.tts_provider} (§11 settings), it does not have to be the
+ * via {@code ai_agent.tts_provider}, it does not have to be the
  * process-wide {@code voice-agent.tts.provider} default.
  */
 @Component

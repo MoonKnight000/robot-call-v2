@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
@@ -20,14 +22,20 @@ public class InboundRouteEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_id", nullable = false)
-    private long companyId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
+    private Long companyId;
 
     @Column(name = "did_number", nullable = false)
     private String didNumber;
 
-    @Column(name = "ai_agent_id")
-    private Long aiAgentId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ai_agent_id")
+    private AiAgentEntity aiAgent;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "route_type", nullable = false)
@@ -84,12 +92,16 @@ public class InboundRouteEntity {
         this.id = id;
     }
 
-    public long getCompanyId() {
-        return companyId;
+    public CompanyEntity getCompany() {
+        return company;
     }
 
-    public void setCompanyId(long companyId) {
-        this.companyId = companyId;
+    public void setCompany(CompanyEntity company) {
+        this.company = company;
+    }
+
+    public long getCompanyId() {
+        return company != null ? company.getId() : 0L;
     }
 
     public String getDidNumber() {
@@ -100,12 +112,16 @@ public class InboundRouteEntity {
         this.didNumber = didNumber;
     }
 
-    public Long getAiAgentId() {
-        return aiAgentId;
+    public AiAgentEntity getAiAgent() {
+        return aiAgent;
     }
 
-    public void setAiAgentId(Long aiAgentId) {
-        this.aiAgentId = aiAgentId;
+    public void setAiAgent(AiAgentEntity aiAgent) {
+        this.aiAgent = aiAgent;
+    }
+
+    public Long getAiAgentId() {
+        return aiAgent != null ? aiAgent.getId() : null;
     }
 
     public InboundRouteType getRouteType() {

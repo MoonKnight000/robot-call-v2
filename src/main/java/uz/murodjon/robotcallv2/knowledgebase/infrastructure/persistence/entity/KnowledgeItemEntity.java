@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 @Entity
 @Table(name = "knowledge_base_item")
@@ -11,8 +13,17 @@ public class KnowledgeItemEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agent_id")
+    private AiAgentEntity agent;
 
     @Column(name = "item_key", nullable = false, length = 100)
     private String itemKey;
@@ -55,12 +66,28 @@ public class KnowledgeItemEntity {
         this.id = id;
     }
 
-    public Long getCompanyId() {
-        return companyId;
+    public CompanyEntity getCompany() {
+        return company;
     }
 
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
+    public void setCompany(CompanyEntity company) {
+        this.company = company;
+    }
+
+    public Long getCompanyId() {
+        return company != null ? company.getId() : null;
+    }
+
+    public AiAgentEntity getAgent() {
+        return agent;
+    }
+
+    public void setAgent(AiAgentEntity agent) {
+        this.agent = agent;
+    }
+
+    public Long getAgentId() {
+        return agent != null ? agent.getId() : null;
     }
 
     public String getItemKey() {

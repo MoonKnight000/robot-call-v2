@@ -21,7 +21,7 @@ public interface RoleJpaRepository extends JpaRepository<RoleEntity, Long> {
 
     long countByCompanyIdAndSystem(long companyId, boolean system);
 
-    @Query("SELECT COUNT(r) > 0 FROM RoleEntity r WHERE r.companyId = :companyId "
+    @Query("SELECT COUNT(r) > 0 FROM RoleEntity r WHERE r.company.id = :companyId "
             + "AND LOWER(r.name) = LOWER(:name) AND (:excludeId IS NULL OR r.id <> :excludeId)")
     boolean existsByName(@Param("companyId") long companyId, @Param("name") String name,
                          @Param("excludeId") Long excludeId);

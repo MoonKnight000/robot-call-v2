@@ -1,13 +1,15 @@
 package uz.murodjon.robotcallv2.inbound.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiAgentJpaRepository;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.inbound.application.dto.CreateInboundRouteRequest;
-import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.application.dto.UpdateInboundRouteRequest;
 import uz.murodjon.robotcallv2.inbound.application.mapper.InboundRouteMapper;
 import uz.murodjon.robotcallv2.inbound.application.port.output.InboundRouteRepository;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
+import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
@@ -25,11 +27,17 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
 
     private final InboundRouteJpaRepository jpaRepository;
     private final InboundRouteMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
+    private final AiAgentJpaRepository aiAgentJpaRepository;
 
     public InboundRouteRepositoryAdapter(InboundRouteJpaRepository jpaRepository,
-                                         InboundRouteMapper mapper) {
+                                         InboundRouteMapper mapper,
+                                         CompanyJpaRepository companyJpaRepository,
+                                         AiAgentJpaRepository aiAgentJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
+        this.aiAgentJpaRepository = aiAgentJpaRepository;
     }
 
     @Override
@@ -37,9 +45,9 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
         // The agent is validated by InboundRouteService before it gets here.
 
         InboundRouteEntity entity = new InboundRouteEntity();
-        entity.setCompanyId(companyId);
+        entity.setCompany(companyJpaRepository.getReferenceById(companyId));
         entity.setDidNumber(request.didNumber());
-        entity.setAiAgentId(request.aiAgentId());
+        entity.setAiAgent(aiAgentReference(request.aiAgentId()));
         entity.setRouteType(request.routeType() != null ? request.routeType() : InboundRouteType.SCENARIO);
         entity.setTargetDestination(request.targetDestination());
         entity.setQueueStrategy(request.queueStrategy() != null ? request.queueStrategy() : QueueStrategy.RING_ALL);
@@ -64,7 +72,7 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
 
 
         entity.setDidNumber(request.didNumber());
-        entity.setAiAgentId(request.aiAgentId());
+        entity.setAiAgent(aiAgentReference(request.aiAgentId()));
         if (request.routeType() != null) entity.setRouteType(request.routeType());
         entity.setTargetDestination(request.targetDestination());
         if (request.queueStrategy() != null) entity.setQueueStrategy(request.queueStrategy());
@@ -119,5 +127,10 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
     @Override
     public InboundRoute resolveByDid(String didNumber) {
         return jpaRepository.findByDidNumberAndEnabledTrue(didNumber).map(mapper::entityToDomain).orElse(null);
+    }
+
+    /** Null for a route that goes to a queue rather than an agent. */
+    private AiAgentEntity aiAgentReference(Long id) {
+        return id != null ? aiAgentJpaRepository.getReferenceById(id) : null;
     }
 }

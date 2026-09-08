@@ -3,21 +3,15 @@ package uz.murodjon.robotcallv2.aiagent.presentation.controller;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-
-import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
-import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
-import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
+import org.springframework.web.bind.annotation.*;
+import uz.murodjon.robotcallv2.aiagent.application.dto.*;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
+
+import java.util.List;
 
 /**
  * AI agents — who speaks a call (V12).
@@ -28,6 +22,16 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
  */
 @RequestMapping("/api/ai-agents")
 public interface AiAgentController {
+
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/templates")
+    ResponseEntity<ResponseData<List<TemplatePresetDto>>> getTemplates(
+            @CurrentCompanyId long companyId,
+            @RequestParam(required = false) String language);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/engine-options")
+    ResponseEntity<ResponseData<EngineOptionsResponse>> getEngineOptions();
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping
@@ -52,4 +56,109 @@ public interface AiAgentController {
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @DeleteMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
+
+    // Scenario & Behavior section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/scenario")
+    ResponseEntity<ResponseData<AgentScenarioDto>> getScenario(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/scenario")
+    ResponseEntity<ResponseData<AgentScenarioDto>> updateScenario(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentScenarioDto request);
+
+    // Analysis section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/analysis")
+    ResponseEntity<ResponseData<AgentAnalysisDto>> getAnalysis(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/analysis")
+    ResponseEntity<ResponseData<AgentAnalysisDto>> updateAnalysis(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentAnalysisDto request);
+
+    // Limits section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/limits")
+    ResponseEntity<ResponseData<AgentLimitsDto>> getLimits(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/limits")
+    ResponseEntity<ResponseData<AgentLimitsDto>> updateLimits(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentLimitsDto request);
+
+    // Advanced section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/advanced")
+    ResponseEntity<ResponseData<AgentAdvancedDto>> getAdvanced(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/advanced")
+    ResponseEntity<ResponseData<AgentAdvancedDto>> updateAdvanced(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentAdvancedDto request);
+
+    // Pronunciation section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/pronunciation")
+    ResponseEntity<ResponseData<AgentPronunciationDto>> getPronunciation(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/pronunciation")
+    ResponseEntity<ResponseData<AgentPronunciationDto>> updatePronunciation(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentPronunciationDto request);
+
+    // Post-Call Actions section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/post-call-actions")
+    ResponseEntity<ResponseData<AgentPostCallActionsDto>> getPostCallActions(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/post-call-actions")
+    ResponseEntity<ResponseData<AgentPostCallActionsDto>> updatePostCallActions(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentPostCallActionsDto request);
+
+    // Tools section
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/tools")
+    ResponseEntity<ResponseData<List<ToolRow>>> getTools(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/{id:\\d+}/tools/{toolId:\\d+}")
+    ResponseEntity<ResponseData<Void>> attachTool(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @PathVariable long toolId);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @DeleteMapping("/{id:\\d+}/tools/{toolId:\\d+}")
+    ResponseEntity<ResponseData<Void>> detachTool(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @PathVariable long toolId);
 }

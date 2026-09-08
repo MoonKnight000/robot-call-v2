@@ -73,7 +73,7 @@ uni qo'ng'iroqdagidek tinglaydi va nima "eshitganini" qaytaradi.
 | Maydon | Majburiy | Izoh |
 |---|---|---|
 | `file` | ha | Audio fayl. Brauzer `MediaRecorder` beradigan `audio/webm;codecs=opus` (Chrome, Firefox, Edge) va `audio/mp4` (Safari) **to'g'ridan-to'g'ri yuboriladi**, frontendda konvert qilish shart emas. WAV, MP3, OGG ham bo'ladi. Sample rate istalgan, stereo bo'lsa mono'ga yig'iladi. **30 soniyagacha, 5 MB gacha** |
-| `provider` | yo'q | STT provayder id: `GET /api/settings/engine/options` javobidagi `stt` ro'yxatidan (`yandex`, `aisha`, `gemini`, `deepgram`). Berilmasa — kompaniyaning `engine_config.sttProvider` |
+| `provider` | yo'q | STT provayder id: `GET /api/ai-agents/engine-options` javobidagi `stt` ro'yxatidan (`yandex`, `aisha`, `gemini`, `deepgram`). Berilmasa — `voice-agent.stt.provider` (YAML) qiymati; kompaniya darajasidagi STT sozlamasi endi yo'q, u agentniki |
 | `language` | yo'q | BCP-47: `uz-UZ`, `ru-RU`. Berilmasa — serverdagi standart (`uz-UZ`) |
 
 **Javob vaqti:** audio provayderga **real vaqt tezligida** yuboriladi (qo'ng'iroqdagidek), shuning uchun
@@ -155,6 +155,6 @@ async function stopAndTranscribe(provider, language) {
 | Endpoint | Nima uchun kerak |
 |---|---|
 | `GET /api/tts/voices?language=` | ovoz tanlagich ro'yxati ([voices.md](voices.md)) |
-| `GET /api/settings/engine/options` | `stt` ro'yxati — STT provayder tanlagich ([settings.md](settings.md)) |
-| `GET /api/settings/engine` | kompaniyaning joriy `sttProvider` — tanlagichda default sifatida ko'rsatish |
+| `GET /api/ai-agents/engine-options` | `stt` ro'yxati — STT provayder tanlagich ([settings.md](settings.md)) |
+| `GET /api/ai-agents/{id}` | agentning `sttProvider` i — tanlagichda default sifatida ko'rsatish |
 | `PUT /api/settings/voice` | `speed`/`pitch` — TTS preview ularni hisobga oladi, o'zgartirgach qayta eshitish mumkin |

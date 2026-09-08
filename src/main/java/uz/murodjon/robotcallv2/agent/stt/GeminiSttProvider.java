@@ -79,7 +79,7 @@ public class GeminiSttProvider implements SttProvider {
                 .connectTimeout(Duration.ofSeconds(timeoutSeconds))
                 .build();
         log.info("Gemini STT provider ready (model={}, sampleRate={}Hz)",
-                resolveModel(), sampleRate());
+                resolveModel(null), sampleRate());
     }
 
     @Override
@@ -104,6 +104,13 @@ public class GeminiSttProvider implements SttProvider {
     public SttSession startStream(String languageCode, List<String> alternativeLanguages,
                                   TranscriptListener listener, boolean externalEndpointing,
                                   List<String> hints) {
+        return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, hints, null);
+    }
+
+    @Override
+    public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                  TranscriptListener listener, boolean externalEndpointing,
+                                  List<String> hints, String model) {
         HttpClient current = client;
         if (current == null) {
             throw new ExternalServiceException(ErrorCode.STT_GEMINI_CLIENT_UNAVAILABLE, "gemini-stt");
@@ -130,7 +137,7 @@ public class GeminiSttProvider implements SttProvider {
             alive.set(true);
 
             // Send session setup message
-            String setupPayload = buildSetupMessage(externalEndpointing);
+            String setupPayload = buildSetupMessage(externalEndpointing, resolveModel(model));
             webSocket.sendText(setupPayload, true).get(timeoutSeconds, TimeUnit.SECONDS);
 
             // Wait for setup acknowledgement
@@ -142,7 +149,7 @@ public class GeminiSttProvider implements SttProvider {
             }
 
             log.info("Gemini STT streaming session open (lang={}, model={}, endpointing={})",
-                    languageCode, resolveModel(), externalEndpointing ? "external" : "gemini");
+                    languageCode, resolveModel(model), externalEndpointing ? "external" : "gemini");
             return new GeminiSttSession(webSocket, alive, metrics, externalEndpointing);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -164,7 +171,11 @@ public class GeminiSttProvider implements SttProvider {
         return env != null ? env.trim() : "";
     }
 
-    private String resolveModel() {
+    private String resolveModel(String requested) {
+        if (requested != null && !requested.isBlank()) {
+            String r = requested.trim();
+            return r.startsWith("models/") ? r.substring("models/".length()) : r;
+        }
         if (sttProperties.gemini() != null && sttProperties.gemini().model() != null && !sttProperties.gemini().model().isBlank()) {
             String m = sttProperties.gemini().model().trim();
             return m.startsWith("models/") ? m.substring("models/".length()) : m;
@@ -185,10 +196,10 @@ public class GeminiSttProvider implements SttProvider {
      * field ({@code customVocabulary} closes the socket with "Cannot find field"), and a
      * setup that fails costs the whole call its recognition.
      */
-    private String buildSetupMessage(boolean externalEndpointing) {
+    private String buildSetupMessage(boolean externalEndpointing, String model) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode setup = root.putObject("setup");
-        setup.put("model", "models/" + resolveModel());
+        setup.put("model", "models/" + model);
 
         ObjectNode genConfig = setup.putObject("generationConfig");
         genConfig.putArray("responseModalities").add("TEXT");

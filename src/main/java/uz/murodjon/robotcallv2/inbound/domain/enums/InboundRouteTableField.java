@@ -6,19 +6,31 @@ import uz.murodjon.robotcallv2.shared.api.TableField;
 public enum InboundRouteTableField implements TableField {
     ID("id"),
     DID_NUMBER("did_number"),
-    AI_AGENT_ID("ai_agent_id"),
+    AI_AGENT_ID("ai_agent_id", "aiAgent.id"),
     LANGUAGE("language"),
     ENABLED("enabled"),
     CREATED_AT("created_at");
 
     private final String column;
+    private final String property;
 
     InboundRouteTableField(String column) {
+        this(column, null);
+    }
+
+    /** {@code property} where the entity maps the column as an association, not a plain field. */
+    InboundRouteTableField(String column, String property) {
         this.column = column;
+        this.property = property;
     }
 
     @Override
     public String column() {
         return column;
+    }
+
+    @Override
+    public String property() {
+        return property != null ? property : TableField.super.property();
     }
 }

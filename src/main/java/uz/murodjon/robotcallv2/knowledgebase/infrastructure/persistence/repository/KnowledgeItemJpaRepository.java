@@ -18,25 +18,38 @@ public interface KnowledgeItemJpaRepository extends JpaRepository<KnowledgeItemE
 
     Optional<KnowledgeItemEntity> findByCompanyIdAndItemKey(Long companyId, String itemKey);
 
-    List<KnowledgeItemEntity> findAllByCompanyIdAndActiveTrue(Long companyId);
+    /**
+     * What one agent may answer from: its own items plus the company-wide ones, which is
+     * what a null {@code agent_id} means. Called on every caller question, so it is one
+     * query rather than two.
+     */
+    @Query("SELECT k FROM KnowledgeItemEntity k WHERE k.company.id = :companyId AND k.active = true AND "
+            + "(k.agent.id IS NULL OR :agentId IS NULL OR k.agent.id = :agentId)")
+    List<KnowledgeItemEntity> findAllActiveByCompanyIdAndAgentId(@Param("companyId") Long companyId,
+                                                                 @Param("agentId") Long agentId);
 
-    @Query("SELECT k FROM KnowledgeItemEntity k WHERE k.companyId = :companyId AND "
-            + "(:search IS NULL OR :search = '' OR "
-            + "LOWER(k.itemKey) LIKE LOWER(CONCAT('%', :search, '%')) OR "
-            + "LOWER(k.title) LIKE LOWER(CONCAT('%', :search, '%')) OR "
-            + "LOWER(k.keywords) LIKE LOWER(CONCAT('%', :search, '%')) OR "
-            + "LOWER(k.topic) LIKE LOWER(CONCAT('%', :search, '%')))")
+    @Query("SELECT k FROM KnowledgeItemEntity k WHERE k.company.id = :companyId AND "
+            + "(:agentId IS NULL OR k.agent.id = :agentId) AND "
+            + "(:search IS NULL OR "
+            + "LOWER(k.itemKey) LIKE :search OR "
+            + "LOWER(k.title) LIKE :search OR "
+            + "LOWER(k.keywords) LIKE :search OR "
+            + "LOWER(k.topic) LIKE :search)")
     Page<KnowledgeItemEntity> searchByCompany(@Param("companyId") Long companyId,
+                                              @Param("agentId") Long agentId,
                                               @Param("search") String search,
                                               Pageable pageable);
 
-    @Query("SELECT count(k) FROM KnowledgeItemEntity k WHERE k.companyId = :companyId AND "
-            + "(:search IS NULL OR :search = '' OR "
-            + "LOWER(k.itemKey) LIKE LOWER(CONCAT('%', :search, '%')) OR "
-            + "LOWER(k.title) LIKE LOWER(CONCAT('%', :search, '%')) OR "
-            + "LOWER(k.keywords) LIKE LOWER(CONCAT('%', :search, '%')) OR "
-            + "LOWER(k.topic) LIKE LOWER(CONCAT('%', :search, '%')))")
-    long countSearchByCompany(@Param("companyId") Long companyId, @Param("search") String search);
+    @Query("SELECT count(k) FROM KnowledgeItemEntity k WHERE k.company.id = :companyId AND "
+            + "(:agentId IS NULL OR k.agent.id = :agentId) AND "
+            + "(:search IS NULL OR "
+            + "LOWER(k.itemKey) LIKE :search OR "
+            + "LOWER(k.title) LIKE :search OR "
+            + "LOWER(k.keywords) LIKE :search OR "
+            + "LOWER(k.topic) LIKE :search)")
+    long countSearchByCompany(@Param("companyId") Long companyId,
+                              @Param("agentId") Long agentId,
+                              @Param("search") String search);
 
     void deleteByIdAndCompanyId(Long id, Long companyId);
 }

@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * is worth streaming (and paying for), just not when the utterance is over.
  *
  * <p>Registered whenever {@code voice-agent.stt.aisha.api-key} is set — a company picks
- * this provider per-call via {@code engine_config.stt_provider} (§11 settings), it does
+ * this provider per-call via {@code ai_agent.stt_provider}, it does
  * not have to be the process-wide {@code voice-agent.stt.provider} default.
  */
 @Component

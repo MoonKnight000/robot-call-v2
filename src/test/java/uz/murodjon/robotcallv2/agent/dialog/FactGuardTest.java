@@ -153,4 +153,22 @@ class FactGuardTest {
         assertThat(FactGuard.violations(
                 "Bir million besh yuz ming nol nol bir.", SCENARIO, CONTEXT)).isEmpty();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "1 million 500 ming so'm qarzingiz bor.",
+            "unda 2026-yil 20-oktabrgacha 1 million 500 ming so'm qarzni to'lar ekansiz.",
+    })
+    void acceptsTheDebtAmountHalfInDigitsAndHalfInWords(String text) {
+        // How a realtime engine actually says a sum. With the digits invisible to the
+        // word reader the two scale words came out as 1 000 000 + 1 000, and a correct
+        // sentence was logged as the spoken figure "million ming".
+        assertThat(FactGuard.violations(text, SCENARIO, CONTEXT)).isEmpty();
+    }
+
+    @Test
+    void stillBlocksAWrongSumWrittenHalfInDigits() {
+        assertThat(FactGuard.violations("Qarzingiz 5 million so'm.", SCENARIO, CONTEXT))
+                .containsExactly("5 million");
+    }
 }

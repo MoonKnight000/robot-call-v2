@@ -1,8 +1,10 @@
 package uz.murodjon.robotcallv2.campaign.domain.entity;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceMethod;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Where a campaign's call list comes from, when it is not a CSV somebody uploads.
@@ -17,6 +19,9 @@ import java.time.Instant;
  * id and which is the language. Everything else in the row is kept as the target's facts,
  * where the scenario's {@code factSchema} decides what the agent may actually say.
  *
+ * @param provider       where the list comes from — a URL this source names (GENERIC), or a CRM
+ *                       the platform knows how to read (UYSOT_DEBTORS), in which case
+ *                       every field below describing a request is unused
  * @param itemsPath      dot path to the array inside the response ({@code "data.items"});
  *                       null when the body is itself the array
  * @param authHeaderValue the secret in plain text. Encrypted at rest and never returned by
@@ -24,11 +29,15 @@ import java.time.Instant;
  * @param replaceTargets clears the campaign's existing targets before importing, for a
  *                       source that answers with the whole of today's list rather than
  *                       what is new since yesterday
+ * @param steps          the requests a CHAINED source runs, in order: the first lists rows,
+ *                       each later one is called per row to add what the list did not carry.
+ *                       Empty for every other provider
  * @param lastSyncError  why the last run fetched nothing, or null when it worked. Kept so
  *                       the failure is visible on the campaign page instead of only in a log
  */
 public record TargetSource(
         long campaignId,
+        TargetSourceProvider provider,
         String url,
         TargetSourceMethod method,
         String requestBody,
@@ -41,10 +50,19 @@ public record TargetSource(
         boolean replaceTargets,
         boolean syncOnRecurrence,
         boolean enabled,
+        List<TargetSourceStep> steps,
         Instant lastSyncAt,
         Integer lastSyncAdded,
         String lastSyncError
 ) {
+
+    public TargetSource {
+        steps = steps == null ? List.of() : List.copyOf(steps);
+    }
+
+    public TargetSourceProvider providerOrDefault() {
+        return provider != null ? provider : TargetSourceProvider.GENERIC;
+    }
 
     public TargetSourceMethod methodOrDefault() {
         return method != null ? method : TargetSourceMethod.GET;

@@ -15,14 +15,13 @@ import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.aimodel.application.service.AiModelConfigService;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
@@ -33,7 +32,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Runs scripted callers against the real conversation stack and reports what each one got.
@@ -129,7 +127,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
     private int simulateAll() {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
-            log.error("Simulation needs an LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY)");
+            log.error("Simulation needs an LLM ChatModel (set GEMINI_API_KEY or OPENAI_API_KEY)");
             return 1;
         }
         if (personasPath == null || personasPath.isBlank() || scenarioId <= 0) {

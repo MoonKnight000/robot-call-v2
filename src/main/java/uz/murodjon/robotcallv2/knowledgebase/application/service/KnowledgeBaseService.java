@@ -2,14 +2,15 @@ package uz.murodjon.robotcallv2.knowledgebase.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemCreateRequest;
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemResponse;
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemUpdateRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeBaseUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
-import uz.murodjon.robotcallv2.knowledgebase.domain.service.KnowledgeValidator;
-import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemCreateRequest;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
-import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemResponse;
-import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemUpdateRequest;
+import uz.murodjon.robotcallv2.knowledgebase.domain.service.KnowledgeValidator;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
@@ -22,9 +23,11 @@ import java.util.Locale;
 public class KnowledgeBaseService implements KnowledgeBaseUseCase {
 
     private final KnowledgeBaseRepository repository;
+    private final AiAgentUseCase aiAgentUseCase;
 
-    public KnowledgeBaseService(KnowledgeBaseRepository repository) {
+    public KnowledgeBaseService(KnowledgeBaseRepository repository, AiAgentUseCase aiAgentUseCase) {
         this.repository = repository;
+        this.aiAgentUseCase = aiAgentUseCase;
     }
 
     @Override
@@ -32,9 +35,11 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
     public KnowledgeItemResponse create(long companyId, KnowledgeItemCreateRequest request) {
         KnowledgeValidator.validateKey(request.key());
         KnowledgeValidator.validateAnswer(request.answerUz());
+        requireOwnAgent(companyId, request.agentId());
         KnowledgeItem item = new KnowledgeItem(
                 0L,
                 companyId,
+                request.agentId(),
                 request.key().trim(),
                 request.topic().trim(),
                 request.title().trim(),
@@ -63,12 +68,14 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
     public KnowledgeItemResponse update(long companyId, long id, KnowledgeItemUpdateRequest request) {
         KnowledgeValidator.validateKey(request.key());
         KnowledgeValidator.validateAnswer(request.answerUz());
+        requireOwnAgent(companyId, request.agentId());
         KnowledgeItem existing = repository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.KNOWLEDGE_ITEM_NOT_FOUND, id));
 
         KnowledgeItem updated = new KnowledgeItem(
                 existing.id(),
                 companyId,
+                request.agentId() != null ? request.agentId() : existing.agentId(),
                 request.key().trim(),
                 request.topic().trim(),
                 request.title().trim(),
@@ -103,18 +110,25 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
     }
 
     @Override
-    public String findRelevantAnswer(long companyId, String query, String language) {
+    public String findRelevantAnswer(long companyId, Long agentId, String query, String language) {
         if (query == null || query.isBlank()) {
             return null;
         }
         String lower = query.toLowerCase(Locale.ROOT);
-        List<KnowledgeItem> items = repository.findAllActiveByCompanyId(companyId);
+        List<KnowledgeItem> items = repository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
         for (KnowledgeItem item : items) {
             if (matches(lower, item)) {
                 return item.answerForLanguage(language);
             }
         }
         return null;
+    }
+
+    /** Refuses an agent that is not this company's, so an item cannot be bound across tenants. */
+    private void requireOwnAgent(long companyId, Long agentId) {
+        if (agentId != null) {
+            aiAgentUseCase.requireAgent(companyId, agentId);
+        }
     }
 
     private boolean matches(String query, KnowledgeItem item) {
@@ -136,6 +150,7 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
         return new KnowledgeItemResponse(
                 item.id(),
                 item.companyId(),
+                item.agentId(),
                 item.key(),
                 item.topic(),
                 item.title(),

@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
 import uz.murodjon.robotcallv2.voice.application.service.TtsVoiceService;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
@@ -17,16 +18,15 @@ import java.util.List;
  * (PROJECT.md §2.5). A call may carry a voice chosen when its campaign was created —
  * that choice comes from {@link TtsVoiceService} (the {@code tts_voice} table) — and
  * when it does, {@link TtsProviderSelector} resolves it straight to the provider that
- * owns it, regardless of which provider is that company's {@code engine_config}
- * default: a campaign is free to mix voices from every provider this build has
- * credentials for. Only a call with no voice chosen (or one whose provider left the
- * build) falls back to {@link EffectiveVoiceSettings#provider} (the company's
- * {@code engine_config}), then {@code voice-agent.tts.provider} for a company that
- * chose none.
+ * owns it, regardless of which provider is the configured default: a campaign is free to
+ * mix voices from every provider this build has credentials for. Only a call with no
+ * voice chosen (or one whose provider left the build) falls back to
+ * {@link EffectiveVoiceSettings#provider()}, which since the speech engine moved onto the
+ * agent is simply {@code voice-agent.tts.provider}.
  *
  * <p>Every request goes through {@link SpeechTextNormalizer} — no provider reads Uzbek
  * numerals correctly — and then {@link TtsCache}: providers bill per character, and the
- * lines this agent repeats most are the short fixed ones.
+ * lines this agent repeats most are the short fixed ones.</p>
  */
 @Component
 public class TtsRouter {
@@ -68,14 +68,18 @@ public class TtsRouter {
     }
 
     /**
-     * As {@link #synthesize(String, String, String)}, additionally applying a company's
-     * §11 settings {@code provider}/{@code speed}/{@code pitch} — resolved once per call by
+     * As {@link #synthesize(String, String, String)}, additionally applying the call's
+     * {@code provider}/{@code speed}/{@code pitch} — resolved once per call by
      * {@code DialogEngine.startCall} and passed in from there. {@code provider} is what
      * decides which vendor speaks this call.
+     *
+     * @param rules the agent's own pronunciation overrides, applied on top of the
+     *              language's normalization; empty for a call with none
      */
-    public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style) {
+    public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style,
+                              List<PronunciationRule> rules) {
         Routed r = route(language, voiceId, style);
-        String speech = SpeechTextNormalizer.normalize(text, r.lang());
+        String speech = SpeechTextNormalizer.normalize(text, r.lang(), rules);
         log.debug("TTS synth: lang={} voice={} -> provider={}", r.lang(), r.voiceName(), r.provider().name());
 
         short[] hit = cache.get(r.provider().name(), r.lang(), r.voiceName(), speech, r.style());
@@ -108,10 +112,16 @@ public class TtsRouter {
         } finally {
             metrics.stopTtsSynth(sample);
         }
+
         metrics.ttsCacheMiss();
         metrics.ttsCharsSynthesized(speech.length());
         cache.put(r.provider().name(), r.lang(), r.voiceName(), speech, pcm, r.style());
         return pcm;
+    }
+
+    /** As above, for a call whose agent defines no pronunciation rules of its own. */
+    public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style) {
+        return synthesize(text, language, voiceId, style, List.of());
     }
 
     /**
@@ -122,7 +132,7 @@ public class TtsRouter {
      *
      * <p>A cache hit goes out as a single chunk (nothing to stream — it's already in
      * memory). A miss is also collected as it streams and cached once complete, so a
-     * repeated sentence still gets the cache's fast path next time.
+     * repeated sentence still gets the cache's fast path next time.</p>
      */
     public void synthesizeStreaming(String text, String language, String voiceId, EffectiveVoiceSettings style,
                                     PcmChunkListener onChunk) {
@@ -184,7 +194,7 @@ public class TtsRouter {
         EffectiveVoiceSettings settings = style != null ? style : EffectiveVoiceSettings.NONE;
 
         // A voice a campaign picked speaks through its own provider, not the company's
-        // engine_config default — a campaign may mix Yandex and Aisha voices across its
+        // configured default — a campaign may mix Yandex and Aisha voices across its
         // targets, each spoken by the provider that owns it.
         TtsVoice chosen = resolve(voiceId, lang);
         TtsProvider ownProvider = chosen != null ? selector.tryFind(chosen.provider()) : null;
@@ -226,7 +236,7 @@ public class TtsRouter {
      *
      * <p>A voice only applies to the language it speaks: a campaign whose default is
      * Uzbek may still hold a target marked ru-RU, and having the Uzbek voice read
-     * Russian text out is worse than the provider's own Russian voice.
+     * Russian text out is worse than the provider's own Russian voice.</p>
      */
     private TtsVoice resolve(String voiceId, String language) {
         if (voiceId == null || voiceId.isBlank()) {

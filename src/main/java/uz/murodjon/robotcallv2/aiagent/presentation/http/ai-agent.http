@@ -1,24 +1,104 @@
-### Create AI agent
+### 1. Get AI Agent Templates (BUSINESS, SUPPORT, MEDICAL, BLANK)
+GET http://localhost:8080/api/ai-agents/templates?language=uz-UZ
+Authorization: Bearer {{auth_token}}
+
+### 2. Create AI Agent (behaviour, STT/TTS and analysis in one)
 POST http://localhost:8080/api/ai-agents
 Content-Type: application/json
 Authorization: Bearer {{auth_token}}
 
 {
-  "name": "Qarz undirish - o'zbekcha",
-  "description": "Kunlik qarzdorlar bazasi uchun",
-  "scenarioId": 1,
+  "name": "Savdo maslahatchisi",
+  "description": "Mijozlar bilan aloqa va mahsulot taqdimoti",
+  "templateId": "BUSINESS",
+  "scenarioId": null,
+  "firstMessage": "Assalomu alaykum! Men kompaniya AI maslahatchisiman. Sizga qanday yordam bera olaman?",
+  "systemPrompt": "Siz kompaniyaning tajribali savdo maslahatchisisiz. Savollarga qisqa, aniq va do'stona javob bering.",
+  "preemptiveGeneration": true,
+  "ivrNavigationEnabled": true,
+  "useRag": false,
   "language": "uz-UZ",
+  "sttProvider": "yandex",
+  "sttModel": "general",
+  "ttsProvider": "yandex",
+  "ttsModel": null,
   "ttsVoice": "nigora",
-  "languageVoices": { "uz-UZ": "nigora", "ru-RU": "alena" },
+  "voiceSpeed": 1.0,
+  "voiceStability": 0.75,
+  "voiceSimilarityBoost": 0.85,
+  "languageVoices": {
+    "uz-UZ": "nigora",
+    "ru-RU": "alena"
+  },
   "persona": "AI_ASSISTANT",
+  "llmModel": "gemini-3.8-flash",
+  "fastLlmModel": "gemini-3.5-flash-lite",
+  "temperature": 0.7,
+  "maxOutputTokens": 250,
+  "dataNeeded": [
+    {
+      "id": "client_name",
+      "type": "string",
+      "name": "Mijoz ismi",
+      "description": "Mijozning to'liq ismi"
+    },
+    {
+      "id": "interest_level",
+      "type": "string",
+      "name": "Qiziqish darajasi",
+      "description": "HIGH, MEDIUM yoki LOW"
+    }
+  ],
+  "dataEvaluation": [
+    {
+      "id": "call_goal_achieved",
+      "name": "Maqsadga erishildi",
+      "scale": "boolean",
+      "criteria": "Mijoz talabi aniqlandimi"
+    },
+    {
+      "id": "politeness",
+      "name": "Xushmuomalalik",
+      "scale": "1-5",
+      "criteria": "Agent va mijoz muloqot ohangi"
+    }
+  ],
+  "zeroPiiRetention": false,
+  "storeCallAudio": true,
+  "conversationRetentionDays": 90,
+  "maxConversationDurationSeconds": 600,
+  "silenceEndCallTimeoutSeconds": 25,
+  "turnTimeoutSeconds": 15,
+  "concurrentCallsLimit": 10,
+  "dailyCallsLimit": 1000,
+  "initiationWebhook": {
+    "url": "https://webhook.site/test-start",
+    "headers": { "Authorization": "Bearer secret" },
+    "timeoutSeconds": 5
+  },
+  "postCallWebhook": {
+    "url": "https://webhook.site/test-end",
+    "headers": { "Authorization": "Bearer secret" },
+    "timeoutSeconds": 10
+  },
   "ambientSound": "OFFICE",
+  "ambientSoundVolume": 1.0,
+  "ambientSoundFadeInSeconds": 1.5,
+  "thinkingSound": "KEYBOARD_TYPING",
+  "thinkingSoundVolume": 0.30,
+  "noiseCancellationEnabled": true,
+  "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
   "emotionAdaptiveVoice": true,
-  "dtmfInputEnabled": false,
+  "dtmfInputEnabled": true,
+  "voicemailAction": "LEAVE_MESSAGE",
+  "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
+  "midCallSmsEnabled": false,
+  "midCallSmsTemplate": null,
   "sipTrunkIds": [1],
   "enabled": true
 }
 
-### Filter AI agents
+### 3. Filter AI Agents
 POST http://localhost:8080/api/ai-agents/filter
 Content-Type: application/json
 Authorization: Bearer {{auth_token}}
@@ -27,30 +107,317 @@ Authorization: Bearer {{auth_token}}
   "page": 0,
   "size": 20,
   "orders": { "CREATED_AT": "DESC" },
+  "search": "savdo",
   "enabled": true
 }
 
-### Get one
+### 4. Get AI Agent by ID
 GET http://localhost:8080/api/ai-agents/1
 Authorization: Bearer {{auth_token}}
 
-### Update (same shape as create; scenarioId may change)
+### 5. Update AI Agent
 PUT http://localhost:8080/api/ai-agents/1
 Content-Type: application/json
 Authorization: Bearer {{auth_token}}
 
 {
-  "name": "Qarz undirish - ruscha",
-  "scenarioId": 1,
-  "language": "ru-RU",
-  "ttsVoice": "alena",
+  "name": "Savdo maslahatchisi (Yangilangan)",
+  "templateId": "BUSINESS",
+  "firstMessage": "Xayrli kun! Sizga qanday yordam bera olaman?",
+  "systemPrompt": "Siz kompaniyaning eng tajribali xodimlaridansiz.",
+  "preemptiveGeneration": true,
+  "language": "uz-UZ",
+  "ttsVoice": "nigora",
   "persona": "HUMAN_LIKE",
-  "llmModel": "gemini-2.5-flash",
+  "llmModel": "gemini-3.8-flash",
+  "fastLlmModel": "gemini-3.5-flash-lite",
   "temperature": 0.6,
   "maxOutputTokens": 300,
   "enabled": true
 }
 
-### Delete (409 while a campaign or inbound route still uses it)
+### 6. Delete AI Agent (409 while a campaign or inbound route still uses it)
 DELETE http://localhost:8080/api/ai-agents/1
 Authorization: Bearer {{auth_token}}
+
+### 6.1. Get Agent Scenario & Behavior (Embedded Scenario)
+GET http://localhost:8080/api/ai-agents/1/scenario
+Authorization: Bearer {{auth_token}}
+
+### 6.2. Update Agent Scenario & Behavior (PROMPT or STRUCTURED_STEPS)
+PUT http://localhost:8080/api/ai-agents/1/scenario
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "scenarioMode": "PROMPT",
+  "firstMessage": "Assalomu alaykum! Sizga qanday yordam bera olaman?",
+  "systemPrompt": "Siz kompaniyaning sun'iy intellekt konsultantisiz. Mijoz bilan muloyim so'zlashib, mahsulotlar bo'yicha maslahat bering.",
+  "stages": [
+    {
+      "id": "GREETING",
+      "purpose": "Mijoz bilan salomlashish va ehtiyojini aniqlash",
+      "allowedTransitions": ["OFFER", "SUPPORT"],
+      "allowedTools": []
+    }
+  ],
+  "guardrails": [
+    "Kompaniya ruxsat bermagan chegirmalarni va'da qilmang",
+    "Boshqa mijozlar ma'lumotlarini oshkor qilmang"
+  ],
+  "factSchema": [
+    {
+      "name": "client_name",
+      "type": "STRING",
+      "description": "Mijoz ismi"
+    }
+  ],
+  "disclosureText": "Ushbu suhbat yozib olinadi."
+}
+
+### 7. Get Agent Analysis Configuration (data_needed & data_evaluation)
+GET http://localhost:8080/api/ai-agents/1/analysis
+Authorization: Bearer {{auth_token}}
+
+### 8. Update Agent Analysis Configuration
+PUT http://localhost:8080/api/ai-agents/1/analysis
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "dataNeeded": [
+    {
+      "id": "order_id",
+      "type": "string",
+      "name": "Buyurtma ID",
+      "description": "Mijozning 6 xonali buyurtma raqami"
+    },
+    {
+      "id": "delivery_time",
+      "type": "string",
+      "name": "Yetkazish vaqti",
+      "description": "Yetkazish uchun qulay vaqt"
+    }
+  ],
+  "dataEvaluation": [
+    {
+      "id": "order_confirmed",
+      "name": "Buyurtma tasdiqlandi",
+      "criteria": "Mijoz buyurtma berishga rozi bo'ldimi"
+    },
+    {
+      "id": "call_politeness",
+      "name": "Xushmuomalalik",
+      "criteria": "Agent va mijoz ohangi muloyim bo'ldimi"
+    }
+  ]
+}
+
+### 9. Get Agent Attached Tools
+GET http://localhost:8080/api/ai-agents/1/tools
+Authorization: Bearer {{auth_token}}
+
+### 10. Attach Tool to Agent
+POST http://localhost:8080/api/ai-agents/1/tools/1
+Authorization: Bearer {{auth_token}}
+
+### 11. Detach Tool from Agent
+DELETE http://localhost:8080/api/ai-agents/1/tools/1
+Authorization: Bearer {{auth_token}}
+
+### 12. Get Agent Limits
+GET http://localhost:8080/api/ai-agents/1/limits
+Authorization: Bearer {{auth_token}}
+
+### 13. Update Agent Limits
+PUT http://localhost:8080/api/ai-agents/1/limits
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "concurrentCallsLimit": 15,
+  "dailyCallsLimit": 500,
+  "maxConversationDurationSeconds": 600,
+  "silenceEndCallTimeoutSeconds": 25,
+  "turnTimeoutSeconds": 10
+}
+
+### 14. Get Agent Advanced Settings
+GET http://localhost:8080/api/ai-agents/1/advanced
+Authorization: Bearer {{auth_token}}
+
+### 15. Update Agent Advanced Settings
+PUT http://localhost:8080/api/ai-agents/1/advanced
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "useRag": true,
+  "preemptiveGeneration": true,
+  "ivrNavigationEnabled": false,
+  "storeCallAudio": true,
+  "zeroPiiRetention": false,
+  "conversationRetentionDays": 60,
+  "initiationWebhook": {
+    "url": "https://api.example.com/webhooks/call-started",
+    "headers": { "Authorization": "Bearer secret_token" },
+    "timeoutSeconds": 5
+  },
+  "postCallWebhook": {
+    "url": "https://api.example.com/webhooks/call-ended",
+    "headers": { "Authorization": "Bearer secret_token" },
+    "timeoutSeconds": 10
+  },
+  "ambientSound": "OFFICE",
+  "ambientSoundVolume": 1.0,
+  "ambientSoundFadeInSeconds": 1.5,
+  "thinkingSound": "KEYBOARD_TYPING",
+  "thinkingSoundVolume": 0.30,
+  "noiseCancellationEnabled": true,
+  "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
+  "emotionAdaptiveVoice": true,
+  "dtmfInputEnabled": true,
+  "voicemailAction": "LEAVE_MESSAGE",
+  "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
+  "midCallSmsEnabled": false,
+  "midCallSmsTemplate": null
+}
+
+### 16. This agent's website widgets — see widget.http
+
+### 17. This agent's knowledge base — see knowledgebase.http
+
+### 18. Get Agent Pronunciation & Phonetic Dictionary
+GET http://localhost:8080/api/ai-agents/1/pronunciation
+Authorization: Bearer {{auth_token}}
+
+### 19. Update Agent Pronunciation Rules
+PUT http://localhost:8080/api/ai-agents/1/pronunciation
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "rules": [
+    {
+      "word": "MCHJ",
+      "replacement": "mas'uliyati cheklangan jamiyat",
+      "caseSensitive": false,
+      "language": "uz"
+    },
+    {
+      "word": "100k",
+      "replacement": "yuz ming",
+      "caseSensitive": false,
+      "language": "uz"
+    },
+    {
+      "word": "Uzcard",
+      "replacement": "uz kard",
+      "caseSensitive": false,
+      "language": "*"
+    }
+  ]
+}
+
+### 20. Get Agent Post-Call Actions & Automated Follow-ups
+GET http://localhost:8080/api/ai-agents/1/post-call-actions
+Authorization: Bearer {{auth_token}}
+
+### 21. Update Agent Post-Call Actions
+PUT http://localhost:8080/api/ai-agents/1/post-call-actions
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "actions": [
+    {
+      "id": "order-sms",
+      "name": "Buyurtma tasdiq SMS",
+      "actionType": "SEND_SMS",
+      "triggerDisposition": "COMPLETED",
+      "onlyOnSuccess": true,
+      "template": "Assalomu alaykum! Buyurtmangiz qabul qilindi. Xulosa: {{summary}}",
+      "webhookUrl": null,
+      "headers": null,
+      "enabled": true
+    },
+    {
+      "id": "crm-webhook",
+      "name": "CRM Sync Webhook",
+      "actionType": "WEBHOOK",
+      "triggerDisposition": null,
+      "onlyOnSuccess": false,
+      "template": null,
+      "webhookUrl": "https://crm.example.com/api/call-completed",
+      "headers": {
+        "Authorization": "Bearer crm_secret"
+      },
+      "enabled": true
+    }
+  ]
+}
+
+### 22. Company secrets a webhook or tool refers to — see secret.http
+
+### 23. Realtime agent: engine first, then that engine's model.
+### Swap llmModel for gemini-2.5-flash-native-audio-latest to run the other Gemini Live model.
+PUT http://localhost:8080/api/ai-agents/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "pipelineMode": "REALTIME",
+  "realtimeProvider": "gemini-live",
+  "llmModel": "gemini-3.1-flash-live-preview"
+}
+
+### 24. ...and the pair is enforced: an OpenAI Realtime model on a Gemini Live agent
+### is refused with 400 REALTIME_MODEL_PROVIDER_MISMATCH rather than failing at call time.
+PUT http://localhost:8080/api/ai-agents/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "pipelineMode": "REALTIME",
+  "realtimeProvider": "gemini-live",
+  "llmModel": "gpt-realtime-2.1"
+}
+
+### 25. Cascade agent: the cheap model a one-word turn is answered on.
+### Blank (or absent) leaves the installation default, DIALOG_FAST_MODEL.
+PUT http://localhost:8080/api/ai-agents/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Uysot qarz undirish",
+  "pipelineMode": "CASCADE",
+  "llmModel": "gemini-3.8-flash",
+  "fastLlmModel": "gemini-3.5-flash-lite"
+}
+
+### 26. ...and how an agent opts out of the downgrade: same id as llmModel.
+### There is no separate off switch — a collections agent that cannot afford a weaker
+### model on "ha" says so by naming the same model twice.
+PUT http://localhost:8080/api/ai-agents/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Uysot qarz undirish",
+  "pipelineMode": "CASCADE",
+  "llmModel": "gemini-3.8-flash",
+  "fastLlmModel": "gemini-3.8-flash"
+}
+
+### 27. An id that is not in the LLM catalog is refused at save (400 AI_MODEL_UNKNOWN),
+### the same check llmModel goes through.
+PUT http://localhost:8080/api/ai-agents/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Uysot qarz undirish",
+  "pipelineMode": "CASCADE",
+  "fastLlmModel": "gemini-1.0-nano"
+}

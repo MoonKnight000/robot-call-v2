@@ -7,7 +7,7 @@ import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
+import uz.murodjon.robotcallv2.report.application.dto.DashboardSummaryResponse;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportExportUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
@@ -78,6 +78,12 @@ public class ReportControllerImpl implements ReportController {
     @Override
     public ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(long companyId, AuditFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(reportUseCase.auditLog(companyId, filter)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<DashboardSummaryResponse>> dashboardSummary(long companyId, String range, String from, String to,
+                                                                                  Long campaignId, Long scenarioId) {
+        return ResponseEntity.ok(ResponseData.ok(reportUseCase.dashboardSummary(companyId, range, from, to, campaignId, scenarioId)));
     }
 
     @Override

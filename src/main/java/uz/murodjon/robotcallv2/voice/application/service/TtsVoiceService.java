@@ -4,8 +4,7 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
-import uz.murodjon.robotcallv2.engine.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
 import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 import uz.murodjon.robotcallv2.voice.application.port.output.TtsVoiceRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
@@ -13,13 +12,12 @@ import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 import java.util.List;
 
 /**
- * The voices a campaign can be created with.
+ * The voices an agent can be created with.
  *
  * <p>A voice belongs to whichever engine speaks it, and the two families do not overlap:
  * a cascade call is spoken by a TTS vendor, a REALTIME call by the speech-to-speech
  * engine itself, and neither understands the other's voice names. So "selectable" means
- * two different things depending on who is asking — see
- * {@link #findSelectableByCompanyId}.
+ * two different things depending on who is asking — see {@link #findSelectableByMode}.
  */
 @Service
 public class TtsVoiceService implements TtsVoiceUseCase {
@@ -27,40 +25,25 @@ public class TtsVoiceService implements TtsVoiceUseCase {
     private final TtsVoiceRepository ttsVoiceRepository;
     private final TtsProviderSelector ttsProviderSelector;
     private final RealtimeProviderRegistry realtimeProviderRegistry;
-    private final EngineConfigService engineConfigService;
 
-    public TtsVoiceService(TtsVoiceRepository ttsVoiceRepository, TtsProviderSelector ttsProviderSelector,
-                           RealtimeProviderRegistry realtimeProviderRegistry,
-                           EngineConfigService engineConfigService) {
+    public TtsVoiceService(TtsVoiceRepository ttsVoiceRepository,
+                           TtsProviderSelector ttsProviderSelector,
+                           RealtimeProviderRegistry realtimeProviderRegistry) {
         this.ttsVoiceRepository = ttsVoiceRepository;
         this.ttsProviderSelector = ttsProviderSelector;
         this.realtimeProviderRegistry = realtimeProviderRegistry;
-        this.engineConfigService = engineConfigService;
     }
 
     /**
-     * Voices a TTS vendor can synthesize, with no company to narrow by. This is the set
-     * the warm-up sweep pre-renders, which is why realtime voices are deliberately absent:
-     * they are never synthesized by anything, and warming them would spend a TTS vendor's
-     * quota rendering phrases under a voice that vendor does not have.
-     */
-    @Override
-    public List<TtsVoice> findSelectable(String language) {
-        return ttsVoiceRepository.forLanguage(language).stream()
-                .filter(v -> ttsProviderSelector.exists(v.provider()))
-                .toList();
-    }
-
-    /**
-     * The voices the operator may actually pick from, narrowed to the engine their company
-     * runs on. Offering the other family would let a campaign be saved with a voice the
+     * The voices the operator may actually pick from, narrowed to the engine the agent
+     * runs on. Offering the other family would let an agent be saved with a voice its
      * engine cannot pronounce — the call would fall back to a default voice and the
      * setting would look broken rather than wrong.
      */
     @Override
-    public List<TtsVoice> findSelectableByCompanyId(long companyId, String language) {
+    public List<TtsVoice> findSelectableByMode(PipelineMode mode, String language) {
         return ttsVoiceRepository.forLanguage(language).stream()
-                .filter(voice -> ownedByEngineOf(companyId, voice))
+                .filter(voice -> spokenBy(mode, voice))
                 .toList();
     }
 
@@ -69,27 +52,29 @@ public class TtsVoiceService implements TtsVoiceUseCase {
         return ttsVoiceRepository.find(id);
     }
 
-    /**
-     * Whether the company may save a campaign with this voice — engine-aware for the same
-     * reason {@link #findSelectableByCompanyId} is, so validation accepts exactly what the
-     * form offered.
-     */
     @Override
-    public boolean isSelectable(long companyId, String id) {
+    public boolean isSelectable(PipelineMode mode, String id) {
         TtsVoice voice = ttsVoiceRepository.find(id);
-        return voice != null && ownedByEngineOf(companyId, voice);
+        return voice != null && spokenBy(mode, voice);
     }
 
     @Override
-    public List<String> findSelectableIds(long companyId) {
-        return findSelectableByCompanyId(companyId, null).stream().map(TtsVoice::id).toList();
+    public List<String> findSelectableIds(PipelineMode mode) {
+        return findSelectableByMode(mode, null).stream().map(TtsVoice::id).toList();
     }
 
-    private boolean ownedByEngineOf(long companyId, TtsVoice voice) {
-        boolean realtime = engineConfigService.findEffectiveByCompanyId(companyId).mode()
-                == PipelineMode.REALTIME;
-        return realtime
-                ? realtimeProviderRegistry.exists(voice.provider())
-                : ttsProviderSelector.exists(voice.provider());
+    /**
+     * Whether the given engine can speak this voice. A null mode means "either engine",
+     * which is what a caller with no agent in hand — the company-wide default — asks for.
+     */
+    private boolean spokenBy(PipelineMode mode, TtsVoice voice) {
+        if (mode == PipelineMode.REALTIME) {
+            return realtimeProviderRegistry.exists(voice.provider());
+        }
+        if (mode == PipelineMode.CASCADE) {
+            return ttsProviderSelector.exists(voice.provider());
+        }
+        return realtimeProviderRegistry.exists(voice.provider())
+                || ttsProviderSelector.exists(voice.provider());
     }
 }

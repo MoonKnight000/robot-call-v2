@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.user.infrastructure.persistence.entity;
 import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.time.Instant;
@@ -60,8 +61,9 @@ public class UserEntity {
     @Column(name = "position")
     private String position;
 
-    @Column(name = "avatar_file_id")
-    private Long avatarFileId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "avatar_file_id")
+    private StoredFileEntity avatarFile;
 
     @Column(name = "call_columns")
     private String callColumns;
@@ -191,12 +193,16 @@ public class UserEntity {
         this.position = position;
     }
 
-    public Long getAvatarFileId() {
-        return avatarFileId;
+    public StoredFileEntity getAvatarFile() {
+        return avatarFile;
     }
 
-    public void setAvatarFileId(Long avatarFileId) {
-        this.avatarFileId = avatarFileId;
+    public void setAvatarFile(StoredFileEntity avatarFile) {
+        this.avatarFile = avatarFile;
+    }
+
+    public Long getAvatarFileId() {
+        return avatarFile != null ? avatarFile.getId() : null;
     }
 
     public String getCallColumns() {

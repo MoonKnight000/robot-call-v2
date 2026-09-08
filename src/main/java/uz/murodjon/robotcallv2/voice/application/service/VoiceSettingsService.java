@@ -2,8 +2,8 @@ package uz.murodjon.robotcallv2.voice.application.service;
 
 import org.springframework.stereotype.Service;
 
+import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
 import uz.murodjon.robotcallv2.voice.application.dto.UpdateVoiceSettingsRequest;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 import uz.murodjon.robotcallv2.voice.application.port.output.VoiceSettingsRepository;
@@ -18,14 +18,14 @@ public class VoiceSettingsService implements VoiceSettingsUseCase {
 
     private final VoiceSettingsRepository voiceSettingsRepository;
     private final AuditService auditService;
-    private final EngineConfigService engineConfigService;
+    private final TtsProperties ttsProperties;
 
     public VoiceSettingsService(VoiceSettingsRepository voiceSettingsRepository,
                                 AuditService auditService,
-                                EngineConfigService engineConfigService) {
+                                TtsProperties ttsProperties) {
         this.voiceSettingsRepository = voiceSettingsRepository;
         this.auditService = auditService;
-        this.engineConfigService = engineConfigService;
+        this.ttsProperties = ttsProperties;
     }
 
     @Override
@@ -42,7 +42,7 @@ public class VoiceSettingsService implements VoiceSettingsUseCase {
 
     @Override
     public EffectiveVoiceSettings effective(long companyId) {
-        String provider = engineConfigService.findEffectiveByCompanyId(companyId).ttsProvider();
+        String provider = ttsProperties.provider();
         VoiceSettings row = voiceSettingsRepository.findByCompanyId(companyId);
         return row == null ? new EffectiveVoiceSettings(provider, null, null, null)
                 : new EffectiveVoiceSettings(provider, row.speed(), row.pitch(), null);

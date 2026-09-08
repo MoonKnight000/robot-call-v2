@@ -4,7 +4,7 @@ import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
+import uz.murodjon.robotcallv2.report.application.dto.DashboardSummaryResponse;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
@@ -47,4 +47,7 @@ public interface ReportUseCase {
     List<FunnelStage> funnel(long companyId, String from, String to, Long campaignId);
 
     ReportSummary summary(long companyId, String from, String to, Long campaignId);
+
+    DashboardSummaryResponse dashboardSummary(long companyId, String range, String from, String to,
+                                              Long campaignId, Long scenarioId);
 }

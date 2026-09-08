@@ -3,16 +3,15 @@ package uz.murodjon.robotcallv2.donotcall.application.service;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.contact.application.service.ContactService;
-import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRemoveResponse;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRow;
 import uz.murodjon.robotcallv2.donotcall.application.mapper.DoNotCallMapper;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
 import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCall;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;

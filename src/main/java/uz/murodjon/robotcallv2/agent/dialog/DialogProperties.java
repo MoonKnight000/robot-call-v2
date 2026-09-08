@@ -98,9 +98,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       "to'ladim"). Those are most of a call and are answered the same
  *                       way by any model, while the time-to-first-token is paid on every
  *                       one of them. Blank keeps every turn on the company's configured
- *                       model
+ *                       model. This is the installation default: an agent that names its
+ *                       own {@code fastLlmModel} is answered on that instead
+ *                       ({@code TurnRunner#fastModelOf})
  * @param fastModelMaxWords how short "almost nothing" is. Above this the caller is saying
- *                       something, and something is what the larger model is for
+ *                       something, and something is what the larger model is for. Length
+ *                       is not the only test — a short answer that names a number goes to
+ *                       the full model whatever its length ({@code TurnRunner#modelFor})
  * @param stateScopedTools send only the tools the current FSM state can legitimately
  *                       use, instead of all of them on every turn. Tool declarations
  *                       are re-billed with each request, and a tool that cannot fire
@@ -128,6 +132,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       turnaround and is the part most likely to be wrong. Off by default:
  *                       it takes the turn away from the scenario, so the wording has to be
  *                       checked against the company that is actually running
+ * @param knowledgePassages how many passages from the agent's knowledge sources are put in
+ *                       front of a turn ({@code useRag} agents only). Defaults to 3
  * @param lowConfidenceThreshold recognition confidence below which the turn is told to
  *                       repeat what it heard back before acting on it. A misheard date
  *                       that reaches {@code recordPaymentPromise} is a promise filed for a
@@ -187,6 +193,16 @@ public record DialogProperties(
         int factViolationEscalateAfter,
         long maxTokensPerCall,
         boolean preToolSpeech,
+        int knowledgePassages,
         TestContextProperties testContext
 ) {
+
+    public DialogProperties {
+        // Three passages is about 2700 characters of context. More stops helping and starts
+        // hurting: the answer gets buried among near-misses, and every one of them is paid
+        // for in prompt tokens on every turn of every call the agent takes.
+        if (knowledgePassages <= 0) {
+            knowledgePassages = 3;
+        }
+    }
 }

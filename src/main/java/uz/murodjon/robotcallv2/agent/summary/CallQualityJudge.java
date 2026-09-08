@@ -93,7 +93,7 @@ public class CallQualityJudge {
             chatClient = ChatClient.create(chatModel);
             log.info("Call quality judge ready (model={}, sample rate={})", model, sampleRate);
         } else {
-            log.warn("Call quality judge has no LLM ChatModel (set GEMINI_API_KEY or GROQ_API_KEY); scoring disabled");
+            log.warn("Call quality judge has no LLM ChatModel (set GEMINI_API_KEY or OPENAI_API_KEY); scoring disabled");
         }
     }
 

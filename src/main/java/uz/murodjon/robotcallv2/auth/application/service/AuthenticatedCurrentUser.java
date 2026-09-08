@@ -13,10 +13,19 @@ import java.util.Optional;
 @Component
 public class AuthenticatedCurrentUser implements CurrentUser {
 
+    /**
+     * @return the {@code app_user} behind this request, or empty when there is none.
+     *
+     * <p>Empty covers two cases that mean the same thing to a caller: no identity at all,
+     * and an identity that is not a person — an API key authenticates as its company with
+     * a {@code userId} of 0. Answering 0 there would let a key reach the endpoints that
+     * act on "my" rows (profile, notifications, sessions) and act on a user that does not
+     * exist; empty makes them refuse it, which is what a machine credential deserves.
+     */
     @Override
     public Optional<Long> id() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof AuthenticatedUser user) {
+        if (auth != null && auth.getPrincipal() instanceof AuthenticatedUser user && user.userId() > 0) {
             return Optional.of(user.userId());
         }
         return Optional.empty();

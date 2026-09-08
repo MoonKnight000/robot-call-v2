@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import uz.murodjon.robotcallv2.billing.domain.entity.BillingUsage;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
 
@@ -13,7 +13,12 @@ public class BillingUsageEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
     @Column(name = "billing_period", nullable = false, length = 7)
@@ -61,9 +66,6 @@ public class BillingUsageEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public BillingUsageEntity() {
-    }
-
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
@@ -79,65 +81,39 @@ public class BillingUsageEntity {
         updatedAt = Instant.now();
     }
 
-    public BillingUsage toDomain() {
-        return new BillingUsage(
-                id,
-                companyId,
-                billingPeriod,
-                usedMinutes != null ? usedMinutes : 0,
-                limitMinutes != null ? limitMinutes : 5000,
-                usedTokens != null ? usedTokens : 0L,
-                limitTokens != null ? limitTokens : 2000000L,
-                usedTtsChars != null ? usedTtsChars : 0L,
-                limitTtsChars != null ? limitTtsChars : 1000000L,
-                usedChannels != null ? usedChannels : 0,
-                limitChannels != null ? limitChannels : 30,
-                overagePriceMinute != null ? overagePriceMinute : 400.0,
-                overagePriceToken != null ? overagePriceToken : 0.05,
-                overagePriceTts != null ? overagePriceTts : 0.02,
-                totalSpendUzs != null ? totalSpendUzs : 0L,
-                createdAt,
-                updatedAt
-        );
-    }
-
-    public static BillingUsageEntity fromDomain(BillingUsage domain) {
-        BillingUsageEntity entity = new BillingUsageEntity();
-        entity.id = domain.id();
-        entity.companyId = domain.companyId();
-        entity.billingPeriod = domain.billingPeriod();
-        entity.usedMinutes = domain.usedMinutes();
-        entity.limitMinutes = domain.limitMinutes();
-        entity.usedTokens = domain.usedTokens();
-        entity.limitTokens = domain.limitTokens();
-        entity.usedTtsChars = domain.usedTtsChars();
-        entity.limitTtsChars = domain.limitTtsChars();
-        entity.usedChannels = domain.usedChannels();
-        entity.limitChannels = domain.limitChannels();
-        entity.overagePriceMinute = domain.overagePriceMinute();
-        entity.overagePriceToken = domain.overagePriceToken();
-        entity.overagePriceTts = domain.overagePriceTts();
-        entity.totalSpendUzs = domain.totalSpendUzs();
-        entity.createdAt = domain.createdAt();
-        entity.updatedAt = domain.updatedAt();
-        return entity;
-    }
-
     public Long getId() { return id; }
-    public Long getCompanyId() { return companyId; }
+    public void setId(Long id) { this.id = id; }
+    public CompanyEntity getCompany() { return company; }
+    public void setCompany(CompanyEntity company) { this.company = company; }
+    public Long getCompanyId() { return company != null ? company.getId() : null; }
     public String getBillingPeriod() { return billingPeriod; }
+    public void setBillingPeriod(String billingPeriod) { this.billingPeriod = billingPeriod; }
     public Integer getUsedMinutes() { return usedMinutes; }
+    public void setUsedMinutes(Integer usedMinutes) { this.usedMinutes = usedMinutes; }
     public Integer getLimitMinutes() { return limitMinutes; }
+    public void setLimitMinutes(Integer limitMinutes) { this.limitMinutes = limitMinutes; }
     public Long getUsedTokens() { return usedTokens; }
+    public void setUsedTokens(Long usedTokens) { this.usedTokens = usedTokens; }
     public Long getLimitTokens() { return limitTokens; }
+    public void setLimitTokens(Long limitTokens) { this.limitTokens = limitTokens; }
     public Long getUsedTtsChars() { return usedTtsChars; }
+    public void setUsedTtsChars(Long usedTtsChars) { this.usedTtsChars = usedTtsChars; }
     public Long getLimitTtsChars() { return limitTtsChars; }
+    public void setLimitTtsChars(Long limitTtsChars) { this.limitTtsChars = limitTtsChars; }
     public Integer getUsedChannels() { return usedChannels; }
+    public void setUsedChannels(Integer usedChannels) { this.usedChannels = usedChannels; }
     public Integer getLimitChannels() { return limitChannels; }
+    public void setLimitChannels(Integer limitChannels) { this.limitChannels = limitChannels; }
     public Double getOveragePriceMinute() { return overagePriceMinute; }
+    public void setOveragePriceMinute(Double overagePriceMinute) { this.overagePriceMinute = overagePriceMinute; }
     public Double getOveragePriceToken() { return overagePriceToken; }
+    public void setOveragePriceToken(Double overagePriceToken) { this.overagePriceToken = overagePriceToken; }
     public Double getOveragePriceTts() { return overagePriceTts; }
+    public void setOveragePriceTts(Double overagePriceTts) { this.overagePriceTts = overagePriceTts; }
     public Long getTotalSpendUzs() { return totalSpendUzs; }
+    public void setTotalSpendUzs(Long totalSpendUzs) { this.totalSpendUzs = totalSpendUzs; }
     public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

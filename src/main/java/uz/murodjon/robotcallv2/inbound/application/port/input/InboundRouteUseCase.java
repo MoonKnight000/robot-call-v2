@@ -1,10 +1,10 @@
 package uz.murodjon.robotcallv2.inbound.application.port.input;
 
 import uz.murodjon.robotcallv2.inbound.application.dto.CreateInboundRouteRequest;
-import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.application.dto.InboundRouteRow;
 import uz.murodjon.robotcallv2.inbound.application.dto.UpdateInboundRouteRequest;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
+import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 

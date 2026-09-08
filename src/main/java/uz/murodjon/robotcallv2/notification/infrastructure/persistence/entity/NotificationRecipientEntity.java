@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.notification.infrastructure.persistence.entity;
 import jakarta.persistence.*;
 
 import java.time.Instant;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
 /** JPA entity for notification_recipient — links to NotificationEntity. */
 @Entity
@@ -17,8 +18,13 @@ public class NotificationRecipientEntity {
     @JoinColumn(name = "notification_id", nullable = false)
     private NotificationEntity notification;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private UserEntity user;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "user_id", insertable = false, updatable = false)
+    private Long userId;
 
     @Column(name = "read_at")
     private Instant readAt;
@@ -35,12 +41,16 @@ public class NotificationRecipientEntity {
         this.notification = notification;
     }
 
-    public long getUserId() {
-        return userId;
+    public UserEntity getUser() {
+        return user;
     }
 
-    public void setUserId(long userId) {
-        this.userId = userId;
+    public void setUser(UserEntity user) {
+        this.user = user;
+    }
+
+    public long getUserId() {
+        return user != null ? user.getId() : 0L;
     }
 
     public Instant getReadAt() {

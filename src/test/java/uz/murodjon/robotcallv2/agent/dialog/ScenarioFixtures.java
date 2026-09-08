@@ -1,11 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
-import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
-import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
-import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ToolParamDef;
+import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 
 import java.util.List;
 import java.util.Map;

@@ -28,14 +28,14 @@ public interface CallResultJpaRepository extends JpaRepository<CallResultEntity,
                                 @Param("reasonCode") String reasonCode, @Param("promisedDate") LocalDate promisedDate,
                                 @Param("promisedAmount") BigDecimal promisedAmount, @Param("sentiment") String sentiment,
                                 @Param("needsFollowUp") boolean needsFollowUp, @Param("followUpNote") String followUpNote,
-                                @Param("escalated") boolean escalated, @Param("crmNoteId") Long crmNoteId,
+                                @Param("escalated") boolean escalated, @Param("crmNoteId") String crmNoteId,
                                 @Param("outcome") String outcome);
 
     /** The note landed — record its id so the row leaves the queue. */
     @Modifying @Transactional
     @Query("UPDATE CallResultEntity r SET r.crmNoteId = :noteId, r.crmAttempts = r.crmAttempts + 1, "
             + "r.crmLastError = NULL WHERE r.call.id = :callId")
-    void markCrmPosted(@Param("callId") long callId, @Param("noteId") Long noteId);
+    void markCrmPosted(@Param("callId") long callId, @Param("noteId") String noteId);
 
     /** The post failed — count the attempt so a permanently broken row stops retrying. */
     @Modifying @Transactional

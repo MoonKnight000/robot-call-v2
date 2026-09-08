@@ -1,9 +1,9 @@
 ﻿# Tizim Sozlamalari API (Settings)
 
-`uz.murodjon.robotcallv2` · huquq: sozlama bo'yicha — **AI_MODEL_***, **ENGINE_***, **VOICE_***, **NOTIFICATION_SETTINGS_***, **INTEGRATION_***
+`uz.murodjon.robotcallv2` · huquq: sozlama bo'yicha — **AI_MODEL_***, **VOICE_***, **NOTIFICATION_SETTINGS_***, **INTEGRATION_***
 
 Ushbu modul kompaniya darajasidagi barcha global texnik parametrlarni boshqaradi:
-1. **Speech Engine** (`/api/settings/engine`) — Nutqni aniqlash va sintezlash pipeline arxitekturasi (`CASCADE` vs `REALTIME`), Pipecat provayderlari.
+1. **Speech Engine Variantlari** (`GET /api/ai-agents/engine-options`) — Nutqni aniqlash va sintezlash provayderlari katalogi. Pipeline konfiguratsiyasining o'zi har bir AI Agent darajasida saqlanadi.
 2. **AI Model & Token Limitlari** (`/api/settings/ai-model`) — LLM modeli, harorat (temperature), tokenlar va qo'ng'iroq vaqti cheklovlari.
 3. **TTS Ovoz Sozlamalari** (`/api/settings/voice`) — Tezlik (speed) va ohang (pitch) korreksiyasi.
 4. **Kompaniya Bildirishnomalari** (`/api/settings/notifications`) — Telegram, Email va Webhook kanallari bo'yicha hodisalar matritsasi.
@@ -11,100 +11,36 @@ Ushbu modul kompaniya darajasidagi barcha global texnik parametrlarni boshqaradi
 
 ---
 
-## 1. Speech Engine Sozlamalari (`/api/settings/engine`)
+## 1. Speech Engine Variantlari (`/api/ai-agents/engine-options`)
 
-Kompaniya qo'ng'iroqlari qaysi pipeline va provayderlar orqali ishlashini belgilaydi.
+> [!IMPORTANT]
+> **Arxitektura o'zgarishi:** Speech Engine sozlamalari (`pipelineMode`, `sttProvider`, `ttsProvider`, `realtimeProvider`, `pipecat*`) kompaniya darajasidan to'liq **AI Agent darajasiga** ko'chirildi. Har bir agent mustaqil ravishda o'zining `CASCADE` yoki `REALTIME` rejimiga va shaxsiy provayderlariga ega bo'ladi. Batafsil: [ai-agents.md](ai-agents.md).
 
 ### Pipeline Rejimlari (`PipelineMode`):
-- `CASCADE`: STT (Aisha / Yandex / Whisper) ➔ LLM (Gemini / Claude / OpenAI) ➔ TTS (Aisha / Yandex / Google). DTMF klaviatura terishni qo'llab-quvvatlaydi.
+- `CASCADE`: STT (Deepgram / Yandex / Aisha / Whisper) ➔ LLM (Gemini / Claude / OpenAI) ➔ TTS (ElevenLabs / Yandex / Aisha / Google).
 - `REALTIME`: Speech-to-speech to'g'ridan-to'g'ri multimodal oqim (Gemini Live, OpenAI Realtime, Qwen-Omni, Pipecat). Minimal kechikish (<500ms).
 
-### `GET /api/settings/engine` — Kompaniya override sozlamalari
-Kompaniya tomonidan qo'lda o'rnatilgan sozlamalarni qaytaradi (o'rnatilmagan parametrlar `null`).
-
-**Response** (`EngineConfig`):
-```json
-{
-  "accept": true,
-  "data": {
-    "companyId": 1,
-    "mode": "CASCADE",
-    "sttProvider": "aisha",
-    "ttsProvider": "yandex",
-    "realtimeProvider": null,
-    "pipecatStt": null,
-    "pipecatLlm": null,
-    "pipecatTts": null,
-    "createdAt": "2026-08-01T12:00:00Z"
-  },
-  "messageCode": null
-}
-```
-
-### `GET /api/settings/engine/effective` — Haqiqiy faol sozlamalar
-Kompaniya override'lari va tizim standart (fallback) konfiguratsiyasini birlashtirib, aynan hozir qo'ng'iroqda nima ishlatilishini ko'rsatadi.
-
-**Response** (`EffectiveEngineConfig`):
-```json
-{
-  "accept": true,
-  "data": {
-    "mode": "CASCADE",
-    "sttProvider": "aisha",
-    "ttsProvider": "yandex",
-    "realtimeProvider": "gemini-live",
-    "pipecatStt": null,
-    "pipecatLlm": null,
-    "pipecatTts": null
-  },
-  "message": null,
-  "messageCode": null
-}
-```
-
-### `GET /api/settings/engine/options` — Mavjud variantlar katalogi
+### `GET /api/ai-agents/engine-options` — Mavjud variantlar katalogi
 Platformada joriy vaqtda API kalitlari ulangan va ishlatish mumkin bo'lgan provayderlar ro'yxatini qaytaradi.
 
-**Response** (`EngineOptions`) — maydon nomlari qisqa (`modes`/`sttProviders` **emas**),
-va `PipelineMode` ro'yxati umuman qaytarilmaydi (u ikkita qat'iy qiymat: `CASCADE`,
-`REALTIME`):
-
+**Response** (`EngineOptionsResponse`, huquq: `AI_AGENT_READ`):
 ```json
 {
   "accept": true,
   "data": {
-    "stt": ["aisha", "yandex", "whisper"],
-    "tts": ["yandex", "aisha", "google"],
-    "realtime": ["gemini-live", "openai-realtime", "pipecat"],
-    "pipecatStt": ["deepgram", "whisper"],
-    "pipecatLlm": ["openai", "gemini"],
-    "pipecatTts": ["cartesia", "elevenlabs"]
+    "stt": ["aisha", "deepgram", "gemini", "yandex"],
+    "tts": ["aisha", "cartesia", "gemini", "yandex"],
+    "realtime": ["gemini-live", "moshi", "openai-realtime", "pipecat", "qwen-omni"],
+    "pipecatStt": ["deepgram", "gemini", "soniox", "speechmatics", "yandex", "whisper"],
+    "pipecatLlm": ["claude-3-5-haiku", "claude-3-5-sonnet", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gpt-4o-mini", "groq-llama-3.3-70b"],
+    "pipecatTts": ["cartesia", "elevenlabs", "gemini", "yandex", "google-chirp"]
   },
   "message": null,
   "messageCode": null
 }
 ```
 
-`pipecat*` ro'yxatlari faqat `realtimeProvider = pipecat` tanlanganda ma'noga ega —
-Pipecat ichida qaysi STT/LLM/TTS ishlashini belgilaydi (`V3__pipecat_sub_engines.sql`).
-
-### `PUT /api/settings/engine` — Sozlamalarni yangilash
-Maydon qiymati `null` yuborilsa — o'sha parametr tizim standartiga (default) qaytariladi.
-
-**Request Body** (`UpdateEngineConfigRequest`):
-```json
-{
-  "mode": "CASCADE",
-  "sttProvider": "aisha",
-  "ttsProvider": "aisha",
-  "realtimeProvider": null,
-  "pipecatStt": null,
-  "pipecatLlm": null,
-  "pipecatTts": null
-}
-```
-
-Javob — yangilangan `EngineConfig` (yuqoridagi `GET` shakli).
+`pipecat*` ro'yxatlari faqat `realtimeProvider = pipecat` tanlanganda ma'noga ega — Pipecat ichida qaysi STT/LLM/TTS ishlashini belgilaydi.
 
 ---
 
@@ -123,7 +59,7 @@ yozilgan model qo'ng'iroq paytida emas, PUT javobida `400 AI_MODEL_UNKNOWN` bila
   "accept": true,
   "data": {
     "companyId": 1,
-    "model": "gemini-2.5-flash",
+    "model": "gemini-3.8-flash",
     "temperature": 0.3,
     "maxOutputTokens": 250,
     "maxCallSeconds": 300,
@@ -140,7 +76,7 @@ Ixtiyoriy maydon bo'sh (`null`) qoldirilsa, tizim standarti tiklanadi.
 **Request Body** (`UpdateAiModelConfigRequest`):
 ```json
 {
-  "model": "gemini-2.5-flash",
+  "model": "gemini-3.8-flash",
   "temperature": 0.2,
   "maxOutputTokens": 300,
   "maxCallSeconds": 600,
@@ -325,24 +261,77 @@ ulanmaydi.
 `CONTRACT_PAYMENT`, `CALL`. `grants[].scope` — `READ`, `SAVE`, `DELETE`.
 `status` (`CrmIntegrationStatus`) — `NOT_CONNECTED`, `CONNECTED`, `ERROR`.
 
+**Standart holat.** `R__seed_data.sql` birinchi kompaniya uchun bu qatorni allaqachon
+yaratadi — `appName: "Uysot Voice Agent"`, status `NOT_CONNECTED` (token yo'q) va platforma
+haqiqatan chaqiradigan to'rtta grant:
+
+| Grant | Nima uchun |
+|---|---|
+| `LEAD:READ` | `GET /lead/{id}`, `POST /lead/filter` — kimga qo'ng'iroq qilinayotgani; kiruvchi qo'ng'iroqda raqam bo'yicha mijozni aniqlash |
+| `LEAD_NOTE:SAVE` | `POST /lead-note/{leadId}/list` — har bir suhbatdan keyingi izoh |
+| `CONTRACT:READ` | `POST /contract/filter`, `GET /contract/{id}` — kunlik qarzdorlar ro'yxati |
+| `CALL:SAVE` | `POST /call-history` — qo'ng'iroqning o'zi lead tarixiga |
+
+`LEAD_TASK`, `CONTRACT_PAYMENT` va hech qanday `DELETE` so'ralmaydi — bu integratsiya
+mijozning CRM'idan hech nima o'chirmaydi. Rozilik ekrani shu ro'yxatni kompaniyaga
+ko'rsatadi, shuning uchun ishlatilmaydigan ruxsatni so'rash — rad javobini so'rash.
+
+Ro'yxatni shu `PUT` bilan o'zgartirsangiz bo'ladi; reseed uni qayta yozmaydi.
+
 ### `GET /api/settings/integrations/uysot/authorize-url` — OAuth avtorizatsiya havolasi
 
 **Response** (`AuthorizeUrlResponse`):
 
 ```json
 {
-  "authorizeUrl": "https://app.uysot.uz/oauth/authorize?client_id=...&app_name=...&redirect_url=...&grants=...&state=..."
+  "authorizeUrl": "https://crm.uysot.uz/oauth/authorize?response_type=code&client_id=uysot_app_...&redirect_uri=https%3A%2F%2Fvoice.app.uysot.uz%2Fapi%2Fsettings%2Fintegrations%2Fuysot%2Fcallback&scope=PERMISSION_OPEN_API_LEAD%3AREAD%20PERMISSION_OPEN_API_CONTRACT%3AREAD&state=..."
 }
 ```
+
+Parametrlar RFC 6749 bo'yicha: `response_type=code`, `client_id`, `redirect_uri`, `scope`,
+`state`. `scope` — bo'sh joy (`%20`) bilan ajratilgan `PERMISSION_OPEN_API_<X>:<SCOPE>`
+juftliklari; ular `PUT /uysot` da saqlangan `grants` dan yasaladi. Kompaniya so'ralganidan
+**kamrog'ini** tasdiqlashi mumkin — haqiqiy ruxsatlar token javobidagi `scope` da keladi.
+
+Frontend bu havolani shunchaki brauzerda ochadi.
 
 ### `GET /api/settings/integrations/uysot/callback` — OAuth qaytish nuqtasi
 
 **Permissionsiz** (Uysot brauzerni shu manzilga qaytaradi, foydalanuvchi sessiyasi bilan
-emas). Query parametrlar: `code` va `state` — ikkalasi ham majburiy. Tokenni almashtirib
-saqlaydi; javob `data: null`.
+emas — kompaniya imzolangan `state` dan aniqlanadi). Query parametrlar: `code` va `state` —
+ikkalasi ham majburiy.
 
-Bu manzil frontend tomonidan chaqirilmaydi — `authorize-url` dagi `redirect_url` sifatida
-Uysot'ga beriladi.
+Bu manzil frontend tomonidan **chaqirilmaydi** — `authorize-url` dagi `redirect_uri`
+sifatida Uysot'ga beriladi va uni brauzer ochadi.
+
+**Javob — `ResponseData` emas, `302 Found`.** (Fayl yuklab olish va SSE bilan bir qatorda
+uchinchi istisno: bu yerdagi mijoz — odamning brauzeri.) Token almashtirilgach, brauzer
+`voice-agent.integration.uysot.callback-redirect-url` ga yuboriladi:
+
+| Natija | Location |
+|---|---|
+| Muvaffaqiyat | `http://localhost:5173/settings/integrations?crm=connected` |
+| Xato | `http://localhost:5173/settings/integrations?crm=error&reason=<ErrorCode>` |
+
+`reason` — API'ning boshqa joylaridagi bilan bir xil `ErrorCode` nomi
+(`UYSOT_OAUTH_TOKEN_EXCHANGE_HTTP_ERROR`, `OAUTH_STATE_INVALID`, …), ya'ni frontend uni
+xuddi boshqa xatolar kabi tarjima qiladi. Sahifa ochilganda `GET /api/settings/integrations`
+bilan haqiqiy holatni (`status`, `connectedAt`) o'qib olish kerak — query parametr faqat
+nima bo'lganini aytadi.
+
+`callback-redirect-url` bo'sh bo'lsa brauzer ilova ildiziga (`/`) yuboriladi.
+
+> ⚠️ **Uysot'da OAuth application yaratayotganda `Redirect URI` sifatida aynan shu to'liq
+> manzil yoziladi**, faqat host o'zinikiga almashtiriladi:
+> `https://<backend-host>/api/settings/integrations/uysot/callback`
+>
+> Uysot uni **belgi-belgi** solishtiradi (oxirgi `/` ham ahamiyatli) va HTTPS talab qiladi;
+> mos kelmasa `6902 — invalid redirect_uri` qaytadi. Xuddi shu qiymat serverda
+> `UYSOT_OAUTH_REDIRECT_URI` ga qo'yilishi kerak — token almashishda ham o'sha yuboriladi.
+>
+> Avtorizatsiya sahifasining hosti ro'yxatdan o'tishda beriladi; agar u
+> `https://crm.uysot.uz/oauth/authorize` bo'lmasa — `UYSOT_OAUTH_AUTHORIZE_URL` bilan
+> almashtiring.
 
 ### `DELETE /api/settings/integrations/uysot` — Integratsiyani uzish
 Tizimdan saqlangan token va ruxsatlarni bekor qiladi. Javob — `data: null`.

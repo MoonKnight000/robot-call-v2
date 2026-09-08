@@ -153,6 +153,54 @@ Authorization: Bearer {{auth_token}}
   "enabled": true
 }
 
+### Configure a chained source instead: the endpoint that lists who to call is not the one
+### that knows their number, so later steps run once per row of the first
+PUT http://localhost:8080/api/campaigns/1/target-source
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "provider": "CHAINED",
+  "authHeaderName": "X-Open-Api-Token",
+  "authHeaderValue": "test-token",
+  "phoneField": "phone",
+  "clientIdField": "leadId",
+  "replaceTargets": true,
+  "steps": [
+    {
+      "name": "contracts",
+      "method": "POST",
+      "url": "https://crm.company.uz/v1/contract/filter",
+      "body": "{\"page\":{{page}},\"size\":100,\"statuses\":[\"ACTIVE\"]}",
+      "itemsPath": "data.data",
+      "paginate": true,
+      "filters": [
+        { "path": "delay", "operator": "GTE", "value": "1" },
+        { "path": "residue", "operator": "GT", "value": "0" }
+      ],
+      "extract": {
+        "contractId": "id",
+        "clientName": "client.name",
+        "debtAmount": "residue",
+        "currency": "currency.ccy",
+        "contractNumber": "number"
+      }
+    },
+    {
+      "name": "contract",
+      "method": "GET",
+      "url": "https://crm.company.uz/v1/contract/{{contractId}}",
+      "extract": { "leadId": "data.lead.id" }
+    },
+    {
+      "name": "lead",
+      "method": "GET",
+      "url": "https://crm.company.uz/v1/lead/{{leadId}}",
+      "extract": { "phone": "data.contacts.0.phones.0" }
+    }
+  ]
+}
+
 ### Read it back (authHeaderValue is never returned)
 GET http://localhost:8080/api/campaigns/1/target-source
 Authorization: Bearer {{auth_token}}

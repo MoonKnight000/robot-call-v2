@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhook;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
+import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -48,7 +48,7 @@ public class FactWebhookClient {
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
-     * Redirects are never followed. The screening below applies to the host that was
+     * Redirects are never followed. {@link PublicUrlGuard} screens the host that was
      * configured, and a 302 is an endpoint choosing a second host after that check has
      * already passed — which is exactly how an SSRF filter is walked around.
      */
@@ -67,14 +67,8 @@ public class FactWebhookClient {
             return null;
         }
 
-        URI uri;
-        try {
-            uri = URI.create(webhook.url().trim());
-        } catch (Exception e) {
-            log.warn("Fact webhook URL '{}' is not a URI: {}", webhook.url(), e.getMessage());
-            return null;
-        }
-        if (!isCallableHost(uri)) {
+        URI uri = PublicUrlGuard.parsePublic(webhook.url());
+        if (uri == null) {
             return null;
         }
 
@@ -117,42 +111,6 @@ public class FactWebhookClient {
             log.warn("Fact webhook {} failed for {} {}: {}",
                     uri.getHost(), call.direction(), call.phone(), e.getMessage());
             return null;
-        }
-    }
-
-    /**
-     * Whether this server is willing to make a request to that host on a tenant's behalf.
-     *
-     * <p>The URL is written by a customer through the scenario API, so without this the
-     * feature is a request forger: {@code http://127.0.0.1:8080/actuator},
-     * {@code http://169.254.169.254/} or any address on the Docker network would be fetched
-     * by this process, from inside the perimeter, with the answer pasted into a prompt.
-     */
-    private static boolean isCallableHost(URI uri) {
-        String scheme = uri.getScheme();
-        if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
-            log.warn("Fact webhook URL '{}' is not http(s)", uri);
-            return false;
-        }
-        String host = uri.getHost();
-        if (host == null || host.isBlank()) {
-            log.warn("Fact webhook URL '{}' has no host", uri);
-            return false;
-        }
-        try {
-            for (InetAddress address : InetAddress.getAllByName(host)) {
-                if (address.isLoopbackAddress() || address.isLinkLocalAddress()
-                        || address.isSiteLocalAddress() || address.isAnyLocalAddress()
-                        || address.isMulticastAddress()) {
-                    log.warn("Fact webhook host {} resolves to {} — refusing to call an internal address",
-                            host, address.getHostAddress());
-                    return false;
-                }
-            }
-            return true;
-        } catch (Exception e) {
-            log.warn("Fact webhook host {} did not resolve: {}", host, e.getMessage());
-            return false;
         }
     }
 

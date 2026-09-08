@@ -2,8 +2,8 @@ package uz.murodjon.robotcallv2.search.application.service;
 
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
+import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.CallRow;
 import uz.murodjon.robotcallv2.search.application.dto.SearchItem;
 import uz.murodjon.robotcallv2.search.application.dto.SearchResult;

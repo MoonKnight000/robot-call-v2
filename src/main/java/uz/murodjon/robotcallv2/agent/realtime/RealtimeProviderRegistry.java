@@ -12,13 +12,13 @@ import java.util.Map;
 
 /**
  * Every {@link RealtimeProvider} this build has, looked up by id (PROJECT.md §2.4).
- * Which one a call uses comes from its company's {@code engine_config}, with
+ * Which one a call uses comes from its agent ({@code ai_agent.realtime_provider}), with
  * {@code voice-agent.realtime.provider} as the default.
  *
  * <p>Empty is a valid state, and the reason this is a registry rather than a selector
  * like {@code SttProviderSelector}: a deployment with no realtime engine wired is
  * expected, and must boot. What it must <em>not</em> do is let a company select a mode
- * its calls cannot run — {@code EngineConfigService} reads {@link #names()} for exactly
+ * its calls cannot run — {@code AiAgentService} reads {@link #names()} for exactly
  * that check.
  */
 @Component

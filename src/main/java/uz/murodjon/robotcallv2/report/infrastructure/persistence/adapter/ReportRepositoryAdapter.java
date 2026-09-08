@@ -5,7 +5,6 @@ import jakarta.persistence.Query;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.contact.application.dto.ContactCallHistoryRow;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.FilterInterface;
@@ -646,6 +645,277 @@ public class ReportRepositoryAdapter implements ReportRepository {
                 .setParameter("companyId", companyId)
                 .getResultList();
         return result.isEmpty() || result.get(0) == null ? null : ((Number) result.get(0)).longValue();
+    }
+
+    /**
+     * The join chain every dashboard figure is measured over.
+     *
+     * <p>A call reaches its agent one of two ways — through the campaign that dialled it,
+     * or through the inbound route that answered it — so the agent is joined twice and
+     * every join is outer: a widget call or a manual one has neither, and an inner join
+     * would quietly drop it from every total on the page.
+     */
+    private static final String DASHBOARD_AGENT_JOINS = """
+            FROM call_attempt a
+            LEFT JOIN campaign_target t ON t.id = a.target_id
+            LEFT JOIN campaign c ON c.id = t.campaign_id
+            LEFT JOIN ai_agent ag ON ag.id = c.ai_agent_id
+            LEFT JOIN inbound_route ir ON ir.id = a.inbound_route_id
+            LEFT JOIN ai_agent ir_ag ON ir_ag.id = ir.ai_agent_id
+            """;
+
+    /** Added by the two figures that name whoever took the call, agent or human. */
+    private static final String DASHBOARD_OPERATOR_JOIN =
+            "LEFT JOIN app_user u ON u.id = a.operator_user_id\n";
+
+    /** The company and the period, which every dashboard figure is bounded by. */
+    private static final String DASHBOARD_PERIOD_WHERE = """
+            WHERE a.company_id = :companyId
+              AND a.started_at >= :from AND a.started_at < :to
+            """;
+
+    /**
+     * The dashboard's two optional narrowings. The scenario has to be accepted from either
+     * agent — the campaign's or the inbound route's — because a scenario is spoken on calls
+     * that arrive both ways, and matching only the outbound side would silently halve an
+     * inbound-heavy company's numbers.
+     */
+    private static void appendDashboardScope(StringBuilder sql, Long campaignId, Long scenarioId) {
+        if (campaignId != null) {
+            sql.append(" AND t.campaign_id = :campaignId");
+        }
+        if (scenarioId != null) {
+            sql.append(" AND (ag.scenario_id = :scenarioId OR ir_ag.scenario_id = :scenarioId)");
+        }
+    }
+
+    /** Binds what {@link #DASHBOARD_PERIOD_WHERE} and {@link #appendDashboardScope} asked for. */
+    private Query dashboardQuery(String sql, long companyId, Instant from, Instant to,
+                                 Long campaignId, Long scenarioId) {
+        Query query = em.createNativeQuery(sql)
+                .setParameter("companyId", companyId)
+                .setParameter("from", from)
+                .setParameter("to", to);
+        if (campaignId != null) {
+            query.setParameter("campaignId", campaignId);
+        }
+        if (scenarioId != null) {
+            query.setParameter("scenarioId", scenarioId);
+        }
+        return query;
+    }
+
+    @Override
+    public DashboardAggregates dashboardAggregates(long companyId, Instant from, Instant to, Long campaignId,
+                                                   Long scenarioId) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT 
+                    COUNT(a.id) AS total_calls,
+                    COALESCE(SUM(a.duration_sec), 0) / 60 AS total_minutes,
+                    COALESCE(AVG(a.duration_sec) FILTER (WHERE a.duration_sec IS NOT NULL AND a.duration_sec > 0), 0) AS avg_duration_sec,
+                    COUNT(a.id) FILTER (WHERE a.disposition IN ('COMPLETED', 'PROMISE_TO_PAY')) AS completed_calls,
+                    COUNT(a.id) FILTER (WHERE a.disposition IN ('FAILED', 'CARRIER_REJECTED')) AS failed_calls,
+                    COUNT(a.id) FILTER (WHERE a.disposition = 'NO_ANSWER') AS missed_calls
+                """ + DASHBOARD_AGENT_JOINS + DASHBOARD_PERIOD_WHERE);
+        appendDashboardScope(sql, campaignId, scenarioId);
+        Query query = dashboardQuery(sql.toString(), companyId, from, to, campaignId, scenarioId);
+        Object[] row = (Object[]) query.getSingleResult();
+        return new DashboardAggregates(
+                asLong(row[0]),
+                asLong(row[1]),
+                asDoubleOrNull(row[2]) != null ? asDoubleOrNull(row[2]) : 0.0,
+                asLong(row[3]),
+                asLong(row[4]),
+                asLong(row[5]));
+    }
+
+    @Override
+    public List<DashboardTimelineBucket> dashboardTimelineBuckets(long companyId, Instant from, Instant to,
+                                                                  Long campaignId, Long scenarioId,
+                                                                  String granularity) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT 
+                    date_trunc(:granularity, a.started_at) AS bucket,
+                    COUNT(a.id) AS calls,
+                    COALESCE(SUM(a.duration_sec), 0) / 60 AS minutes,
+                    COUNT(a.id) FILTER (WHERE a.disposition IN ('FAILED', 'CARRIER_REJECTED')) AS failed,
+                    COUNT(a.id) FILTER (WHERE a.disposition IN ('COMPLETED', 'PROMISE_TO_PAY')) AS completed,
+                    COUNT(a.id) FILTER (WHERE a.disposition = 'NO_ANSWER') AS missed,
+                    COALESCE(AVG(a.duration_sec) FILTER (WHERE a.duration_sec IS NOT NULL AND a.duration_sec > 0), 0) AS avg_duration_sec
+                """ + DASHBOARD_AGENT_JOINS + DASHBOARD_PERIOD_WHERE);
+        appendDashboardScope(sql, campaignId, scenarioId);
+        sql.append(" GROUP BY bucket ORDER BY bucket");
+        Query query = dashboardQuery(sql.toString(), companyId, from, to, campaignId, scenarioId)
+                .setParameter("granularity", granularity);
+        return rows(query).stream()
+                .map(r -> new DashboardTimelineBucket(
+                        asInstant(r[0]),
+                        asLong(r[1]),
+                        asLong(r[2]),
+                        asLong(r[3]),
+                        asLong(r[4]),
+                        asLong(r[5]),
+                        asDoubleOrNull(r[6]) != null ? asDoubleOrNull(r[6]) : 0.0))
+                .toList();
+    }
+
+    @Override
+    public List<DashboardOutcome> dashboardStatusBreakdown(long companyId, Instant from, Instant to,
+                                                           Long campaignId, Long scenarioId) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT 
+                    COALESCE(a.disposition, 'UNKNOWN') AS disposition,
+                    COUNT(a.id) AS n
+                """ + DASHBOARD_AGENT_JOINS + DASHBOARD_PERIOD_WHERE);
+        appendDashboardScope(sql, campaignId, scenarioId);
+        sql.append(" GROUP BY COALESCE(a.disposition, 'UNKNOWN') ORDER BY n DESC");
+        Query query = dashboardQuery(sql.toString(), companyId, from, to, campaignId, scenarioId);
+        return rows(query).stream()
+                .map(r -> new DashboardOutcome((String) r[0], asLong(r[1])))
+                .toList();
+    }
+
+    @Override
+    public List<DashboardDirectionRow> dashboardDirectionStats(long companyId, Instant from, Instant to,
+                                                               Long campaignId, Long scenarioId) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT 
+                    CASE WHEN a.inbound_route_id IS NOT NULL THEN 'inbound' ELSE 'outbound' END AS direction,
+                    COUNT(a.id) AS total_calls,
+                    COALESCE(SUM(a.duration_sec), 0) / 60 AS total_minutes,
+                    COALESCE(AVG(a.duration_sec) FILTER (WHERE a.duration_sec IS NOT NULL AND a.duration_sec > 0), 0) AS avg_duration_sec,
+                    COUNT(a.id) FILTER (WHERE a.disposition IN ('COMPLETED', 'PROMISE_TO_PAY')) AS completed_calls
+                """ + DASHBOARD_AGENT_JOINS + DASHBOARD_PERIOD_WHERE);
+        appendDashboardScope(sql, campaignId, scenarioId);
+        sql.append(" GROUP BY (CASE WHEN a.inbound_route_id IS NOT NULL THEN 'inbound' ELSE 'outbound' END)");
+        Query query = dashboardQuery(sql.toString(), companyId, from, to, campaignId, scenarioId);
+        return rows(query).stream()
+                .map(r -> new DashboardDirectionRow(
+                        (String) r[0],
+                        asLong(r[1]),
+                        asLong(r[2]),
+                        asInt(r[3]),
+                        asLong(r[4])))
+                .toList();
+    }
+
+    @Override
+    public List<DashboardAgentRow> dashboardTopAgents(long companyId, Instant from, Instant to,
+                                                     Long campaignId, Long scenarioId, int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT 
+                    COALESCE(u.id, ag.id, ir_ag.id, 0) AS agent_id,
+                    COALESCE(u.name, ag.name, ir_ag.name, 'AI Agent') AS agent_name,
+                    CASE WHEN u.id IS NOT NULL THEN 'operator' ELSE 'ai' END AS agent_type,
+                    COUNT(a.id) AS calls_count,
+                    COALESCE(SUM(a.duration_sec), 0) / 60 AS total_minutes,
+                    ROUND(COUNT(a.id) FILTER (WHERE a.disposition IN ('COMPLETED', 'PROMISE_TO_PAY'))::numeric * 100 / NULLIF(COUNT(a.id), 0), 1) AS success_rate
+                """ + DASHBOARD_AGENT_JOINS + DASHBOARD_OPERATOR_JOIN + DASHBOARD_PERIOD_WHERE);
+        appendDashboardScope(sql, campaignId, scenarioId);
+        sql.append(" GROUP BY agent_id, agent_name, agent_type ORDER BY calls_count DESC LIMIT :limit");
+        Query query = dashboardQuery(sql.toString(), companyId, from, to, campaignId, scenarioId)
+                .setParameter("limit", limit);
+        return rows(query).stream()
+                .map(r -> new DashboardAgentRow(
+                        asLong(r[0]),
+                        (String) r[1],
+                        (String) r[2],
+                        asLong(r[3]),
+                        asLong(r[4]),
+                        asDoubleOrNull(r[5]) != null ? asDoubleOrNull(r[5]) : 0.0))
+                .toList();
+    }
+
+    @Override
+    public List<DashboardCampaignRow> dashboardActiveCampaigns(long companyId, int limit) {
+        String sql = """
+                SELECT c.id, c.name,
+                       COUNT(t.id) AS total_targets,
+                       COUNT(t.id) FILTER (WHERE t.status IN ('DONE', 'FAILED', 'EXHAUSTED')) AS done_targets
+                FROM campaign c
+                LEFT JOIN campaign_target t ON t.campaign_id = c.id AND t.phone NOT IN ('MANUAL', 'INBOUND')
+                WHERE c.company_id = :companyId
+                  AND c.name NOT IN ('MANUAL', 'INBOUND')
+                GROUP BY c.id, c.name
+                ORDER BY c.id DESC
+                LIMIT :limit
+                """;
+        Query query = em.createNativeQuery(sql)
+                .setParameter("companyId", companyId)
+                .setParameter("limit", limit);
+        return rows(query).stream()
+                .map(r -> new DashboardCampaignRow(
+                        asLong(r[0]),
+                        (String) r[1],
+                        asLong(r[2]),
+                        asLong(r[3])))
+                .toList();
+    }
+
+    @Override
+    public List<DashboardLiveRow> dashboardLiveCalls(long companyId, int limit) {
+        String sql = """
+                SELECT a.id AS call_id,
+                       COALESCE(a.phone, t.phone) AS phone,
+                       t.context_data ->> 'clientName' AS client_name,
+                       c.name AS campaign_name,
+                       a.started_at AS started_at,
+                       CASE WHEN a.inbound_route_id IS NOT NULL THEN 'inbound' ELSE 'outbound' END AS direction
+                FROM call_attempt a
+                LEFT JOIN campaign_target t ON t.id = a.target_id
+                LEFT JOIN campaign c ON c.id = t.campaign_id
+                WHERE a.company_id = :companyId
+                  AND a.started_at IS NOT NULL
+                  AND a.ended_at IS NULL
+                ORDER BY a.started_at DESC
+                LIMIT :limit
+                """;
+        Query query = em.createNativeQuery(sql)
+                .setParameter("companyId", companyId)
+                .setParameter("limit", limit);
+        return rows(query).stream()
+                .map(r -> new DashboardLiveRow(
+                        asLong(r[0]),
+                        (String) r[1],
+                        (String) r[2],
+                        (String) r[3],
+                        asInstant(r[4]),
+                        (String) r[5]))
+                .toList();
+    }
+
+    @Override
+    public List<DashboardRecentCallRow> dashboardRecentCalls(long companyId, Instant from, Instant to,
+                                                             Long campaignId, Long scenarioId, int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT a.id AS call_id,
+                       COALESCE(a.phone, t.phone) AS phone,
+                       t.context_data ->> 'clientName' AS client_name,
+                       c.name AS campaign_name,
+                       u.name AS operator_name,
+                       CASE WHEN a.inbound_route_id IS NOT NULL THEN 'inbound' ELSE 'outbound' END AS direction,
+                       COALESCE(a.disposition, 'UNKNOWN') AS disposition,
+                       COALESCE(a.duration_sec, 0) AS duration_sec,
+                       a.started_at AS started_at,
+                       (a.recording_file_id IS NOT NULL) AS has_recording
+                """ + DASHBOARD_AGENT_JOINS + DASHBOARD_OPERATOR_JOIN + DASHBOARD_PERIOD_WHERE);
+        appendDashboardScope(sql, campaignId, scenarioId);
+        sql.append(" ORDER BY a.started_at DESC LIMIT :limit");
+        Query query = dashboardQuery(sql.toString(), companyId, from, to, campaignId, scenarioId)
+                .setParameter("limit", limit);
+        return rows(query).stream()
+                .map(r -> new DashboardRecentCallRow(
+                        asLong(r[0]),
+                        (String) r[1],
+                        (String) r[2],
+                        (String) r[3],
+                        (String) r[4],
+                        (String) r[5],
+                        (String) r[6],
+                        asInt(r[7]),
+                        asInstant(r[8]),
+                        Boolean.TRUE.equals(r[9])))
+                .toList();
     }
 
     private Map<String, Long> countBy(String sql, long campaignId) {

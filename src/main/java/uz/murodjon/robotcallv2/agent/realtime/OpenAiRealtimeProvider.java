@@ -86,6 +86,12 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
     }
 
     @Override
+    public String resolveModel(RealtimeCallConfig config) {
+        OpenAiRealtimeProperties openAi = realtimeProperties.openAi();
+        return config.modelOr(openAi == null ? null : openAi.model());
+    }
+
+    @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
         OpenAiRealtimeProperties openAi = realtimeProperties.openAi();

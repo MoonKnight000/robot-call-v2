@@ -27,5 +27,6 @@ public enum PermissionGroup {
     NOTIFICATION_SETTINGS,
     INTEGRATION,
     BILLING,
+    API_KEY,
     PLATFORM
 }

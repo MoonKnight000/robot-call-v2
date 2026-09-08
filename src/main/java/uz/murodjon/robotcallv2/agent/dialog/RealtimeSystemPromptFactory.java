@@ -1,11 +1,10 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -103,6 +102,29 @@ public class RealtimeSystemPromptFactory {
             sb.append('\n');
         }
         sb.append("Hozirgi bosqich: ").append(s.state()).append(".\n");
+        // A realtime call has no per-turn annex to re-state where the FSM may go next, so
+        // the whole graph is here and the walking rules have to be here with it. On a
+        // recorded call the model delivered the debt notice and the reason question in
+        // one breath (which DEBT_NOTICE's purpose asks for), decided REASON_INQUIRY was
+        // therefore done, and spent the rest of the call being refused: DEBT_NOTICE ->
+        // PAYMENT_DATE, -> CONFIRMATION, -> CLOSING. It never left DEBT_NOTICE.
+        sb.append("BOSQICH TARTIBI (QAT'IY):\n")
+                .append("- Bosqichlarni tashlab ketmang: faqat yuqorida \"→\" dan keyin sanab o'tilgan ")
+                .append("bosqichlardan biriga o'ting. Ro'yxatda yo'q bosqich nomini transitionTo ga bermang.\n")
+                .append("- Bosqich maqsadi allaqachon bajarilgan bo'lsa ham (masalan mijoz sababni ")
+                .append("o'zi aytib bo'lgan bo'lsa) uni tashlab o'tmang — o'sha bosqichga o'ting va ")
+                .append("darhol keyingisiga o'ting. Ikki bosqichni bitta transitionTo bilan sakrab ")
+                .append("bo'lmaydi.\n")
+                // Inverted against the cascade pipeline on purpose. There the text and the
+                // tool call ride in one LLM response and TTS speaks that text exactly once,
+                // so speaking first costs nothing. Here the model is already speaking while
+                // the tool runs: on a recorded call it delivered the debt notice, asked for
+                // PAYMENT_DATE, was refused, stepped into the stage it had just voiced and
+                // said the whole thing over with a different closing question — the caller
+                // heard it twice. Transitioning before speaking keeps a refusal cheap,
+                // because nothing has been said yet when it arrives.
+                .append("- AVVAL transitionTo chaqiring, KEYIN o'sha bosqichning gapini ayting. ")
+                .append("Gapirib bo'lganingizdan keyin bosqichni o'zgartirmang.\n");
 
         if (disclosureText != null && !disclosureText.isBlank()) {
             String renderedDisclosure = PromptTemplateEngine.render(disclosureText.trim(), facts);
@@ -150,8 +172,15 @@ public class RealtimeSystemPromptFactory {
                 .append("Yagona istisno — endCall bilan xayrlashish.\n");
         sb.append("QISQA GAP: bir javobda ko'pi bilan ikki-uch qisqa gap va bitta savol. ")
                 .append("Shartnoma, summa va muddatni bitta uzun gapga tiqma — alohida gaplarga ")
-                .append("bo'l. O'zingni va kompaniyani bir marta tanishtirasan, keyingi ")
-                .append("javoblarda kompaniya nomini qayta aytma.\n");
+                .append("bo'l.\n");
+        // "Introduce yourself once" was already here and was not enough: the model gave
+        // its name and the recording notice in the opening line, then opened the next
+        // one with "Default kompaniyasidan olingan qarz bo'yicha...". The rule has to
+        // name what may not come back, not just say "once".
+        sb.append("BIR MARTA TANISHTIRISH (QAT'IY): o'zingni, kompaniyani va suhbat yozib ")
+                .append("olinayotganini FAQAT birinchi gapingda aytasan. Shundan keyin qo'ng'iroq ")
+                .append("oxirigacha bularni QAYTA AYTMA — na kompaniya nomini, na ismingni, na ")
+                .append("\"suhbat yozib olinmoqda\" ni. Mijozning o'zi so'ragandagina takrorlaysan.\n");
         sb.append("SANA: joriy yildagi sanada yilni aytma — \"3-sentabr\" yetarli, ")
                 .append("\"2026-yil 3-sentabr kuni\" emas. Mijoz \"ertaga\", \"dushanba\" desa, ")
                 .append("tasdiqlaganda ham o'sha tabiiy shaklni saqla (\"ertaga, 3-sentabrda\"); ")

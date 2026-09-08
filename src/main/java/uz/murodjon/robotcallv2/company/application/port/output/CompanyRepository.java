@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.company.application.port.output;
 
-import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 
 import java.util.List;

@@ -10,7 +10,7 @@ import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
+import uz.murodjon.robotcallv2.report.application.dto.DashboardSummaryResponse;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -66,6 +66,16 @@ public interface ReportController {
     @PostMapping("/audit/list")
     ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(@CurrentCompanyId long companyId,
             @Valid @RequestBody AuditFilter filter);
+
+    @PreAuthorize("hasAuthority('DASHBOARD_READ')")
+    @GetMapping("/dashboard/summary")
+    ResponseEntity<ResponseData<DashboardSummaryResponse>> dashboardSummary(
+            @CurrentCompanyId long companyId,
+            @RequestParam(required = false, defaultValue = "24h") String range,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId,
+            @RequestParam(required = false) Long scenarioId);
 
     @PreAuthorize("hasAuthority('DASHBOARD_READ')")
     @GetMapping("/dashboard/kpi")

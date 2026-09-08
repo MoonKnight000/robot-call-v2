@@ -3,12 +3,11 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
-import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
@@ -239,9 +238,13 @@ class SystemPromptFactoryTest {
         s.setDisclosureSpoken(true);
         assertThat(factory.stablePrefix(s))
                 .contains("allaqachon aytildi")
+                // Scoped to the first reply, the rule was obeyed to the letter and broken
+                // in spirit: the model introduced itself on the second reply instead. It
+                // has to hold for the whole call.
+                .contains("HECH BIR JOYIDA")
                 // A bare "do not repeat it" did not stop the model opening with a
                 // greeting anyway; what the first line must be instead has to be there.
-                .contains("BOSHLAMA");
+                .contains("Birinchi javobing");
     }
 
     @Test
@@ -280,6 +283,15 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("Dilnavoz");
         assertThat(prompt).contains("QAT'IYAN TAQIQLANADI: O'zingizni robot, bot, sun'iy intellekt yoki avtomatlashtirilgan tizim deb atash");
         assertThat(prompt).contains("Salom, mening ismim Dilnavoz. Uysot kompaniyasidan qo'ng'iroq qilyapman");
+    }
+
+    @Test
+    void aProviderVoiceIdIsNotUsedAsAPersonName() {
+        // Gemini Live's voices are Fenrir, Charon, Kore, Zephyr. Title-cased, one of them
+        // introduced itself on a real call: "Men Default kompaniyasidan Fenrirman".
+        assertThat(SystemPromptFactory.resolveVoicePersonaName("Fenrir", "uz-UZ")).isEqualTo("Dilnoza");
+        assertThat(SystemPromptFactory.resolveVoicePersonaName("Puck", "ru-RU")).isEqualTo("Анна");
+        assertThat(SystemPromptFactory.resolveVoicePersonaName("nigora", "uz-UZ")).isEqualTo("Nigora");
     }
 
     @Test

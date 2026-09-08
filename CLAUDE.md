@@ -73,8 +73,17 @@ uz.murodjon.robotcallv2.<feature>
     ├── persistence/entity         — JPA entity: <Domain>Entity
     ├── persistence/repository     — Spring Data: <Entity>JpaRepository
     ├── persistence/adapter        — <Feature>RepositoryAdapter implements port/output
+    ├── adapter                    — DB'ga aloqasi yo'q port implementatsiyalari (§2.2)
     └── config                     — @ConfigurationProperties, @Configuration
 ```
+
+**`infrastructure/adapter` — faqat DB bo'lmagan port uchun.** Saqlash porti doim
+`persistence/adapter` da. Tashqi dunyoga chiqadigan boshqa port (HTTP client, fayl
+parser, embedding modeli) `infrastructure/adapter` ga tushadi va nomi texnologiyani
+aytadi: `RestClientWebhookSenderAdapter`, `SpringAiTextEmbedderAdapter`,
+`DocumentTextExtractorAdapter`. **`RestClient`/`HttpClient`/`WebClient` service'da
+yaratilmaydi** — u shu adapter ichida qoladi, service esa faqat port interfeysini
+ko'radi (`WebhookSenderPort`, `TextEmbedderPort`).
 
 **Etalon: `aimodel`.** Yangi feature yozganda yoki eskisiga qo'shganda shu paketga
 qarab tekshiriladi — u to'liq skeletni eng kichik hajmda ko'rsatadi.
@@ -97,11 +106,12 @@ Ajratish testi: **service uni o'qiydi ham, yozadi ham → `domain.entity`; faqat
 endpoint javobi uchun yasalgan → `application.dto`.** JPA entity hech qachon
 controller'ga chiqmaydi, DTO hech qachon `port/output` ga kirmaydi.
 
-Mavjud feature'lar (31 ta):
+Mavjud feature'lar (33 ta):
 `aiagent` · `aimodel` · `audit` · `auth` · `billing` · `callrecord` · `campaign` · `company` ·
-`contact` · `crm` · `dialer` · `donotcall` · `engine` · `inbound` · `integration` ·
+`contact` · `crm` · `dialer` · `donotcall` · `inbound` · `integration` ·
 `knowledgebase` · `live` · `memory` · `notification` · `operator` · `profile` · `report` ·
-`role` · `scenario` · `search` · `siptrunk` · `sms` · `storage` · `user` · `voice` · `webhook`
+`role` · `scenario` · `search` · `secret` · `siptrunk` · `sms` · `storage` · `tool` ·
+`user` · `voice` · `webhook` · `widget`
 
 **Istisno — `agent/`.** Voice pipeline infratuzilmasi, CRUD emas, shuning uchun hexagonal
 emas, **texnik tamoyil** bo'yicha bo'linadi: `agent/ari`, `agent/ami`, `agent/rtp`,

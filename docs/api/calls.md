@@ -285,7 +285,7 @@ Robot ovozi to'xtatiladi va jonli mijoz zudlik bilan tirik operator ichki raqami
 ## Boshqa jonli kanal boshqaruv endpointlari
 
 - `POST /api/calls/{channelId}/play?file=greeting.wav` — Jonli kanalga audio fayl eshittirish.
-- `POST /api/calls/{channelId}/say?text=...&language=uz-UZ&voice=dilnavoz` — Jonli kanalga matnni TTS qilib o'qib berish.
+- `POST /api/calls/{channelId}/say?text=...&language=uz-UZ&voice=nigora` — Jonli kanalga matnni TTS qilib o'qib berish.
 - `POST /api/calls/{channelId}/hangup` — Jonli kanalni majburiy to'xtatish (go'shakni qo'yish).
 - `POST /api/calls/{channelId}/transfer` — Standart operator navbatiga uzatish.
 - `GET /api/calls/{channelId}/listen` — Jonli qo'ng'iroq audio oqimini WAV formatida real-vaqtda tinglash (`audio/wav`).

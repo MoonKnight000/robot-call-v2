@@ -36,6 +36,17 @@ class SpeechSanitizerTest {
         assertThat(SpeechSanitizer.isUnspeakable("undefined")).isTrue();
     }
 
+    /** The leak as it actually reached a caller: a tool or stage name inside a normal sentence. */
+    @Test
+    void rejectsToolAndStageNamesInsideASentence() {
+        assertThat(SpeechSanitizer.isUnspeakable(
+                "ibu kabi bosqichda transitionTo yoki recordRefusalReason kabilarni o'ylash kerak.")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable(
+                "Hozircha DEBT_NOTICE dan PAYMENT_NEGOTIATION ga o'tishimiz kerak.")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable(
+                "Dastlab transitionTo('PAYMENT_NEGOTIATION') chaqiramiz.")).isTrue();
+    }
+
     @Test
     void rejectsJson() {
         assertThat(SpeechSanitizer.isUnspeakable("{\"reply\": \"Salom\"}")).isTrue();

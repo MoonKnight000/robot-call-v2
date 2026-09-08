@@ -1,13 +1,17 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.ai.chat.messages.Message;
-
+import org.springframework.ai.tool.ToolCallback;
 import uz.murodjon.robotcallv2.agent.metrics.TurnLatency;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
-import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.time.Duration;
@@ -58,6 +62,16 @@ public class DialogSession implements DialogOutcomeSink {
     private final long companyId;
     /** This call's company's AI-model overrides merged over the process defaults (§11 settings), resolved once. */
     private final EffectiveAiModelConfig aiModel;
+    /**
+     * The model this agent answers a very short caller turn on, or null for the
+     * installation's {@code dialog.fast-model}.
+     *
+     * <p>Set from the agent rather than carried in {@link EffectiveAiModelConfig}: that
+     * record is shared with the realtime pipeline, which has no per-turn model choice to
+     * make, and putting a cascade-only field in it would mean a null nobody reads on
+     * every realtime call. Written once at startup, before any turn runs.
+     */
+    private volatile String fastModel;
     /** This call's company's TTS overrides (§11 settings/voice), resolved once. */
     private final EffectiveVoiceSettings voiceSettings;
     private final boolean emotionAdaptiveVoice;
@@ -66,6 +80,11 @@ public class DialogSession implements DialogOutcomeSink {
      * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
     private final boolean disclosureEnabled;
     private final AgentPersona agentPersona;
+    private final String firstMessage;
+    private final List<Tool> tools;
+    private final List<PronunciationRule> pronunciationRules;
+    private final AiAgent agent;
+    private volatile Consumer<String> midCallSmsSender;
 
     /** Whose name the §11.1 disclosure is spoken in — the company this call's campaign belongs to. */
     private final String companyName;
@@ -123,6 +142,14 @@ public class DialogSession implements DialogOutcomeSink {
      * that reaches a tool is a promise recorded for a day nobody named.
      */
     private volatile boolean lowConfidenceInput;
+
+    /**
+     * Passages from the company's knowledge base that bear on what the caller just said,
+     * looked up once per turn and put in the turn annex. Empty when the agent has RAG
+     * switched off, when nothing matched, or when the embedding model was unreachable —
+     * the turn then runs exactly as it did before there was a knowledge base.
+     */
+    private volatile List<KnowledgePassage> knowledgePassages = List.of();
 
     /**
      * Raised by barge-in. A streaming turn checks it between chunks so the sentences
@@ -228,6 +255,15 @@ public class DialogSession implements DialogOutcomeSink {
     private final AtomicLong promptTokens = new AtomicLong();
     private final AtomicLong completionTokens = new AtomicLong();
     private final AtomicLong cachedTokens = new AtomicLong();
+    /**
+     * Characters this call asked a synthesizer for — what the call is billed for.
+     *
+     * <p>Counted where the text is handed to the router, so a sentence the TTS cache
+     * answers is counted too. That is deliberate: the company is billed for the speech
+     * its agent produced, and the cache is this platform's margin, measured separately as
+     * {@code voice.tts.chars.saved}.
+     */
+    private final AtomicLong ttsChars = new AtomicLong();
     private final AtomicLong turnLatencySumMs = new AtomicLong();
     private final AtomicInteger turnLatencyCount = new AtomicInteger();
     private final AtomicLong turnLatencyMaxMs = new AtomicLong();
@@ -256,6 +292,65 @@ public class DialogSession implements DialogOutcomeSink {
                          EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
                          AgentPersona agentPersona,
                          Map<String, String> languageVoices) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
+                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
+                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices, null, List.of());
+    }
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
+                         AgentPersona agentPersona,
+                         Map<String, String> languageVoices,
+                         String firstMessage) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
+                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
+                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices, firstMessage, List.of(), List.of());
+    }
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
+                         AgentPersona agentPersona,
+                         Map<String, String> languageVoices,
+                         String firstMessage,
+                         List<Tool> tools) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
+                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
+                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices, firstMessage, tools, List.of());
+    }
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
+                         AgentPersona agentPersona,
+                         Map<String, String> languageVoices,
+                         String firstMessage,
+                         List<Tool> tools,
+                         List<PronunciationRule> pronunciationRules) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
+                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
+                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices,
+                firstMessage, tools, pronunciationRules, null);
+    }
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
+                         AgentPersona agentPersona,
+                         Map<String, String> languageVoices,
+                         String firstMessage,
+                         List<Tool> tools,
+                         List<PronunciationRule> pronunciationRules,
+                         AiAgent agent) {
         this.channelId = channelId;
         this.language = language;
         this.ttsVoice = ttsVoice;
@@ -264,7 +359,9 @@ public class DialogSession implements DialogOutcomeSink {
         this.scenario = scenario;
         // The scenario's first declared stage is its entry point, by convention
         // (ROADMAP A.3 — every builtin template already lists its opening stage first).
-        this.state = scenario.stages().get(0).id();
+        this.state = (scenario != null && scenario.stages() != null && !scenario.stages().isEmpty())
+                ? scenario.stages().get(0).id()
+                : "CONVERSATION";
         this.endpoint = endpoint;
         this.hangup = hangup;
         this.transfer = transfer;
@@ -278,6 +375,53 @@ public class DialogSession implements DialogOutcomeSink {
         this.aiModel = aiModel;
         this.voiceSettings = voiceSettings;
         this.emotionAdaptiveVoice = emotionAdaptiveVoice;
+        this.firstMessage = firstMessage;
+        this.tools = tools == null ? List.of() : List.copyOf(tools);
+        this.pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
+        this.agent = agent;
+    }
+
+    public List<PronunciationRule> pronunciationRules() {
+        return pronunciationRules != null ? pronunciationRules : List.of();
+    }
+
+    public AiAgent agent() {
+        return agent;
+    }
+
+    public void setMidCallSmsSender(Consumer<String> midCallSmsSender) {
+        this.midCallSmsSender = midCallSmsSender;
+    }
+
+    public void triggerMidCallSms(String text) {
+        if (midCallSmsSender != null && text != null && !text.isBlank()) {
+            midCallSmsSender.accept(text.trim());
+        }
+    }
+
+    public String firstMessage() {
+        return firstMessage;
+    }
+
+    /**
+     * The MCP tool callbacks for this call, resolved once.
+     *
+     * <p>Cached on the session because building them reads the company's connections, and
+     * the tool list is re-sent on every turn — a query per turn would put a database round
+     * trip inside the pause the caller hears.
+     */
+    private volatile List<ToolCallback> mcpTools;
+
+    public List<ToolCallback> mcpTools() {
+        return mcpTools;
+    }
+
+    public void setMcpTools(List<ToolCallback> mcpTools) {
+        this.mcpTools = mcpTools;
+    }
+
+    public List<Tool> tools() {
+        return tools != null ? tools : List.of();
     }
 
     public AgentPersona agentPersona() {
@@ -296,6 +440,14 @@ public class DialogSession implements DialogOutcomeSink {
 
     public EffectiveAiModelConfig aiModel() {
         return aiModel;
+    }
+
+    public String fastModel() {
+        return fastModel;
+    }
+
+    public void setFastModel(String fastModel) {
+        this.fastModel = fastModel;
     }
 
     public EffectiveVoiceSettings voiceSettings() {
@@ -366,6 +518,17 @@ public class DialogSession implements DialogOutcomeSink {
 
     public long cachedTokens() {
         return cachedTokens.get();
+    }
+
+    /** Count one line's characters towards what this call is billed for. */
+    public void addTtsChars(String text) {
+        if (text != null && !text.isBlank()) {
+            ttsChars.addAndGet(text.length());
+        }
+    }
+
+    public long ttsChars() {
+        return ttsChars.get();
     }
 
     /** Record one turn's client-stopped-talking -> first-audio-queued latency. */
@@ -624,6 +787,15 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setLowConfidenceInput(boolean lowConfidenceInput) {
         this.lowConfidenceInput = lowConfidenceInput;
+    }
+
+    /** Knowledge-base passages the current turn may answer from; never null. */
+    public List<KnowledgePassage> knowledgePassages() {
+        return knowledgePassages;
+    }
+
+    public void setKnowledgePassages(List<KnowledgePassage> passages) {
+        this.knowledgePassages = passages == null ? List.of() : List.copyOf(passages);
     }
 
     /**

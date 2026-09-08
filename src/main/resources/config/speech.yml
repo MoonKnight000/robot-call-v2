@@ -22,7 +22,7 @@ voice-agent:
     open-ai:
       api-key: ${OPENAI_API_KEY:}
       url: ${REALTIME_OPENAI_URL:wss://api.openai.com/v1/realtime}
-      model: ${REALTIME_OPENAI_MODEL:gpt-4o-realtime-preview}
+      model: ${REALTIME_OPENAI_MODEL:gpt-realtime-2.1}
       voice: ${REALTIME_OPENAI_VOICE:alloy}
       connect-timeout-seconds: ${REALTIME_OPENAI_CONNECT_TIMEOUT_SECONDS:10}
       temperature: ${REALTIME_OPENAI_TEMPERATURE:0.7}
@@ -50,7 +50,7 @@ voice-agent:
   stt:
     enabled: ${STT_ENABLED:true}
     # Default STT provider: yandex (default), aisha, gemini, or deepgram.
-    # Individual calls pick provider from Company Engine Config.
+    # An agent may override this with its own sttProvider; this is the fallback.
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
     # Languages the recognizer may return, as a SpeechKit whitelist. More than one turns
@@ -211,6 +211,17 @@ voice-agent:
       sample-rate: 8000
       interim-results: ${STT_DEEPGRAM_INTERIM:true}
       connect-timeout-seconds: ${STT_DEEPGRAM_TIMEOUT_SECONDS:5}
+    open-ai:
+      api-key: ${OPENAI_API_KEY:}
+      url: ${STT_OPENAI_URL:wss://api.openai.com/v1/realtime?intent=transcription}
+      # gpt-live-transcribe streams deltas while the caller is still speaking, which is
+      # what the speculation path needs. gpt-transcribe is more accurate and detects the
+      # language, but only answers after the commit — a whole turn of extra wait.
+      model: ${STT_OPENAI_MODEL:gpt-live-transcribe}
+      # OpenAI specifies transcription sessions at 24 kHz; the bridge upsamples the 8 kHz
+      # wire audio to match. Lower it only if the endpoint turns out to accept the rate.
+      sample-rate: ${STT_OPENAI_SAMPLE_RATE:24000}
+      connect-timeout-seconds: ${STT_OPENAI_TIMEOUT_SECONDS:10}
 
   turn:
     # Everything under here works by changing how long the speech gate waits, so it only
@@ -289,6 +300,22 @@ voice-agent:
       voice: ${TTS_CARTESIA_VOICE:79a125e8-cd45-4c13-8a67-188112f4dd22}
       sample-rate: 8000
       connect-timeout-seconds: ${TTS_CARTESIA_TIMEOUT_SECONDS:5}
+    open-ai:
+      api-key: ${OPENAI_API_KEY:}
+      url: ${TTS_OPENAI_URL:https://api.openai.com/v1/audio/speech}
+      model: ${TTS_OPENAI_MODEL:gpt-4o-mini-tts}
+      voice: ${TTS_OPENAI_VOICE:alloy}
+      voices:
+        uz-UZ: ${TTS_OPENAI_VOICE_UZ:alloy}
+        ru-RU: ${TTS_OPENAI_VOICE_RU:nova}
+      # gpt-4o-mini-tts takes a plain-language delivery direction. Left blank the voice is
+      # read as-is; a line here applies to every utterance on every call, so it belongs to
+      # the deployment, not to a scenario.
+      instructions: ${TTS_OPENAI_INSTRUCTIONS:}
+      # OpenAI returns response_format=pcm at 24 kHz and offers no choice; the pipeline
+      # decimates to the 8 kHz the wire carries.
+      sample-rate: 24000
+      connect-timeout-seconds: ${TTS_OPENAI_TIMEOUT_SECONDS:10}
 
   vad:
     enabled: ${VAD_ENABLED:true}

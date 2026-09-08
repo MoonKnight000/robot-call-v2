@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.company.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 
 import java.time.Instant;
 
@@ -26,8 +27,9 @@ public class CompanyEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "logo_file_id")
-    private Long logoFileId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "logo_file_id")
+    private StoredFileEntity logoFile;
 
     @Column(name = "address")
     private String address;
@@ -64,12 +66,16 @@ public class CompanyEntity {
         this.createdAt = createdAt;
     }
 
-    public Long getLogoFileId() {
-        return logoFileId;
+    public StoredFileEntity getLogoFile() {
+        return logoFile;
     }
 
-    public void setLogoFileId(Long logoFileId) {
-        this.logoFileId = logoFileId;
+    public void setLogoFile(StoredFileEntity logoFile) {
+        this.logoFile = logoFile;
+    }
+
+    public Long getLogoFileId() {
+        return logoFile != null ? logoFile.getId() : null;
     }
 
     public String getAddress() {

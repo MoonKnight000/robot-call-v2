@@ -36,8 +36,20 @@ public interface IntegrationController {
     @GetMapping("/uysot/authorize-url")
     ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl(@CurrentCompanyId long companyId);
 
+    /**
+     * Where Uysot redirects the browser after the company approves the connection.
+     *
+     * <p>Unauthenticated on purpose: the request arrives from Uysot's site, not from this
+     * platform's UI, so there is no bearer token on it. The company it belongs to comes
+     * from {@code state}, which was HMAC-signed when the authorize link was built.
+     *
+     * <p>Answers {@code 302} rather than a {@code ResponseData} envelope — the third
+     * exception to §7, alongside file downloads and SSE — because the client is a browser
+     * being sent onward to the settings page, with {@code ?crm=connected} or
+     * {@code ?crm=error&reason=<ErrorCode>} for it to render. Nothing calls this from code.
+     */
     @GetMapping("/uysot/callback")
-    ResponseEntity<ResponseData<Void>> callback(@RequestParam String code, @RequestParam String state);
+    ResponseEntity<Void> callback(@RequestParam String code, @RequestParam String state);
 
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @DeleteMapping("/uysot")

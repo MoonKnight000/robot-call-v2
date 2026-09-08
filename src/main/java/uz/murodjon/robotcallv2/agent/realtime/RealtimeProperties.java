@@ -9,11 +9,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>Unlike {@code voice-agent.stt}/{@code voice-agent.tts}, an empty deployment is
  * normal: a build with no realtime engine wired simply cannot be set to
  * {@code PipelineMode.REALTIME}, and the settings screen hides the mode
- * ({@code EngineOptions.realtime} comes back empty). Nothing fails at startup for it.
+ * ({@code EngineOptionsResponse.realtime} comes back empty). Nothing fails at startup for it.
  *
- * @param enabled       master switch; when false no company may run on a realtime engine,
- *                      whatever its {@code engine_config} says
- * @param provider      default engine id for a company that chose {@code REALTIME}
+ * @param enabled       master switch; when false no agent may run on a realtime engine,
+ *                      whatever the call's agent has as its {@code pipelineMode}
+ * @param provider      default engine id for an agent that chose {@code REALTIME}
  *                      without naming one; blank means there is no default
  * @param factsInPrompt whether the call's facts — the debt amount, the due date — are
  *                      written into the engine's instructions the way the cascade

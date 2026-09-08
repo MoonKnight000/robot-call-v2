@@ -14,17 +14,15 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * The tools a turn may call, and what happens when the model calls them (PROJECT.md
@@ -55,10 +53,24 @@ public class TurnTools {
 
     private final DialogProperties dialogProperties;
     private final ObjectProvider<ChatModel> chatModelProvider;
+    private final HttpToolExecutor httpToolExecutor;
+    private final McpToolCallbackFactory mcpToolCallbackFactory;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
+        this(dialogProperties, chatModelProvider, null, null);
+    }
+
+    @Autowired
+    public TurnTools(
+            DialogProperties dialogProperties,
+            ObjectProvider<ChatModel> chatModelProvider,
+            HttpToolExecutor httpToolExecutor,
+            McpToolCallbackFactory mcpToolCallbackFactory
+    ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
+        this.httpToolExecutor = httpToolExecutor;
+        this.mcpToolCallbackFactory = mcpToolCallbackFactory;
     }
 
     /**
@@ -81,6 +93,12 @@ public class TurnTools {
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
                 .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
             String name = fixed.getToolDefinition().name();
+            if ("sendMidCallSms".equals(name)) {
+                if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
+                    callbacks.add(fixed);
+                }
+                continue;
+            }
             // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
             // are universal and always included; recordPaymentPromise/recordRefusalReason
             // only when this scenario actually declares them.
@@ -95,13 +113,43 @@ public class TurnTools {
                 }
             }
         }
+        if (httpToolExecutor != null && s.tools() != null && !s.tools().isEmpty()) {
+            Map<String, Object> callVars = buildCallVariables(s);
+            for (Tool tool : s.tools()) {
+                callbacks.add(httpToolExecutor.buildCallback(tool, s, callVars));
+            }
+        }
+        List<ToolCallback> mcp = mcpTools(s);
+        callbacks.addAll(mcp);
         if (!dialogProperties.stateScopedTools()) {
             return callbacks;
         }
         Set<String> allowed = allowedTools(s);
+        // A scenario's stages name the tools they allow, and they cannot name a tool that
+        // came from a server the company connected afterwards. An MCP tool is therefore
+        // available wherever the call is: what it may do was already decided by
+        // McpToolGuard, which is the check that matters.
+        mcp.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
                 .toList();
+    }
+
+    /**
+     * The MCP tools this call's agent may use, resolved on the first turn and kept on the
+     * session — the declarations go out again on every turn, and rebuilding them would put
+     * a database read inside the pause the caller is listening to.
+     */
+    private List<ToolCallback> mcpTools(DialogSession s) {
+        if (mcpToolCallbackFactory == null) {
+            return List.of();
+        }
+        List<ToolCallback> cached = s.mcpTools();
+        if (cached == null) {
+            cached = mcpToolCallbackFactory.build(s);
+            s.setMcpTools(cached);
+        }
+        return cached;
     }
 
     private static Set<String> declaredToolNames(ScenarioDefinition def) {
@@ -121,6 +169,9 @@ public class TurnTools {
     private static Set<String> allowedTools(DialogSession s) {
         StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
         Set<String> allowed = new HashSet<>(ALWAYS_AVAILABLE_TOOLS);
+        if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
+            allowed.add("sendMidCallSms");
+        }
         // null = not specified, every scenario tool is available here (the common case);
         // an explicit (possibly empty) list means exactly those tools and no others —
         // debt-collection's GREETING/CLOSING/etc. stages rely on the empty-list case to
@@ -133,7 +184,24 @@ public class TurnTools {
         } else {
             allowed.addAll(perStage);
         }
+        if (s.tools() != null) {
+            for (Tool t : s.tools()) {
+                allowed.add(HttpToolExecutor.sanitizeToolName(t.name()));
+            }
+        }
         return allowed;
+    }
+
+    private static Map<String, Object> buildCallVariables(DialogSession s) {
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("channel_id", s.channelId());
+        vars.put("company_id", s.companyId());
+        vars.put("language", s.language());
+        vars.put("call_attempt_id", s.callAttemptId());
+        if (s.context() != null && s.context().facts() != null) {
+            vars.putAll(s.context().facts());
+        }
+        return vars;
     }
 
     /**

@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.campaign.application.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -14,17 +16,16 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort;
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
-import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
-import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
-import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
-import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
-import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
-import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
+import uz.murodjon.robotcallv2.campaign.domain.entity.*;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
+import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.dialer.domain.service.RetrySchedule;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RetryProperties;
@@ -36,10 +37,7 @@ import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.user.application.service.UserService;
@@ -53,6 +51,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CampaignService.class);
 
+    /** Only used to build a target's {@code context_data}; no configuration of its own. */
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     private final CampaignRepository campaigns;
     private final CampaignTargetRepository targets;
     private final DoNotCallRepository doNotCallList;
@@ -65,6 +66,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
     private final TtsWarmup ttsWarmup;
     private final TargetSourceRepository targetSources;
     private final TargetApiImporter targetApiImporter;
+    private final ChainedTargetImporter chainedTargetImporter;
+    private final DebtorSourcePort debtorSource;
+    private final CampaignValidator campaignValidator;
     private final SecretCipher secretCipher;
     private final Clock clock;
 
@@ -73,7 +77,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                            UserService users, CompanyConfigService companyConfig,
                            DialerProperties dialerProperties, AuditService audit, NotificationService notifications,
                            TtsWarmup ttsWarmup, TargetSourceRepository targetSources,
-                           TargetApiImporter targetApiImporter, SecretCipher secretCipher, Clock clock
+                           TargetApiImporter targetApiImporter, ChainedTargetImporter chainedTargetImporter,
+                           DebtorSourcePort debtorSource, CampaignValidator campaignValidator,
+                           SecretCipher secretCipher, Clock clock
     ) {
         this.campaigns = campaigns;
         this.targets = targets;
@@ -87,6 +93,9 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         this.ttsWarmup = ttsWarmup;
         this.targetSources = targetSources;
         this.targetApiImporter = targetApiImporter;
+        this.chainedTargetImporter = chainedTargetImporter;
+        this.debtorSource = debtorSource;
+        this.campaignValidator = campaignValidator;
         this.secretCipher = secretCipher;
         this.clock = clock;
     }
@@ -260,9 +269,17 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         String authHeaderValue = r.authHeaderValue() != null && !r.authHeaderValue().isBlank()
                 ? encryptSecret(r.authHeaderValue())
                 : (existing != null ? existing.authHeaderValue() : null);
+        // UYSOT_DEBTORS is not offered here: it is provisioned, reads its credentials from
+        // the company's CRM connection rather than from this form, and would otherwise be
+        // settable on a campaign whose company has no such connection.
+        TargetSourceProvider provider = r.providerOrDefault() == TargetSourceProvider.CHAINED
+                ? TargetSourceProvider.CHAINED
+                : TargetSourceProvider.GENERIC;
+        campaignValidator.validateTargetSource(provider, r.url(), r.steps());
         TargetSource saved = targetSources.upsert(campaignId, new TargetSource(
                 campaignId,
-                r.url().trim(),
+                provider,
+                r.url() != null ? r.url().trim() : null,
                 r.method(),
                 r.requestBody(),
                 r.authHeaderName(),
@@ -274,10 +291,14 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
                 r.replaceTargets() != null && r.replaceTargets(),
                 r.syncOnRecurrence() == null || r.syncOnRecurrence(),
                 r.enabled() == null || r.enabled(),
+                r.steps(),
                 existing != null ? existing.lastSyncAt() : null,
                 existing != null ? existing.lastSyncAdded() : null,
                 existing != null ? existing.lastSyncError() : null));
-        audit.record(companyId, "TARGET_SOURCE_UPDATE", "campaign", String.valueOf(campaignId), saved.url());
+        audit.record(companyId, "TARGET_SOURCE_UPDATE", "campaign", String.valueOf(campaignId),
+                provider == TargetSourceProvider.CHAINED
+                        ? provider + " (" + saved.steps().size() + " step(s))"
+                        : saved.url());
         return TargetSourceRow.of(saved);
     }
 
@@ -295,6 +316,13 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         if (source == null) {
             throw new NotFoundException(ErrorCode.TARGET_SOURCE_NOT_FOUND, campaignId);
         }
+        // enabled is off for both routes, not only the recurrence sweep: a source is
+        // switched off because calling it is unwanted — half-configured, pointed at the
+        // wrong environment, or a template nobody has filled in yet — and a hand-run sync
+        // over replaceTargets would empty the campaign just as thoroughly as an automatic one.
+        if (!source.enabled()) {
+            throw new ConflictException(ErrorCode.TARGET_SOURCE_DISABLED, campaignId);
+        }
         return importFromSource(companyId, source);
     }
 
@@ -308,7 +336,13 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         List<CsvRowError> errors = new ArrayList<>();
         List<ParsedTarget> fetched;
         try {
-            fetched = targetApiImporter.fetchTargets(source, decryptSecret(source.authHeaderValue()), errors);
+            fetched = switch (source.providerOrDefault()) {
+                case UYSOT_DEBTORS -> fetchDebtors(companyId);
+                case CHAINED -> chainedTargetImporter.fetchTargets(
+                        source, decryptSecret(source.authHeaderValue()), errors);
+                case GENERIC -> targetApiImporter.fetchTargets(
+                        source, decryptSecret(source.authHeaderValue()), errors);
+            };
         } catch (RuntimeException e) {
             targetSources.recordSync(campaignId, Instant.now(clock), 0, e.getMessage());
             throw e;
@@ -331,6 +365,29 @@ public class CampaignService implements CampaignUseCase, CampaignTargetUseCase {
         log.info("Target source sync for campaign {}: {} fetched, {} added, {} removed, {} rejected",
                 campaignId, fetched.size(), added.size(), removed, errors.size());
         return new TargetSyncResult(campaignId, fetched.size(), added.size(), removed, errors);
+    }
+
+    /**
+     * Today's debtors as targets. The facts are keyed by the debt-collection scenario's
+     * {@code factSchema} names — {@code clientName}, {@code debtAmount}, {@code currency},
+     * {@code contractNumber} — because that schema is what decides which of them the agent
+     * is allowed to say out loud. {@code client_id} carries the Uysot lead id, which is
+     * what the post-call note is attached to once the conversation ends.
+     */
+    private List<ParsedTarget> fetchDebtors(long companyId) {
+        List<Debtor> debtors = debtorSource.findOverdueDebtors(companyId, 0);
+        List<ParsedTarget> parsed = new ArrayList<>(debtors.size());
+        int line = 0;
+        for (Debtor debtor : debtors) {
+            line++;
+            ObjectNode facts = JSON.createObjectNode();
+            facts.put("clientName", debtor.name());
+            facts.put("debtAmount", debtor.debtAmount());
+            facts.put("currency", debtor.currency());
+            facts.put("contractNumber", debtor.contractNumber());
+            parsed.add(new ParsedTarget(line, debtor.leadId(), debtor.phone(), null, facts.toString()));
+        }
+        return parsed;
     }
 
     private String encryptSecret(String plaintext) {

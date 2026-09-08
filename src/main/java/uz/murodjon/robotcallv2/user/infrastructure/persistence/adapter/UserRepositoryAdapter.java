@@ -2,16 +2,17 @@ package uz.murodjon.robotcallv2.user.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.StoredFileJpaRepository;
 import uz.murodjon.robotcallv2.user.application.mapper.UserMapper;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
-import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
-import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
@@ -30,14 +31,17 @@ public class UserRepositoryAdapter implements UserRepository {
     private final CompanyJpaRepository companyJpaRepository;
     private final RoleJpaRepository roleJpaRepository;
     private final UserMapper mapper;
+    private final StoredFileJpaRepository storedFileJpaRepository;
 
     public UserRepositoryAdapter(UserJpaRepository userJpaRepository, CompanyJpaRepository companyJpaRepository,
                                  RoleJpaRepository roleJpaRepository,
-                                 UserMapper mapper) {
+                                 UserMapper mapper,
+                                 StoredFileJpaRepository storedFileJpaRepository) {
         this.userJpaRepository = userJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.roleJpaRepository = roleJpaRepository;
         this.mapper = mapper;
+        this.storedFileJpaRepository = storedFileJpaRepository;
     }
 
     @Override
@@ -218,7 +222,7 @@ public class UserRepositoryAdapter implements UserRepository {
     @Override
     public void updateAvatarFileId(long companyId, long id, Long avatarFileId) {
         userJpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
-            entity.setAvatarFileId(avatarFileId);
+            entity.setAvatarFile(storedFileReference(avatarFileId));
             userJpaRepository.save(entity);
         });
     }
@@ -242,5 +246,10 @@ public class UserRepositoryAdapter implements UserRepository {
     private RoleEntity roleReference(long roleId) {
         return roleJpaRepository.findById(roleId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.ROLE_NOT_FOUND, roleId));
+    }
+
+    /** Null when the user has no avatar. */
+    private StoredFileEntity storedFileReference(Long id) {
+        return id != null ? storedFileJpaRepository.getReferenceById(id) : null;
     }
 }

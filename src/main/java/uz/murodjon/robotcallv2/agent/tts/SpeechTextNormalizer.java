@@ -1,5 +1,8 @@
 package uz.murodjon.robotcallv2.agent.tts;
 
+import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
+
+import java.util.List;
 import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 
@@ -59,6 +62,39 @@ public final class SpeechTextNormalizer {
     /**
      * Normalizes {@code text} into spoken words according to the target {@code language}.
      */
+    /**
+     * Normalizes {@code text} into spoken words according to the target {@code language},
+     * additionally applying any agent-level custom pronunciation rules.
+     */
+    public static String normalize(String text, String language, List<PronunciationRule> rules) {
+        String base = normalize(text, language);
+        return applyPronunciationRules(base, language, rules);
+    }
+
+    /**
+     * Replaces configured acronyms, domain jargon, or custom phonetic words.
+     */
+    public static String applyPronunciationRules(String text, String language, List<PronunciationRule> rules) {
+        if (text == null || text.isBlank() || rules == null || rules.isEmpty()) {
+            return text;
+        }
+        String result = text;
+        for (PronunciationRule rule : rules) {
+            if (rule.word() == null || rule.word().isBlank() || rule.replacement() == null) {
+                continue;
+            }
+            if (rule.language() != null && !rule.language().isBlank() && !"*".equals(rule.language())) {
+                if (language != null && !language.toLowerCase().startsWith(rule.language().toLowerCase())) {
+                    continue;
+                }
+            }
+            int flags = rule.caseSensitive() ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+            String regex = "\\b" + Pattern.quote(rule.word().trim()) + "\\b";
+            result = Pattern.compile(regex, flags).matcher(result).replaceAll(rule.replacement().trim());
+        }
+        return result;
+    }
+
     public static String normalize(String text, String language) {
         if (text == null || text.isBlank()) {
             return text;

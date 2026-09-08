@@ -1,0 +1,53 @@
+voice-agent:
+  billing:
+    # Bump this whenever a rate below changes. It is written to every call_billing row so
+    # an old call can still be explained with the prices it was actually charged at —
+    # without it, changing a rate silently reprices every call in the history.
+    version: ${BILLING_RATE_VERSION:2026-09-v1}
+
+    # Whether a call is refused when the company cannot pay for it. Off by default so an
+    # existing deployment does not stop dialling the moment this ships; turn it on once
+    # the balances in company_billing are real.
+    enforce-balance: ${BILLING_ENFORCE_BALANCE:false}
+
+    # Held before a number is dialled, and released or settled when the call ends. It has
+    # to cover a call that runs the full expected length, or a company at zero could
+    # still talk for ten minutes.
+    reservation-uzs: ${BILLING_RESERVATION_UZS:5000}
+
+    # What one call costs the company, all in UZS. Written in UZS rather than the
+    # providers' USD on purpose: a currency conversion nobody can audit at the moment a
+    # call is settled is worse than an operator updating these when the rate moves.
+    rates:
+      # Per million tokens. Cached prompt tokens are billed at the cached rate, which is
+      # why they are counted separately per call.
+      llm:
+        prompt-per-million-uzs: ${BILLING_LLM_PROMPT_UZS:1900}
+        completion-per-million-uzs: ${BILLING_LLM_COMPLETION_UZS:7600}
+        cached-prompt-per-million-uzs: ${BILLING_LLM_CACHED_UZS:475}
+
+      # Speech, priced on what the company can see on its own call record: the call's
+      # duration for recognition, the characters the agent spoke for synthesis. What VAD
+      # gating and the TTS cache save is this platform's margin, measured separately as
+      # voice.stt.audio.seconds.skipped and voice.tts.chars.saved.
+      stt-per-minute-uzs: ${BILLING_STT_UZS:75}
+      tts-per-1k-chars-uzs: ${BILLING_TTS_UZS:50}
+
+      # Telephony, per minute of connected call. One number for every trunk: a company's
+      # trunks are priced the same by its provider, and a per-trunk table is a setting
+      # nobody has asked for yet.
+      telephony-per-minute-uzs: ${BILLING_TELEPHONY_UZS:190}
+
+      # This platform's own per-minute charge, on top of what the call cost to run. Not
+      # marked up — it is already this platform's price, not a cost being resold.
+      platform-fee-per-minute-uzs: ${BILLING_PLATFORM_FEE_UZS:100}
+
+      # Applied to the provider costs above, in basis points. 2000 = 20%.
+      markup-basis-points: ${BILLING_MARKUP_BPS:2000}
+
+    # Balance below which an automatic top-up is raised, and how much for. Only for
+    # companies that switched auto-recharge on (company_billing.auto_recharge).
+    auto-recharge:
+      threshold-uzs: ${BILLING_AUTO_RECHARGE_THRESHOLD_UZS:50000}
+      amount-uzs: ${BILLING_AUTO_RECHARGE_AMOUNT_UZS:500000}
+      cron: ${BILLING_AUTO_RECHARGE_CRON:0 */15 * * * *}

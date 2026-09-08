@@ -82,6 +82,23 @@ public final class AmbientSoundGenerator {
      * @return 16-bit PCM frame with ambient audio mixed in
      */
     public static short[] mix(short[] pcmFrame, AmbientSound sound, long samplePosition) {
+        return mix(pcmFrame, sound, samplePosition, 1.0, 0.0);
+    }
+
+    /**
+     * As {@link #mix(short[], AmbientSound, long)}, with the bed trimmed and faded in.
+     *
+     * <p>{@code volume} scales the calibrated level rather than setting one: 1.0 is the
+     * level {@link #generateLoop} tuned each soundscape to, which is already the ~20 dB
+     * under the bot's voice that a real room sits at. Anything above 1.0 is refused for
+     * that reason — a louder bed is not a preference, it is the bed leaking back up the
+     * line into the recognizer.
+     *
+     * @param volume        multiplier on the calibrated level, clamped to 0.0-1.0
+     * @param fadeInSeconds equal-power ramp from call start; 0 starts at full level
+     */
+    public static short[] mix(short[] pcmFrame, AmbientSound sound, long samplePosition,
+                              double volume, double fadeInSeconds) {
         if (sound == null || sound == AmbientSound.OFF || pcmFrame == null || pcmFrame.length == 0) {
             return pcmFrame;
         }
@@ -89,16 +106,37 @@ public final class AmbientSoundGenerator {
         if (loop == null || loop.length == 0) {
             return pcmFrame;
         }
+        double level = Math.max(0.0, Math.min(1.0, volume));
+        if (level == 0.0) {
+            return pcmFrame;
+        }
 
         short[] output = new short[pcmFrame.length];
         int loopLen = loop.length;
         for (int i = 0; i < pcmFrame.length; i++) {
-            int loopIndex = (int) ((samplePosition + i) % loopLen);
-            int mixed = pcmFrame[i] + loop[loopIndex];
+            long position = samplePosition + i;
+            int loopIndex = (int) (position % loopLen);
+            int mixed = pcmFrame[i] + (int) Math.round(loop[loopIndex] * level * fadeGain(position, fadeInSeconds));
             // Clamp to 16-bit signed range
             output[i] = (short) Math.max(-32768, Math.min(32767, mixed));
         }
         return output;
+    }
+
+    /**
+     * Equal-power ramp: {@code sin(pi/2 * t)} rather than a straight line, because a bed
+     * is noise and noise fades by power, not amplitude. A linear ramp on noise is heard
+     * as arriving late and then rushing in.
+     */
+    private static double fadeGain(long samplePosition, double fadeInSeconds) {
+        if (fadeInSeconds <= 0.0) {
+            return 1.0;
+        }
+        double fadeSamples = fadeInSeconds * SAMPLE_RATE;
+        if (samplePosition >= fadeSamples) {
+            return 1.0;
+        }
+        return Math.sin(Math.PI / 2.0 * (samplePosition / fadeSamples));
     }
 
     /** Builds one soundscape's looping buffer, band-limited and calibrated to its target level. */
@@ -130,6 +168,14 @@ public final class AmbientSoundGenerator {
                 targetRms = 240.0; // ~ -42.7 dBFS — comfort noise, nothing more
                 addNoise(raw, rand, 1.0);
                 addLineHum(raw);
+            }
+            // Typed notes under a pause, played only while the model is composing a reply.
+            // Denser than the office bed's stray keystroke and with no babble under it:
+            // this one is meant to be noticed as someone working, not as a room.
+            case KEYBOARD_TYPING -> {
+                targetRms = 320.0; // ~ -40.2 dBFS
+                addNoise(raw, rand, 0.15);
+                addKeyboard(raw, rand, 0.09, 0.22, 1.0);
             }
             // OFF, and any constant added later that has no bed of its own.
             default -> {

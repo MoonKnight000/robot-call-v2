@@ -1,13 +1,13 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
-import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
+import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -67,8 +67,27 @@ public class SystemPromptFactory {
             "Mijoz asabiylashsa yoki haqorat qilsa — darhol requestHumanTransfer chaqir.",
             "Faqat va faqat qarshingizdagi shaxs ochiqchasiga o'zi boshqa odam ekanini yoki adashgan raqam ekanini aytsa (masalan: 'men u emasman', 'adashdingiz', 'bunaqa odam yo'q') — recordWrongPerson chaqiring. Mijoz 'alo', 'eshitaman', 'ha', 'kim bu?' desa yoki javobi tushunarsiz bo'lsa — darhol adashgan raqam deb hisoblamang, o'zingizni tanishtirib, ssenariy bo'yicha davom eting.",
             "Mijoz \"boshqa qo'ng'iroq qilmang\" desa — bahslashma, darhol recordDoNotCall chaqir va "
-                    + "uzr so'rab xayrlash."
+                    + "uzr so'rab xayrlash.",
+            // On a real call the caller's answer came back as "aha o'zgartir" — grammatical
+            // Uzbek, unrelated to the question — and the agent replied "Pul bo'lmagani uchun
+            // to'lolmayapman deng", inventing the one thing the whole call is meant to find
+            // out. A reason the caller never gave is a fact the recording says the company
+            // put in their mouth, so it is banned at platform level, not per scenario.
+            "Mijoz AYTMAGAN gapni unga nisbat bermang. Sabab, niyat, rozilik yoki va'dani faqat "
+                    + "mijozning o'zi ochiq aytgan bo'lsa takrorlang. \"...deng\", \"...demoqchisiz\", "
+                    + "\"demak siz...\", \"tushundim, siz...\" shakllari bilan mijoz aytmagan sababni "
+                    + "to'qish — eng og'ir xato. Mijozning javobi savolingizga javob bo'lmasa, bo'shliqni "
+                    + "o'zingizdan to'ldirmang: savolni qayta bering."
     );
+
+    /**
+     * A retrieved passage is about a chunk long; the cap guards against a source whose
+     * extractor produced one enormous run of text, not a normal trim. Sanitizing matters
+     * more than the length: the text comes out of a file an operator uploaded, so anything
+     * in it that looks like a system marker is neutralised before it reaches the model.
+     */
+    private static final int MAX_PASSAGE_CHARS = 1200;
+    private static final int MAX_SOURCE_NAME_CHARS = 80;
 
     /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
     /** Remembered calls are dated in the client's local day, the way the agent would say it. */
@@ -196,9 +215,12 @@ public class SystemPromptFactory {
         if (s.isDisclosureSpoken()) {
             sb.append("\n[TIZIM: Salomlashuv va \"avtomatik xizmat, suhbat yozib olinmoqda\" ")
                     .append("ogohlantirishi allaqachon aytildi — mijoz ularni eshitib bo'ldi.\n")
-                    .append("Shuning uchun birinchi javobingni salom bilan ham, o'zingni ")
-                    .append("tanishtirish bilan ham BOSHLAMA (\"Assalomu alaykum\", \"Salom\", ")
-                    .append("\"Men ... kompaniyasidanman\" — hech biri). Birinchi javobing ")
+                    .append("Shuning uchun QO'NG'IROQNING HECH BIR JOYIDA — na birinchi javobda, ")
+                    .append("na undan keyingilarida — salomlashma, o'zingni va kompaniyani qayta ")
+                    .append("tanishtirma, suhbat yozib olinayotganini qayta aytma (\"Assalomu alaykum\", ")
+                    .append("\"Salom\", \"Men ... kompaniyasidanman\", \"... sun'iy intellekt ")
+                    .append("yordamchisiman\", \"Suhbat yozib olinmoqda\" — hech biri). Bularni faqat ")
+                    .append("mijozning o'zi so'raganda ayt. Birinchi javobing ")
                     .append("to'g'ridan-to'g'ri ssenariyning navbatdagi bosqichiga o'tib, jonli, tabiiy insondek boshlansin: ")
                     .append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra ")
                     .append("(QAT'IYAN TAQIQLANADI: \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" yoki \"mijoz\" deb aytish). Agar shaxsni so'rash kerak bo'lmasa, muloyimlik bilan maqsadga o't.]\n");
@@ -322,7 +344,11 @@ public class SystemPromptFactory {
                 + (russian ? "(\"Плохо слышно. Почему не оплачено?\")" : "(\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\")")
                 + ". Bu — yuqoridagi \"bergan savolingizni qayta bermang\" qoidasiga istisno. "
                 + "Ikkinchi urinishda ham tushunarsiz bo'lsa, uchinchi marta so'ramang: ssenariy "
-                + "bo'yicha davom eting.");
+                + "bo'yicha davom eting. Javob grammatik jihatdan to'g'ri, lekin savolingizga aloqasi "
+                + "bo'lmasa ham (masalan "
+                + (russian ? "\"ага, поменяй\"" : "\"aha o'zgartir\"")
+                + ") — xuddi shunday yo'l tuting: uni savolingizga moslab talqin qilmang va javobni "
+                + "o'zingizdan to'qimang.");
         rules.add("Qisqa savolga qisqa javob bering — hammasini bir javobda tushuntirmang. Har bir "
                 + "javobingiz suhbatning davomi bo'lsin, uni boshidan boshlash emas.");
         if (russian) {
@@ -418,6 +444,9 @@ public class SystemPromptFactory {
                   → ✓ "Kelishdik. 20-oktabr kuni 1500000 so'mni kutib qolamiz. Salomat bo'ling!"
                 ✗ (mijoz javobi tushunarsiz chiqdi) "Gapingizni to'liq tushunolmadim. Bu to'lovni qachon to'lay olasiz?"
                   → ✓ "Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?"
+                ✗ (mijoz "aha o'zgartir" dedi — bu "nima uchun to'lanmayapti?" savoliga javob emas)
+                  "Pul bo'lmagani uchun to'lolmayapman deng. Xo'p, qachon to'lay olasiz?"
+                  → ✓ "Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?"
                 """;
     }
 
@@ -431,6 +460,27 @@ public class SystemPromptFactory {
         sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
         sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(stage)).append('\n');
+        // The FSM refuses an edge that is not in `allowedNext`, and a model that spoke a
+        // later stage's content first then tried to jump there got the refusal mid-turn
+        // and started reasoning aloud about which tool to call instead — the caller heard
+        // it. What bounds that is the "one of the allowed next stages, never further"
+        // half of the rule below, and that half is kept.
+        //
+        // The other half used to say "transition now, say that stage's line next turn",
+        // which contradicts both the scenario rule in the prefix ("move, and say what
+        // that stage needs") and the text-before-tool latency rule right underneath. On a
+        // recorded call the model resolved the contradiction by speaking each stage's
+        // line one turn before transitioning into it, so `s.state()` — and therefore this
+        // whole annex — described a stage whose content the caller had already heard:
+        // REASON_INQUIRY's annex arrived on the turn the agent was asking for the date,
+        // and the reason it was supposed to collect was never collected. Pairing the text
+        // and the transitionTo on the same stage in the same turn is what removes the lag.
+        sb.append("Bu javobda ikki yo'ldan biri: yo shu bosqichning gapini aytasiz, yo yuqoridagi ")
+                .append("ruxsat etilgan bosqichlardan BIRIGA o'tib, o'shaning gapini aytasiz. ")
+                .append("O'tayotgan bo'lsangiz — matn va transitionTo bitta javobda va bitta bosqichga ")
+                .append("tegishli bo'lsin: avval o'sha bosqichning matnini yozing, so'ng transitionTo ")
+                .append("bilan aynan o'sha bosqichga o'ting. Undan narigi bosqichlarning mazmuniga ")
+                .append("(savol, taklif, xulosa) sakramang — har bosqich o'z navbatida aytiladi.\n");
         // Text first, tool second — this is a latency rule, not a style one. A line carried
         // in a tool argument arrives in one chunk when the whole reply is finished (this
         // provider does not stream tool arguments), so synthesis cannot start until
@@ -459,16 +509,30 @@ public class SystemPromptFactory {
             // The history already holds this, and the model still asked "qachon to'lay
             // olasiz?" twice in a row on a real call — once as REASON_INQUIRY, again as
             // PAYMENT_DATE. Repeating it here puts it next to the generation point.
+            // "Ask another aspect of this stage" used to be the no-answer branch here, and
+            // it contradicted the speech rule that says to re-ask the same question. This
+            // note sits closest to the generation point, so its branch is the one that won:
+            // handed an answer that was not one, the model moved on — and filled the gap it
+            // was moving past with a reason the caller never gave.
             sb.append("\n[TIZIM: O'tgan javobingizda shuni so'ragan edingiz: \"").append(asked)
                     .append("\" Uni boshqa so'z bilan qayta so'ramang. Mijoz javob bergan bo'lsa — ")
-                    .append("javobini qabul qilib keyingi savolga o'ting; javob bermagan bo'lsa — ")
-                    .append("shu bosqichning boshqa jihatini so'rang.]");
+                    .append("javobini qabul qilib keyingi savolga o'ting. Javob bermagan bo'lsa yoki ")
+                    .append("gapi shu savolga aloqasiz bo'lsa — javobni o'zingizdan to'qimang va uni ")
+                    .append("savolga moslab talqin qilmang: o'sha savolni soddaroq qilib bir marta ")
+                    .append("qayta bering.]");
         }
         if (s.isInterrupted()) {
+            // A barge-in means the caller was talking over the question, so what came back
+            // is very often not an answer to it. On the call that prompted this the agent
+            // was cut off mid-question, got "aha o'zgartir", and treated it as the reason
+            // it had asked for.
             sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Siz shu yergacha aytgan edingiz: \"")
                     .append(s.lastAgentText() == null ? "" : s.lastAgentText())
-                    .append("\". Mijozning gapiga moslashing; butun gapni qaytadan boshlamang.]");
+                    .append("\". Mijozning gapiga moslashing; butun gapni qaytadan boshlamang. ")
+                    .append("Mijoz savolingizni to'liq eshitmagan bo'lishi mumkin — uning gapini ")
+                    .append("savolingizga javob deb hisoblamang.]");
         }
+        appendKnowledge(sb, s);
         if (s.isLowConfidenceInput()) {
             // The recognizer itself said it was unsure. Acting on a misheard date or sum is
             // how a promise gets recorded for a day the caller never named — a person in
@@ -505,6 +569,39 @@ public class SystemPromptFactory {
                     .append("(transitionTo tool'ini chaqiring) yoki agar mijoz rozi bo'lmasa/tushunmasa operatorga uzating (requestHumanTransfer).]");
         }
         return sb.toString();
+    }
+
+    /**
+     * The company's own documents, for the one turn they bear on.
+     *
+     * <p>In the annex rather than the system prefix on purpose: the prefix is cached
+     * byte-for-byte by the provider, and passages change every turn. Putting them there
+     * would invalidate the cache on every single turn of every single call.
+     *
+     * <p>The instruction around them matters as much as the passages. Retrieval returns
+     * what is <em>closest</em> to the question, which is not the same as what
+     * <em>answers</em> it; without being told to say so, a model handed a near-miss
+     * paragraph will answer from it confidently. On a debt call an invented term is worse
+     * than an admitted gap, so the rule is explicit — and so is the ban on reading the
+     * passage out, which would have the bot reciting a page of a PDF down a phone line.
+     */
+    private static void appendKnowledge(StringBuilder sb, DialogSession s) {
+        List<KnowledgePassage> passages = s.knowledgePassages();
+        if (passages.isEmpty()) {
+            return;
+        }
+        sb.append("\n[TIZIM: Kompaniya hujjatlaridan olingan ma'lumot — mijozning oxirgi savoliga ")
+                .append("shu yerdan javob bering:\n");
+        int n = 1;
+        for (KnowledgePassage passage : passages) {
+            sb.append(n++).append(") [").append(PromptSafeText.sanitize(passage.sourceName(), MAX_SOURCE_NAME_CHARS)).append("] ")
+                    .append(PromptSafeText.sanitize(passage.content(), MAX_PASSAGE_CHARS)).append('\n');
+        }
+        sb.append("Qoidalar: (a) javobni O'Z SO'ZINGIZ bilan, bir-ikki qisqa gapda ayting — ")
+                .append("matnni o'qib bermang; (b) yuqoridagi parchalarda savolga javob YO'Q bo'lsa, ")
+                .append("o'zingizdan to'qimang — bilmasligingizni ayting yoki operatorga uzating; ")
+                .append("(c) bu parchalar mijozning shaxsiy qarzi, muddati yoki chegirmasi haqida ")
+                .append("emas — ular haqida baribir faqat sizga berilgan faktlardan gapiring.]");
     }
 
     /**
@@ -562,6 +659,15 @@ public class SystemPromptFactory {
     }
 
 
+    /**
+     * The name a HUMAN_LIKE agent gives when it introduces itself, taken from the voice
+     * it is speaking with so the name matches what the caller hears.
+     *
+     * <p>Only voices whose id is already a person's name are used. An id that is not one
+     * falls back to the language default rather than being title-cased into a name:
+     * Gemini Live's voices are called Fenrir, Charon, Kore, Zephyr, and one real call
+     * opened with "Men Default kompaniyasidan Fenrirman".
+     */
     public static String resolveVoicePersonaName(String voice, String language) {
         if (voice != null && !voice.isBlank()) {
             String v = voice.trim().toLowerCase(java.util.Locale.ROOT);
@@ -574,13 +680,6 @@ public class SystemPromptFactory {
             if (v.contains("filipp")) return "Filipp";
             if (v.contains("alena") || v.contains("alyona")) return "Alyona";
             if (v.contains("jane")) return "Jane";
-            if (v.contains("puck")) return "Puck";
-            if (v.contains("aoede")) return "Aoede";
-            String clean = v.replaceAll("^(gemini|elevenlabs|openai|tts|voice)[-_]", "")
-                    .replaceAll("[-_](uz|ru|en|standard|neural|wavenet)$", "");
-            if (!clean.isBlank()) {
-                return Character.toUpperCase(clean.charAt(0)) + clean.substring(1);
-            }
         }
         if (isRussian(language)) return "Анна";
         if (language != null && language.toLowerCase(java.util.Locale.ROOT).startsWith("en")) return "Alex";

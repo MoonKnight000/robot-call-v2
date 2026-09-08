@@ -1,8 +1,6 @@
 package uz.murodjon.robotcallv2.agent.tts;
 
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.agent.audio.Resampler;
-import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
 
 import java.nio.ByteBuffer;
@@ -18,7 +16,7 @@ class GeminiTtsProviderTest {
         GeminiTtsProperties geminiProps = new GeminiTtsProperties(
                 "dummy-key", "https://generativelanguage.googleapis.com/v1beta/models",
                 "gemini-3.1-flash-tts-preview", "Aoede", Map.of("uz-UZ", "Aoede", "ru-RU", "Kore"), 24000, 10);
-        TtsProperties props = new TtsProperties(true, "gemini", "uz-UZ", null, geminiProps, null, null, null, null);
+        TtsProperties props = new TtsProperties(true, "gemini", "uz-UZ", null, geminiProps, null, null, null, null, null);
         GeminiTtsProvider provider = new GeminiTtsProvider(props);
 
         assertThat(provider.name()).isEqualTo("gemini");

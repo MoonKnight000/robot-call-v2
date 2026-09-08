@@ -5,6 +5,7 @@ import java.time.Instant;
 public record KnowledgeItemResponse(
         long id,
         long companyId,
+        Long agentId,
         String key,
         String topic,
         String title,

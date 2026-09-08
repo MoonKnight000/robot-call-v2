@@ -1,0 +1,62 @@
+### 1. Create a website widget for an agent
+POST http://localhost:8080/api/ai-agents/1/widgets
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Bosh sahifa ovozli yordamchi",
+  "enabled": true,
+  "allowedOrigins": ["https://example.uz", "https://www.example.uz"],
+  "theme": {
+    "primaryColor": "#2F6BFF",
+    "position": "BOTTOM_RIGHT"
+  },
+  "consentRequired": true,
+  "consentText": "Ushbu ovozli suhbat sifatni yaxshilash uchun yozib olinadi."
+}
+
+### 2. List an agent's widgets
+GET http://localhost:8080/api/ai-agents/1/widgets
+Authorization: Bearer {{auth_token}}
+
+### 3. Get one widget (response carries the embed snippet)
+GET http://localhost:8080/api/widgets/1
+Authorization: Bearer {{auth_token}}
+
+### 4. Update a widget
+PUT http://localhost:8080/api/widgets/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Bosh sahifa ovozli yordamchi (v2)",
+  "allowedOrigins": ["https://example.uz"],
+  "enabled": true
+}
+
+### 5. Delete a widget
+DELETE http://localhost:8080/api/widgets/1
+Authorization: Bearer {{auth_token}}
+
+### 6. Public config — what the embed script reads. No token; the Origin header is
+### checked against the widget's allowed-origins list.
+GET http://localhost:8080/api/public/widgets/wgt_0123456789abcdef/config
+Origin: https://example.uz
+
+### 7. Public session — what the embed script calls when the visitor presses the button.
+### No token; the Origin header is checked against the widget's allowed-origins list, and
+### the agent's daily/concurrent limits are applied. The response is single-use and the
+### session expires in 5 minutes if the browser never dials in.
+POST http://localhost:8080/api/public/widgets/wgt_0123456789abcdef/session?language=uz-UZ
+Origin: https://example.uz
+
+### 8. The embed snippet itself, for reference — this is what a customer pastes:
+###
+###   <script src="http://localhost:8080/widgets/v1/widget.js"
+###           data-widget-key="wgt_0123456789abcdef" async></script>
+###
+### Optional attributes:
+###   data-api-base   API origin, when the script is served from a CDN instead
+###   data-language   force a call language (uz-UZ, ru-RU); default is the agent's
+###   data-sip-js     self-hosted SIP.js URL, for deployments with no public CDN access
+GET http://localhost:8080/widgets/v1/widget.js

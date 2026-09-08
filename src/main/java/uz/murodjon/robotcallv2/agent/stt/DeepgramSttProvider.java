@@ -70,6 +70,13 @@ public class DeepgramSttProvider implements SttProvider {
     @Override
     public SttSession startStream(String languageCode, List<String> alternativeLanguages,
                                   TranscriptListener listener, boolean externalEndpointing) {
+        return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, List.of(), null);
+    }
+
+    @Override
+    public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                  TranscriptListener listener, boolean externalEndpointing,
+                                  List<String> hints, String model) {
         HttpClient current = client;
         DeepgramSttProperties d = sttProperties.deepgram();
         if (current == null || d == null) {
@@ -77,8 +84,9 @@ public class DeepgramSttProvider implements SttProvider {
         }
 
         String lang = languageCode != null && languageCode.length() >= 2 ? languageCode.substring(0, 2) : "ru";
+        String chosenModel = (model != null && !model.isBlank()) ? model.trim() : d.model();
         String wsUrl = String.format("%s?model=%s&language=%s&encoding=linear16&sample_rate=%d&channels=1&interim_results=%s&smart_format=true&endpointing=300",
-                d.url(), d.model(), lang, d.sampleRate(), d.interimResults());
+                d.url(), chosenModel, lang, d.sampleRate(), d.interimResults());
 
         AtomicBoolean alive = new AtomicBoolean(true);
         CountDownLatch connected = new CountDownLatch(1);
@@ -95,7 +103,7 @@ public class DeepgramSttProvider implements SttProvider {
                 throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_STREAM_FAILED, "deepgram connect timeout");
             }
 
-            log.info("Opened Deepgram STT stream for lang={} (model={})", lang, d.model());
+            log.info("Opened Deepgram STT stream for lang={} (model={})", lang, chosenModel);
             return new DeepgramSttSession(ws, alive);
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_STREAM_FAILED, "deepgram", e, e.getMessage());

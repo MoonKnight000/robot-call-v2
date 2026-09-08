@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.donotcall.application.port.output;
 
-import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCall;
+import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 
 import java.util.List;

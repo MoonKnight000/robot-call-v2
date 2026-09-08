@@ -51,6 +51,23 @@ public interface SttProvider {
         return startStream(languageCode, alternativeLanguages, listener, externalEndpointing);
     }
 
+    /**
+     * The same, on the recognition model this call asks for ({@code ai_agent.stt_model}).
+     *
+     * <p>Default is to ignore it and stay on the model the deployment configured, because
+     * a provider either has one model or names it in a way nothing else does: what
+     * Deepgram calls {@code nova-2} means nothing to Yandex, and Aisha has no model to
+     * pick at all. A blank or unknown name is the configured model too — a live call is
+     * the wrong place to fail over a settings typo.
+     *
+     * @param model provider-side model name, or {@code null} for the configured one
+     */
+    default SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                   TranscriptListener listener, boolean externalEndpointing,
+                                   List<String> hints, String model) {
+        return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, hints);
+    }
+
     /** Recognize {@code languageCode} only — no other language is expected on this call. */
     default SttSession startStream(String languageCode, TranscriptListener listener,
                                    boolean externalEndpointing) {

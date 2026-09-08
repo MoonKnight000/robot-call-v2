@@ -1,11 +1,6 @@
 package uz.murodjon.robotcallv2.role.domain.enums;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Every right the panel can grant, one pair per page: {@code *_READ} opens the page,
@@ -87,6 +82,9 @@ public enum Permission {
 
     BILLING_READ("bil.r", PermissionGroup.BILLING),
     BILLING_EDIT("bil.w", PermissionGroup.BILLING),
+
+    API_KEY_READ("apk.r", PermissionGroup.API_KEY),
+    API_KEY_EDIT("apk.w", PermissionGroup.API_KEY),
 
     /** Tenant onboarding and suspension — platform staff only, never grantable to a company role. */
     PLATFORM_ADMIN("plt.a", PermissionGroup.PLATFORM, PermissionScope.PLATFORM);

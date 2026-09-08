@@ -3,27 +3,30 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
-import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aimodel.application.service.AiModelConfigService;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
-import uz.murodjon.robotcallv2.company.domain.entity.Company;
-import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.application.service.CompanyService;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
+import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
+import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
+import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.application.service.VoiceSettingsService;
+import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.Consumer;
 
 /**
  * The cascade pipeline's conversation engine (PROJECT.md §4, §7.1, Stage 7): STT → LLM
@@ -47,6 +50,8 @@ public class DialogEngine implements CallDialog {
     private final ClientInputGate inputGate;
     private final SilenceWatchdogRunner watchdogRunner;
     private final DialogExecutors executors;
+    private final ToolUseCase toolUseCase;
+    private final SmsUseCase smsUseCase;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
@@ -61,7 +66,9 @@ public class DialogEngine implements CallDialog {
                         TurnRunner turnRunner,
                         ClientInputGate inputGate,
                         SilenceWatchdogRunner watchdogRunner,
-                        DialogExecutors executors) {
+                        DialogExecutors executors,
+                        ToolUseCase toolUseCase,
+                        SmsUseCase smsUseCase) {
         this.dialogProperties = dialogProperties;
         this.records = records;
         this.aiModelConfigService = aiModelConfigService;
@@ -74,6 +81,8 @@ public class DialogEngine implements CallDialog {
         this.inputGate = inputGate;
         this.watchdogRunner = watchdogRunner;
         this.executors = executors;
+        this.toolUseCase = toolUseCase;
+        this.smsUseCase = smsUseCase;
     }
 
     @Override
@@ -103,19 +112,57 @@ public class DialogEngine implements CallDialog {
                 .withOverrides(agent != null ? agent.llmModel() : null,
                         agent != null ? agent.temperature() : null,
                         agent != null ? agent.maxOutputTokens() : null);
+        // The agent picks the vendor that speaks it, the same way it picks its model;
+        // the company setting is what an agent that chose none falls back to. A call
+        // whose voice comes from the catalog still speaks through that voice's own
+        // provider — only a call with no voice of its own reaches this choice.
         EffectiveVoiceSettings voiceSettings = voiceSettingsService.effective(companyId);
+        String agentTtsProvider = agent != null ? agent.speechEngine().ttsProvider() : null;
+        if (agentTtsProvider != null && !agentTtsProvider.isBlank()) {
+            voiceSettings = voiceSettings.withProvider(agentTtsProvider.trim());
+        }
         Company company = companyService.findById(companyId);
         String companyName = company != null ? company.name() : null;
         CompanyConfig companyConfig = companyConfigService.find(companyId);
         String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
         boolean disclosureEnabled = agent == null || agent.disclosureEnabled();
-        AgentPersona agentPersona = agent != null ? agent.personaOrDefault() : AgentPersona.AI_ASSISTANT;
-        boolean emotionAdaptiveVoice = agent == null || agent.emotionAdaptiveVoice();
-        Map<String, String> languageVoices = agent != null ? agent.languageVoicesOrEmpty() : Map.of();
+        AgentPersona agentPersona = agent != null ? agent.persona() : AgentPersona.AI_ASSISTANT;
+        boolean emotionAdaptiveVoice = agent == null || agent.voice().emotionAdaptive();
+        Map<String, String> languageVoices = agent != null ? agent.voice().perLanguage() : Map.of();
+        List<Tool> tools = List.of();
+        if (agent != null && agent.id() != 0L) {
+            try {
+                tools = toolUseCase.findAgentToolDefinitions(companyId, agent.id());
+            } catch (Exception e) {
+                log.warn("[{}] failed to load active tools for agent {}: {}", channelId, agent.id(), e.getMessage());
+            }
+        }
+        String firstMessage = agent != null ? agent.script().firstMessage() : null;
         DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
                 hangup, transfer, callAttemptId, companyId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
-                companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices);
+                companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices,
+                firstMessage, tools, agent != null ? agent.pronunciationRules() : List.of(), agent);
+        if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
+            session.setMidCallSmsSender(smsText -> {
+                try {
+                    String phone = session.context() != null ? session.context().clientPhone() : null;
+                    if (phone == null || phone.isBlank()) {
+                        phone = records.phoneOf(callAttemptId);
+                    }
+                    if (phone != null && !phone.isBlank()) {
+                        smsUseCase.sendSms(companyId, new SmsSendRequest(phone, smsText));
+                        log.info("[{}] Mid-call SMS sent to {}: {}", channelId, phone, smsText);
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] Failed to send mid-call SMS: {}", channelId, e.getMessage());
+                }
+            });
+        }
         session.setDtmfSender(dtmf);
+        // Which model a one-word turn is answered on is the agent's call, the same way its
+        // own llmModel is: a survey agent and a collections agent share a deployment and
+        // not a tolerance for a weaker model. Null leaves the installation default.
+        session.setFastModel(agent != null ? agent.fastLlmModel() : null);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
@@ -254,9 +301,11 @@ public class DialogEngine implements CallDialog {
         return new DialogTechnicalSnapshot(
                 session.turnCount(),
                 session.promptTokens(), session.completionTokens(), session.cachedTokens(),
+                session.ttsChars(),
                 session.avgTurnLatencyMs(), session.maxTurnLatencyMs(),
                 session.avgLlmLatencyMs(), session.maxLlmLatencyMs(),
-                session.ttsVoice(), session.language());
+                session.ttsVoice(), session.language(),
+                null, session.aiModel() == null ? null : session.aiModel().model());
     }
 
     @Override

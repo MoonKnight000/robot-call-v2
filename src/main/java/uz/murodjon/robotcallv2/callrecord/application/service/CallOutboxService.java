@@ -87,7 +87,7 @@ public class CallOutboxService {
                     log.debug("Outbox: summary still unavailable for call {}", p.callId());
                     continue;
                 }
-                Long noteId = crmClient.postNote(companyId, p.clientId(), summary);
+                String noteId = crmClient.postNote(companyId, p.clientId(), summary);
                 records.writeResult(p.callId(), summary, false, noteId);
                 memoryWriter.remember(p.callId(), companyId, scenario, p.disposition(), summary);
                 log.info("Outbox: summarized call {} on retry (crmNoteId={})", p.callId(), noteId);
@@ -109,12 +109,12 @@ public class CallOutboxService {
         log.info("Outbox: {} CRM note(s) to re-post", pending.size());
         for (PendingNote p : pending) {
             try {
-                Long noteId = crmClient.postNote(records.companyIdOf(p.callId()), p.clientId(), p.summary());
+                String noteId = crmClient.postNote(records.companyIdOf(p.callId()), p.clientId(), p.summary());
                 if (noteId != null) {
                     outbox.markCrmPosted(p.callId(), noteId);
                     log.info("Outbox: CRM note posted for call {} (noteId={})", p.callId(), noteId);
                 } else {
-                    outbox.markCrmFailed(p.callId(), "CRM returned no note id");
+                    outbox.markCrmFailed(p.callId(), "CRM did not enqueue the note");
                 }
             } catch (Exception e) {
                 outbox.markCrmFailed(p.callId(), e.getMessage());

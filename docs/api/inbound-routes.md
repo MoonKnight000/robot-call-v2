@@ -147,3 +147,21 @@ Qatorni o'chirmaydi, `enabled=false` qiladi.
 ## `GET /api/inbound-routes/{id}/stats` — statistika
 
 Qo'ng'iroqlar soni, qabul qilish foizi va dispositionlar taqsimoti.
+
+---
+
+## 🌱 Seed'dagi tayyor marshrut
+
+Yangi baza ko'tarilganda (`R__seed_data.sql`) bitta marshrut allaqachon mavjud:
+
+| `didNumber` | `aiAgentId` | `routeType` | Ish vaqti |
+|---|---|---|---|
+| `600` | `Kiruvchi qabulxona` agenti | `SCENARIO` | belgilanmagan (24/7) |
+
+`600` — dialplan'dagi softphone test raqami (`asterisk/etc/asterisk/extensions.conf`,
+`[from-internal]`): trunk'siz, faqat registratsiya qilingan softphone bilan kiruvchi
+qo'ng'iroqni to'liq pipeline orqali sinash uchun. Haqiqiy DID `POST /api/inbound-routes`
+orqali qo'shiladi.
+
+`businessHoursStart`/`businessHoursEnd` ataylab bo'sh: ish vaqti belgilangan zahoti
+undan tashqarida `fallbackMessage` o'qiladi va qo'ng'iroq tugatiladi.

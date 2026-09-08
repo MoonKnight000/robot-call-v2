@@ -75,13 +75,25 @@ public class DialogTools {
         List<String> allowed = allowedTransitions();
         if (!allowed.isEmpty() && !allowed.contains(nextStage)) {
             log.warn("[{}] refused transition {} -> {}", session.channelId(), session.state(), nextStage);
+            // The last sentence is the safety net for a realtime call, where the model may
+            // already be speaking when the refusal lands: without it, stepping into the
+            // stage it had just voiced made it voice the stage all over again.
             return "XATO: " + session.state() + " bosqichidan faqat " + String.join(", ", allowed)
-                    + " ga o'tish mumkin. Bosqichni tashlab ketmang.";
+                    + " ga o'tish mumkin. Bosqichni tashlab ketmang. "
+                    + "Bu bosqichda aytib bo'lgan gapingizni qayta aytmang.";
         }
         recordReply(reply);
         session.setState(nextStage);
         log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
-        return "Holat " + nextStage + " ga o'tkazildi";
+        // Where it may go from here, in the answer. The cascade path re-states this every
+        // turn in the prompt annex; a realtime call has no annex, so this tool result is
+        // the only place the model is told again — and on a recorded call it spent three
+        // turns guessing stage names it was not allowed to reach.
+        List<String> next = allowedTransitions();
+        return next.isEmpty()
+                ? "Holat " + nextStage + " ga o'tkazildi"
+                : "Holat " + nextStage + " ga o'tkazildi. Bu bosqichdan keyin faqat "
+                        + String.join(", ", next) + " ga o'tish mumkin.";
     }
 
     @Tool(description = "Mijoz ANIQ KUNni o'zi aytganda chaqiriladi (masalan \"10-oktabr\", \"ertaga\"). "
@@ -133,10 +145,26 @@ public class DialogTools {
     @Tool(description = "Mijoz operator bilan gaplashishni so'raganda yoki janjal qilganda operatorga o'tkazadi")
     public String requestHumanTransfer(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                        @ToolParam(description = "o'tkazish sababi") String reason) {
-        recordReply(reply);
+        String finalReply = reply;
+        if ((finalReply == null || finalReply.isBlank()) && session.agent() != null
+                && session.agent().callBehaviour().transferMessage() != null && !session.agent().callBehaviour().transferMessage().isBlank()) {
+            finalReply = session.agent().callBehaviour().transferMessage();
+        }
+        recordReply(finalReply);
         session.end(Disposition.TRANSFERRED);
         log.info("[{}] human transfer requested: {}", session.channelId(), reason);
         return "Operatorga o'tkazish so'raldi. Mijoz bilan xayrlashing.";
+    }
+
+    @Tool(description = "Mijozga suhbat davomida real-vaqtda SMS xabar, havola yoki kod yuboradi")
+    public String sendMidCallSms(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+                                 @ToolParam(description = "Yuboriladigan SMS matni yoki havola") String text) {
+        recordReply(reply);
+        session.triggerMidCallSms(text);
+        session.recordOutcome("midCallSmsSent", true);
+        session.recordOutcome("midCallSmsText", text);
+        log.info("[{}] mid-call SMS triggered: text={}", session.channelId(), text);
+        return "SMS mijozning telefoniga darhol yuborildi. Mijozga SMS yuborilganini bildiring.";
     }
 
     @Tool(description = "Telefonni ko'targan odam qarzdor emasligi aniqlanganda chaqiriladi")

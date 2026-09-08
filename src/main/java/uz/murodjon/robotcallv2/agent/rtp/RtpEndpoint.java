@@ -13,8 +13,10 @@ import org.slf4j.LoggerFactory;
 
 import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
+import uz.murodjon.robotcallv2.agent.audio.TelephonyNoiseCanceller;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.NoiseCancellationMode;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
@@ -29,9 +31,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * One RTP UDP listener + sender for a single call, sharing a single NIO datagram
- * socket. Includes Packet Loss Concealment (PLC) for inbound streams to smoothly
- * recover from missing network packets.
+ * One RTP UDP listener + sender for a single call, sharing a single NIO datagram socket.
+ *
+ * <p>Inbound: Packet Loss Concealment to smoothly recover from missing network packets,
+ * and {@link TelephonyNoiseCanceller} on the copy handed to the recognizer — never on the
+ * copy written to the recording.
+ *
+ * <p>Outbound: the room the bot is calling from, and the typing under the pause while a
+ * reply is composed, both mixed under the voice by {@link AmbientSoundGenerator}.
  */
 public class RtpEndpoint implements Closeable {
 
@@ -61,6 +68,18 @@ public class RtpEndpoint implements Closeable {
      */
     private static final int SEQ_HALF = 0x8000;
 
+    /** Full calibrated bed level — see {@code AmbientSoundGenerator} for what that is. */
+    private static final double DEFAULT_AMBIENT_VOLUME = 1.0;
+
+    /**
+     * A bed that is simply there from the first frame is heard as an artefact of the
+     * connection; one that arrives over a second and a half is heard as the room opening up.
+     */
+    private static final double DEFAULT_AMBIENT_FADE_IN_SECONDS = 1.5;
+
+    /** Short, because a pause is short: typing that faded like the room bed would miss it. */
+    private static final double THINKING_FADE_IN_SECONDS = 0.3;
+
     private final int port;
     private final RtpCodec codec;
     private final WavRecorder recorder;
@@ -85,7 +104,25 @@ public class RtpEndpoint implements Closeable {
     private long queuedSamples;     // guarded by playLock
     private long playedSamples;     // guarded by playLock
 
+    // Inbound noise cancellation, applied to what the recognizer hears.
+    private final TelephonyNoiseCanceller noiseCanceller = new TelephonyNoiseCanceller();
+    private volatile boolean noiseCancellationEnabled = true;
+    private volatile NoiseCancellationMode noiseCancellationMode = NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
+
+    /**
+     * The room the bot is calling from, and how loud it is. Volume is a multiplier on the
+     * level {@code AmbientSoundGenerator} already calibrated each bed to, so 1.0 is that
+     * tuned level rather than "as loud as possible".
+     */
     private volatile AmbientSound ambientSound = AmbientSound.OFF;
+    private volatile double ambientSoundVolume = DEFAULT_AMBIENT_VOLUME;
+    private volatile double ambientSoundFadeInSeconds = DEFAULT_AMBIENT_FADE_IN_SECONDS;
+
+    /** Typing under the pause while a reply is being composed; off outside that window. */
+    private volatile AmbientSound thinkingSound = AmbientSound.OFF;
+    private volatile double thinkingSoundVolume = DEFAULT_AMBIENT_VOLUME;
+    private final AtomicBoolean thinkingActive = new AtomicBoolean(false);
+    private long thinkingStartSample;
 
     private final AtomicBoolean pacerRunning = new AtomicBoolean(false);
     private volatile ScheduledFuture<?> pacer;
@@ -127,11 +164,43 @@ public class RtpEndpoint implements Closeable {
         this.listeners = replacement == null ? List.of() : List.copyOf(replacement);
     }
 
-    public void setAmbientSound(AmbientSound ambientSound) {
+    public void setNoiseCancellation(boolean enabled, NoiseCancellationMode mode) {
+        this.noiseCancellationEnabled = enabled;
+        this.noiseCancellationMode = mode != null ? mode : NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
+        this.noiseCanceller.configure(enabled, this.noiseCancellationMode);
+    }
+
+    public void setAmbientSound(AmbientSound ambientSound, Double volume, Double fadeInSeconds) {
         this.ambientSound = ambientSound != null ? ambientSound : AmbientSound.OFF;
+        this.ambientSoundVolume = clampVolume(volume);
+        this.ambientSoundFadeInSeconds = fadeInSeconds != null
+                ? Math.max(0.0, fadeInSeconds) : DEFAULT_AMBIENT_FADE_IN_SECONDS;
         if (this.ambientSound != AmbientSound.OFF && remoteAddress != null) {
             startPacer();
         }
+    }
+
+    public void setThinkingSound(AmbientSound thinkingSound, Double volume) {
+        this.thinkingSound = thinkingSound != null ? thinkingSound : AmbientSound.OFF;
+        this.thinkingSoundVolume = clampVolume(volume);
+    }
+
+    private static double clampVolume(Double volume) {
+        return volume != null ? Math.max(0.0, Math.min(1.0, volume)) : DEFAULT_AMBIENT_VOLUME;
+    }
+
+    public void startThinking() {
+        if (thinkingSound != null && thinkingSound != AmbientSound.OFF) {
+            thinkingStartSample = sendTimestamp;
+            thinkingActive.set(true);
+            if (remoteAddress != null) {
+                startPacer();
+            }
+        }
+    }
+
+    public void stopThinking() {
+        thinkingActive.set(false);
     }
 
     public int port() {
@@ -149,7 +218,7 @@ public class RtpEndpoint implements Closeable {
                             remoteAddress = msg.sender();
                             remoteLatched = true;
                             log.info("RTP peer for port {} latched to {} (from inbound traffic)", port, remoteAddress);
-                            if (ambientSound != AmbientSound.OFF) {
+                            if (ambientSound != AmbientSound.OFF || thinkingActive.get()) {
                                 startPacer();
                             }
                         }
@@ -171,7 +240,7 @@ public class RtpEndpoint implements Closeable {
         try {
             channel = b.bind(port).sync().channel();
             log.info("RTP endpoint bound to UDP port {}", port);
-            if (ambientSound != AmbientSound.OFF && remoteAddress != null) {
+            if ((ambientSound != AmbientSound.OFF || thinkingActive.get()) && remoteAddress != null) {
                 startPacer();
             }
         } catch (Exception e) {
@@ -194,7 +263,7 @@ public class RtpEndpoint implements Closeable {
         }
         remoteAddress = remote;
         log.info("RTP peer for port {} set to {} (from Asterisk)", port, remote);
-        if (ambientSound != AmbientSound.OFF) {
+        if (ambientSound != AmbientSound.OFF || thinkingActive.get()) {
             startPacer();
         }
     }
@@ -236,46 +305,26 @@ public class RtpEndpoint implements Closeable {
             playQueue.clear();
             currentChunk = null;
             currentOffset = 0;
-            // Everything still queued was thrown away, so it was never heard and must not
-            // count as position: the next line starts where the wire actually got to.
             queuedSamples = playedSamples;
             idleFrames = 0;
         }
-        if (ambientSound == AmbientSound.OFF) {
+        if (ambientSound == AmbientSound.OFF && !thinkingActive.get()) {
             stopPacer();
         }
     }
 
-    /**
-     * Samples handed to this endpoint since the call began — the position the next line
-     * queued will start at.
-     *
-     * <p>Together with {@link #playedSamples()} this is what says how much of a given line
-     * the caller actually heard, which is the only honest answer after a barge-in: the
-     * queue holds whole sentences, and one cut halfway through was half heard.</p>
-     */
     public long queuedSamples() {
         synchronized (playLock) {
             return queuedSamples;
         }
     }
 
-    /** Samples this endpoint has actually put on the wire. */
     public long playedSamples() {
         synchronized (playLock) {
             return playedSamples;
         }
     }
 
-    /**
-     * Whether the caller is hearing the bot right now — audio is queued or mid-frame.
-     *
-     * <p>Not "is the pacer running": the pacer also runs through the idle grace after a
-     * line and for the whole call when an ambient sound is on, and both read as "bot
-     * speaking" to barge-in. With ambient sound every caller utterance was then treated
-     * as an interruption — the turn annex told the model it had been cut off and the
-     * speculative reply was thrown away, on every single turn.
-     */
     public boolean isPlaying() {
         if (!pacerRunning.get()) {
             return false;
@@ -350,7 +399,7 @@ public class RtpEndpoint implements Closeable {
             playedSamples += filled;
             if (filled == 0) {
                 idleFrames++;
-                if (idleFrames >= MAX_IDLE_FRAMES && ambientSound == AmbientSound.OFF) {
+                if (idleFrames >= MAX_IDLE_FRAMES && ambientSound == AmbientSound.OFF && !thinkingActive.get()) {
                     stopPacer();
                     return;
                 }
@@ -365,8 +414,23 @@ public class RtpEndpoint implements Closeable {
             }
         }
 
-        if (ambientSound != null && ambientSound != AmbientSound.OFF) {
-            pcmFrame = AmbientSoundGenerator.mix(pcmFrame, ambientSound, sendTimestamp);
+        boolean bedPlaying = ambientSound != null && ambientSound != AmbientSound.OFF;
+        if (bedPlaying) {
+            pcmFrame = AmbientSoundGenerator.mix(pcmFrame, ambientSound, sendTimestamp,
+                    ambientSoundVolume, ambientSoundFadeInSeconds);
+        }
+
+        // Typing is timed from when the pause began, not from the call, so the fade runs
+        // once per pause instead of once per call.
+        boolean thinkingPlaying = thinkingActive.get()
+                && thinkingSound != null && thinkingSound != AmbientSound.OFF;
+        if (thinkingPlaying) {
+            long offset = Math.max(0, sendTimestamp - thinkingStartSample);
+            pcmFrame = AmbientSoundGenerator.mix(pcmFrame, thinkingSound, offset,
+                    thinkingSoundVolume, THINKING_FADE_IN_SECONDS);
+        }
+
+        if (bedPlaying || thinkingPlaying) {
             for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
                 payload[i] = codec.encode(pcmFrame[i]);
             }
@@ -437,8 +501,10 @@ public class RtpEndpoint implements Closeable {
                             plcFrame[i] = (short) Math.round(lastGoodFrame[i] * decay);
                         }
                         recorder.writeCaller(plcFrame, SAMPLES_PER_FRAME);
+                        short[] cleanPlcFrame = noiseCancellationEnabled
+                                ? noiseCanceller.process(plcFrame, SAMPLES_PER_FRAME) : plcFrame;
                         for (AudioListener listener : listeners) {
-                            listener.onAudio(plcFrame, SAMPLES_PER_FRAME);
+                            listener.onAudio(cleanPlcFrame, SAMPLES_PER_FRAME);
                         }
                     }
                 }
@@ -459,9 +525,14 @@ public class RtpEndpoint implements Closeable {
                 int copyLen = Math.min(payload.length, lastGoodFrame.length);
                 System.arraycopy(pcm, 0, lastGoodFrame, 0, copyLen);
 
+                // The recording keeps what the caller actually sent: it is evidence of the
+                // call, and a filter that guesses wrong would have erased the proof of it.
+                // Only the recognizer's copy is cleaned.
                 recorder.writeCaller(pcm, payload.length);
+                short[] cleanPcm = noiseCancellationEnabled
+                        ? noiseCanceller.process(pcm, payload.length) : pcm;
                 for (AudioListener listener : listeners) {
-                    listener.onAudio(pcm, payload.length);
+                    listener.onAudio(cleanPcm, payload.length);
                 }
             } catch (Exception e) {
                 log.warn("RTP processing error on port {}: {}", port, e.getMessage());

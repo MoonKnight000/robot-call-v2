@@ -6,6 +6,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiAgentJpaRepository;
 import uz.murodjon.robotcallv2.campaign.application.mapper.CampaignMapper;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
@@ -31,15 +33,18 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
     private final CampaignJpaRepository campaignJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
     private final UserJpaRepository userJpaRepository;
+    private final AiAgentJpaRepository aiAgentJpaRepository;
     private final CampaignMapper mapper;
 
     public CampaignRepositoryAdapter(CampaignJpaRepository campaignJpaRepository,
                                      CompanyJpaRepository companyJpaRepository,
                                      UserJpaRepository userJpaRepository,
+                                     AiAgentJpaRepository aiAgentJpaRepository,
                                      CampaignMapper mapper) {
         this.campaignJpaRepository = campaignJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.userJpaRepository = userJpaRepository;
+        this.aiAgentJpaRepository = aiAgentJpaRepository;
         this.mapper = mapper;
     }
 
@@ -52,7 +57,7 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
                 ? userJpaRepository.findById(row.createdBy()).orElse(null)
                 : null;
 
-        CampaignEntity entity = mapper.toEntity(row, company, createdBy);
+        CampaignEntity entity = mapper.toEntity(row, company, createdBy, requireAiAgent(row.aiAgentId()));
         entity.setCreatedAt(Instant.now());
         return campaignJpaRepository.save(entity).getId();
     }
@@ -122,8 +127,13 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
     public void update(long companyId, long id, Campaign row) {
         CampaignEntity entity = campaignJpaRepository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id));
-        mapper.applyEditableFields(entity, row);
+        mapper.applyEditableFields(entity, row, requireAiAgent(row.aiAgentId()));
         campaignJpaRepository.save(entity);
+    }
+
+    private AiAgentEntity requireAiAgent(long aiAgentId) {
+        return aiAgentJpaRepository.findById(aiAgentId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.AI_AGENT_NOT_FOUND, aiAgentId));
     }
 
     private Specification<CampaignEntity> buildSpecification(CampaignFilter filter, long companyId) {
@@ -138,7 +148,7 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
                 predicates.add(cb.equal(root.get("type"), filter.type()));
             }
             if (filter.aiAgentId() != null) {
-                predicates.add(cb.equal(root.get("aiAgentId"), filter.aiAgentId()));
+                predicates.add(cb.equal(root.get("aiAgent").get("id"), filter.aiAgentId()));
             }
             if (filter.createdBy() != null) {
                 predicates.add(cb.equal(root.get("createdBy").get("id"), filter.createdBy()));

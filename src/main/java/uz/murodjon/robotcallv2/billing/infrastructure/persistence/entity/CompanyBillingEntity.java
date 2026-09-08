@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import uz.murodjon.robotcallv2.billing.domain.entity.CompanyBilling;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
 
@@ -13,7 +13,12 @@ public class CompanyBillingEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false, unique = true)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
     @Column(name = "plan_code", nullable = false, length = 64)
@@ -24,6 +29,9 @@ public class CompanyBillingEntity {
 
     @Column(name = "balance_uzs", nullable = false)
     private Long balanceUzs;
+
+    @Column(name = "reserved_uzs", nullable = false)
+    private Long reservedUzs;
 
     @Column(name = "auto_recharge", nullable = false)
     private Boolean autoRecharge;
@@ -36,9 +44,6 @@ public class CompanyBillingEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
-    public CompanyBillingEntity() {
-    }
 
     @PrePersist
     public void prePersist() {
@@ -55,43 +60,25 @@ public class CompanyBillingEntity {
         updatedAt = Instant.now();
     }
 
-    public CompanyBilling toDomain() {
-        return new CompanyBilling(
-                id,
-                companyId,
-                planCode,
-                planName,
-                balanceUzs != null ? balanceUzs : 0L,
-                Boolean.TRUE.equals(autoRecharge),
-                nextBillingDate,
-                createdAt,
-                updatedAt
-        );
-    }
-
-    public static CompanyBillingEntity fromDomain(CompanyBilling domain) {
-        CompanyBillingEntity entity = new CompanyBillingEntity();
-        entity.id = domain.id();
-        entity.companyId = domain.companyId();
-        entity.planCode = domain.planCode();
-        entity.planName = domain.planName();
-        entity.balanceUzs = domain.balanceUzs();
-        entity.autoRecharge = domain.autoRecharge();
-        entity.nextBillingDate = domain.nextBillingDate();
-        entity.createdAt = domain.createdAt();
-        entity.updatedAt = domain.updatedAt();
-        return entity;
-    }
-
     public Long getId() { return id; }
-    public Long getCompanyId() { return companyId; }
+    public void setId(Long id) { this.id = id; }
+    public CompanyEntity getCompany() { return company; }
+    public void setCompany(CompanyEntity company) { this.company = company; }
+    public Long getCompanyId() { return company != null ? company.getId() : null; }
     public String getPlanCode() { return planCode; }
+    public void setPlanCode(String planCode) { this.planCode = planCode; }
     public String getPlanName() { return planName; }
+    public void setPlanName(String planName) { this.planName = planName; }
     public Long getBalanceUzs() { return balanceUzs; }
-    public Boolean getAutoRecharge() { return autoRecharge; }
-    public Instant getNextBillingDate() { return nextBillingDate; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-
     public void setBalanceUzs(Long balanceUzs) { this.balanceUzs = balanceUzs; }
+    public Long getReservedUzs() { return reservedUzs; }
+    public void setReservedUzs(Long reservedUzs) { this.reservedUzs = reservedUzs; }
+    public Boolean getAutoRecharge() { return autoRecharge; }
+    public void setAutoRecharge(Boolean autoRecharge) { this.autoRecharge = autoRecharge; }
+    public Instant getNextBillingDate() { return nextBillingDate; }
+    public void setNextBillingDate(Instant nextBillingDate) { this.nextBillingDate = nextBillingDate; }
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

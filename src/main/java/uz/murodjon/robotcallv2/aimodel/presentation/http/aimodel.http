@@ -2,6 +2,19 @@
 GET http://localhost:8080/api/ai-models
 Authorization: Bearer {{auth_token}}
 
+### Realtime engine models — what the agent's model picker shows once an engine is chosen.
+### Filter the answer by `provider` (gemini-live, openai-realtime, ...).
+GET http://localhost:8080/api/ai-models?kind=LLM&mode=REALTIME
+Authorization: Bearer {{auth_token}}
+
+### Recognition models for the agent sttModel picker
+GET http://localhost:8080/api/ai-models?kind=STT
+Authorization: Bearer {{auth_token}}
+
+### Synthesis models for the agent ttsModel picker
+GET http://localhost:8080/api/ai-models?kind=TTS
+Authorization: Bearer {{auth_token}}
+
 ### Get AI Model Settings
 GET http://localhost:8080/api/settings/ai-model
 Authorization: Bearer {{auth_token}}

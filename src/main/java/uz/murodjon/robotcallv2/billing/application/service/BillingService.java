@@ -5,14 +5,8 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.billing.application.dto.*;
 import uz.murodjon.robotcallv2.billing.application.port.input.BillingUseCase;
-import uz.murodjon.robotcallv2.billing.application.port.output.BillingUsageRepository;
-import uz.murodjon.robotcallv2.billing.application.port.output.CompanyBillingRepository;
-import uz.murodjon.robotcallv2.billing.application.port.output.InvoiceRepository;
-import uz.murodjon.robotcallv2.billing.application.port.output.PaymentTopupRepository;
-import uz.murodjon.robotcallv2.billing.domain.entity.BillingUsage;
-import uz.murodjon.robotcallv2.billing.domain.entity.CompanyBilling;
-import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
-import uz.murodjon.robotcallv2.billing.domain.entity.PaymentTopup;
+import uz.murodjon.robotcallv2.billing.application.port.output.*;
+import uz.murodjon.robotcallv2.billing.domain.entity.*;
 import uz.murodjon.robotcallv2.billing.domain.enums.PaymentMethod;
 import uz.murodjon.robotcallv2.billing.domain.enums.TopupStatus;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
@@ -27,7 +21,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,6 +29,7 @@ public class BillingService implements BillingUseCase {
 
     private final CompanyBillingRepository companyBillingRepository;
     private final BillingUsageRepository billingUsageRepository;
+    private final CallBillingRepository callBillingRepository;
     private final InvoiceRepository invoiceRepository;
     private final PaymentTopupRepository paymentTopupRepository;
     private final CurrentUser currentUser;
@@ -46,6 +40,7 @@ public class BillingService implements BillingUseCase {
     public BillingService(
             CompanyBillingRepository companyBillingRepository,
             BillingUsageRepository billingUsageRepository,
+            CallBillingRepository callBillingRepository,
             InvoiceRepository invoiceRepository,
             PaymentTopupRepository paymentTopupRepository,
             CurrentUser currentUser,
@@ -55,6 +50,7 @@ public class BillingService implements BillingUseCase {
     ) {
         this.companyBillingRepository = companyBillingRepository;
         this.billingUsageRepository = billingUsageRepository;
+        this.callBillingRepository = callBillingRepository;
         this.invoiceRepository = invoiceRepository;
         this.paymentTopupRepository = paymentTopupRepository;
         this.currentUser = currentUser;
@@ -73,14 +69,18 @@ public class BillingService implements BillingUseCase {
                 .withZone(ZoneId.of("Asia/Tashkent"))
                 .format(Instant.now());
 
-        BillingUsage usage = billingUsageRepository.findByCompanyIdAndPeriod(companyId, currentPeriod)
+        BillingUsage limits = billingUsageRepository.findByCompanyIdAndPeriod(companyId, currentPeriod)
                 .orElseGet(() -> billingUsageRepository.save(BillingUsage.defaultFor(companyId, currentPeriod)));
 
+        // The allowances come from the plan row; what has been used against them is summed
+        // from the calls the company was actually charged for.
+        PeriodUsage used = callBillingRepository.findUsageSince(companyId, startOfMonth());
+
         BillingMetricsDto metrics = new BillingMetricsDto(
-                new BillingMetricItemDto(usage.usedMinutes(), usage.limitMinutes(), "daqiqa", usage.overagePriceMinute()),
-                new BillingMetricItemDto(usage.usedTokens(), usage.limitTokens(), "token", usage.overagePriceToken()),
-                new BillingMetricItemDto(usage.usedTtsChars(), usage.limitTtsChars(), "belgi", usage.overagePriceTts()),
-                new BillingMetricItemDto(usage.usedChannels(), usage.limitChannels(), "kanal", null)
+                new BillingMetricItemDto(used.minutes(), limits.limitMinutes(), "daqiqa", limits.overagePriceMinute()),
+                new BillingMetricItemDto(used.totalTokens(), limits.limitTokens(), "token", limits.overagePriceToken()),
+                new BillingMetricItemDto(used.ttsChars(), limits.limitTtsChars(), "belgi", limits.overagePriceTts()),
+                new BillingMetricItemDto(limits.usedChannels(), limits.limitChannels(), "kanal", null)
         );
 
         return new BillingOverviewResponse(
@@ -96,22 +96,11 @@ public class BillingService implements BillingUseCase {
     @Override
     public List<SpendMonthDto> spendChart(long companyId, int months) {
         int limit = months <= 0 ? 6 : Math.min(months, 24);
-        List<BillingUsage> usages = billingUsageRepository.findRecentByCompanyId(companyId, limit);
-
-        if (usages.isEmpty()) {
-            // Provide sensible past months sequence if empty
-            List<SpendMonthDto> fallback = new ArrayList<>();
-            LocalDate now = LocalDate.now(ZoneId.of("Asia/Tashkent"));
-            for (int i = limit - 1; i >= 0; i--) {
-                LocalDate targetMonth = now.minusMonths(i);
-                String monthKey = targetMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-                fallback.add(new SpendMonthDto(monthKey, 1200000L + (i * 200000L), 2800 + (i * 300)));
-            }
-            return fallback;
-        }
-
-        return usages.stream()
-                .map(u -> new SpendMonthDto(u.billingPeriod(), u.totalSpendUzs(), u.usedMinutes()))
+        // Oldest month first: this is a chart, and a company with no calls yet gets an
+        // empty one rather than the invented months it used to be shown.
+        return callBillingRepository.findMonthlySpend(companyId, limit).reversed().stream()
+                .map(month -> new SpendMonthDto(month.period(), month.spendUzs(),
+                        (int) ((month.durationSec() + 59) / 60)))
                 .toList();
     }
 
@@ -169,6 +158,18 @@ public class BillingService implements BillingUseCase {
                 "Amount: " + request.amountUzs() + " UZS, Method: " + request.paymentMethod());
 
         return new TopupResponse(paymentId, checkoutUrl);
+    }
+
+    /** The start of the current billing month, in the timezone the periods are keyed on. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<VariantSpend> findVariantSpend(long companyId, long campaignId) {
+        return callBillingRepository.findSpendByVariant(companyId, campaignId);
+    }
+
+    private static Instant startOfMonth() {
+        ZoneId zone = ZoneId.of("Asia/Tashkent");
+        return LocalDate.now(zone).withDayOfMonth(1).atStartOfDay(zone).toInstant();
     }
 
     private InvoiceDto toInvoiceDto(Invoice inv) {

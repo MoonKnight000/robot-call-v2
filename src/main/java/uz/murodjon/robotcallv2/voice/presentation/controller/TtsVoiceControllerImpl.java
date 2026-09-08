@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.voice.presentation.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
@@ -19,7 +20,7 @@ public class TtsVoiceControllerImpl implements TtsVoiceController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<TtsVoice>>> voices(long companyId, String language) {
-        return ResponseEntity.ok(ResponseData.ok(ttsVoiceUseCase.findSelectableByCompanyId(companyId, language)));
+    public ResponseEntity<ResponseData<List<TtsVoice>>> voices(PipelineMode mode, String language) {
+        return ResponseEntity.ok(ResponseData.ok(ttsVoiceUseCase.findSelectableByMode(mode, language)));
     }
 }

@@ -3,13 +3,7 @@ package uz.murodjon.robotcallv2.agent.ari;
 import ch.loway.oss.ari4java.ARI;
 import ch.loway.oss.ari4java.AriVersion;
 import ch.loway.oss.ari4java.generated.AriWSHelper;
-import ch.loway.oss.ari4java.generated.models.Bridge;
-import ch.loway.oss.ari4java.generated.models.Channel;
-import ch.loway.oss.ari4java.generated.models.ChannelDestroyed;
-import ch.loway.oss.ari4java.generated.models.ChannelDtmfReceived;
-import ch.loway.oss.ari4java.generated.models.ChannelHangupRequest;
-import ch.loway.oss.ari4java.generated.models.StasisEnd;
-import ch.loway.oss.ari4java.generated.models.StasisStart;
+import ch.loway.oss.ari4java.generated.models.*;
 import ch.loway.oss.ari4java.tools.BaseAriAction;
 import io.netty.channel.EventLoopGroup;
 import jakarta.annotation.PreDestroy;
@@ -21,53 +15,29 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
-
-import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
-import uz.murodjon.robotcallv2.agent.audio.AnsweringMachineDetector;
-import uz.murodjon.robotcallv2.agent.audio.AudioLevelListener;
-import uz.murodjon.robotcallv2.agent.audio.AudioListener;
-import uz.murodjon.robotcallv2.agent.audio.LiveAudioMonitor;
-import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
-import uz.murodjon.robotcallv2.agent.dialog.CallContext;
-import uz.murodjon.robotcallv2.agent.dialog.DialogEngine;
-import uz.murodjon.robotcallv2.agent.dialog.DialogOutcome;
-import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
-import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
-import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.robotcallv2.agent.dialog.LiveDialogSnapshot;
-import uz.murodjon.robotcallv2.agent.dialog.RealtimeDialogEngine;
-import uz.murodjon.robotcallv2.agent.dialog.TestContextProperties;
+import uz.murodjon.robotcallv2.agent.audio.*;
+import uz.murodjon.robotcallv2.agent.dialog.*;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
-import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
-import uz.murodjon.robotcallv2.agent.rtp.RtpPortAllocator;
-import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
-import uz.murodjon.robotcallv2.agent.rtp.RtpStats;
-import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
-import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
-import uz.murodjon.robotcallv2.agent.rtp.WavReader;
-import uz.murodjon.robotcallv2.agent.rtp.WavRecorder;
+import uz.murodjon.robotcallv2.agent.rtp.*;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.agent.stt.*;
+import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
+import uz.murodjon.robotcallv2.agent.tts.TtsRouter;
 import uz.murodjon.robotcallv2.agent.turn.SmartTurnDetector;
 import uz.murodjon.robotcallv2.agent.turn.SmartTurnProperties;
 import uz.murodjon.robotcallv2.agent.turn.UtteranceBuffer;
-import uz.murodjon.robotcallv2.agent.stt.DynamicEndpointingProperties;
-import uz.murodjon.robotcallv2.agent.stt.EndpointingProperties;
-import uz.murodjon.robotcallv2.agent.stt.SttHints;
-import uz.murodjon.robotcallv2.agent.stt.SttProperties;
-import uz.murodjon.robotcallv2.agent.stt.SttProvider;
-import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
-import uz.murodjon.robotcallv2.agent.stt.SttStreamBridge;
-import uz.murodjon.robotcallv2.agent.stt.TranscriptListener;
-import uz.murodjon.robotcallv2.agent.stt.VadGatingProperties;
-import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
-import uz.murodjon.robotcallv2.agent.tts.TtsRouter;
 import uz.murodjon.robotcallv2.agent.vad.AmdProperties;
 import uz.murodjon.robotcallv2.agent.vad.SileroVad;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.agent.vad.VadStream;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.application.service.AgentWebhookExecutor;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.callrecord.application.dto.CallOriginateResponse;
 import uz.murodjon.robotcallv2.callrecord.application.dto.LiveCallRow;
 import uz.murodjon.robotcallv2.callrecord.application.dto.PlayResponse;
@@ -78,33 +48,28 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUs
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
-import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
-import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
-import uz.murodjon.robotcallv2.engine.domain.enums.PipelineMode;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
 import uz.murodjon.robotcallv2.dialer.application.mapper.CallContextMapper;
 import uz.murodjon.robotcallv2.dialer.application.service.DialerState;
 import uz.murodjon.robotcallv2.dialer.application.service.OutboundCallRegistry;
-import uz.murodjon.robotcallv2.memory.application.service.ClientMemoryService;
-import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
-import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
+import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.inbound.application.service.InboundRouteService;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
-import uz.murodjon.robotcallv2.live.infrastructure.config.LiveProperties;
 import uz.murodjon.robotcallv2.live.application.service.LiveBroadcastService;
-import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
+import uz.murodjon.robotcallv2.live.infrastructure.config.LiveProperties;
+import uz.murodjon.robotcallv2.memory.application.service.ClientMemoryService;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
+import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
-import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
-import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.application.service.FactWebhookClient;
-import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
+import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -119,16 +84,8 @@ import uz.murodjon.robotcallv2.siptrunk.application.service.SipTrunkService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.time.*;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -171,6 +128,13 @@ public class AriService {
     private static final String WEB_TEST_ARG = "web-test";
     /** Phone recorded on a browser test call's attempt row — there is no number, as with {@code MANUAL}. */
     private static final String WEB_TEST_PHONE = "WEB-TEST";
+    /**
+     * Phone recorded on a call a website visitor started from an embedded widget. Same
+     * shape as a browser test — there is no number to dial, the browser dials us — but a
+     * different label, because these are real conversations with real people and reading
+     * them as tests in the reports would understate what the agent handled.
+     */
+    private static final String WIDGET_PHONE = "WIDGET";
     /** How long a browser has to dial in after {@link #prepareWebTest} before its session is forgotten. */
     private static final Duration WEB_TEST_SESSION_TTL = Duration.ofMinutes(5);
 
@@ -188,7 +152,6 @@ public class AriService {
     private final ExecutorService callExecutor;
     private final SttProperties sttProperties;
     private final SttProviderSelector sttProviderSelector;
-    private final EngineConfigService engineConfigService;
     private final TtsProperties ttsProperties;
     private final TtsRouter ttsRouter;
     private final DialogProperties dialogProperties;
@@ -224,6 +187,7 @@ public class AriService {
     private final CampaignVariantUseCase campaignVariants;
     /** Refreshes an inbound call's facts from the company's own system before the line is answered. */
     private final FactWebhookClient factWebhookClient;
+    private final AgentWebhookExecutor agentWebhookExecutor;
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
 
@@ -282,7 +246,6 @@ public class AriService {
                       ExecutorService callExecutor,
                       SttProperties sttProperties,
                       SttProviderSelector sttProviderSelector,
-                      EngineConfigService engineConfigService,
                       TtsProperties ttsProperties,
                       TtsRouter ttsRouter,
                       DialogProperties dialogProperties,
@@ -315,7 +278,8 @@ public class AriService {
                       Clock clock,
                       NotificationService notificationService,
                       CampaignVariantUseCase campaignVariants,
-                      FactWebhookClient factWebhookClient) {
+                      FactWebhookClient factWebhookClient,
+                      AgentWebhookExecutor agentWebhookExecutor) {
         this.asteriskProperties = asteriskProperties;
         this.rtpProperties = rtpProperties;
         this.portAllocator = portAllocator;
@@ -323,7 +287,6 @@ public class AriService {
         this.callExecutor = callExecutor;
         this.sttProperties = sttProperties;
         this.sttProviderSelector = sttProviderSelector;
-        this.engineConfigService = engineConfigService;
         this.ttsProperties = ttsProperties;
         this.ttsRouter = ttsRouter;
         this.dialogProperties = dialogProperties;
@@ -357,6 +320,7 @@ public class AriService {
         this.notificationService = notificationService;
         this.campaignVariants = campaignVariants;
         this.factWebhookClient = factWebhookClient;
+        this.agentWebhookExecutor = agentWebhookExecutor;
     }
 
     /**
@@ -486,7 +450,8 @@ public class AriService {
             }
             Channel channel = request.execute();
             String channelId = channel.getId();
-            callRecordService.startAttempt(companyId, targetId, channelId, number, language, null);
+            callRecordService.startAttempt(companyId, targetId, channelId, number, language, null,
+                    outboundCall != null ? outboundCall.variantId() : null);
             if (outboundCall != null) {
                 outboundRegistry.register(channelId, outboundCall);
             }
@@ -552,6 +517,40 @@ public class AriService {
     }
 
     /**
+     * Registers a call a website visitor is about to start from an embedded widget, and
+     * returns the session id their browser dials in with.
+     *
+     * <p>The same waiting-session mechanism as {@link #prepareWebTest}, because from
+     * Asterisk's side it is the same thing: a browser arrives over WebRTC carrying a
+     * session id instead of a number we dialled. What differs is the profile — a widget
+     * call belongs to an agent, not to a campaign, so there is no target, no A/B variant
+     * and no campaign statistic to move.
+     *
+     * <p>The visitor is anonymous: the call carries no facts, so an agent whose scenario
+     * expects a debt amount finds none and must ask. That is the correct behaviour — the
+     * page has no idea who is standing in front of it.
+     */
+    public String prepareWidgetCall(long companyId, AiAgent agent, String language) {
+        Instant cutoff = Instant.now().minus(WEB_TEST_SESSION_TTL);
+        pendingWebTests.values().removeIf(test -> test.createdAt().isBefore(cutoff));
+
+        // Resolved here only to fail now rather than later: the scenario itself is looked
+        // up again in setupMedia, but an agent with none must be refused while the visitor
+        // is still looking at a button, not after their browser has connected.
+        aiAgentService.resolveScenario(companyId, agent);
+
+        String callLanguage = language != null && !language.isBlank() ? language : agent.language();
+        OutboundCall outbound = new OutboundCall(null, callRecordService.manualTargetId(), null, WIDGET_PHONE,
+                callLanguage, agent.voiceFor(callLanguage), new CallContext(Map.of(), null), agent, companyId,
+                null, null, null);
+
+        String sessionId = UUID.randomUUID().toString();
+        pendingWebTests.put(sessionId, new WebTestCall(outbound, null, null, Instant.now()));
+        audit.record(companyId, "CALL_WIDGET", "call", sessionId, "agent " + agent.id());
+        return sessionId;
+    }
+
+    /**
      * The campaign's call profile for a browser test — what {@code CallTaskConsumer} builds
      * for a real target, minus the target itself: the attempt is booked on the manual
      * target and the phone is a placeholder, so no campaign statistic moves.
@@ -559,7 +558,7 @@ public class AriService {
     private OutboundCall webTestProfile(long companyId, long campaignId, Long targetId) {
         Campaign campaign = campaignService.requireCampaign(companyId, campaignId);
         AiAgent agent = aiAgentService.requireAgent(campaign.companyId(), campaign.aiAgentId());
-        Scenario scenario = scenarioService.requireScenario(campaign.companyId(), agent.scenarioId());
+        Scenario scenario = aiAgentService.resolveScenario(campaign.companyId(), agent);
         CampaignTarget target = targetId != null
                 ? campaignService.requireTarget(companyId, campaignId, targetId) : null;
         String language = target != null && target.language() != null ? target.language() : agent.language();
@@ -847,24 +846,38 @@ public class AriService {
 
     public void transferToOperator(String channelId) {
         CallSession session = sessions.get(channelId);
-        if (!operatorProperties.enabled() || operatorProperties.endpoint() == null || operatorProperties.endpoint().isBlank()
-                || session == null) {
+        if (session == null) {
+            log.info("Session not found for {}; hanging up", channelId);
+            hangup(channelId);
+            return;
+        }
+
+        AiAgent agent = session.agent();
+        String targetEndpoint = null;
+        if (agent != null && agent.callBehaviour().transferPhoneNumber() != null && !agent.callBehaviour().transferPhoneNumber().isBlank()) {
+            String num = agent.callBehaviour().transferPhoneNumber().trim();
+            targetEndpoint = num.startsWith("PJSIP/") || num.startsWith("SIP/") ? num : ("PJSIP/" + num);
+        } else if (operatorProperties.enabled() && operatorProperties.endpoint() != null && !operatorProperties.endpoint().isBlank()) {
+            targetEndpoint = operatorProperties.endpoint();
+        }
+
+        if (targetEndpoint == null) {
             log.info("Operator transfer unavailable for {}; hanging up", channelId);
             hangup(channelId);
             return;
         }
         try {
             requireConnection().channels()
-                    .originate(operatorProperties.endpoint())
+                    .originate(targetEndpoint)
                     .setApp(asteriskProperties.appName())
                     .setAppArgs("operator," + session.bridgeId() + "," + channelId)
                     .setTimeout(operatorProperties.answerTimeoutSec())
                     .execute();
-            log.info("Transferring {} to operator {} (bridge {})",
-                    channelId, operatorProperties.endpoint(), session.bridgeId());
+            log.info("Transferring {} to target {} (bridge {})",
+                    channelId, targetEndpoint, session.bridgeId());
             notificationService.notify(callRecordService.companyIdOf(session.callAttemptId()),
                     NotificationType.OPERATOR_REQUEST,
-                    "Operatorga so'rov", "Qo'ng'iroq " + channelId + " operatorga uzatildi", null);
+                    "Operatorga so'rov", "Qo'ng'iroq " + channelId + " " + targetEndpoint + " ga uzatildi", null);
         } catch (Exception e) {
             log.error("Operator transfer failed for {}: {}", channelId, e.getMessage());
             hangup(channelId);
@@ -939,9 +952,11 @@ public class AriService {
             String inboundFacts = null;
             if (inboundRoute != null) {
                 inboundAgent = aiAgentService.requireAgent(inboundRoute.companyId(), inboundRoute.aiAgentId());
-                inboundScenario = scenarioService.requireScenario(inboundRoute.companyId(), inboundAgent.scenarioId());
-                inboundFacts = factWebhookClient.fetchFacts(inboundScenario.definition().factWebhook(),
-                        FactWebhookRequest.inbound(extractCallerNumber(channel), extractDid(channel)));
+                inboundScenario = aiAgentService.resolveScenario(inboundRoute.companyId(), inboundAgent);
+                if (inboundScenario != null && inboundScenario.definition() != null && inboundScenario.definition().factWebhook() != null) {
+                    inboundFacts = factWebhookClient.fetchFacts(inboundScenario.definition().factWebhook(),
+                            FactWebhookRequest.inbound(extractCallerNumber(channel), extractDid(channel)));
+                }
             }
 
             Files.createDirectories(Path.of(rtpProperties.recordingDir()));
@@ -957,9 +972,6 @@ public class AriService {
             LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
             endpoint = new RtpEndpoint(port, rtpProperties.codec(), recorder, List.<AudioListener>of(audioMonitor),
                     audioMonitor::onBotAudio);
-            if (outbound != null && outbound.agent().ambientSound() != null) {
-                endpoint.setAmbientSound(outbound.agent().ambientSound());
-            }
             endpoint.bind(rtpEventLoopGroup);
 
             Channel extMedia = current.channels()
@@ -995,7 +1007,7 @@ public class AriService {
                 language = outbound.language() != null ? outbound.language() : dialogProperties.language();
                 ttsVoice = outbound.ttsVoice();
                 context = outbound.context();
-                scenarioRow = scenarioService.requireScenario(outbound.companyId(), agent.scenarioId());
+                scenarioRow = aiAgentService.resolveScenario(outbound.companyId(), agent);
                 phone = outbound.phone();
                 companyId = outbound.companyId();
             } else if (manual) {
@@ -1040,7 +1052,8 @@ public class AriService {
             attemptId = callRecordService.findAttemptIdByChannel(channelId);
             if (attemptId == 0) {
                 attemptId = callRecordService.startAttempt(companyId, targetId, channelId, phone, language,
-                        inboundRoute != null ? inboundRoute.id() : null);
+                        inboundRoute != null ? inboundRoute.id() : null,
+                        outbound != null ? outbound.variantId() : null);
             }
             callRecordService.markAnswered(attemptId);
             // The A/B denominator. Dispatch counted the attempt; this counts the ones that
@@ -1050,22 +1063,23 @@ public class AriService {
                 campaignVariants.recordAnswer(outbound.variantId());
             }
 
-            EffectiveEngineConfig engineConfig =
-                    engineConfigService.findEffectiveByCompanyId(callRecordService.companyIdOf(attemptId));
-            boolean realtime = engineConfig.mode() == PipelineMode.REALTIME && realtimeDialogEngine.available();
-            if (engineConfig.mode() == PipelineMode.REALTIME && !realtime) {
-                log.warn("[{}] company is set to REALTIME but no engine is available — running cascade", channelId);
+            PipelineMode pipelineMode = (agent != null && agent.speechEngine().mode() != null)
+                    ? agent.speechEngine().mode()
+                    : PipelineMode.CASCADE;
+            boolean realtime = pipelineMode == PipelineMode.REALTIME && realtimeDialogEngine.available();
+            if (pipelineMode == PipelineMode.REALTIME && !realtime) {
+                log.warn("[{}] agent is set to REALTIME but no engine is available — running cascade", channelId);
             }
             RealtimeAudioBridge realtimeBridge = realtime ? new RealtimeAudioBridge() : null;
 
             List<AudioListener> audioListeners = buildAudioListeners(channelId, attemptId, startedAt, language,
-                    engineConfig, realtimeBridge, context);
+                    realtimeBridge, context, agent);
             audioListeners.add(audioMonitor);
             endpoint.replaceListeners(audioListeners);
 
             sessions.put(channelId, new CallSession(channelId, extMedia.getId(), bridge.getId(),
                     port, endpoint, attemptId, startedAt, wav.toString(), channelName, trunkOf(channelName),
-                    scenarioRow.id(), audioMonitor, agent != null && agent.dtmfInputEnabled()));
+                    scenarioRow.id(), audioMonitor, agent != null && agent.callBehaviour().dtmfInputEnabled(), agent));
             log.info("Media ready for {}: rtpPort={}, extMedia={}, bridge={}, wav={}, attempt={}",
                     channelId, port, extMedia.getId(), bridge.getId(), wav, attemptId);
 
@@ -1078,6 +1092,25 @@ public class AriService {
                 play(channelId, Path.of(testFile));
             }
 
+            if (agent != null && agent.initiationWebhook() != null && agentWebhookExecutor != null) {
+                try {
+                    String calleePhone = outbound != null ? outbound.phone() : extractCallerNumber(channel);
+                    var initResult = agentWebhookExecutor.executeInitiation(
+                            companyId, attemptId, channelId, calleePhone,
+                            agent, context != null ? context.facts() : Map.of());
+                    if (initResult != null) {
+                        if (initResult.variables() != null && !initResult.variables().isEmpty() && context != null) {
+                            context = context.withMergedFacts(initResult.variables());
+                        }
+                        if (initResult.firstMessageOverride() != null && !initResult.firstMessageOverride().isBlank()) {
+                            agent = agent.withFirstMessage(initResult.firstMessageOverride());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] initiation webhook execution failed: {}", channelId, e.getMessage());
+                }
+            }
+
             boolean startDialog = !manual || dialogProperties.autoStart();
             // Keypad tones only on calls we placed. Inbound is a person who dialled us —
             // there is no menu on their end to navigate, and a bot pressing buttons into a
@@ -1088,6 +1121,13 @@ public class AriService {
             ScenarioDefinition definition = outbound != null
                     ? scenarioRow.definition().withRolePrompt(outbound.promptOverride())
                     : scenarioRow.definition();
+            if (agent != null) {
+                endpoint.setAmbientSound(agent.ambience().background(),
+                        agent.ambience().backgroundVolume(),
+                        agent.ambience().backgroundFadeInSeconds());
+                endpoint.setThinkingSound(agent.ambience().thinking(), agent.ambience().thinkingVolume());
+                endpoint.setNoiseCancellation(agent.ambience().noiseCancellationEnabled(), agent.ambience().noiseCancellationMode());
+            }
             if (dialogProperties.enabled() && startDialog) {
                 if (realtime) {
                     boolean started = realtimeDialogEngine.startCall(channelId, endpoint, context,
@@ -1141,8 +1181,9 @@ public class AriService {
     }
 
     private List<AudioListener> buildAudioListeners(String channelId, long callAttemptId, Instant startedAt,
-                                                    String language, EffectiveEngineConfig engineConfig,
-                                                    RealtimeAudioBridge realtimeBridge, CallContext context) {
+                                                    String language,
+                                                    RealtimeAudioBridge realtimeBridge, CallContext context,
+                                                    AiAgent agent) {
         List<AudioListener> listeners = new ArrayList<>();
         boolean realtime = realtimeBridge != null;
 
@@ -1192,7 +1233,16 @@ public class AriService {
         }
 
         if (sttProperties.enabled()) {
-            SttProvider stt = sttProviderSelector.findForCall(engineConfig.sttProvider());
+            String preferredSttProvider = (agent != null && agent.speechEngine().sttProvider() != null && !agent.speechEngine().sttProvider().isBlank())
+                    ? agent.speechEngine().sttProvider().trim()
+                    : sttProperties.provider();
+            SttProvider stt = sttProviderSelector.findForCall(preferredSttProvider);
+            // A model name only means anything to the vendor it was chosen for, so it is
+            // dropped the moment the call is not on that vendor — the requested provider left
+            // the build, or the bridge fails over mid-call to whatever else is configured.
+            String agentSttModel = (agent != null && sttProviderSelector.exists(preferredSttProvider))
+                    ? agent.speechEngine().sttModel()
+                    : null;
             if (stt != null) {
                 boolean dialog = dialogProperties.enabled() && dialogEngine.available();
                 TranscriptListener listener = (text, isFinal, confidence) -> {
@@ -1218,7 +1268,7 @@ public class AriService {
                             channelId, sttLanguage, detectLangs, listener, speechGate, metrics,
                             sttProperties.endpointing(), sttProperties.responseTimeoutMs(),
                             dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null,
-                            SttHints.of(context), sttProviderSelector));
+                            SttHints.of(context), sttProviderSelector, agentSttModel));
                 } catch (Exception e) {
                     log.warn("STT not started for {}: {}", channelId, e.getMessage());
                 }
@@ -1271,6 +1321,19 @@ public class AriService {
 
     private void handleVoicemail(String channelId) {
         metrics.voicemailDetected();
+        CallSession session = sessions.get(channelId);
+        AiAgent agent = session != null ? session.agent() : null;
+        // HANGUP only for a call with no agent behind it at all — there is no message to
+        // leave. An agent always has an action of its own; the group guarantees it.
+        VoicemailAction action = agent != null
+                ? agent.callBehaviour().voicemailAction()
+                : VoicemailAction.HANGUP;
+
+        if (action == VoicemailAction.IGNORE) {
+            log.info("[{}] Voicemail detected, but agent voicemailAction is IGNORE - continuing call", channelId);
+            return;
+        }
+
         dialogRouter.notifyVoicemail(channelId);
         callExecutor.execute(() -> withMdc(channelId, () -> hangup(channelId)));
     }
@@ -1523,7 +1586,7 @@ public class AriService {
             // record. Applying the target's outcome first rescheduled such a call.
             disposition = callFinalizer.finalizeCall(session.callAttemptId(), clientId, session.scenarioId(),
                     Path.of(session.wavPath()), session.startedAt(), disposition,
-                    session.channelName(), session.trunk(), technical);
+                    session.channelName(), session.trunk(), technical, session.agent(), outbound != null ? outbound.phone() : null);
         }
         if (outbound != null) {
             campaignService.applyOutcome(outbound.companyId(), outbound.targetId(), disposition);

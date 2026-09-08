@@ -1,40 +1,83 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-
-import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Full edit of an agent ({@code PUT /api/ai-agents/{id}}) — the same shape as
- * {@link CreateAiAgentRequest}. The scenario may be changed here: an agent is a way of
- * speaking, and pointing it at a different script does not make it a different agent.
- * Campaigns already running under it pick the new script up on their next call.
+ * Full edit of an agent ({@code PUT /api/ai-agents/{id}}).
  */
 public record UpdateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 500) String description,
-        @NotNull Long scenarioId,
+        Long scenarioId,
+        AgentTemplate templateId,
+        String firstMessage,
+        String systemPrompt,
+        ScenarioMode scenarioMode,
+        ScenarioDefinition scenarioDefinition,
+        Boolean preemptiveGeneration,
+        Boolean ivrNavigationEnabled,
+        Boolean useRag,
         String language,
+        PipelineMode pipelineMode,
+        String realtimeProvider,
+        String pipecatStt,
+        String pipecatLlm,
+        String pipecatTts,
+        String sttProvider,
+        String sttModel,
+        String ttsProvider,
+        String ttsModel,
         String ttsVoice,
+        Double voiceSpeed,
+        Double voiceStability,
+        Double voiceSimilarityBoost,
         Map<String, String> languageVoices,
         AgentPersona persona,
         @Size(max = 120) String llmModel,
+        @Size(max = 120) String fastLlmModel,
         Double temperature,
         Integer maxOutputTokens,
+        List<DataExtractionField> dataNeeded,
+        List<DataEvaluationCriterion> dataEvaluation,
+        Boolean zeroPiiRetention,
+        Boolean storeCallAudio,
+        Integer conversationRetentionDays,
+        Integer maxConversationDurationSeconds,
+        Integer silenceEndCallTimeoutSeconds,
+        Integer turnTimeoutSeconds,
+        Integer concurrentCallsLimit,
+        Integer dailyCallsLimit,
+        AgentWebhookConfig initiationWebhook,
+        AgentWebhookConfig postCallWebhook,
         AmbientSound ambientSound,
+        Double ambientSoundVolume,
+        Double ambientSoundFadeInSeconds,
+        AmbientSound thinkingSound,
+        Double thinkingSoundVolume,
+        Boolean noiseCancellationEnabled,
+        NoiseCancellationMode noiseCancellationMode,
         Boolean emotionAdaptiveVoice,
         Boolean dtmfInputEnabled,
         VoicemailAction voicemailAction,
         @Size(max = 500) String voicemailMessage,
         Boolean midCallSmsEnabled,
         @Size(max = 500) String midCallSmsTemplate,
+        String transferPhoneNumber,
+        String transferMessage,
+        InterruptionSensitivity interruptionSensitivity,
+        Integer endpointingDelayMs,
         Set<Long> sipTrunkIds,
-        Boolean enabled) {
+        Boolean enabled
+) {
 }

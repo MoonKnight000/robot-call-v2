@@ -3,8 +3,6 @@ package uz.murodjon.robotcallv2.integration.application.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,10 +16,7 @@ import uz.murodjon.robotcallv2.integration.domain.enums.CrmAuthMethod;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.integration.infrastructure.config.UysotOAuthProperties;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 
 import javax.crypto.Mac;
@@ -35,10 +30,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Uysot CRM, amoCRM, Kommo & Bitrix24 OAuth connection (§11 settings).
@@ -105,17 +100,48 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
             throw new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED);
         }
         String state = signState(companyId);
+        // RFC 6749 authorization-code parameters, as Uysot's OAuth guide documents them.
+        // The app's own name is not sent: the consent screen shows it from the registered
+        // application, not from this link.
         String url = oauth.authorizeUrl()
-                + "?client_id=" + encode(oauth.clientId())
-                + "&app_name=" + encode(integration.appName())
-                + "&redirect_url=" + encode(oauth.redirectUri())
-                + "&grants=" + encode(grantsParam(grants))
+                + "?response_type=code"
+                + "&client_id=" + encode(oauth.clientId())
+                + "&redirect_uri=" + encode(oauth.redirectUri())
+                + "&scope=" + encodeQueryValue(scopeParam(grants))
                 + "&state=" + encode(state);
         return new AuthorizeUrlResponse(url);
     }
 
     @Override
-    public void handleCallback(String code, String state) {
+    public URI handleCallback(String code, String state) {
+        try {
+            exchangeCode(code, state);
+            return returnUrl("crm=connected");
+        } catch (AppException e) {
+            // Answered as a redirect, not rethrown: whoever is at the other end of this is a
+            // person's browser that has just come back from Uysot's consent screen, and an
+            // error envelope would leave them on a blank JSON page. The reason travels as
+            // the same ErrorCode name the rest of the API reports, so the settings screen
+            // translates it exactly as it would any other failure. A non-AppException is a
+            // bug and still surfaces as a 500 — it has no message worth showing anyone.
+            log.warn("Uysot callback failed: {}", e.code());
+            return returnUrl("crm=error&reason=" + e.code().name());
+        }
+    }
+
+    /**
+     * Where the browser goes once the exchange is over. Blank configuration falls back to
+     * the application root, which serves the bundled panel — never to nothing, because a
+     * 302 with no location is a dead end.
+     */
+    private URI returnUrl(String query) {
+        String base = oauth.callbackRedirectUrl() != null && !oauth.callbackRedirectUrl().isBlank()
+                ? oauth.callbackRedirectUrl().trim()
+                : "/";
+        return URI.create(base + (base.contains("?") ? "&" : "?") + query);
+    }
+
+    private void exchangeCode(String code, String state) {
         requireCipher();
         if (!oauth.configured()) {
             throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_NOT_CONFIGURED, "uysot-oauth");
@@ -295,18 +321,19 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         }
     }
 
-    private String grantsParam(List<CrmGrant> grants) {
-        ArrayNode arr = mapper.createArrayNode();
-        for (CrmGrant g : grants) {
-            ObjectNode node = arr.addObject();
-            node.put("permission", "PERMISSION_OPEN_API_" + g.permission().name());
-            node.put("scope", g.scope().name());
-        }
-        try {
-            return Base64.getEncoder().encodeToString(mapper.writeValueAsBytes(arr));
-        } catch (Exception e) {
-            return "";
-        }
+    /**
+     * The {@code scope} the consent screen asks the company to approve: space-separated
+     * {@code PERMISSION:SCOPE} pairs, e.g.
+     * {@code PERMISSION_OPEN_API_LEAD:READ PERMISSION_OPEN_API_CONTRACT:READ}.
+     *
+     * <p>What comes back may be narrower than what was asked for — the company can approve
+     * a subset — so the token response's own {@code scope} is what a connection may
+     * actually do, not this string.
+     */
+    private static String scopeParam(List<CrmGrant> grants) {
+        return grants.stream()
+                .map(grant -> grant.permission().wireName() + ":" + grant.scope().name())
+                .collect(Collectors.joining(" "));
     }
 
     private List<CrmGrant> readGrants(String json) {
@@ -339,5 +366,17 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
 
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Like {@link #encode} but with spaces as {@code %20} rather than {@code +}.
+     *
+     * <p>{@code +} means a space only to a reader that form-decodes, and the authorization
+     * page is a URL the browser follows, not a form post. A scope arriving as
+     * {@code A:READ+B:READ} is one unknown grant, and the flow fails at the consent screen
+     * with "invalid scope" — the encoding is the whole of the difference.
+     */
+    private static String encodeQueryValue(String value) {
+        return encode(value).replace("+", "%20");
     }
 }

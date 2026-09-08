@@ -149,8 +149,8 @@ So'rov shakli yuqoridagi `CallFilter` bilan bir xil; `campaignId` path'dan olina
       "amdResult": "HUMAN",
       "sttProvider": "yandex",
       "ttsProvider": "yandex",
-      "ttsVoice": "dilnavoz",
-      "llmModel": "gemini-2.5-flash",
+      "ttsVoice": "nigora",
+      "llmModel": "gemini-3.8-flash",
       "promptTokens": 1840,
       "completionTokens": 320,
       "cachedTokens": 1200,
@@ -178,10 +178,22 @@ So'rov shakli yuqoridagi `CallFilter` bilan bir xil; `campaignId` path'dan olina
 | `transcript[].tsOffsetMs` | number | Qo'ng'iroq boshidan millisekund — audio pleyerni shu qatordan boshlash uchun |
 | `transcript[].confidence` | float \| null | STT ishonchi; `AGENT` qatorlarida `null` |
 
-> ⚠️ `qaScore`, `commitmentScore` va `callbackAt` **javobda yo'q**. `qaScore`/
-> `commitmentScore` LLM tomonidan hisoblanadi (`CallSummary`), lekin `call_result`
-> jadvalida ustuni yo'q va API orqali qaytarilmaydi. Qayta qo'ng'iroq vaqti
-> `CALLBACK_REQUESTED` disposition'i va nishonning `nextAttemptAt` i orqali yuradi.
+**`technical` — qo'ng'iroq qaysi rejimda ketganiga qarab o'qiladi:**
+
+* **CASCADE** — yuqoridagi misol: `sttProvider`/`ttsProvider` shu agentning provayderlari
+  (agent tanlamagan bo'lsa deploy default'i), `llmModel` — qo'ng'iroqning asosiy modeli
+  (kompaniya sozlamasi + agent override'i). Bu **sozlangan** model: mijoz juda qisqa javob
+  bergan turn'lar agentning `fastLlmModel` ida ketgan bo'lishi mumkin va bu maydon buni
+  ko'rsatmaydi — qaysi turn qaysi modelga ketgani faqat logda.
+* **REALTIME** — tanish, o'ylash va gapirish bitta vendor ichida bo'lgani uchun uchalasi
+  ham **engine id** bo'ladi: `"sttProvider": "gemini-live"`, `"ttsProvider": "gemini-live"`,
+  `"llmModel": "gemini-3.1-flash-live-preview"`. `ttsVoice` — engine qabul qilgan ovoz
+  (masalan `Aoede`); campaign ovozi boshqa vendorniki bo'lsa engine o'z default ovozida
+  gapiradi va bu maydon `null` bo'ladi.
+
+> Hozircha REALTIME qo'ng'iroqlarda `promptTokens`/`completionTokens`/`cachedTokens` = `0`
+> va `avg*/max*LatencyMs` = `null`: engine bu ko'rsatkichlarni bermaydi, `turnCount` esa
+> to'ldiriladi.
 
 ---
 
@@ -192,9 +204,6 @@ bytes=<start>-<end>` to'liq qo'llab-quvvatlanadi.
 
 * **Content-Type**: `audio/wav` · **Content-Disposition**: `inline`
 * **Accept-Ranges**: `bytes` · **Status**: `200` yoki `206 Partial Content`
-
-Fayl `/api/files/{id}` ga redirect qilinmaydi — redirect pleyerdan sarlavhalarni yo'qotib,
-yozuvni ijro etib bo'lmaydigan qilardi.
 
 ---
 
@@ -207,8 +216,7 @@ yozuvni ijro etib bo'lmaydigan qilardi.
 ### `POST /api/reports/calls/export` — Qo'ng'iroqlarni CSV eksport qilish
 
 Body — `CallFilter` (yuqoridagi shakl). Javob — **`calls.csv`** fayli (`byte[]`,
-`ResponseData` konvertisiz). Format tanlanmaydi: bu endpoint faqat CSV qaytaradi;
-PDF/XLSX kerak bo'lsa `GET /api/reports/export` ishlatiladi.
+`ResponseData` konvertisiz).
 
 ---
 
@@ -222,29 +230,210 @@ Huquq: **REPORT_EDIT**.
 { "action": "retry", "ids": [1051, 1052, 1053] }
 ```
 
-| Maydon | Majburiymi | Izoh |
-|---|---|---|
-| `action` | ✅ (`@NotBlank`) | **kichik harfda**: `"retry"` — nishonni qayta terish navbatiga qo'yish; `"dnc"` — raqamni DNC ro'yxatiga qo'shish. Boshqasi — `400 REPORT_BULK_ACTION_UNKNOWN` |
-| `ids` | ✅ (`@NotEmpty`) | Qo'ng'iroq id'lari. **`callIds` emas** |
-
-**Response** (`BulkCallActionResult`):
-
-```json
-{ "accept": true, "data": { "processed": 2, "failed": [1053] }, "errors": null }
-```
-
-Har bir amal audit jurnaliga `CALLS_BULK_RETRY` / `CALLS_BULK_DNC` sifatida yoziladi.
-
 ---
 
 ## 2. Analitika va Dashboard
 
-Quyidagi barcha endpointlar bir xil query parametrlarni oladi:
+### `GET /api/reports/dashboard/summary` — Birlashgan Dashboard Ko'rsatkichlari (Unified Dashboard Summary)
 
-| Parametr | Izoh |
-|---|---|
-| `from` / `to` | ISO-8601 instant (`2026-09-01T00:00:00Z`). Berilmasa — oxirgi **7 kun**. Oraliq **366 kundan** oshsa `400 DATE_RANGE_TOO_LONG`; `from >= to` bo'lsa `400 DATE_RANGE_INVALID`; format buzuq bo'lsa `400 INSTANT_PARSE_FAILED` |
-| `campaignId` | Ixtiyoriy — bitta kampaniya bilan cheklash |
+Huquq: **DASHBOARD_READ**. Frontend bosh sahifasi (Dashboard) uchun barcha kerakli ma'lumotlarni yagona so'rovda qaytaradi.
+
+**Query Parametrlar:**
+
+| Parametr | Standart | Izoh |
+|---|---|---|
+| `range` | `24h` | Davr turi: `24h`, `7d`, `30d`, yoki `custom` |
+| `from` | *avtomatik* | Boshlanish sanasi/vaqti (ISO Instant yoki `YYYY-MM-DD`) |
+| `to` | *hozirgi vaqt* | Tugash sanasi/vaqti (ISO Instant yoki `YYYY-MM-DD`) |
+| `campaignId` | null | Kampaniya bo'yicha filter |
+| `scenarioId` | null | Ssenariy bo'yicha filter |
+
+**Response** (`DashboardSummaryResponse`):
+
+```json
+{
+  "accept": true,
+  "data": {
+    "range": "24h",
+    "from": "2026-09-06T00:00:00Z",
+    "to": "2026-09-06T23:59:59Z",
+    "updatedAt": "14:32:05",
+    "kpis": [
+      {
+        "id": "total_calls",
+        "label": "Jami qo'ng'iroqlar",
+        "value": "1 482",
+        "rawValue": 1482,
+        "unit": "ta",
+        "delta": "+12.4%",
+        "deltaPct": 12.4,
+        "up": true,
+        "isBad": null,
+        "sparkline": [12, 18, 25, 40, 60, 55, 48],
+        "hint": "Tanlangan davrdagi barcha terilgan va kelib tushgan qo'ng'iroqlar",
+        "targetLink": "/calls"
+      },
+      {
+        "id": "minutes_used",
+        "label": "Ishlatilgan daqiqalar",
+        "value": "3 240 daq",
+        "rawValue": 3240,
+        "unit": "daq",
+        "delta": "+8.1%",
+        "deltaPct": 8.1,
+        "up": true,
+        "isBad": null,
+        "sparkline": [20, 30, 50, 75, 110, 95, 80],
+        "hint": "AI ovozli agent va operatorlar suhbat davomiyligi",
+        "targetLink": "/reports"
+      },
+      {
+        "id": "avg_duration",
+        "label": "O'rtacha davomiylik",
+        "value": "2 daq 11 s",
+        "rawValue": 131,
+        "unit": "soniya",
+        "delta": "-3.2%",
+        "deltaPct": -3.2,
+        "up": false,
+        "isBad": null,
+        "sparkline": [120, 135, 130, 125, 140, 131],
+        "hint": "Har bir muvaffaqiyatli suhbatning o'rtacha uzunligi",
+        "targetLink": "/reports"
+      },
+      {
+        "id": "success_rate",
+        "label": "Muvaffaqiyat ko'rsatkichi",
+        "value": "78.4%",
+        "rawValue": 78.4,
+        "unit": "%",
+        "delta": "+4.2%",
+        "deltaPct": 4.2,
+        "up": true,
+        "isBad": null,
+        "sparkline": [72.0, 75.1, 74.0, 78.4],
+        "hint": "Ijobiy natija yoki maqsadga erishilgan qo'ng'iroqlar ulushi",
+        "targetLink": "/reports"
+      },
+      {
+        "id": "failed_calls",
+        "label": "Muvaffaqiyatsiz qo'ng'iroqlar",
+        "value": "42",
+        "rawValue": 42,
+        "unit": "ta",
+        "delta": "-15.0%",
+        "deltaPct": -15.0,
+        "up": false,
+        "isBad": true,
+        "sparkline": [5, 8, 4, 3, 2, 6],
+        "hint": "SIP ulanish xatosi yoki tarmoq xatosi tufayli uzilganlar (ko'rib chiqish tavsiya etiladi)",
+        "targetLink": "/calls?disposition=FAILED"
+      },
+      {
+        "id": "missed_calls",
+        "label": "Javobsiz qo'ng'iroqlar",
+        "value": "118",
+        "rawValue": 118,
+        "unit": "ta",
+        "delta": "+2.0%",
+        "deltaPct": 2.0,
+        "up": true,
+        "isBad": true,
+        "sparkline": [15, 20, 18, 22, 19, 24],
+        "hint": "Gudok ketgan ammo mijoz javob bermagan yoki band bo'lganlar",
+        "targetLink": "/calls?disposition=NO_ANSWER"
+      }
+    ],
+    "timeline": {
+      "unit": "hour",
+      "peakCalls": 142,
+      "peakLabel": "Soat 14:00",
+      "totalCalls": 1482,
+      "totalMinutes": 3240,
+      "points": [
+        {
+          "t": "09:00",
+          "label": "Soat 09:00",
+          "calls": 45,
+          "minutes": 98,
+          "failed": 2,
+          "completed": 35,
+          "successRate": 77.8
+        }
+      ]
+    },
+    "statusBreakdown": [
+      {
+        "code": "COMPLETED",
+        "label": "Suhbat yakunlandi (Muvaffaqiyatli)",
+        "count": 940,
+        "pct": 63,
+        "color": "var(--success, #10b981)"
+      }
+    ],
+    "directionMix": {
+      "outbound": {
+        "count": 1120,
+        "pct": 76,
+        "minutes": 2450,
+        "avgDurationSec": 131,
+        "successRatePct": 79.2
+      },
+      "inbound": {
+        "count": 362,
+        "pct": 24,
+        "minutes": 790,
+        "avgDurationSec": 130,
+        "successRatePct": 76.0
+      }
+    },
+    "topAgents": [
+      {
+        "id": 1,
+        "name": "Dilnavoz (AI)",
+        "role": "Avtomatlashgan robot",
+        "type": "ai",
+        "calls": 820,
+        "minutes": 1800,
+        "successRate": 81.2,
+        "relativePct": 100
+      }
+    ],
+    "campaigns": [
+      {
+        "id": 12,
+        "name": "Kechikkan to'lovlar",
+        "progress": 65,
+        "done": 650,
+        "total": 1000
+      }
+    ],
+    "live": [],
+    "recentCalls": [
+      {
+        "id": "1052",
+        "name": "Sardor Alimov",
+        "phone": "+998901234567",
+        "campaign": "Kechikkan to'lovlar",
+        "agentName": "Dilnavoz (AI)",
+        "direction": "outbound",
+        "code": "COMPLETED",
+        "dispositionLabel": "Suhbat yakunlandi (Muvaffaqiyatli)",
+        "duration": "02:22",
+        "durationSec": 142,
+        "time": "10:15",
+        "date": "2026-09-06",
+        "hasRecording": true
+      }
+    ]
+  },
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+---
 
 ### `GET /api/reports/dashboard/kpi` — Asosiy KPI ko'rsatkichlari
 
@@ -268,10 +457,7 @@ Huquq: **DASHBOARD_READ**.
 }
 ```
 
-`changePct` — oldingi davr `0` bo'lsa `null` (o'sishni hisoblab bo'lmaydi), ikkalasi ham
-`0` bo'lsa `0.0`.
-
-> ⚠️ `completedCalls`, `successRate`, `avgQaScore`, `totalCost` kabi maydonlar **yo'q**.
+---
 
 ### `GET /api/reports/dashboard/timeseries` — Vaqt bo'yicha dinamika
 
@@ -284,203 +470,40 @@ Huquq: **DASHBOARD_READ**. **Response** (`List<DashboardBucket>`):
 ]
 ```
 
-| Maydon | Nimani sanaydi |
-|---|---|
-| `total` | Davrda boshlangan barcha urinishlar |
-| `answered` | `duration_sec` to'ldirilganlar (ya'ni suhbat bo'lgan) |
-| `noAnswer` | `disposition = NO_ANSWER` |
-| `error` | `disposition = FAILED` |
-| `avgDurationSec` | Faqat javob berilganlar bo'yicha o'rtacha; hech biri bo'lmasa `null` |
-| `promises` | `disposition = PROMISE_TO_PAY` |
-
-Bucket kengligi oraliqdan avtomatik tanlanadi: ≤ 2 kun — **soat**, ≤ 62 kun — **kun**,
-undan uzun — **hafta**.
+---
 
 ### `GET /api/reports/dynamics` — Kengaytirilgan dinamika
 
-Huquq: **REPORT_READ**. `timeseries` bilan bir xil javob (`List<DashboardBucket>`),
-lekin qo'shimcha filtrlar bilan:
+Huquq: **REPORT_READ**.
 
-| Parametr | Izoh |
-|---|---|
-| `scenarioId` | Ssenariy bo'yicha cheklash |
-| `operator` | Aslida **eskalatsiya** filtri (`call_result.escalated`): `true` — faqat operatorga eskalatsiya qilingan qo'ng'iroqlar, `false` — faqat qilinmaganlar, berilmasa — hammasi |
+---
 
 ### `GET /api/reports/dashboard/outcomes` va `GET /api/reports/outcomes-distribution`
 
-Birinchisi **DASHBOARD_READ**, ikkinchisi **REPORT_READ** huquqini talab qiladi; javob
-bir xil (`List<DashboardOutcome>`) — Pie/Donut diagramma uchun:
-
-```json
-[ { "disposition": "PROMISE_TO_PAY", "count": 300 }, { "disposition": "NO_ANSWER", "count": 220 } ]
-```
+---
 
 ### `GET /api/reports/hourly-heatmap` — Soatlik issiqlik xaritasi
 
-**Response** (`List<HourlyHeatmapCell>`):
-
-```json
-[ { "dayOfWeek": 1, "hour": 10, "total": 84, "answered": 71, "answerRate": 0.845 } ]
-```
-
-`dayOfWeek` — PostgreSQL `extract(dow ...)` qiymati: **`0` = yakshanba**, `1` = dushanba,
-… `6` = shanba. `hour` — server timezone'idagi soat (0–23). `answered` — `duration_sec`
-to'ldirilgan qo'ng'iroqlar soni.
+---
 
 ### `GET /api/reports/campaign-comparison` — Kampaniyalarni taqqoslash
 
-Bu endpoint `campaignId` o'rniga **`campaignIds`** (ro'yxat) oladi:
-`?campaignIds=12&campaignIds=13`. Berilmasa — davrdagi barcha kampaniyalar.
-
-**Response** (`List<CampaignComparisonRow>`):
-
-```json
-[ { "campaignId": 12, "campaignName": "Mart", "totalCalls": 1250, "answeredCalls": 1050,
-    "answerRate": 0.84, "avgDurationSec": 140.2, "promises": 300 } ]
-```
+---
 
 ### `GET /api/reports/duration-histogram` — Davomiylik taqsimoti
 
-**Response** (`List<DurationHistogramBucket>`):
-
-```json
-[ { "rangeLabel": "0-30",   "rangeStartSec": 0,   "rangeEndSec": 30,   "count": 210 },
-  { "rangeLabel": "30-60",  "rangeStartSec": 30,  "rangeEndSec": 60,   "count": 180 },
-  { "rangeLabel": "60-120", "rangeStartSec": 60,  "rangeEndSec": 120,  "count": 240 },
-  { "rangeLabel": "120-300","rangeStartSec": 120, "rangeEndSec": 300,  "count": 160 },
-  { "rangeLabel": "300-600","rangeStartSec": 300, "rangeEndSec": 600,  "count": 40 },
-  { "rangeLabel": "600+",   "rangeStartSec": 600, "rangeEndSec": null, "count": 18 } ]
-```
-
-Chegaralar qat'iy: `30, 60, 120, 300, 600` soniya. Oxirgi bucket'da `rangeEndSec` —
-`null` (yuqori chegara yo'q). Bucket'lar har doim oltitasi ham qaytadi, bo'sh bo'lsa
-`count: 0`.
+---
 
 ### `GET /api/reports/funnel` — Voronka
 
-**Response** (`List<FunnelStage>`):
-
-```json
-[ { "stage": "CALL",             "count": 1250, "rate": 1.0 },
-  { "stage": "ANSWERED",         "count": 1050, "rate": 0.84 },
-  { "stage": "PERSON_CONFIRMED", "count": 910,  "rate": 0.728 },
-  { "stage": "CONVERSATION",     "count": 780,  "rate": 0.624 },
-  { "stage": "RESULT",           "count": 300,  "rate": 0.24 } ]
-```
-
-Bosqichlar qat'iy beshta va shu tartibda. `rate` — har doim birinchi bosqichga
-(`CALL`) nisbatan ulush, oldingi bosqichga emas.
+---
 
 ### `GET /api/reports/export` — Umumiy hisobotni faylga chiqarish
-
-Huquq: **REPORT_READ**. `from`/`to`/`campaignId` ga qo'shimcha:
-
-| Parametr | Standart | Izoh |
-|---|---|---|
-| `format` | `csv` | `csv`, `pdf` yoki `xlsx`. Boshqasi — `400 REPORT_EXPORT_FORMAT_UNKNOWN` |
-
-Javob — `report.csv` / `report.pdf` / `report.xlsx` fayli (`byte[]`, `ResponseData`
-konvertisiz). Ichida `ReportSummary`: davr, umumiy ko'rsatkichlar, natijalar taqsimoti,
-voronka va kampaniyalar taqqoslamasi.
 
 ---
 
 ## 3. Rejalashtirilgan hisobotlar (`/api/reports/schedule`)
 
-Menejer yoki tahlilchi elektron pochtasiga davriy avtomatik hisobot jo'natish.
-
-### `POST /api/reports/schedule` — Yangi jadval
-
-Huquq: **REPORT_EDIT**. **Request Body** (`CreateReportScheduleRequest`):
-
-```json
-{ "email": "director@uysot.uz", "periodicity": "WEEKLY", "format": "xlsx", "campaignId": 12 }
-```
-
-| Maydon | Turi | Majburiymi | Izoh |
-|---|---|---|---|
-| `email` | string | ✅ (`@NotBlank @Email`) | Hisobot yuboriladigan pochta |
-| `periodicity` | `ReportPeriodicity` | ✅ (`@NotNull`) | `DAILY` (1 kun), `WEEKLY` (7 kun), `MONTHLY` (30 kun) |
-| `format` | string | ❌ | `csv`, `pdf`, `xlsx` |
-| `campaignId` | number | ❌ | Bitta kampaniya uchun; berilmasa — barchasi |
-
-**Response** (`ReportSchedule`):
-
-```json
-{
-  "accept": true,
-  "data": {
-    "id": 4,
-    "companyId": 1,
-    "email": "director@uysot.uz",
-    "periodicity": "WEEKLY",
-    "format": "xlsx",
-    "campaignId": 12,
-    "enabled": true,
-    "lastSentAt": null,
-    "createdAt": "2026-09-05T10:00:00Z"
-  },
-  "errors": null
-}
-```
-
-### `POST /api/reports/schedule/list` — Jadvallar ro'yxati
-
-Huquq: **REPORT_READ**. Body — `ReportScheduleFilter` (`page`/`size`/`orders`).
-Saralanadigan ustunlar: `ID`, `EMAIL`, `PERIODICITY`, `ENABLED`, `CREATED_AT`.
-Standart: `ID ASC`. Javob — `PageableData<ReportSchedule>`.
-
-### `DELETE /api/reports/schedule/{id}` — Jadvalni to'xtatish
-
-Huquq: **REPORT_EDIT**. Qatorni o'chirmaydi — `enabled=false` qiladi. Javob —
-yangilangan `ReportSchedule`.
-
 ---
 
 ## 4. Tizim audit jurnali (`POST /api/reports/audit/list`) {#audit-log}
-
-Huquq: **AUDIT_READ**.
-
-**Request Body** (`AuditFilter`):
-
-```json
-{
-  "page": 0,
-  "size": 20,
-  "orders": { "CREATED_AT": "DESC" },
-  "actor": "aziz.b",
-  "action": "CAMPAIGN_UPDATE",
-  "entity": "campaign"
-}
-```
-
-Saralanadigan ustunlar: `ID`, `CREATED_AT`, `ACTION`, `ENTITY`. Standart: `ID DESC`.
-
-> ⚠️ `AuditFilter` da sana oralig'i (`from`/`to`) filtri **yo'q**.
-
-**Response** (`PageableData<AuditLog>`):
-
-```json
-{
-  "accept": true,
-  "data": {
-    "totalPages": 3,
-    "currentPage": 0,
-    "totalElements": 52,
-    "data": [
-      {
-        "id": 910,
-        "companyId": 1,
-        "actor": "aziz.b",
-        "action": "CAMPAIGN_UPDATE",
-        "entity": "campaign",
-        "entityId": "12",
-        "detail": "sipTrunkIds: [1] -> [1, 2]",
-        "createdAt": "2026-09-05T10:20:00Z",
-        "ipAddress": "10.0.0.14"
-      }
-    ]
-  },
-  "errors": null
-}
-```

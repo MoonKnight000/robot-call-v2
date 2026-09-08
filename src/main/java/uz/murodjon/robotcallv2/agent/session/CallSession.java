@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.agent.session;
 
 import uz.murodjon.robotcallv2.agent.audio.LiveAudioMonitor;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 
 import java.time.Instant;
 
@@ -49,6 +50,14 @@ public record CallSession(
         String trunk,
         long scenarioId,
         LiveAudioMonitor audioMonitor,
-        boolean dtmfInputEnabled
+        boolean dtmfInputEnabled,
+        AiAgent agent
 ) {
+    public CallSession(String channelId, String extMediaChannelId, String bridgeId, int rtpPort,
+                       RtpEndpoint endpoint, long callAttemptId, Instant startedAt, String wavPath,
+                       String channelName, String trunk, long scenarioId, LiveAudioMonitor audioMonitor,
+                       boolean dtmfInputEnabled) {
+        this(channelId, extMediaChannelId, bridgeId, rtpPort, endpoint, callAttemptId, startedAt,
+                wavPath, channelName, trunk, scenarioId, audioMonitor, dtmfInputEnabled, null);
+    }
 }

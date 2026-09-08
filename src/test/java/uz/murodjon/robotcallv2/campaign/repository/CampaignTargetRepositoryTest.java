@@ -11,7 +11,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
@@ -20,8 +19,8 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
-import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
+import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;

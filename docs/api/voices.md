@@ -32,19 +32,23 @@ cheklanadi — kredensiali yo'q provayderning ovozi umuman qaytmaydi, chunki
 `TtsRouter` baribir uni e'tiborsiz qoldirib standart provayderning o'z ovozida
 gapiradi (`settings.md`).
 
-Bundan tashqari ro'yxat **kompaniyaning `engine_config.mode` qiymati bo'yicha**
+Bundan tashqari ro'yxat `?mode=CASCADE` / `?mode=REALTIME` query parametri bo'yicha
 toraytiriladi, chunki ovoz nomlari ikki oila o'rtasida o'tmaydi:
 
-| `engine_config.mode` | Qaytadigan ovozlar |
+| `mode` | Qaytadigan ovozlar |
 |---|---|
 | `CASCADE` | TTS provayderlarining ovozlari (`yandex`, `aisha`, `google`) |
 | `REALTIME` | speech-to-speech engine'ining o'z ovozlari (`gemini-live`, `openai-realtime`, `qwen-omni`) |
+
+> `mode` berilmasa ikkala oila ham qaytadi. Pipeline endi kompaniyaniki emas, **har bir
+> agentniki** (`ai_agent.pipeline_mode`), shuning uchun agent tahrirlash ekrani o'sha
+> agentning rejimini yuborishi kerak.
 
 Oila **ichida** aralashtirish avvalgidek erkin: `TtsRouter` tanlangan ovozni
 to'g'ridan-to'g'ri o'zining provayderi orqali gapiradi, shuning uchun bitta
 kampaniya `yandex` va `aisha` ovozlarini yonma-yon ishlata oladi. Oiladan
 tashqari ovoz esa qabul qilinmaydi — `POST /api/campaigns` uni
-`TTS_VOICE_UNKNOWN` bilan rad etadi, va agar eski kampaniyada shunday ovoz qolib
+`TTS_VOICE_UNKNOWN` bilan rad etadi (agentning o'z `pipelineMode` iga qarab tekshiriladi), va agar eski kampaniyada shunday ovoz qolib
 ketgan bo'lsa, qo'ng'iroq paytida u e'tiborsiz qoldirilib engine o'zining
 standart ovozida gapiradi (`RealtimeDialogEngine.voiceFor`).
 

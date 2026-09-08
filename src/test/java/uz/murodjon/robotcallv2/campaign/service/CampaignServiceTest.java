@@ -2,30 +2,32 @@ package uz.murodjon.robotcallv2.campaign.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort;
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
+import uz.murodjon.robotcallv2.campaign.application.service.ChainedTargetImporter;
 import uz.murodjon.robotcallv2.campaign.application.service.TargetApiImporter;
-import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
-import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
-import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
-import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
+import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.user.application.service.UserService;
 
 import java.time.Clock;
@@ -38,9 +40,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class CampaignServiceTest {
 
@@ -79,7 +79,8 @@ class CampaignServiceTest {
 
         service = new CampaignService(campaigns, targets, doNotCallList, aiAgents,
                 users, companyConfig, dialerProps, audit, notifications, ttsWarmup,
-                targetSources, mock(TargetApiImporter.class), mock(SecretCipher.class), clock);
+                targetSources, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
+                mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), clock);
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {

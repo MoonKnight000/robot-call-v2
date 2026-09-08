@@ -1,6 +1,8 @@
 -- Baseline schema for the AI voice agent (PROJECT.md §6). This is the whole schema in one
 -- file: nothing has shipped yet, so there is no production history worth replaying step by
--- step, and a fresh database is created from this file plus R__seed_data.sql alone.
+-- step, and a fresh database is created from this file plus R__seed_data.sql alone. Every
+-- migration written so far is folded in here rather than kept as its own step — a column
+-- added and then re-defaulted twice is noise once no database anywhere replays it.
 --
 -- Tables are declared in dependency order so every REFERENCES points at something that
 -- already exists; the single exception is company.logo_file_id, which is added by ALTER
@@ -210,20 +212,91 @@ CREATE TABLE ai_agent (
     company_id             BIGINT       NOT NULL REFERENCES company(id),
     name                   VARCHAR(255) NOT NULL,
     description            VARCHAR(500),
-    scenario_id            BIGINT       NOT NULL REFERENCES scenario(id),
+
+    -- What is said. Three ways, in the order resolveScenario reads them: a shared
+    -- scenario row, an embedded definition, or nothing but system_prompt (mode PROMPT),
+    -- in which case the prompt itself is the whole script. All three are nullable
+    -- because an agent needs exactly one of them, not all.
+    scenario_id            BIGINT       REFERENCES scenario(id),
+    scenario_mode          VARCHAR(32)  NOT NULL DEFAULT 'PROMPT', -- PROMPT, STRUCTURED_STEPS
+    scenario_definition    JSONB,
+    template_id            VARCHAR(50),           -- BUSINESS, SUPPORT, MEDICAL, BLANK
+    first_message          TEXT,                  -- spoken verbatim; NULL lets the model open the call
+    system_prompt          TEXT,
+    preemptive_generation  BOOLEAN      NOT NULL DEFAULT false,
+    ivr_navigation_enabled BOOLEAN      NOT NULL DEFAULT true,
+    use_rag                BOOLEAN      NOT NULL DEFAULT false,
+
     language               VARCHAR(10)  NOT NULL DEFAULT 'uz-UZ',
-    tts_voice              VARCHAR(64)  REFERENCES tts_voice(id),  -- NULL = the configured provider's own default voice
     persona                VARCHAR(30)  NOT NULL DEFAULT 'AI_ASSISTANT', -- AI_ASSISTANT, HUMAN_LIKE
+
+    -- Which engines run the call. pipeline_mode decides which of the rest apply: an
+    -- stt_provider on a REALTIME agent is a leftover, not a setting. NULL anywhere here
+    -- means "the deployment's configured default" (config/speech.yml).
+    pipeline_mode          VARCHAR(20)  NOT NULL DEFAULT 'CASCADE', -- CASCADE, REALTIME
+    realtime_provider      VARCHAR(50),           -- gemini-live, openai-realtime, qwen-omni, moshi, pipecat
+    pipecat_stt            VARCHAR(50),
+    pipecat_llm            VARCHAR(50),
+    pipecat_tts            VARCHAR(50),
+    stt_provider           VARCHAR(64),           -- yandex, aisha, gemini, deepgram
+    stt_model              VARCHAR(120),
+    tts_provider           VARCHAR(64),           -- yandex, aisha, gemini, cartesia
+    tts_model              VARCHAR(120),
     llm_model              VARCHAR(120),          -- NULL = the company's ai_model_config
     temperature            DOUBLE PRECISION,      -- NULL = the company's
     max_output_tokens      INT,                   -- NULL = the company's
-    ambient_sound          VARCHAR(30)  NOT NULL DEFAULT 'OFF', -- OFF, OFFICE, CALL_CENTER, NATURAL_LINE, CAFE
+
+    -- How it sounds.
+    tts_voice              VARCHAR(64)  REFERENCES tts_voice(id),  -- NULL = the configured provider's own default voice
+    voice_speed            DOUBLE PRECISION DEFAULT 1.0,
+    voice_stability        DOUBLE PRECISION DEFAULT 0.5,
+    voice_similarity_boost DOUBLE PRECISION DEFAULT 0.75,
     emotion_adaptive_voice BOOLEAN      NOT NULL DEFAULT true,
-    dtmf_input_enabled     BOOLEAN      NOT NULL DEFAULT false,
-    voicemail_action       VARCHAR(30)  NOT NULL DEFAULT 'HANGUP', -- HANGUP, LEAVE_MESSAGE, IGNORE
-    voicemail_message      VARCHAR(500),
-    mid_call_sms_enabled   BOOLEAN      NOT NULL DEFAULT false,
-    mid_call_sms_template  VARCHAR(500),
+
+    -- Ambience. The two volumes are multipliers on the level AmbientSoundGenerator
+    -- already calibrated each soundscape to (~ -38 dBFS, about 20 dB under the bot's
+    -- voice), so 1.0 is that tuned level, not "maximum".
+    ambient_sound                 VARCHAR(30)      NOT NULL DEFAULT 'OFFICE', -- OFF, OFFICE, CALL_CENTER, NATURAL_LINE, CAFE, KEYBOARD_TYPING
+    ambient_sound_volume          DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    ambient_sound_fade_in_seconds DOUBLE PRECISION NOT NULL DEFAULT 1.5,
+    thinking_sound                VARCHAR(50)      NOT NULL DEFAULT 'OFF',
+    thinking_sound_volume         DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    noise_cancellation_enabled    BOOLEAN          NOT NULL DEFAULT true,
+    noise_cancellation_mode       VARCHAR(50)      NOT NULL DEFAULT 'BACKGROUND_NOISE_SUPPRESSION', -- OFF, BACKGROUND_NOISE_SUPPRESSION, VOICE_ISOLATION
+
+    -- Call dynamics, human handoff, voicemail and mid-call SMS.
+    dtmf_input_enabled       BOOLEAN     NOT NULL DEFAULT true,
+    interruption_sensitivity VARCHAR(32) NOT NULL DEFAULT 'MEDIUM', -- LOW, MEDIUM, HIGH
+    endpointing_delay_ms     INT         NOT NULL DEFAULT 700,
+    transfer_phone_number    VARCHAR(32),          -- NULL = the platform's operator endpoint
+    transfer_message         TEXT,
+    voicemail_action         VARCHAR(30) NOT NULL DEFAULT 'LEAVE_MESSAGE', -- HANGUP, LEAVE_MESSAGE, IGNORE
+    voicemail_message        TEXT,
+    mid_call_sms_enabled     BOOLEAN     NOT NULL DEFAULT false,
+    mid_call_sms_template    TEXT,
+    pronunciation_rules      JSONB       DEFAULT '[]'::jsonb,
+    post_call_actions        JSONB       DEFAULT '[]'::jsonb,
+
+    -- Post-call analysis: what to pull out of the conversation and how to grade it.
+    data_needed            JSONB        DEFAULT '[]'::jsonb,
+    data_evaluation        JSONB        DEFAULT '[]'::jsonb,
+
+    -- Retention and privacy.
+    zero_pii_retention          BOOLEAN NOT NULL DEFAULT false,
+    store_call_audio            BOOLEAN NOT NULL DEFAULT true,
+    conversation_retention_days INT     NOT NULL DEFAULT 30,
+
+    -- Limits and timeouts. NULL means the platform's own limit applies instead.
+    max_conversation_duration_seconds INT,
+    silence_end_call_timeout_seconds  INT,
+    turn_timeout_seconds              INT,
+    concurrent_calls_limit            INT,
+    daily_calls_limit                 INT,
+
+    -- Webhooks: one asked before the call for facts and overrides, one told after it.
+    initiation_webhook     JSONB,
+    post_call_webhook      JSONB,
+
     enabled                BOOLEAN      NOT NULL DEFAULT true,
     created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
     created_by             BIGINT
@@ -233,10 +306,10 @@ CREATE INDEX idx_ai_agent_scenario ON ai_agent(scenario_id);
 
 -- Voice per call language, for an agent that answers more than one: a ru-RU caller is
 -- spoken to by a Russian voice and an uz-UZ one by an Uzbek voice, from the same agent.
-CREATE TABLE ai_agent_language_voice (
+CREATE TABLE ai_agent_voice (
     ai_agent_id BIGINT      NOT NULL REFERENCES ai_agent(id) ON DELETE CASCADE,
     language    VARCHAR(10) NOT NULL,
-    tts_voice   VARCHAR(64) NOT NULL REFERENCES tts_voice(id),
+    voice_id    VARCHAR(64) NOT NULL REFERENCES tts_voice(id),
     PRIMARY KEY (ai_agent_id, language)
 );
 
@@ -248,6 +321,65 @@ CREATE TABLE ai_agent_sip_trunk (
     sip_trunk_id BIGINT NOT NULL REFERENCES sip_trunk(id) ON DELETE CASCADE,
     PRIMARY KEY (ai_agent_id, sip_trunk_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Agent tool library and website widgets
+-- ---------------------------------------------------------------------------
+
+-- An HTTP endpoint the model may call mid-conversation, defined once per company and
+-- bound to as many agents as want it. The four *_params columns are the OpenAPI-ish
+-- description of the request; dynamic_variables names what the call may substitute in.
+CREATE TABLE tool (
+    id                    BIGSERIAL PRIMARY KEY,
+    company_id            BIGINT        NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    name                  VARCHAR(100)  NOT NULL,
+    description           VARCHAR(500)  NOT NULL,
+    api_url               VARCHAR(1000) NOT NULL,
+    api_method            VARCHAR(10)   NOT NULL DEFAULT 'POST',
+    api_headers           JSONB         DEFAULT '[]'::jsonb,
+    api_body              JSONB         DEFAULT '[]'::jsonb,
+    api_query_params      JSONB         DEFAULT '[]'::jsonb,
+    api_path_params       JSONB         DEFAULT '[]'::jsonb,
+    response_timeout_secs INT           DEFAULT 10,
+    dynamic_variables     JSONB         DEFAULT '[]'::jsonb,
+    disable_interruptions BOOLEAN       NOT NULL DEFAULT false,
+    -- On: the agent says pre_tool_speech before the request goes out, so the caller is
+    -- not left listening to silence while an API answers.
+    force_pre_tool_speech BOOLEAN       NOT NULL DEFAULT true,
+    pre_tool_speech       VARCHAR(500),
+    created_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_tool_company ON tool(company_id);
+
+CREATE TABLE ai_agent_tool (
+    ai_agent_id BIGINT      NOT NULL REFERENCES ai_agent(id) ON DELETE CASCADE,
+    tool_id     BIGINT      NOT NULL REFERENCES tool(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (ai_agent_id, tool_id)
+);
+CREATE INDEX idx_ai_agent_tool_agent ON ai_agent_tool(ai_agent_id);
+CREATE INDEX idx_ai_agent_tool_tool ON ai_agent_tool(tool_id);
+
+-- A browser-side entry point to one agent: the widget_key is public, so allowed_origins
+-- is what stops a copied key from being embedded on somebody else's page.
+CREATE TABLE agent_widget (
+    id               BIGSERIAL PRIMARY KEY,
+    widget_key       VARCHAR(64)  NOT NULL UNIQUE,
+    company_id       BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    agent_id         BIGINT       NOT NULL REFERENCES ai_agent(id) ON DELETE CASCADE,
+    name             VARCHAR(100) NOT NULL,
+    enabled          BOOLEAN      NOT NULL DEFAULT true,
+    allowed_origins  JSONB        DEFAULT '[]'::jsonb,
+    theme            JSONB        DEFAULT '{}'::jsonb,
+    consent_required BOOLEAN      NOT NULL DEFAULT true,
+    consent_text     VARCHAR(500),
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_agent_widget_company ON agent_widget(company_id);
+CREATE INDEX idx_agent_widget_agent ON agent_widget(agent_id);
+CREATE INDEX idx_agent_widget_key ON agent_widget(widget_key);
 
 -- ---------------------------------------------------------------------------
 -- Inbound routing
@@ -515,6 +647,7 @@ CREATE UNIQUE INDEX idx_client_memory_company_phone ON client_memory(company_id,
 CREATE TABLE knowledge_base_item (
     id         BIGSERIAL PRIMARY KEY,
     company_id BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    agent_id   BIGINT       REFERENCES ai_agent(id) ON DELETE CASCADE, -- NULL = company-wide
     item_key   VARCHAR(100) NOT NULL,
     topic      VARCHAR(50)  NOT NULL,
     title      VARCHAR(255) NOT NULL,
@@ -528,6 +661,52 @@ CREATE TABLE knowledge_base_item (
 );
 CREATE UNIQUE INDEX idx_knowledge_company_key ON knowledge_base_item(company_id, item_key);
 CREATE INDEX idx_knowledge_active ON knowledge_base_item(company_id, is_active);
+CREATE INDEX idx_knowledge_base_item_agent ON knowledge_base_item(agent_id);
+
+-- Uploaded knowledge: a file or a URL the agent may answer from, extracted, split into
+-- chunks and embedded. agent_id NULL keeps a source company-wide.
+CREATE TABLE knowledge_source (
+    id                 BIGSERIAL PRIMARY KEY,
+    company_id         BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    agent_id           BIGINT       REFERENCES ai_agent(id) ON DELETE SET NULL,
+    name               VARCHAR(200) NOT NULL,
+    source_type        VARCHAR(32)  NOT NULL,
+    original_file_name VARCHAR(255),
+    -- The file is addressed by id, not by a raw path: the bucket, the object key and the
+    -- content type all live in stored_file, and the indexer needs all three to read the
+    -- bytes back.
+    stored_file_id     BIGINT       REFERENCES stored_file(id) ON DELETE SET NULL,
+    url                VARCHAR(2048),
+    status             VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
+    chunk_count        INT          NOT NULL DEFAULT 0,
+    error_code         VARCHAR(100),
+    error_message      VARCHAR(1000),
+    last_indexed_at    TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_knowledge_source_company ON knowledge_source(company_id);
+CREATE INDEX idx_knowledge_source_agent ON knowledge_source(agent_id);
+CREATE INDEX idx_knowledge_source_status ON knowledge_source(status);
+CREATE INDEX idx_knowledge_source_file ON knowledge_source(stored_file_id);
+
+-- The chunks a call actually searches.
+--
+-- The embedding is a BYTEA of big-endian float32s rather than a pgvector column: one
+-- company's knowledge base is thousands of chunks, not millions, so the cosine runs in
+-- Java over a per-agent cache and the database needs no extension (and therefore no
+-- change of Postgres image).
+CREATE TABLE knowledge_chunk (
+    id         BIGSERIAL PRIMARY KEY,
+    source_id  BIGINT      NOT NULL REFERENCES knowledge_source(id) ON DELETE CASCADE,
+    ordinal    INT         NOT NULL,
+    content    TEXT        NOT NULL,
+    -- NULL when the embedding model was unreachable while indexing: the chunk is still
+    -- stored and still found by the keyword fallback, and a retry fills it in.
+    embedding  BYTEA,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uk_knowledge_chunk_source_ordinal UNIQUE (source_id, ordinal)
+);
+CREATE INDEX idx_knowledge_chunk_source ON knowledge_chunk(source_id);
 
 -- ---------------------------------------------------------------------------
 -- Notifications
@@ -678,20 +857,6 @@ CREATE TABLE voice_settings (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- CASCADE vs REALTIME engine selection per tenant, plus the Pipecat sub-engine picks.
-CREATE TABLE engine_config (
-    id                BIGSERIAL PRIMARY KEY,
-    company_id        BIGINT NOT NULL UNIQUE REFERENCES company(id),
-    mode              VARCHAR(20) NOT NULL DEFAULT 'CASCADE', -- CASCADE | REALTIME
-    stt_provider      VARCHAR(50),
-    tts_provider      VARCHAR(50),
-    realtime_provider VARCHAR(50),
-    pipecat_stt       VARCHAR(50),
-    pipecat_llm       VARCHAR(50),
-    pipecat_tts       VARCHAR(50),
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- Per-company Uysot CRM OAuth connection (§11 "GET/PUT /api/settings/integrations").
 CREATE TABLE crm_integration (
     id                BIGSERIAL PRIMARY KEY,
@@ -706,6 +871,20 @@ CREATE TABLE crm_integration (
     connected_at      TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Secret vault: the credentials an agent's tools and webhooks send, kept out of the
+-- rows that describe them. value is AES-GCM (SecretCipher), never plaintext.
+CREATE TABLE secret (
+    id          BIGSERIAL PRIMARY KEY,
+    company_id  BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    key         VARCHAR(120) NOT NULL,
+    value       TEXT         NOT NULL,
+    description VARCHAR(255),
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uk_secret_company_key UNIQUE (company_id, key)
+);
+CREATE INDEX idx_secret_company_id ON secret(company_id);
 
 -- ---------------------------------------------------------------------------
 -- Audit

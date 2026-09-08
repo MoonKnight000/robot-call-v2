@@ -4,23 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
 import uz.murodjon.robotcallv2.agent.audio.AudioTranscoder;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
-import uz.murodjon.robotcallv2.agent.stt.SttProperties;
-import uz.murodjon.robotcallv2.agent.stt.SttProvider;
-import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
-import uz.murodjon.robotcallv2.agent.stt.SttSession;
-import uz.murodjon.robotcallv2.agent.stt.TranscriptListener;
+import uz.murodjon.robotcallv2.agent.stt.*;
 import uz.murodjon.robotcallv2.agent.tts.SpeechTextNormalizer;
 import uz.murodjon.robotcallv2.agent.tts.TtsProvider;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
-import uz.murodjon.robotcallv2.shared.exception.ConflictException;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.voice.application.dto.SttPreviewResponse;
 import uz.murodjon.robotcallv2.voice.application.port.input.SpeechPreviewUseCase;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
@@ -65,19 +55,16 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
     private final SttProviderSelector sttProviderSelector;
     private final SttProperties sttProperties;
     private final AudioTranscoder audioTranscoder;
-    private final EngineConfigService engineConfigService;
 
     public SpeechPreviewService(TtsVoiceRepository ttsVoiceRepository, TtsProviderSelector ttsProviderSelector,
                                 VoiceSettingsUseCase voiceSettingsUseCase, SttProviderSelector sttProviderSelector,
-                                SttProperties sttProperties, AudioTranscoder audioTranscoder,
-                                EngineConfigService engineConfigService) {
+                                SttProperties sttProperties, AudioTranscoder audioTranscoder) {
         this.ttsVoiceRepository = ttsVoiceRepository;
         this.ttsProviderSelector = ttsProviderSelector;
         this.voiceSettingsUseCase = voiceSettingsUseCase;
         this.sttProviderSelector = sttProviderSelector;
         this.sttProperties = sttProperties;
         this.audioTranscoder = audioTranscoder;
-        this.engineConfigService = engineConfigService;
     }
 
     @Override
@@ -138,9 +125,10 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
             throw new ValidationException(ErrorCode.ENGINE_STT_PROVIDER_UNKNOWN, providerName,
                     sttProviderSelector.names());
         }
-        String chosen = chosenExplicitly
-                ? providerName
-                : engineConfigService.findEffectiveByCompanyId(companyId).sttProvider();
+        // No company narrowing left to apply: since the engine became a per-agent setting
+        // there is no tenant-level STT choice, and a preview belongs to no agent. The
+        // configured default is what a call would use unless its agent overrode it.
+        String chosen = chosenExplicitly ? providerName : sttProperties.provider();
         SttProvider provider = sttProviderSelector.findForCall(chosen);
         if (provider == null) {
             throw new ConflictException(ErrorCode.STT_PROVIDER_UNAVAILABLE);

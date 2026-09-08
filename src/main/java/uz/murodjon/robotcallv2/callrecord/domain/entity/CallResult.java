@@ -19,7 +19,7 @@ public record CallResult(
         boolean needsFollowUp,
         String followUpNote,
         boolean escalated,
-        Long crmNoteId,
+        String crmNoteId,
         Instant createdAt,
         int crmAttempts,
         String crmLastError,
@@ -32,7 +32,7 @@ public record CallResult(
      */
     public static CallResult summaryOf(long callId, String summary, ReasonCode reasonCode, LocalDate promisedDate,
                                        BigDecimal promisedAmount, Sentiment sentiment, boolean needsFollowUp,
-                                       String followUpNote, boolean escalated, Long crmNoteId, String outcome) {
+                                       String followUpNote, boolean escalated, String crmNoteId, String outcome) {
         return new CallResult(0, callId, summary, reasonCode, promisedDate, promisedAmount, sentiment,
                 needsFollowUp, followUpNote, escalated, crmNoteId, null, 0, null, outcome);
     }

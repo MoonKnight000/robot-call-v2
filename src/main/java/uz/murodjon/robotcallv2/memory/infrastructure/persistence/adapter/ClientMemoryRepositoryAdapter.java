@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.memory.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.memory.application.mapper.ClientMemoryMapper;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
@@ -14,10 +15,13 @@ public class ClientMemoryRepositoryAdapter implements ClientMemoryRepository {
 
     private final ClientMemoryJpaRepository jpaRepository;
     private final ClientMemoryMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public ClientMemoryRepositoryAdapter(ClientMemoryJpaRepository jpaRepository, ClientMemoryMapper mapper) {
+    public ClientMemoryRepositoryAdapter(ClientMemoryJpaRepository jpaRepository, ClientMemoryMapper mapper,
+                                         CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
@@ -31,7 +35,7 @@ public class ClientMemoryRepositoryAdapter implements ClientMemoryRepository {
     public ClientMemory upsert(long companyId, ClientMemory memory) {
         ClientMemoryEntity entity = jpaRepository.findByCompanyIdAndPhone(companyId, memory.phone()).orElseGet(() -> {
             ClientMemoryEntity fresh = new ClientMemoryEntity();
-            fresh.setCompanyId(companyId);
+            fresh.setCompany(companyJpaRepository.getReferenceById(companyId));
             fresh.setCreatedAt(Instant.now());
             return fresh;
         });

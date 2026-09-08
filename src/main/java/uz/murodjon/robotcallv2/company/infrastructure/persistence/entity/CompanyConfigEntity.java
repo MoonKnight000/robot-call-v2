@@ -106,8 +106,18 @@ public class CompanyConfigEntity {
         return supportedLanguages;
     }
 
+    /**
+     * Replaces the contents, never the list itself — a collection table whose instance is
+     * swapped is re-inserted whole, and the rows it already has collide with their own copies.
+     */
     public void setSupportedLanguages(List<Language> supportedLanguages) {
-        this.supportedLanguages = supportedLanguages != null ? supportedLanguages : new ArrayList<>();
+        if (supportedLanguages == this.supportedLanguages) {
+            return;
+        }
+        this.supportedLanguages.clear();
+        if (supportedLanguages != null) {
+            this.supportedLanguages.addAll(supportedLanguages);
+        }
     }
 
     public String getDisclosureText() {

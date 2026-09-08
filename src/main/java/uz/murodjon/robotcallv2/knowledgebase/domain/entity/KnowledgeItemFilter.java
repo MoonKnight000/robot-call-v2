@@ -12,6 +12,7 @@ public record KnowledgeItemFilter(
         @Min(0) Integer page,
         @Min(1) @Max(FilterInterface.MAX_SIZE) Integer size,
         LinkedHashMap<KnowledgeTableField, Sort.Direction> orders,
+        Long agentId,
         String search
 ) implements FilterInterface<KnowledgeTableField> {
 

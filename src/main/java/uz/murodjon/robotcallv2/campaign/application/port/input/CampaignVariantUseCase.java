@@ -1,10 +1,10 @@
 package uz.murodjon.robotcallv2.campaign.application.port.input;
 
-import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 import uz.murodjon.robotcallv2.campaign.application.dto.AbTestReportResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateRequest;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 
 import java.util.List;
 

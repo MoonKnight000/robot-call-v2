@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.dialer.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
 import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
@@ -11,41 +10,30 @@ import uz.murodjon.robotcallv2.agent.rtp.WavRecorder;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
-import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
-import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
-import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
-import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
+import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RabbitConfig;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.RetryProperties;
-import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
-import java.time.Clock;
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.util.List;
 import java.util.Set;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class DialerServiceTest {
 
@@ -64,6 +52,7 @@ class DialerServiceTest {
     private DialerState state;
     private TtsWarmup ttsWarmup;
     private AiAgentUseCase aiAgents;
+    private CallBillingUseCase callBilling;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +63,11 @@ class DialerServiceTest {
         state = mock(DialerState.class);
         ttsWarmup = mock(TtsWarmup.class);
         aiAgents = mock(AiAgentUseCase.class);
+        callBilling = mock(CallBillingUseCase.class);
+        // Billing is not what these tests are about: every company can pay unless a test
+        // says otherwise.
+        when(callBilling.hasBalanceForCall(anyLong())).thenReturn(true);
+        when(callBilling.reserveForCall(anyLong(), anyLong())).thenReturn(true);
         when(aiAgents.requireAgent(1L, AI_AGENT_ID))
                 .thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 10L, "uz-UZ", "dilfuza"));
         when(state.active(anyLong())).thenReturn(0);
@@ -90,7 +84,7 @@ class DialerServiceTest {
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class),
                 mock(GracefulShutdownManager.class), ttsWarmup,
-                Clock.fixed(now.toInstant(), ZONE), mock(CampaignVariantUseCase.class), aiAgents);
+                Clock.fixed(now.toInstant(), ZONE), mock(CampaignVariantUseCase.class), aiAgents, callBilling);
     }
 
     private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
@@ -198,7 +192,7 @@ class DialerServiceTest {
                 RTP_PROPS, campaigns, targets, mock(CampaignService.class), mock(CompanyConfigService.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class), shutdown, ttsWarmup,
-                Clock.systemDefaultZone(), mock(CampaignVariantUseCase.class), aiAgents);
+                Clock.systemDefaultZone(), mock(CampaignVariantUseCase.class), aiAgents, callBilling);
 
         dialer.dispatch();
 

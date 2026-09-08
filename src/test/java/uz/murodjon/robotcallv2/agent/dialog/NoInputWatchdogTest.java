@@ -6,9 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static uz.murodjon.robotcallv2.agent.dialog.NoInputAction.END;
-import static uz.murodjon.robotcallv2.agent.dialog.NoInputAction.NONE;
-import static uz.murodjon.robotcallv2.agent.dialog.NoInputAction.PROMPT;
+import static uz.murodjon.robotcallv2.agent.dialog.NoInputAction.*;
 
 /**
  * The watchdog is the only thing that notices a call where nothing is going to happen, so

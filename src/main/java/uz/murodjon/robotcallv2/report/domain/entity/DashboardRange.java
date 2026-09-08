@@ -3,8 +3,7 @@ package uz.murodjon.robotcallv2.report.domain.entity;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
-import java.time.Duration;
-import java.time.Instant;
+import java.time.*;
 import java.time.format.DateTimeParseException;
 
 /**
@@ -18,14 +17,15 @@ public record DashboardRange(Instant from, Instant to) {
 
     private static final Duration DEFAULT_SPAN = Duration.ofDays(7);
     private static final Duration MAX_SPAN = Duration.ofDays(366);
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Tashkent");
 
     /**
-     * @param from ISO-8601 instant, or null/blank for {@code to} minus 7 days
-     * @param to   ISO-8601 instant, or null/blank for now
+     * @param from ISO-8601 instant or YYYY-MM-DD date, or null/blank for {@code to} minus 7 days
+     * @param to   ISO-8601 instant or YYYY-MM-DD date, or null/blank for now
      */
     public static DashboardRange of(String from, String to) {
-        Instant end = from(to, Instant.now());
-        Instant start = from(from, end.minus(DEFAULT_SPAN));
+        Instant end = parseInstantOrDate(to, true, Instant.now());
+        Instant start = parseInstantOrDate(from, false, end.minus(DEFAULT_SPAN));
         if (!start.isBefore(end)) {
             throw new ValidationException(ErrorCode.DATE_RANGE_INVALID);
         }
@@ -35,14 +35,48 @@ public record DashboardRange(Instant from, Instant to) {
         return new DashboardRange(start, end);
     }
 
-    private static Instant from(String value, Instant fallback) {
+    /**
+     * Resolves range preset ("24h", "7d", "30d", "custom") or falls back to "24h".
+     */
+    public static DashboardRange ofPreset(String range, String from, String to) {
+        Instant now = Instant.now();
+        if (range == null || range.isBlank() || "24h".equalsIgnoreCase(range)) {
+            Instant end = now;
+            Instant start = now.minus(Duration.ofHours(24));
+            return new DashboardRange(start, end);
+        }
+        if ("7d".equalsIgnoreCase(range)) {
+            LocalDate today = LocalDate.now(DEFAULT_ZONE);
+            Instant start = today.minusDays(6).atStartOfDay(DEFAULT_ZONE).toInstant();
+            Instant end = now;
+            return new DashboardRange(start, end);
+        }
+        if ("30d".equalsIgnoreCase(range)) {
+            LocalDate today = LocalDate.now(DEFAULT_ZONE);
+            Instant start = today.minusDays(29).atStartOfDay(DEFAULT_ZONE).toInstant();
+            Instant end = now;
+            return new DashboardRange(start, end);
+        }
+        return of(from, to);
+    }
+
+    private static Instant parseInstantOrDate(String value, boolean endOfDay, Instant fallback) {
         if (value == null || value.isBlank()) {
             return fallback;
         }
         try {
             return Instant.parse(value);
         } catch (DateTimeParseException e) {
-            throw new ValidationException(ErrorCode.INSTANT_PARSE_FAILED, value);
+            try {
+                LocalDate date = LocalDate.parse(value);
+                if (endOfDay) {
+                    return date.atTime(LocalTime.MAX).atZone(DEFAULT_ZONE).toInstant();
+                } else {
+                    return date.atStartOfDay(DEFAULT_ZONE).toInstant();
+                }
+            } catch (DateTimeParseException ex) {
+                throw new ValidationException(ErrorCode.INSTANT_PARSE_FAILED, value);
+            }
         }
     }
 
@@ -64,4 +98,3 @@ public record DashboardRange(Instant from, Instant to) {
         return "week";
     }
 }
-

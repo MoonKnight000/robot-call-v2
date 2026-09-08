@@ -80,7 +80,7 @@ public class CallOutboxRepositoryAdapter implements CallOutboxRepository {
     }
 
     @Override
-    public void markCrmPosted(long callId, Long noteId) {
+    public void markCrmPosted(long callId, String noteId) {
         try {
             callResultJpaRepository.markCrmPosted(callId, noteId);
         } catch (Exception e) {

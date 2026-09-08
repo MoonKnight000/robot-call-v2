@@ -11,7 +11,7 @@ package uz.murodjon.robotcallv2.agent.realtime;
  * interfaces on. It gets its own family here for the same reason.
  *
  * <p>Every implementation is registered by {@link RealtimeProviderRegistry}; which one a
- * call uses comes from that call's company ({@code engine_config.realtime_provider}).
+ * call uses comes from that call's agent ({@code ai_agent.realtime_provider}).
  */
 public interface RealtimeProvider {
 
@@ -36,6 +36,17 @@ public interface RealtimeProvider {
      * answer at broadcast quality.
      */
     int outputSampleRate();
+
+    /**
+     * The model id this engine will actually put on the wire for {@code config} — the
+     * call's own model where it named one, this engine's configured default otherwise
+     * ({@link RealtimeCallConfig#modelOr}).
+     *
+     * <p>Asked rather than guessed because only the provider knows what it falls back to.
+     * The dialog engine records the answer on the call's technical detail (§10.5), where a
+     * REALTIME call would otherwise be filed under the cascade pipeline's chat model.
+     */
+    String resolveModel(RealtimeCallConfig config);
 
     /**
      * Open a conversation. The returned session is live from this point: the engine may

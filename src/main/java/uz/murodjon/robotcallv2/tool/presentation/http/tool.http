@@ -1,0 +1,76 @@
+### 1. Create Tool (external REST API the agent may call)
+POST http://localhost:8080/api/tools
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "check_delivery_status",
+  "description": "Mijozning buyurtma raqami bo'yicha yetkazib berish holatini aniqlash",
+  "apiUrl": "https://api.mycompany.uz/v1/orders/{order_id}/track",
+  "apiMethod": "GET",
+  "apiHeaders": [
+    { "key": "Authorization", "value": "Bearer my-secret-api-token" },
+    { "key": "X-Company-Id", "value": "{{company_id}}" }
+  ],
+  "apiQueryParams": [
+    { "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }
+  ],
+  "apiPathParams": [
+    {
+      "name": "order_id",
+      "type": "string",
+      "valueType": "LLM Prompt",
+      "description": "Mijoz aytgan 6 xonali buyurtma raqami",
+      "required": true
+    }
+  ],
+  "apiBody": null,
+  "responseTimeoutSecs": 5,
+  "dynamicVariables": [
+    { "key": "source", "value": "voice_bot_v2" }
+  ],
+  "disableInterruptions": true,
+  "forcePreToolSpeech": true,
+  "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman."
+}
+
+### 2. List All Company Tools
+GET http://localhost:8080/api/tools
+Authorization: Bearer {{auth_token}}
+
+### 3. Filter Tools (Search & Pagination)
+POST http://localhost:8080/api/tools/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "orders": { "CREATED_AT": "DESC" },
+  "search": "delivery",
+  "method": "GET"
+}
+
+### 4. Get Tool by ID
+GET http://localhost:8080/api/tools/1
+Authorization: Bearer {{auth_token}}
+
+### 5. Update Tool
+PUT http://localhost:8080/api/tools/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "check_delivery_status",
+  "description": "Mijozning buyurtma raqami bo'yicha yetkazib berish holatini aniqlash (Yangilangan)",
+  "apiUrl": "https://api.mycompany.uz/v1/orders/{order_id}/track",
+  "apiMethod": "GET",
+  "responseTimeoutSecs": 8,
+  "disableInterruptions": true,
+  "forcePreToolSpeech": true,
+  "preToolSpeech": "Hozir tekshirib beraman, bir daqiqa."
+}
+
+### 6. Delete Tool (Returns 409 if in use by any AI Agent)
+DELETE http://localhost:8080/api/tools/1
+Authorization: Bearer {{auth_token}}

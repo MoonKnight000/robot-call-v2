@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.contact.application.port.output;
 
-import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 
 import java.util.Collection;
 import java.util.List;

@@ -47,7 +47,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
             return new ScenarioSimulationResponse(
-                    "Simulyatsiya rejimi: GEMINI_API_KEY yoki GROQ_API_KEY sozlanmaganligi sababli test javobi qaytarildi.",
+                    "Simulyatsiya rejimi: GEMINI_API_KEY yoki OPENAI_API_KEY sozlanmaganligi sababli test javobi qaytarildi.",
                     request.currentState() != null ? request.currentState() : "GREETING",
                     null,
                     Map.of(),

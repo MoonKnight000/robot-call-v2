@@ -11,21 +11,64 @@ voice-agent:
     retention-days: ${STORAGE_RETENTION_DAYS:90}
     retention-cron: ${STORAGE_RETENTION_CRON:0 30 3 * * *}
   crm:
-    # Write the summary and call history back to Uysot CRM.
+    # Read the lead a call is about and write the summary back, over the Uysot Open API v1
+    # (https://apidoc.app.uysot.uz). The token goes in X-Open-Api-Token — this API ignores
+    # Authorization: Bearer — and is left blank here: set CRM_API_TOKEN in the environment,
+    # or connect the company through OAuth (voice-agent.integration.uysot below), which
+    # takes precedence over this static token.
     enabled: ${CRM_ENABLED:true}
+    # Prod is api.service.app.uysot.uz; point CRM_BASE_URL at the dev host to try a call
+    # against test data without writing notes onto real leads.
     base-url: ${CRM_BASE_URL:https://api.service.app.uysot.uz}
     api-token: ${CRM_API_TOKEN:}
-    note-path: ${CRM_NOTE_PATH:v1/open-api/lead/{id}/note}
-    client-path: ${CRM_CLIENT_PATH:v1/open-api/lead/{id}}
-    client-by-phone-path: ${CRM_CLIENT_BY_PHONE_PATH:v1/open-api/lead?phone={phone}}
+    # {id} is the lead id. lead-note is a POST whose body is an array of 1-10 notes, and
+    # like every write on this API it answers with a requestId rather than a created id.
+    lead-path: ${CRM_LEAD_PATH:v1/open-api/lead/{id}}
+    lead-filter-path: ${CRM_LEAD_FILTER_PATH:v1/open-api/lead/filter}
+    lead-note-path: ${CRM_LEAD_NOTE_PATH:v1/open-api/lead-note/{id}/list}
+    # Read by the UYSOT_DEBTORS target source. contract/filter says which contracts are
+    # behind; only the single-contract read carries the lead the note is later attached to.
+    contract-path: ${CRM_CONTRACT_PATH:v1/open-api/contract/{id}}
+    contract-filter-path: ${CRM_CONTRACT_FILTER_PATH:v1/open-api/contract/filter}
     call-history-path: ${CRM_CALL_HISTORY_PATH:v1/open-api/call-history}
+    debtor-import:
+      # Resolving one debtor's phone costs two requests on top of the page that found the
+      # contract, against an API that allows 60 a minute — so the day's list is capped
+      # rather than however many contracts happen to be late.
+      min-delay-days: ${CRM_DEBTOR_MIN_DELAY_DAYS:1}
+      max-debtors: ${CRM_DEBTOR_MAX:200}
+      page-size: ${CRM_DEBTOR_PAGE_SIZE:100}
+      max-pages: ${CRM_DEBTOR_MAX_PAGES:20}
+    # The Uysot employee every AI call is filed under. Required by the call-history
+    # endpoint, so leaving it unset switches call-history write-back off and leaves the
+    # lead note — the part that matters — working on its own. An id from
+    # POST /v1/open-api/employee/filter.
+    call-history-employee-id: ${CRM_CALL_HISTORY_EMPLOYEE_ID:}
   integration:
     uysot:
-      # Uysot's OAuth2 endpoints (§11 settings, verified against official Uysot Open API docs).
+      # Uysot's OAuth2 endpoints (§11 settings, per https://apidoc.app.uysot.uz/docs/guides/oauth).
+      #
+      # The consent page's host is handed out at application registration and the guide says
+      # to use that value rather than the documented example, so this is the one setting here
+      # most likely to need overriding.
       authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:https://app.uysot.uz/oauth/authorize}
       token-url: ${UYSOT_OAUTH_TOKEN_URL:https://service.app.uysot.uz/v1/open-api/oauth/token}
       revoke-url: ${UYSOT_OAUTH_REVOKE_URL:https://service.app.uysot.uz/v1/open-api/oauth/revoke}
-      redirect-uri: ${UYSOT_OAUTH_REDIRECT_URI:https://voice.app.uysot.uz/oauth/callback}
+      # Where Uysot sends the browser back with ?code=&state=. This must be
+      # character-for-character one of the URIs registered on the Uysot application: the
+      # authorize request is rejected otherwise (6902 invalid redirect_uri), and the token
+      # exchange re-sends the same value. The path is the one endpoint that serves it —
+      # IntegrationController#callback, which SecurityConfig lets through without a token
+      # because the browser arrives here straight from Uysot. Only the host changes per
+      # deployment.
+      redirect-uri: ${UYSOT_OAUTH_REDIRECT_URI:https://voice.app.uysot.uz/api/settings/integrations/uysot/callback}
+      # And where the browser goes once the token exchange is done. Uysot has to redirect to
+      # the backend above — the exchange needs the client secret, and the authorization code
+      # must not pass through a page — so without this the person who just approved the
+      # connection would be looking at an API response. The page is opened with
+      # ?crm=connected, or ?crm=error&reason=<ErrorCode> when the exchange failed. Blank
+      # sends them to the application root instead.
+      callback-redirect-url: ${UYSOT_OAUTH_CALLBACK_REDIRECT_URL:http://localhost:5173/settings/integrations}
       client-id: ${UYSOT_OAUTH_CLIENT_ID:}
       client-secret: ${UYSOT_OAUTH_CLIENT_SECRET:}
   notification:

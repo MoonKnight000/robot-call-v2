@@ -1,42 +1,40 @@
 package uz.murodjon.robotcallv2.billing.infrastructure.persistence.adapter;
 
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.billing.application.mapper.BillingUsageMapper;
 import uz.murodjon.robotcallv2.billing.application.port.output.BillingUsageRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.BillingUsage;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity.BillingUsageEntity;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.repository.BillingUsageJpaRepository;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 
-import java.util.Collections;
-import java.util.List;
 import java.util.Optional;
 
 @Component
 public class BillingUsageRepositoryAdapter implements BillingUsageRepository {
 
     private final BillingUsageJpaRepository jpaRepository;
+    private final CompanyJpaRepository companyJpaRepository;
+    private final BillingUsageMapper mapper;
 
-    public BillingUsageRepositoryAdapter(BillingUsageJpaRepository jpaRepository) {
+    public BillingUsageRepositoryAdapter(BillingUsageJpaRepository jpaRepository,
+                                         CompanyJpaRepository companyJpaRepository,
+                                         BillingUsageMapper mapper) {
         this.jpaRepository = jpaRepository;
+        this.companyJpaRepository = companyJpaRepository;
+        this.mapper = mapper;
     }
 
     @Override
     public Optional<BillingUsage> findByCompanyIdAndPeriod(long companyId, String billingPeriod) {
-        return jpaRepository.findByCompanyIdAndBillingPeriod(companyId, billingPeriod).map(BillingUsageEntity::toDomain);
-    }
-
-    @Override
-    public List<BillingUsage> findRecentByCompanyId(long companyId, int limit) {
-        List<BillingUsageEntity> list = jpaRepository.findRecentByCompanyId(companyId, PageRequest.of(0, limit));
-        // Reverse so that list is chronological (oldest to newest)
-        List<BillingUsage> result = new java.util.ArrayList<>(list.stream().map(BillingUsageEntity::toDomain).toList());
-        Collections.reverse(result);
-        return result;
+        return jpaRepository.findByCompanyIdAndBillingPeriod(companyId, billingPeriod).map(mapper::toBillingUsage);
     }
 
     @Override
     public BillingUsage save(BillingUsage usage) {
-        BillingUsageEntity entity = BillingUsageEntity.fromDomain(usage);
-        return jpaRepository.save(entity).toDomain();
+        CompanyEntity company = companyJpaRepository.getReferenceById(usage.companyId());
+        BillingUsageEntity entity = mapper.toEntity(usage, company);
+        return mapper.toBillingUsage(jpaRepository.save(entity));
     }
 }

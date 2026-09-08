@@ -10,9 +10,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Resolves the {@link SttProvider} to transcribe a call with. Provider choice lives in a
- * company's {@code engine_config}, and {@code voice-agent.stt.provider} is the default
- * for a company that has not chosen — a misconfigured default fails the app at startup
+ * Resolves the {@link SttProvider} to transcribe a call with. Provider choice lives on
+ * the agent ({@code ai_agent.stt_provider}), and {@code voice-agent.stt.provider} is the
+ * default for an agent that has not chosen — a misconfigured default fails the app at startup
  * here instead of silently leaving speech recognition off until the first call
  * discovers it missing.
  *

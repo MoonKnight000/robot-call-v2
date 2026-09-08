@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.role.infrastructure.persistence.adapter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.role.application.mapper.RoleMapper;
 import uz.murodjon.robotcallv2.role.application.port.output.RoleRepository;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
@@ -21,11 +22,14 @@ public class RoleRepositoryAdapter implements RoleRepository {
     private final RoleJpaRepository jpaRepository;
     private final RoleMapper mapper;
     private final JdbcTemplate jdbcTemplate;
+    private final CompanyJpaRepository companyJpaRepository;
 
-    public RoleRepositoryAdapter(RoleJpaRepository jpaRepository, RoleMapper mapper, JdbcTemplate jdbcTemplate) {
+    public RoleRepositoryAdapter(RoleJpaRepository jpaRepository, RoleMapper mapper, JdbcTemplate jdbcTemplate,
+                                 CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
@@ -56,7 +60,7 @@ public class RoleRepositoryAdapter implements RoleRepository {
     @Override
     public Role create(long companyId, Role role) {
         RoleEntity entity = new RoleEntity();
-        entity.setCompanyId(companyId);
+        entity.setCompany(companyJpaRepository.getReferenceById(companyId));
         entity.setCode(role.code());
         entity.setName(role.name());
         entity.setDescription(role.description());

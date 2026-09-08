@@ -1,8 +1,8 @@
 package uz.murodjon.robotcallv2.scenario.application.port.output;
 
-import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 
 import java.util.Collection;
 import java.util.List;

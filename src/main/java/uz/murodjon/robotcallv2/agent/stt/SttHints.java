@@ -2,11 +2,7 @@ package uz.murodjon.robotcallv2.agent.stt;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * The words this particular call is likely to contain, handed to the recognizer before

@@ -36,7 +36,7 @@ public interface SipTrunkJpaRepository extends JpaRepository<SipTrunkEntity, Lon
 
     @Modifying
     @Transactional
-    @Query("UPDATE SipTrunkEntity t SET t.isDefault = false WHERE t.companyId = :companyId AND t.isDefault = true")
+    @Query("UPDATE SipTrunkEntity t SET t.isDefault = false WHERE t.company.id = :companyId AND t.isDefault = true")
     void clearDefault(@Param("companyId") long companyId);
 
     List<SipTrunkEntity> findByHostIsNotNullAndEnabledTrue();

@@ -84,6 +84,29 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     @Query("SELECT a.phone FROM CallAttemptEntity a WHERE a.id = :id")
     String findPhoneById(@Param("id") long id);
 
+    /**
+     * Whether the call came in rather than went out. An inbound route is only ever set on
+     * a call this platform answered, so its presence is the direction — there is no
+     * direction column, and the CRM's call history wants one.
+     */
+    @Query("SELECT CASE WHEN a.inboundRoute IS NULL THEN false ELSE true END "
+            + "FROM CallAttemptEntity a WHERE a.id = :id")
+    Boolean findInboundById(@Param("id") long id);
+
+    /**
+     * Answered calls this company made to that number in a time range, newest first.
+     *
+     * <p>A projection rather than whole entities: the caller compares answer times to
+     * decide which call earned a conversion, and the lazy relations on a full attempt
+     * would each be a query it never reads.
+     */
+    @Query("SELECT a.id, a.target.campaign.id, a.variant.id, a.answeredAt FROM CallAttemptEntity a "
+            + "WHERE a.company.id = :companyId AND a.phone = :phone "
+            + "AND a.answeredAt IS NOT NULL AND a.answeredAt BETWEEN :from AND :to "
+            + "ORDER BY a.answeredAt DESC")
+    List<Object[]> findAnsweredByPhone(@Param("companyId") long companyId, @Param("phone") String phone,
+                                       @Param("from") Instant from, @Param("to") Instant to);
+
     long countByEndedAtGreaterThanEqual(Instant since);
 
     long countByEndedAtGreaterThanEqualAndDisposition(Instant since, Disposition disposition);
@@ -95,10 +118,9 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
      * {@code [callId, clientId, scenarioId, disposition]} (ROADMAP A.3 — the summary
      * retry needs the same scenario the live call ran, for its {@code outcomeSchema}).
      */
-    @Query("SELECT a.id, a.target.contact.id, ag.scenarioId, a.disposition "
-            + "FROM CallAttemptEntity a, AiAgentEntity ag "
-            + "WHERE ag.id = a.target.campaign.aiAgentId "
-            + "AND a.endedAt IS NOT NULL AND a.finalizeAttempts < :maxAttempts "
+    @Query("SELECT a.id, a.target.contact.id, a.target.campaign.aiAgent.scenario.id, a.disposition "
+            + "FROM CallAttemptEntity a "
+            + "WHERE a.endedAt IS NOT NULL AND a.finalizeAttempts < :maxAttempts "
             + "AND NOT EXISTS (SELECT 1 FROM CallResultEntity r WHERE r.call = a) "
             + "AND EXISTS (SELECT 1 FROM CallTranscriptEntity c WHERE c.call = a) "
             + "ORDER BY a.id")

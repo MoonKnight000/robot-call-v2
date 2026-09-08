@@ -5,6 +5,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 /**
  * JPA entity for scenario (ROADMAP A.4).
@@ -45,8 +46,9 @@ public class ScenarioEntity {
     @Column(name = "created_by")
     private Long createdBy;
 
-    @Column(name = "company_id")
-    private Long companyId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    private CompanyEntity company;
 
     public Long getId() {
         return id;
@@ -128,11 +130,15 @@ public class ScenarioEntity {
         this.createdBy = createdBy;
     }
 
-    public Long getCompanyId() {
-        return companyId;
+    public CompanyEntity getCompany() {
+        return company;
     }
 
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
+    public void setCompany(CompanyEntity company) {
+        this.company = company;
+    }
+
+    public Long getCompanyId() {
+        return company != null ? company.getId() : null;
     }
 }

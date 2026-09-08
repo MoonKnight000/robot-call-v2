@@ -8,13 +8,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.billing.application.dto.*;
-import uz.murodjon.robotcallv2.billing.application.port.output.BillingUsageRepository;
-import uz.murodjon.robotcallv2.billing.application.port.output.CompanyBillingRepository;
-import uz.murodjon.robotcallv2.billing.application.port.output.InvoiceRepository;
-import uz.murodjon.robotcallv2.billing.application.port.output.PaymentTopupRepository;
-import uz.murodjon.robotcallv2.billing.domain.entity.BillingUsage;
-import uz.murodjon.robotcallv2.billing.domain.entity.CompanyBilling;
-import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
+import uz.murodjon.robotcallv2.billing.application.port.output.*;
+import uz.murodjon.robotcallv2.billing.domain.entity.*;
 import uz.murodjon.robotcallv2.billing.domain.enums.InvoiceStatus;
 import uz.murodjon.robotcallv2.billing.domain.enums.PaymentMethod;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
@@ -42,6 +37,9 @@ class BillingServiceTest {
     private BillingUsageRepository usageRepo;
 
     @Mock
+    private CallBillingRepository callBillingRepo;
+
+    @Mock
     private InvoiceRepository invoiceRepo;
 
     @Mock
@@ -66,6 +64,7 @@ class BillingServiceTest {
         service = new BillingService(
                 billingRepo,
                 usageRepo,
+                callBillingRepo,
                 invoiceRepo,
                 topupRepo,
                 currentUser,
@@ -75,36 +74,52 @@ class BillingServiceTest {
         );
     }
 
+    /**
+     * The allowances come from the plan row, what has been used from the calls the company
+     * was charged for. The two used to come from the same row, which is how every company
+     * ended up being shown the same invented usage.
+     */
     @Test
-    @DisplayName("overview returns billing overview and active usage metrics")
+    @DisplayName("overview measures usage from settled calls, not from the plan row")
     void overviewSuccess() {
-        CompanyBilling billing = CompanyBilling.defaultFor(1L);
-        BillingUsage usage = BillingUsage.defaultFor(1L, "2026-03");
-
-        when(billingRepo.findByCompanyId(1L)).thenReturn(Optional.of(billing));
-        when(usageRepo.findByCompanyIdAndPeriod(eq(1L), anyString())).thenReturn(Optional.of(usage));
+        when(billingRepo.findByCompanyId(1L)).thenReturn(Optional.of(CompanyBilling.defaultFor(1L)));
+        when(usageRepo.findByCompanyIdAndPeriod(eq(1L), anyString()))
+                .thenReturn(Optional.of(BillingUsage.defaultFor(1L, "2026-09")));
+        // 7200s = 120 minutes charged this month.
+        when(callBillingRepo.findUsageSince(eq(1L), any()))
+                .thenReturn(new PeriodUsage(7200, 45_000, 12_000, 380_000));
 
         BillingOverviewResponse response = service.overview(1L);
 
         assertThat(response.planName()).isEqualTo("Professional (Pro)");
-        assertThat(response.planCode()).isEqualTo("PRO_MONTHLY");
-        assertThat(response.balanceUzs()).isEqualTo(1450000L);
-        assertThat(response.metrics().minutes().used()).isEqualTo(3420);
+        assertThat(response.balanceUzs()).isZero();
+        assertThat(response.metrics().minutes().used()).isEqualTo(120);
         assertThat(response.metrics().minutes().limit()).isEqualTo(5000);
+        assertThat(response.metrics().tokens().used()).isEqualTo(45_000);
     }
 
     @Test
-    @DisplayName("spendChart returns recent spend months")
+    @DisplayName("spendChart returns charged months oldest first")
     void spendChartSuccess() {
-        BillingUsage u1 = BillingUsage.defaultFor(1L, "2026-02");
-        BillingUsage u2 = BillingUsage.defaultFor(1L, "2026-03");
-        when(usageRepo.findRecentByCompanyId(1L, 6)).thenReturn(List.of(u1, u2));
+        when(callBillingRepo.findMonthlySpend(1L, 6)).thenReturn(List.of(
+                new MonthlySpend("2026-09", 380_000, 7200),
+                new MonthlySpend("2026-08", 120_000, 3600)));
 
         List<SpendMonthDto> chart = service.spendChart(1L, 6);
 
         assertThat(chart).hasSize(2);
-        assertThat(chart.get(0).month()).isEqualTo("2026-02");
-        assertThat(chart.get(1).month()).isEqualTo("2026-03");
+        assertThat(chart.get(0).month()).isEqualTo("2026-08");
+        assertThat(chart.get(1).month()).isEqualTo("2026-09");
+        assertThat(chart.get(1).callMinutes()).isEqualTo(120);
+    }
+
+    /** A company with no calls yet gets an empty chart, not a fabricated one. */
+    @Test
+    @DisplayName("spendChart is empty when nothing has been charged")
+    void spendChartEmpty() {
+        when(callBillingRepo.findMonthlySpend(1L, 6)).thenReturn(List.of());
+
+        assertThat(service.spendChart(1L, 6)).isEmpty();
     }
 
     @Test
@@ -131,7 +146,7 @@ class BillingServiceTest {
         assertThat(response.paymentId()).startsWith("PAY-");
         assertThat(response.checkoutUrl()).contains("checkout.paycom.uz");
         verify(topupRepo).save(any());
-        verify(audit).record(eq("BILLING_TOPUP_INITIATED"), eq("company"), eq("1"), anyString());
+        verify(audit).record(eq(1L), eq("BILLING_TOPUP_INITIATED"), eq("company"), eq("1"), anyString());
     }
 
     @Test

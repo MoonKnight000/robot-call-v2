@@ -1,0 +1,53 @@
+### 1. Maqsad yaratish/yangilash (goalKey bo'yicha upsert)
+PUT http://localhost:8080/api/conversions/goals
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "goalKey": "payment",
+  "name": "Qarz to'landi",
+  "attributionWindowHours": 72,
+  "attributionModel": "LAST_CALL",
+  "enabled": true
+}
+
+### 2. Kompaniyaning maqsadlari
+GET http://localhost:8080/api/conversions/goals
+Authorization: Bearer {{auth_token}}
+
+### 3. Konversiya haqida xabar berish (odatda CRM, X-Api-Key bilan)
+POST http://localhost:8080/api/conversions
+Content-Type: application/json
+X-Api-Key: {{api_key}}
+
+{
+  "goalKey": "payment",
+  "phone": "998901234567",
+  "occurredAt": "2026-09-07T12:00:00Z",
+  "valueUzs": 1500000,
+  "source": "crm",
+  "dedupeKey": "payment-88231",
+  "evidence": { "orderId": "88231", "method": "PAYME" }
+}
+
+### 4. O'sha dedupeKey bilan qayta yuborish — hech narsa o'zgarmaydi, duplicate: true
+POST http://localhost:8080/api/conversions
+Content-Type: application/json
+X-Api-Key: {{api_key}}
+
+{
+  "goalKey": "payment",
+  "phone": "998901234567",
+  "occurredAt": "2026-09-07T12:00:00Z",
+  "valueUzs": 1500000,
+  "source": "crm",
+  "dedupeKey": "payment-88231"
+}
+
+### 5. A/B hisoboti — endi haqiqiy konversiya va xarajat ustunlari bilan
+GET http://localhost:8080/api/campaigns/1/variants/report
+Authorization: Bearer {{auth_token}}
+
+### 6. Maqsadni o'chirish (aslida o'chiriladi emas, faqat o'chiriladi = disabled)
+DELETE http://localhost:8080/api/conversions/goals/1
+Authorization: Bearer {{auth_token}}

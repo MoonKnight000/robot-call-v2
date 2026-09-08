@@ -5,7 +5,7 @@ package uz.murodjon.robotcallv2.agent.realtime;
  *
  * @param apiKey               OpenAI API Key
  * @param url                  WebSocket endpoint (default: wss://api.openai.com/v1/realtime)
- * @param model                Model name (e.g. gpt-4o-realtime-preview, gpt-4o-mini-realtime-preview)
+ * @param model                Model name (e.g. gpt-realtime-2.1, gpt-realtime-2.1-mini)
  * @param voice                Voice name (e.g. alloy, echo, shimmer, ash, ballad, coral, sage, verse)
  * @param connectTimeoutSeconds WebSocket connect timeout
  * @param temperature          Sampling temperature (0.6 - 0.8)
@@ -23,7 +23,7 @@ public record OpenAiRealtimeProperties(
             url = "wss://api.openai.com/v1/realtime";
         }
         if (model == null || model.isBlank()) {
-            model = "gpt-4o-realtime-preview";
+            model = "gpt-realtime-2.1";
         }
         if (voice == null || voice.isBlank()) {
             voice = "alloy";

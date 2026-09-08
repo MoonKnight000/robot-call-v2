@@ -1,13 +1,12 @@
 package uz.murodjon.robotcallv2.contact.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.infrastructure.persistence.entity.ContactEntity;
 import uz.murodjon.robotcallv2.contact.infrastructure.persistence.repository.ContactJpaRepository;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;

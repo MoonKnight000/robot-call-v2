@@ -17,10 +17,10 @@ import java.util.Optional;
 @Repository
 public interface ScenarioJpaRepository extends JpaRepository<ScenarioEntity, Long> {
 
-    @Query("SELECT s FROM ScenarioEntity s WHERE s.id = :id AND (s.companyId = :companyId OR s.companyId IS NULL)")
+    @Query("SELECT s FROM ScenarioEntity s WHERE s.id = :id AND (s.company.id = :companyId OR s.company.id IS NULL)")
     Optional<ScenarioEntity> findVisible(@Param("id") long id, @Param("companyId") long companyId);
 
-    @Query("SELECT s.id, s.name FROM ScenarioEntity s WHERE s.id IN :ids AND (s.companyId = :companyId OR s.companyId IS NULL)")
+    @Query("SELECT s.id, s.name FROM ScenarioEntity s WHERE s.id IN :ids AND (s.company.id = :companyId OR s.company.id IS NULL)")
     List<Object[]> findNamesByIds(@Param("ids") Collection<Long> ids, @Param("companyId") long companyId);
 
     @Query("SELECT MAX(s.version) FROM ScenarioEntity s WHERE s.scenarioKey = :scenarioKey")
@@ -32,12 +32,12 @@ public interface ScenarioJpaRepository extends JpaRepository<ScenarioEntity, Lon
 
     List<ScenarioEntity> findByActiveTrue();
 
-    @Query("SELECT s FROM ScenarioEntity s WHERE s.active = true AND (s.companyId = :companyId OR s.companyId IS NULL) "
+    @Query("SELECT s FROM ScenarioEntity s WHERE s.active = true AND (s.company.id = :companyId OR s.company.id IS NULL) "
             + "AND (:builtinOnly IS NULL OR s.builtin = :builtinOnly)")
     List<ScenarioEntity> findVisible(@Param("companyId") long companyId,
                                      @Param("builtinOnly") Boolean builtinOnly, Pageable pageable);
 
-    @Query("SELECT COUNT(s) FROM ScenarioEntity s WHERE s.active = true AND (s.companyId = :companyId OR s.companyId IS NULL) "
+    @Query("SELECT COUNT(s) FROM ScenarioEntity s WHERE s.active = true AND (s.company.id = :companyId OR s.company.id IS NULL) "
             + "AND (:builtinOnly IS NULL OR s.builtin = :builtinOnly)")
     long countVisible(@Param("companyId") long companyId, @Param("builtinOnly") Boolean builtinOnly);
 

@@ -23,7 +23,14 @@ repositories {
 }
 
 extra["flyway.version"] = "13.4.0"
-extra["netty.version"] = "4.2.0.Final"
+// netty.version is deliberately NOT pinned. Boot 4.1.1 already manages 4.2.17.Final, and
+// it does so by importing netty-bom — but netty-bom 4.2.0.Final lists no QUIC artifact at
+// all, so pinning the property back to 4.2.0 left netty-handler at 4.2.0 while
+// netty-codec-native-quic still resolved to 4.2.17 through reactor-netty. The newer
+// QuicheQuicSslContext reads SslContext.defaultEndpointVerificationAlgorithm, a field the
+// older netty-handler does not have, and the client blew up with NoSuchFieldError at the
+// first HTTPS call. The pin dated from when Boot's default was still Netty 4.1 and
+// ari4java 0.18.0 needed 4.2; the default is 4.2 now, so it only dragged Netty backwards.
 extra["springAiVersion"] = "2.0.0-M2"
 
 dependencyManagement {
@@ -47,6 +54,15 @@ dependencies {
     // from voice-agent.report-schedule.* (env-var placeholders, like every other
     // external credential in this project).
     implementation("org.springframework.boot:spring-boot-starter-mail")
+
+    // Jackson 2, declared explicitly. Boot 4 auto-configures Jackson 3 (tools.jackson)
+    // instead, so com.fasterxml.jackson is on the classpath only because ari4java, minio
+    // and jjwt-jackson happen to drag it in — and this code reads and writes every
+    // JSONB column and every provider payload with it. Versions come from the Boot BOM
+    // (jackson-2-bom), so if one of those libraries moves to Jackson 3 the build keeps
+    // compiling instead of breaking in 60-odd files at once.
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // JWT for user login (ROADMAP E.1) — X-Api-Key stays for machine-to-machine callers.
     // Versions for api, impl, and jackson are kept 100% in sync via jjwtVersion.

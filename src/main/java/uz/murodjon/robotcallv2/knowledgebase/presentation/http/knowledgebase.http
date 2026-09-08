@@ -4,6 +4,7 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
+  "agentId": 1,
   "key": "credit_grace_period",
   "topic": "terms",
   "title": "Kredit imtiyozli davri haqida ma'lumot",
@@ -41,9 +42,74 @@ Authorization: Bearer {{token}}
 {
   "page": 0,
   "size": 10,
+  "agentId": 1,
   "search": "imtiyoz"
 }
 
 ### 5. Delete Knowledge Item
 DELETE http://localhost:8080/api/knowledge-base/1
+Authorization: Bearer {{token}}
+
+###############################################################################
+# Knowledge sources — the documents and links half of the same knowledge base
+###############################################################################
+
+### 6. Upload the file first — the id comes back in `data.id`
+POST http://localhost:8080/api/files?category=DOCUMENT
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----Boundary
+
+------Boundary
+Content-Disposition: form-data; name="file"; filename="contract.pdf"
+Content-Type: application/pdf
+
+< ./contract.pdf
+------Boundary--
+
+### 7. Register knowledge sources for an agent (indexing starts immediately)
+POST http://localhost:8080/api/knowledge-base/sources
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "agentId": 1,
+  "documents": [
+    {
+      "name": "Kredit shartnomasi namunasi",
+      "sourceType": "PDF",
+      "originalFileName": "contract.pdf",
+      "storedFileId": 42
+    },
+    {
+      "name": "Bank tariflari sahifasi",
+      "sourceType": "URL",
+      "url": "https://example.uz/tariflar"
+    }
+  ]
+}
+
+### 8. List an agent's sources (omit agentId for every source of the company)
+GET http://localhost:8080/api/knowledge-base/sources?agentId=1
+Authorization: Bearer {{token}}
+
+### 9. Get one source
+GET http://localhost:8080/api/knowledge-base/sources/1
+Authorization: Bearer {{token}}
+
+### 10. Rename a source or move it to another agent
+PUT http://localhost:8080/api/knowledge-base/sources/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Kredit shartnomasi (2026)",
+  "agentId": 2
+}
+
+### 11. Re-queue a source that failed to index
+POST http://localhost:8080/api/knowledge-base/sources/1/retry
+Authorization: Bearer {{token}}
+
+### 12. Delete a source
+DELETE http://localhost:8080/api/knowledge-base/sources/1
 Authorization: Bearer {{token}}

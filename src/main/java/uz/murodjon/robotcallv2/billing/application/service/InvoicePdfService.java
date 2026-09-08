@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.billing.application.service;
 
 import com.lowagie.text.*;
+import com.lowagie.text.Font;
+import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
@@ -9,7 +11,7 @@ import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
-import java.awt.Color;
+import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.text.NumberFormat;
 import java.time.ZoneId;

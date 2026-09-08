@@ -1,7 +1,10 @@
 package uz.murodjon.robotcallv2.siptrunk.application.port.input;
 
 import uz.murodjon.robotcallv2.shared.api.PageableData;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.CreateSipTrunkRequest;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkStatus;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.UpdateSipTrunkRequest;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 
 import java.util.Collection;

@@ -24,7 +24,8 @@ public record CallAttempt(
         Instant createdAt,
         int finalizeAttempts,
         Long inboundRouteId,
-        Long operatorUserId
+        Long operatorUserId,
+        Long variantId
 ) {
 
     /**
@@ -33,9 +34,9 @@ public record CallAttempt(
      * row; {@code answeredAt} stays null until it is answered.
      */
     public static CallAttempt starting(long companyId, long targetId, String channelId, String phone,
-                                       String language, Long inboundRouteId) {
+                                       String language, Long inboundRouteId, Long variantId) {
         return new CallAttempt(0, companyId, targetId, phone, null, channelId, language,
-                null, null, null, null, null, null, null, null, null, 0, inboundRouteId, null);
+                null, null, null, null, null, null, null, null, null, 0, inboundRouteId, null, variantId);
     }
 
     /**
@@ -46,6 +47,6 @@ public record CallAttempt(
     public static CallAttempt unplaced(long companyId, long targetId, String phone, String language,
                                        Disposition disposition, String reason) {
         return new CallAttempt(0, companyId, targetId, phone, null, null, language,
-                null, null, null, 0, disposition, null, null, reason, null, 0, null, null);
+                null, null, null, 0, disposition, null, null, reason, null, 0, null, null, null);
     }
 }

@@ -12,11 +12,18 @@ Umumiy javob formati va xatolar uchun [README.md](README.md)ga qarang.
 
 Kompaniyaning umumiy balans holati, faol tarif rejasi, keyingi hisob-kitob sanasi va asosiy resurslar (daqiqalar, AI tokenlar, TTS belgilar, parallel chiquvchi kanallar) bo'yicha joriy sarf va limitlarni qaytaradi.
 
-> ℹ️ Kompaniyada hali `company_billing` / `billing_usage` qatori bo'lmasa, birinchi
-> chaqiruvda **standart qator yaratiladi** (`PRO_MONTHLY` / "Professional (Pro)",
-> balans 1 450 000 so'm, 5000 daqiqa, 2 000 000 token, 1 000 000 TTS belgi, 30 kanal).
-> Ya'ni bu qiymatlar haqiqiy sarf emas, boshlang'ich sozlama — real hisoblash ulanmaguncha
-> shunday qoladi.
+> ℹ️ **`used` qiymatlari haqiqiy.** Ular `call_billing` jadvalidagi hisoblangan
+> qo'ng'iroqlardan (joriy oy, Toshkent vaqti bo'yicha) yig'iladi. `limit` esa tarif
+> rejasi qatoridan (`billing_usage`) olinadi. Ilgari ikkalasi ham bitta qatordan kelardi
+> va har bir kompaniyaga bir xil o'ylab topilgan raqamlar ko'rsatilardi.
+>
+> Kompaniyada hali `company_billing` qatori bo'lmasa, birinchi chaqiruvda **bo'sh qator
+> yaratiladi**: balans 0, auto-recharge o'chiq. `billing_usage` qatori esa tarif
+> limitlarini beradi (5000 daqiqa, 2 000 000 token, 1 000 000 TTS belgi, 30 kanal),
+> sarf ustunlari 0.
+>
+> `concurrentChannels.used` hozircha to'ldirilmaydi (0 qaytadi) — parallel kanallar
+> soni faqat ish vaqtida ma'lum, u `live` bo'limida ko'rinadi.
 
 ### Request
 ```http
@@ -93,7 +100,11 @@ Authorization: Bearer <accessToken>
 
 | Parametr | Turi | Standart | Izoh |
 |---|---|---|---|
-| `months` | `number` | `6` | Necha oylik tarix qaytarilishi (masalan, 3, 6, 12) |
+| `months` | `number` | `6` | Necha oylik tarix qaytarilishi (masalan, 3, 6, 12). Maksimal 24 |
+
+> ℹ️ Faqat **hisoblangan qo'ng'iroqlar** bo'lgan oylar qaytadi, eskisidan yangisiga.
+> Hali qo'ng'iroq qilinmagan bo'lsa — **bo'sh massiv**. Ilgari bu holatda o'ylab
+> topilgan oylar qaytarilardi.
 
 ### Response (`List<SpendMonthDto>`)
 ```json
@@ -228,3 +239,67 @@ Hisobni to'ldirish uchun to'lov tizimiga tranzaksiya yaratadi va foydalanuvchini
   "errors": null
 }
 ```
+
+---
+
+## 6. Qo'ng'iroq qanday hisoblanadi
+
+REST endpoint yo'q — bu qism qo'ng'iroq oqimining ichida ishlaydi. Frontend uchun muhimi:
+`overview` va `spend-chart` dagi raqamlar shu yerdan keladi.
+
+### 6.1. Ketma-ketlik
+
+| Bosqich | Qachon | Nima bo'ladi |
+|---|---|---|
+| Tekshiruv | Dialer har tikida, kampaniya bo'yicha | Balans yetmasa kampaniya shu tikda o'tkazib yuboriladi (log'da sabab) |
+| Rezerv | Raqam terilishidan oldin, har target uchun | `reservation-uzs` band qilinadi, `call_billing` qatori `RESERVED` holatda ochiladi |
+| Qaytarish | Raqam umuman terilmasa (DNC, originate xatosi) | Rezerv qaytariladi, qator `RELEASED` |
+| Hisoblash | Qo'ng'iroq tugab, yozuv saqlangach | Sarf narxlanadi, balansdan yechiladi, qator `SETTLED` |
+
+Rezerv qo'ng'iroq bilan **kampaniya target'i orqali** bog'lanadi — pul raqam terilishidan
+oldin band qilinadi, o'shanda `call_attempt` qatori hali yo'q.
+
+### 6.2. Nima uchun pul olinadi
+
+| Resurs | Nimaga qarab | Izoh |
+|---|---|---|
+| LLM | prompt / completion / cached tokenlar | Cached tokenlar alohida, arzonroq narxda |
+| STT | qo'ng'iroq davomiyligi | VAD gating tejagan qism platformaning marjasi (`voice.stt.audio.seconds.skipped`) |
+| TTS | sintezga so'ralgan belgilar | Cache'dan kelgani ham sanaladi — cache platformaning marjasi (`voice.tts.chars.saved`) |
+| Telefoniya | qo'ng'iroq davomiyligi | Trunk narxi |
+| Platforma | qo'ng'iroq davomiyligi | Ustama qo'llanilmaydi |
+
+Ustama (`markup-basis-points`) faqat provayder xarajatlariga qo'llanadi, platforma
+to'loviga emas. Har bir qator butun so'mgacha yaxlitlanadi va **jami — qatorlar yig'indisi**,
+shuning uchun hisob-faktura qo'lda qo'shilganda ham to'g'ri chiqadi.
+
+### 6.3. Ikki marta hisoblanmasligi
+
+Har bir balans harakati `billing_ledger` ga **faqat qo'shiladigan** qator sifatida
+yoziladi va `(company_id, idempotency_key)` bo'yicha unique. Qo'ng'iroq hisobining kaliti
+— `call-charge:<callAttemptId>`. Finalizer outbox orqali ishlaydi va qayta yetkazishi
+mumkin; ikkinchi urinish kalitni band ko'radi va balansga tegmaydi.
+
+Har bir qatorda `balance_before_uzs` va `balance_after_uzs` saqlanadi — balans haqidagi
+har qanday bahs shu jadvalni o'qib hal qilinadi.
+
+### 6.4. Sozlamalar (`config/billing.yml`)
+
+| Kalit | Standart | Izoh |
+|---|---|---|
+| `voice-agent.billing.version` | `2026-09-v1` | Har bir hisoblangan qo'ng'iroqqa yoziladi. Narx o'zgarsa **albatta oshiring** — aks holda eski qo'ng'iroqlar jimgina qayta narxlanadi |
+| `voice-agent.billing.enforce-balance` | `false` | `false` bo'lsa balans tekshirilmaydi va rezerv olinmaydi, lekin qo'ng'iroqlar baribir hisoblanadi |
+| `voice-agent.billing.reservation-uzs` | `5000` | Bitta qo'ng'iroq uchun band qilinadigan summa |
+| `voice-agent.billing.rates.*` | — | Narxlar, hammasi UZS'da (§6.2 jadvali) |
+| `voice-agent.billing.auto-recharge.*` | 50 000 / 500 000 / 15 daq | Chegara, summa va tekshiruv jadvali |
+
+> ⚠️ **Balans manfiy bo'lishi mumkin.** Rezerv qo'ng'iroqning haqiqiy narxidan kichik
+> bo'lsa (uzoq suhbat), farq balansdan yechiladi va u manfiyga tushishi mumkin. Bu
+> ataylab: qo'ng'iroq o'rtasida uzish mijozga ham, kompaniyaga ham yomonroq. Keyingi
+> tikda `enforce-balance` shunday kompaniyani terishdan to'xtatadi.
+
+### 6.5. Auto-recharge
+
+`company_billing.auto_recharge = true` bo'lgan kompaniya balansi chegaradan pastga
+tushsa, tizim **to'lov havolasi yaratadi** (`payment_topup`, PAYME) — pul o'zi
+qo'shilmaydi. To'lanmagan havola turgan bo'lsa yangisi yaratilmaydi.

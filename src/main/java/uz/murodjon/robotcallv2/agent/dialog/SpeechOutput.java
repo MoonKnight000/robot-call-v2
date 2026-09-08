@@ -87,6 +87,7 @@ public class SpeechOutput {
                 s.latency().ttsRequested();
                 return speakStreaming(s, spoken, dynamicSettings);
             }
+            s.addTtsChars(spoken);
             short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings);
             return deliver(s, new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN));
         } catch (Exception e) {
@@ -116,7 +117,8 @@ public class SpeechOutput {
         }
         String spoken = SpokenDates.humanize(text, s.language());
         try {
-            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            s.addTtsChars(spoken);
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
             return new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN);
         } catch (Exception e) {
             log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
@@ -209,6 +211,7 @@ public class SpeechOutput {
             queued.addAndGet(pcm.length);
         };
         try {
+            s.addTtsChars(text);
             ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), dynamicSettings, onChunk);
         } catch (Exception e) {
             log.warn("TTS streaming failed during dialog [{}]: {}", s.channelId(), e.getMessage());
@@ -274,6 +277,10 @@ public class SpeechOutput {
             // Warmed in the form speak() will ask for, or the cache key would not match
             // and the round trip this exists to save is paid anyway.
             String spoken = SpokenDates.humanize(text, s.language());
+            // Not counted towards the call's TTS characters: if the guess is right,
+            // speak() asks for the same line and counts it there, and counting it here
+            // too would bill the sentence twice. A guess that misses was never spoken, so
+            // it is this platform's cost, not the company's.
             ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
             log.debug("[{}] pre-synthesized a speculative first sentence: {}", s.channelId(), spoken);
         } catch (Exception e) {
@@ -305,6 +312,7 @@ public class SpeechOutput {
         try {
             List<String> options = DialogPhrases.backchannels(s.language());
             String line = options.get(Math.floorMod(turn, options.size()));
+            s.addTtsChars(line);
             short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
             if (!backchannelStillWanted(s)) {
                 return; // the caller finished while this was being synthesized
@@ -335,6 +343,7 @@ public class SpeechOutput {
         }
         try {
             String line = DialogPhrases.interjection(s.language());
+            s.addTtsChars(line);
             short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
             if (!backchannelStillWanted(s)) {
                 return;
@@ -419,6 +428,7 @@ public class SpeechOutput {
             List<String> options = DialogPhrases.thinking(s.language());
             String line = options.get(Math.floorMod(turn, options.size()));
             EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
+            s.addTtsChars(line);
             short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), dynamicSettings);
             if (!fillerStillWanted(s)) {
                 return;

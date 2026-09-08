@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.integration.presentation.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,9 +43,9 @@ public class IntegrationControllerImpl implements IntegrationController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> callback(String code, String state) {
-        crmIntegrationUseCase.handleCallback(code, state);
-        return ResponseEntity.ok(ResponseData.ok(null));
+    public ResponseEntity<Void> callback(String code, String state) {
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(crmIntegrationUseCase.handleCallback(code, state)).build();
     }
 
     @Override

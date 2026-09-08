@@ -15,8 +15,8 @@ import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -222,29 +222,8 @@ public class TargetApiImporter {
      * perimeter, and the answer turned into a list of numbers to dial.
      */
     private static URI requireCallableUri(String url) {
-        URI uri;
-        try {
-            uri = URI.create(url == null ? "" : url.trim());
-        } catch (Exception e) {
-            throw new ValidationException(ErrorCode.TARGET_SOURCE_URL_INVALID, url);
-        }
-        String scheme = uri.getScheme();
-        String host = uri.getHost();
-        if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
-                || host == null || host.isBlank()) {
-            throw new ValidationException(ErrorCode.TARGET_SOURCE_URL_INVALID, url);
-        }
-        try {
-            for (InetAddress address : InetAddress.getAllByName(host)) {
-                if (address.isLoopbackAddress() || address.isLinkLocalAddress()
-                        || address.isSiteLocalAddress() || address.isAnyLocalAddress()
-                        || address.isMulticastAddress()) {
-                    throw new ValidationException(ErrorCode.TARGET_SOURCE_URL_INVALID, url);
-                }
-            }
-        } catch (ValidationException e) {
-            throw e;
-        } catch (Exception e) {
+        URI uri = PublicUrlGuard.parsePublic(url);
+        if (uri == null) {
             throw new ValidationException(ErrorCode.TARGET_SOURCE_URL_INVALID, url);
         }
         return uri;

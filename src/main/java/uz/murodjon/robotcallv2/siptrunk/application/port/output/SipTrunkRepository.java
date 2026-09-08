@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.siptrunk.application.port.output;
 
-import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 
 import java.util.Collection;

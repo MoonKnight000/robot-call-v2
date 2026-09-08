@@ -1,13 +1,8 @@
 package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
-import uz.murodjon.robotcallv2.engine.domain.enums.PipelineMode;
+import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 
 @Entity
 @Table(name = "ai_model")
@@ -15,6 +10,10 @@ public class AiModelEntity {
 
     @Id
     private String id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private AiModelKind kind = AiModelKind.LLM;
 
     @Column(nullable = false)
     private String provider;
@@ -32,6 +31,14 @@ public class AiModelEntity {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public AiModelKind getKind() {
+        return kind;
+    }
+
+    public void setKind(AiModelKind kind) {
+        this.kind = kind;
     }
 
     public String getProvider() {

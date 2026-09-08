@@ -2,13 +2,15 @@ package uz.murodjon.robotcallv2.company.infrastructure.persistence.adapter;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.application.mapper.CompanyMapper;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.StoredFileJpaRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,12 +21,15 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
     private final CompanyJpaRepository jpaRepository;
     private final JdbcTemplate jdbcTemplate;
     private final CompanyMapper mapper;
+    private final StoredFileJpaRepository storedFileJpaRepository;
 
     public CompanyRepositoryAdapter(CompanyJpaRepository jpaRepository, JdbcTemplate jdbcTemplate,
-                                    CompanyMapper mapper) {
+                                    CompanyMapper mapper,
+                                    StoredFileJpaRepository storedFileJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.mapper = mapper;
+        this.storedFileJpaRepository = storedFileJpaRepository;
     }
 
     @Override
@@ -70,7 +75,7 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
     @Override
     public void updateLogoFileId(long id, Long logoFileId) {
         jpaRepository.findById(id).ifPresent(entity -> {
-            entity.setLogoFileId(logoFileId);
+            entity.setLogoFile(storedFileReference(logoFileId));
             jpaRepository.save(entity);
         });
     }
@@ -102,5 +107,10 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
 
     private static String likePattern(String search) {
         return search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase() + "%";
+    }
+
+    /** Null when the company has no logo. */
+    private StoredFileEntity storedFileReference(Long id) {
+        return id != null ? storedFileJpaRepository.getReferenceById(id) : null;
     }
 }

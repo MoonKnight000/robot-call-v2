@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.donotcall.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 
 import java.time.Instant;
@@ -35,7 +36,12 @@ public class DoNotCallEntity {
     @Column(name = "removed_by")
     private String removedBy;
 
-    @Column(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
     public Long getId() {
@@ -94,11 +100,15 @@ public class DoNotCallEntity {
         this.removedBy = removedBy;
     }
 
-    public Long getCompanyId() {
-        return companyId;
+    public CompanyEntity getCompany() {
+        return company;
     }
 
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
+    public void setCompany(CompanyEntity company) {
+        this.company = company;
+    }
+
+    public Long getCompanyId() {
+        return company != null ? company.getId() : null;
     }
 }

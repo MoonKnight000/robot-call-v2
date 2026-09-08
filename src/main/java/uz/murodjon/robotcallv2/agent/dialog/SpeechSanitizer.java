@@ -16,6 +16,17 @@ public final class SpeechSanitizer {
     private static final Pattern XML_TAG_PATTERN = Pattern.compile("</?[a-zA-Z0-9_\\-]+(?:\\s+[^>]*)?>");
 
     /**
+     * A tool name, anywhere in the line: a lowerCamelCase word with an internal capital
+     * ({@code transitionTo}, {@code recordRefusalReason}). ASCII-only on purpose, so
+     * Cyrillic is untouched, and it cannot start mid-word, so a company name written
+     * {@code UzAuto} is not one.
+     */
+    private static final Pattern TOOL_NAME_PATTERN = Pattern.compile("\\b[a-z]+[A-Z][a-zA-Z]*\\b");
+
+    /** ...and an FSM stage name: {@code DEBT_NOTICE}, {@code PAYMENT_NEGOTIATION}. */
+    private static final Pattern STAGE_NAME_PATTERN = Pattern.compile("\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b");
+
+    /**
      * Anything a spoken Uzbek or Russian line cannot be made of. What is kept: Latin and
      * Cyrillic letters, digits, whitespace, the apostrophes Uzbek writes o' and g' with
      * (ASCII, U+02BB, U+02BC, U+2019), sentence punctuation, and the brackets, braces,
@@ -97,6 +108,17 @@ public final class SpeechSanitizer {
 
         // Words containing specific hallucinated phrases
         if (lower.contains("dynamic_thought") || lower.contains("thought_or_fallback") || lower.contains("thoughtsignature")) {
+            return true;
+        }
+
+        // A tool or stage name anywhere in an otherwise ordinary sentence. Every check
+        // above is a whole-string verdict, and a leak never arrives that way: on a
+        // recorded call the caller heard "Qachon to'lay olasiz?ibu kabi bosqichda
+        // transitionTo yoki recordRefusalReason kabilarni o'ylash kerak. Hozircha
+        // DEBT_NOTICE dan PAYMENT_NEGOTIATION ga o'tishimiz kerak." — the model narrating
+        // its own next move. Neither spelling exists in spoken Uzbek or Russian, so
+        // finding one is enough to drop the sentence.
+        if (TOOL_NAME_PATTERN.matcher(trimmed).find() || STAGE_NAME_PATTERN.matcher(trimmed).find()) {
             return true;
         }
 

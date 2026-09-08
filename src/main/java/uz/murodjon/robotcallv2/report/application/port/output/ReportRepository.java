@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.report.application.port.output;
 
 import uz.murodjon.robotcallv2.contact.application.dto.ContactCallHistoryRow;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 
 import java.time.Instant;
@@ -54,4 +53,25 @@ public interface ReportRepository {
     List<ContactCallHistoryRow> callsForPhone(long companyId, String phone, int limit);
 
     Long recordingFileId(long companyId, long callId);
+
+    DashboardAggregates dashboardAggregates(long companyId, Instant from, Instant to, Long campaignId, Long scenarioId);
+
+    List<DashboardTimelineBucket> dashboardTimelineBuckets(long companyId, Instant from, Instant to, Long campaignId,
+                                                           Long scenarioId, String granularity);
+
+    List<DashboardOutcome> dashboardStatusBreakdown(long companyId, Instant from, Instant to, Long campaignId,
+                                                     Long scenarioId);
+
+    List<DashboardDirectionRow> dashboardDirectionStats(long companyId, Instant from, Instant to, Long campaignId,
+                                                        Long scenarioId);
+
+    List<DashboardAgentRow> dashboardTopAgents(long companyId, Instant from, Instant to, Long campaignId,
+                                              Long scenarioId, int limit);
+
+    List<DashboardCampaignRow> dashboardActiveCampaigns(long companyId, int limit);
+
+    List<DashboardLiveRow> dashboardLiveCalls(long companyId, int limit);
+
+    List<DashboardRecentCallRow> dashboardRecentCalls(long companyId, Instant from, Instant to, Long campaignId,
+                                                     Long scenarioId, int limit);
 }

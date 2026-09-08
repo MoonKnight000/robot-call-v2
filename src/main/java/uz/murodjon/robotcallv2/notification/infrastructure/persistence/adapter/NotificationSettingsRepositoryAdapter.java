@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.notification.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.notification.application.mapper.NotificationSettingsMapper;
 import uz.murodjon.robotcallv2.notification.application.port.output.NotificationSettingsRepository;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationChannel;
@@ -22,13 +24,16 @@ public class NotificationSettingsRepositoryAdapter implements NotificationSettin
     private final NotificationChannelJpaRepository notificationChannelJpaRepository;
     private final NotificationMatrixJpaRepository notificationMatrixJpaRepository;
     private final NotificationSettingsMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
 
     public NotificationSettingsRepositoryAdapter(NotificationChannelJpaRepository notificationChannelJpaRepository,
                                                  NotificationMatrixJpaRepository notificationMatrixJpaRepository,
-                                                 NotificationSettingsMapper mapper) {
+                                                 NotificationSettingsMapper mapper,
+                                                 CompanyJpaRepository companyJpaRepository) {
         this.notificationChannelJpaRepository = notificationChannelJpaRepository;
         this.notificationMatrixJpaRepository = notificationMatrixJpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
     }
 
     @Override
@@ -48,11 +53,12 @@ public class NotificationSettingsRepositoryAdapter implements NotificationSettin
         notificationChannelJpaRepository.deleteByCompanyId(companyId);
         notificationMatrixJpaRepository.deleteByCompanyId(companyId);
         Instant now = Instant.now();
+        CompanyEntity company = companyJpaRepository.getReferenceById(companyId);
         for (NotificationChannel row : channelRows) {
-            notificationChannelJpaRepository.save(mapper.channelDomainToEntity(row, companyId, now));
+            notificationChannelJpaRepository.save(mapper.channelDomainToEntity(row, company, now));
         }
         for (NotificationMatrixEntry row : matrixRows) {
-            notificationMatrixJpaRepository.save(mapper.matrixDomainToEntity(row, companyId));
+            notificationMatrixJpaRepository.save(mapper.matrixDomainToEntity(row, company));
         }
         return findByCompanyId(companyId);
     }

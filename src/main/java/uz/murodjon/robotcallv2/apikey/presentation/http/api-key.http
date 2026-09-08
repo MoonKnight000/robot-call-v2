@@ -1,0 +1,36 @@
+### 1. Kalitga berilishi mumkin bo'lgan huquqlar (forma shu ro'yxatdan to'ldiriladi)
+GET http://localhost:8080/api/api-keys/scopes
+Authorization: Bearer {{auth_token}}
+
+### 2. Kalit yaratish — javobdagi `key` faqat shu yerda ko'rinadi, saqlab qo'ying
+POST http://localhost:8080/api/api-keys
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "CRM integratsiyasi (prod)",
+  "scopes": ["CONTACT_READ", "CONTACT_EDIT", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "CALL_READ", "REPORT_READ"],
+  "expiresAt": "2027-01-01T00:00:00Z"
+}
+
+### 3. Kompaniyaning kalitlari
+GET http://localhost:8080/api/api-keys
+Authorization: Bearer {{auth_token}}
+
+### 4. Kalit bilan chaqirish — Bearer token o'rniga X-Api-Key
+GET http://localhost:8080/api/campaigns
+X-Api-Key: {{api_key}}
+
+### 5. Allowlist tekshiruvi — kalitda BILLING_EDIT bo'lishi mumkin emas, 403 kutiladi
+POST http://localhost:8080/api/billing/topup
+Content-Type: application/json
+X-Api-Key: {{api_key}}
+
+{
+  "amountUzs": 1000000,
+  "paymentMethod": "PAYME"
+}
+
+### 6. Kalitni bekor qilish
+DELETE http://localhost:8080/api/api-keys/1
+Authorization: Bearer {{auth_token}}

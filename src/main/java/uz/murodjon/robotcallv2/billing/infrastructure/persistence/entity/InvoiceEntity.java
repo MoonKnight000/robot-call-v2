@@ -1,8 +1,8 @@
 package uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
 import uz.murodjon.robotcallv2.billing.domain.enums.InvoiceStatus;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
 
@@ -14,7 +14,12 @@ public class InvoiceEntity {
     @Column(name = "id", nullable = false, length = 64)
     private String id;
 
-    @Column(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
     @Column(name = "period_name", nullable = false, length = 64)
@@ -36,9 +41,6 @@ public class InvoiceEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public InvoiceEntity() {
-    }
-
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
@@ -46,38 +48,21 @@ public class InvoiceEntity {
         }
     }
 
-    public Invoice toDomain() {
-        return new Invoice(
-                id,
-                companyId,
-                periodName,
-                amountUzs != null ? amountUzs : 0L,
-                status != null ? status : InvoiceStatus.PENDING,
-                paidAt,
-                pdfFilePath,
-                createdAt
-        );
-    }
-
-    public static InvoiceEntity fromDomain(Invoice domain) {
-        InvoiceEntity entity = new InvoiceEntity();
-        entity.id = domain.id();
-        entity.companyId = domain.companyId();
-        entity.periodName = domain.periodName();
-        entity.amountUzs = domain.amountUzs();
-        entity.status = domain.status();
-        entity.paidAt = domain.paidAt();
-        entity.pdfFilePath = domain.pdfFilePath();
-        entity.createdAt = domain.createdAt();
-        return entity;
-    }
-
     public String getId() { return id; }
-    public Long getCompanyId() { return companyId; }
+    public void setId(String id) { this.id = id; }
+    public CompanyEntity getCompany() { return company; }
+    public void setCompany(CompanyEntity company) { this.company = company; }
+    public Long getCompanyId() { return company != null ? company.getId() : null; }
     public String getPeriodName() { return periodName; }
+    public void setPeriodName(String periodName) { this.periodName = periodName; }
     public Long getAmountUzs() { return amountUzs; }
+    public void setAmountUzs(Long amountUzs) { this.amountUzs = amountUzs; }
     public InvoiceStatus getStatus() { return status; }
+    public void setStatus(InvoiceStatus status) { this.status = status; }
     public Instant getPaidAt() { return paidAt; }
+    public void setPaidAt(Instant paidAt) { this.paidAt = paidAt; }
     public String getPdfFilePath() { return pdfFilePath; }
+    public void setPdfFilePath(String pdfFilePath) { this.pdfFilePath = pdfFilePath; }
     public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

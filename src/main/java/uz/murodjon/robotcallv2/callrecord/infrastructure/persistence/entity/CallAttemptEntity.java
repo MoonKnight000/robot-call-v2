@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
+import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignVariantEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundRouteEntity;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -85,6 +86,17 @@ public class CallAttemptEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "operator_user_id")
     private UserEntity operatorUser;
+
+    /**
+     * The A/B variant this call ran, or null when its campaign is not testing.
+     *
+     * <p>A plain id rather than a relation: nothing here ever needs the variant's row, and
+     * the column exists so that a conversion reported days later can still be credited to
+     * the script that earned it.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
+    private CampaignVariantEntity variant;
 
     public Long getId() {
         return id;
@@ -248,6 +260,18 @@ public class CallAttemptEntity {
 
     public void setOperatorUser(UserEntity operatorUser) {
         this.operatorUser = operatorUser;
+    }
+
+    public CampaignVariantEntity getVariant() {
+        return variant;
+    }
+
+    public void setVariant(CampaignVariantEntity variant) {
+        this.variant = variant;
+    }
+
+    public Long getVariantId() {
+        return variant != null ? variant.getId() : null;
     }
 
     public Long getOperatorUserId() {

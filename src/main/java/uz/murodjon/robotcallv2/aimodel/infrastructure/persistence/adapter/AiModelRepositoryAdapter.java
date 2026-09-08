@@ -1,12 +1,12 @@
 package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
 import uz.murodjon.robotcallv2.aimodel.application.mapper.AiModelMapper;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.repository.AiModelJpaRepository;
-import uz.murodjon.robotcallv2.engine.domain.enums.PipelineMode;
 
 import java.util.List;
 
@@ -22,8 +22,10 @@ public class AiModelRepositoryAdapter implements AiModelRepository {
     }
 
     @Override
-    public List<AiModel> findByMode(PipelineMode mode) {
-        return jpaRepository.findAllByModeOrderByIdAsc(mode).stream()
+    public List<AiModel> findByKindAndMode(AiModelKind kind, PipelineMode mode) {
+        return (mode == null
+                ? jpaRepository.findAllByKindOrderByIdAsc(kind)
+                : jpaRepository.findAllByKindAndModeOrderByIdAsc(kind, mode)).stream()
                 .map(mapper::toAiModel)
                 .toList();
     }

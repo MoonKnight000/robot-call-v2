@@ -4,41 +4,55 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
 import uz.murodjon.robotcallv2.aiagent.application.mapper.AiAgentMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiAgentJpaRepository;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
+import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
+import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
+import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.repository.SipTrunkJpaRepository;
+import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
+import uz.murodjon.robotcallv2.voice.infrastructure.persistence.repository.TtsVoiceJpaRepository;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class AiAgentRepositoryAdapter implements AiAgentRepository {
 
     private final AiAgentJpaRepository jpaRepository;
     private final AiAgentMapper mapper;
+    private final CompanyJpaRepository companyJpaRepository;
+    private final ScenarioJpaRepository scenarioJpaRepository;
+    private final SipTrunkJpaRepository sipTrunkJpaRepository;
+    private final TtsVoiceJpaRepository ttsVoiceJpaRepository;
 
-    public AiAgentRepositoryAdapter(AiAgentJpaRepository jpaRepository, AiAgentMapper mapper) {
+    public AiAgentRepositoryAdapter(AiAgentJpaRepository jpaRepository, AiAgentMapper mapper,
+                                    CompanyJpaRepository companyJpaRepository,
+                                    ScenarioJpaRepository scenarioJpaRepository,
+                                    SipTrunkJpaRepository sipTrunkJpaRepository,
+                                    TtsVoiceJpaRepository ttsVoiceJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.companyJpaRepository = companyJpaRepository;
+        this.scenarioJpaRepository = scenarioJpaRepository;
+        this.sipTrunkJpaRepository = sipTrunkJpaRepository;
+        this.ttsVoiceJpaRepository = ttsVoiceJpaRepository;
     }
 
     @Override
     @Transactional
     public long create(AiAgent agent) {
         AiAgentEntity entity = new AiAgentEntity();
-        entity.setCompanyId(agent.companyId());
-        entity.setScenarioId(agent.scenarioId());
+        entity.setCompany(companyJpaRepository.getReferenceById(agent.companyId()));
         entity.setCreatedBy(agent.createdBy());
         entity.setCreatedAt(Instant.now());
-        mapper.applyEditableFields(entity, agent);
+        mapper.applyEditableFields(entity, agent, scenarioReference(agent.script().scenarioId()),
+                sipTrunkReferences(agent.sipTrunkIds()), languageVoiceReferences(agent.voice().perLanguage()));
         return jpaRepository.save(entity).getId();
     }
 
@@ -51,8 +65,8 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
         }
         // The scenario is editable here and identity is not: an agent that reads a different
         // script is the same agent with a new script, but it never changes company or id.
-        entity.setScenarioId(agent.scenarioId());
-        mapper.applyEditableFields(entity, agent);
+        mapper.applyEditableFields(entity, agent, scenarioReference(agent.script().scenarioId()),
+                sipTrunkReferences(agent.sipTrunkIds()), languageVoiceReferences(agent.voice().perLanguage()));
         jpaRepository.save(entity);
     }
 
@@ -103,12 +117,38 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
         return jpaRepository.countInboundRoutesUsing(id);
     }
 
+    /** Null for an agent whose script is inline rather than a stored scenario. */
+    private ScenarioEntity scenarioReference(Long scenarioId) {
+        return scenarioId != null ? scenarioJpaRepository.getReferenceById(scenarioId) : null;
+    }
+
+    /** Empty when the agent dials over whichever trunk the campaign picks. */
+    private Set<SipTrunkEntity> sipTrunkReferences(Set<Long> sipTrunkIds) {
+        Set<SipTrunkEntity> trunks = new LinkedHashSet<>();
+        if (sipTrunkIds != null) {
+            for (Long trunkId : sipTrunkIds) {
+                trunks.add(sipTrunkJpaRepository.getReferenceById(trunkId));
+            }
+        }
+        return trunks;
+    }
+
+    /** Empty when the agent speaks every language with its default voice. */
+    private Map<String, TtsVoiceEntity> languageVoiceReferences(Map<String, String> perLanguage) {
+        Map<String, TtsVoiceEntity> voices = new LinkedHashMap<>();
+        if (perLanguage != null) {
+            perLanguage.forEach((language, voiceId) ->
+                    voices.put(language, ttsVoiceJpaRepository.getReferenceById(voiceId)));
+        }
+        return voices;
+    }
+
     private static Specification<AiAgentEntity> buildSpecification(long companyId, AiAgentFilter filter) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("companyId"), companyId));
+            predicates.add(cb.equal(root.get("company").get("id"), companyId));
             if (filter.scenarioId() != null) {
-                predicates.add(cb.equal(root.get("scenarioId"), filter.scenarioId()));
+                predicates.add(cb.equal(root.get("scenario").get("id"), filter.scenarioId()));
             }
             if (filter.enabled() != null) {
                 predicates.add(cb.equal(root.get("enabled"), filter.enabled()));

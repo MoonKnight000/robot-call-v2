@@ -365,7 +365,9 @@ qarzdorlarga qo'ng'iroq qil" uchun hech kim fayl yuklamaydi.
 
 | Maydon | Majburiy | Izoh |
 |---|---|---|
-| `url` | ✅ | `http`/`https`. Chaqirish paytida loopback va ichki tarmoq manzillariga qarshi tekshiriladi (SSRF himoyasi) — `400 TARGET_SOURCE_URL_INVALID` |
+| `provider` | ❌ | `GENERIC` (standart) yoki `CHAINED`. Pastdagi bo'limga qarang |
+| `url` | `GENERIC` uchun ✅ | `http`/`https`. Chaqirish paytida loopback va ichki tarmoq manzillariga qarshi tekshiriladi (SSRF himoyasi) — `400 TARGET_SOURCE_URL_INVALID` |
+| `steps` | `CHAINED` uchun ✅ | Ketma-ket so'rovlar. Pastdagi bo'limga qarang |
 | `method` | ❌ | `GET` (standart) yoki `POST` |
 | `requestBody` | ❌ | `POST` uchun yuboriladigan JSON, o'zgartirilmasdan |
 | `authHeaderName` / `authHeaderValue` | ❌ | Masalan `Authorization: Bearer ...`. **Qiymat shifrlanib saqlanadi va API orqali qaytarilmaydi**; tahrirlashda bo'sh qoldirsangiz eski qiymat saqlanib qoladi |
@@ -381,7 +383,114 @@ Qatordagi qolgan barcha kalitlar nishonning **faktlari** (`context_data`) bo'lib
 agent ulardan faqat senariyning `factSchema` da e'lon qilinganlarini gapira oladi.
 
 **`GET` javobi** (`TargetSourceRow`) — `authHeaderValue` o'rniga `authHeaderSet: true/false`,
-qo'shimcha: `lastSyncAt`, `lastSyncAdded`, `lastSyncError`.
+qo'shimcha: `provider`, `steps`, `lastSyncAt`, `lastSyncAdded`, `lastSyncError`.
+
+#### `provider` — ro'yxat qayerdan keladi
+
+| Qiymat | `PUT` bilan qo'yiladimi | Ma'nosi |
+|---|---|---|
+| `GENERIC` | ✅ (standart) | `url` ga bitta so'rov; javob — telefonli qatorlar massivi |
+| `CHAINED` | ✅ | Bir nechta so'rov: birinchisi ro'yxat beradi, keyingilari **har bir qator uchun** chaqirilib, ro'yxatda yo'q ma'lumotni to'ldiradi |
+| `UYSOT_DEBTORS` | ❌ | Uysot qarzdorlari. `R__seed_data.sql` da beriladi; kredensiallarni Integratsiyalar bo'limidagi Uysot OAuth ulanishidan oladi, formadan emas |
+
+#### `CHAINED` — istalgan servis uchun ko'p bosqichli manba
+
+Ko'p CRM'da "kim qarzdor" degan endpoint bilan "uning telefoni nima" degan endpoint bir xil
+emas. `CHAINED` shuni **sozlama** sifatida yozishga imkon beradi — kod yozilmaydi.
+
+```json
+{
+  "provider": "CHAINED",
+  "authHeaderName": "X-Open-Api-Token",
+  "authHeaderValue": "…",
+  "phoneField": "phone",
+  "clientIdField": "leadId",
+  "replaceTargets": true,
+  "steps": [
+    {
+      "name": "contracts",
+      "method": "POST",
+      "url": "https://api.example.uz/v1/contract/filter",
+      "body": "{\"page\":{{page}},\"size\":100,\"statuses\":[\"ACTIVE\"]}",
+      "itemsPath": "data.data",
+      "paginate": true,
+      "filters": [
+        { "path": "delay",   "operator": "GTE", "value": "1" },
+        { "path": "residue", "operator": "GT",  "value": "0" }
+      ],
+      "extract": {
+        "contractId": "id",
+        "clientName": "client.name",
+        "debtAmount": "residue",
+        "currency": "currency.ccy",
+        "contractNumber": "number"
+      }
+    },
+    {
+      "name": "contract",
+      "method": "GET",
+      "url": "https://api.example.uz/v1/contract/{{contractId}}",
+      "extract": { "leadId": "data.lead.id" }
+    },
+    {
+      "name": "lead",
+      "method": "GET",
+      "url": "https://api.example.uz/v1/lead/{{leadId}}",
+      "extract": { "phone": "data.contacts.0.phones.0" }
+    }
+  ]
+}
+```
+
+| Step maydoni | Izoh |
+|---|---|
+| `name` | Xato xabarida ko'rinadi (`step 'lead': …`) |
+| `method` | `GET` (standart) yoki `POST` |
+| `url` | `{{o'zgaruvchi}}` qo'yiladi va URL-encode qilinadi. Har bir step alohida SSRF tekshiruvidan o'tadi |
+| `body` | `POST` uchun JSON shablon; `{{o'zgaruvchi}}` JSON-escape bilan qo'yiladi |
+| `itemsPath` | **Faqat 1-step**: javob ichidagi massivgacha nuqtali yo'l. Bo'sh — javobning o'zi massiv |
+| `paginate` | **Faqat 1-step**: `{{page}}` ni 1 dan boshlab oshirib, bo'sh sahifa kelguncha yoki chegaraga yetguncha chaqiradi |
+| `filters` | **Faqat 1-step**: `path` + `operator` (`GT`,`GTE`,`LT`,`LTE`,`EQ`,`NE`,`PRESENT`,`ABSENT`) + `value`. Barchasi bajarilgan qatorgina keyingi steplarga o'tadi — aynan shu narsa har bir mijoz uchun ortiqcha so'rov ketishini to'xtatadi |
+| `extract` | `o'zgaruvchi nomi` → nuqtali yo'l. 1-stepda yo'l **qatorga** nisbatan, keyingilarida — **butun javobga**. Raqamli segment massiv indeksi: `contacts.0.phones.0` |
+
+`phoneField` / `clientIdField` / `languageField` — steplar yig'gan qaysi o'zgaruvchi telefon,
+mijoz id va til ekanini aytadi. **Qolgan barcha o'zgaruvchilar** nishonning faktlari
+(`context_data`) bo'lib qoladi; agent ulardan faqat senariyning `factSchema` da
+e'lon qilinganlarini gapira oladi.
+
+`authHeaderName`/`authHeaderValue` **butun zanjirga** yuboriladi — bitta manba bitta servis.
+
+**Xatoga munosabat ikki xil.** 1-step (ro'yxat) yiqilsa — butun sync yiqiladi va mavjud
+nishonlar tegilmaydi; yarim o'qilgan ro'yxat ustidan import qilish kampaniyani jimgina
+qisqartirar edi. Keyingi steplardan biri **bitta qator** uchun yiqilsa — o'sha qator
+`errors[]` ga tushadi, qolganlari davom etadi.
+
+Chegaralar: 1-stepdan ko'pi bilan 5000 qator, 100 sahifa.
+
+Xuddi shu misol `R__seed_data.sql` da **"Namuna — CHAINED manba"** kampaniyasiga ulangan
+holda turadi: `GET /api/campaigns/{id}/target-source` bilan o'qib olib, uchta URL va
+`extract` yo'llarini o'zingiznikiga almashtirsangiz bo'ldi. Namuna ataylab ishlamaydigan
+qilingan — kampaniya `DRAFT` + `ONCE`, manba `enabled: false`, host esa `example.uz`.
+
+Validatsiya (`400`): `TARGET_SOURCE_STEPS_REQUIRED` (`CHAINED`, lekin step yo'q),
+`TARGET_SOURCE_STEP_INVALID` (step'da `url` yo'q, `extract` bo'sh, yoki 1-stepdan boshqasida
+`paginate`), `TARGET_SOURCE_URL_INVALID` (`GENERIC`, lekin `url` yo'q).
+
+#### `UYSOT_DEBTORS`
+
+Uysot'da qarzdorning telefoniga yetish uchun uchta o'qish kerak:
+`POST /v1/open-api/contract/filter` (qaysi shartnomalar `delay` kun kechikkan) →
+`GET /v1/open-api/contract/{id}` (shartnomaning `lead` i) →
+`GET /v1/open-api/lead/{leadId}` (kontakt telefonlari). Nishonning `client_id` si — Uysot
+`leadId` si, suhbatdan keyingi izoh ham o'shanga yoziladi.
+
+Yuqoridagi `CHAINED` misoli aynan shu zanjirni ifodalaydi. `UYSOT_DEBTORS` alohida qolgani
+sababi bitta: u tokenni Integratsiyalar bo'limidagi **Uysot OAuth ulanishidan** oladi,
+formaga qo'lda yozilgan headerdan emas.
+
+Nechta qarzdor olinishi `voice-agent.crm.debtor-import.*` bilan cheklanadi
+(`min-delay-days`, `max-debtors`, `page-size`, `max-pages`) — Open API daqiqasiga 60 so'rovga
+ruxsat beradi, bitta qarzdor esa uchta so'rovga tushadi.
 
 **`POST /targets/sync` javobi** (`TargetSyncResult`):
 
@@ -398,9 +507,10 @@ qo'shimcha: `lastSyncAt`, `lastSyncAdded`, `lastSyncError`.
 }
 ```
 
-Xatolar: `404 TARGET_SOURCE_NOT_FOUND` (source sozlanmagan), `502 TARGET_SOURCE_FETCH_FAILED`
-(endpoint javob bermadi yoki 2xx emas), `400 TARGET_SOURCE_RESPONSE_INVALID` (javob JSON
-massiv emas). Har uch holatda ham kampaniyaning mavjud nishonlari **tegilmaydi**, sabab esa
+Xatolar: `404 TARGET_SOURCE_NOT_FOUND` (source sozlanmagan), `409 TARGET_SOURCE_DISABLED`
+(`enabled: false` — qo'lda ham ishlamaydi), `502 TARGET_SOURCE_FETCH_FAILED` (endpoint javob
+bermadi yoki 2xx emas), `400 TARGET_SOURCE_RESPONSE_INVALID` (javob JSON massiv emas).
+Har to'rt holatda ham kampaniyaning mavjud nishonlari **tegilmaydi**; oxirgi ikkisining sababi
 `lastSyncError` ga yoziladi.
 
 Avtomatik (takror) ishga tushishda xato **kampaniyani to'xtatmaydi**: sweep barcha
@@ -490,7 +600,7 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
   "name": "Yumshoq ohang",
   "aiAgentId": 9,
   "promptOverride": "Siz xushmuomala, shoshilmaydigan operatorsiz...",
-  "ttsVoiceId": "dilnavoz",
+  "ttsVoiceId": "zamira",
   "trafficWeight": 50,
   "active": true
 }
@@ -505,7 +615,14 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
 | `trafficWeight` | `number` | ❌ | Taqsimotdagi ulush; berilmasa `50` |
 | `active` | `boolean` | ❌ (`PUT` da) | `false` — variant umuman tanlanmaydi |
 
-Javob (`CampaignVariantResponse`) — o'sha maydonlar plus `id`, `campaignId`, `companyId`, `callsCount`, `answeredCount`, `convertedCount`, `answerRate`, `conversionRate`, `createdAt`, `updatedAt`.
+Javob (`CampaignVariantResponse`) — o'sha maydonlar plus `id`, `campaignId`, `companyId`, `callsCount`, `answeredCount`, `convertedCount`, `answerRate`, `conversionRate`, `attributedConversions`, `attributedValueUzs`, `spentUzs`, `costPerConversionUzs`, `createdAt`, `updatedAt`.
+
+> ℹ️ **Ikki xil "konversiya".** `convertedCount`/`conversionRate` — bot yozgan
+> disposition, ya'ni **va'da**. `attributedConversions`/`attributedValueUzs` — mijozning
+> o'z tizimi keyinchalik xabar bergan **haqiqiy natija**
+> ([conversions.md](conversions.md)). `spentUzs` — shu variant qo'ng'iroqlariga
+> hisoblangan xarajat ([billing.md](billing.md) §6), `costPerConversionUzs` — ularning
+> nisbati. Konversiya maqsadi sozlanmagan kompaniyada yangi ustunlar 0 bo'ladi.
 
 > ⚠️ **Breaking change:** `agentId` maydoni so'rovdan ham, javobdan ham **olib tashlandi**. U hech qachon qo'ng'iroqqa ta'sir qilmasdi, faqat bazaga yozilardi; alohida "Agent" tushunchasi bilan birga o'chirildi ([scenarios.md](scenarios.md) → `agentProfile`).
 
@@ -541,3 +658,9 @@ Javob (`CampaignVariantResponse`) — o'sha maydonlar plus `id`, `campaignId`, `
 | `winningVariantName` | `string \| null` | **Haqiqatan yutgan** variant. `null` — test hali yakunlanmagan. Yutuqchi faqat ikkala shart bajarilganda ko'rsatiladi: har bir taqqoslanayotgan variantda kamida **30 ta javob berilgan qo'ng'iroq**, va yetakchining ishonch oralig'i ikkinchi o'rindagining oralig'idan butunlay yuqorida |
 
 > ⚠️ Frontend ssenariyni almashtirishni faqat `winningVariantName` bo'yicha taklif qilsin. `leadingVariantName` kampaniyaning birinchi kunidayoq to'ladi va u yerda hech qanday xulosa yo'q.
+>
+> ⚠️ `leadingVariantName` va `winningVariantName` hozircha **disposition** ustuni
+> (`convertedCount`) bo'yicha hisoblanadi, `attributedConversions` bo'yicha emas. Ularni
+> haqiqiy konversiyaga o'tkazish — ma'lumot to'plangandan keyin qabul qilinadigan qaror:
+> hozir o'tkazilsa, konversiya maqsadi sozlamagan har bir kompaniyada g'olib doim `null`
+> bo'lib qolardi.

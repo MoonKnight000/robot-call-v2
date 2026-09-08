@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
@@ -33,14 +34,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -76,7 +71,8 @@ class CallTaskConsumerTest {
         consumer = new CallTaskConsumer(
                 ariService, callRegistry, campaignService,
                 scenarioService, crmClient, audit, dialerState, doNotCallRepository, callRecordService,
-                clientMemoryService, mock(FactWebhookClient.class), aiAgents
+                clientMemoryService, mock(FactWebhookClient.class), aiAgents,
+                mock(CallBillingUseCase.class)
         );
     }
 

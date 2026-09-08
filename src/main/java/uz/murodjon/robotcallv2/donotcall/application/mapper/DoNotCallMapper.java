@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.donotcall.application.mapper;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallRow;
 import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCall;
 import uz.murodjon.robotcallv2.donotcall.infrastructure.persistence.entity.DoNotCallEntity;
@@ -26,7 +27,7 @@ public class DoNotCallMapper {
         );
     }
 
-    public DoNotCallEntity domainToEntity(DoNotCall domain) {
+    public DoNotCallEntity domainToEntity(DoNotCall domain, CompanyEntity company) {
         if (domain == null) {
             return null;
         }
@@ -38,7 +39,7 @@ public class DoNotCallMapper {
         entity.setCreatedAt(domain.getCreatedAt());
         entity.setRemovedAt(domain.getRemovedAt());
         entity.setRemovedBy(domain.getRemovedBy());
-        entity.setCompanyId(domain.getCompanyId());
+        entity.setCompany(company);
         return entity;
     }
 

@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
@@ -19,6 +20,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
@@ -30,11 +32,7 @@ import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
-import java.time.Clock;
-import java.time.DayOfWeek;
-import java.time.Duration;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +67,7 @@ public class DialerService {
     private final Clock clock;
     private final CampaignVariantUseCase campaignVariants;
     private final AiAgentUseCase aiAgents;
+    private final CallBillingUseCase callBilling;
 
     private final Map<Long, AtomicInteger> campaignTrunkCounters = new ConcurrentHashMap<>();
 
@@ -78,7 +77,8 @@ public class DialerService {
                          RabbitTemplate rabbit, DialerState state,
                          OutboundCallRegistry registry, AriService ariService,
                          GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock,
-                         CampaignVariantUseCase campaignVariants, AiAgentUseCase aiAgents) {
+                         CampaignVariantUseCase campaignVariants, AiAgentUseCase aiAgents,
+                         CallBillingUseCase callBilling) {
         this.dialerProperties = dialerProperties;
         this.rtpProperties = rtpProperties;
         this.campaigns = campaigns;
@@ -95,6 +95,7 @@ public class DialerService {
         this.clock = clock;
         this.campaignVariants = campaignVariants;
         this.aiAgents = aiAgents;
+        this.callBilling = callBilling;
     }
 
     @Scheduled(fixedDelayString = "#{${voice-agent.dialer.tick-seconds:5} * 1000}")
@@ -126,6 +127,13 @@ public class DialerService {
             }
             if (!agent.enabled()) {
                 log.debug("Campaign {} skipped: agent {} is disabled", campaign.id(), agent.id());
+                continue;
+            }
+            // Once per campaign per tick, before any target is claimed: claiming first
+            // would mark a batch as taken for a company that cannot pay for a single call.
+            if (!callBilling.hasBalanceForCall(campaign.companyId())) {
+                log.info("Campaign {} ({}) skipped: company {} has no balance left",
+                        campaign.id(), campaign.name(), campaign.companyId());
                 continue;
             }
 
@@ -161,7 +169,7 @@ public class DialerService {
             // the batch marked as taken with no call ever placed for it.
             List<SipTrunkRow> candidateTrunks;
             try {
-                candidateTrunks = sipTrunks.findTrunksForCall(campaign.companyId(), agent.sipTrunkIdsOrEmpty());
+                candidateTrunks = sipTrunks.findTrunksForCall(campaign.companyId(), agent.sipTrunkIds());
             } catch (ConflictException e) {
                 // Paused, not skipped. With no usable trunk the campaign cannot place a
                 // single call, and leaving it ACTIVE shows an owner a running campaign
@@ -185,6 +193,16 @@ public class DialerService {
             AtomicInteger counter = campaignTrunkCounters.computeIfAbsent(campaign.id(), k -> new AtomicInteger(0));
 
             for (CampaignTarget t : due) {
+                // The money before the slot: a hold that cannot be taken means this number
+                // is not dialled at all, and holding a concurrency slot for it would keep
+                // the next tenant's call out of a line nobody is using.
+                if (!callBilling.reserveForCall(campaign.companyId(), t.id())) {
+                    // Claimed a moment ago by claimDue; put it straight back so it is
+                    // dialled as soon as the company has money again, rather than sitting
+                    // IN_PROGRESS until the stale sweep notices.
+                    targets.updateStatus(t.id(), TargetStatus.PENDING, Instant.now(clock));
+                    continue;
+                }
                 state.reserve(campaign.companyId());
                 state.countDispatch(campaign.id(), today);
                 String language = t.language() != null ? t.language() : agent.language();

@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * Resolves the {@link TtsProvider} to speak an utterance with. Follows the same pattern
  * as {@link uz.murodjon.robotcallv2.agent.stt.SttProviderSelector} — multi-tenant
- * deployments let each company pick its own provider in {@code engine_config}, and the
+ * deployments let each agent pick its own provider ({@code ai_agent.tts_provider}), and the
  * app-wide {@code voice-agent.tts.provider} is the default when none is picked.
  */
 @Component

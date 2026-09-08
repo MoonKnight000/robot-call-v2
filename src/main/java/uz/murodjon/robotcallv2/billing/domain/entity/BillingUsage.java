@@ -21,23 +21,31 @@ public record BillingUsage(
         Instant createdAt,
         Instant updatedAt
 ) {
+    /**
+     * A fresh period: the plan's allowances, nothing used yet.
+     *
+     * <p>The used counters are zero and stay zero here — what a company has actually
+     * spent is summed from its settled calls ({@code call_billing}), not from a counter
+     * this row keeps. It used to start with invented usage, which is why every billing
+     * screen showed the same numbers to every company.
+     */
     public static BillingUsage defaultFor(long companyId, String period) {
         return new BillingUsage(
                 null,
                 companyId,
                 period,
-                3420,
+                0,
                 5000,
-                1250000L,
+                0L,
                 2000000L,
-                420000L,
+                0L,
                 1000000L,
-                14,
+                0,
                 30,
                 400.0,
                 0.05,
                 0.02,
-                1450000L,
+                0L,
                 Instant.now(),
                 Instant.now()
         );

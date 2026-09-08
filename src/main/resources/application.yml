@@ -75,6 +75,7 @@ spring:
       - classpath:config/dialog.yml
       - classpath:config/integrations.yml
       - classpath:config/misc.yml
+      - classpath:config/billing.yml
 
 server:
   port: 8080

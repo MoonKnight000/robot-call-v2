@@ -1,13 +1,10 @@
 package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceMethod;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 
 import java.time.Instant;
 
@@ -20,7 +17,17 @@ public class TargetSourceEntity {
     @Column(name = "campaign_id")
     private Long campaignId;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @MapsId
+    @JoinColumn(name = "campaign_id")
+    private CampaignEntity campaign;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    private TargetSourceProvider provider = TargetSourceProvider.GENERIC;
+
+    /** Null for a provider that reads from the CRM settings rather than its own address. */
+    @Column
     private String url;
 
     @Enumerated(EnumType.STRING)
@@ -57,6 +64,11 @@ public class TargetSourceEntity {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** The CHAINED provider's ordered steps, as stored JSON; null for every other one. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private String steps;
+
     @Column(name = "last_sync_at")
     private Instant lastSyncAt;
 
@@ -69,12 +81,25 @@ public class TargetSourceEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    public CampaignEntity getCampaign() {
+        return campaign;
+    }
+
+    /** {@code @MapsId}: the campaign is the key, so setting it also fills {@link #getCampaignId()}. */
+    public void setCampaign(CampaignEntity campaign) {
+        this.campaign = campaign;
+    }
+
     public Long getCampaignId() {
         return campaignId;
     }
 
-    public void setCampaignId(Long campaignId) {
-        this.campaignId = campaignId;
+    public TargetSourceProvider getProvider() {
+        return provider;
+    }
+
+    public void setProvider(TargetSourceProvider provider) {
+        this.provider = provider != null ? provider : TargetSourceProvider.GENERIC;
     }
 
     public String getUrl() {
@@ -171,6 +196,14 @@ public class TargetSourceEntity {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public String getSteps() {
+        return steps;
+    }
+
+    public void setSteps(String steps) {
+        this.steps = steps;
     }
 
     public Instant getLastSyncAt() {

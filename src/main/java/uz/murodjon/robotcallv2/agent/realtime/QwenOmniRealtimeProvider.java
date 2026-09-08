@@ -86,6 +86,12 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
     }
 
     @Override
+    public String resolveModel(RealtimeCallConfig config) {
+        QwenOmniRealtimeProperties q = realtimeProperties.qwenOmni();
+        return config.modelOr(q == null ? null : q.model());
+    }
+
+    @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
         QwenOmniRealtimeProperties q = realtimeProperties.qwenOmni();

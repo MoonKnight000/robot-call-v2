@@ -3,9 +3,11 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.List;
@@ -99,14 +101,28 @@ public class ClientInputGate {
 
         // Check for Voicemail / Answering machine transcript in early turns (turn <= 2)
         if (s.turnCount() <= 2 && isVoicemailTranscript(text)) {
-            log.info("[{}] Voicemail phrase detected in client transcript: '{}' -> ending as VOICEMAIL",
-                    s.channelId(), text);
+            log.info("[{}] Voicemail phrase detected in client transcript: '{}'", s.channelId(), text);
             s.setDisposition(Disposition.VOICEMAIL);
             s.end(Disposition.VOICEMAIL);
-            if (s.hangup() != null) {
-                s.hangup().run();
+
+            AiAgent agent = s.agent();
+            // HANGUP only when there is no agent at all: it has no message to leave.
+            VoicemailAction action = (agent != null)
+                    ? agent.callBehaviour().voicemailAction()
+                    : VoicemailAction.HANGUP;
+
+            if (action == VoicemailAction.IGNORE) {
+                log.info("[{}] Agent voicemailAction is IGNORE - continuing call despite voicemail phrase", s.channelId());
+            } else if (action == VoicemailAction.LEAVE_MESSAGE && agent.callBehaviour().voicemailMessage() != null && !agent.callBehaviour().voicemailMessage().isBlank()) {
+                log.info("[{}] Agent voicemailAction is LEAVE_MESSAGE - speaking voicemail message before hangup", s.channelId());
+                executors.submit(() -> turnRunner.leaveVoicemailAndClose(s, agent.callBehaviour().voicemailMessage()));
+                return;
+            } else {
+                if (s.hangup() != null) {
+                    s.hangup().run();
+                }
+                return;
             }
-            return;
         }
 
         adaptLanguage(s, text);
@@ -143,6 +159,10 @@ public class ClientInputGate {
         // turns it into a final. Without this the watchdog would prompt over a caller
         // whose speech simply failed to transcribe.
         s.touchActivity();
+        if (s.agent() != null && s.agent().callBehaviour().interruptionSensitivity() == InterruptionSensitivity.OFF) {
+            log.debug("[{}] barge-in ignored because agent interruption sensitivity is OFF", s.channelId());
+            return false;
+        }
         boolean playing = s.endpoint().isPlaying();
         if (!playing && !s.busy().get()) {
             log.debug("[{}] barge-in ignored — the bot owed the caller nothing", s.channelId());

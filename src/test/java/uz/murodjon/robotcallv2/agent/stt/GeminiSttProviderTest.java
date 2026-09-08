@@ -17,7 +17,7 @@ class GeminiSttProviderTest {
                 "gemini-3.5-transcribe-live", 16000, 10);
         SttProperties props = new SttProperties(
                 true, "gemini", "uz-UZ", List.of(), null, null, 0,
-                geminiProps, null, null, null, null);
+                geminiProps, null, null, null, null, null);
         VoiceMetrics metrics = mock(VoiceMetrics.class);
         GeminiSttProvider provider = new GeminiSttProvider(props, metrics);
 

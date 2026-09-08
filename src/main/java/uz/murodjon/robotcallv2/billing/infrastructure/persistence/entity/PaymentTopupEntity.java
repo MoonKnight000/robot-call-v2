@@ -1,9 +1,10 @@
 package uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import uz.murodjon.robotcallv2.billing.domain.entity.PaymentTopup;
 import uz.murodjon.robotcallv2.billing.domain.enums.PaymentMethod;
 import uz.murodjon.robotcallv2.billing.domain.enums.TopupStatus;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
 import java.time.Instant;
 
@@ -18,11 +19,17 @@ public class PaymentTopupEntity {
     @Column(name = "payment_id", nullable = false, unique = true, length = 64)
     private String paymentId;
 
-    @Column(name = "company_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private CompanyEntity company;
+
+    /** Read-only mirror of the join column, so derived queries can name it; writes go via the association. */
+    @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
-    @Column(name = "user_id")
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private UserEntity user;
 
     @Column(name = "amount_uzs", nullable = false)
     private Long amountUzs;
@@ -44,9 +51,6 @@ public class PaymentTopupEntity {
     @Column(name = "paid_at")
     private Instant paidAt;
 
-    public PaymentTopupEntity() {
-    }
-
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
@@ -54,44 +58,26 @@ public class PaymentTopupEntity {
         }
     }
 
-    public PaymentTopup toDomain() {
-        return new PaymentTopup(
-                id,
-                paymentId,
-                companyId,
-                userId,
-                amountUzs != null ? amountUzs : 0L,
-                paymentMethod,
-                status != null ? status : TopupStatus.PENDING,
-                checkoutUrl,
-                createdAt,
-                paidAt
-        );
-    }
-
-    public static PaymentTopupEntity fromDomain(PaymentTopup domain) {
-        PaymentTopupEntity entity = new PaymentTopupEntity();
-        entity.id = domain.id();
-        entity.paymentId = domain.paymentId();
-        entity.companyId = domain.companyId();
-        entity.userId = domain.userId();
-        entity.amountUzs = domain.amountUzs();
-        entity.paymentMethod = domain.paymentMethod();
-        entity.status = domain.status();
-        entity.checkoutUrl = domain.checkoutUrl();
-        entity.createdAt = domain.createdAt();
-        entity.paidAt = domain.paidAt();
-        return entity;
-    }
-
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
     public String getPaymentId() { return paymentId; }
-    public Long getCompanyId() { return companyId; }
-    public Long getUserId() { return userId; }
+    public void setPaymentId(String paymentId) { this.paymentId = paymentId; }
+    public CompanyEntity getCompany() { return company; }
+    public void setCompany(CompanyEntity company) { this.company = company; }
+    public Long getCompanyId() { return company != null ? company.getId() : null; }
+    public UserEntity getUser() { return user; }
+    public void setUser(UserEntity user) { this.user = user; }
+    public Long getUserId() { return user != null ? user.getId() : null; }
     public Long getAmountUzs() { return amountUzs; }
+    public void setAmountUzs(Long amountUzs) { this.amountUzs = amountUzs; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; }
     public TopupStatus getStatus() { return status; }
+    public void setStatus(TopupStatus status) { this.status = status; }
     public String getCheckoutUrl() { return checkoutUrl; }
+    public void setCheckoutUrl(String checkoutUrl) { this.checkoutUrl = checkoutUrl; }
     public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getPaidAt() { return paidAt; }
+    public void setPaidAt(Instant paidAt) { this.paidAt = paidAt; }
 }

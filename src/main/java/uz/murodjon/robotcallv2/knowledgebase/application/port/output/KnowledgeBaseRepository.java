@@ -14,7 +14,11 @@ public interface KnowledgeBaseRepository {
 
     Optional<KnowledgeItem> findByCompanyIdAndKey(long companyId, String key);
 
-    List<KnowledgeItem> findAllActiveByCompanyId(long companyId);
+    /**
+     * Everything the given agent may answer from — its own items and the company-wide
+     * ones. A null {@code agentId} asks for the company's items without narrowing.
+     */
+    List<KnowledgeItem> findAllActiveByCompanyIdAndAgentId(long companyId, Long agentId);
 
     List<KnowledgeItem> findAllByCompanyId(long companyId, KnowledgeItemFilter filter);
 

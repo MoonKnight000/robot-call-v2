@@ -1,0 +1,32 @@
+### 1. MCP ulanish qo'shish — server saqlash paytidayoq so'raladi
+POST http://localhost:8080/api/mcp/connections
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Uysot CRM",
+  "url": "https://mcp.uysot.uz/mcp",
+  "authType": "BEARER",
+  "secretKey": "UYSOT_MCP_TOKEN",
+  "allowWrites": false
+}
+
+### 2. Ulanishlar ro'yxati — status, toolCount va usableToolCount bilan
+GET http://localhost:8080/api/mcp/connections
+Authorization: Bearer {{auth_token}}
+
+### 3. Tool ro'yxatini qayta o'qish (server tool'lari o'zgargach yoki xatodan keyin)
+POST http://localhost:8080/api/mcp/connections/1/refresh
+Authorization: Bearer {{auth_token}}
+
+### 4. Agentga biriktirish
+POST http://localhost:8080/api/mcp/connections/1/agents/7
+Authorization: Bearer {{auth_token}}
+
+### 5. Agentdan ajratish
+DELETE http://localhost:8080/api/mcp/connections/1/agents/7
+Authorization: Bearer {{auth_token}}
+
+### 6. O'chirish
+DELETE http://localhost:8080/api/mcp/connections/1
+Authorization: Bearer {{auth_token}}

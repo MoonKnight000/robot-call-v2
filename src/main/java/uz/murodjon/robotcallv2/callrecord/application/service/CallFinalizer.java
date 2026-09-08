@@ -7,13 +7,16 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.summary.CallQualityJudge;
 import uz.murodjon.robotcallv2.agent.summary.SummaryService;
+import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
+import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
 import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
-import uz.murodjon.robotcallv2.engine.application.service.EngineConfigService;
-import uz.murodjon.robotcallv2.engine.domain.entity.EffectiveEngineConfig;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
@@ -46,17 +49,21 @@ public class CallFinalizer {
     private final CampaignService campaignService;
     private final NotificationService notificationService;
     private final VoiceMetrics metrics;
-    private final EngineConfigService engineConfigService;
+    private final SttProperties sttProperties;
+    private final TtsProperties ttsProperties;
     private final TtsVoiceService voices;
     private final VadProperties vadProperties;
     private final CallMemoryWriter memoryWriter;
+    private final PostCallActionExecutor postCallActionExecutor;
+    private final CallBillingUseCase callBilling;
     private final String llmModel;
 
     public CallFinalizer(CallRecordService records, SummaryService summaryService, CallQualityJudge qualityJudge,
                          AudioStorageService storage, CrmClient crmClient, ScenarioService scenarioService,
                          CampaignService campaignService, NotificationService notificationService,
-                         VoiceMetrics metrics, EngineConfigService engineConfigService, TtsVoiceService voices,
-                         VadProperties vadProperties, CallMemoryWriter memoryWriter,
+                         VoiceMetrics metrics, SttProperties sttProperties, TtsProperties ttsProperties,
+                         TtsVoiceService voices, VadProperties vadProperties, CallMemoryWriter memoryWriter,
+                         PostCallActionExecutor postCallActionExecutor, CallBillingUseCase callBilling,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.records = records;
         this.summaryService = summaryService;
@@ -67,10 +74,13 @@ public class CallFinalizer {
         this.campaignService = campaignService;
         this.notificationService = notificationService;
         this.metrics = metrics;
-        this.engineConfigService = engineConfigService;
+        this.sttProperties = sttProperties;
+        this.ttsProperties = ttsProperties;
         this.voices = voices;
         this.vadProperties = vadProperties;
         this.memoryWriter = memoryWriter;
+        this.postCallActionExecutor = postCallActionExecutor;
+        this.callBilling = callBilling;
         this.llmModel = llmModel;
     }
 
@@ -83,6 +93,14 @@ public class CallFinalizer {
     public Disposition finalizeCall(long callAttemptId, long clientId, long scenarioId, Path wav, Instant startedAt,
                                     Disposition disposition, String channelName, String trunk,
                                     DialogTechnicalSnapshot technical) {
+        return finalizeCall(callAttemptId, clientId, scenarioId, wav, startedAt, disposition, channelName, trunk, technical, null, null);
+    }
+
+    public Disposition finalizeCall(long callAttemptId, long clientId, long scenarioId, Path wav, Instant startedAt,
+                                    Disposition disposition, String channelName, String trunk,
+                                    DialogTechnicalSnapshot technical,
+                                    AiAgent agent,
+                                    String phone) {
         if (callAttemptId == 0) {
             return disposition;
         }
@@ -135,8 +153,20 @@ public class CallFinalizer {
                 log.warn("[{}] summary or quality scoring failed: {}", callAttemptId, e.getMessage());
             }
 
+            // Before the summary, and outside the block below: the conversation happened
+            // whether or not an LLM managed to summarise it, and a missing call-history row
+            // is a gap in the CRM's own reporting. recordUrl is deliberately not sent —
+            // Uysot downloads that link itself, and the recording lives in a MinIO bucket
+            // that is not reachable from outside this deployment.
+            try {
+                crmClient.postCallHistory(companyId, clientId, "voice-" + callAttemptId, startedAt, durationSec,
+                        records.isInbound(callAttemptId), wasAnswered(disposition), phone, null);
+            } catch (Exception e) {
+                log.warn("[{}] CRM call history failed: {}", callAttemptId, e.getMessage());
+            }
+
             if (summary != null) {
-                Long crmNoteId = null;
+                String crmNoteId = null;
                 try {
                     crmNoteId = crmClient.postNote(companyId, clientId, summary);
                 } catch (Exception e) {
@@ -176,6 +206,14 @@ public class CallFinalizer {
                     log.warn("[{}] hostile notification failed: {}", callAttemptId, e.getMessage());
                 }
 
+                if (agent != null) {
+                    try {
+                        postCallActionExecutor.executeActions(companyId, callAttemptId, phone, agent, disposition, summary);
+                    } catch (Exception e) {
+                        log.warn("[{}] post-call action execution failed: {}", callAttemptId, e.getMessage());
+                    }
+                }
+
                 log.info("Finalized call {} (dur={}s, disposition={}, sentiment={})",
                         callAttemptId, durationSec, disposition, summary.sentiment());
             } else {
@@ -183,14 +221,51 @@ public class CallFinalizer {
             }
 
             try {
-                writeTechnicalDetail(callAttemptId, companyId, disposition, channelName, trunk, technical);
+                writeTechnicalDetail(callAttemptId, companyId, disposition, channelName, trunk, technical, agent);
             } catch (Exception e) {
                 log.warn("[{}] writeTechnicalDetail failed: {}", callAttemptId, e.getMessage());
             }
+
+            settle(callAttemptId, companyId, durationSec, technical);
         } catch (Exception e) {
             log.warn("Finalization failed for call {}: {}", callAttemptId, e.getMessage());
         }
         return disposition;
+    }
+
+    /**
+     * Charges the call for what it consumed and gives back whatever the dialer held for it.
+     *
+     * <p>Last, after the record is written: a company should be able to see the call it
+     * was charged for, and a charge without its call is the harder thing to explain. The
+     * target is looked up rather than carried down here because that is what pairs the
+     * charge with the hold taken before the number was dialled.
+     */
+    private void settle(long callAttemptId, long companyId, int durationSec, DialogTechnicalSnapshot technical) {
+        try {
+            // Inbound and manual calls sit on a shared synthetic target that the dialer
+            // never holds money against, so looking one up for them simply finds nothing.
+            long targetId = records.targetIdOf(callAttemptId);
+            DialogTechnicalSnapshot counted = technical != null ? technical : DialogTechnicalSnapshot.NONE;
+            callBilling.settleCall(companyId, callAttemptId, targetId > 0 ? targetId : null,
+                    new CallUsage(durationSec, counted.promptTokens(), counted.completionTokens(),
+                            counted.cachedTokens(), counted.ttsChars()));
+        } catch (Exception e) {
+            log.warn("[{}] billing settlement failed: {}", callAttemptId, e.getMessage());
+        }
+    }
+
+    /**
+     * Whether anything picked the call up, for the CRM's call history. Derived from the
+     * disposition rather than {@code answered_at} because a call that ends before the
+     * dialog starts still has to be filed, and the three dispositions below are the only
+     * ones that mean nobody was ever on the line. A voicemail counts as answered: the
+     * carrier connected the call, and the CRM's own reporting counts it that way too.
+     */
+    private static boolean wasAnswered(Disposition disposition) {
+        return disposition != Disposition.NO_ANSWER
+                && disposition != Disposition.CARRIER_REJECTED
+                && disposition != Disposition.FAILED;
     }
 
     /** Whether the summary read a payment date off the conversation. */
@@ -224,12 +299,20 @@ public class CallFinalizer {
      * Resolves the bits of the "Texnik" tab (§10.5) that do not need to be captured
      * live — STT/TTS provider, LLM model, AMD result — and persists everything
      * together with what {@link DialogTechnicalSnapshot} already accumulated.
+     *
+     * <p>What ran the call decides all of it. On a REALTIME call one vendor did the
+     * recognition, the reasoning and the speech, so it is named as all three: the agent's
+     * cascade providers and the deployment's chat model were never touched, and filing the
+     * call under them is how a Gemini Live call came to read as Yandex.
      */
     private void writeTechnicalDetail(long callAttemptId, long companyId, Disposition disposition, String channelName,
-                                      String trunk, DialogTechnicalSnapshot technical) {
+                                      String trunk, DialogTechnicalSnapshot technical, AiAgent agent) {
         String amdResult = amdResult(disposition);
-        EffectiveEngineConfig engine = engineConfigService.findEffectiveByCompanyId(companyId);
-        String ttsProvider = engine.ttsProvider();
+        String engine = technical != null ? technical.engine() : null;
+        String agentStt = agent != null ? agent.speechEngine().sttProvider() : null;
+        String agentTts = agent != null ? agent.speechEngine().ttsProvider() : null;
+        String sttProvider = engine != null ? engine : chooseNonBlank(agentStt, sttProperties.provider());
+        String ttsProvider = engine != null ? engine : chooseNonBlank(agentTts, ttsProperties.provider());
         String ttsVoiceName = null;
         if (technical != null && technical.ttsVoice() != null) {
             TtsVoice voice = voices.find(technical.ttsVoice());
@@ -238,9 +321,15 @@ public class CallFinalizer {
                 ttsVoiceName = voice.name();
             }
         }
+        String model = chooseNonBlank(technical != null ? technical.llmModel() : null, llmModel);
         records.writeTechnicalDetail(callAttemptId, channelName, trunk, amdResult,
-                engine.sttProvider(), ttsProvider, ttsVoiceName,
-                llmModel == null || llmModel.isBlank() ? null : llmModel, technical);
+                sttProvider, ttsProvider, ttsVoiceName,
+                model == null || model.isBlank() ? null : model, technical);
+    }
+
+    /** {@code preferred} when it says something, otherwise {@code fallback}. */
+    private static String chooseNonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred : fallback;
     }
 
     private String amdResult(Disposition d) {
@@ -253,4 +342,3 @@ public class CallFinalizer {
         return "HUMAN";
     }
 }
-

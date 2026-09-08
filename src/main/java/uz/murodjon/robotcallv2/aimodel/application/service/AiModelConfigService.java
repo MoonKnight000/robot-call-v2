@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.aimodel.application.service;
 
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.aimodel.application.dto.UpdateAiModelConfigRequest;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
@@ -9,6 +8,7 @@ import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelConfigRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.aimodel.domain.service.AiModelConfigValidator;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -43,7 +43,7 @@ public class AiModelConfigService implements AiModelConfigUseCase {
         AiModelConfigValidator.validate(request.temperature(), request.maxOutputTokens(),
                 request.maxCallSeconds(), request.maxTokensPerCall());
         AiModelConfig saved = repository.upsert(companyId,
-                AiModelConfig.overrides(requireKnownModel(companyId, request.model()),
+                AiModelConfig.overrides(requireKnownModel(request.model()),
                         request.temperature(), request.maxOutputTokens(),
                         request.maxCallSeconds(), request.maxTokensPerCall()));
         auditService.record(companyId, "AI_MODEL_CONFIG_UPDATE", "ai_model_config",
@@ -71,14 +71,16 @@ public class AiModelConfigService implements AiModelConfigUseCase {
      * own default. Checked against the catalog so a typo is a 400 here instead of a call
      * that connects and then fails on the first turn.
      */
-    private String requireKnownModel(long companyId, String model) {
+    private String requireKnownModel(String model) {
         if (model == null || model.isBlank()) {
             return null;
         }
         String trimmed = model.trim();
-        if (!aiModelUseCase.isSelectable(companyId, trimmed)) {
+        // No mode to narrow by: this is the company-wide default an agent inherits when it
+        // names no model of its own, and the agent it lands on may run either pipeline.
+        if (!aiModelUseCase.isSelectable(AiModelKind.LLM, null, trimmed)) {
             throw new ValidationException(ErrorCode.AI_MODEL_UNKNOWN, trimmed,
-                    aiModelUseCase.findSelectableIds(companyId));
+                    aiModelUseCase.findSelectableIds(AiModelKind.LLM, null));
         }
         return trimmed;
     }

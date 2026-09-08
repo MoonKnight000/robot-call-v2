@@ -52,7 +52,7 @@ public class CallResultEntity {
     private boolean escalated;
 
     @Column(name = "crm_note_id")
-    private Long crmNoteId;
+    private String crmNoteId;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -153,11 +153,11 @@ public class CallResultEntity {
         this.escalated = escalated;
     }
 
-    public Long getCrmNoteId() {
+    public String getCrmNoteId() {
         return crmNoteId;
     }
 
-    public void setCrmNoteId(Long crmNoteId) {
+    public void setCrmNoteId(String crmNoteId) {
         this.crmNoteId = crmNoteId;
     }
 
