@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.voice.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.agent.audio.AudioTranscoder;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
 import uz.murodjon.robotcallv2.agent.stt.*;
@@ -78,23 +78,18 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
             // A realtime engine's voice, or a TTS vendor whose credentials are not configured.
             throw new ConflictException(ErrorCode.TTS_VOICE_PROVIDER_UNAVAILABLE, voiceId, voice.provider());
         }
-        EffectiveVoiceSettings style = voiceSettingsUseCase.effective(companyId).withRole(voice.role());
+        EffectiveVoiceSettings style = voiceSettingsUseCase.findEffectiveByCompanyId(companyId).withRole(voice.role());
         String speech = SpeechTextNormalizer.normalize(text, voice.language());
         short[] pcm = provider.synthesize(speech, voice.language(), voice.name(), style);
         return toWav(pcm);
     }
 
     @Override
-    public SttPreviewResponse previewStt(long companyId, MultipartFile file, String providerName, String language) {
+    public SttPreviewResponse previewStt(long companyId, UploadedFile file, String providerName, String language) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException(ErrorCode.AUDIO_UPLOAD_FILE_MISSING);
         }
-        byte[] upload;
-        try {
-            upload = file.getBytes();
-        } catch (IOException e) {
-            throw new ValidationException(ErrorCode.AUDIO_UPLOAD_INVALID, e.getMessage());
-        }
+        byte[] upload = file.bytes();
         SttProvider provider = resolveSttProvider(companyId, providerName);
         short[] samples = audioTranscoder.decode(upload, provider.sampleRate());
         long audioMs = samples.length * 1000L / provider.sampleRate();

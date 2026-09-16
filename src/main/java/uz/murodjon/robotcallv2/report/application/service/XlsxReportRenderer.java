@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.report.application.service;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.report.domain.entity.CampaignComparisonRow;
+import uz.murodjon.robotcallv2.report.domain.entity.CampaignComparison;
 import uz.murodjon.robotcallv2.report.domain.entity.DashboardOutcome;
 import uz.murodjon.robotcallv2.report.domain.entity.FunnelStage;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSummary;
@@ -73,7 +73,7 @@ public class XlsxReportRenderer {
                                 "answer_rate", "avg_duration_sec", "promises"},
                         summary.campaigns().size(),
                         (row, i) -> {
-                            CampaignComparisonRow c = summary.campaigns().get(i);
+                            CampaignComparison c = summary.campaigns().get(i);
                             row.createCell(0).setCellValue(c.campaignId());
                             row.createCell(1).setCellValue(c.campaignName());
                             row.createCell(2).setCellValue(c.totalCalls());

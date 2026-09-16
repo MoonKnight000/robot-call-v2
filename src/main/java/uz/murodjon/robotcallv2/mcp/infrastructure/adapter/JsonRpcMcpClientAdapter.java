@@ -12,15 +12,12 @@ import uz.murodjon.robotcallv2.mcp.domain.entity.McpConnection;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpTool;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.shared.http.PublicHttpClient;
+import uz.murodjon.robotcallv2.shared.http.PublicHttpRequest;
+import uz.murodjon.robotcallv2.shared.http.PublicHttpResponse;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,9 +34,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * HTTP stack whose timeouts and address screening are not ours to set, on a path that runs
  * while somebody is waiting on the phone.
  *
- * <p>Every request re-screens the address with {@link PublicUrlGuard} and refuses
- * redirects, for the same reason every other outbound call in this application does: the
- * URL was typed by a customer.
+ * <p>Every request re-screens the address with {@link PublicUrlGuard}, goes through the
+ * shared {@link PublicHttpClient} (DNS pinned to public addresses) and refuses redirects,
+ * for the same reason every other outbound call in this application does: the URL was
+ * typed by a customer.
  */
 @Component
 public class JsonRpcMcpClientAdapter implements McpClientPort {
@@ -65,20 +63,17 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
 
     private final AtomicLong requestIds = new AtomicLong();
 
-    // Redirects are never followed: the guard screens the address that was configured,
-    // and a 302 is the far end picking a second one after that check has passed.
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
+    // The shared client: DNS pinned to public addresses, and redirects never followed —
+    // the guard screens the address that was configured, and a 302 is the far end picking
+    // a second one after that check has passed.
+    private final PublicHttpClient httpClient = PublicHttpClient.create(Duration.ofSeconds(5), LIST_TIMEOUT);
 
     @Override
     public List<McpTool> listTools(McpConnection connection, String bearerToken) {
         JsonNode result = rpc(connection, bearerToken, "tools/list", MAPPER.createObjectNode(), LIST_TIMEOUT);
         JsonNode tools = result.path("tools");
         if (!tools.isArray()) {
-            throw new ExternalServiceException(ErrorCode.MCP_RESPONSE_INVALID, SERVICE,
-                    connection.name(), "tools/list did not answer with a tools array");
+            throw new ExternalServiceException(ErrorCode.MCP_RESPONSE_INVALID, SERVICE, connection.name());
         }
         List<McpTool> discovered = new ArrayList<>();
         for (JsonNode tool : tools) {
@@ -145,22 +140,23 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
         envelope.set("params", params);
 
         try {
-            HttpRequest.Builder request = HttpRequest.newBuilder(uri)
-                    .timeout(timeout)
-                    .header("Content-Type", "application/json")
+            PublicHttpRequest request = PublicHttpRequest.create("POST", uri)
+                    .setTimeout(timeout)
+                    // Read at all; anything past this is not a tool result.
+                    .setMaxResponseBytes(MAX_RESPONSE_BYTES)
+                    .addHeader("Content-Type", "application/json")
                     // Both, because a streamable-HTTP server may answer either way; the
                     // two calls made here have a plain JSON answer in practice.
-                    .header("Accept", "application/json, text/event-stream")
-                    .header("MCP-Protocol-Version", PROTOCOL_VERSION)
-                    .POST(HttpRequest.BodyPublishers.ofString(envelope.toString(), StandardCharsets.UTF_8));
+                    .addHeader("Accept", "application/json, text/event-stream")
+                    .addHeader("MCP-Protocol-Version", PROTOCOL_VERSION)
+                    .setBody(envelope.toString());
             if (bearerToken != null && !bearerToken.isBlank()) {
-                request.header("Authorization", "Bearer " + bearerToken);
+                request.addHeader("Authorization", "Bearer " + bearerToken);
             }
 
-            HttpResponse<InputStream> response =
-                    httpClient.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
+            PublicHttpResponse response = httpClient.send(request);
             int status = response.statusCode();
-            String body = readCapped(response.body());
+            String body = response.readBodyText();
 
             if (status == 401 || status == 403) {
                 throw new ExternalServiceException(ErrorCode.MCP_AUTH_REQUIRED, SERVICE, connection.name());
@@ -172,16 +168,20 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
 
             JsonNode envelopeNode = MAPPER.readTree(stripEventStream(body));
             if (envelopeNode.has("error")) {
-                throw new ExternalServiceException(ErrorCode.MCP_REQUEST_FAILED, SERVICE,
-                        connection.name(), envelopeNode.path("error").path("message").asText("error"));
+                JsonNode error = envelopeNode.path("error");
+                // The server's own wording is vendor text: it goes to the log, the message
+                // carries only the JSON-RPC error code.
+                log.warn("MCP {} on '{}' answered error {}: {}", method, connection.name(),
+                        error.path("code").asInt(), error.path("message").asText(""));
+                throw new ExternalServiceException(ErrorCode.MCP_SERVER_ERROR, SERVICE,
+                        connection.name(), error.path("code").asInt());
             }
             return envelopeNode.path("result");
         } catch (ExternalServiceException e) {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ExternalServiceException(ErrorCode.MCP_REQUEST_FAILED, SERVICE, e,
-                    connection.name(), "interrupted");
+            throw new ExternalServiceException(ErrorCode.MCP_REQUEST_INTERRUPTED, SERVICE, e, connection.name());
         } catch (Exception e) {
             log.debug("MCP {} failed for {}: {}", method, connection.name(), e.getMessage());
             throw new ExternalServiceException(ErrorCode.MCP_REQUEST_FAILED, SERVICE, e,
@@ -204,11 +204,5 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
                 .map(line -> line.substring("data:".length()).trim())
                 .findFirst()
                 .orElse(trimmed);
-    }
-
-    private static String readCapped(InputStream body) throws IOException {
-        try (InputStream stream = body) {
-            return new String(stream.readNBytes(MAX_RESPONSE_BYTES), StandardCharsets.UTF_8);
-        }
     }
 }

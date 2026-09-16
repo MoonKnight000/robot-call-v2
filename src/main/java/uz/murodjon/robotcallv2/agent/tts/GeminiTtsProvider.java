@@ -15,8 +15,10 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
@@ -140,8 +142,8 @@ public class GeminiTtsProvider implements TtsProvider {
         try {
             HttpResponse<Stream<String>> response = current.send(request, HttpResponse.BodyHandlers.ofLines());
             if (response.statusCode() != 200) {
-                throw new ExternalServiceException(ErrorCode.TTS_GEMINI_SYNTH_FAILED, "gemini-tts",
-                        "HTTP " + response.statusCode());
+                throw new ExternalServiceException(ErrorCode.TTS_GEMINI_HTTP_STATUS, "gemini-tts",
+                        response.statusCode());
             }
 
             int sourceRate = resolveSampleRate();
@@ -206,6 +208,9 @@ public class GeminiTtsProvider implements TtsProvider {
             }
         } catch (ExternalServiceException e) {
             throw e;
+        } catch (ConnectException | HttpConnectTimeoutException e) {
+            // Nothing was sent: the network or the endpoint is down, not the request wrong.
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_CONNECT_FAILED, "gemini-tts", e, e.getMessage());
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.TTS_GEMINI_SYNTH_FAILED, "gemini-tts", e, e.getMessage());
         }

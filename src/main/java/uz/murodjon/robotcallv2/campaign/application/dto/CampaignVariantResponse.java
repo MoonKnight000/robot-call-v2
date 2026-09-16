@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.campaign.application.dto;
 
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+
 import java.time.Instant;
 
 /**
@@ -11,6 +13,7 @@ import java.time.Instant;
  * happening (conversions.md). Both are shown because they answer different questions, and
  * a company that has configured no goals still has the first.
  *
+ * @param pipelineMode         the pipeline the variant's calls run on; null = the agent's own
  * @param spentUzs             what this variant's settled calls were charged
  * @param costPerConversionUzs spend divided by real conversions, or null when there are none
  */
@@ -22,6 +25,7 @@ public record CampaignVariantResponse(
         Long aiAgentId,
         String promptOverride,
         String ttsVoiceId,
+        PipelineMode pipelineMode,
         int trafficWeight,
         int callsCount,
         int answeredCount,

@@ -24,8 +24,16 @@ import java.util.List;
  * never reaches the model and keeps the timer it has today
  * ({@code DynamicEndpointingProperties}).
  *
+ * <p>Everything here works by changing how long the speech gate waits, so it only runs
+ * when there <em>is</em> a gate: {@code stt.vad-gating.enabled} has to be on as well. Turn
+ * gating off and this whole block is inert; the app says so at startup rather than leaving
+ * it to be discovered mid-tuning-session.
+ *
  * @param enabled     master switch. Off, or with no model file, the wait is the timer's
- *                    alone and nothing below is loaded
+ *                    alone and nothing below is loaded. Off today for both reasons —
+ *                    there is no ONNX file at {@code modelPath}, and {@code languages} is
+ *                    ru-RU, so a uz-UZ call would never be scored anyway
+ *                    (VOICE-QUALITY-PLAN A.1, docs/REGRESSION.md §4)
  * @param modelPath   path to the Smart Turn ONNX file. Blank leaves detection unavailable,
  *                    exactly as a missing VAD model does — non-fatal, and logged
  * @param languages   BCP-47 languages the model is trusted for. A call in anything else
@@ -39,7 +47,10 @@ import java.util.List;
  *                    the only place the model shortens anything, and it is where most of
  *                    the turnaround budget is: a second of post-roll is a second the
  *                    caller spends listening to nothing. 0 disables early closing and
- *                    leaves the model extending only
+ *                    leaves the model extending only — where it stands, because this is
+ *                    also what puts a model in charge of interrupting people. Turn it on
+ *                    once a replay run ({@code TurnReplayTool}) over real recordings says
+ *                    the turn boundaries hold
  * @param earlyThreshold probability required for that. Deliberately far above
  *                    {@link #threshold()}: extending a wait on a wrong answer costs a few
  *                    hundred milliseconds, cutting one costs the caller their sentence

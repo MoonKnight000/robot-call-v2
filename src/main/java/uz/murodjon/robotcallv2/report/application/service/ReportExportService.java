@@ -1,10 +1,11 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
 import uz.murodjon.robotcallv2.report.application.dto.ReportDownload;
+import uz.murodjon.robotcallv2.report.application.port.input.DashboardReportUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportExportUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
-import uz.murodjon.robotcallv2.report.domain.entity.CallDetail;
 import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSummary;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -19,17 +20,20 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 public class ReportExportService implements ReportExportUseCase {
 
     private final ReportUseCase reportUseCase;
+    private final DashboardReportUseCase dashboardReportUseCase;
     private final CsvReportRenderer csvReportRenderer;
     private final PdfReportRenderer pdfReportRenderer;
     private final XlsxReportRenderer xlsxReportRenderer;
     private final TranscriptRenderer transcriptRenderer;
 
     public ReportExportService(ReportUseCase reportUseCase,
+                               DashboardReportUseCase dashboardReportUseCase,
                                CsvReportRenderer csvReportRenderer,
                                PdfReportRenderer pdfReportRenderer,
                                XlsxReportRenderer xlsxReportRenderer,
                                TranscriptRenderer transcriptRenderer) {
         this.reportUseCase = reportUseCase;
+        this.dashboardReportUseCase = dashboardReportUseCase;
         this.csvReportRenderer = csvReportRenderer;
         this.pdfReportRenderer = pdfReportRenderer;
         this.xlsxReportRenderer = xlsxReportRenderer;
@@ -38,8 +42,8 @@ public class ReportExportService implements ReportExportUseCase {
 
     @Override
     public ReportDownload exportSummary(long companyId, String format, String from, String to, Long campaignId) {
-        ReportSummary summary = reportUseCase.summary(companyId, from, to, campaignId);
-        return new ReportDownload("report." + normalize(format), contentType(format),
+        ReportSummary summary = dashboardReportUseCase.findSummary(companyId, from, to, campaignId);
+        return new ReportDownload("report." + normalize(format), resolveContentType(format),
                 renderSummaryBytes(format, summary));
     }
 
@@ -51,7 +55,7 @@ public class ReportExportService implements ReportExportUseCase {
 
     @Override
     public ReportDownload exportTranscript(long companyId, long callId) {
-        CallDetail detail = reportUseCase.call(companyId, callId);
+        CallDetail detail = reportUseCase.findCallDetail(companyId, callId);
         return new ReportDownload("call-" + callId + "-transcript.txt", transcriptRenderer.contentType(),
                 transcriptRenderer.renderBytes(detail));
     }
@@ -67,7 +71,7 @@ public class ReportExportService implements ReportExportUseCase {
     }
 
     @Override
-    public String contentType(String format) {
+    public String resolveContentType(String format) {
         return switch (normalize(format)) {
             case "csv" -> csvReportRenderer.contentType();
             case "pdf" -> pdfReportRenderer.contentType();

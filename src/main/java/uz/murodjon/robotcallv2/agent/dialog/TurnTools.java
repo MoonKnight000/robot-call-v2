@@ -17,10 +17,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
 import java.util.*;
 
@@ -42,22 +44,14 @@ public class TurnTools {
 
     private static final Logger log = LoggerFactory.getLogger(TurnTools.class);
 
-    /**
-     * Tools every stage needs regardless of scenario (ROADMAP A.1/A.3 — the fixed
-     * universal set every {@code ScenarioDefinition} gets on top of its own declared
-     * tools): the FSM has to be able to move, escalate, flag the wrong person, honour
-     * an opt-out, and hang up from anywhere in the call.
-     */
-    private static final Set<String> ALWAYS_AVAILABLE_TOOLS =
-            Set.of("transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall");
-
     private final DialogProperties dialogProperties;
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final HttpToolExecutor httpToolExecutor;
     private final McpToolCallbackFactory mcpToolCallbackFactory;
+    private final CatalogSearchUseCase catalogSearch;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null);
     }
 
     @Autowired
@@ -65,12 +59,14 @@ public class TurnTools {
             DialogProperties dialogProperties,
             ObjectProvider<ChatModel> chatModelProvider,
             HttpToolExecutor httpToolExecutor,
-            McpToolCallbackFactory mcpToolCallbackFactory
+            McpToolCallbackFactory mcpToolCallbackFactory,
+            CatalogSearchUseCase catalogSearch
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
         this.httpToolExecutor = httpToolExecutor;
         this.mcpToolCallbackFactory = mcpToolCallbackFactory;
+        this.catalogSearch = catalogSearch;
     }
 
     /**
@@ -102,7 +98,7 @@ public class TurnTools {
             // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
             // are universal and always included; recordPaymentPromise/recordRefusalReason
             // only when this scenario actually declares them.
-            if (ALWAYS_AVAILABLE_TOOLS.contains(name) || declared.contains(name)) {
+            if (DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES.contains(name) || declared.contains(name)) {
                 callbacks.add(fixed);
             }
         }
@@ -116,11 +112,17 @@ public class TurnTools {
         if (httpToolExecutor != null && s.tools() != null && !s.tools().isEmpty()) {
             Map<String, Object> callVars = buildCallVariables(s);
             for (Tool tool : s.tools()) {
-                callbacks.add(httpToolExecutor.buildCallback(tool, s, callVars));
+                // Never declared, so never argued into — McpToolGuard's rule for MCP tools
+                // (UNIVERSAL-OPERATOR-PLAN B.3).
+                if (tool.effect() != ToolEffect.DESTRUCTIVE) {
+                    callbacks.add(httpToolExecutor.buildCallback(tool, s, callVars));
+                }
             }
         }
         List<ToolCallback> mcp = mcpTools(s);
         callbacks.addAll(mcp);
+        List<ToolCallback> catalog = catalogTools(s);
+        callbacks.addAll(catalog);
         if (!dialogProperties.stateScopedTools()) {
             return callbacks;
         }
@@ -128,8 +130,10 @@ public class TurnTools {
         // A scenario's stages name the tools they allow, and they cannot name a tool that
         // came from a server the company connected afterwards. An MCP tool is therefore
         // available wherever the call is: what it may do was already decided by
-        // McpToolGuard, which is the check that matters.
+        // McpToolGuard, which is the check that matters. The catalog search is the same:
+        // a lookup the caller may need at any stage, and it changes nothing.
         mcp.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
+        catalog.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
                 .toList();
@@ -152,6 +156,29 @@ public class TurnTools {
         return cached;
     }
 
+    /**
+     * The catalog search, for an agent that has a catalog (UNIVERSAL-OPERATOR-PLAN B.4).
+     * Whether it has one is asked once per call and kept on the session, like the MCP tools:
+     * the tool list goes out on every turn, and a query per turn would sit inside the pause.
+     */
+    private List<ToolCallback> catalogTools(DialogSession s) {
+        if (catalogSearch == null) {
+            return List.of();
+        }
+        Long agentId = TurnShortcuts.findAgentId(s);
+        Boolean available = s.catalogAvailable();
+        if (available == null) {
+            available = catalogSearch.existsByCompanyIdAndAgentId(s.companyId(), agentId);
+            s.setCatalogAvailable(available);
+        }
+        if (!available) {
+            return List.of();
+        }
+        return List.of(MethodToolCallbackProvider.builder()
+                .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch))
+                .build().getToolCallbacks());
+    }
+
     private static Set<String> declaredToolNames(ScenarioDefinition def) {
         if (def.tools() == null) {
             return Set.of();
@@ -168,7 +195,7 @@ public class TurnTools {
      */
     private static Set<String> allowedTools(DialogSession s) {
         StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
-        Set<String> allowed = new HashSet<>(ALWAYS_AVAILABLE_TOOLS);
+        Set<String> allowed = new HashSet<>(DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES);
         if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
             allowed.add("sendMidCallSms");
         }
@@ -201,6 +228,12 @@ public class TurnTools {
         if (s.context() != null && s.context().facts() != null) {
             vars.putAll(s.context().facts());
         }
+        // The number on the line, for a tool body's "x-source: variable" phone — an inbound
+        // call's facts do not carry it (UNIVERSAL-OPERATOR-PLAN C.2, create_order).
+        String phone = s.context() != null ? s.context().clientPhone() : null;
+        if (phone != null) {
+            vars.putIfAbsent("phone", phone);
+        }
         return vars;
     }
 
@@ -230,6 +263,23 @@ public class TurnTools {
 
     /**
      * The same, on a different model for this one turn.
+     *
+     * <p>The output cap is the model's whole budget, thinking tokens included, so it
+     * bounds the reasoning and not just the sentence the caller hears. At 256 a turn that
+     * thought for a moment hit the cap before writing anything and came back empty — the
+     * log said "empty LLM reply in REASON_INQUIRY", and the retry that follows costs a
+     * whole extra round trip inside the turnaround budget. Reply length is held down by
+     * the speech rules in the prompt ("ko'pi bilan ikki qisqa gap"), not by this, and
+     * raising it costs nothing because only tokens actually generated are billed.
+     *
+     * <p>The vendor is decided here from the model id, and it has to agree with
+     * {@code spring.ai.openai.base-url}: the ids in the model catalog are OpenAI's, and a
+     * catalog listing one vendor's ids while the URL points at another is exactly the
+     * failure this branch exists to prevent. That slot used to point at Groq's
+     * OpenAI-compatible endpoint, which meant {@code LLM_CHAT_PROVIDER=openai} reached
+     * Groq and ChatGPT was unreachable however the key was set. It stays configurable, so
+     * any OpenAI-compatible vendor is still one environment variable away — with a catalog
+     * to match.
      *
      * @param model the model to use instead of the company's configured one, or
      *              {@code null} to keep it. A one-word acknowledgement does not need the
@@ -265,7 +315,7 @@ public class TurnTools {
                 // real call ran every tool twice — once in the framework's loop, once in
                 // run() — and paid an LLM round trip for each: 35 tool executions and an
                 // 11s reply on a seven-line call. Worse, a speculative request
-                // (TurnRunner#startSpeculation) carries these same live callbacks, so the
+                // (SpeculationManager#startSpeculation) carries these same live callbacks, so the
                 // framework was moving the FSM and recording payment promises from a guess
                 // at what the caller was still in the middle of saying.
                 .internalToolExecutionEnabled(false)

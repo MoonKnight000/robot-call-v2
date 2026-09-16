@@ -33,6 +33,7 @@ public final class ScenarioValidator {
         checkTools(def.tools(), errors);
         checkStageTools(def.stages(), def.tools(), errors);
         checkOutcome(def.outcomeSchema(), errors);
+        checkStyleExamples(def.styleExamples(), errors);
         checkDisclosure(def.disclosureText(), errors);
         checkFactWebhook(def.factWebhook(), def.factSchema(), errors);
         return errors;
@@ -191,6 +192,21 @@ public final class ScenarioValidator {
             return;
         }
         checkNamesUnique("outcome field", outcome.stream().map(OutcomeField::name).toList(), errors);
+        if (outcome.stream().filter(OutcomeField::goal).count() > 1) {
+            errors.add("only one outcome field may be the goal — a call reaches one goal or none");
+        }
+    }
+
+    private static void checkStyleExamples(List<StyleExample> examples, List<String> errors) {
+        if (examples == null) {
+            return;
+        }
+        for (StyleExample example : examples) {
+            if (example == null || example.wrong() == null || example.wrong().isBlank()
+                    || example.right() == null || example.right().isBlank()) {
+                errors.add("a style example needs both 'wrong' and 'right'");
+            }
+        }
     }
 
     private static void checkNamesUnique(String what, List<String> names, List<String> errors) {

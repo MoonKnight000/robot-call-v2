@@ -17,6 +17,9 @@ public enum PermissionGroup {
     AUDIT,
     DO_NOT_CALL,
     INBOUND_ROUTE,
+    CALL_FLOW,
+    CALL_QUEUE,
+    MISSED_CALL,
     SIP_TRUNK,
     USER,
     ROLE,
@@ -28,5 +31,6 @@ public enum PermissionGroup {
     INTEGRATION,
     BILLING,
     API_KEY,
+    QUALITY_REVIEW,
     PLATFORM
 }

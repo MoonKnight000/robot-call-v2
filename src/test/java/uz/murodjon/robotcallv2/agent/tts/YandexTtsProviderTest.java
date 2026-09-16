@@ -69,7 +69,7 @@ class YandexTtsProviderTest {
                 Map.of("nigora", List.of(),
                         "alena", List.of("neutral", "good"),
                         "omazh", List.of("neutral", "evil")),
-                "tts.api.cloud.yandex.net", 443, 8000, 0);
+                "tts.api.cloud.yandex.net", 443, 8000, 0, 10000);
         return new YandexTtsProvider(new TtsProperties(
                 true, "yandex", "uz-UZ", null, null, null, yandex, null, null, null));
     }

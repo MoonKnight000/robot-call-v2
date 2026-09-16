@@ -9,8 +9,6 @@ import uz.murodjon.robotcallv2.profile.application.port.output.PersonalNotificat
 import uz.murodjon.robotcallv2.profile.domain.entity.PersonalNotificationMatrixEntry;
 import uz.murodjon.robotcallv2.profile.infrastructure.persistence.entity.PersonalNotificationMatrixEntity;
 import uz.murodjon.robotcallv2.profile.infrastructure.persistence.repository.PersonalNotificationMatrixJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
@@ -43,10 +41,8 @@ public class PersonalNotificationMatrixRepositoryAdapter implements PersonalNoti
     public List<PersonalNotificationMatrixEntry> save(long companyId, long userId,
                                                      List<PersonalNotificationMatrixEntry> rows) {
         personalNotificationMatrixJpaRepository.deleteByUserId(userId);
-        UserEntity user = userJpaRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity comp = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        UserEntity user = userJpaRepository.getReferenceById(userId);
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         for (PersonalNotificationMatrixEntry row : rows) {
             PersonalNotificationMatrixEntity entity = new PersonalNotificationMatrixEntity();

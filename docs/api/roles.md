@@ -1,5 +1,3 @@
-| `BILLING` | `BILLING_READ` | `BILLING_EDIT` |
-| `API_KEY` | `API_KEY_READ` | `API_KEY_EDIT` |
 # Rollar va huquqlar API
 
 `uz.murodjon.robotcallv2.role` · huquq: **ROLE_READ** (o'qish) / **ROLE_EDIT** (yozish)
@@ -24,7 +22,7 @@ Backendda har bir endpoint aynan bitta permissionga bog'langan
 
 | Tur | `code` | `system` | Permissionlari |
 |---|---|---|---|
-| Tizim roli | `DEVELOPER`, `ADMIN`, `OPERATOR`, `VIEWER`, `SUPERADMIN` | `true` | Kodda hisoblanadi (`SystemRole.java`), DB da saqlanmaydi — shuning uchun yangi permission qo'shilsa avtomatik qamrab oladi |
+| Tizim roli | `DEVELOPER`, `ADMIN`, `OPERATOR`, `SUPERVISOR`, `VIEWER`, `SUPERADMIN` | `true` | Kodda hisoblanadi (`SystemRole.java`), DB da saqlanmaydi — shuning uchun yangi permission qo'shilsa avtomatik qamrab oladi |
 | Kompaniyaning o'z roli | `null` | `false` | `app_role_permission` jadvalida saqlanadi, admin o'zi tanlaydi |
 
 Tizim rollari har bir kompaniyaga avtomatik seed qilinadi va **tahrirlab ham, o'chirib ham
@@ -37,8 +35,9 @@ rolini yaratadi (`409 ROLE_LIMIT_EXCEEDED`).
 |---|---|
 | `DEVELOPER` | Kompaniyadagi **barcha** permissionlar, doimiy — kelajakda qo'shiladigan yangi permissionlar ham. Faqat platforma xodimi bera oladi |
 | `ADMIN` | `ENGINE_EDIT` dan tashqari hammasi (speech engine sozlamasi noto'g'ri bo'lsa butun kompaniya qo'ng'irog'i buziladi — u DEVELOPER da qoladi) |
-| `OPERATOR` | Kundalik ish: kampaniya, qo'ng'iroq, jonli monitoring, kontakt, DNC (READ+EDIT); stsenariy, agent, bilim bazasi, hisobot, ovoz — faqat READ |
-| `VIEWER` | Faqat operatsion READ: dashboard, kampaniya, qo'ng'iroq, jonli, kontakt, stsenariy, agent, bilim bazasi, hisobot, DNC, kiruvchi marshrutlar |
+| `OPERATOR` | Kundalik ish: kampaniya, qo'ng'iroq, jonli monitoring, operator paneli, kontakt, DNC, javobsiz qo'ng'iroqlar (READ+EDIT); dashboard, stsenariy, agent, bilim bazasi, hisobot, kiruvchi marshrutlar, operatorlar navbati, ovoz — faqat READ |
+| `SUPERVISOR` | Operatorlar zalini boshqaradi: `OPERATOR` ning hammasi + `CALL_MONITOR` (boshqaning jonli qo'ng'irog'ini tinglash/whisper/barge), `CALL_QUEUE_EDIT` (navbatlar va a'zolar), `CALL_FLOW_READ`, `USER_READ`, `QUALITY_REVIEW_READ` / `QUALITY_REVIEW_EDIT` (qo'ng'iroq review inbox'i). `USER_EDIT` yo'q — SIP akkaunt bera olmaydi |
+| `VIEWER` | Faqat operatsion READ: dashboard, kampaniya, qo'ng'iroq, jonli, kontakt, stsenariy, agent, bilim bazasi, hisobot, DNC, kiruvchi marshrutlar, operatorlar navbati |
 | `SUPERADMIN` | Barcha kompaniya permissionlari + `PLATFORM_ADMIN` (kompaniya yaratish, ro'yxat, statusini o'zgartirish). Faqat platforma kompaniyasida mavjud |
 
 `DEVELOPER` va `SUPERADMIN` ni kompaniyaning o'z admini bera olmaydi — `403
@@ -191,7 +190,7 @@ so'rovda `401` olib, qayta login qiladilar.
 | `DASHBOARD` | `DASHBOARD_READ` | — |
 | `CAMPAIGN` | `CAMPAIGN_READ` | `CAMPAIGN_EDIT` |
 | `CALL` | `CALL_READ` | `CALL_EDIT` |
-| `LIVE` | `LIVE_READ` | `LIVE_EDIT` |
+| `LIVE` | `LIVE_READ` | `LIVE_EDIT`, `CALL_MONITOR` |
 | `OPERATOR` | `OPERATOR_READ` | `OPERATOR_EDIT` |
 | `CONTACT` | `CONTACT_READ` | `CONTACT_EDIT` |
 | `AI_AGENT` | `AI_AGENT_READ` | `AI_AGENT_EDIT` |
@@ -200,6 +199,9 @@ so'rovda `401` olib, qayta login qiladilar.
 | `AUDIT` | `AUDIT_READ` | — |
 | `DO_NOT_CALL` | `DO_NOT_CALL_READ` | `DO_NOT_CALL_EDIT` |
 | `INBOUND_ROUTE` | `INBOUND_ROUTE_READ` | `INBOUND_ROUTE_EDIT` |
+| `CALL_FLOW` | `CALL_FLOW_READ` | `CALL_FLOW_EDIT` |
+| `CALL_QUEUE` | `CALL_QUEUE_READ` | `CALL_QUEUE_EDIT` |
+| `MISSED_CALL` | `MISSED_CALL_READ` | `MISSED_CALL_EDIT` |
 | `SIP_TRUNK` | `SIP_TRUNK_READ` | `SIP_TRUNK_EDIT` |
 | `USER` | `USER_READ` | `USER_EDIT` |
 | `ROLE` | `ROLE_READ` | `ROLE_EDIT` |
@@ -211,11 +213,27 @@ so'rovda `401` olib, qayta login qiladilar.
 | `INTEGRATION` | `INTEGRATION_READ` | `INTEGRATION_EDIT` |
 | `BILLING` | `BILLING_READ` | `BILLING_EDIT` |
 | `API_KEY` | `API_KEY_READ` | `API_KEY_EDIT` |
+| `QUALITY_REVIEW` | `QUALITY_REVIEW_READ` | `QUALITY_REVIEW_EDIT` |
 | `PLATFORM` | — | `PLATFORM_ADMIN` (faqat SUPERADMIN) |
+
+Yangi guruhlar:
+
+- **`CALL_FLOW`** — call flow'lar, ish jadvallari, bayramlar, ovozli pochta qutilari va
+  kiruvchi qo'ng'iroq qiluvchi qoidalari.
+- **`CALL_QUEUE`** — operatorlar navbatlari va ularning a'zolari, wallboard
+  ([call-queues.md](call-queues.md)).
+- **`MISSED_CALL`** — javobsiz qo'ng'iroqlar va ularga qoldirilgan ovozli xabarlar —
+  operatorning ish ro'yxati ([missed-calls.md](missed-calls.md)).
+- **`CALL_MONITOR`** (`LIVE` guruhida, juftsiz) — supervisor: boshqa odamning jonli
+  qo'ng'irog'iga o'z telefoni orqali ulanib tinglash, operatorga whisper yoki barge
+  (`POST /api/calls/{channelId}/monitor`). `GET /api/roles/permissions` da `LIVE`
+  guruhi `["LIVE_READ", "LIVE_EDIT", "CALL_MONITOR"]` bo'lib keladi.
+- **`QUALITY_REVIEW`** — sifat hakami belgilagan AI qo'ng'iroqlar va ularga odam bahosi
+  ([call-reviews.md](call-reviews.md)). `ADMIN` va `SUPERVISOR` da bor, API kalitiga berilmaydi.
 
 **Permissionsiz endpointlar** (har qanday login qilgan foydalanuvchi uchun ochiq):
 `/api/auth/me`, `/api/auth/logout`, `/api/profile/**`, `/api/notifications/**`,
-`/api/files/**`, `/api/search`, `/api/tts/voices` katalogi. Bulardan "mening
+`/api/files/**`, `/api/tts/voices` katalogi (`/api/search` endi **CALL_READ** yoki **CAMPAIGN_READ** talab qiladi). Bulardan "mening
 qatorlarim" bilan ishlaydiganlari (`/api/profile/**`, `/api/notifications/**`) API
 kalitiga ochiq emas — kalit odam emas va `403 NO_USER_SESSION` oladi.
 

@@ -54,6 +54,7 @@ public class CampaignVariantRepositoryAdapter implements CampaignVariantReposito
         entity.setAiAgent(aiAgentReference(variant.aiAgentId()));
         entity.setPromptOverride(variant.promptOverride());
         entity.setTtsVoice(ttsVoiceReference(variant.ttsVoiceId()));
+        entity.setPipelineMode(variant.pipelineMode());
         entity.setTrafficWeight(variant.trafficWeight());
         entity.setActive(variant.active());
         entity.setUpdatedAt(Instant.now());
@@ -107,6 +108,7 @@ public class CampaignVariantRepositoryAdapter implements CampaignVariantReposito
                 entity.getAiAgentId(),
                 entity.getPromptOverride(),
                 entity.getTtsVoiceId(),
+                entity.getPipelineMode(),
                 entity.getTrafficWeight(),
                 entity.getCallsCount(),
                 entity.getAnsweredCount(),

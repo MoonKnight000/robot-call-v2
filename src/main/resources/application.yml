@@ -9,9 +9,16 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 90s
 
-  # Company logo / user avatar uploads (report #4, #11) are capped at 5 MB in
-  # ImageUploadService — the Spring Boot default (1 MB) would reject those before that
-  # check even runs, so both limits move together.
+  # httpclient5 is on the classpath for shared/http (outbound calls to tenant URLs). Boot's
+  # auto-detection prefers it, which would move every auto-configured RestClient — Spring
+  # AI's OpenAI client among them — onto Apache HttpComponents. Pinned to what Boot picked
+  # before that dependency existed: Reactor Netty.
+  http:
+    clients:
+      imperative:
+        factory: reactor
+
+  # Moves with ImageUploadService.MAX_BYTES — see that class.
   servlet:
     multipart:
       max-file-size: 5MB
@@ -20,7 +27,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/uysot_voice}
     username: ${DB_USER:uysot}
-    password: ${DB_PASSWORD:uysot}
+    password: ${DB_PASSWORD}
 
   flyway:
     enabled: true
@@ -36,18 +43,15 @@ spring:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:uysot}
-    password: ${RABBITMQ_PASSWORD:uysot}
+    password: ${RABBITMQ_PASSWORD}
 
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
-  # SMTP for scheduled report emails (§10.10 "Jadval bo'yicha yuborish", voice-agent.report-schedule,
-  # config/integrations.yml) and for the notification email/webhook channels (config/integrations.yml).
-  # Blank host/username/password until an operator sets one — the dispatch sweep itself stays off
-  # (voice-agent.report-schedule.enabled: false) until then, so no send is attempted against an
-  # unconfigured server.
+  # Shared by scheduled reports, notification email and password reset. Blank until an
+  # operator sets one — see ReportEmailSender, PasswordResetMailSender.
   mail:
     host: ${SMTP_HOST:}
     port: ${SMTP_PORT:587}
@@ -60,13 +64,15 @@ spring:
           starttls:
             enable: true
 
-  # voice-agent.* is split by subsystem under config/ (each file keeps its own comments):
+  # voice-agent.* is split by subsystem under config/:
   #   auth.yml          — security, JWT, encryption, bootstrap admin
-  #   telephony.yml      — Asterisk/ARI, AMI, SIP trunk, RTP, dialer, operator transfer
-  #   speech.yml         — realtime engine, STT, turn detection, TTS, VAD/AMD
-  #   dialog.yml         — spring.ai (LLM chat), dialog FSM, post-call summary
-  #   integrations.yml   — storage, CRM, Uysot OAuth, notifications, outbox, report schedule
-  #   misc.yml           — routing, shutdown, alerting, live SSE, company default
+  #   telephony.yml     — Asterisk/ARI, AMI, SIP trunk, RTP, dialer, operator transfer
+  #   speech.yml        — realtime engine, STT, turn detection, TTS, VAD/AMD
+  #   dialog.yml        — spring.ai (LLM chat), dialog FSM, post-call summary
+  #   integrations.yml  — storage, CRM, Uysot OAuth, notifications, outbox, report schedule
+  #   misc.yml          — routing, shutdown, QA, simulation, alerting, live SSE, company
+  #   billing.yml       — call rates, balance enforcement, auto-recharge
+  # Each value is documented on its @ConfigurationProperties class, not here.
   config:
     import:
       - classpath:config/auth.yml
@@ -79,7 +85,7 @@ spring:
 
 server:
   port: 8080
-  # Let in-flight HTTP requests finish; the drain manager handles active calls (§12).
+  # In-flight HTTP requests only; active calls are drained by GracefulShutdownManager (§12).
   shutdown: graceful
 
 management:
@@ -89,8 +95,8 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      # /actuator/health stays reachable without a token (orchestrator probes), but the
-      # component breakdown — DB/Redis/Rabbit hosts and state — only for authenticated callers.
+      # Reachable without a token for orchestrator probes, but the component breakdown
+      # (DB/Redis/Rabbit hosts and state) only for authenticated callers.
       show-details: when-authorized
   metrics:
     tags:
@@ -98,19 +104,6 @@ management:
 
 logging:
   level:
-    # ari4java's noise, quietened to ERROR so a real problem from these two classes is
-    # still visible. Both log a WARN per event on the normal path, which buries the
-    # application's own lines — a single call produces dozens.
-    #
-    # BaseAriAction: Asterisk sends event fields this pinned ari4java's generated models
-    # do not declare (ChannelDestroyed.tech_cause). AriService calls
-    # setObjectMapperLessStrict(), whose handler skips the field and logs the would-be
-    # exception at WARN — so the event IS delivered and handled; the stack trace only
-    # looks like a failure. That handler is the class's only log statement.
-    #
-    # AriWSHelper: warns "Event <X> Unhandled" for every ARI event this app does not
-    # override (Dial, ChannelVarset, ChannelEnteredBridge, ...), which is by design — it
-    # only subscribes to StasisStart/StasisEnd/ChannelHangupRequest/ChannelDestroyed. Its
-    # genuine failures ("Unknown Event", decode errors) are logged at ERROR and survive.
+    # ari4java WARNs on its normal path and buries our own lines — see AriClient#open.
     ch.loway.oss.ari4java.tools.BaseAriAction: ${ARI_LOG_LEVEL:ERROR}
     ch.loway.oss.ari4java.generated.AriWSHelper: ${ARI_LOG_LEVEL:ERROR}

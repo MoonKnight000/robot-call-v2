@@ -29,7 +29,7 @@ public class UserControllerImpl implements UserController {
 
     @Override
     public ResponseEntity<ResponseData<UserRow>> get(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(userUseCase.get(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(userUseCase.requireUserRow(companyId, id)));
     }
 
     @Override

@@ -12,14 +12,12 @@ import uz.murodjon.robotcallv2.knowledgebase.application.port.output.DocumentTex
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
+import uz.murodjon.robotcallv2.shared.http.PublicHttpClient;
+import uz.murodjon.robotcallv2.shared.http.PublicHttpRequest;
+import uz.murodjon.robotcallv2.shared.http.PublicHttpResponse;
 
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
@@ -40,13 +38,12 @@ public class DocumentTextExtractorAdapter implements DocumentTextExtractorPort {
     private static final int MAX_CHARS = 2_000_000;
     private static final int MAX_URL_BYTES = 8 * 1024 * 1024;
 
-    // Redirects are never followed: PublicUrlGuard screens the address the company gave,
-    // and a 302 is the site choosing a second one after that check has passed — which is
-    // exactly how such a filter is walked around.
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
+    private static final Duration URL_TIMEOUT = Duration.ofSeconds(20);
+
+    // The shared client: DNS pinned to public addresses, and redirects never followed —
+    // PublicUrlGuard screens the address the company gave, and a 302 is the site choosing
+    // a second one after that check has passed.
+    private final PublicHttpClient httpClient = PublicHttpClient.create(Duration.ofSeconds(10), URL_TIMEOUT);
 
     @Override
     public String extract(InputStream content, KnowledgeSourceType sourceType) {
@@ -56,10 +53,11 @@ public class DocumentTextExtractorAdapter implements DocumentTextExtractorPort {
                 case DOCX -> extractDocx(in);
                 case XLSX, XLS -> extractSpreadsheet(in);
                 case TXT, CSV -> truncate(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                case URL -> throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_REQUIRED);
+                // Unreachable: the indexer reads a URL source with extractFromUrl.
+                case URL -> throw new IllegalStateException("a URL source is read with extractFromUrl");
+                // Unreachable: the indexer reads a catalog feed through CatalogFeedReaderPort.
+                case STRUCTURED_FEED -> throw new IllegalStateException("a catalog feed is read as rows, not text");
             };
-        } catch (ValidationException e) {
-            throw e;
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.KNOWLEDGE_SOURCE_UNREADABLE, "document-extractor", e,
                     sourceType, String.valueOf(e.getMessage()));
@@ -67,44 +65,32 @@ public class DocumentTextExtractorAdapter implements DocumentTextExtractorPort {
     }
 
     @Override
-    public String extractFromUrl(String url) {
-        if (url == null || url.isBlank()) {
-            throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_REQUIRED);
-        }
-        String trimmed = url.trim();
-        URI uri = PublicUrlGuard.parsePublic(trimmed);
-        if (uri == null) {
-            throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_INVALID, trimmed);
-        }
+    public String extractFromUrl(URI uri) {
+        String address = uri.toString();
         try {
-            HttpRequest request = HttpRequest.newBuilder(uri)
-                    .timeout(Duration.ofSeconds(20))
+            PublicHttpRequest request = PublicHttpRequest.create("GET", uri)
+                    .setTimeout(URL_TIMEOUT)
+                    // Past this the page is cut, not refused: the first 8 MB of prose is plenty.
+                    .setMaxResponseBytes(MAX_URL_BYTES)
                     // Some sites serve a JavaScript shell to an unknown agent and the real
                     // article to a browser; asking as a browser is what gets the text.
-                    .header("User-Agent", "Mozilla/5.0 (compatible; RobotCallKnowledgeBase/1.0)")
-                    .header("Accept", "text/html,application/xhtml+xml,text/plain")
-                    .GET()
-                    .build();
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                    .addHeader("User-Agent", "Mozilla/5.0 (compatible; RobotCallKnowledgeBase/1.0)")
+                    .addHeader("Accept", "text/html,application/xhtml+xml,text/plain");
+            PublicHttpResponse response = httpClient.send(request);
             if (response.statusCode() / 100 != 2) {
                 throw new ExternalServiceException(ErrorCode.KNOWLEDGE_SOURCE_FETCH_FAILED, "knowledge-url",
-                        trimmed, response.statusCode());
+                        address, response.statusCode());
             }
-            byte[] body = response.body();
-            if (body.length > MAX_URL_BYTES) {
-                body = java.util.Arrays.copyOf(body, MAX_URL_BYTES);
-            }
-            String html = new String(body, StandardCharsets.UTF_8);
-            return truncate(stripMarkup(html));
-        } catch (ExternalServiceException | ValidationException e) {
+            return truncate(stripMarkup(response.readBodyText()));
+        } catch (ExternalServiceException e) {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ExternalServiceException(ErrorCode.KNOWLEDGE_SOURCE_FETCH_FAILED, "knowledge-url", e,
-                    trimmed, "interrupted");
+            throw new ExternalServiceException(ErrorCode.KNOWLEDGE_SOURCE_FETCH_INTERRUPTED, "knowledge-url", e,
+                    address);
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.KNOWLEDGE_SOURCE_FETCH_FAILED, "knowledge-url", e,
-                    trimmed, String.valueOf(e.getMessage()));
+                    address, String.valueOf(e.getMessage()));
         }
     }
 

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -29,6 +30,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>Moshi is a full-duplex conversational audio foundation model streaming 24 kHz
  * multi-stream audio frames over WebSocket with ultra-low latency (<200ms).
+ *
+ * <p><b>No tool protocol.</b> The Moshi socket takes audio, a prompt and text; it has no
+ * way to declare a function or to call one. An agent on it could not end the call, transfer
+ * it or read a call fact, so {@link #lacksToolCalling()} is true: saving an agent on this
+ * engine is refused and a call that still resolves to it runs on the cascade pipeline.
  */
 @Component
 @ConditionalOnExpression("!'${voice-agent.realtime.moshi.url:}'.isBlank() || !'${voice-agent.realtime.moshi.api-key:}'.isBlank()")
@@ -85,11 +91,16 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
     }
 
     @Override
+    public boolean lacksToolCalling() {
+        return true;
+    }
+
+    @Override
     public RealtimeSession startSession(RealtimeCallConfig config, RealtimeListener listener) {
         HttpClient current = client;
         MoshiRealtimeProperties m = realtimeProperties.moshi();
         if (current == null || m == null) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "moshi", "not initialized");
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_NOT_INITIALIZED, "moshi", "moshi");
         }
 
         AtomicBoolean alive = new AtomicBoolean(true);
@@ -102,21 +113,24 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
                 wsBuilder.header("Authorization", "Bearer " + m.apiKey());
             }
 
-            WebSocket ws = wsBuilder.buildAsync(URI.create(m.url()), new MoshiResponseHandler(config.channelId(), listener, alive, ready))
+            WebSocket webSocket = wsBuilder.buildAsync(URI.create(m.url()), new MoshiResponseHandler(config.channelId(), listener, alive, ready))
                     .get(m.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
-            MoshiRealtimeSession session = new MoshiRealtimeSession(ws, alive);
+            MoshiRealtimeSession session = new MoshiRealtimeSession(webSocket, alive);
             session.send(handshakeMessage(config, m));
 
             if (!ready.await(m.connectTimeoutSeconds(), TimeUnit.SECONDS)) {
                 session.close();
-                throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_SETUP_FAILED, "moshi", m.connectTimeoutSeconds());
+                throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_SETUP_FAILED, "moshi", "moshi",
+                        m.connectTimeoutSeconds());
             }
 
             log.info("[{}] Moshi Realtime session open (model={})", config.channelId(), m.model());
             return session;
+        } catch (ExternalServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "moshi", e, e.getMessage());
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_CONNECT_FAILED, "moshi", e, "moshi", e.getMessage());
         }
     }
 
@@ -171,7 +185,17 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
             return null;
         }
 
+        /**
+         * Every message arrives on the WebSocket's own thread, which knows nothing about
+         * the call — so the id goes in here, once, and everything below it (this class's
+         * logs and the dialog engine's, reached through the listener) is filed under the
+         * call it belongs to instead of {@code [call:none]}.
+         */
         private void handle(String json) {
+            CallMdc.with(channelId, () -> dispatch(json));
+        }
+
+        private void dispatch(String json) {
             try {
                 JsonNode node = MAPPER.readTree(json);
                 String type = node.path("type").asText("");
@@ -234,13 +258,13 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
 
     private static final class MoshiRealtimeSession implements RealtimeSession {
 
-        private final WebSocket ws;
+        private final WebSocket webSocket;
         private final AtomicBoolean alive;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private boolean closed;
 
-        private MoshiRealtimeSession(WebSocket ws, AtomicBoolean alive) {
-            this.ws = ws;
+        private MoshiRealtimeSession(WebSocket webSocket, AtomicBoolean alive) {
+            this.webSocket = webSocket;
             this.alive = alive;
         }
 
@@ -253,7 +277,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
             buffer.asShortBuffer().put(pcm);
             synchronized (this) {
                 sendChain = sendChain
-                        .thenCompose(ignored -> ws.sendBinary(buffer, true))
+                        .thenCompose(ignored -> webSocket.sendBinary(buffer, true))
                         .thenAccept(v -> {})
                         .exceptionally(e -> {
                             alive.set(false);
@@ -290,7 +314,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
                 return;
             }
             sendChain = sendChain
-                    .thenCompose(ignored -> ws.sendText(json, true))
+                    .thenCompose(ignored -> webSocket.sendText(json, true))
                     .thenAccept(v -> {})
                     .exceptionally(e -> {
                         alive.set(false);
@@ -305,9 +329,9 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
             }
             closed = true;
             alive.set(false);
-            ws.sendClose(WebSocket.NORMAL_CLOSURE, "call ended")
+            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "call ended")
                     .exceptionally(e -> {
-                        ws.abort();
+                        webSocket.abort();
                         return null;
                     });
         }

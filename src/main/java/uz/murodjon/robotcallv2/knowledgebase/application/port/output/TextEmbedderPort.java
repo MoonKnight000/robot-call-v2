@@ -11,7 +11,7 @@ import java.util.List;
  */
 public interface TextEmbedderPort {
 
-    boolean available();
+    boolean isAvailable();
 
     /** One vector per input, positionally; an entry is null if that text could not be embedded. */
     List<float[]> embedAll(List<String> texts);

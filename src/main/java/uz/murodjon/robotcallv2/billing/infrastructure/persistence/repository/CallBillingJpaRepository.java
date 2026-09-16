@@ -1,8 +1,10 @@
 package uz.murodjon.robotcallv2.billing.infrastructure.persistence.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.billing.domain.enums.CallBillingStatus;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity.CallBillingEntity;
 
@@ -58,10 +60,28 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
             """, nativeQuery = true)
     List<Object[]> findSpendByVariant(@Param("companyId") Long companyId, @Param("campaignId") Long campaignId);
 
+    /**
+     * What one campaign's settled calls were charged since {@code since}, all of it when
+     * null — the one query behind the dialer's budget cap and the campaign report's spend.
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(cb.total_uzs), 0)
+              FROM call_billing cb
+              JOIN call_attempt ca ON ca.id = cb.call_attempt_id
+              JOIN campaign_target ct ON ct.id = ca.target_id
+             WHERE cb.company_id = :companyId
+               AND cb.status = 'SETTLED'
+               AND ct.campaign_id = :campaignId
+               AND (CAST(:since AS timestamptz) IS NULL OR cb.settled_at >= :since)
+            """, nativeQuery = true)
+    long sumSpentUzsByCampaign(@Param("companyId") long companyId, @Param("campaignId") long campaignId,
+                               @Param("since") Instant since);
+
     /** The charged totals and usage for one period, as one row. */
     @Query(value = """
             SELECT COALESCE(SUM(duration_sec), 0)                        AS duration_sec,
-                   COALESCE(SUM(prompt_tokens + completion_tokens), 0)   AS tokens,
+                   COALESCE(SUM(prompt_tokens + completion_tokens
+                                + summary_prompt_tokens + summary_completion_tokens), 0) AS tokens,
                    COALESCE(SUM(tts_chars), 0)                           AS tts_chars,
                    COALESCE(SUM(total_uzs), 0)                           AS spend_uzs
               FROM call_billing
@@ -70,4 +90,19 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
                AND settled_at >= :from
             """, nativeQuery = true)
     List<Object[]> findUsageSince(@Param("companyId") Long companyId, @Param("from") Instant from);
+
+    /** The post-call summary, added to the call's settled row (V5). */
+    @Modifying @Transactional
+    @Query(value = """
+            UPDATE call_billing
+               SET summary_prompt_tokens     = :promptTokens,
+                   summary_completion_tokens = :completionTokens,
+                   summary_cached_tokens     = :cachedTokens,
+                   llm_cost_uzs              = llm_cost_uzs + :costUzs,
+                   total_uzs                 = total_uzs + :costUzs
+             WHERE call_attempt_id = :callAttemptId
+            """, nativeQuery = true)
+    int addSummaryCharge(@Param("callAttemptId") long callAttemptId, @Param("promptTokens") long promptTokens,
+                         @Param("completionTokens") long completionTokens, @Param("cachedTokens") long cachedTokens,
+                         @Param("costUzs") long costUzs);
 }

@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.report.domain.entity.CallDetail;
+import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
 import uz.murodjon.robotcallv2.report.domain.entity.TranscriptLine;
 
 import java.nio.charset.StandardCharsets;

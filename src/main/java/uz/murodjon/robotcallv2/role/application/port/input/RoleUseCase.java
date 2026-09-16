@@ -13,7 +13,7 @@ public interface RoleUseCase {
 
     List<RoleRow> findByCompanyId(long companyId);
 
-    RoleRow get(long companyId, long id);
+    RoleRow requireRoleRow(long companyId, long id);
 
     RoleRow create(long companyId, CreateRoleRequest request);
 

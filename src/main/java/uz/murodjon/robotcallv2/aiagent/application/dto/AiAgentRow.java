@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -43,6 +45,7 @@ public record AiAgentRow(
         Double voiceStability,
         Double voiceSimilarityBoost,
         Map<String, String> languageVoices,
+        Map<String, Double> languageVoiceSpeeds,
         AgentPersona persona,
         boolean disclosureEnabled,
         String llmModel,
@@ -54,6 +57,7 @@ public record AiAgentRow(
         boolean zeroPiiRetention,
         boolean storeCallAudio,
         Integer conversationRetentionDays,
+        RealtimeFactsDelivery realtimeFactsDelivery,
         Integer maxConversationDurationSeconds,
         Integer silenceEndCallTimeoutSeconds,
         Integer turnTimeoutSeconds,
@@ -76,6 +80,7 @@ public record AiAgentRow(
         String midCallSmsTemplate,
         String transferPhoneNumber,
         String transferMessage,
+        Long transferQueueId,
         InterruptionSensitivity interruptionSensitivity,
         Integer endpointingDelayMs,
         List<PronunciationRule> pronunciationRules,
@@ -84,10 +89,22 @@ public record AiAgentRow(
         boolean enabled,
         Instant createdAt,
         Long createdBy,
-        String createdByName
+        String createdByName,
+        Integer publishedVersion,
+        boolean hasDraftChanges,
+        long version
 ) {
 
-    public static AiAgentRow of(AiAgent agent, String scenarioName, String createdByName) {
+    /**
+     * @param publishedVersion the version calls run on; null while the agent was never published
+     *                         (then calls run on the draft itself)
+     * @param hasDraftChanges  the draft differs from {@code publishedVersion} — a publish would change calls
+     *
+     * <p>{@code version} is the draft row's lock counter, which {@code PUT /api/ai-agents/{id}}
+     * takes back; 0 on a row built from a published snapshot.
+     */
+    public static AiAgentRow of(AiAgent agent, String scenarioName, String createdByName,
+                                Integer publishedVersion, boolean hasDraftChanges) {
         return new AiAgentRow(
                 agent.id(),
                 agent.companyId(),
@@ -118,6 +135,7 @@ public record AiAgentRow(
                 agent.voice().stability(),
                 agent.voice().similarityBoost(),
                 agent.voice().perLanguage(),
+                agent.voice().perLanguageSpeed(),
                 agent.persona(),
                 agent.disclosureEnabled(),
                 agent.llmModel(),
@@ -129,6 +147,7 @@ public record AiAgentRow(
                 agent.dataPolicy().zeroPiiRetention(),
                 agent.dataPolicy().storeCallAudio(),
                 agent.dataPolicy().conversationRetentionDays(),
+                agent.dataPolicy().realtimeFactsDelivery(),
                 agent.limits().maxConversationDurationSeconds(),
                 agent.limits().silenceEndCallTimeoutSeconds(),
                 agent.limits().turnTimeoutSeconds(),
@@ -151,6 +170,7 @@ public record AiAgentRow(
                 agent.callBehaviour().midCallSmsTemplate(),
                 agent.callBehaviour().transferPhoneNumber(),
                 agent.callBehaviour().transferMessage(),
+                agent.callBehaviour().transferQueueId(),
                 agent.callBehaviour().interruptionSensitivity(),
                 agent.callBehaviour().endpointingDelayMs(),
                 agent.pronunciationRules(),
@@ -159,7 +179,10 @@ public record AiAgentRow(
                 agent.enabled(),
                 agent.createdAt(),
                 agent.createdBy(),
-                createdByName
+                createdByName,
+                publishedVersion,
+                hasDraftChanges,
+                agent.version()
         );
     }
 }

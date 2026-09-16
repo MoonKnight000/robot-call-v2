@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.report.application.dto.CallRow;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -43,7 +44,7 @@ class CsvReportRendererTest {
                 new DashboardTotals(100, 80, 45.5, 30),
                 List.of(new DashboardOutcome("PROMISE_TO_PAY", 30), new DashboardOutcome("REFUSAL", 10)),
                 List.of(new FunnelStage("CALL", 100, 1.0), new FunnelStage("ANSWERED", 80, 0.8)),
-                List.of(new CampaignComparisonRow(1L, "Debt Collection", 100, 80, 0.8, 45.5, 30))
+                List.of(new CampaignComparison(1L, "Debt Collection", 100, 80, 0.8, 45.5, 30))
         );
 
         String csv = new String(renderer.renderBytes(summary), StandardCharsets.UTF_8);

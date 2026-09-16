@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
+import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 
 import java.time.Instant;
 import java.util.List;
@@ -32,11 +33,15 @@ public interface CampaignJpaRepository extends JpaRepository<CampaignEntity, Lon
     @Query("SELECT count(c) FROM CampaignEntity c WHERE c.company.id = :companyId")
     long countByCompanyId(@Param("companyId") long companyId);
 
-    List<CampaignEntity> findByStatusOrderById(CampaignStatus status);
+    List<CampaignEntity> findByStatusAndCompany_StatusOrderById(CampaignStatus status, CompanyStatus companyStatus);
 
     List<CampaignEntity> findByRecurrenceTypeNotAndStatusNot(RecurrenceType recurrenceType, CampaignStatus status);
 
-    @Query("SELECT c FROM CampaignEntity c WHERE c.company.id = :companyId AND lower(c.name) LIKE :pattern "
+    List<CampaignEntity> findByStatusAndStartAtLessThanEqual(CampaignStatus status, Instant now);
+
+    List<CampaignEntity> findByStatusAndEndAtLessThanEqual(CampaignStatus status, Instant now);
+
+    @Query("SELECT c FROM CampaignEntity c WHERE c.company.id = :companyId AND lower(c.name) LIKE :pattern ESCAPE '!' "
             + "ORDER BY c.id DESC")
     List<CampaignEntity> searchByCompanyId(@Param("companyId") long companyId, @Param("pattern") String pattern,
                                           Pageable pageable);
@@ -45,6 +50,14 @@ public interface CampaignJpaRepository extends JpaRepository<CampaignEntity, Lon
     @Transactional
     @Query("UPDATE CampaignEntity c SET c.status = :status WHERE c.id = :id AND c.company.id = :companyId")
     void updateStatus(@Param("id") long id, @Param("status") CampaignStatus status, @Param("companyId") long companyId);
+
+    /** Atomic ACTIVE → COMPLETED; 1 row when this call won, 0 when another already had or targets remain. */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE campaign SET status = 'COMPLETED' WHERE id = :id AND company_id = :companyId "
+            + "AND status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM campaign_target t WHERE t.campaign_id = :id "
+            + "AND t.status IN ('PENDING', 'IN_PROGRESS'))", nativeQuery = true)
+    int completeIfFinished(@Param("id") long id, @Param("companyId") long companyId);
 
     @Modifying
     @Transactional

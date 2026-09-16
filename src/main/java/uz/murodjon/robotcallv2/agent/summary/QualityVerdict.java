@@ -19,6 +19,14 @@ package uz.murodjon.robotcallv2.agent.summary;
  *                           looks like from the transcript
  * @param outcomeCorrect     the disposition the call was filed under matches what the
  *                           transcript actually shows happened
+ * @param goalReached        the call got what the scenario exists for — its goal field
+ *                           when it names one, its role otherwise (UNIVERSAL-OPERATOR-PLAN A.4).
+ *                           A result, not a fault: a caller is free to say no
+ * @param unansweredQuestion the caller asked something the agent could not answer — the
+ *                           sign of a gap in the knowledge base
+ * @param toolMisuse         the agent acted as if it had used a tool it did not, made up a
+ *                           tool's result, or finished without what the tool needed — judged
+ *                           from the transcript alone, which carries no tool calls
  * @param note               one sentence on the worst thing in the call, for the log
  */
 public record QualityVerdict(
@@ -27,11 +35,15 @@ public record QualityVerdict(
         boolean languageMismatch,
         boolean talkedOverClient,
         boolean outcomeCorrect,
+        boolean goalReached,
+        boolean unansweredQuestion,
+        boolean toolMisuse,
         String note
 ) {
 
     /** Whether anything here is worth a human looking at the recording. */
     public boolean needsReview() {
-        return guardrailViolation || languageMismatch || talkedOverClient || !outcomeCorrect;
+        return guardrailViolation || languageMismatch || talkedOverClient || !outcomeCorrect
+                || unansweredQuestion || toolMisuse;
     }
 }

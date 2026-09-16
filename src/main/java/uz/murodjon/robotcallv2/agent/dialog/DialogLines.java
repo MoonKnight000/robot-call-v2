@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
-import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
 
 /**
  * The lines this engine speaks from code rather than through the model — the opening
@@ -20,17 +19,11 @@ final class DialogLines {
     /**
      * The §11.1 disclosure this call opens with, most specific wording first: the
      * scenario's own, then the calling company's, then the platform's. Each configured
-     * text has to survive {@link Disclosure} to be used at all — that is what keeps the
+     * text has to survive {@link uz.murodjon.robotcallv2.shared.dialog.Disclosure} to be used at all — that is what keeps the
      * notice from being worded away, whichever level tries it.
      */
     static String disclosure(DialogSession s) {
-        String scenarioLine = Disclosure.resolve(
-                s.scenario() != null ? s.scenario().disclosureText() : null, s.language(), s.companyName());
-        if (scenarioLine != null) {
-            return scenarioLine;
-        }
-        String companyLine = Disclosure.resolve(s.companyDisclosureText(), s.language(), s.companyName());
-        return companyLine != null ? companyLine : DialogPhrases.disclosure(s.language(), s.companyName());
+        return DialogPolicy.resolveDisclosureLine(s.scenario(), s.companyDisclosureText(), s.language(), s.companyName());
     }
 
     /**

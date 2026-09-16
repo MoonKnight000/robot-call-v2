@@ -4,49 +4,43 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
-import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
 /**
- * Routes an ongoing live call session to a specialized sub-agent or another scenario mid-call
- * while preserving call context and transcript history (Multi-Agent Swarm pattern).
+ * Hands a live call to another scenario mid-call (lead qualification to order
+ * confirmation, say), keeping the transcript, the facts and the caller context.
+ *
+ * <p>Only a cascade dialog can switch: its prompt is rebuilt from the session every turn,
+ * so the next turn already speaks the new scenario. A realtime engine was configured with
+ * its scenario when its session opened and keeps it for the whole call.
  */
 @Service
 public class MultiAgentRouter {
 
     private static final Logger log = LoggerFactory.getLogger(MultiAgentRouter.class);
 
-    private final ScenarioRepository scenarioRepository;
     private final DialogEngine dialogEngine;
 
-    public MultiAgentRouter(ScenarioRepository scenarioRepository, DialogEngine dialogEngine) {
-        this.scenarioRepository = scenarioRepository;
+    public MultiAgentRouter(DialogEngine dialogEngine) {
         this.dialogEngine = dialogEngine;
     }
 
     /**
-     * Seamlessly hands off an active call to a new scenario (e.g. from lead-qualification to order-confirmation).
+     * Continue {@code channelId} under {@code target}. The caller has already checked that
+     * the scenario belongs to the company of the call, is active and has stages.
+     *
+     * @return the stage the call continues from, which is the first stage of the target
      */
-    public boolean routeToScenario(String channelId, String targetScenarioKey) {
+    public String routeToScenario(String channelId, ScenarioDefinition target) {
         DialogSession session = dialogEngine.findSession(channelId);
         if (session == null || session.isEnded()) {
-            throw new NotFoundException(ErrorCode.CALL_NOT_FOUND, channelId);
+            throw new ConflictException(ErrorCode.CALL_SCENARIO_SWITCH_UNAVAILABLE, channelId);
         }
-
-        Scenario targetScenario = scenarioRepository.findActiveByKey(targetScenarioKey);
-        if (targetScenario == null) {
-            throw new NotFoundException(ErrorCode.SCENARIO_NOT_FOUND, targetScenarioKey);
-        }
-
-        log.info("[{}] multi-agent handoff from scenario '{}' to '{}'",
-                channelId, session.scenario().rolePrompt(), targetScenario.name());
-
-        // Context, transcript and facts remain intact while bound scenario stage is updated
-        if (targetScenario.definition() != null && targetScenario.definition().stages() != null && !targetScenario.definition().stages().isEmpty()) {
-            session.setState(targetScenario.definition().stages().get(0).id());
-        }
-        return true;
+        String from = session.state();
+        session.switchScenario(target);
+        log.info("[{}] scenario handoff: stage {} -> {}", channelId, from, session.state());
+        return session.state();
     }
 }

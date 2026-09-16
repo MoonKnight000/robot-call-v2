@@ -25,7 +25,14 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Query("SELECT t FROM CampaignTargetEntity t WHERE t.id = :id AND t.company.id = :companyId")
     Optional<CampaignTargetEntity> findByIdAndCompanyId(@Param("id") long id, @Param("companyId") long companyId);
 
-    Optional<CampaignTargetEntity> findFirstByPhoneOrderById(String phone);
+    List<CampaignTargetEntity> findByStatusAndNextAttemptAtBefore(TargetStatus status, Instant before);
+
+    @Query("SELECT t FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "AND t.phone = :phone AND t.status IN (:statuses) ORDER BY t.id")
+    List<CampaignTargetEntity> findByCampaignIdAndPhoneAndStatusIn(@Param("companyId") long companyId,
+                                                                   @Param("campaignId") long campaignId,
+                                                                   @Param("phone") String phone,
+                                                                   @Param("statuses") Collection<TargetStatus> statuses);
 
     @Query("SELECT t FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId")
     List<CampaignTargetEntity> findByCampaignIdAndCompanyId(@Param("campaignId") long campaignId,
@@ -75,6 +82,13 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
             + ") RETURNING *", nativeQuery = true)
     List<CampaignTargetEntity> claimDue(@Param("campaignId") long campaignId, @Param("limit") int limit);
 
+    /** The inverse of one row of {@link #claimDue}: waiting again, and the attempt given back. */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE campaign_target SET status = 'PENDING', next_attempt_at = :nextAttemptAt, "
+            + "attempts = GREATEST(attempts - 1, 0) WHERE id = :id", nativeQuery = true)
+    void releaseClaim(@Param("id") long id, @Param("nextAttemptAt") Instant nextAttemptAt);
+
     @Modifying
     @Transactional
     @Query("UPDATE CampaignTargetEntity t SET t.status = :status, t.nextAttemptAt = :nextAttemptAt WHERE t.id = :id")
@@ -92,10 +106,26 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING, t.attempts = 0, t.nextAttemptAt = null WHERE t.campaign.id = :campaignId AND t.doNotCall = false")
     void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
 
+    /** Targets never dialled — PENDING with no attempt spent; nothing points at them yet. */
     @Modifying
     @Transactional
-    @Query("DELETE FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId")
-    int deleteByCampaignId(@Param("campaignId") long campaignId, @Param("companyId") long companyId);
+    @Query("DELETE FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "AND t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING AND t.attempts = 0")
+    int deleteUndialedByCampaignId(@Param("campaignId") long campaignId, @Param("companyId") long companyId);
+
+    /** Targets waiting on a retry, closed as EXHAUSTED rather than deleted — their attempts are history. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.EXHAUSTED "
+            + "WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "AND t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING")
+    int exhaustPendingByCampaignId(@Param("campaignId") long campaignId, @Param("companyId") long companyId);
+
+    @Query("SELECT t.phone FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "AND t.status IN (:statuses)")
+    List<String> findPhonesByCampaignIdAndStatusIn(@Param("companyId") long companyId,
+                                                   @Param("campaignId") long campaignId,
+                                                   @Param("statuses") Collection<TargetStatus> statuses);
 
     /**
      * Unlike {@link #resetTargetsForRecurrence} this only drops the waiting time: the

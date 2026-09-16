@@ -10,13 +10,14 @@ import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiA
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
-import uz.murodjon.robotcallv2.tool.application.mapper.ToolMapper;
+import uz.murodjon.robotcallv2.tool.infrastructure.persistence.mapper.ToolEntityMapper;
 import uz.murodjon.robotcallv2.tool.application.port.output.ToolRepository;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.entity.AiAgentToolEntity;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.entity.AiAgentToolId;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.entity.ToolEntity;
+import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.repository.AiAgentToolJpaRepository;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.repository.ToolJpaRepository;
 
@@ -29,14 +30,14 @@ public class ToolRepositoryAdapter implements ToolRepository {
 
     private final ToolJpaRepository toolJpaRepository;
     private final AiAgentToolJpaRepository aiAgentToolJpaRepository;
-    private final ToolMapper mapper;
+    private final ToolEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
     private final AiAgentJpaRepository aiAgentJpaRepository;
 
     public ToolRepositoryAdapter(
             ToolJpaRepository toolJpaRepository,
             AiAgentToolJpaRepository aiAgentToolJpaRepository,
-            ToolMapper mapper,
+            ToolEntityMapper mapper,
             CompanyJpaRepository companyJpaRepository,
             AiAgentJpaRepository aiAgentJpaRepository
     ) {
@@ -56,7 +57,7 @@ public class ToolRepositoryAdapter implements ToolRepository {
     @Transactional
     public Tool save(Tool tool) {
         CompanyEntity company = companyJpaRepository.getReferenceById(tool.companyId());
-        return mapper.toTool(toolJpaRepository.save(mapper.toEntity(tool, company)));
+        return mapper.toTool(toolJpaRepository.save(mapper.toToolEntity(tool, company)));
     }
 
     @Override
@@ -89,7 +90,7 @@ public class ToolRepositoryAdapter implements ToolRepository {
         if (filter.search() == null || filter.search().isBlank()) {
             page = toolJpaRepository.findAllByCompanyId(companyId, pageable);
         } else {
-            String searchPattern = "%" + filter.search().trim().toLowerCase() + "%";
+            String searchPattern = LikePatterns.buildContainsPattern(filter.search().toLowerCase());
             page = toolJpaRepository.searchTools(companyId, searchPattern, pageable);
         }
         List<Tool> content = page.getContent().stream().map(mapper::toTool).toList();

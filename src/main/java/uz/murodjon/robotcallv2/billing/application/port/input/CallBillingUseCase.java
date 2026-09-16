@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.billing.application.port.input;
 
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 
+import java.time.Instant;
+
 /**
  * What the dialer and the call finalizer ask of billing.
  *
@@ -22,6 +24,15 @@ public interface CallBillingUseCase {
      * cheap check that keeps a company at zero out of the queue.
      */
     boolean hasBalanceForCall(long companyId);
+
+    /**
+     * How many seconds of talk the company's balance still pays for, at the per-minute floor
+     * (line, recognition or realtime engine, platform fee) — never under a minute, so a call
+     * already up is closed with a goodbye rather than cut.
+     *
+     * @return {@code 0} when the balance is not enforced, meaning no limit from billing
+     */
+    int findAffordableCallSeconds(long companyId, boolean realtime);
 
     /**
      * Holds money for a target about to be dialled.
@@ -46,4 +57,27 @@ public interface CallBillingUseCase {
      *                 the call is charged; only the hold to give back differs.
      */
     void settleCall(long companyId, long callAttemptId, Long targetId, CallUsage usage);
+
+    /**
+     * Charges the post-call summary's tokens to a call that has already been settled.
+     *
+     * <p>Its own ledger entry ({@code summary-charge:<callAttemptId>}) rather than part of
+     * {@link #settleCall}: the outbox can summarize a call long after it was settled, and a
+     * realtime call prices its own tokens by the minute, so a summary folded into the
+     * call's usage would go unpriced on exactly those calls. The tokens and their price are
+     * added to the call's charge row, so the per-call breakdown and the monthly totals
+     * include them.
+     *
+     * <p>Safe to call twice: the second finds the entry already written. Does nothing for a
+     * call that has no settled charge.
+     *
+     * @param summaryUsage the summary's tokens; duration, speech and realtime seconds are 0
+     */
+    void chargeSummary(long companyId, long callAttemptId, CallUsage summaryUsage);
+
+    /**
+     * What the campaign's settled calls were charged since {@code since}, all of it when
+     * {@code since} is null — read by the dialer's budget cap and the campaign report.
+     */
+    long sumSpentUzsByCampaign(long companyId, long campaignId, Instant since);
 }

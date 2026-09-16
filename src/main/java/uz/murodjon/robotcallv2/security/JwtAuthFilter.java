@@ -11,7 +11,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
-import uz.murodjon.robotcallv2.auth.application.service.JwtTokenService;
+import uz.murodjon.robotcallv2.auth.application.port.input.AccessTokenUseCase;
+import uz.murodjon.robotcallv2.auth.application.port.input.StreamTicketUseCase;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
 import java.io.IOException;
@@ -20,7 +21,12 @@ import java.util.Set;
 
 /**
  * Authenticates a request by its {@code Authorization: Bearer <jwt>} header (ROADMAP
- * E.1) or {@code ?token=} / {@code ?access_token=} query parameter (for EventSource/SSE).
+ * E.1), or — only for the streaming GETs a browser's {@code EventSource}/{@code <audio>}
+ * cannot set a header on — a query parameter: a single-use {@code ?ticket=} from
+ * {@code POST /api/auth/stream-ticket}, or (deprecated) the whole access token as
+ * {@code ?token=} / {@code ?access_token=}. Everywhere else a credential in the URL is
+ * ignored: it would otherwise land in access logs, proxy logs and Referer headers on every
+ * request.
  *
  * <p>Each permission the token carries becomes one authority named exactly like the
  * {@link Permission} constant, which is what every {@code @PreAuthorize("hasAuthority(...)")}
@@ -30,11 +36,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final String HEADER = "Authorization";
     private static final String PREFIX = "Bearer ";
+    /** SSE streams and the live-audio download — the only URLs a query credential is honoured on. */
+    private static final List<String> QUERY_CREDENTIAL_SUFFIXES = List.of("/live/stream", "/me/events", "/listen");
+    /** The identity a query credential proved, kept on the request for its ASYNC re-dispatch. */
+    private static final String QUERY_PRINCIPAL_ATTRIBUTE = JwtAuthFilter.class.getName() + ".queryPrincipal";
 
-    private final JwtTokenService tokens;
+    private final AccessTokenUseCase accessTokenUseCase;
+    private final StreamTicketUseCase streamTicketUseCase;
 
-    public JwtAuthFilter(JwtTokenService tokens) {
-        this.tokens = tokens;
+    public JwtAuthFilter(AccessTokenUseCase accessTokenUseCase, StreamTicketUseCase streamTicketUseCase) {
+        this.accessTokenUseCase = accessTokenUseCase;
+        this.streamTicketUseCase = streamTicketUseCase;
     }
 
     /**
@@ -53,24 +65,55 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                      FilterChain chain) throws ServletException, IOException {
         String header = request.getHeader(HEADER);
-        String token = null;
+        AuthenticatedUser user = null;
         if (header != null && header.startsWith(PREFIX)) {
-            token = header.substring(PREFIX.length());
-        } else if (request.getParameter("token") != null && !request.getParameter("token").isBlank()) {
-            token = request.getParameter("token");
-        } else if (request.getParameter("access_token") != null && !request.getParameter("access_token").isBlank()) {
-            token = request.getParameter("access_token");
+            user = parse(header.substring(PREFIX.length()));
+        } else if (acceptsQueryCredential(request)) {
+            user = authenticateByQuery(request);
         }
 
-        if (token != null && !token.isBlank()) {
-            AuthenticatedUser user = tokens.parse(token);
-            if (user != null) {
-                var authentication = new UsernamePasswordAuthenticationToken(
-                        user, null, authorities(user.permissions()));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-            }
+        if (user != null) {
+            var authentication = new UsernamePasswordAuthenticationToken(
+                    user, null, authorities(user.permissions()));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
         }
         chain.doFilter(request, response);
+    }
+
+    private AuthenticatedUser authenticateByQuery(HttpServletRequest request) {
+        // The ASYNC re-dispatch of a stream carries the same URL, but its ticket was spent on
+        // the first pass — the identity it proved then is what counts now.
+        if (request.getAttribute(QUERY_PRINCIPAL_ATTRIBUTE) instanceof AuthenticatedUser earlier) {
+            return earlier;
+        }
+        AuthenticatedUser user;
+        String ticket = request.getParameter("ticket");
+        if (ticket != null && !ticket.isBlank()) {
+            user = streamTicketUseCase.consume(ticket);
+        } else {
+            // Deprecated: the whole access token in the URL. Kept until the console moves to tickets.
+            String token = request.getParameter("token");
+            if (token == null || token.isBlank()) {
+                token = request.getParameter("access_token");
+            }
+            user = token == null ? null : parse(token);
+        }
+        if (user != null) {
+            request.setAttribute(QUERY_PRINCIPAL_ATTRIBUTE, user);
+        }
+        return user;
+    }
+
+    private AuthenticatedUser parse(String token) {
+        return token.isBlank() ? null : accessTokenUseCase.parse(token);
+    }
+
+    private static boolean acceptsQueryCredential(HttpServletRequest request) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+        String path = request.getRequestURI();
+        return QUERY_CREDENTIAL_SUFFIXES.stream().anyMatch(path::endsWith);
     }
 
     static List<GrantedAuthority> authorities(Set<Permission> permissions) {

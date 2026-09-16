@@ -10,5 +10,5 @@ public interface VoiceSettingsUseCase {
 
     VoiceSettings updateByCompanyId(long companyId, UpdateVoiceSettingsRequest request);
 
-    EffectiveVoiceSettings effective(long companyId);
+    EffectiveVoiceSettings findEffectiveByCompanyId(long companyId);
 }

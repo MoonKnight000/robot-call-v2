@@ -6,7 +6,8 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
-import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -35,17 +36,28 @@ public class RealtimeSystemPromptFactory {
             "Tool chaqirganingda ham mijozga ovoz bilan gapir — tool chaqiruvi gapning "
                     + "o'rnini bosmaydi.",
             "Jimlikni uzoq cho'zma: mijoz bir necha soniya jim tursa, qisqa savol bilan "
-                    + "suhbatni davom ettir."
+                    + "suhbatni davom ettir.",
+            // The engine hears the language itself; the cascade pipeline needs a detector
+            // and a switcher for this. What it has to be told is when NOT to switch: callers
+            // here drop Russian words into Uzbek sentences all the time, and answering each
+            // of those in Russian is heard as the bot not understanding them.
+            "Mijoz butunlay boshqa tilda (masalan rus tilida) gapira boshlasa, o'sha tilga o't. "
+                    + "Gapiga bir-ikki ruscha so'z aralashsa, suhbat tilini o'zgartirma."
     );
 
     /**
-     * Builds the call's instructions.
+     * Builds the call's instructions, with the facts delivered the deployment's way.
      */
     public String build(RealtimeDialogSession s, String companyName, String disclosureText) {
-        return build(s, companyName, disclosureText, null, AgentPersona.AI_ASSISTANT);
+        return build(s, companyName, disclosureText, null, AgentPersona.AI_ASSISTANT, factsInPrompt);
     }
 
-    public String build(RealtimeDialogSession s, String companyName, String disclosureText, String voice, AgentPersona persona) {
+    /**
+     * @param factsInPrompt whether the call's facts are written into the instructions, or
+     *                      left for {@code getCallFact} ({@code RealtimeFactsDelivery})
+     */
+    public String build(RealtimeDialogSession s, String companyName, String disclosureText, String voice,
+                        AgentPersona persona, boolean factsInPrompt) {
         StringBuilder sb = new StringBuilder();
         var def = s.scenario();
         var context = s.context();
@@ -83,10 +95,13 @@ public class RealtimeSystemPromptFactory {
                     .append(" kompaniyasining sun'iy intellekt yordamchisiman\" deb ayting.\n\n");
         }
 
-        LocalDate today = LocalDate.now();
-        sb.append("BUGUNGI SANA: ").append(today).append(".\n\n");
+        ZonedDateTime now = ZonedDateTime.now(SystemPromptFactory.CALLER_ZONE);
+        sb.append("BUGUNGI SANA: ").append(now.toLocalDate())
+                .append(", HOZIRGI VAQT: ").append(now.toLocalTime().truncatedTo(ChronoUnit.MINUTES))
+                .append(".\n")
+                .append(SystemPromptFactory.TIME_ANCHORS).append('\n');
 
-        appendFacts(sb, s);
+        appendFacts(sb, s, factsInPrompt);
         if (context.goal() != null && !context.goal().isBlank()) {
             sb.append("- Kampaniya maqsadi: ").append(context.goal()).append('\n');
         }
@@ -124,7 +139,28 @@ public class RealtimeSystemPromptFactory {
                 // heard it twice. Transitioning before speaking keeps a refusal cheap,
                 // because nothing has been said yet when it arrives.
                 .append("- AVVAL transitionTo chaqiring, KEYIN o'sha bosqichning gapini ayting. ")
-                .append("Gapirib bo'lganingizdan keyin bosqichni o'zgartirmang.\n");
+                .append("Gapirib bo'lganingizdan keyin bosqichni o'zgartirmang.\n")
+                // The rule above is about leaving a stage you have served. On the first
+                // turn there is no such stage: the call *starts* in the opening one, so
+                // "transition first" read as "leave before saying anything" and the
+                // greeting, the introduction and the §11.1 disclosure were never spoken.
+                .append("- ISTISNO — BIRINCHI GAP: qo'ng'iroq boshlanganda siz allaqachon ")
+                .append(def.stages().get(0).id())
+                .append(" bosqichidasiz, unga o'tishingiz shart emas. Avval salomlashib ")
+                .append("o'zingizni tanishtiring, keyin transitionTo chaqiring.\n")
+                // A speaking engine turns whatever it "writes" into audio. On a real call the
+                // model followed the line above by saying the call instead of making it —
+                // the caller heard `transitionTo("IDENTITY_CHECK")` and the stage never moved.
+                .append("- Tool'ni faqat function call bilan chaqiring. Tool nomini (transitionTo, endCall ")
+                .append("va boshqalar), uning parametrlarini va bosqich nomlarini (")
+                .append(def.stages().get(0).id())
+                .append(" va boshqalar) HECH QACHON ovoz chiqarib aytmang — mijoz ularni eshitadi.\n")
+                // The engine asks for a stage and its outcome in one batch of tool calls,
+                // and on a recorded call that turned a caller's "alo" into a payment
+                // promise for today. Refused in Java too (RealtimeToolRunner#refuse).
+                .append("- Bosqichga o'tgan turningizning o'zida o'sha bosqich natijasini ")
+                .append("yozib olmang: avval gapingizni ayting, mijozning javobini eshiting, ")
+                .append("keyin natija tool'ini chaqiring.\n");
 
         if (disclosureText != null && !disclosureText.isBlank()) {
             String renderedDisclosure = PromptTemplateEngine.render(disclosureText.trim(), facts);
@@ -158,20 +194,18 @@ public class RealtimeSystemPromptFactory {
                     .append("\"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra (ayol kishi bo'lsa \"opa\", erkak kishi bo'lsa \"aka\" qo'sh). \n")
                     .append("Ism bilan murojaat qilganda doim o'zbekona hurmat bilan \"aka\"/\"opa\" qo'shib gapir (masalan: \"Murodjon aka\"), familiyani aytma.\n");
         }
-        sb.append("Suhbatda allaqachon aytgan faktingni (shartnoma ")
-                .append("raqami, summa, muddat) qayta aytma; mijoz eshitmagan bo'lsa faqat ")
+        sb.append("Suhbatda allaqachon aytgan faktingni (raqam, ")
+                .append("summa, sana) qayta aytma; mijoz eshitmagan bo'lsa faqat ")
                 .append("so'ralgan qismini takrorla.\n");
 
-        sb.append("OG'ZAKI SHAKL: \"to'lovni amalga oshirasiz\" emas — \"to'laysiz\"; ")
-                .append("\"qarzdorligingiz mavjud\" emas — \"qarzingiz bor\"; ")
-                .append("\"ma'lumot beraman\" emas — \"aytaman\"; ")
-                .append("\"to'lanishi kerak bo'lgan summa\" emas — \"qarz\".\n");
+        sb.append("OG'ZAKI SHAKL: \"amalga oshirasiz\" emas — oddiy fe'l (\"qilasiz\"); ")
+                .append("\"ma'lumot beraman\" emas — \"aytaman\".\n");
         sb.append("HAR JAVOB SAVOL BILAN TUGASIN: quruq xabar aytib jim qolma. Faktni aytdingmi, ")
                 .append("darhol savol qo'sh — tasdiqlovchi (\"bu haqda xabaringiz bormidi?\") yoki ishni ")
-                .append("oldinga suradigan (\"nima uchun to'lanmayapti?\", \"qachon to'lay olasiz?\"). ")
+                .append("oldinga suradigan savol. ")
                 .append("Yagona istisno — endCall bilan xayrlashish.\n");
         sb.append("QISQA GAP: bir javobda ko'pi bilan ikki-uch qisqa gap va bitta savol. ")
-                .append("Shartnoma, summa va muddatni bitta uzun gapga tiqma — alohida gaplarga ")
+                .append("Bir nechta faktni bitta uzun gapga tiqma — alohida gaplarga ")
                 .append("bo'l.\n");
         // "Introduce yourself once" was already here and was not enough: the model gave
         // its name and the recording notice in the opening line, then opened the next
@@ -185,11 +219,16 @@ public class RealtimeSystemPromptFactory {
                 .append("\"2026-yil 3-sentabr kuni\" emas. Mijoz \"ertaga\", \"dushanba\" desa, ")
                 .append("tasdiqlaganda ham o'sha tabiiy shaklni saqla (\"ertaga, 3-sentabrda\"); ")
                 .append("to'liq yyyy-MM-dd sana faqat tool parametriga yoziladi.");
+        StringBuilder examples = new StringBuilder();
+        SystemPromptFactory.appendStyleExamples(examples, def, s.language());
+        if (!examples.isEmpty()) {
+            sb.append("\n\nMISOL (✗ noto'g'ri → ✓ to'g'ri):\n").append(examples);
+        }
 
         return sb.toString();
     }
 
-    private void appendFacts(StringBuilder sb, RealtimeDialogSession s) {
+    private static void appendFacts(StringBuilder sb, RealtimeDialogSession s, boolean factsInPrompt) {
         List<FactField> factSchema = s.scenario().factSchema();
         if (factSchema == null || factSchema.isEmpty()) {
             return;

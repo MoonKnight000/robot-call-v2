@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.billing.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.billing.application.mapper.CompanyBillingMapper;
+import uz.murodjon.robotcallv2.billing.infrastructure.persistence.mapper.CompanyBillingEntityMapper;
 import uz.murodjon.robotcallv2.billing.application.port.output.CompanyBillingRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.CompanyBilling;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity.CompanyBillingEntity;
@@ -18,11 +18,11 @@ public class CompanyBillingRepositoryAdapter implements CompanyBillingRepository
 
     private final CompanyBillingJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final CompanyBillingMapper mapper;
+    private final CompanyBillingEntityMapper mapper;
 
     public CompanyBillingRepositoryAdapter(CompanyBillingJpaRepository jpaRepository,
                                            CompanyJpaRepository companyJpaRepository,
-                                           CompanyBillingMapper mapper) {
+                                           CompanyBillingEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -41,7 +41,7 @@ public class CompanyBillingRepositoryAdapter implements CompanyBillingRepository
     @Override
     public CompanyBilling save(CompanyBilling billing) {
         CompanyEntity company = companyJpaRepository.getReferenceById(billing.companyId());
-        CompanyBillingEntity entity = mapper.toEntity(billing, company);
+        CompanyBillingEntity entity = mapper.toCompanyBillingEntity(billing, company);
         return mapper.toCompanyBilling(jpaRepository.save(entity));
     }
 

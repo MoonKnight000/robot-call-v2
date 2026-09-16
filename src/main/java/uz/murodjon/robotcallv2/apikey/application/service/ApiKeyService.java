@@ -14,12 +14,15 @@ import uz.murodjon.robotcallv2.apikey.application.port.output.ApiKeyRepository;
 import uz.murodjon.robotcallv2.apikey.domain.entity.ApiKey;
 import uz.murodjon.robotcallv2.apikey.domain.service.ApiKeyScopes;
 import uz.murodjon.robotcallv2.apikey.domain.service.ApiKeySecret;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.time.Instant;
 import java.util.List;
@@ -41,15 +44,17 @@ public class ApiKeyService implements ApiKeyUseCase {
 
     private final ApiKeyRepository repository;
     private final ApiKeyMapper mapper;
-    private final AuditService auditService;
+    private final AuditUseCase auditService;
     private final CurrentUser currentUser;
+    private final CompanyUseCase companyUseCase;
 
-    public ApiKeyService(ApiKeyRepository repository, ApiKeyMapper mapper, AuditService auditService,
-                         CurrentUser currentUser) {
+    public ApiKeyService(ApiKeyRepository repository, ApiKeyMapper mapper, AuditUseCase auditService,
+                         CurrentUser currentUser, CompanyUseCase companyUseCase) {
         this.repository = repository;
         this.mapper = mapper;
         this.auditService = auditService;
         this.currentUser = currentUser;
+        this.companyUseCase = companyUseCase;
     }
 
     @Override
@@ -118,6 +123,11 @@ public class ApiKeyService implements ApiKeyUseCase {
         ApiKey apiKey = found.get();
         Instant now = Instant.now();
         if (!apiKey.isUsableAt(now) || !ApiKeySecret.matches(presentedKey, apiKey.keyHash())) {
+            return null;
+        }
+        // A suspended tenant's integrations stop with its users, not only its logins.
+        Company company = companyUseCase.findById(apiKey.companyId());
+        if (company == null || company.status() == CompanyStatus.SUSPENDED) {
             return null;
         }
         // Best-effort: a key that authenticated must not be refused because the stamp

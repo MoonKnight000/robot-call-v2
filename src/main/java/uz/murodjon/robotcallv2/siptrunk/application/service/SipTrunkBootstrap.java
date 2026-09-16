@@ -18,13 +18,13 @@ public class SipTrunkBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(SipTrunkBootstrap.class);
 
-    private final SipTrunkRepository trunks;
+    private final SipTrunkRepository sipTrunkRepository;
     private final AsteriskProperties asterisk;
     private final CompanyProperties companyProperties;
 
-    public SipTrunkBootstrap(SipTrunkRepository trunks, AsteriskProperties asterisk,
+    public SipTrunkBootstrap(SipTrunkRepository sipTrunkRepository, AsteriskProperties asterisk,
                              CompanyProperties companyProperties) {
-        this.trunks = trunks;
+        this.sipTrunkRepository = sipTrunkRepository;
         this.asterisk = asterisk;
         this.companyProperties = companyProperties;
     }
@@ -32,7 +32,7 @@ public class SipTrunkBootstrap {
     @EventListener(ApplicationReadyEvent.class)
     public void seedDefaultTrunkFromConfig() {
         long companyId = companyProperties.defaultId();
-        if (trunks.hasDefault(companyId)) {
+        if (sipTrunkRepository.hasDefault(companyId)) {
             return;
         }
         if (asterisk.trunkEndpoint() == null || asterisk.trunkEndpoint().isBlank()) {
@@ -41,7 +41,7 @@ public class SipTrunkBootstrap {
             return;
         }
         String callerId = asterisk.callerId() == null || asterisk.callerId().isBlank() ? null : asterisk.callerId();
-        long id = trunks.create(companyId, "Default", asterisk.trunkEndpoint(), callerId, true,
+        long id = sipTrunkRepository.create(companyId, "Default", asterisk.trunkEndpoint(), callerId, true,
                 null, 5060, null, null, SipTrunkTransport.UDP, List.of("alaw", "ulaw"));
         log.info("Seeded default SIP trunk {} (endpoint '{}') from voice-agent.asterisk.trunk-endpoint",
                 id, asterisk.trunkEndpoint());

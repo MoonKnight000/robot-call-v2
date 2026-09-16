@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.NoiseCancellationMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.RealtimeFactsDelivery;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 
 public record AgentAdvancedDto(
@@ -13,6 +14,7 @@ public record AgentAdvancedDto(
         Boolean storeCallAudio,
         Boolean zeroPiiRetention,
         Integer conversationRetentionDays,
+        RealtimeFactsDelivery realtimeFactsDelivery,
         AgentWebhookConfig initiationWebhook,
         AgentWebhookConfig postCallWebhook,
         AmbientSound ambientSound,
@@ -30,6 +32,7 @@ public record AgentAdvancedDto(
         String midCallSmsTemplate,
         String transferPhoneNumber,
         String transferMessage,
+        Long transferQueueId,
         InterruptionSensitivity interruptionSensitivity,
         Integer endpointingDelayMs
 ) {

@@ -21,7 +21,8 @@ public class CallAttemptEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "target_id", nullable = false)
+    /** Null for a call no campaign placed — manual, test, widget, operator and inbound calls. */
+    @JoinColumn(name = "target_id")
     private CampaignTargetEntity target;
 
     @Column(name = "sip_call_id")
@@ -97,6 +98,13 @@ public class CallAttemptEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "variant_id")
     private CampaignVariantEntity variant;
+
+    /** The agent that ran the call and the published version it ran (NEXT-PLAN A.1). */
+    @Column(name = "ai_agent_id")
+    private Long aiAgentId;
+
+    @Column(name = "agent_version")
+    private Integer agentVersion;
 
     public Long getId() {
         return id;
@@ -276,5 +284,21 @@ public class CallAttemptEntity {
 
     public Long getOperatorUserId() {
         return operatorUser != null ? operatorUser.getId() : null;
+    }
+
+    public Long getAiAgentId() {
+        return aiAgentId;
+    }
+
+    public void setAiAgentId(Long aiAgentId) {
+        this.aiAgentId = aiAgentId;
+    }
+
+    public Integer getAgentVersion() {
+        return agentVersion;
+    }
+
+    public void setAgentVersion(Integer agentVersion) {
+        this.agentVersion = agentVersion;
     }
 }

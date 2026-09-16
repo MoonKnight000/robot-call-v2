@@ -157,7 +157,8 @@ eski permission kodlari kuchda qolmasligi uchun. U qayta login qiladi.
 
 Body yo'q. `BLOCKED` holatidagi hisob login qila olmaydi (`403`,
 [auth.md](auth.md#post-apiauthlogin--kirish)ga qarang) va bloklanganda uning sessiyalari
-ham bekor qilinadi.
+ham bekor qilinadi. Ochiq taklif (invite) va parol tiklash havolalari ham o'chiriladi —
+bloklangan foydalanuvchi ular orqali qaytib kira olmaydi.
 
 **Guardrail'lar:**
 o'zingizni bloklab bo'lmaydi, `USER_EDIT` huquqiga ega yagona faol foydalanuvchini ham

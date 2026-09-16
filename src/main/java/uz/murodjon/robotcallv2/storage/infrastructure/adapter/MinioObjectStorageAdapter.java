@@ -5,11 +5,12 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort;
 import uz.murodjon.robotcallv2.storage.infrastructure.config.AudioStorageProperties;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Set;
@@ -54,7 +55,7 @@ public class MinioObjectStorageAdapter implements ObjectStoragePort {
     }
 
     @Override
-    public boolean available() {
+    public boolean isAvailable() {
         return client != null;
     }
 
@@ -106,7 +107,7 @@ public class MinioObjectStorageAdapter implements ObjectStoragePort {
     public InputStream download(String bucket, String objectName) throws Exception {
         MinioClient current = client;
         if (current == null) {
-            throw new IOException("object storage unavailable");
+            throw new ExternalServiceException(ErrorCode.OBJECT_STORAGE_UNAVAILABLE, "object-storage");
         }
         return current.getObject(GetObjectArgs.builder().bucket(bucket).object(objectName).build());
     }

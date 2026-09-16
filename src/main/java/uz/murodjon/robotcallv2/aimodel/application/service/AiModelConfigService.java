@@ -10,7 +10,7 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.aimodel.domain.service.AiModelConfigValidator;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
@@ -21,11 +21,11 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 public class AiModelConfigService implements AiModelConfigUseCase {
 
     private final AiModelConfigRepository repository;
-    private final AuditService auditService;
+    private final AuditUseCase auditService;
     private final DialogProperties dialogProperties;
     private final AiModelUseCase aiModelUseCase;
 
-    public AiModelConfigService(AiModelConfigRepository repository, AuditService auditService,
+    public AiModelConfigService(AiModelConfigRepository repository, AuditUseCase auditService,
                                 DialogProperties dialogProperties, AiModelUseCase aiModelUseCase) {
         this.repository = repository;
         this.auditService = auditService;

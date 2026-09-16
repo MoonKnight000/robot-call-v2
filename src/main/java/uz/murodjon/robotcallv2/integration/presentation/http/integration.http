@@ -25,6 +25,27 @@ Authorization: Bearer {{auth_token}}
   ]
 }
 
+### Connect amoCRM / Kommo (token of the account's private integration)
+PUT http://localhost:8080/api/settings/integrations/account
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "provider": "AMOCRM",
+  "baseUrl": "acme.amocrm.ru",
+  "accessToken": "{{amocrm_long_lived_token}}"
+}
+
+### Connect Bitrix24 (inbound webhook — the URL is the credential)
+PUT http://localhost:8080/api/settings/integrations/account
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "provider": "BITRIX24",
+  "baseUrl": "{{bitrix24_webhook_url}}"
+}
+
 ### Get Authorize URL
 GET http://localhost:8080/api/settings/integrations/uysot/authorize-url
 Authorization: Bearer {{auth_token}}

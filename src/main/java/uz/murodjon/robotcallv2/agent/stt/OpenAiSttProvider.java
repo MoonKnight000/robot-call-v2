@@ -128,8 +128,7 @@ public class OpenAiSttProvider implements SttProvider {
             if (!ready.await(timeoutSeconds, TimeUnit.SECONDS)) {
                 alive.set(false);
                 webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "setup-timeout");
-                throw new ExternalServiceException(ErrorCode.STT_OPENAI_CONNECT_FAILED, "openai-stt",
-                        "session setup was not acknowledged within " + timeoutSeconds + "s");
+                throw new ExternalServiceException(ErrorCode.STT_OPENAI_SETUP_TIMEOUT, "openai-stt", timeoutSeconds);
             }
 
             log.info("OpenAI STT streaming session open (lang={}, model={}, endpointing={})",
@@ -312,6 +311,10 @@ public class OpenAiSttProvider implements SttProvider {
         private volatile boolean closed;
         /** Audio has been appended since the last commit — there is something to finalize. */
         private boolean pendingAudio;
+        /** Writes queued on {@link #sendChain} and not yet done; past the bound audio frames are dropped. */
+        private final java.util.concurrent.atomic.AtomicInteger pendingSends = new java.util.concurrent.atomic.AtomicInteger();
+        /** About one second of 20 ms frames. */
+        private static final int MAX_PENDING_SENDS = 50;
 
         private OpenAiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics,
                                  boolean externalEndpointing) {
@@ -325,6 +328,9 @@ public class OpenAiSttProvider implements SttProvider {
         public synchronized void sendAudio(byte[] pcm16le) {
             if (closed || !alive.get() || pcm16le == null || pcm16le.length == 0) {
                 return;
+            }
+            if (pendingSends.get() >= MAX_PENDING_SENDS) {
+                return; // a stalled socket: the frame is dropped rather than queued without end
             }
             ObjectNode root = MAPPER.createObjectNode();
             root.put("type", "input_audio_buffer.append");
@@ -345,16 +351,24 @@ public class OpenAiSttProvider implements SttProvider {
         }
 
         private void send(String payload) {
+            pendingSends.incrementAndGet();
             sendChain = sendChain
                     .thenCompose(ignored -> webSocket.sendText(payload, true))
-                    .thenAccept(sent -> {
-                    })
-                    .exceptionally(e -> {
-                        alive.set(false);
-                        metrics.sttError();
-                        log.warn("OpenAI STT send failed: {}", e.getMessage());
+                    .handle((sent, e) -> {
+                        pendingSends.decrementAndGet();
+                        if (e != null) {
+                            alive.set(false);
+                            metrics.sttError();
+                            log.warn("OpenAI STT send failed: {}", e.getMessage());
+                        }
                         return null;
                     });
+        }
+
+        /** A stalled uplink shows here instead of as a caller who says nothing (SttSession#isReady). */
+        @Override
+        public boolean isReady() {
+            return pendingSends.get() < MAX_PENDING_SENDS;
         }
 
         @Override

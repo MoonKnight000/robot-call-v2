@@ -34,19 +34,6 @@ public class ClientInputGate {
     private static final Logger log = LoggerFactory.getLogger(ClientInputGate.class);
 
     /**
-     * Shortest caller transcript that may be dismissed as the bot's own echo. Long enough
-     * that a caller reading a figure back, or agreeing in the bot's own words, is never
-     * thrown away — only a verbatim stretch of the agent's last line reaches it.
-     */
-    private static final int MIN_ECHO_CHARS = 20;
-
-    /**
-     * Finals in a row in the other language before the call turns over to it. Two, because
-     * one is a misrecognition and three is a caller who has already given up.
-     */
-    private static final int LANGUAGE_SWITCH_FINALS = 2;
-
-    /**
      * Common Uzbek and Russian carrier voicemail/answering machine phrases.
      */
     private static final List<String> VOICEMAIL_PHRASES = List.of(
@@ -69,10 +56,13 @@ public class ClientInputGate {
     private final DialogTranscript transcript;
     private final TurnRunner turnRunner;
     private final DialogExecutors executors;
+    private final DialogTuningProperties dialogTuning;
 
     public ClientInputGate(DialogProperties dialogProperties, SttProperties sttProperties, LanguageDetector languageDetector,
                            VoiceMetrics metrics, DialogTranscript transcript,
-                           TurnRunner turnRunner, DialogExecutors executors) {
+                           TurnRunner turnRunner, DialogExecutors executors,
+                           DialogTuningProperties dialogTuning) {
+        this.dialogTuning = dialogTuning;
         this.dialogProperties = dialogProperties;
         this.sttProperties = sttProperties;
         this.languageDetector = languageDetector;
@@ -101,10 +91,8 @@ public class ClientInputGate {
 
         // Check for Voicemail / Answering machine transcript in early turns (turn <= 2)
         if (s.turnCount() <= 2 && isVoicemailTranscript(text)) {
-            log.info("[{}] Voicemail phrase detected in client transcript: '{}'", s.channelId(), text);
-            s.setDisposition(Disposition.VOICEMAIL);
-            s.end(Disposition.VOICEMAIL);
-
+            log.info("[{}] Voicemail phrase detected in client transcript", s.channelId());
+            log.debug("[{}] voicemail transcript: '{}'", s.channelId(), text);
             AiAgent agent = s.agent();
             // HANGUP only when there is no agent at all: it has no message to leave.
             VoicemailAction action = (agent != null)
@@ -112,13 +100,17 @@ public class ClientInputGate {
                     : VoicemailAction.HANGUP;
 
             if (action == VoicemailAction.IGNORE) {
+                // The session must stay alive for this to mean anything — ending it first
+                // and then "continuing" left the call closing under the agent's feet.
                 log.info("[{}] Agent voicemailAction is IGNORE - continuing call despite voicemail phrase", s.channelId());
-            } else if (action == VoicemailAction.LEAVE_MESSAGE && agent.callBehaviour().voicemailMessage() != null && !agent.callBehaviour().voicemailMessage().isBlank()) {
-                log.info("[{}] Agent voicemailAction is LEAVE_MESSAGE - speaking voicemail message before hangup", s.channelId());
-                executors.submit(() -> turnRunner.leaveVoicemailAndClose(s, agent.callBehaviour().voicemailMessage()));
-                return;
             } else {
-                if (s.hangup() != null) {
+                s.setDisposition(Disposition.VOICEMAIL);
+                s.end(Disposition.VOICEMAIL);
+                String message = agent != null ? agent.callBehaviour().voicemailMessage() : null;
+                if (action == VoicemailAction.LEAVE_MESSAGE && message != null && !message.isBlank()) {
+                    log.info("[{}] Agent voicemailAction is LEAVE_MESSAGE - speaking voicemail message before hangup", s.channelId());
+                    executors.submit(() -> turnRunner.leaveVoicemailAndClose(s, message));
+                } else if (s.hangup() != null) {
                     s.hangup().run();
                 }
                 return;
@@ -131,16 +123,17 @@ public class ClientInputGate {
             // The outcome is already on the record and the caller is closing, not asking.
             // A turn here would open with "Bir lahza" over a two-syllable
             // "rahmat" and end with a goodbye the caller has already been given.
-            log.info("[{}] caller signed off ({}) — answering with a goodbye, not a turn",
-                    s.channelId(), text);
+            log.info("[{}] caller signed off — answering with a goodbye, not a turn", s.channelId());
+            log.debug("[{}] farewell transcript: {}", s.channelId(), text);
             executors.submit(() -> turnRunner.closeOnCallerFarewell(s));
             return;
         }
 
         if (isBackchannelOverTheBot(s, text)) {
             metrics.backchannelIgnored();
-            log.info("[{}] caller agreed over the bot rather than answering it ({}) — "
-                    + "leaving the cut-off reply to resume", s.channelId(), text);
+            log.info("[{}] caller agreed over the bot rather than answering it — "
+                    + "leaving the cut-off reply to resume", s.channelId());
+            log.debug("[{}] backchannel transcript: {}", s.channelId(), text);
             // Deliberately not resumed from here. The barge-in that silenced the bot armed
             // TurnRunner's false-interruption check already, and not starting a turn is
             // exactly what lets it find the call where it left it and speak the rest.
@@ -175,6 +168,7 @@ public class ClientInputGate {
         // the next turn's annex will say they did. Cancel it rather than answer with it.
         s.discardSpeculation();
         metrics.bargeIn();
+        s.recordBargeIn();
         log.info("[{}] barge-in: bot silenced ({})", s.channelId(),
                 playing ? "mid-utterance" : "before its reply was spoken");
         return true;
@@ -191,7 +185,7 @@ public class ClientInputGate {
      *   <li><b>Asked for</b> ("ruscha gapiring") — switched on the spot. The caller said
      *       what they want; making them say it twice is worse than a misrecognition.
      *   <li><b>Answered in</b> — the detector has to say the same thing on
-     *       {@link #LANGUAGE_SWITCH_FINALS} finals in a row. One sentence can be
+     *       {@code language-switch-finals} finals in a row. One sentence can be
      *       misrecognized, and switching on it answers an Uzbek caller in Russian.
      * </ul>
      *
@@ -200,7 +194,7 @@ public class ClientInputGate {
      * caller being answered in a language they do not speak ends the call either way.
      */
     private void adaptLanguage(DialogSession s, String text) {
-        List<String> candidates = sttProperties.detectLanguages();
+        List<String> candidates = !s.detectLanguages().isEmpty() ? s.detectLanguages() : sttProperties.detectLanguages();
         if (candidates == null || candidates.size() < 2) {
             return; // a single-language deployment has nothing to switch to
         }
@@ -220,7 +214,7 @@ public class ClientInputGate {
             return;
         }
         int finals = s.noteLanguageCandidate(spoken);
-        if (finals >= LANGUAGE_SWITCH_FINALS) {
+        if (finals >= dialogProperties.languageSwitchFinals()) {
             log.info("[{}] caller has answered in {} {} times running — switching from {}",
                     s.channelId(), spoken, finals, s.language());
             s.switchLanguage(spoken);
@@ -256,8 +250,8 @@ public class ClientInputGate {
     /**
      * Whether a caller transcript is really the bot's own audio coming back.
      */
-    private static boolean isEchoOfBot(DialogSession s, String text) {
+    private boolean isEchoOfBot(DialogSession s, String text) {
         String caller = TranscriptText.normalize(text);
-        return caller.length() >= MIN_ECHO_CHARS && TranscriptText.normalize(s.lastAgentText()).contains(caller);
+        return caller.length() >= dialogTuning.minEchoChars() && TranscriptText.normalize(s.lastAgentText()).contains(caller);
     }
 }

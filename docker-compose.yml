@@ -1,15 +1,21 @@
 # Local infrastructure for the uysot-voice project (PROJECT.md §2, §10 Stage 0).
-# Credentials come from .env (see .env.example). Defaults are dev-only.
+# Credentials come from .env (see .env.example). Every password is `${VAR:?...}` on
+# purpose: without a .env `docker compose up` stops at config time instead of bringing
+# the stack up on a guessable default. Only SIP (5060), RTP (10000-10200), the ARI/WS
+# port the browser softphone needs (8088) and the app (8080) are published on all
+# interfaces; databases, brokers, MinIO and AMI bind to 127.0.0.1.
 services:
   postgres:
-    image: postgres:18-alpine
+    # Postgres 18 with pgvector (V11: the catalog search's vector index). Debian-based, not
+    # alpine — switching an existing volume over needs one REINDEX (docs/RUN.md).
+    image: pgvector/pgvector:pg18
     container_name: robot-call-postgres
     environment:
       POSTGRES_DB: ${DB_NAME:-robot_call}
       POSTGRES_USER: ${DB_USER:-robot_call}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-robot_call}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       # postgres:18+ requires the mount at /var/lib/postgresql (not .../data) —
       # the image stores data in a version-specific subdir (18/docker) so that
@@ -25,7 +31,7 @@ services:
     image: redis:7-alpine
     container_name: robot-call-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -39,10 +45,10 @@ services:
     container_name: robot-call-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-robot_call}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-robot_call}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # management UI
+      - "127.0.0.1:5672:5672"     # AMQP
+      - "127.0.0.1:15672:15672"   # management UI
     volumes:
       - rabbitmqdata:/var/lib/rabbitmq
     healthcheck:
@@ -57,10 +63,10 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-robot_call}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-robot_call}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?set MINIO_PASSWORD in .env}
     ports:
-      - "9000:9000"     # S3 API
-      - "9001:9001"     # console
+      - "127.0.0.1:9000:9000"     # S3 API (the app proxies every download — never public)
+      - "127.0.0.1:9001:9001"     # console
     volumes:
       - miniodata:/data
     healthcheck:
@@ -83,6 +89,30 @@ services:
       - ./asterisk/update-external-ip.sh:/update-external-ip.sh:ro
     entrypoint: ["sh", "/update-external-ip.sh"]
 
+  # Writes ari_auth.conf / manager_auth.conf / pjsip_local_auth.conf from .env before
+  # asterisk starts (asterisk/render-auth.sh) — the committed *.conf files only #include
+  # them, so no Asterisk password is tracked in git. Refuses blank / CHANGE_ME values.
+  asterisk-auth-sync:
+    image: curlimages/curl:8.11.0
+    container_name: robot-call-asterisk-auth-sync
+    # The asterisk image's own user (andrius/asterisk: asterisk = 1000:1000), so the
+    # mode-600 files written below are readable by Asterisk. Under the curl image's default
+    # user (uid 100) they were not, and ARI/AMI/softphone auth silently failed to load.
+    user: "1000:1000"
+    environment:
+      ASTERISK_CONF_DIR: /etc/asterisk
+      ARI_USER: ${ARI_USER:-robot_call}
+      ARI_PASSWORD: ${ARI_PASSWORD:?set ARI_PASSWORD in .env}
+      AMI_USER: ${AMI_USER:-uysot-ami}
+      AMI_PASSWORD: ${AMI_PASSWORD:?set AMI_PASSWORD in .env}
+      SOFTPHONE_PASSWORD: ${SOFTPHONE_PASSWORD:?set SOFTPHONE_PASSWORD in .env}
+      WEB_TEST_SIP_USER: ${WEB_TEST_SIP_USER:-webtest}
+      WEB_TEST_SIP_PASSWORD: ${WEB_TEST_SIP_PASSWORD:?set WEB_TEST_SIP_PASSWORD in .env}
+    volumes:
+      - ./asterisk/etc/asterisk:/etc/asterisk
+      - ./asterisk/render-auth.sh:/render-auth.sh:ro
+    entrypoint: ["sh", "/render-auth.sh"]
+
   # Asterisk 20 LTS. Config lives in ./asterisk/etc/asterisk (mounted read-write).
   # SIP (5060/udp) + RTP (10000-10200/udp) + ARI HTTP (8088/tcp).
   #
@@ -97,6 +127,8 @@ services:
     depends_on:
       asterisk-ip-sync:
         condition: service_completed_successfully
+      asterisk-auth-sync:
+        condition: service_completed_successfully
     environment:
       TZ: ${TZ:-Asia/Tashkent}   # so Asterisk log timestamps match the app's
     volumes:
@@ -105,8 +137,13 @@ services:
     ports:
       - "5060:5060/udp" # SIP signaling (UDP)
       - "5060:5060/tcp" # SIP signaling (TCP)
-      - "8088:8088"     # ARI HTTP / WebSocket
-      - "5038:5038"     # AMI
+      # ARI HTTP / WebSocket — also SIP-over-WS for the browser softphone. The ARI password
+      # is full control of the PBX (originate to any number over the trunk) and this
+      # listener has no TLS, so it stays on loopback unless .env sets
+      # ASTERISK_HTTP_BIND=0.0.0.0 for LAN browser test calls. The app itself reaches it
+      # in-network (ARI_URL=http://asterisk:8088/) and does not need it published.
+      - "${ASTERISK_HTTP_BIND:-127.0.0.1}:8088:8088"
+      - "127.0.0.1:5038:5038"     # AMI — the app reaches it in-network; never on a LAN/public interface
       - "10000-10200:10000-10200/udp" # RTP media range
     # Pinned so rtp.conf [ice_host_candidates] can map this address to the host's
     # LAN IP for browser (WebRTC) test calls — keep the two in sync.
@@ -124,6 +161,14 @@ services:
   app:
     build: .
     container_name: robot-call-app
+    # Graceful shutdown drains live calls (voice-agent.shutdown.drain-timeout-sec, 60 s),
+    # then tears the rest down (teardown-timeout-sec, 30 s) — Docker's default 10 s would
+    # SIGKILL the JVM in the middle and leave callers on a dead line.
+    stop_grace_period: 120s
+    # Every line of .env reaches the container, so a new setting needs no line here.
+    # `environment:` below takes precedence over it: that is where the localhost values
+    # .env holds for an IntelliJ run are swapped for in-network hostnames.
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,23 +185,26 @@ services:
       # against LocalTime.now() — without this the container runs in UTC and a
       # 09:00–20:00 window silently means 14:00–01:00 Tashkent time.
       TZ: ${TZ:-Asia/Tashkent}
-      SECURITY_PUBLIC_UI: ${SECURITY_PUBLIC_UI:-true}
+      # Browser origins of the console; empty means no cross-origin caller (see auth.yml).
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
       # HS256 signing key for user login (Authorization: Bearer) — the only way into
-      # /api/**. No default on purpose: an unset secret means nobody can log in and the
-      # API rejects everything, rather than dialling the trunk for anyone who can reach
-      # port 8080.
-      JWT_SECRET: ${JWT_SECRET:-}
+      # /api/**. Required: a blank secret would boot an API nobody can log in to.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       # In-network service hostnames (override the localhost defaults).
       DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-robot_call}
       DB_USER: ${DB_USER:-robot_call}
-      DB_PASSWORD: ${DB_PASSWORD:-robot_call}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: ${RABBITMQ_USER:-robot_call}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-robot_call}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
       ARI_URL: http://asterisk:8088/
       ARI_USER: ${ARI_USER:-robot_call}
-      ARI_PASSWORD: ${ARI_PASSWORD:-CHANGE_ME_ARI_PASSWORD}
+      ARI_PASSWORD: ${ARI_PASSWORD:?set ARI_PASSWORD in .env}
+      # Browser test calls sign in to the [webtest] PJSIP endpoint with this — the same
+      # value asterisk-auth-sync writes into pjsip_local_auth.conf.
+      WEB_TEST_SIP_USER: ${WEB_TEST_SIP_USER:-webtest}
+      WEB_TEST_SIP_PASSWORD: ${WEB_TEST_SIP_PASSWORD:?set WEB_TEST_SIP_PASSWORD in .env}
       # A-number the callee sees. Left blank the app sets nothing, and PJSIP falls back
       # to the endpoint's from_user — the Skyline account login, which is why a callee's
       # phone shows "+781137492": a login is not a subscriber number, so the handset
@@ -170,23 +218,24 @@ services:
       AMI_ENABLED: ${AMI_ENABLED:-false}
       AMI_HOST: asterisk
       AMI_PORT: ${AMI_PORT:-5038}
-      AMI_USER: ${AMI_USER:-robot_call-ami}
-      AMI_PASSWORD: ${AMI_PASSWORD:-CHANGE_ME_AMI_PASSWORD}
-      # Where PjsipConfigWriter writes the generated trunk config — the SAME directory
-      # the asterisk service mounts pjsip.conf from (the volume below), so both
-      # containers see the same files. Off by default (SIPTRUNK_CONFIG_ENABLED unset).
+      AMI_USER: ${AMI_USER:-uysot-ami}
+      AMI_PASSWORD: ${AMI_PASSWORD:?set AMI_PASSWORD in .env}
+      # Where PjsipConfigWriter (trunks) and PjsipOperatorEndpointConfigAdapter (operators)
+      # write their generated PJSIP files — the generated/ subdirectory of the config the
+      # asterisk service mounts, which pjsip.conf #tryincludes (the volume below).
+      # Off by default (SIPTRUNK_CONFIG_ENABLED unset).
       SIPTRUNK_CONFIG_ENABLED: ${SIPTRUNK_CONFIG_ENABLED:-false}
-      SIPTRUNK_CONFIG_DIR: /etc/asterisk
+      SIPTRUNK_CONFIG_DIR: /etc/asterisk/generated
       # Asterisk sends the caller's audio (externalMedia RTP) to this address.
       RTP_LOCAL_IP: app
       MINIO_ENDPOINT: http://minio:9000
       MINIO_USER: ${MINIO_USER:-robot_call}
-      MINIO_PASSWORD: ${MINIO_PASSWORD:-robot_call}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:?set MINIO_PASSWORD in .env}
       MINIO_BUCKET: ${MINIO_BUCKET:-files}
       STORAGE_ENABLED: ${STORAGE_ENABLED:-true}
-      # Uysot CRM and its OAuth app. These must be listed here or a value set in .env never
-      # reaches the container — and for the OAuth hosts that would mean the browser being
-      # sent to the production consent page while everything else points at dev.
+      # Uysot CRM and its OAuth app. The OAuth hosts default to dev here, unlike the YAML's
+      # production defaults — without that the browser would be sent to the production
+      # consent page while everything else points at dev.
       #
       # The URLs repeat config/integrations.yml's defaults rather than falling back to them:
       # an env var set to the empty string is still *set*, so `${VAR:-}` here would override
@@ -206,9 +255,10 @@ services:
       UYSOT_OAUTH_CLIENT_ID: ${UYSOT_OAUTH_CLIENT_ID:-}
       UYSOT_OAUTH_CLIENT_SECRET: ${UYSOT_OAUTH_CLIENT_SECRET:-}
       # Credentials (see .env.example). Default provider is Yandex (no Google file
-      # needed). For Google STT/TTS, uncomment GOOGLE_APPLICATION_CREDENTIALS below
-      # AND the gcp.json mount.
-      # GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp.json
+      # needed). .env holds a Windows path for the IntelliJ run, which means nothing in
+      # the container — blanked here. For Google STT/TTS set it to /run/secrets/gcp.json
+      # AND uncomment the gcp.json mount.
+      GOOGLE_APPLICATION_CREDENTIALS: ""
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # Which chat provider Spring AI activates. "none" boots the app with no LLM —
       # needed for a keyless deploy, since google-genai with a blank key throws while
@@ -218,9 +268,8 @@ services:
       # and gemini-2.5-flash 404s for keys that never used it.
       LLM_DIALOG_MODEL: ${LLM_DIALOG_MODEL:-gemini-3.8-flash}
       SUMMARY_MODEL: ${SUMMARY_MODEL:-gemini-3.8-flash}
-      # Thinking level (MINIMAL/LOW/MEDIUM/HIGH — bound case-insensitively). Must reach
-      # the container: without these lines a value set in .env never arrives and
-      # application.yml's default silently wins. Low keeps a phone turn fast while supported by 3.8.
+      # Thinking level (MINIMAL/LOW/MEDIUM/HIGH — bound case-insensitively). Low keeps a
+      # phone turn fast while supported by 3.8.
       LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-low}
       SUMMARY_REASONING_EFFORT: ${SUMMARY_REASONING_EFFORT:-low}
       STT_PROVIDER: ${STT_PROVIDER:-yandex}
@@ -276,7 +325,7 @@ services:
       # to a smaller model — those are most of a call and pay time-to-first-token like any
       # other. Blank keeps every turn on the company's configured model. A model id this
       # API key cannot reach 404s, so a failed fast-model turn is retried on the normal
-      # model (TurnRunner#retryTurn) rather than lost.
+      # model (LlmTurnClient#retryTurn) rather than lost.
       DIALOG_FAST_MODEL: ${DIALOG_FAST_MODEL:-gemini-3.5-flash-lite}
       # 12, not 3: on a measured call the one turn that fell under 3 words answered in
       # 1.1s and the three that did not took 2.4-6.2s on the full model. Caller turns are
@@ -307,10 +356,11 @@ services:
       # Rolling app log (logback-spring.xml) — the per-turn "turn latency:" lines live here
       # after `docker compose logs` has scrolled past them.
       - ./logs:/app/logs
-      # Same host directory the asterisk service mounts pjsip.conf from — lets
-      # PjsipConfigWriter write pjsip_trunks.conf where Asterisk can #include it
-      # (report #7). Harmless while SIPTRUNK_CONFIG_ENABLED is off.
-      - ./asterisk/etc/asterisk:/etc/asterisk
+      # Only the generated/ subdirectory of the asterisk config: the app writes
+      # pjsip_trunks.conf and pjsip_operators.conf there and Asterisk #tryincludes them.
+      # The rest of that directory (ARI/AMI/SIP credential files) stays out of this
+      # container. Harmless while SIPTRUNK_CONFIG_ENABLED is off.
+      - ./asterisk/etc/asterisk/generated:/etc/asterisk/generated
       # For Google STT/TTS: uncomment and point GOOGLE_CREDS_PATH (.env) at your
       # service-account JSON. (Leave commented when using Yandex.)
       # - ${GOOGLE_CREDS_PATH:-./gcp.json}:/run/secrets/gcp.json:ro

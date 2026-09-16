@@ -51,6 +51,12 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `recurringDayOfMonth` | `number` (1–31) | ❌ | `MONTHLY` uchun oyning kuni |
 | `cronExpression` | `string` | ❌ | `CRON` uchun Spring/Quartz cron ifodasi |
 | `autoResetTargets` | `boolean` | ❌ | Takror ishga tushganda nishonlar `PENDING` ga qaytariladimi. Standart `false` |
+| `priority` | `number` (1–5) | ❌ | Dialer har tickdagi batch'ni faol kampaniyalar orasida ustuvorlikka **proporsional** bo'ladi: 5 dagi kampaniya 1 dagiga nisbatan 5 barobar ko'p liniya oladi; har biri kamida 1 ta. Standart `3` |
+| `retryPolicy` | `object` | ❌ | Disposition bo'yicha retry qoidalari: `{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}}`. `delayMinutes` — shu natijadan keyingi kutish (`retryIntervalMinutes` va standartlardan ustun); `maxAttempts` — oxirgi natija shu bo'lsa, shuncha urinishdan keyin nishon `EXHAUSTED` (kampaniya `maxAttempts`idan oshmaydi). Qoida bo'lmagan disposition uchun `retryIntervalMinutes`, u `0` bo'lsa standartlar (`NO_ANSWER` 180 min, `FAILED` 15 min, `VOICEMAIL` 120 min, `CALLBACK_REQUESTED` 60 min) |
+| `startAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan boshlanish. `start` shu vaqtdan **oldin** bosilsa kampaniya `SCHEDULED` bo'lib turadi va daqiqalik sweep vaqti kelganda `ACTIVE` qiladi (`startAt` o'tib ketgan yoki `null` bo'lsa — darhol `ACTIVE`). `start?immediate=true` rejani chetlab hozir boshlaydi |
+| `endAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan tugash: `ACTIVE` kampaniya shu vaqtda nishonlar qolgan bo'lsa ham `COMPLETED` qilinadi (`CAMPAIGN_FINISHED` bildirishnomasi). `endAt` `startAt`dan keyin bo'lishi shart — `400 CAMPAIGN_SCHEDULE_INVALID`; o'tib ketgan `endAt` bilan `start` — `409 CAMPAIGN_END_PASSED` |
+| `budgetUzs` | `number` | ❌ | Butun kampaniya uchun xarajat tavani (so'm). Yakunlangan (`SETTLED`) qo'ng'iroqlar summasi shunga yetganda dialer kampaniyani `PAUSED` qiladi va `CAMPAIGN_PAUSED` bildirishnomasi (`BUDGET_CAP`) yuboradi; davom ettirish — `start`. Tekshiruv daqiqada bir marta, shuning uchun bitta tick'ning batch'i qadar oshib ketishi mumkin |
+| `dailyBudgetUzs` | `number` | ❌ | Xuddi shu, lekin kompaniya vaqt zonasidagi bir kun uchun (yarim tundan boshlab) |
 
 > ⚠️ **Muhim o'zgarish.** Kampaniya endi faqat *kimga va qachon* qo'ng'iroq qilishni
 > ushlaydi. `scenarioId`, `defaultLanguage`, `ttsVoice`, `languageVoices`, `agentPersona`,
@@ -85,6 +91,15 @@ kampaniyani boshqa ovoz yoki boshqa skript bilan yuritish uchun uni klonlash sha
 
 Javob — yangilangan `CampaignRow`.
 
+**Optimistik qulf (`version`).** Body'da ixtiyoriy `version` (`long`) maydoni bor: frontend
+formani ochganda `CampaignRow.version` dan o'qigan qiymatni shu yerda qaytarib yuboradi.
+Kampaniya shu orada boshqa foydalanuvchi tomonidan saqlangan bo'lsa (versiya mos kelmasa) —
+`409 ENTITY_VERSION_CONFLICT`, hech narsa yozilmaydi: kampaniyani qayta o'qib, o'zgarishni
+yana kiritish kerak. `version` yuborilmasa — amalda avvalgidek (eski klientlar buzilmaydi).
+Versiyani faqat tahrir oshiradi: dialer yozadigan `status` / `lastRunAt` va
+`start`/`pause`/`archive` uni o'zgartirmaydi, shuning uchun ishlayotgan kampaniyani tahrirlash
+dialer tufayli `409` olmaydi (tahrir bu ustunlarni yozmaydi ham).
+
 ---
 
 ### `GET /api/campaigns/{id}` — Kampaniya tafsilotlari
@@ -111,6 +126,12 @@ Javob — yangilangan `CampaignRow`.
     "companyId": 1,
     "createdBy": 3,
     "createdByName": "Aziz Bekmurodov",
+    "priority": 3,
+    "retryPolicy": { "VOICEMAIL": { "maxAttempts": 1, "delayMinutes": 120 } },
+    "startAt": "2026-09-15T04:00:00Z",
+    "endAt": null,
+    "budgetUzs": 5000000,
+    "dailyBudgetUzs": null,
     "recurrenceType": "CRON",
     "recurringDayOfMonth": null,
     "cronExpression": "0 0 9 ? * MON-FRI",
@@ -119,7 +140,8 @@ Javob — yangilangan `CampaignRow`.
     "totalTargets": 1200,
     "calledTargets": 750,
     "pendingTargets": 450,
-    "completedTargets": 700
+    "completedTargets": 700,
+    "version": 4
   },
   "message": null,
   "messageCode": null,
@@ -127,8 +149,23 @@ Javob — yangilangan `CampaignRow`.
 }
 ```
 
-Kampaniya holati (`CampaignStatus`): `DRAFT`, `ACTIVE`, `PAUSED`, `COMPLETED`
-(barcha nishonlar yakunlandi), `ARCHIVED`.
+`version` — optimistik qulf hisoblagichi: `PUT /api/campaigns/{id}` da shu qiymat qaytariladi.
+
+Kampaniya holati (`CampaignStatus`): `DRAFT`, `SCHEDULED` (`startAt` kutilmoqda), `ACTIVE`,
+`PAUSED`, `COMPLETED` (barcha nishonlar yakunlandi yoki `endAt` keldi), `ARCHIVED`.
+
+Holat mashinasi (`CampaignStateMachine`) — faqat shu o'tishlar mumkin:
+`DRAFT → SCHEDULED | ACTIVE | ARCHIVED`, `SCHEDULED → ACTIVE | ARCHIVED`,
+`ACTIVE → PAUSED | COMPLETED | ARCHIVED`,
+`PAUSED → ACTIVE | ARCHIVED`, `COMPLETED → ACTIVE | ARCHIVED`; `ARCHIVED`dan chiqish yo'q.
+Boshqa o'tish — `409 CAMPAIGN_INVALID_TRANSITION`; joriy holatga qayta o'tish (masalan
+ishlayotgan kampaniyaga yana `start`) — xatosiz no-op. `start` nishoni ham, target
+source'i ham bo'lmagan kampaniyada — `409 CAMPAIGN_HAS_NO_TARGETS`; agenti o'chirilgan kampaniyada — `409 AI_AGENT_DISABLED`.
+
+Dialer o'zi kampaniyani `PAUSED` qilishi mumkin (yaroqli SIP trunk yo'q) — bunda
+`CAMPAIGN_PAUSED` bildirishnomasi sabab bilan keladi. Balans yetmasa kampaniya to'xtamaydi:
+nishonlar 15 daqiqaga kutishga qo'yiladi (urinish sarflanmaydi) va soatiga bir marta
+`BALANCE_LOW` bildirishnomasi keladi.
 
 ---
 
@@ -198,19 +235,32 @@ Body — `AddTargetRequest` **massivi**:
 | `clientId` | ✅ (`@Positive`) | CRM dagi mijoz id'si |
 | `phone` | ✅ (`@NotBlank`) | Teriladigan raqam |
 | `language` | ❌ | Nishon uchun til; `null` — kampaniya tili |
-| `contextData` | ❌ | Erkin JSON obyekt: promptdagi `{{...}}` o'zgaruvchilari shu yerdan olinadi |
+| `contextData` | ❌ | Erkin JSON obyekt: promptdagi `{{...}}` o'zgaruvchilari shu yerdan olinadi. Shu nishon uchun agentni moslash: `agentOverrides` (`firstMessage`, `systemPrompt`, `variables`), batafsil [calls.md](calls.md) instant bo'limida |
 
 **Response** (`AddTargetsResponse`):
 
 ```json
-{ "accept": true, "data": { "campaignId": 12, "added": 2, "targetIds": [501, 502] }, "errors": null }
+{ "accept": true, "data": { "campaignId": 12, "added": 2, "targetIds": [501, 502], "skippedDuplicates": 0, "skippedDoNotCall": 0 }, "errors": null }
 ```
+
+Kampaniya topilmasa yoki boshqa kompaniyaniki bo'lsa — `404 CAMPAIGN_NOT_FOUND` (CSV import
+ham shunday). Massivda noto'g'ri raqam bo'lsa (`400 PHONE_INVALID`) hech bir qator yozilmaydi.
+
+Har bir raqam ikki tekshiruvdan o'tadi (CSV import va `targets/sync` ham shunday):
+- **Dublikat** — kampaniyada shu raqam allaqachon navbatda (`PENDING`/`IN_PROGRESS`) bo'lsa,
+  qayta qo'shilmaydi: `skippedDuplicates` oshadi, mavjud qator o'zgarmaydi. Tugagan
+  (`DONE`/`EXHAUSTED`/`FAILED`) raqam yangi nishon bo'la oladi (masalan callback).
+  DB darajasida `idx_campaign_target_queued_phone` qisman unique indeks kafolatlaydi.
+- **Do-not-call** — raqam kompaniyaning DNC ro'yxatida bo'lsa, nishon `doNotCall: true`
+  belgisi bilan saqlanadi (statistikada ko'rinadi, dialer hech qachon termaydi):
+  `skippedDoNotCall` oshadi, `added` va `targetIds` ga ham kiradi.
 
 ---
 
 ### `POST /api/campaigns/{id}/targets/csv` — CSV import
 
-`Content-Type: text/csv` (yoki `text/plain`), body — CSV faylning o'zi:
+`Content-Type: text/csv` (yoki `text/plain`), body — CSV faylning o'zi (ko'pi bilan 5 000 000
+belgi; uzunrog'i → `400 VALIDATION_FAILED`):
 
 ```csv
 clientId,phone,language,clientName,debtAmount,debtDay,currency,dueDate,orderNumber,deliveryAddress
@@ -229,6 +279,8 @@ bo'lmasa — `400 CSV_PHONE_COLUMN_MISSING`; fayl bo'sh bo'lsa — `400 CSV_EMPT
     "campaignId": 12,
     "added": 45,
     "targetIds": [501, 502],
+    "skippedDuplicates": 3,
+    "skippedDoNotCall": 1,
     "errors": [ { "line": 8, "message": "phone is empty" } ],
     "unknownColumns": ["orderNumber", "deliveryAddress"]
   },
@@ -375,7 +427,7 @@ qarzdorlarga qo'ng'iroq qil" uchun hech kim fayl yuklamaydi.
 | `phoneField` | ❌ | Har bir qatordagi raqam kaliti; standart `phone` |
 | `clientIdField` | ❌ | CRM mijoz id kaliti; bo'lmasa `0` |
 | `languageField` | ❌ | Qator uchun til; bo'lmasa agentning tili |
-| `replaceTargets` | ❌ | Import oldidan mavjud nishonlarni tozalash. Endpoint javob bergandan **keyin** tozalanadi — muvaffaqiyatsiz so'rov ro'yxatni bo'shatib qo'ymaydi |
+| `replaceTargets` | ❌ | Import oldidan eski ro'yxatni almashtirish. Endpoint javob bergandan **keyin** bajariladi — muvaffaqiyatsiz so'rov ro'yxatni bo'shatib qo'ymaydi. Faqat hali terilmagan (`PENDING`, `attempts = 0`) nishonlar o'chiriladi; qayta urinishni kutayotgan `PENDING` nishonlar `EXHAUSTED` qilinadi; `IN_PROGRESS` va yakunlangan nishonlarga tegilmaydi (ularning urinishlari va natijalari tarix) |
 | `syncOnRecurrence` | ❌ | Har bir takror ishga tushishda avtomatik olish. Standart `true` |
 | `enabled` | ❌ | `false` — avtomatik ham, qo'lda ham ishlamaydi |
 
@@ -473,7 +525,8 @@ holda turadi: `GET /api/campaigns/{id}/target-source` bilan o'qib olib, uchta UR
 qilingan — kampaniya `DRAFT` + `ONCE`, manba `enabled: false`, host esa `example.uz`.
 
 Validatsiya (`400`): `TARGET_SOURCE_STEPS_REQUIRED` (`CHAINED`, lekin step yo'q),
-`TARGET_SOURCE_STEP_INVALID` (step'da `url` yo'q, `extract` bo'sh, yoki 1-stepdan boshqasida
+`TARGET_SOURCE_STEP_URL_MISSING` (step'da `url` yo'q), `TARGET_SOURCE_STEP_EXTRACTS_NOTHING` (`extract` bo'sh),
+`TARGET_SOURCE_STEP_PAGINATION_NOT_FIRST` (1-stepdan boshqasida
 `paginate`), `TARGET_SOURCE_URL_INVALID` (`GENERIC`, lekin `url` yo'q).
 
 #### `UYSOT_DEBTORS`
@@ -502,15 +555,20 @@ ruxsat beradi, bitta qarzdor esa uchta so'rovga tushadi.
     "fetched": 340,
     "added": 337,
     "removed": 300,
+    "skippedDuplicates": 2,
+    "skippedDoNotCall": 0,
     "errors": [{ "line": 41, "message": "no 'phone' in row" }]
   }
 }
 ```
 
 Xatolar: `404 TARGET_SOURCE_NOT_FOUND` (source sozlanmagan), `409 TARGET_SOURCE_DISABLED`
-(`enabled: false` — qo'lda ham ishlamaydi), `502 TARGET_SOURCE_FETCH_FAILED` (endpoint javob
-bermadi yoki 2xx emas), `400 TARGET_SOURCE_RESPONSE_INVALID` (javob JSON massiv emas).
-Har to'rt holatda ham kampaniyaning mavjud nishonlari **tegilmaydi**; oxirgi ikkisining sababi
+(`enabled: false` — qo'lda ham ishlamaydi), `502 TARGET_SOURCE_FETCH_FAILED` (endpoint javob bermadi),
+`502 TARGET_SOURCE_HTTP_STATUS` (javob 2xx emas), `502 TARGET_SOURCE_RESPONSE_EMPTY` (javob bo'sh),
+`502 TARGET_SOURCE_RESPONSE_TOO_LARGE` (javob 16 MB dan katta), `502 TARGET_SOURCE_FETCH_INTERRUPTED`,
+`400 TARGET_SOURCE_RESPONSE_NOT_JSON` (javob JSON emas), `400 TARGET_SOURCE_RESPONSE_NOT_ARRAY` (javob massiv emas —
+`itemsPath` kerak), `400 TARGET_SOURCE_ITEMS_PATH_EMPTY` (`itemsPath` da hech narsa yo'q).
+Har holatda ham kampaniyaning mavjud nishonlari **tegilmaydi**; 502 va 400 xatolarning sababi
 `lastSyncError` ga yoziladi.
 
 Avtomatik (takror) ishga tushishda xato **kampaniyani to'xtatmaydi**: sweep barcha
@@ -537,12 +595,17 @@ Body yo'q. Nishonning raqami kompaniya opt-out ro'yxatiga tushadi
 
 | Endpoint | Nima qiladi |
 |---|---|
-| `POST /api/campaigns/{id}/start?immediate=false` | Kampaniyani ishga tushirish (`ACTIVE`) |
+| `POST /api/campaigns/{id}/start?immediate=false` | Kampaniyani ishga tushirish (`ACTIVE`; `startAt` kelajakda bo'lsa — `SCHEDULED`) |
 | `POST /api/campaigns/{id}/pause` | Vaqtincha to'xtatish (`PAUSED`) |
 | `DELETE /api/campaigns/{id}` | Arxivlash (`ARCHIVED`) |
 
 Uchalasi ham `CampaignStatusResponse` (`{ "campaignId": 12, "status": "ACTIVE" }`)
-qaytaradi.
+qaytaradi. Ruxsat etilmagan o'tish — `409 CAMPAIGN_INVALID_TRANSITION` (yuqoridagi holat
+mashinasi); `start` nishonsiz va target source'siz — `409 CAMPAIGN_HAS_NO_TARGETS`, agenti o'chirilgan (`enabled=false`) kampaniyada — `409 AI_AGENT_DISABLED` (dialer bunday kampaniyani har tick'da o'tkazib yuboradi).
+
+`maxConcurrentCalls` endi haqiqatan ishlaydi: dialer kampaniya kesimida ham hisoblaydi
+(`dialer:active:campaign:{id}`) va shu chegaraga yetganda kampaniyaga yangi qo'ng'iroq
+bermaydi (kompaniya va platforma chegaralari o'z kuchida qoladi).
 
 **`immediate` parametri:**
 `false` (standart) — har bir nishon o'ziga belgilangan vaqtni kutadi.
@@ -571,6 +634,7 @@ Dialer har bir nishonni navbatga qo'yayotganda kampaniyaning **faol** variantlar
 | `aiAgentId` | To'ldirilgan bo'lsa, qo'ng'iroq kampaniya agenti o'rniga shu agent bilan ketadi — boshqa senariy, ovoz yoki persona bilan |
 | `ttsVoiceId` | To'ldirilgan bo'lsa, qo'ng'iroq shu ovozda gapiradi. Agentning `languageVoices` xaritasi bu qo'ng'iroq uchun **bekor qilinadi** — aks holda u variant ovozidan ustun kelib, variant faqat nomi bilan farq qilardi |
 | `promptOverride` | To'ldirilgan bo'lsa, ssenariyning `rolePrompt` i shu matn bilan almashtiriladi. Faqat shu qo'ng'iroq uchun — ssenariy yozuvi o'zgarmaydi, bosqichlar, faktlar, tool'lar va guardrail'lar tegilmaydi |
+| `pipelineMode` | To'ldirilgan bo'lsa (`CASCADE` / `REALTIME`), qo'ng'iroq agentning o'z rejimi o'rniga shu pipeline'da ketadi. **Cascade va realtime'ni solishtirishning yagona adolatli yo'li** — bir ro'yxat, bir kunlar, bir xil taqsimot. `REALTIME` tanlangan, lekin deploy'da realtime engine yo'q bo'lsa, qo'ng'iroq cascade'da ketadi (logda WARN). Natijani solishtirish: shu hisobotdagi `answerRate`/`conversionRate`/`spentUzs` + [reports.md](reports.md) dagi `technical.avgTurnLatencyMs` va `rtpMos` |
 | `trafficWeight` | Taqsimotdagi ulush. Yig'indisi 100 bo'lishi shart emas — nisbat muhim |
 | `active` | `false` bo'lsa umuman tanlanmaydi |
 
@@ -584,7 +648,7 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
 |---|---|
 | `callsCount` | Nishon navbatga qo'yilganda (dialer) |
 | `answeredCount` | Mijoz go'shakni ko'targanda va suhbat boshlanganda |
-| `convertedCount` | Qo'ng'iroq yakunida disposition `PROMISE_TO_PAY` yoki `COMPLETED` bo'lsa. `TRANSFERRED` ataylab hisoblanmaydi — operatorga o'tkazish botning ishni oxiriga yetkaza olmagani, uni konversiya deb sanash eng tez taslim bo'ladigan ssenariyni g'olib qilardi |
+| `convertedCount` | Qo'ng'iroq yakunida disposition `PROMISE_TO_PAY`, `GOAL_REACHED` yoki `COMPLETED` bo'lsa. `TRANSFERRED` ataylab hisoblanmaydi — operatorga o'tkazish botning ishni oxiriga yetkaza olmagani, uni konversiya deb sanash eng tez taslim bo'ladigan ssenariyni g'olib qilardi |
 
 - `POST /api/campaigns/{campaignId}/variants` — variant yaratish
 - `GET /api/campaigns/{campaignId}/variants` — variantlar ro'yxati
@@ -601,6 +665,7 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
   "aiAgentId": 9,
   "promptOverride": "Siz xushmuomala, shoshilmaydigan operatorsiz...",
   "ttsVoiceId": "zamira",
+  "pipelineMode": "REALTIME",
   "trafficWeight": 50,
   "active": true
 }
@@ -612,6 +677,7 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
 | `aiAgentId` | `number` | ❌ | Kampaniya agenti o'rniga ishlatiladigan agent |
 | `promptOverride` | `string` | ❌ | Ssenariyning `rolePrompt` i o'rniga (faqat shu variant qo'ng'iroqlarida) |
 | `ttsVoiceId` | `string` | ❌ | Variant ovozi |
+| `pipelineMode` | `CASCADE` \| `REALTIME` \| `null` | ❌ | Variant qo'ng'iroqlari qaysi pipeline'da ketadi; `null` — agentning o'zi |
 | `trafficWeight` | `number` | ❌ | Taqsimotdagi ulush; berilmasa `50` |
 | `active` | `boolean` | ❌ (`PUT` da) | `false` — variant umuman tanlanmaydi |
 

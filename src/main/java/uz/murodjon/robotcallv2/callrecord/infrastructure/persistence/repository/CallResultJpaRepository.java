@@ -1,6 +1,5 @@
 package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository;
 
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallResultEntity;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -31,24 +31,15 @@ public interface CallResultJpaRepository extends JpaRepository<CallResultEntity,
                                 @Param("escalated") boolean escalated, @Param("crmNoteId") String crmNoteId,
                                 @Param("outcome") String outcome);
 
-    /** The note landed — record its id so the row leaves the queue. */
+    /** The note landed — record the id the CRM gave it (the outbox_message row holds the delivery state). */
     @Modifying @Transactional
     @Query("UPDATE CallResultEntity r SET r.crmNoteId = :noteId, r.crmAttempts = r.crmAttempts + 1, "
             + "r.crmLastError = NULL WHERE r.call.id = :callId")
     void markCrmPosted(@Param("callId") long callId, @Param("noteId") String noteId);
 
-    /** The post failed — count the attempt so a permanently broken row stops retrying. */
+    /** At most {@code batchSize} results, across every company, written before {@code cutoff}. */
     @Modifying @Transactional
-    @Query("UPDATE CallResultEntity r SET r.crmAttempts = r.crmAttempts + 1, r.crmLastError = :error "
-            + "WHERE r.call.id = :callId")
-    void markCrmFailed(@Param("callId") long callId, @Param("error") String error);
-
-    /**
-     * Results whose note still has to reach the CRM. Each row is
-     * {@code [CallResult, clientId]} — the summary is rebuilt from the entity's stored
-     * columns, so a retry costs an HTTP call and not another LLM call.
-     */
-    @Query("SELECT r, r.call.target.contact.id FROM CallResultEntity r "
-            + "WHERE r.crmNoteId IS NULL AND r.crmAttempts < :maxAttempts ORDER BY r.id")
-    List<Object[]> notesAwaitingCrm(@Param("maxAttempts") int maxAttempts, Pageable limit);
+    @Query(value = "DELETE FROM call_result WHERE id IN "
+            + "(SELECT id FROM call_result WHERE created_at < :cutoff LIMIT :batchSize)", nativeQuery = true)
+    int deleteCreatedBefore(@Param("cutoff") Instant cutoff, @Param("batchSize") int batchSize);
 }

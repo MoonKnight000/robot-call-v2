@@ -5,6 +5,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Offline dialog-simulation settings. Bound from {@code voice-agent.simulation.*}.
  *
+ * <p>What the run is for, what it deliberately does not cover, and why it stops the
+ * application afterwards: {@link DialogSimulationRunner}, which
+ * {@code voice-agent.simulation.enabled} switches on. Never a deployment setting — it
+ * spends LLM tokens on every boot.
+ *
  * @param personasPath file of caller personas to replay; blank disables the runner
  * @param scenarioId   scenario the simulated calls run, 0 for the campaign default
  * @param language     BCP-47 language the simulated caller speaks

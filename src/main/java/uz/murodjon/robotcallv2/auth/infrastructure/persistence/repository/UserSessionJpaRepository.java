@@ -15,6 +15,8 @@ public interface UserSessionJpaRepository extends JpaRepository<UserSessionEntit
 
     Optional<UserSessionEntity> findByRefreshTokenHashAndRevokedAtIsNull(String refreshTokenHash);
 
+    Optional<UserSessionEntity> findByPreviousRefreshTokenHash(String previousRefreshTokenHash);
+
     @Query("SELECT s FROM UserSessionEntity s WHERE s.id = :id AND s.user.id = :userId")
     Optional<UserSessionEntity> findByIdAndUserId(@Param("id") long id, @Param("userId") long userId);
 

@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.role.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
@@ -8,9 +11,13 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/** JPA entity for app_role and its app_role_permission rows. */
+/**
+ * JPA entity for app_role and its app_role_permission rows. Batch-loaded: a list of users
+ * resolves its eager {@code UserEntity.role} in one IN query instead of one per role.
+ */
 @Entity
 @Table(name = "app_role")
+@BatchSize(size = 50)
 public class RoleEntity {
 
     @Id
@@ -39,8 +46,9 @@ public class RoleEntity {
     private boolean system;
 
     // Eager on purpose: a role is never useful without its permissions, and a company has
-    // at most a handful of them.
+    // at most a handful of them. SUBSELECT: all listed roles' permissions in one query.
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @CollectionTable(name = "app_role_permission", joinColumns = @JoinColumn(name = "role_id"))
     @Column(name = "permission", nullable = false)
     @Enumerated(EnumType.STRING)

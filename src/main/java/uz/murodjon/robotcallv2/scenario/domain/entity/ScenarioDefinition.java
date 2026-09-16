@@ -21,13 +21,22 @@ public record ScenarioDefinition(
         List<String> guardrails,
         String disclosureText,
         /** Where to refresh {@code factSchema} values from just before dialling; null = don't. */
-        FactWebhook factWebhook
+        FactWebhook factWebhook,
+        /** The scenario's own ✗ → ✓ phrasing pairs for the prompt (UNIVERSAL-OPERATOR-PLAN A.2); null = none. */
+        List<StyleExample> styleExamples
 ) {
     /** A scenario whose facts come only from the campaign's own data and the CRM. */
     public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
                               List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
                               String disclosureText) {
         this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, null);
+    }
+
+    /** A scenario with no phrasing examples of its own. */
+    public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
+                              List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
+                              String disclosureText, FactWebhook factWebhook) {
+        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, factWebhook, null);
     }
 
     /**
@@ -45,7 +54,7 @@ public record ScenarioDefinition(
             return this;
         }
         return new ScenarioDefinition(stages, factSchema, tools, outcomeSchema, prompt, guardrails,
-                disclosureText, factWebhook);
+                disclosureText, factWebhook, styleExamples);
     }
 
     public StageDef findStage(String id) {
@@ -55,6 +64,22 @@ public record ScenarioDefinition(
         for (StageDef s : stages) {
             if (id.equalsIgnoreCase(s.id())) {
                 return s;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The name of the outcome field this scenario exists to record ({@link OutcomeField#goal}),
+     * or null when it names none — and then a call's disposition is whatever its tools set.
+     */
+    public String findGoalField() {
+        if (outcomeSchema == null) {
+            return null;
+        }
+        for (OutcomeField field : outcomeSchema) {
+            if (field.goal()) {
+                return field.name();
             }
         }
         return null;

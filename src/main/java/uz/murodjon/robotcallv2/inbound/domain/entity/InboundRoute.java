@@ -10,6 +10,12 @@ import java.time.LocalTime;
 
 /**
  * Domain model of inbound_route with OnlinePBX / Virtual ATS capabilities (ROADMAP C.1).
+ *
+ * @param callbackCampaignId the campaign a caller who asks to be called back is added to,
+ *                           due at the time they named; null records the request only
+ * @param scheduleId         the business schedule whose hours the route keeps; wins over
+ *                           {@code businessHoursStart/End}
+ * @param callFlowId         the published call flow a call runs; null answers with {@code aiAgentId}
  */
 public record InboundRoute(
         long id,
@@ -28,6 +34,9 @@ public record InboundRoute(
         LocalTime businessHoursStart,
         LocalTime businessHoursEnd,
         String fallbackMessage,
+        Long callbackCampaignId,
+        Long scheduleId,
+        Long callFlowId,
         boolean enabled,
         Instant createdAt
 ) {

@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import uz.murodjon.robotcallv2.auth.application.dto.TwoFactorSetupResponse;
 import uz.murodjon.robotcallv2.auth.application.dto.UserSessionRow;
 import uz.murodjon.robotcallv2.profile.application.dto.*;
 import uz.murodjon.robotcallv2.profile.domain.entity.PersonalNotificationMatrixEntry;
@@ -72,4 +73,21 @@ public interface ProfileController {
     @PutMapping("/table-config/{key}")
     ResponseEntity<ResponseData<JsonNode>> updateTableConfig(@CurrentCompanyId long companyId,
             @PathVariable String key, @RequestBody(required = false) JsonNode value);
+
+    /**
+     * Starts two-factor setup: a new secret and its {@code otpauth://} link for the QR code.
+     * Nothing changes at login until {@code /2fa/enable} proves a code from it.
+     */
+    @PostMapping("/2fa/setup")
+    ResponseEntity<ResponseData<TwoFactorSetupResponse>> setupTwoFactor(@CurrentCompanyId long companyId);
+
+    /** Switches two-factor login on with the first code from the new secret. */
+    @PostMapping("/2fa/enable")
+    ResponseEntity<ResponseData<Void>> enableTwoFactor(@CurrentCompanyId long companyId,
+                                                       @Valid @RequestBody TwoFactorCodeRequest request);
+
+    /** Switches it off; takes the current password and a code. */
+    @PostMapping("/2fa/disable")
+    ResponseEntity<ResponseData<Void>> disableTwoFactor(@CurrentCompanyId long companyId,
+                                                        @Valid @RequestBody DisableTwoFactorRequest request);
 }

@@ -10,13 +10,14 @@ import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.Ca
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignVariantJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.conversion.application.mapper.ConversionMapper;
 import uz.murodjon.robotcallv2.conversion.application.port.output.ConversionRepository;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionAttribution;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionEvent;
 import uz.murodjon.robotcallv2.conversion.domain.entity.VariantConversions;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.entity.ConversionAttributionEntity;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.entity.ConversionEventEntity;
+import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionAttributionEntityMapper;
+import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionEventEntityMapper;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.repository.ConversionAttributionJpaRepository;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.repository.ConversionEventJpaRepository;
 
@@ -32,7 +33,8 @@ public class ConversionRepositoryAdapter implements ConversionRepository {
     private final CampaignJpaRepository campaignJpaRepository;
     private final CampaignVariantJpaRepository campaignVariantJpaRepository;
     private final CallAttemptJpaRepository callAttemptJpaRepository;
-    private final ConversionMapper mapper;
+    private final ConversionEventEntityMapper eventMapper;
+    private final ConversionAttributionEntityMapper attributionMapper;
 
     public ConversionRepositoryAdapter(ConversionEventJpaRepository eventJpaRepository,
                                        ConversionAttributionJpaRepository attributionJpaRepository,
@@ -40,42 +42,44 @@ public class ConversionRepositoryAdapter implements ConversionRepository {
                                        CampaignJpaRepository campaignJpaRepository,
                                        CampaignVariantJpaRepository campaignVariantJpaRepository,
                                        CallAttemptJpaRepository callAttemptJpaRepository,
-                                       ConversionMapper mapper) {
+                                       ConversionEventEntityMapper eventMapper,
+                                       ConversionAttributionEntityMapper attributionMapper) {
         this.eventJpaRepository = eventJpaRepository;
         this.attributionJpaRepository = attributionJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.campaignJpaRepository = campaignJpaRepository;
         this.campaignVariantJpaRepository = campaignVariantJpaRepository;
         this.callAttemptJpaRepository = callAttemptJpaRepository;
-        this.mapper = mapper;
+        this.eventMapper = eventMapper;
+        this.attributionMapper = attributionMapper;
     }
 
     @Override
     public ConversionEvent saveEvent(ConversionEvent event) {
         CompanyEntity company = companyJpaRepository.getReferenceById(event.companyId());
-        return mapper.toConversionEvent(eventJpaRepository.save(mapper.toEntity(event, company)));
+        return eventMapper.toConversionEvent(eventJpaRepository.save(eventMapper.toConversionEventEntity(event, company)));
     }
 
     @Override
     public Optional<ConversionEvent> findEventByDedupeKey(long companyId, String dedupeKey) {
         return eventJpaRepository.findByCompanyIdAndDedupeKey(companyId, dedupeKey)
-                .map(mapper::toConversionEvent);
+                .map(eventMapper::toConversionEvent);
     }
 
     @Override
     public ConversionAttribution saveAttribution(ConversionAttribution attribution) {
         CompanyEntity company = companyJpaRepository.getReferenceById(attribution.companyId());
-        ConversionAttributionEntity entity = mapper.toEntity(attribution, company,
+        ConversionAttributionEntity entity = attributionMapper.toConversionAttributionEntity(attribution, company,
                 eventJpaRepository.getReferenceById(attribution.conversionEventId()),
                 campaignReference(attribution.campaignId()), variantReference(attribution.variantId()),
                 callAttemptReference(attribution.callAttemptId()));
-        return mapper.toConversionAttribution(attributionJpaRepository.save(entity));
+        return attributionMapper.toConversionAttribution(attributionJpaRepository.save(entity));
     }
 
     @Override
     public Optional<ConversionAttribution> findAttributionByEventId(long conversionEventId) {
         return attributionJpaRepository.findByConversionEventId(conversionEventId)
-                .map(mapper::toConversionAttribution);
+                .map(attributionMapper::toConversionAttribution);
     }
 
     @Override

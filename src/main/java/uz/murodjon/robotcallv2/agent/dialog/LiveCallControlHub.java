@@ -7,16 +7,10 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 /**
- * Hub for live call supervision:
- * <ul>
- *   <li>Whisper mode: Inject real-time operator instructions into the active LLM context
- *   <li>Takeover mode: Seamlessly bridge the live call from AI to a human operator
- *   <li>Live eavesdropping channel tracking
- * </ul>
+ * Whisper for live call supervision: guidance a supervisor gives the bot while listening
+ * in, which the customer never hears. Both engines take it. The takeover half lives in
+ * {@code OperatorTransferService#transferToOperator}, which serves both engines too.
  */
 @Service
 public class LiveCallControlHub {
@@ -24,43 +18,40 @@ public class LiveCallControlHub {
     private static final Logger log = LoggerFactory.getLogger(LiveCallControlHub.class);
 
     private final DialogEngine dialogEngine;
-    private final Map<String, String> pendingWhispers = new ConcurrentHashMap<>();
+    private final RealtimeDialogEngine realtimeDialogEngine;
 
-    public LiveCallControlHub(DialogEngine dialogEngine) {
+    public LiveCallControlHub(DialogEngine dialogEngine, RealtimeDialogEngine realtimeDialogEngine) {
         this.dialogEngine = dialogEngine;
+        this.realtimeDialogEngine = realtimeDialogEngine;
     }
 
     /**
-     * Injects an operator whisper guidance note into the active call session.
-     * The AI agent will follow this instruction in its very next utterance.
+     * Hand the bot the guidance of a supervisor for the rest of this call. A cascade dialog
+     * carries it in the prompt of every turn from the next one on
+     * ({@link SystemPromptFactory#turnAnnex}), a newer whisper replacing it; a realtime
+     * engine gets it as context in its conversation ({@link RealtimeDialogEngine#offerWhisper}).
+     *
+     * @return {@code false} when the call has no bot to steer: it is already with an
+     *         operator, or over
      */
-    public void injectWhisper(String channelId, String operatorInstruction) {
+    public boolean offerWhisper(String channelId, String operatorInstruction) {
         if (channelId == null || operatorInstruction == null || operatorInstruction.isBlank()) {
-            return;
+            return false;
         }
+        String instruction = operatorInstruction.trim();
         DialogSession session = dialogEngine.findSession(channelId);
-        if (session == null || session.isEnded()) {
-            throw new NotFoundException(ErrorCode.CALL_NOT_FOUND, channelId);
+        if (session != null && !session.isEnded()) {
+            session.setOperatorWhisper(instruction);
+            log.info("[{}] operator whisper injected ({} chars)", channelId, instruction.length());
+            return true;
         }
-
-        // Attach operator whisper into CallContext facts
-        session.context().facts().put("operatorNotes", "JONLI KO'RSATMA: " + operatorInstruction.trim());
-        pendingWhispers.put(channelId, operatorInstruction.trim());
-        log.info("[{}] operator whisper injected: \"{}\"", channelId, operatorInstruction.trim());
+        return realtimeDialogEngine.offerWhisper(channelId, instruction);
     }
 
-    /**
-     * Instantly halts the AI dialog and triggers a transfer/takeover to a human operator.
-     */
-    public void takeoverCall(String channelId, String operatorExtension) {
-        DialogSession session = dialogEngine.findSession(channelId);
-        if (session == null || session.isEnded()) {
+    /** {@link #offerWhisper}, for a caller with nothing else to do when the bot cannot take it. */
+    public void injectWhisper(String channelId, String operatorInstruction) {
+        if (!offerWhisper(channelId, operatorInstruction)) {
             throw new NotFoundException(ErrorCode.CALL_NOT_FOUND, channelId);
-        }
-
-        log.info("[{}] human operator taking over call (target ext={})", channelId, operatorExtension);
-        if (session.transfer() != null) {
-            session.transfer().run();
         }
     }
 }

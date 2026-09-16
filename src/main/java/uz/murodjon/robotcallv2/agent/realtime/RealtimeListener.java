@@ -60,4 +60,43 @@ public interface RealtimeListener {
      * @param cause why it ended, or {@code null} for a clean close
      */
     void onClosed(Throwable cause);
+
+    /**
+     * What one engine response cost, as the vendor reports it. Called once per response
+     * (a turn, or the part of one before a tool call) — never with running totals, so the
+     * receiver may simply add.
+     *
+     * <p>A default because not every engine reports usage; one that does not leaves the
+     * call's token columns at zero, which is the honest reading.
+     *
+     * @param promptTokens     input tokens, conversation history and audio included
+     * @param completionTokens tokens the engine produced, audio included
+     * @param cachedTokens     of {@code promptTokens}, how many the vendor served cached
+     */
+    default void onUsage(long promptTokens, long completionTokens, long cachedTokens) {
+    }
+
+    /**
+     * A final caller transcript the engine itself is unsure of (mean token probability
+     * below its threshold). Engines without a confidence signal never call this.
+     */
+    default void onLowConfidenceInput(String text) {
+    }
+
+    /**
+     * The engine lost its connection and continued the same conversation on a new one
+     * (Gemini Live session resumption). Nothing for the call to do — the caller heard at
+     * most a short gap — but worth counting: a rising rate is the vendor degrading.
+     */
+    default void onReconnected() {
+    }
+
+    /**
+     * Whether the engine is still working on an answer — reasoning or waiting on a tool —
+     * after its turn has completed (Gemini 3.8 Live {@code interactionStatus}). While it
+     * is, a quiet line is the caller waiting, not the caller gone. Engines that finish
+     * with the turn never call this.
+     */
+    default void onEngineWorking(boolean working) {
+    }
 }

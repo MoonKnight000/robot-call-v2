@@ -1,0 +1,43 @@
+### Improvement inbox — what yesterday's calls suggest changing
+POST http://localhost:8080/api/agent-insights/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "status": "PROPOSED",
+  "page": 0,
+  "size": 20
+}
+
+### One agent's proposals only
+POST http://localhost:8080/api/agent-insights/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "aiAgentId": 42,
+  "type": "PROMPT_FIX",
+  "page": 0,
+  "size": 20
+}
+
+### One proposal
+GET http://localhost:8080/api/agent-insights/7
+Authorization: Bearer {{auth_token}}
+
+### Accept — a PROMPT_FIX comes back EVALUATING, with the run that decides whether it stays
+POST http://localhost:8080/api/agent-insights/7/accept
+Authorization: Bearer {{auth_token}}
+
+### How that run went: GET /api/ai-agents/42/eval-runs/{runId}
+GET http://localhost:8080/api/ai-agents/42/eval-runs
+Authorization: Bearer {{auth_token}}
+
+### Reject
+POST http://localhost:8080/api/agent-insights/8/reject
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "reason": "Bu mijozning o'zi shunday so'ragan, agent to'g'ri qilgan"
+}

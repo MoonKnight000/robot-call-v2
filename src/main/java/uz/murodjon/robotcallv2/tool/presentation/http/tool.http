@@ -74,3 +74,44 @@ Authorization: Bearer {{auth_token}}
 ### 6. Delete Tool (Returns 409 if in use by any AI Agent)
 DELETE http://localhost:8080/api/tools/1
 Authorization: Bearer {{auth_token}}
+
+### 7. A tool that gets its own OAuth token (client_credentials)
+POST http://localhost:8080/api/tools
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "create_lead",
+  "description": "CRM'da yangi lead yaratadi",
+  "apiUrl": "https://crm.example.uz/api/leads",
+  "apiMethod": "POST",
+  "apiBody": [{ "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }],
+  "auth": {
+    "type": "OAUTH2_CLIENT_CREDENTIALS",
+    "tokenUrl": "https://crm.example.uz/oauth/token",
+    "clientIdSecret": "CRM_CLIENT_ID",
+    "clientSecretSecret": "CRM_CLIENT_SECRET",
+    "scope": "leads.write"
+  }
+}
+
+### 8. List the operations of an OpenAPI document
+POST http://localhost:8080/api/tools/import/operations
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "openApiUrl": "https://shop.example.uz/openapi.json",
+  "secretPrefix": "SHOP"
+}
+
+### 9. Import three of them as tools
+POST http://localhost:8080/api/tools/import
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "openApiUrl": "https://shop.example.uz/openapi.json",
+  "operationIds": ["listProducts", "createOrder", "getOrder"],
+  "secretPrefix": "SHOP"
+}

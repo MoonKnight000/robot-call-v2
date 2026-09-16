@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.contact.application.dto;
 
-import uz.murodjon.robotcallv2.report.domain.entity.CallRow;
-
 import java.time.Instant;
 
 /**
@@ -14,14 +12,4 @@ public record ContactCallHistoryRow(
         Integer durationSec,
         String disposition
 ) {
-    public static ContactCallHistoryRow fromCallRow(CallRow row) {
-        return new ContactCallHistoryRow(
-                row.callId(),
-                row.campaignName(),
-                row.startedAt(),
-                row.durationSec(),
-                row.disposition() != null ? row.disposition().name() : null
-        );
-    }
 }
-

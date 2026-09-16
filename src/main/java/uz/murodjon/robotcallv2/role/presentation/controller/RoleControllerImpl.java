@@ -33,7 +33,7 @@ public class RoleControllerImpl implements RoleController {
 
     @Override
     public ResponseEntity<ResponseData<RoleRow>> get(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(roleUseCase.get(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(roleUseCase.requireRoleRow(companyId, id)));
     }
 
     @Override

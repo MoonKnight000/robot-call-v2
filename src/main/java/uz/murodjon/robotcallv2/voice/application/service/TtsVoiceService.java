@@ -4,7 +4,7 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 import uz.murodjon.robotcallv2.voice.application.port.output.TtsVoiceRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
@@ -42,7 +42,7 @@ public class TtsVoiceService implements TtsVoiceUseCase {
      */
     @Override
     public List<TtsVoice> findSelectableByMode(PipelineMode mode, String language) {
-        return ttsVoiceRepository.forLanguage(language).stream()
+        return ttsVoiceRepository.findByLanguage(language).stream()
                 .filter(voice -> spokenBy(mode, voice))
                 .toList();
     }

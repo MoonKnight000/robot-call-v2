@@ -1,9 +1,9 @@
 package uz.murodjon.robotcallv2.role.application.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.role.application.dto.CreateRoleRequest;
 import uz.murodjon.robotcallv2.role.application.dto.PermissionGroupRow;
@@ -16,10 +16,12 @@ import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.role.domain.enums.PermissionGroup;
 import uz.murodjon.robotcallv2.role.domain.enums.PermissionScope;
 import uz.murodjon.robotcallv2.role.domain.enums.SystemRole;
+import uz.murodjon.robotcallv2.role.domain.event.RoleChangedEvent;
 import uz.murodjon.robotcallv2.role.domain.service.RoleValidator;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,15 +33,18 @@ public class RoleService implements RoleUseCase {
 
     private final RoleRepository repository;
     private final CompanyProperties companyProperties;
-    private final SessionUseCase sessionUseCase;
-    private final AuditService audit;
+    /** Sessions belong to auth, which depends on this feature — it hears of an edited role by event. */
+    private final ApplicationEventPublisher eventPublisher;
+    private final AuditUseCase audit;
+    private final CurrentUser currentUser;
 
     public RoleService(RoleRepository repository, CompanyProperties companyProperties,
-                       SessionUseCase sessionUseCase, AuditService audit) {
+                       ApplicationEventPublisher eventPublisher, AuditUseCase audit, CurrentUser currentUser) {
         this.repository = repository;
         this.companyProperties = companyProperties;
-        this.sessionUseCase = sessionUseCase;
+        this.eventPublisher = eventPublisher;
         this.audit = audit;
+        this.currentUser = currentUser;
     }
 
     @Override
@@ -51,7 +56,7 @@ public class RoleService implements RoleUseCase {
     }
 
     @Override
-    public RoleRow get(long companyId, long id) {
+    public RoleRow requireRoleRow(long companyId, long id) {
         Role role = requireRole(companyId, id);
         return RoleRow.of(role, repository.countUsersByRole(companyId).getOrDefault(id, 0L));
     }
@@ -59,6 +64,7 @@ public class RoleService implements RoleUseCase {
     @Override
     public RoleRow create(long companyId, CreateRoleRequest request) {
         RoleValidator.validateCreate(request.permissions(), repository.countCustomByCompanyId(companyId));
+        RoleValidator.validateGrantable(request.permissions(), currentUser::hasPermission);
         requireNameFree(companyId, request.name(), null);
         Role created = repository.create(companyId,
                 Role.custom(request.name(), request.description(), request.permissions()));
@@ -71,6 +77,7 @@ public class RoleService implements RoleUseCase {
         Role existing = requireRole(companyId, id);
         RoleValidator.validateEditable(existing);
         RoleValidator.validatePermissions(request.permissions());
+        RoleValidator.validateGrantable(request.permissions(), currentUser::hasPermission);
         requireNameFree(companyId, request.name(), id);
         Role updated = repository.update(companyId,
                 new Role(id, companyId, null, request.name(), request.description(), false,
@@ -153,6 +160,7 @@ public class RoleService implements RoleUseCase {
     }
 
     private void revokeSessions(long companyId, long roleId) {
-        repository.findUserIdsByRoleId(companyId, roleId).forEach(sessionUseCase::revokeAllForUser);
+        eventPublisher.publishEvent(
+                new RoleChangedEvent(companyId, roleId, repository.findUserIdsByRoleId(companyId, roleId)));
     }
 }

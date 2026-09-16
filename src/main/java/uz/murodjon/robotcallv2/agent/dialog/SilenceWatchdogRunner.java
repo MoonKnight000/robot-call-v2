@@ -43,14 +43,16 @@ public class SilenceWatchdogRunner {
     private final DialogTranscript transcript;
     private final SpeechOutput speech;
     private final DialogExecutors executors;
+    private final DialogPolicy dialogPolicy;
 
     public SilenceWatchdogRunner(DialogProperties dialogProperties, VoiceMetrics metrics, DialogTranscript transcript,
-                                 SpeechOutput speech, DialogExecutors executors) {
+                                 SpeechOutput speech, DialogExecutors executors, DialogPolicy dialogPolicy) {
         this.dialogProperties = dialogProperties;
         this.metrics = metrics;
         this.transcript = transcript;
         this.speech = speech;
         this.executors = executors;
+        this.dialogPolicy = dialogPolicy;
     }
 
     /** A silence watchdog for a new call, or {@code null} when it is switched off. */
@@ -81,7 +83,8 @@ public class SilenceWatchdogRunner {
                 return;
             }
             long elapsedSec = java.time.Duration.between(s.startedAt(), Instant.now()).getSeconds();
-            int maxSec = s.aiModel() != null ? s.aiModel().maxCallSeconds() : dialogProperties.maxCallSeconds();
+            int maxSec = dialogPolicy.resolveMaxCallSeconds(s.aiModel() != null ? s.aiModel().maxCallSeconds() : null,
+                    s.agent());
             if (maxSec > 0 && elapsedSec >= maxSec) {
                 log.warn("[{}] hard max call duration exceeded ({}s >= {}s) - force closing call",
                         s.channelId(), elapsedSec, maxSec);

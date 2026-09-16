@@ -2,36 +2,38 @@ package uz.murodjon.robotcallv2.inbound.application.mapper;
 
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.inbound.application.dto.CreateInboundRouteRequest;
+import uz.murodjon.robotcallv2.inbound.application.dto.UpdateInboundRouteRequest;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
-import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundRouteEntity;
 
+/**
+ * DTO → domain for the writes the route port takes. Id, company and creation time are the
+ * storage layer's and stay empty here. A {@code ringTimeoutSec} of {@code 0} and a null
+ * enum mean "not given": on create the adapter fills its default, on update it keeps what
+ * the route had.
+ */
 @Component
 public class InboundRouteMapper {
 
-    public InboundRoute entityToDomain(InboundRouteEntity entity) {
-        if (entity == null) {
-            return null;
-        }
-        // ai_agent_id is null for a route that rings a queue, an IVR or a user.
-        return new InboundRoute(
-                entity.getId(),
-                entity.getCompanyId(),
-                entity.getDidNumber(),
-                entity.getAiAgentId(),
-                entity.getRouteType(),
-                entity.getTargetDestination(),
-                entity.getQueueStrategy(),
-                entity.getRingTimeoutSec(),
-                entity.getFailoverAction(),
-                entity.getFailoverDestination(),
-                entity.getAfterHoursAction(),
-                entity.getAfterHoursDestination(),
-                entity.getIvrMenuConfig(),
-                entity.getBusinessHoursStart(),
-                entity.getBusinessHoursEnd(),
-                entity.getFallbackMessage(),
-                entity.isEnabled(),
-                entity.getCreatedAt()
-        );
+    public InboundRoute toNewInboundRoute(CreateInboundRouteRequest request) {
+        return new InboundRoute(0, 0, request.didNumber(), request.aiAgentId(), request.routeType(),
+                request.targetDestination(), request.queueStrategy(), resolveRingTimeoutSec(request.ringTimeoutSec()),
+                request.failoverAction(), request.failoverDestination(), request.afterHoursAction(),
+                request.afterHoursDestination(), request.ivrMenuConfig(), request.businessHoursStart(),
+                request.businessHoursEnd(), request.fallbackMessage(), request.callbackCampaignId(),
+                request.scheduleId(), request.callFlowId(), true, null);
+    }
+
+    public InboundRoute toUpdatedInboundRoute(UpdateInboundRouteRequest request) {
+        return new InboundRoute(0, 0, request.didNumber(), request.aiAgentId(), request.routeType(),
+                request.targetDestination(), request.queueStrategy(), resolveRingTimeoutSec(request.ringTimeoutSec()),
+                request.failoverAction(), request.failoverDestination(), request.afterHoursAction(),
+                request.afterHoursDestination(), request.ivrMenuConfig(), request.businessHoursStart(),
+                request.businessHoursEnd(), request.fallbackMessage(), request.callbackCampaignId(),
+                request.scheduleId(), request.callFlowId(), request.enabled(), null);
+    }
+
+    private static int resolveRingTimeoutSec(Integer ringTimeoutSec) {
+        return ringTimeoutSec != null ? ringTimeoutSec : 0;
     }
 }

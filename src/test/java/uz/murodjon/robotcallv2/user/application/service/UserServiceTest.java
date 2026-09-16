@@ -1,9 +1,11 @@
 package uz.murodjon.robotcallv2.user.application.service;
 
+import uz.murodjon.robotcallv2.security.CurrentUser;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
+import org.springframework.context.ApplicationEventPublisher;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
@@ -18,6 +20,8 @@ import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
+import uz.murodjon.robotcallv2.user.domain.event.UserBlockedEvent;
+import uz.murodjon.robotcallv2.user.domain.event.UserRoleChangedEvent;
 
 import java.time.Instant;
 import java.util.List;
@@ -38,25 +42,27 @@ class UserServiceTest {
 
     private UserRepository repository;
     private RoleUseCase roleUseCase;
-    private SessionUseCase sessionUseCase;
+    private ApplicationEventPublisher eventPublisher;
     private CurrentUser currentUser;
-    private AuditService audit;
+    private AuditUseCase audit;
     private UserService userService;
 
     @BeforeEach
     void setUp() {
         repository = mock(UserRepository.class);
         roleUseCase = mock(RoleUseCase.class);
-        sessionUseCase = mock(SessionUseCase.class);
+        eventPublisher = mock(ApplicationEventPublisher.class);
         currentUser = mock(CurrentUser.class);
-        audit = mock(AuditService.class);
+        audit = mock(AuditUseCase.class);
 
         when(currentUser.id()).thenReturn(Optional.of(100L));
+        // The caller holds everything unless a test says otherwise — RoleValidator.validateGrantable.
+        when(currentUser.hasPermission(org.mockito.ArgumentMatchers.any())).thenReturn(true);
         when(roleUseCase.findRole(COMPANY_ID, ADMIN_ROLE.id())).thenReturn(ADMIN_ROLE);
         when(roleUseCase.findRole(COMPANY_ID, OPERATOR_ROLE.id())).thenReturn(OPERATOR_ROLE);
         when(roleUseCase.findRole(COMPANY_ID, DEVELOPER_ROLE.id())).thenReturn(DEVELOPER_ROLE);
 
-        userService = new UserService(repository, roleUseCase, sessionUseCase, currentUser, audit);
+        userService = new UserService(repository, roleUseCase, eventPublisher, currentUser, audit);
     }
 
     private static Role systemRole(long id, SystemRole systemRole) {
@@ -90,7 +96,7 @@ class UserServiceTest {
         assertThat(res.inviteToken()).isNotBlank();
 
         verify(repository).setInviteToken(eq(5L), anyString(), any(Instant.class));
-        verify(audit).record("USER_INVITE", "user", "5", "jasur@example.com");
+        verify(audit).record(COMPANY_ID, "USER_INVITE", "user", "5", "jasur@example.com");
     }
 
     @Test
@@ -145,7 +151,39 @@ class UserServiceTest {
         userService.changeRole(COMPANY_ID, 5L, new UpdateUserRoleRequest(ADMIN_ROLE.id()));
 
         verify(repository).updateRole(COMPANY_ID, 5L, ADMIN_ROLE.id());
-        verify(sessionUseCase).revokeAllForUser(5L);
+        // SessionRevocationListener (auth) turns this into the revocation — see its own test.
+        verify(eventPublisher).publishEvent(new UserRoleChangedEvent(COMPANY_ID, 5L));
+    }
+
+    @Test
+    void blockRevokesTheSessionsOfTheUser() {
+        User operator = sampleUser(5L, OPERATOR_ROLE, UserStatus.ACTIVE);
+        when(repository.find(COMPANY_ID, 5L)).thenReturn(operator);
+
+        userService.setStatus(COMPANY_ID, 5L, UserStatus.BLOCKED);
+
+        verify(repository).updateStatus(COMPANY_ID, 5L, UserStatus.BLOCKED);
+        verify(eventPublisher).publishEvent(new UserBlockedEvent(COMPANY_ID, 5L));
+    }
+
+    @Test
+    void changeRoleRefusesTheCallersOwnAccount() {
+        when(currentUser.id()).thenReturn(Optional.of(5L));
+
+        assertThatThrownBy(() -> userService.changeRole(COMPANY_ID, 5L, new UpdateUserRoleRequest(ADMIN_ROLE.id())))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("cannot change the role of your own account");
+        verify(repository, never()).updateRole(anyLong(), anyLong(), anyLong());
+    }
+
+    @Test
+    void changeRoleRefusesARoleWithPermissionsTheCallerLacks() {
+        when(currentUser.hasPermission(any())).thenReturn(false);
+        when(repository.find(COMPANY_ID, 5L)).thenReturn(sampleUser(5L, OPERATOR_ROLE, UserStatus.ACTIVE));
+
+        assertThatThrownBy(() -> userService.changeRole(COMPANY_ID, 5L, new UpdateUserRoleRequest(ADMIN_ROLE.id())))
+                .isInstanceOf(ForbiddenException.class);
+        verify(repository, never()).updateRole(anyLong(), anyLong(), anyLong());
     }
 
     @Test
@@ -181,6 +219,6 @@ class UserServiceTest {
 
         assertThat(result.status()).isEqualTo(UserStatus.ACTIVE);
         verify(repository).updateStatus(COMPANY_ID, 5L, UserStatus.ACTIVE);
-        verify(audit).record("USER_UNBLOCK", "user", "5", null);
+        verify(audit).record(COMPANY_ID, "USER_UNBLOCK", "user", "5", null);
     }
 }

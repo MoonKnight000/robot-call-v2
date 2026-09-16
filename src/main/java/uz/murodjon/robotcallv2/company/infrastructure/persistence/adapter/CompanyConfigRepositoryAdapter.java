@@ -1,15 +1,13 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.company.application.mapper.CompanyConfigMapper;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.mapper.CompanyConfigEntityMapper;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyConfigRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyConfigEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyConfigJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
 import java.time.Instant;
 
@@ -18,11 +16,11 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
 
     private final CompanyConfigJpaRepository companyConfigJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final CompanyConfigMapper mapper;
+    private final CompanyConfigEntityMapper mapper;
 
     public CompanyConfigRepositoryAdapter(CompanyConfigJpaRepository companyConfigJpaRepository,
                                           CompanyJpaRepository companyJpaRepository,
-                                          CompanyConfigMapper mapper) {
+                                          CompanyConfigEntityMapper mapper) {
         this.companyConfigJpaRepository = companyConfigJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -35,8 +33,7 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
 
     @Override
     public long create(long companyId, CompanyConfig config) {
-        CompanyEntity company = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        CompanyEntity company = companyJpaRepository.getReferenceById(companyId);
 
         CompanyConfigEntity entity = new CompanyConfigEntity();
         entity.setCompany(company);
@@ -47,7 +44,7 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
 
     @Override
     public CompanyConfig find(long companyId) {
-        return companyConfigJpaRepository.findByCompanyId(companyId).map(mapper::entityToDomain).orElse(null);
+        return companyConfigJpaRepository.findByCompanyId(companyId).map(mapper::toCompanyConfig).orElse(null);
     }
 
     @Override
@@ -65,5 +62,10 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
         entity.setDefaultLanguage(config.defaultLanguage());
         entity.setSupportedLanguages(config.supportedLanguages());
         entity.setDisclosureText(config.disclosureText());
+        entity.setMaxAttemptsPerPhonePerWeek(config.maxAttemptsPerPhonePerWeek());
+        entity.setQuietDaysAfterConversation(config.quietDaysAfterConversation());
+        entity.setRespectPromisedDate(config.respectPromisedDate());
+        entity.setHumanLikePersonaAllowed(config.humanLikePersonaAllowed());
+        entity.setHolidays(CompanyConfigEntityMapper.formatHolidays(config.holidays()));
     }
 }

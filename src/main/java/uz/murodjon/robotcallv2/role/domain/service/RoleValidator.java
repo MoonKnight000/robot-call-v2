@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.util.Set;
+import java.util.function.Predicate;
 
 /** The rules a role has to satisfy, independent of storage or HTTP. */
 public final class RoleValidator {
@@ -50,6 +51,20 @@ public final class RoleValidator {
         if (assignedUsers > 0) {
             throw new ConflictException(ErrorCode.ROLE_IN_USE, role.name(), assignedUsers);
         }
+    }
+
+    /**
+     * Nobody hands out a permission they do not hold themselves — not by assigning a role,
+     * not by inviting someone into one, not by editing one. Without this, USER_EDIT made a
+     * user their own ADMIN and ROLE_EDIT grew the caller's own role to every permission.
+     */
+    public static void validateGrantable(Set<Permission> permissions, Predicate<Permission> callerHolds) {
+        permissions.stream()
+                .filter(permission -> !callerHolds.test(permission))
+                .findFirst()
+                .ifPresent(permission -> {
+                    throw new ForbiddenException(ErrorCode.ROLE_PERMISSION_NOT_HELD, permission.name());
+                });
     }
 
     /** DEVELOPER and SUPERADMIN are handed out by platform staff only, never by a tenant admin. */

@@ -246,6 +246,10 @@ public class YandexTtsProvider implements TtsProvider {
         }
         SynthesizerGrpc.SynthesizerBlockingStub stub = SynthesizerGrpc.newBlockingStub(current)
                 .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
+        if (y.requestTimeoutMs() > 0) {
+            // Covers the whole server stream this returns, so hasNext() is bounded too.
+            stub = stub.withDeadlineAfter(y.requestTimeoutMs(), TimeUnit.MILLISECONDS);
+        }
         return stub.utteranceSynthesis(request.build());
     }
 

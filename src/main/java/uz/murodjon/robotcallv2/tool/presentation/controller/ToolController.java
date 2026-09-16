@@ -8,7 +8,12 @@ import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsResponse;
+import uz.murodjon.robotcallv2.tool.application.dto.OpenApiOperationRow;
+import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
 import uz.murodjon.robotcallv2.tool.application.dto.UpdateToolRequest;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 
@@ -52,4 +57,33 @@ public interface ToolController {
     ResponseEntity<ResponseData<Void>> delete(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
+
+    /**
+     * Calls the tool once, as the model would, and returns what the model would be handed:
+     * the panel's "Test" button. The request really goes out: a tool that writes (a POST
+     * creating a lead) writes on a test too.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/{id:\\d+}/test")
+    ResponseEntity<ResponseData<ToolTestResponse>> test(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody(required = false) TestToolRequest request);
+
+    /**
+     * The operations an OpenAPI 3 document describes (UNIVERSAL-OPERATOR-PLAN B.2), to choose
+     * which become tools. Creates nothing; {@code operationIds} is ignored. A POST because the
+     * document itself may be in the body.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/import/operations")
+    ResponseEntity<ResponseData<List<OpenApiOperationRow>>> importOperations(
+            @Valid @RequestBody ImportToolsRequest request);
+
+    /** One tool per chosen operation, all or none; the secrets they read are named, not created. */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/import")
+    ResponseEntity<ResponseData<ImportToolsResponse>> importTools(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ImportToolsRequest request);
 }

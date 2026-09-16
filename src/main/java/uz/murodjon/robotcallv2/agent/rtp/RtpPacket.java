@@ -25,11 +25,12 @@ public record RtpPacket(
     /**
      * Parse the first {@code length} bytes of {@code data} as an RTP packet.
      *
-     * @throws IllegalArgumentException if the buffer is too short or malformed
+     * @return the packet, or {@code null} when the buffer is too short or malformed — it came
+     *         off the network, so the caller drops it instead of treating it as an error
      */
-    public static RtpPacket parse(byte[] data, int length) {
+    public static RtpPacket tryParse(byte[] data, int length) {
         if (length < MIN_HEADER) {
-            throw new IllegalArgumentException("RTP packet too short: " + length);
+            return null;
         }
         int b0 = data[0] & 0xFF;
         boolean padding = (b0 & 0x20) != 0;
@@ -49,7 +50,7 @@ public record RtpPacket(
         int headerLen = MIN_HEADER + csrcCount * 4;
         if (extension) {
             if (length < headerLen + 4) {
-                throw new IllegalArgumentException("truncated RTP extension header");
+                return null; // truncated extension header
             }
             int extWords = ((data[headerLen + 2] & 0xFF) << 8) | (data[headerLen + 3] & 0xFF);
             headerLen += 4 + extWords * 4;
@@ -60,7 +61,7 @@ public record RtpPacket(
             payloadLen -= data[length - 1] & 0xFF;
         }
         if (payloadLen < 0 || headerLen > length) {
-            throw new IllegalArgumentException("malformed RTP packet: header " + headerLen + " > length " + length);
+            return null; // the header or the padding claims more bytes than arrived
         }
 
         byte[] payload = new byte[payloadLen];

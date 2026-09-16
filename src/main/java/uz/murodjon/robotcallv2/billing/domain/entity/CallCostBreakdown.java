@@ -11,6 +11,8 @@ package uz.murodjon.robotcallv2.billing.domain.entity;
  * @param llmUzs          tokens, prompt and completion, cached ones at the cached rate
  * @param sttUzs          recognition, on the call's duration
  * @param ttsUzs          synthesis, on the characters the agent spoke
+ * @param realtimeUzs     a speech-to-speech engine, on the minutes it ran — on such a call
+ *                        this line stands in for the three above, which are then zero
  * @param telephonyUzs    the trunk, on the call's duration
  * @param platformFeeUzs  this platform's own per-minute charge; carries no markup
  * @param totalUzs        the sum of the lines above
@@ -19,9 +21,10 @@ public record CallCostBreakdown(
         long llmUzs,
         long sttUzs,
         long ttsUzs,
+        long realtimeUzs,
         long telephonyUzs,
         long platformFeeUzs,
         long totalUzs
 ) {
-    public static final CallCostBreakdown FREE = new CallCostBreakdown(0, 0, 0, 0, 0, 0);
+    public static final CallCostBreakdown FREE = new CallCostBreakdown(0, 0, 0, 0, 0, 0, 0);
 }

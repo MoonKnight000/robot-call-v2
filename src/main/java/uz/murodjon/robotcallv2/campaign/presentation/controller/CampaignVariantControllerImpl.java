@@ -27,7 +27,7 @@ public class CampaignVariantControllerImpl implements CampaignVariantController 
 
     @Override
     public ResponseEntity<ResponseData<CampaignVariantResponse>> get(long companyId, long campaignId, long variantId) {
-        return ResponseEntity.ok(ResponseData.ok(variantUseCase.get(companyId, campaignId, variantId)));
+        return ResponseEntity.ok(ResponseData.ok(variantUseCase.requireVariant(companyId, campaignId, variantId)));
     }
 
     @Override
@@ -49,6 +49,6 @@ public class CampaignVariantControllerImpl implements CampaignVariantController 
 
     @Override
     public ResponseEntity<ResponseData<AbTestReportResponse>> getReport(long companyId, long campaignId) {
-        return ResponseEntity.ok(ResponseData.ok(variantUseCase.getReport(companyId, campaignId)));
+        return ResponseEntity.ok(ResponseData.ok(variantUseCase.findAbTestReport(companyId, campaignId)));
     }
 }

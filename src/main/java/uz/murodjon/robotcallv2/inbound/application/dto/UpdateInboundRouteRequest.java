@@ -33,6 +33,9 @@ public record UpdateInboundRouteRequest(
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN)
         LocalTime businessHoursEnd,
         String fallbackMessage,
+        Long callbackCampaignId,
+        Long scheduleId,
+        Long callFlowId,
         boolean enabled
 ) {
 }

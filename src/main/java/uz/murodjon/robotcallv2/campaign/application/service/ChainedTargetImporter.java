@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.campaign.application.dto.ParsedTarget;
+import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceFetcherPort;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSourceStep;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSourceStepFilter;
@@ -22,11 +23,7 @@ import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,10 +51,6 @@ public class ChainedTargetImporter {
 
     private static final Logger log = LoggerFactory.getLogger(ChainedTargetImporter.class);
 
-    /** Generous: nobody is on the line waiting for this. */
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
-
-    private static final int MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
     /**
      * How many rows the list step may produce in total. Every one of them costs a request
@@ -70,13 +63,11 @@ public class ChainedTargetImporter {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(TIMEOUT)
-            // Never followed, as everywhere else here: the screening below applies to the
-            // host that was configured, and a redirect is an endpoint choosing a second
-            // one after that check has already passed.
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
+    private final TargetSourceFetcherPort targetSourceFetcherPort;
+
+    public ChainedTargetImporter(TargetSourceFetcherPort targetSourceFetcherPort) {
+        this.targetSourceFetcherPort = targetSourceFetcherPort;
+    }
 
     /**
      * @param authHeaderValue the decrypted secret, sent on every step, or null when the
@@ -177,42 +168,11 @@ public class ChainedTargetImporter {
         if (uri == null) {
             throw new ValidationException(ErrorCode.TARGET_SOURCE_URL_INVALID, step.url());
         }
+        String requestBody = step.method() == TargetSourceMethod.POST ? renderBody(step.body(), variables) : null;
+        String responseBody = targetSourceFetcherPort.fetch(uri, step.method(), requestBody,
+                authHeaderName, authHeaderValue);
         try {
-            HttpRequest.Builder request = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .timeout(TIMEOUT)
-                    .header("Accept", "application/json");
-            applyAuthHeader(request, authHeaderName, authHeaderValue);
-            if (step.method() == TargetSourceMethod.POST) {
-                request.header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(
-                                renderBody(step.body(), variables), StandardCharsets.UTF_8));
-            } else {
-                request.GET();
-            }
-
-            HttpResponse<String> response = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) {
-                throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                        uri.getHost(), "step '" + step.name() + "' answered HTTP " + response.statusCode());
-            }
-            String responseBody = response.body();
-            if (responseBody == null || responseBody.isBlank()) {
-                throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                        uri.getHost(), "step '" + step.name() + "' answered with an empty body");
-            }
-            if (responseBody.length() > MAX_RESPONSE_BYTES) {
-                throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                        uri.getHost(), "step '" + step.name() + "' answered with more than "
-                        + MAX_RESPONSE_BYTES + " bytes");
-            }
             return objectMapper.readTree(responseBody);
-        } catch (ExternalServiceException | ValidationException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                    uri.getHost(), "interrupted");
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
                     e, uri.getHost(), e.getMessage());
@@ -223,10 +183,9 @@ public class ChainedTargetImporter {
     private JsonNode itemsOf(JsonNode body, String itemsPath) {
         JsonNode node = path(body, itemsPath);
         if (!node.isArray()) {
-            throw new ValidationException(ErrorCode.TARGET_SOURCE_RESPONSE_INVALID,
-                    itemsPath == null || itemsPath.isBlank()
-                            ? "the body is not an array — set itemsPath"
-                            : "nothing at itemsPath '" + itemsPath + "'");
+            throw itemsPath == null || itemsPath.isBlank()
+                    ? new ValidationException(ErrorCode.TARGET_SOURCE_RESPONSE_NOT_ARRAY)
+                    : new ValidationException(ErrorCode.TARGET_SOURCE_ITEMS_PATH_EMPTY, itemsPath);
         }
         return node;
     }
@@ -403,14 +362,4 @@ public class ChainedTargetImporter {
         }
     }
 
-    private static void applyAuthHeader(HttpRequest.Builder request, String name, String value) {
-        // A newline in a header value splits the request in two, and both halves come from
-        // a tenant-edited settings page.
-        if (name == null || value == null || name.isBlank() || value.isBlank()
-                || name.indexOf('\n') >= 0 || name.indexOf('\r') >= 0
-                || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
-            return;
-        }
-        request.header(name.trim(), value);
-    }
 }

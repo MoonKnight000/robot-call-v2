@@ -28,4 +28,8 @@ public interface AiAgentJpaRepository extends JpaRepository<AiAgentEntity, Long>
 
     @Query(value = "SELECT count(*) FROM inbound_route WHERE ai_agent_id = :id", nativeQuery = true)
     long countInboundRoutesUsing(@Param("id") long id);
+
+    /** Native for the same reason: call_queue is the callqueue feature's table. */
+    @Query(value = "SELECT count(*) FROM call_queue WHERE id = :queueId AND company_id = :companyId", nativeQuery = true)
+    long countCallQueuesByCompanyIdAndId(@Param("companyId") long companyId, @Param("queueId") long queueId);
 }

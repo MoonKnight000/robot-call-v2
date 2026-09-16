@@ -18,6 +18,9 @@ public interface UserRepository {
 
     boolean existsByUsername(String username);
 
+    /** Whether any account, in any company, still carries exactly this digest. */
+    boolean existsByPasswordHash(String passwordHash);
+
     Optional<User> findByEmail(String email);
 
     Optional<User> findByUsername(String username);
@@ -30,7 +33,7 @@ public interface UserRepository {
 
     List<User> findAll(long companyId);
 
-    Map<Long, String> namesByIds(long companyId, Collection<Long> ids);
+    Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids);
 
     List<User> findActiveByCompany(long companyId);
 

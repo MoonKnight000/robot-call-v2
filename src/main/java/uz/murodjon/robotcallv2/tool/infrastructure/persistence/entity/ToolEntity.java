@@ -6,6 +6,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
 @Entity
 @Table(name = "tool")
@@ -66,6 +67,34 @@ public class ToolEntity {
 
     @Column(name = "pre_tool_speech", length = 500)
     private String preToolSpeech;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "response_mapping", columnDefinition = "jsonb")
+    private String responseMapping;
+
+    @Column(name = "retry_attempts", nullable = false)
+    private int retryAttempts;
+
+    @Column(name = "max_calls_per_call", nullable = false)
+    private int maxCallsPerCall;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "body_schema", columnDefinition = "jsonb")
+    private String bodySchema;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "effect", nullable = false, length = 16)
+    private ToolEffect effect;
+
+    @Column(name = "requires_confirmation", nullable = false)
+    private boolean requiresConfirmation;
+
+    @Column(name = "readback_template", length = 500)
+    private String readbackTemplate;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "auth", columnDefinition = "jsonb")
+    private String auth;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -195,6 +224,70 @@ public class ToolEntity {
 
     public void setPreToolSpeech(String preToolSpeech) {
         this.preToolSpeech = preToolSpeech;
+    }
+
+    public String getResponseMapping() {
+        return responseMapping;
+    }
+
+    public void setResponseMapping(String responseMapping) {
+        this.responseMapping = responseMapping;
+    }
+
+    public int getRetryAttempts() {
+        return retryAttempts;
+    }
+
+    public void setRetryAttempts(int retryAttempts) {
+        this.retryAttempts = retryAttempts;
+    }
+
+    public int getMaxCallsPerCall() {
+        return maxCallsPerCall;
+    }
+
+    public void setMaxCallsPerCall(int maxCallsPerCall) {
+        this.maxCallsPerCall = maxCallsPerCall;
+    }
+
+    public String getBodySchema() {
+        return bodySchema;
+    }
+
+    public void setBodySchema(String bodySchema) {
+        this.bodySchema = bodySchema;
+    }
+
+    public ToolEffect getEffect() {
+        return effect;
+    }
+
+    public void setEffect(ToolEffect effect) {
+        this.effect = effect;
+    }
+
+    public boolean isRequiresConfirmation() {
+        return requiresConfirmation;
+    }
+
+    public void setRequiresConfirmation(boolean requiresConfirmation) {
+        this.requiresConfirmation = requiresConfirmation;
+    }
+
+    public String getReadbackTemplate() {
+        return readbackTemplate;
+    }
+
+    public void setReadbackTemplate(String readbackTemplate) {
+        this.readbackTemplate = readbackTemplate;
+    }
+
+    public String getAuth() {
+        return auth;
+    }
+
+    public void setAuth(String auth) {
+        this.auth = auth;
     }
 
     public Instant getCreatedAt() {

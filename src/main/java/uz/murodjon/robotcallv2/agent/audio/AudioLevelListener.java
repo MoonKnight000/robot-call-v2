@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
-import uz.murodjon.robotcallv2.live.application.service.LiveBroadcastService;
+import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
 import uz.murodjon.robotcallv2.live.domain.entity.AudioLevelEvent;
 import uz.murodjon.robotcallv2.live.domain.enums.LiveEventType;
 
@@ -16,12 +16,14 @@ public class AudioLevelListener implements AudioListener {
     private static final long MIN_INTERVAL_NANOS = 200_000_000L; // 5/sec
 
     private final String channelId;
-    private final LiveBroadcastService broadcast;
+    private final long companyId;
+    private final LiveUseCase liveUseCase;
     private volatile long lastPublishNanos = 0;
 
-    public AudioLevelListener(String channelId, LiveBroadcastService broadcast) {
+    public AudioLevelListener(String channelId, long companyId, LiveUseCase liveUseCase) {
         this.channelId = channelId;
-        this.broadcast = broadcast;
+        this.companyId = companyId;
+        this.liveUseCase = liveUseCase;
     }
 
     @Override
@@ -39,7 +41,7 @@ public class AudioLevelListener implements AudioListener {
         double rms = Math.sqrt(sumSquares / length);
         float level = (float) Math.min(1.0, rms / Short.MAX_VALUE);
 
-        broadcast.publish(LiveEventType.AUDIO_LEVEL, new AudioLevelEvent(channelId, level));
+        liveUseCase.publish(companyId, LiveEventType.AUDIO_LEVEL, new AudioLevelEvent(channelId, level));
     }
 }
 

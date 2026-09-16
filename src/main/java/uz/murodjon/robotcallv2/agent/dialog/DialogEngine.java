@@ -5,21 +5,22 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.aimodel.application.service.AiModelConfigService;
+import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
-import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
-import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
-import uz.murodjon.robotcallv2.company.application.service.CompanyService;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
-import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
-import uz.murodjon.robotcallv2.voice.application.service.VoiceSettingsService;
+import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.List;
@@ -38,11 +39,12 @@ public class DialogEngine implements CallDialog {
     private static final Logger log = LoggerFactory.getLogger(DialogEngine.class);
 
     private final DialogProperties dialogProperties;
-    private final CallRecordService records;
-    private final AiModelConfigService aiModelConfigService;
-    private final VoiceSettingsService voiceSettingsService;
-    private final CompanyService companyService;
-    private final CompanyConfigService companyConfigService;
+    private final CallAttemptUseCase callAttemptUseCase;
+    private final CallTranscriptUseCase callTranscriptUseCase;
+    private final AiModelConfigUseCase aiModelConfigUseCase;
+    private final VoiceSettingsUseCase voiceSettingsUseCase;
+    private final CompanyUseCase companyUseCase;
+    private final CompanyConfigUseCase companyConfigService;
 
     private final DialogTranscript transcript;
     private final SpeechOutput speech;
@@ -51,16 +53,18 @@ public class DialogEngine implements CallDialog {
     private final SilenceWatchdogRunner watchdogRunner;
     private final DialogExecutors executors;
     private final ToolUseCase toolUseCase;
-    private final SmsUseCase smsUseCase;
+    private final MidCallSmsSender midCallSmsSender;
+    private final CallBillingUseCase callBillingUseCase;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
     public DialogEngine(DialogProperties dialogProperties,
-                        CallRecordService records,
-                        AiModelConfigService aiModelConfigService,
-                        VoiceSettingsService voiceSettingsService,
-                        CompanyService companyService,
-                        CompanyConfigService companyConfigService,
+                        CallAttemptUseCase callAttemptUseCase,
+                        CallTranscriptUseCase callTranscriptUseCase,
+                        AiModelConfigUseCase aiModelConfigUseCase,
+                        VoiceSettingsUseCase voiceSettingsUseCase,
+                        CompanyUseCase companyUseCase,
+                        CompanyConfigUseCase companyConfigService,
                         DialogTranscript transcript,
                         SpeechOutput speech,
                         TurnRunner turnRunner,
@@ -68,12 +72,14 @@ public class DialogEngine implements CallDialog {
                         SilenceWatchdogRunner watchdogRunner,
                         DialogExecutors executors,
                         ToolUseCase toolUseCase,
-                        SmsUseCase smsUseCase) {
+                        MidCallSmsSender midCallSmsSender,
+                        CallBillingUseCase callBillingUseCase) {
         this.dialogProperties = dialogProperties;
-        this.records = records;
-        this.aiModelConfigService = aiModelConfigService;
-        this.voiceSettingsService = voiceSettingsService;
-        this.companyService = companyService;
+        this.callAttemptUseCase = callAttemptUseCase;
+        this.callTranscriptUseCase = callTranscriptUseCase;
+        this.aiModelConfigUseCase = aiModelConfigUseCase;
+        this.voiceSettingsUseCase = voiceSettingsUseCase;
+        this.companyUseCase = companyUseCase;
         this.companyConfigService = companyConfigService;
         this.transcript = transcript;
         this.speech = speech;
@@ -82,7 +88,8 @@ public class DialogEngine implements CallDialog {
         this.watchdogRunner = watchdogRunner;
         this.executors = executors;
         this.toolUseCase = toolUseCase;
-        this.smsUseCase = smsUseCase;
+        this.midCallSmsSender = midCallSmsSender;
+        this.callBillingUseCase = callBillingUseCase;
     }
 
     @Override
@@ -105,28 +112,32 @@ public class DialogEngine implements CallDialog {
             log.debug("Dialog not started for {} (engine unavailable)", channelId);
             return;
         }
-        long companyId = records.companyIdOf(callAttemptId);
+        long companyId = callAttemptUseCase.findCompanyIdByAttemptId(callAttemptId);
+        callAttemptUseCase.recordAgent(callAttemptId, agent);
         // The agent's own model settings sit over the company's: one company runs a cheap
         // model for a survey and a careful one for collections, on the same day.
-        EffectiveAiModelConfig aiModel = aiModelConfigService.findEffectiveByCompanyId(companyId)
+        EffectiveAiModelConfig configured = aiModelConfigUseCase.findEffectiveByCompanyId(companyId)
                 .withOverrides(agent != null ? agent.llmModel() : null,
                         agent != null ? agent.temperature() : null,
                         agent != null ? agent.maxOutputTokens() : null);
+        // With the balance enforced the call ends before it costs more than the company has.
+        EffectiveAiModelConfig aiModel = configured.withMaxCallSeconds(CallLimits.capByBalance(
+                configured.maxCallSeconds(), callBillingUseCase.findAffordableCallSeconds(companyId, false)));
         // The agent picks the vendor that speaks it, the same way it picks its model;
         // the company setting is what an agent that chose none falls back to. A call
         // whose voice comes from the catalog still speaks through that voice's own
         // provider — only a call with no voice of its own reaches this choice.
-        EffectiveVoiceSettings voiceSettings = voiceSettingsService.effective(companyId);
+        EffectiveVoiceSettings voiceSettings = voiceSettingsUseCase.findEffectiveByCompanyId(companyId);
         String agentTtsProvider = agent != null ? agent.speechEngine().ttsProvider() : null;
         if (agentTtsProvider != null && !agentTtsProvider.isBlank()) {
             voiceSettings = voiceSettings.withProvider(agentTtsProvider.trim());
         }
-        Company company = companyService.findById(companyId);
+        Company company = companyUseCase.findById(companyId);
         String companyName = company != null ? company.name() : null;
         CompanyConfig companyConfig = companyConfigService.find(companyId);
         String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
-        boolean disclosureEnabled = agent == null || agent.disclosureEnabled();
-        AgentPersona agentPersona = agent != null ? agent.persona() : AgentPersona.AI_ASSISTANT;
+        AgentPersona agentPersona = DialogPolicy.resolvePersona(agent, companyConfig);
+        boolean disclosureEnabled = agentPersona == AgentPersona.AI_ASSISTANT;
         boolean emotionAdaptiveVoice = agent == null || agent.voice().emotionAdaptive();
         Map<String, String> languageVoices = agent != null ? agent.voice().perLanguage() : Map.of();
         List<Tool> tools = List.of();
@@ -143,22 +154,11 @@ public class DialogEngine implements CallDialog {
                 companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices,
                 firstMessage, tools, agent != null ? agent.pronunciationRules() : List.of(), agent);
         if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
-            session.setMidCallSmsSender(smsText -> {
-                try {
-                    String phone = session.context() != null ? session.context().clientPhone() : null;
-                    if (phone == null || phone.isBlank()) {
-                        phone = records.phoneOf(callAttemptId);
-                    }
-                    if (phone != null && !phone.isBlank()) {
-                        smsUseCase.sendSms(companyId, new SmsSendRequest(phone, smsText));
-                        log.info("[{}] Mid-call SMS sent to {}: {}", channelId, phone, smsText);
-                    }
-                } catch (Exception e) {
-                    log.warn("[{}] Failed to send mid-call SMS: {}", channelId, e.getMessage());
-                }
-            });
+            session.setMidCallSmsSender(smsText ->
+                    midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), smsText));
         }
         session.setDtmfSender(dtmf);
+        session.setDetectLanguages(companyConfigService.findSupportedLanguageCodes(companyId));
         // Which model a one-word turn is answered on is the agent's call, the same way its
         // own llmModel is: a survey agent and a collections agent share a deployment and
         // not a tolerance for a weaker model. Null leaves the installation default.
@@ -197,7 +197,20 @@ public class DialogEngine implements CallDialog {
     }
 
     private void speakDisclosure(DialogSession s) {
-        if (!dialogProperties.mandatoryDisclosure() || !s.disclosureEnabled() || s.agentPersona() == AgentPersona.HUMAN_LIKE) {
+        if (!dialogProperties.mandatoryDisclosure()) {
+            return;
+        }
+        if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
+            // The company was allowed an agent that does not say it is a machine; the call
+            // is recorded all the same, and that the caller is told. Not marked as the
+            // disclosure: the agent still greets and introduces itself on its first turn.
+            String notice = DialogPhrases.recordingNotice(s.language());
+            speech.speakChunk(s, notice);
+            transcript.recordAgentLine(s, notice);
+            log.info("[{}] recording notice: {}", s.channelId(), notice);
+            return;
+        }
+        if (!s.disclosureEnabled()) {
             return;
         }
         String line = DialogLines.disclosure(s);
@@ -230,7 +243,11 @@ public class DialogEngine implements CallDialog {
         float floor = dialogProperties.lowConfidenceThreshold();
         // Zero means the provider does not report confidence at all; treating that as
         // "unsure" would put the confirmation on every single turn.
-        session.setLowConfidenceInput(floor > 0 && confidence > 0 && confidence < floor);
+        boolean lowConfidence = floor > 0 && confidence > 0 && confidence < floor;
+        session.setLowConfidenceInput(lowConfidence);
+        if (lowConfidence) {
+            session.recordLowConfidenceInput();
+        }
         inputGate.onFinal(session, text);
     }
 
@@ -288,7 +305,8 @@ public class DialogEngine implements CallDialog {
     public DialogOutcome outcome(String channelId) {
         DialogSession session = sessions.get(channelId);
         return session != null
-                ? new DialogOutcome(session.disposition(), session.doNotCallReason())
+                ? new DialogOutcome(GoalOutcome.settle(session.disposition(), session.scenario(), session.outcome()),
+                        session.doNotCallReason())
                 : DialogOutcome.NONE;
     }
 
@@ -305,7 +323,9 @@ public class DialogEngine implements CallDialog {
                 session.avgTurnLatencyMs(), session.maxTurnLatencyMs(),
                 session.avgLlmLatencyMs(), session.maxLlmLatencyMs(),
                 session.ttsVoice(), session.language(),
-                null, session.aiModel() == null ? null : session.aiModel().model());
+                null, session.aiModel() == null ? null : session.aiModel().model(),
+                session.bargeIns(), session.watchdog() != null ? session.watchdog().prompts() : 0,
+                session.lowConfidenceInputs());
     }
 
     @Override
@@ -327,6 +347,13 @@ public class DialogEngine implements CallDialog {
         if (session == null) {
             return;
         }
+        // Stop the turn in flight, not only the ones after it. Without this a hung-up call
+        // still read its LLM stream to the end (and paid for it), synthesized the sentences,
+        // ran the turn's tools — webhooks, SMS — and wrote transcript lines after the
+        // finalizer had already summarized the call.
+        session.markLineGone();
+        session.setCancelled(true);
+        session.end(null);
         ScheduledFuture<?> task = session.watchdogTask();
         if (task != null) {
             task.cancel(false);
@@ -366,7 +393,7 @@ public class DialogEngine implements CallDialog {
                 asString(c, "dueDate"),
                 asString(c, "contractNumber"),
                 s.state(),
-                records.transcriptText(s.callAttemptId()));
+                callTranscriptUseCase.findTranscriptText(s.callAttemptId()));
     }
 
     public DialogSession findSession(String channelId) {

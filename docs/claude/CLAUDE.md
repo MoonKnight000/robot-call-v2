@@ -1,8 +1,10 @@
 ﻿# Bosqichlar tarixi
 
-> **Diqqat:** arxitektura va kod qoidalari bu faylda EMAS — ular loyiha ildizidagi
-> `../../CLAUDE.md` da. Bu fayl faqat bosqichlar tarixini saqlaydi.
-> To'liq texnik topshiriq: `../PROJECT.md`.
+> **Diqqat:** bu fayl — **arxiv** (2026-07 dagi Bosqich 0–5 tarixi). Arxitektura va kod
+> qoidalari loyiha ildizidagi `../../CLAUDE.md` da, joriy holat — `../STATUS.md` da.
+> Asl texnik topshiriq (`PROJECT.md`) 2026-09 da o'chirilgan; quyidagi "§10", "§4.4"
+> havolalari o'sha hujjatga tegishli. Pastdagi paket nomi (`uysotvoice`), Boot 3.x va
+> modul daraxti tarixiy — hozirgisi: `uz.murodjon.robotcallv2`, Spring Boot 4.1.
 
 ---
 
@@ -79,7 +81,9 @@ Foydalanuvchi "keyingi bosqich" demaguncha oldinga yugurma.
 
 ---
 
-## Hozir qayerdamiz
+## Arxiv: Bosqich 5 holati (2026-07)
+
+> Bu bo'lim tarixiy. Loyiha bu bosqichlardan ancha o'tib ketgan — joriy holat `../STATUS.md` da.
 
 **Bosqich: 5 — STT kodi yozildi, foydalanuvchi tekshiruvi kutilmoqda**
 

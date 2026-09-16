@@ -2,15 +2,13 @@ package uz.murodjon.robotcallv2.auth.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.auth.application.mapper.UserSessionMapper;
+import uz.murodjon.robotcallv2.auth.infrastructure.persistence.mapper.UserSessionEntityMapper;
 import uz.murodjon.robotcallv2.auth.application.port.output.UserSessionRepository;
 import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.auth.infrastructure.persistence.entity.UserSessionEntity;
 import uz.murodjon.robotcallv2.auth.infrastructure.persistence.repository.UserSessionJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
@@ -24,10 +22,10 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
     private final UserSessionJpaRepository userSessionJpaRepository;
     private final UserJpaRepository userJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final UserSessionMapper mapper;
+    private final UserSessionEntityMapper mapper;
 
     public UserSessionRepositoryAdapter(UserSessionJpaRepository userSessionJpaRepository, UserJpaRepository userJpaRepository,
-                                        CompanyJpaRepository companyJpaRepository, UserSessionMapper mapper) {
+                                        CompanyJpaRepository companyJpaRepository, UserSessionEntityMapper mapper) {
         this.userSessionJpaRepository = userSessionJpaRepository;
         this.userJpaRepository = userJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
@@ -37,10 +35,8 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
     @Override
     public long create(long companyId, long userId, String tokenHash, Instant expiresAt,
                        String device, String ipAddress) {
-        UserEntity user = userJpaRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity company = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        UserEntity user = userJpaRepository.getReferenceById(userId);
+        CompanyEntity company = companyJpaRepository.getReferenceById(companyId);
 
         UserSessionEntity entity = new UserSessionEntity();
         entity.setCompany(company);
@@ -57,12 +53,18 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
 
     @Override
     public Optional<UserSession> findActiveByHash(String tokenHash) {
-        return userSessionJpaRepository.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash).map(mapper::entityToDomain);
+        return userSessionJpaRepository.findByRefreshTokenHashAndRevokedAtIsNull(tokenHash).map(mapper::toUserSession);
+    }
+
+    @Override
+    public Optional<UserSession> findByPreviousHash(String tokenHash) {
+        return userSessionJpaRepository.findByPreviousRefreshTokenHash(tokenHash).map(mapper::toUserSession);
     }
 
     @Override
     public void rotate(long id, String newTokenHash, Instant newExpiresAt, String device, String ipAddress) {
         userSessionJpaRepository.findById(id).ifPresent(entity -> {
+            entity.setPreviousRefreshTokenHash(entity.getRefreshTokenHash());
             entity.setRefreshTokenHash(newTokenHash);
             entity.setExpiresAt(newExpiresAt);
             entity.setLastActivityAt(Instant.now());
@@ -96,7 +98,7 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
     @Override
     public List<UserSession> listActiveForUser(long userId) {
         return userSessionJpaRepository.findByUserIdAndRevokedAtIsNullOrderByLastActivityAtDesc(userId).stream()
-                .map(mapper::entityToDomain)
+                .map(mapper::toUserSession)
                 .toList();
     }
 }

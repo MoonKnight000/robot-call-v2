@@ -16,6 +16,13 @@ import java.util.Set;
  * own defaults, so an agent read from a half-filled row still comes out usable, and each
  * groups settings that are only meaningful together. What stays here is what identifies
  * the agent, what every part of it needs (the language, the persona), and the model.
+ *
+ * <p>{@code publishedVersion} is set only on an agent read from a published snapshot
+ * (NEXT-PLAN A.1); the draft row an editor works on has {@code null} here.
+ *
+ * <p>{@code version} is the draft row's optimistic-lock counter as read — not a published
+ * version: a write goes through only while the row still has it. A snapshot does not keep
+ * it ({@code AiAgentSnapshot}), so it reads back as 0.
  */
 public record AiAgent(
         Long id,
@@ -47,7 +54,9 @@ public record AiAgent(
         Set<Long> sipTrunkIds,
         boolean enabled,
         Instant createdAt,
-        Long createdBy
+        Long createdBy,
+        Integer publishedVersion,
+        long version
 ) {
 
     public AiAgent {
@@ -73,19 +82,19 @@ public record AiAgent(
             speechEngine = new AiAgentSpeechEngine(null, null, null, null, null, null, null, null, null);
         }
         if (voice == null) {
-            voice = new AiAgentVoice(null, null, null, null, null, true);
+            voice = new AiAgentVoice(null, null, null, null, null, null, true);
         }
         if (ambience == null) {
             ambience = new AiAgentAmbience(null, null, null, null, null, true, null);
         }
         if (callBehaviour == null) {
-            callBehaviour = new AiAgentCallBehaviour(null, 0, false, null, null, false, null, null, null);
+            callBehaviour = new AiAgentCallBehaviour(null, 0, false, null, null, false, null, null, null, null);
         }
         if (limits == null) {
             limits = AiAgentLimits.NONE;
         }
         if (dataPolicy == null) {
-            dataPolicy = new AiAgentDataPolicy(false, true, null);
+            dataPolicy = new AiAgentDataPolicy(false, true, null, null);
         }
         sipTrunkIds = sipTrunkIds == null ? Set.of() : Set.copyOf(sipTrunkIds);
         dataNeeded = dataNeeded == null ? List.of() : List.copyOf(dataNeeded);
@@ -122,7 +131,7 @@ public record AiAgent(
                 llmModel, fastLlmModel, temperature, maxOutputTokens,
                 preemptiveGeneration, ivrNavigationEnabled, useRag,
                 newDataNeeded, newDataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
     }
 
     public AiAgent withLimits(AiAgentLimits newLimits) {
@@ -132,7 +141,7 @@ public record AiAgent(
                 llmModel, fastLlmModel, temperature, maxOutputTokens,
                 preemptiveGeneration, ivrNavigationEnabled, useRag,
                 dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
     }
 
     /** Everything the "advanced" settings screen owns, in one write. */
@@ -151,7 +160,7 @@ public record AiAgent(
                 llmModel, fastLlmModel, temperature, maxOutputTokens,
                 newPreemptiveGeneration, newIvrNavigationEnabled, newUseRag,
                 dataNeeded, dataEvaluation, newInitiationWebhook, newPostCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
     }
 
     public AiAgent withPronunciationRules(List<PronunciationRule> rules) {
@@ -161,7 +170,52 @@ public record AiAgent(
                 llmModel, fastLlmModel, temperature, maxOutputTokens,
                 preemptiveGeneration, ivrNavigationEnabled, useRag,
                 dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                rules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+                rules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+    }
+
+    /** The same configuration as a new, unsaved, never-published agent called {@code newName}. */
+    public AiAgent asCopy(String newName, Instant now, Long copiedBy) {
+        return new AiAgent(
+                0L, companyId, newName, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, now, copiedBy, null, 0L);
+    }
+
+    public AiAgent withPublishedVersion(Integer newPublishedVersion) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, newPublishedVersion,
+                version);
+    }
+
+    /** The same agent at optimistic-lock {@code newVersion} — a restored snapshot takes the draft row's. */
+    public AiAgent withVersion(long newVersion) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion,
+                newVersion);
+    }
+
+    /** The published snapshot with the draft row's on/off switch — that switch is not versioned. */
+    public AiAgent withEnabled(boolean newEnabled) {
+        return new AiAgent(
+                id, companyId, name, description, language, persona,
+                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
+                llmModel, fastLlmModel, temperature, maxOutputTokens,
+                preemptiveGeneration, ivrNavigationEnabled, useRag,
+                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
+                pronunciationRules, postCallActions, sipTrunkIds, newEnabled, createdAt, createdBy, publishedVersion, version);
     }
 
     public AiAgent withPostCallActions(List<PostCallAction> actions) {
@@ -171,7 +225,7 @@ public record AiAgent(
                 llmModel, fastLlmModel, temperature, maxOutputTokens,
                 preemptiveGeneration, ivrNavigationEnabled, useRag,
                 dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, actions, sipTrunkIds, enabled, createdAt, createdBy);
+                pronunciationRules, actions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
     }
 
     private AiAgent withScript(AiAgentScript newScript) {
@@ -181,7 +235,7 @@ public record AiAgent(
                 llmModel, fastLlmModel, temperature, maxOutputTokens,
                 preemptiveGeneration, ivrNavigationEnabled, useRag,
                 dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy);
+                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
     }
 
 }

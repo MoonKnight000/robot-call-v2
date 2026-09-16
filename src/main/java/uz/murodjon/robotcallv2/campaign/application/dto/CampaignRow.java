@@ -6,12 +6,15 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -42,10 +45,17 @@ public record CampaignRow(
         String cronExpression,
         boolean autoResetTargets,
         Instant lastRunAt,
+        int priority,
+        Map<Disposition, RetryRule> retryPolicy,
+        Instant startAt,
+        Instant endAt,
+        Long budgetUzs,
+        Long dailyBudgetUzs,
         long totalTargets,
         long calledTargets,
         long pendingTargets,
-        long completedTargets
+        long completedTargets,
+        long version
 ) {
 
     public static CampaignRow of(Campaign c, String aiAgentName, String createdByName) {
@@ -62,9 +72,11 @@ public record CampaignRow(
                 c.createdBy(), createdByName,
                 c.recurrenceType() != null ? c.recurrenceType() : RecurrenceType.ONCE,
                 c.recurringDayOfMonth(), c.cronExpression(), c.autoResetTargets(), c.lastRunAt(),
+                c.priority(), c.retryPolicy().rules(), c.startAt(), c.endAt(), c.budgetUzs(), c.dailyBudgetUzs(),
                 s.totalTargets(),
                 s.calledTargets(),
                 s.pendingTargets(),
-                s.completedTargets());
+                s.completedTargets(),
+                c.version());
     }
 }

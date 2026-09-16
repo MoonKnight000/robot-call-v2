@@ -9,19 +9,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.campaign.application.dto.ParsedTarget;
+import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceFetcherPort;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceMethod;
 import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -46,22 +42,14 @@ public class TargetApiImporter {
 
     private static final Logger log = LoggerFactory.getLogger(TargetApiImporter.class);
 
-    /** Generous compared to the fact webhook's: nobody is on the line waiting for this. */
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
-
-    /** A list this large is a misconfiguration, and holding it in memory is how one lands. */
-    private static final int MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
     private static final int MAX_ROWS = 100_000;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final TargetSourceFetcherPort targetSourceFetcherPort;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(TIMEOUT)
-            // Never followed, for the same reason as the fact webhook: the screening below
-            // applies to the host that was configured, and a redirect is an endpoint
-            // choosing a second host after that check has already passed.
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
+    public TargetApiImporter(TargetSourceFetcherPort targetSourceFetcherPort) {
+        this.targetSourceFetcherPort = targetSourceFetcherPort;
+    }
 
     /**
      * @param source        what to call and how to read the answer
@@ -101,45 +89,11 @@ public class TargetApiImporter {
     }
 
     private String send(URI uri, TargetSource source, String authHeaderValue) {
-        try {
-            HttpRequest.Builder request = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .timeout(TIMEOUT)
-                    .header("Accept", "application/json");
-            applyAuthHeader(request, source.authHeaderName(), authHeaderValue);
-            if (source.methodOrDefault() == TargetSourceMethod.POST) {
-                request.header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(
-                                source.requestBody() != null ? source.requestBody() : "{}"));
-            } else {
-                request.GET();
-            }
-
-            HttpResponse<String> response = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) {
-                throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                        uri.getHost(), "HTTP " + response.statusCode());
-            }
-            String body = response.body();
-            if (body == null || body.isBlank()) {
-                throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                        uri.getHost(), "empty response");
-            }
-            if (body.length() > MAX_RESPONSE_BYTES) {
-                throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                        uri.getHost(), "response larger than " + MAX_RESPONSE_BYTES + " bytes");
-            }
-            return body;
-        } catch (ExternalServiceException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                    uri.getHost(), "interrupted");
-        } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.TARGET_SOURCE_FETCH_FAILED, "target-source",
-                    e, uri.getHost(), e.getMessage());
-        }
+        TargetSourceMethod method = source.methodOrDefault();
+        String requestBody = method == TargetSourceMethod.POST
+                ? (source.requestBody() != null ? source.requestBody() : "{}")
+                : null;
+        return targetSourceFetcherPort.fetch(uri, method, requestBody, source.authHeaderName(), authHeaderValue);
     }
 
     private JsonNode readRows(String body, String itemsPath) {
@@ -147,7 +101,7 @@ public class TargetApiImporter {
         try {
             root = objectMapper.readTree(body);
         } catch (Exception e) {
-            throw new ValidationException(ErrorCode.TARGET_SOURCE_RESPONSE_INVALID, "body is not JSON");
+            throw new ValidationException(ErrorCode.TARGET_SOURCE_RESPONSE_NOT_JSON);
         }
         JsonNode node = root;
         if (itemsPath != null && !itemsPath.isBlank()) {
@@ -156,10 +110,9 @@ public class TargetApiImporter {
             }
         }
         if (!node.isArray()) {
-            throw new ValidationException(ErrorCode.TARGET_SOURCE_RESPONSE_INVALID,
-                    itemsPath == null || itemsPath.isBlank()
-                            ? "the body is not an array — set itemsPath"
-                            : "nothing at itemsPath '" + itemsPath + "'");
+            throw itemsPath == null || itemsPath.isBlank()
+                    ? new ValidationException(ErrorCode.TARGET_SOURCE_RESPONSE_NOT_ARRAY)
+                    : new ValidationException(ErrorCode.TARGET_SOURCE_ITEMS_PATH_EMPTY, itemsPath);
         }
         return node;
     }
@@ -204,16 +157,6 @@ public class TargetApiImporter {
         return value.isMissingNode() || value.isNull() ? null : value.asText().trim();
     }
 
-    private static void applyAuthHeader(HttpRequest.Builder request, String name, String value) {
-        // A newline in a header value splits the request in two, and both halves come from
-        // a tenant-edited settings page.
-        if (name == null || value == null || name.isBlank() || value.isBlank()
-                || name.indexOf('\n') >= 0 || name.indexOf('\r') >= 0
-                || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
-            return;
-        }
-        request.header(name.trim(), value);
-    }
 
     /**
      * Whether this server is willing to call that host on a tenant's behalf. Without this

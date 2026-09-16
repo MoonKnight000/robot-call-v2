@@ -1,8 +1,8 @@
 package uz.murodjon.robotcallv2.callrecord.application.port.output;
 
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTranscript;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 
-import java.time.Instant;
 import java.util.List;
 
 public interface CallTranscriptRepository {
@@ -11,6 +11,6 @@ public interface CallTranscriptRepository {
 
     List<String> findTranscriptLines(long callId);
 
-    /** Drops the verbatim speech of every call that ended before {@code cutoff}; returns the row count. */
-    int purgeEndedBefore(Instant cutoff);
+    /** Drops up to {@code batchSize} lines of conversations past their retention; returns the row count. */
+    int deleteExpired(ConversationRetention retention, int batchSize);
 }

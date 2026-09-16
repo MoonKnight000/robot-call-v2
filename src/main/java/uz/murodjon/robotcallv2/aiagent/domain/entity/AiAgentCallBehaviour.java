@@ -20,6 +20,8 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  * @param midCallSmsTemplate      the text it sends
  * @param transferPhoneNumber     where a handover to a human goes; null disables transfer
  * @param transferMessage         what the caller hears before being transferred
+ * @param transferQueueId         the operator queue a handover joins; wins over
+ *                                {@code transferPhoneNumber} (docs/INBOUND-PBX-PLAN.md §7.4)
  */
 public record AiAgentCallBehaviour(
         InterruptionSensitivity interruptionSensitivity,
@@ -30,7 +32,8 @@ public record AiAgentCallBehaviour(
         boolean midCallSmsEnabled,
         String midCallSmsTemplate,
         String transferPhoneNumber,
-        String transferMessage
+        String transferMessage,
+        Long transferQueueId
 ) {
     /** Long enough that a pause for breath is not an end of turn, short enough not to feel dead. */
     private static final int DEFAULT_ENDPOINTING_DELAY_MS = 700;
@@ -49,6 +52,6 @@ public record AiAgentCallBehaviour(
 
     /** Whether this agent can hand the caller to a person at all. */
     public boolean transferEnabled() {
-        return transferPhoneNumber != null && !transferPhoneNumber.isBlank();
+        return transferQueueId != null || (transferPhoneNumber != null && !transferPhoneNumber.isBlank());
     }
 }

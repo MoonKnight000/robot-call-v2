@@ -20,5 +20,5 @@ public interface NotificationController {
     ResponseEntity<ResponseData<Void>> markRead(@PathVariable long id);
 
     @PutMapping("/preferences")
-    ResponseEntity<ResponseData<Void>> updatePreference(@Valid @RequestBody UpdatePreferenceRequest r);
+    ResponseEntity<ResponseData<Void>> updatePreference(@Valid @RequestBody UpdatePreferenceRequest request);
 }

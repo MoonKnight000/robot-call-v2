@@ -9,12 +9,14 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.event.CompanyCreatedEvent;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 
 /**
  * Makes sure every company owns its system roles before anything tries to assign one —
  * after {@code CompanyBootstrap} (order 10) seeds the default company and before
- * {@code UserBootstrap}, which needs the ADMIN role to seed the first account.
+ * {@code UserBootstrap}, which needs the ADMIN role to seed the first account — and gives a
+ * company created later its roles the moment it exists.
  */
 @Component
 public class RoleBootstrap {
@@ -36,5 +38,11 @@ public class RoleBootstrap {
             roleUseCase.createSystemRoles(company.id());
         }
         log.info("System roles verified for every company");
+    }
+
+    /** Synchronous: the roles exist before {@code CompanyService.create} returns. */
+    @EventListener
+    public void createSystemRolesForNewCompany(CompanyCreatedEvent event) {
+        roleUseCase.createSystemRoles(event.companyId());
     }
 }

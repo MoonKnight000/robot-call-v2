@@ -1,14 +1,14 @@
 package uz.murodjon.robotcallv2.role.infrastructure.persistence.adapter;
 
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.role.application.mapper.RoleMapper;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.mapper.RoleEntityMapper;
 import uz.murodjon.robotcallv2.role.application.port.output.RoleRepository;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -20,15 +20,15 @@ import java.util.Map;
 public class RoleRepositoryAdapter implements RoleRepository {
 
     private final RoleJpaRepository jpaRepository;
-    private final RoleMapper mapper;
-    private final JdbcTemplate jdbcTemplate;
+    private final RoleEntityMapper mapper;
+    private final UserJpaRepository userJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
 
-    public RoleRepositoryAdapter(RoleJpaRepository jpaRepository, RoleMapper mapper, JdbcTemplate jdbcTemplate,
-                                 CompanyJpaRepository companyJpaRepository) {
+    public RoleRepositoryAdapter(RoleJpaRepository jpaRepository, RoleEntityMapper mapper,
+                                 UserJpaRepository userJpaRepository, CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
-        this.jdbcTemplate = jdbcTemplate;
+        this.userJpaRepository = userJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
     }
 
@@ -90,21 +90,23 @@ public class RoleRepositoryAdapter implements RoleRepository {
         jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(jpaRepository::delete);
     }
 
+    /*
+     * app_user belongs to the user feature, so these two ask its JPA repository in JPQL
+     * rather than SQL against the table. Not through UserUseCase: UserService already
+     * depends on RoleUseCase, and the reverse would be a bean cycle.
+     */
+
     @Override
     public Map<Long, Long> countUsersByRole(long companyId) {
         Map<Long, Long> counts = new HashMap<>();
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT role_id, COUNT(*) AS user_count FROM app_user WHERE company_id = ? GROUP BY role_id",
-                companyId);
-        for (Map<String, Object> row : rows) {
-            counts.put(((Number) row.get("role_id")).longValue(), ((Number) row.get("user_count")).longValue());
+        for (Object[] row : userJpaRepository.countByCompanyIdGroupedByRoleId(companyId)) {
+            counts.put((Long) row[0], (Long) row[1]);
         }
         return counts;
     }
 
     @Override
     public List<Long> findUserIdsByRoleId(long companyId, long roleId) {
-        return jdbcTemplate.queryForList("SELECT id FROM app_user WHERE company_id = ? AND role_id = ?",
-                Long.class, companyId, roleId);
+        return userJpaRepository.findIdsByCompanyIdAndRoleId(companyId, roleId);
     }
 }

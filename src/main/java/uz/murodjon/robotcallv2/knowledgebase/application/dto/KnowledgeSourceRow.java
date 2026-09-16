@@ -20,6 +20,9 @@ public record KnowledgeSourceRow(
         String errorMessage,
         Instant lastIndexedAt,
         int chunkCount,
-        Instant createdAt
+        Instant createdAt,
+        String feedItemsPath,
+        String feedKeyField,
+        Integer refreshMinutes
 ) {
 }

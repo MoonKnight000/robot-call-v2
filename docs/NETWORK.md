@@ -549,6 +549,7 @@ Hech qachon ochmaslik:              8088, 8080, 5432, 6379, 5672, 15672, 9000, 9
 Tegishli fayllar:
 
 - `asterisk/etc/asterisk/pjsip.conf` — transport, external IP, trunk, softphone
+- `asterisk/etc/asterisk/generated/` — app yozadigan `pjsip_trunks.conf` va `pjsip_operators.conf` (gitignored; app konteyneriga faqat shu papka mount qilinadi)
 - `asterisk/update-external-ip.sh` — dinamik IP'ni avtomatik aniqlab yangilaydigan skript ([§10.1](#101-avtomatik-yangilash-skripti))
 - `asterisk/etc/asterisk/rtp.conf` — Asterisk RTP diapazoni (10000–10200)
 - `asterisk/etc/asterisk/extensions.conf` — dialplan (`outbound-ai`, `from-trunk`, `from-internal`)

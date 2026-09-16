@@ -6,22 +6,29 @@ import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
 import uz.murodjon.robotcallv2.auth.application.dto.IssuedToken;
 import uz.murodjon.robotcallv2.auth.infrastructure.config.JwtProperties;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 
 import java.time.Instant;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class JwtTokenServiceTest {
 
     private static final String SECRET = "super-secure-secret-key-that-is-at-least-256-bits-long-12345678";
+    private TokenRevocationService revocation;
     private JwtTokenService jwtTokenService;
 
     @BeforeEach
     void setUp() {
         JwtProperties props = new JwtProperties(SECRET, 60);
-        jwtTokenService = new JwtTokenService(props);
+        revocation = mock(TokenRevocationService.class);
+        jwtTokenService = new JwtTokenService(props, revocation);
     }
 
     @Test
@@ -70,21 +77,31 @@ class JwtTokenServiceTest {
 
     @Test
     void parseReturnsNullWhenSignedWithDifferentSecret() {
-        JwtTokenService otherService = new JwtTokenService(new JwtProperties("different-secret-key-value-1234567890", 60));
+        JwtTokenService otherService = new JwtTokenService(
+                new JwtProperties("different-secret-key-value-1234567890", 60), revocation);
         IssuedToken issued = otherService.issue(operator(Set.of(Permission.CAMPAIGN_READ)));
 
         AuthenticatedUser parsed = jwtTokenService.parse(issued.token());
         assertThat(parsed).isNull();
     }
 
+    /** A valid signature is not enough once the user has been revoked since the token was issued. */
     @Test
-    void throwsIllegalStateExceptionWhenSecretNotConfigured() {
-        JwtTokenService unconfigured = new JwtTokenService(new JwtProperties(null, 60));
+    void parseReturnsNullForARevokedUser() {
+        IssuedToken issued = jwtTokenService.issue(operator(Set.of(Permission.CAMPAIGN_READ)));
+        when(revocation.isRevoked(eq(1L), any())).thenReturn(true);
+
+        assertThat(jwtTokenService.parse(issued.token())).isNull();
+    }
+
+    @Test
+    void refusesToIssueWhenSecretNotConfigured() {
+        JwtTokenService unconfigured = new JwtTokenService(new JwtProperties(null, 60), revocation);
         AuthenticatedUser user = operator(Set.of(Permission.CAMPAIGN_READ));
 
         assertThatThrownBy(() -> unconfigured.issue(user))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("JWT signing key is not configured");
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("voice-agent.security.jwt.secret is not set");
 
         assertThat(unconfigured.parse("any-token")).isNull();
     }

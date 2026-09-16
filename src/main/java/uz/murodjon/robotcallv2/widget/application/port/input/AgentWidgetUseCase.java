@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.widget.application.port.input;
 
 import uz.murodjon.robotcallv2.widget.application.dto.*;
+import uz.murodjon.robotcallv2.widget.domain.entity.WidgetTarget;
 
 import java.util.List;
 
@@ -34,4 +35,15 @@ public interface AgentWidgetUseCase {
      * @param language the visitor's preferred language, or null for the agent's own
      */
     PublicWidgetSessionResponse startPublicSession(String widgetKey, String origin, String language);
+
+    /**
+     * Which agent a public request on this widget reaches, after the same checks the two
+     * endpoints above make: the widget exists, it is enabled, and the calling page's origin
+     * is one it lists.
+     *
+     * <p>For the features that serve a widget's other channels — the chat
+     * (UNIVERSAL-OPERATOR-PLAN E.4) — so that "is this request allowed" is answered in one
+     * place rather than copied into each of them.
+     */
+    WidgetTarget findPublicTarget(String widgetKey, String origin);
 }

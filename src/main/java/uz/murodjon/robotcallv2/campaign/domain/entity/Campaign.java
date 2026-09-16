@@ -19,7 +19,17 @@ import java.util.Set;
  * Russian voice required cloning the whole campaign, and an inbound call, having no
  * campaign at all, could not be given those settings by any means.
  *
- * @param aiAgentId the agent whose voice and script this campaign's calls run under
+ * @param aiAgentId   the agent whose voice and script this campaign's calls run under
+ * @param priority    1 (low) … 5 (urgent): the dialer splits each tick's batch between the
+ *                    active campaigns in proportion to it, so a debt campaign at 5 gets
+ *                    five lines for every one a survey at 1 gets
+ * @param retryPolicy per-disposition retry rules; {@link RetryPolicy#NONE} for the defaults
+ * @param startAt     when a started campaign goes ACTIVE; in the future it waits as SCHEDULED, null means now
+ * @param endAt       when an ACTIVE campaign is closed as COMPLETED whatever targets remain; null means never
+ * @param budgetUzs   spend ceiling for the whole campaign; the dialer pauses it once settled calls reach it, null for none
+ * @param dailyBudgetUzs the same per company-local day; the pause lifts on the operator's resume
+ * @param version     the optimistic-lock counter the row had when read; an edit is written only
+ *                    while the row still has it (0 for a campaign not saved yet)
  */
 public record Campaign(
         long id,
@@ -40,8 +50,75 @@ public record Campaign(
         Integer recurringDayOfMonth,
         String cronExpression,
         boolean autoResetTargets,
-        Instant lastRunAt
+        Instant lastRunAt,
+        int priority,
+        RetryPolicy retryPolicy,
+        Instant startAt,
+        Instant endAt,
+        Long budgetUzs,
+        Long dailyBudgetUzs,
+        long version
 ) {
+
+    public static final int DEFAULT_PRIORITY = 3;
+    public static final int MIN_PRIORITY = 1;
+    public static final int MAX_PRIORITY = 5;
+
+    public Campaign {
+        priority = priority < MIN_PRIORITY || priority > MAX_PRIORITY ? DEFAULT_PRIORITY : priority;
+        retryPolicy = retryPolicy == null ? RetryPolicy.NONE : retryPolicy;
+    }
+
+    /** The pre-V23 shape: default priority, no per-disposition rules. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, DEFAULT_PRIORITY, RetryPolicy.NONE);
+    }
+
+    /** The pre-V25 shape: no start/end moment. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt, int priority, RetryPolicy retryPolicy) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, null, null);
+    }
+
+    /** The pre-V26 shape: no budget. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
+                null, null);
+    }
+
+    /** The pre-V3 shape: a campaign not saved yet, version 0. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
+                    Long budgetUzs, Long dailyBudgetUzs) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
+                budgetUzs, dailyBudgetUzs, 0L);
+    }
 
     public Set<DayOfWeek> allowedDays() {
         return dialDays == null || dialDays.isEmpty() ? EnumSet.allOf(DayOfWeek.class) : dialDays;

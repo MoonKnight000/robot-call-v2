@@ -1,3 +1,7 @@
+# The LLM side of a call: which model answers a turn, and how the dialog engine drives it.
+# Reasoning behind the values lives in DialogProperties, SummaryProperties and
+# TurnTools#buildOptions — the vendor defaults below are only what Spring AI binds when a
+# company has no AiModelConfig of its own.
 spring:
   ai:
     model:
@@ -8,26 +12,14 @@ spring:
         api-key: ${GEMINI_API_KEY:}
         chat:
           options:
-            # Gemini 3.8 Flash: sampling parameters (temperature, top_p, top_k) and candidate_count are deprecated/stripped.
-            # Thinking level: LOW / MEDIUM / HIGH (MINIMAL is unsupported on 3.8 Flash). Default for low latency voice is LOW.
             model: ${LLM_DIALOG_MODEL:gemini-3.8-flash}
-            # Thinking tokens are billed against this budget too, so it bounds the model's
-            # reasoning, not just the sentence it speaks. At 256 a turn that thought for a
-            # moment hit the cap before writing anything and came back empty — the log said
-            # "empty LLM reply in REASON_INQUIRY", and the retry that follows costs a whole
-            # extra round trip inside the turnaround budget. Reply length is held down by
-            # the speech rules in the prompt ("ko'pi bilan ikki qisqa gap"), not by this;
-            # raising it costs nothing, since only tokens actually generated are billed.
             max-output-tokens: 1024
+            # LOW / MEDIUM / HIGH (MINIMAL is unsupported on 3.8 Flash)
             thinking-level: ${LLM_REASONING_EFFORT:LOW}
 
+    # OpenAI itself, not an OpenAI-compatible vendor — see TurnTools#buildOptions before
+    # repointing base-url.
     openai:
-      # OpenAI itself. The slot used to be pointed at Groq's OpenAI-compatible endpoint,
-      # which meant LLM_CHAT_PROVIDER=openai reached Groq and ChatGPT was unreachable
-      # however the key was set. base-url stays configurable, so any OpenAI-compatible
-      # vendor is still one env var away — but the ids in the model catalog are OpenAI's,
-      # and a catalog that lists one vendor's ids while the URL points at another is the
-      # failure this table exists to prevent.
       base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       api-key: ${OPENAI_API_KEY:disabled}
       audio:
@@ -43,19 +35,22 @@ spring:
         enabled: false
       chat:
         options:
-          # gpt-5.6-luna is the cost-optimised, high-volume tier — the right default for a
-          # voice turn, which is short and latency-bound. gpt-5.6-terra and gpt-5.6-sol
-          # trade cost for reasoning; gpt-6-astra is the flagship and the slowest.
+          # luna is the cost-optimised, high-volume tier and the right default for a voice
+          # turn; terra/sol trade cost for reasoning, astra is the flagship and slowest.
           model: ${LLM_DIALOG_MODEL:gpt-5.6-luna}
           max-tokens: 1024
 
 voice-agent:
+  # Post-call summary — SummaryProperties
   summary:
     enabled: ${SUMMARY_ENABLED:true}
     model: ${SUMMARY_MODEL:gemini-3.8-flash}
     reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
     max-tokens: ${SUMMARY_MAX_TOKENS:2048}
+    # One summary request — SummaryProperties#timeoutMs.
+    timeout-ms: ${SUMMARY_TIMEOUT_MS:60000}
 
+  # DialogProperties documents every value below, including why the zeroes are zero.
   dialog:
     enabled: ${DIALOG_ENABLED:true}
     auto-start: ${DIALOG_AUTO_START:true}
@@ -63,82 +58,46 @@ voice-agent:
     tts-voice: ${DIALOG_TTS_VOICE:}
     greeting-delay-ms: ${DIALOG_GREETING_DELAY_MS:400}
     max-turns: ${DIALOG_MAX_TURNS:25}
+    language-switch-finals: ${DIALOG_LANGUAGE_SWITCH_FINALS:2}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
     streaming: ${DIALOG_STREAMING:true}
-    # Off. The filler was covering a wait that should not have existed: with the framework
-    # running tools in its own loop a turn took 5-11s, so five of seven turns crossed 1800ms
-    # and the caller heard "Bir soniya." before nearly every reply — a canned line ahead of
-    # every answer is worse than the silence it hides. Set a value again only if the
-    # turnaround metric shows a genuinely slow turn.
     filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:0}
-    # Backchannel: after this long of the caller still talking, say "aha" quietly under
-    # them so the line does not read as dead. Not a turn — never recorded, never in the
-    # history. Off (0) until it has been listened to on real recordings: on a speakerphone
-    # it can come back through the caller's mic and look like a barge-in.
     backchannel-after-ms: ${DIALOG_BACKCHANNEL_AFTER_MS:0}
     backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
-    # After this long of one unbroken answer the bot cuts in politely, at full volume. A
-    # recognizer cannot end an utterance that never pauses, so without this the turn waits
-    # out the whole monologue. 0 disables it.
     interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:0}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
-    # On since the recognizer went single-language (stt.detect-languages: uz-UZ). It was
-    # off because a multilingual (uz-UZ + ru-RU) stream came back with Russian interims
-    # against an Uzbek final — "распутай" guessed against "yahshi bo'lsa keyingi oydan
-    # to'la boshlayman" — so no guess was ever a prefix of what the caller said.
-    # What it buys is the endpointing silence: on a recorded call 1.1-2.3s passed between
-    # the caller's last word and the final, and none of it was being used.
-    # Watch the "speculation: hit/miss" lines — a miss is a billed request for nothing.
+    # LlmTimeoutProperties — a stalled model stream becomes a transient failure (one
+    # retry, then the fast model) instead of holding the caller for as long as the socket lives.
+    llm-timeout:
+      token-gap-ms: ${DIALOG_LLM_TOKEN_GAP_TIMEOUT_MS:8000}
+      queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
+      # One blocking (non-streaming) model call — LlmTimeoutProperties#callTimeoutMs. 0 = none.
+      call-timeout-ms: ${DIALOG_LLM_CALL_TIMEOUT_MS:20000}
+    # DialogTuningProperties — former constants of the dialog loop; these are the values they had.
+    tuning:
+      drain-timeout-ms: ${DIALOG_DRAIN_TIMEOUT_MS:30000}
+      farewell-grace-ms: ${DIALOG_FAREWELL_GRACE_MS:15000}
+      min-echo-chars: ${DIALOG_MIN_ECHO_CHARS:20}
+      llm-retry-backoff-ms: ${DIALOG_LLM_RETRY_BACKOFF_MS:200}
+      max-stage-attempts: ${DIALOG_MAX_STAGE_ATTEMPTS:4}
+      playback-poll-ms: 100
+      hangup-tail-ms: ${DIALOG_HANGUP_TAIL_MS:500}
     preemptive: ${DIALOG_PREEMPTIVE:true}
-    # Also pre-synthesize the guess's first sentence into the TTS cache. Saves the whole
-    # synthesis round trip when the guess lands, buys nothing (and is billed) when it does
-    # not.
-    # On. Without it speculation stopped at the text and the caller still paid a full
-    # Yandex round trip (stage=tts_ttfb, 300-600 ms) after the final — the last thing
-    # standing between them and the first word, and paid on every turn rather than only
-    # on a miss. A wasted synthesis costs characters; the wait costs the call.
-    # Watch voice.tts.chars.synthesized against voice.tts.chars.saved: if the miss rate
-    # makes this expensive, the fix is the hit rate (preemptive-min-chars, the recognizer's
-    # interims), not turning it back off.
     preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:true}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:2}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:2}
     mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}
-    # Route short turns ("aha", "ha, to'layman") to a smaller, faster model: they are most
-    # of a call and pay time-to-first-token like any other, while any model answers them
-    # the same way. Blank keeps every turn on the company's configured model.
-    #
-    # What to watch: a smaller model calls tools less reliably, and these turns still have
-    # to fire transitionTo — a call that stops moving through its stages is this setting.
-    # A model id the API key cannot reach fails safely: the turn is retried on the
-    # configured model and logs "fast model '...' failed" (TurnRunner#retryTurn).
     fast-model: ${DIALOG_FAST_MODEL:gemini-3.5-flash-lite}
-    # 12, not 3: on a measured call the single turn that fell under three words answered in
-    # 1.1s and the three that did not took 2.4-6.2s on the full model. Real caller turns run
-    # 4-7 words ("keyingi oyda oktabrdan atib to'layman"), so a 3-word cut applied the
-    # optimisation to almost nothing. Raise or lower it by what the turns actually contain.
-    # Length is not the only test: an answer that names a number ("yetti", "20") goes to the
-    # full model however short it is — that turn sets the promised date (TurnRunner#modelFor).
     fast-model-max-words: ${DIALOG_FAST_MODEL_MAX_WORDS:5}
     state-scoped-tools: ${DIALOG_STATE_SCOPED_TOOLS:true}
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
     no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
-    # Settle "adashibsiz" / "telefon qilmang" / "operatorga ulang" from code instead of the
-    # model — same tool, one turnaround earlier. Matching is on substrings, so watch the
-    # "fast path ->" log lines: a wrong match ends a call that was going fine.
     fast-path: ${DIALOG_FAST_PATH:true}
-    # Answer known policy questions ("qanday to'layman", "qaysi filial") from a fixed line
-    # instead of the model. Off by default — the wording is company policy and has to be
-    # checked against the company actually running before it speaks for them.
     knowledge-base: ${DIALOG_KNOWLEDGE_BASE:false}
-    # Below this recognition confidence the turn repeats what it heard back before acting
-    # on it. Providers that report no confidence (0) are never treated as unsure.
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.55}
     fact-guard: ${DIALOG_FACT_GUARD:true}
+    # REALTIME only: spoken fact violations before the call goes to an operator; 0 = never.
+    fact-violation-escalate-after: ${DIALOG_FACT_VIOLATION_ESCALATE_AFTER:2}
     pre-tool-speech: ${DIALOG_PRE_TOOL_SPEECH:true}
-    # How many passages from the agent's knowledge sources (uploaded documents and links)
-    # are put in front of a turn. Only for agents with useRag on; three is about 2700
-    # characters, past which the answer gets buried among near-misses and every extra
-    # passage is paid for on every turn.
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}

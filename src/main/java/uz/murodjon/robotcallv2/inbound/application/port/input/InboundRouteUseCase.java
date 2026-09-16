@@ -20,10 +20,10 @@ public interface InboundRouteUseCase {
 
     InboundRoute requireRoute(long companyId, long id);
 
-    InboundRouteRow routeRow(long companyId, long id);
+    InboundRouteRow requireRouteRow(long companyId, long id);
 
     InboundRoute resolveByDid(String did);
 
-    InboundRouteStats stats(long companyId, long id);
+    InboundRouteStats findStats(long companyId, long id);
 }
 

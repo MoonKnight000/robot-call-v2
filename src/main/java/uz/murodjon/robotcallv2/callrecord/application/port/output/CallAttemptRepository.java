@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.callrecord.application.port.output;
 
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.ContactHistory;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
@@ -15,7 +17,9 @@ public interface CallAttemptRepository {
 
     /** {@code true} when the call came in, {@code null} when there is no such attempt. */
     Boolean findInboundById(long id);
-    Optional<Long> findTargetIdByPhone(String phone);
+
+    /** The inbound route the call came in on, or null for an outbound or unknown attempt. */
+    Long findInboundRouteIdById(long id);
 
     /**
      * Every answered call this company made to that number between two instants.
@@ -24,6 +28,13 @@ public interface CallAttemptRepository {
      * deciding which call earned a conversion, and that is a comparison of answer times.
      */
     List<AnsweredCall> findAnsweredByPhone(long companyId, String phone, Instant from, Instant to);
+
+    /**
+     * This company's contact with one number, as its contact policy reads it: the placed
+     * outbound attempts since {@code since} (newest first, at most {@code attemptLimit}),
+     * the last real conversation, and the latest promised payment date.
+     */
+    ContactHistory findContactHistory(long companyId, String phone, Instant since, int attemptLimit);
     long create(CallAttempt attempt);
     Optional<Long> findIdByChannel(String channelId);
     long countEndedSince(Instant since);
@@ -34,5 +45,28 @@ public interface CallAttemptRepository {
     void updateLanguage(long callId, String language);
     void recordHangupCause(String channelId, String cause);
     void assignOperator(long callId, long userId);
+
+    /** The call joined {@code queueId} now. */
+    void markEnqueued(long callId, long queueId, Instant at);
+
+    /** An operator picked the call up after {@code waitSeconds} in the queue. */
+    void markOperatorAnswered(long callId, long userId, Instant at, int waitSeconds);
+
+    /** The caller hung up while still waiting. */
+    void markAbandoned(long callId, int waitSeconds);
+
+    void recordSurveyScore(long callId, int score);
+
+    /** The operator who last answered a call from {@code phone} since {@code since}; null when none did. */
+    Long findLastOperatorUserId(long companyId, String phone, Instant since);
     void finishAttempt(long callId, Instant endedAt, int durationSec, Disposition disposition, Long recordingFileId);
+
+    /** The outcome alone — ended, duration and recording stay as they are. */
+    void updateDisposition(long callId, Disposition disposition);
+
+    /** The agent that ran the call and its published version, null for a draft (NEXT-PLAN A.1). */
+    void recordAgent(long callId, Long agentId, Integer agentVersion);
+
+    /** Up to {@code batchSize} stored recordings of calls whose conversation is past its retention. */
+    List<Long> findExpiredRecordingFileIds(ConversationRetention retention, int batchSize);
 }

@@ -61,6 +61,59 @@ final class RussianNumberWords {
         return sb.toString().trim();
     }
 
+    private static final String[] ORDINAL_ONES = {
+            "", "первый", "второй", "третий", "четвёртый", "пятый",
+            "шестой", "седьмой", "восьмой", "девятый"
+    };
+
+    private static final String[] ORDINAL_TEENS = {
+            "десятый", "одиннадцатый", "двенадцатый", "тринадцатый", "четырнадцатый",
+            "пятнадцатый", "шестнадцатый", "семнадцатый", "восемнадцатый", "девятнадцатый"
+    };
+
+    private static final String[] ORDINAL_TENS = {
+            "", "", "двадцатый", "тридцатый", "сороковой", "пятидесятый",
+            "шестидесятый", "семидесятый", "восьмидесятый", "девяностый"
+    };
+
+    private static final String[] ORDINAL_HUNDREDS = {
+            "", "сотый", "двухсотый", "трёхсотый", "четырёхсотый", "пятисотый",
+            "шестисотый", "семисотый", "восьмисотый", "девятисотый"
+    };
+
+    /**
+     * Masculine nominative ordinal — "номер в очереди сто двадцать девятый". Only the last
+     * word changes form, as in Uzbek; everything before it stays cardinal. Round thousands
+     * and above (whose ordinal fuses into one word, "двухтысячный") fall back to the
+     * cardinal: no queue gets that long.
+     */
+    static String ordinal(long n) {
+        if (n <= 0) {
+            return cardinal(n);
+        }
+        long lastTwo = n % 100;
+        if (lastTwo != 0) {
+            String head = n >= 100 ? cardinal(n - lastTwo) + " " : "";
+            String tail;
+            if (lastTwo < 10) {
+                tail = ORDINAL_ONES[(int) lastTwo];
+            } else if (lastTwo < 20) {
+                tail = ORDINAL_TEENS[(int) lastTwo - 10];
+            } else if (lastTwo % 10 == 0) {
+                tail = ORDINAL_TENS[(int) (lastTwo / 10)];
+            } else {
+                tail = TENS[(int) (lastTwo / 10)] + " " + ORDINAL_ONES[(int) (lastTwo % 10)];
+            }
+            return head + tail;
+        }
+        long lastThree = n % 1000;
+        if (lastThree != 0) {
+            String head = n >= 1000 ? cardinal(n - lastThree) + " " : "";
+            return head + ORDINAL_HUNDREDS[(int) (lastThree / 100)];
+        }
+        return n == 1000 ? "тысячный" : cardinal(n);
+    }
+
     /** Digit by digit readout (e.g. for card / contract numbers: "ноль один два..."). */
     static String digits(String run) {
         StringBuilder sb = new StringBuilder();

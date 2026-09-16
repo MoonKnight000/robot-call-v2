@@ -65,7 +65,7 @@ public class FastPathRouter {
             String reply = isRu
                     ? "Извините, мы ошиблись номером. Всего доброго."
                     : "Kechirasiz, adashibmiz. Xayr, salomat bo'ling.";
-            log.info("[{}] Fast-path matched: WRONG_NUMBER ('{}')", s.channelId(), clientText);
+            log.info("[{}] Fast-path matched: WRONG_NUMBER", s.channelId());
             return FastPathResult.endWithDisposition(reply, Disposition.WRONG_NUMBER);
         }
 
@@ -74,14 +74,14 @@ public class FastPathRouter {
             String reply = isRu
                     ? "Понятно, ваш номер исключен из базы. Извините за беспокойство."
                     : "Tushundim, raqamingiz ro'yxatdan chiqariladi. Bezovta qilganimiz uchun uzr.";
-            log.info("[{}] Fast-path matched: DO_NOT_CALL ('{}')", s.channelId(), clientText);
+            log.info("[{}] Fast-path matched: DO_NOT_CALL", s.channelId());
             return FastPathResult.endWithDisposition(reply, Disposition.DO_NOT_CALL);
         }
 
         // 3. Human Transfer Request
         if (matchesAny(normalized, isRu ? TRANSFER_RU : TRANSFER_UZ)) {
             String reply = DialogPhrases.transferring(s.language());
-            log.info("[{}] Fast-path matched: TRANSFER ('{}')", s.channelId(), clientText);
+            log.info("[{}] Fast-path matched: TRANSFER", s.channelId());
             return FastPathResult.endWithDisposition(reply, Disposition.TRANSFERRED);
         }
 

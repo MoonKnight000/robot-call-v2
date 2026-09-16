@@ -2,20 +2,24 @@ package uz.murodjon.robotcallv2.billing.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.billing.application.dto.*;
 import uz.murodjon.robotcallv2.billing.application.port.input.BillingUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.output.*;
 import uz.murodjon.robotcallv2.billing.domain.entity.*;
 import uz.murodjon.robotcallv2.billing.domain.enums.PaymentMethod;
 import uz.murodjon.robotcallv2.billing.domain.enums.TopupStatus;
-import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
+import uz.murodjon.robotcallv2.billing.domain.service.PaymentCheckoutUrls;
+import uz.murodjon.robotcallv2.billing.infrastructure.config.PaymentClickProperties;
+import uz.murodjon.robotcallv2.billing.infrastructure.config.PaymentPaymeProperties;
+import uz.murodjon.robotcallv2.billing.infrastructure.config.PaymentProperties;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,9 +37,10 @@ public class BillingService implements BillingUseCase {
     private final InvoiceRepository invoiceRepository;
     private final PaymentTopupRepository paymentTopupRepository;
     private final CurrentUser currentUser;
-    private final CompanyRepository companyRepository;
+    private final CompanyUseCase companyUseCase;
     private final InvoicePdfService pdfService;
-    private final AuditService audit;
+    private final AuditUseCase audit;
+    private final PaymentProperties paymentProperties;
 
     public BillingService(
             CompanyBillingRepository companyBillingRepository,
@@ -44,9 +49,10 @@ public class BillingService implements BillingUseCase {
             InvoiceRepository invoiceRepository,
             PaymentTopupRepository paymentTopupRepository,
             CurrentUser currentUser,
-            CompanyRepository companyRepository,
+            CompanyUseCase companyUseCase,
             InvoicePdfService pdfService,
-            AuditService audit
+            AuditUseCase audit,
+            PaymentProperties paymentProperties
     ) {
         this.companyBillingRepository = companyBillingRepository;
         this.billingUsageRepository = billingUsageRepository;
@@ -54,14 +60,15 @@ public class BillingService implements BillingUseCase {
         this.invoiceRepository = invoiceRepository;
         this.paymentTopupRepository = paymentTopupRepository;
         this.currentUser = currentUser;
-        this.companyRepository = companyRepository;
+        this.companyUseCase = companyUseCase;
         this.pdfService = pdfService;
         this.audit = audit;
+        this.paymentProperties = paymentProperties;
     }
 
     @Override
     @Transactional
-    public BillingOverviewResponse overview(long companyId) {
+    public BillingOverviewResponse findOverview(long companyId) {
         CompanyBilling billing = companyBillingRepository.findByCompanyId(companyId)
                 .orElseGet(() -> companyBillingRepository.save(CompanyBilling.defaultFor(companyId)));
 
@@ -94,7 +101,7 @@ public class BillingService implements BillingUseCase {
     }
 
     @Override
-    public List<SpendMonthDto> spendChart(long companyId, int months) {
+    public List<SpendMonthDto> findSpendChart(long companyId, int months) {
         int limit = months <= 0 ? 6 : Math.min(months, 24);
         // Oldest month first: this is a chart, and a company with no calls yet gets an
         // empty one rather than the invented months it used to be shown.
@@ -105,7 +112,7 @@ public class BillingService implements BillingUseCase {
     }
 
     @Override
-    public PageableData<InvoiceDto> invoices(long companyId, int page, int size) {
+    public PageableData<InvoiceDto> findInvoices(long companyId, int page, int size) {
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 ? 10 : Math.min(size, 100);
 
@@ -118,15 +125,13 @@ public class BillingService implements BillingUseCase {
     }
 
     @Override
-    public byte[] invoicePdf(long companyId, String invoiceId) {
+    public byte[] renderInvoicePdf(long companyId, String invoiceId) {
+        // Another company's invoice is "not found", not "forbidden": a 403 confirmed the id exists.
         Invoice invoice = invoiceRepository.findById(invoiceId)
+                .filter(found -> found.companyId() == companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.INVOICE_NOT_FOUND, invoiceId));
 
-        if (invoice.companyId() != companyId) {
-            throw new ForbiddenException(ErrorCode.CROSS_COMPANY_ACCESS_FORBIDDEN);
-        }
-
-        Company company = companyRepository.find(companyId);
+        Company company = companyUseCase.findById(companyId);
         String companyName = company != null ? company.name() : null;
 
         return pdfService.generateInvoicePdf(invoice, companyName);
@@ -134,7 +139,7 @@ public class BillingService implements BillingUseCase {
 
     @Override
     @Transactional
-    public TopupResponse topup(long companyId, TopupRequest request) {
+    public TopupResponse createTopup(long companyId, TopupRequest request) {
         Long userId = currentUser.id().orElse(null);
 
         String paymentId = "PAY-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
@@ -183,12 +188,29 @@ public class BillingService implements BillingUseCase {
         );
     }
 
+    /**
+     * Where the payer goes to pay. A provider that is not configured refuses the top-up
+     * outright: a link to a made-up merchant used to be handed out instead, and the payer
+     * found out only on the provider's page.
+     */
     private String buildCheckoutUrl(PaymentMethod method, String paymentId, long amountUzs) {
         return switch (method) {
-            case PAYME -> "https://checkout.paycom.uz/pay?m=robotcall_payme_merchant&ac.payment_id="
-                    + paymentId + "&a=" + (amountUzs * 100);
-            case CLICK -> "https://my.click.uz/services/pay?service_id=robotcall_click&merchant_id=98765&amount="
-                    + amountUzs + "&transaction_param=" + paymentId;
+            case PAYME -> {
+                PaymentPaymeProperties payme = paymentProperties.payme();
+                if (!payme.configured()) {
+                    throw new ConflictException(ErrorCode.PAYMENT_METHOD_NOT_CONFIGURED, method);
+                }
+                yield PaymentCheckoutUrls.payme(payme.checkoutUrl(), payme.merchantId(), paymentId, amountUzs,
+                        payme.returnUrl());
+            }
+            case CLICK -> {
+                PaymentClickProperties click = paymentProperties.click();
+                if (!click.configured()) {
+                    throw new ConflictException(ErrorCode.PAYMENT_METHOD_NOT_CONFIGURED, method);
+                }
+                yield PaymentCheckoutUrls.click(click.serviceId(), click.merchantId(), paymentId, amountUzs,
+                        click.returnUrl());
+            }
             case BANK_TRANSFER -> "/api/billing/topup/" + paymentId + "/bank-details";
         };
     }

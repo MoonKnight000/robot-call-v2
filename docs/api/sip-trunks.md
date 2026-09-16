@@ -13,6 +13,12 @@ Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin (ROADMA
    - Agar `sipTrunkIds` bo'sh qoldirilsa (`null` yoki `[]`), tizim kompaniyaning **barcha yoqilgan (enabled) trunklari** bo'yicha qo'ng'iroqlarni navbatma-navbat (Round-Robin) teng taqsimlaydi.
    - Agar bir nechta aniq trunklar tanlansa, qo'ng'iroqlar faqat o'sha tanlangan trunklar o'rtasida Round-Robin taqsimlanadi.
    - Agar bitta trunk tanlansa, barcha nishonlarga faqat shu trunk orqali chiqiladi.
+   - **Failover (`TrunkHealth`)**: AMI orqali registratsiyasi `Registered` bo'lmagan trunk
+     (`TrunkRegistrationMonitor`, `AMI_ENABLED=true` kerak) yoki ketma-ket 5 ta qo'ng'irog'i
+     `CARRIER_REJECTED`/`FAILED` bilan tugagan trunk 5 daqiqaga rotatsiyadan chiqariladi,
+     qolganlari yukni oladi; bitta muvaffaqiyatli ulanish hisoblagichni nolga tushiradi.
+     Hamma trunk yaroqsiz bo'lsa — baribir hammasi orqali teriladi (urinish ko'rinsin).
+     Yiqilgan trunkdagi urinish `FAILED` retry (15 min) bilan boshqa trunkda qayta teriladi.
 2. **Qo'lda / Sinov qo'ng'iroqlari (`/api/calls` va `/api/calls/test`)**:
    - So'rovda `sipTrunkId` parametri orqali qo'ng'iroq aynan qaysi SIP liniyadan chiqishi aniq ko'rsatilishi mumkin.
    - Agar ko'rsatilmasa — kompaniyaning standart (default) trunki ishlatiladi.
@@ -31,6 +37,16 @@ Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin (ROADMA
 Har bir so'rovda **ikkalasidan faqat bittasi** yuborilishi kerak:
 `pjsipEndpoint` (manual) YOKI `host`+`sipUsername`+`sipPassword` (managed).
 Ikkalasi ham yuborilsa yoki ikkalasi ham bo'sh bo'lsa — `400`.
+
+**Manual endpointni faqat platform admin (`PLATFORM_ADMIN`) o'rnatadi yoki o'zgartiradi.**
+Manual nom to'g'ridan-to'g'ri `PJSIP/<raqam>@<nom>` ga qo'yiladi va Asterisk biladigan istalgan
+endpointni — platforma trunkini yoki boshqa kompaniyaning `trunk_<companyId>_<id>` endpointini —
+ko'rsatishi mumkin edi. Oddiy foydalanuvchi uchun: yangi manual trunk yaratish yoki `pjsipEndpoint`ni
+o'zgartirish → `403 SIP_TRUNK_MANUAL_ENDPOINT_FORBIDDEN`. Admin sozlagan manual trunkning boshqa
+maydonlarini (nom, `callerId`, `codecs`, `enabled`) `pjsipEndpoint`ni o'zgartirmasdan tahrirlash mumkin.
+
+Barcha maydonlar tekshiriladi, chunki ular dial string'ga, hamma kompaniyalar uchun umumiy
+`pjsip_trunks.conf` fayliga yoki AMI buyrug'iga tushadi (qator uzilishi boshqa bo'lim/buyruq qo'shib yuborardi).
 
 Birinchi marta ishga tushirilganda (`SipTrunkBootstrap`), agar default kompaniyada hali sip_trunk yozuvi bo'lmasa, mavjud `voice-agent.asterisk.trunk-endpoint`/`caller-id` konfiguratsiyasidan avtomatik bitta **manual** default trunk yaratiladi.
 
@@ -67,14 +83,26 @@ Birinchi marta ishga tushirilganda (`SipTrunkBootstrap`), agar default kompaniya
 | Maydon | Rejim | Majburiymi | Izoh |
 |---|---|---|---|
 | `name` | ikkalasi | ✅ (`@NotBlank`) | — |
-| `pjsipEndpoint` | manual | shart (agar `host` bo'lmasa) | `pjsip.conf`da mavjud endpoint nomi |
-| `host` | managed | shart (agar `pjsipEndpoint` bo'lmasa) | SIP provayder hosti/domeni |
+| `pjsipEndpoint` | manual | shart (agar `host` bo'lmasa) | `pjsip.conf`da mavjud endpoint nomi. Faqat harf, raqam, `_`, `-` (≤ 64). Faqat `PLATFORM_ADMIN` |
+| `host` | managed | shart (agar `pjsipEndpoint` bo'lmasa) | SIP provayder hosti/domeni yoki IPv4 (harf, raqam, `.`, `-`) |
 | `port` | managed | ❌ | bo'sh bo'lsa `5060` |
-| `sipUsername` | managed | ✅ (agar `host` berilsa) | — |
-| `sipPassword` | managed | ✅ (agar `host` berilsa) | **hech qachon javobda qaytmaydi**, faqat shifrlangan holda saqlanadi |
+| `sipUsername` | managed | ✅ (agar `host` berilsa) | Faqat harf, raqam, `.` `_` `+` `-` (≤ 64) |
+| `sipPassword` | managed | ✅ (agar `host` berilsa) | **hech qachon javobda qaytmaydi**, faqat shifrlangan holda saqlanadi. Qator uzilishi va boshqa boshqaruv belgilari taqiqlangan |
 | `transport` | managed | ❌ | bo'sh bo'lsa `UDP`. Hozircha faqat `UDP` qo'llab-quvvatlanadi |
-| `codecs` | ikkalasi | ❌ | `List<String>`. Bo'sh bo'lsa `["alaw", "ulaw"]`. HD voice uchun `["g722", "opus", "ulaw", "alaw"]` |
-| `callerId` | ikkalasi | ❌ | `null` bo'lsa global `voice-agent.asterisk.caller-id`ga qaytadi |
+| `codecs` | ikkalasi | ❌ | `List<String>`. Bo'sh bo'lsa `["alaw", "ulaw"]`. Ruxsat etilganlar: `ulaw`, `alaw`, `g722`, `g729`, `gsm`, `opus`, `ilbc` (katta-kichik harf farqi yo'q). HD voice uchun `["g722", "opus", "ulaw", "alaw"]` |
+| `callerId` | ikkalasi | ❌ | Telefon raqam (`998712000001`, `+998712000001`). `null`/bo'sh bo'lsa global `voice-agent.asterisk.caller-id`ga qaytadi |
+
+**Xatolar** (`POST` va `PUT` uchun):
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| `400` | `SIP_TRUNK_ENDPOINT_INVALID` | `pjsipEndpoint` formati noto'g'ri |
+| `400` | `SIP_TRUNK_HOST_INVALID` | `host` formati noto'g'ri |
+| `400` | `SIP_TRUNK_USERNAME_INVALID` | `sipUsername` formati noto'g'ri |
+| `400` | `SIP_TRUNK_PASSWORD_INVALID` | `sipPassword` ichida qator uzilishi / boshqaruv belgisi |
+| `400` | `SIP_TRUNK_CODEC_UNSUPPORTED` | ro'yxatda yo'q kodek |
+| `400` | `SIP_TRUNK_CALLER_ID_INVALID` | `callerId` telefon raqam emas |
+| `403` | `SIP_TRUNK_MANUAL_ENDPOINT_FORBIDDEN` | admin bo'lmagan foydalanuvchi manual endpoint o'rnatmoqchi / o'zgartirmoqchi |
 
 Kompaniyaning **birinchi** trunki avtomatik default bo'ladi (`isDefault: true`), qolganlari boshida `isDefault: false` bilan yaratiladi.
 

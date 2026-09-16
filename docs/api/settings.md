@@ -42,6 +42,8 @@ Platformada joriy vaqtda API kalitlari ulangan va ishlatish mumkin bo'lgan prova
 
 `pipecat*` ro'yxatlari faqat `realtimeProvider = pipecat` tanlanganda ma'noga ega — Pipecat ichida qaysi STT/LLM/TTS ishlashini belgilaydi.
 
+`realtime` ro'yxatidagi `moshi` tool chaqira olmaydi (qo'ng'iroqni tugatish, operatorga o'tkazish, faktlar yo'q): agentga saqlashda `400 ENGINE_REALTIME_TOOLS_UNSUPPORTED` qaytadi, unga tushib qolgan qo'ng'iroq esa `CASCADE` da davom etadi — batafsil [ai-agents.md](ai-agents.md).
+
 ---
 
 ## 2. AI Model & Limit Sozlamalari (`/api/settings/ai-model`)
@@ -94,6 +96,11 @@ Ixtiyoriy maydon bo'sh (`null`) qoldirilsa, tizim standarti tiklanadi.
 
 ---
 
+**Xatolar:** `400 AI_MODEL_UNKNOWN`, `400 AI_MODEL_TEMPERATURE_OUT_OF_RANGE` (`temperature` 0.0–2.0 dan tashqarida),
+`400 AI_MODEL_MAX_OUTPUT_TOKENS_NOT_POSITIVE`, `400 AI_MODEL_MAX_CALL_SECONDS_NOT_POSITIVE`,
+`400 AI_MODEL_MAX_TOKENS_PER_CALL_NOT_POSITIVE` (qiymat 0 yoki manfiy). Oxirgi to'rttasi ilgari umumiy
+`400 VALIDATION_FAILED` edi.
+
 ## 3. TTS Ovoz Sozlamalari (`/api/settings/voice`)
 
 Kompaniya qo'ng'iroqlarida bot ovozining gapirish tezligi va ohangini nozik sozlash (tuning).
@@ -124,8 +131,15 @@ Kompaniya qo'ng'iroqlarida bot ovozining gapirish tezligi va ohangini nozik sozl
 
 | Maydon | Turi | Cheklov | Izoh |
 |---|---|---|---|
-| `speed` | `number` | `0.1` - `3.0` | Ovoz tezligi ko'paytuvchisi (`1.0` — normal, `1.1` — 10% tezroq) |
+| `speed` | `number` | `0.25` - `3.0` | Ovoz tezligi ko'paytuvchisi (`1.0` — normal, `1.1` — 10% tezroq) |
 | `pitch` | `number` | `-20.0` - `20.0` | Ovoz balandligi/ohangi (yarim tonlarda) |
+
+`speed` chegaradan tashqarida bo'lsa (`0.25` dan kichik yoki `3.0` dan katta) —
+`400 VOICE_SPEED_OUT_OF_RANGE`; chegaradan tashqari `pitch` — `400 VALIDATION_FAILED`.
+Agentning `voiceSpeed` / `languageVoiceSpeeds` ham aynan shu chegara bilan tekshiriladi
+([ai-agents.md](ai-agents.md)). `0.25`–`3.0` — tezlik yetib boradigan barcha sintezatorlar
+qabul qiladigan oraliq (Yandex ko'pi bilan `3.0`, Google/OpenAI kamida `0.25`). `V38`
+migratsiyasi eski qatorlardagi chegaradan tashqari qiymatlarni chegaraga keltiradi.
 
 ---
 
@@ -139,7 +153,7 @@ Ikki ro'yxatdan iborat: **kanallar** (kanal qayerga yetkazadi va yoqilganmi) va
 | Enum | Qiymatlar |
 |---|---|
 | `NotificationChannelType` | `EMAIL`, `WEBHOOK`, `TELEGRAM` |
-| `NotificationType` | `CAMPAIGN_FINISHED`, `ERROR_OCCURRED`, `OPERATOR_REQUEST`, `DAILY_REPORT` |
+| `NotificationType` | `CAMPAIGN_FINISHED`, `ERROR_OCCURRED`, `OPERATOR_REQUEST`, `DAILY_REPORT`, `MISSED_CALL`, `VOICEMAIL_RECEIVED`, `LOW_SURVEY_SCORE`, `CAMPAIGN_PAUSED`, `BALANCE_LOW`, `TARGET_SYNC_FAILED` ([notifications.md](notifications.md)) |
 
 ### `GET /api/settings/notifications` — Matritsani olish
 
@@ -192,6 +206,18 @@ Ikki ro'yxatdan iborat: **kanallar** (kanal qayerga yetkazadi va yoqilganmi) va
 
 Javob — yangilangan `NotificationSettings`.
 
+Yoqilgan (yoki `target`i to'ldirilgan) har bir kanal tekshiriladi: `EMAIL` — `@` bor manzil,
+`TELEGRAM` — bo'sh emas, `WEBHOOK` — **ommaviy** `http(s)` URL (ichki tarmoq, `localhost`,
+`169.254.169.254` va h.k. rad etiladi — server bu manzilga POST yuboradi). Mos kelmasa —
+`400 NOTIFICATION_CHANNEL_TARGET_INVALID`. Webhook yuborish paytida ham qayta tekshiriladi.
+
+**`WEBHOOK` kanali nima yuboradi:** `POST <target>`, `Content-Type: application/json`,
+tanasi `{"type": "<NotificationType>", "title": "...", "message": "...", "link": "..."}`.
+Har bir so'rovda `X-RobotCall-Delivery` (UUID) bor; kompaniyada `WEBHOOK_SIGNING_SECRET`
+secret'i bo'lsa `X-RobotCall-Signature` bilan imzolanadi — post-call webhook'lar bilan bir
+xil format ([webhooks.md](webhooks.md) §3). Taymaut 5 s, redirect'ga ergashilmaydi, qayta
+urinish yo'q (bir marta, best-effort).
+
 > ℹ️ Bu **kompaniya darajasidagi tashqi** yetkazish. Panel ichidagi qo'ng'iroq
 > ikonkasi (in-app bell) va foydalanuvchining shaxsiy toggle'lari alohida:
 > [notifications.md](notifications.md) va
@@ -212,15 +238,18 @@ ulanmaydi.
 ```json
 [
   { "provider": "UYSOT", "displayName": "Uysot CRM", "authMethod": "OAUTH", "available": true },
-  { "provider": "AMOCRM", "displayName": "amoCRM", "authMethod": "OAUTH", "available": true },
-  { "provider": "KOMMO", "displayName": "Kommo CRM (Global amoCRM)", "authMethod": "OAUTH", "available": true },
-  { "provider": "BITRIX24", "displayName": "Bitrix24", "authMethod": "OAUTH", "available": true }
+  { "provider": "AMOCRM", "displayName": "amoCRM", "authMethod": "API_TOKEN", "available": true },
+  { "provider": "KOMMO", "displayName": "Kommo CRM (Global amoCRM)", "authMethod": "API_TOKEN", "available": true },
+  { "provider": "BITRIX24", "displayName": "Bitrix24", "authMethod": "API_TOKEN", "available": true }
 ]
 ```
 
-> ⚠️ Yozish/uzish endpointlari **faqat Uysot uchun** mavjud (`/uysot`). amoCRM, Kommo va
-> Bitrix24 uchun REST endpoint hali yo'q — quyidagi 5.2/5.3 bo'limlari rejalashtirilgan
-> integratsiya doirasini tasvirlaydi.
+Kompaniyaga bir vaqtda **bitta** CRM ulanadi: Uysot — OAuth orqali (`PUT /uysot` →
+`authorize-url` → `callback`), amoCRM / Kommo / Bitrix24 — manzil va token bilan
+(`PUT /account`, 5.2–5.3). Qaysi biri ulangan bo'lsa, qo'ng'iroq quvuri o'sha CRM bilan
+ishlaydi: kiruvchi qo'ng'iroqda raqam bo'yicha mijozni topish, suhbatdan keyingi izoh va
+qo'ng'iroq tarixi. `PUT /account` oldingi ulanishni almashtiradi; Uysot'ga qaytish —
+`PUT /uysot`.
 
 ### 5.1 Uysot CRM Integratsiyasi
 - **Protokol**: Uysot Open API v1 & OAuth 2.0 (`https://apidoc.app.uysot.uz`).
@@ -242,9 +271,14 @@ ulanmaydi.
     { "permission": "CALL", "scope": "SAVE" }
   ],
   "status": "CONNECTED",
-  "connectedAt": "2026-08-02T10:00:00Z"
+  "connectedAt": "2026-08-02T10:00:00Z",
+  "accountHost": null
 }
 ```
+
+`accountHost` — ulangan amoCRM / Kommo / Bitrix24 hisobining faqat **hosti**
+(`acme.amocrm.ru`); to'liq manzil hech qachon qaytmaydi, chunki Bitrix24 da u maxfiy
+kalit. Uysot uchun `null`.
 
 ### `PUT /api/settings/integrations/uysot` — Uysot App & Grants sozlash
 ```json
@@ -284,7 +318,7 @@ Ro'yxatni shu `PUT` bilan o'zgartirsangiz bo'ladi; reseed uni qayta yozmaydi.
 
 ```json
 {
-  "authorizeUrl": "https://crm.uysot.uz/oauth/authorize?response_type=code&client_id=uysot_app_...&redirect_uri=https%3A%2F%2Fvoice.app.uysot.uz%2Fapi%2Fsettings%2Fintegrations%2Fuysot%2Fcallback&scope=PERMISSION_OPEN_API_LEAD%3AREAD%20PERMISSION_OPEN_API_CONTRACT%3AREAD&state=..."
+  "authorizeUrl": "https://crm.uysot.uz/oauth/authorize?response_type=code&client_id=uysot_app_...&redirect_uri=https%3A%2F%2Fvoice.app.uysot.uz%2Fsettings%2Fintegrations&scope=PERMISSION_OPEN_API_LEAD%3AREAD%20PERMISSION_OPEN_API_CONTRACT%3AREAD&state=..."
 }
 ```
 
@@ -298,11 +332,17 @@ Frontend bu havolani shunchaki brauzerda ochadi.
 ### `GET /api/settings/integrations/uysot/callback` — OAuth qaytish nuqtasi
 
 **Permissionsiz** (Uysot brauzerni shu manzilga qaytaradi, foydalanuvchi sessiyasi bilan
-emas — kompaniya imzolangan `state` dan aniqlanadi). Query parametrlar: `code` va `state` —
+emas — kompaniya `state` dan aniqlanadi). `state` — tasodifiy, bir martalik qiymat: server uni
+`authorize-url` berilganda kompaniya bilan birga Redis'da saqlaydi (1 soat), callback'da esa
+o'qib darhol o'chiradi — ikkinchi marta yoki muddati o'tgach ishlatilgan `state` → `crm=error&reason=OAUTH_STATE_INVALID`.
+`authorize-url` Redis ishlamasa `502 OAUTH_STATE_STORE_UNAVAILABLE`, shifrlash kaliti yo'q bo'lsa
+`409 ENCRYPTION_KEY_NOT_SET`. Query parametrlar: `code` va `state` —
 ikkalasi ham majburiy.
 
-Bu manzil frontend tomonidan **chaqirilmaydi** — `authorize-url` dagi `redirect_uri`
-sifatida Uysot'ga beriladi va uni brauzer ochadi.
+Uysot brauzerni **frontend sahifasiga** (`redirect_uri`) `?code=&state=` bilan qaytaradi;
+frontend ikkalasini o'zgartirmasdan shu manzilga **to'liq navigatsiya** bilan uzatadi
+(`window.location.replace`, `fetch` emas, `Authorization` header'siz). Batafsil oqim va
+namuna kod — [uysot-oauth.md](uysot-oauth.md).
 
 **Javob — `ResponseData` emas, `302 Found`.** (Fayl yuklab olish va SSE bilan bir qatorda
 uchinchi istisno: bu yerdagi mijoz — odamning brauzeri.) Token almashtirilgach, brauzer
@@ -321,9 +361,9 @@ nima bo'lganini aytadi.
 
 `callback-redirect-url` bo'sh bo'lsa brauzer ilova ildiziga (`/`) yuboriladi.
 
-> ⚠️ **Uysot'da OAuth application yaratayotganda `Redirect URI` sifatida aynan shu to'liq
-> manzil yoziladi**, faqat host o'zinikiga almashtiriladi:
-> `https://<backend-host>/api/settings/integrations/uysot/callback`
+> ⚠️ **Uysot'da OAuth application yaratayotganda `Redirect URI` sifatida frontend'ning
+> integratsiya sahifasi yoziladi**, masalan:
+> `https://<frontend-host>/settings/integrations`
 >
 > Uysot uni **belgi-belgi** solishtiradi (oxirgi `/` ham ahamiyatli) va HTTPS talab qiladi;
 > mos kelmasa `6902 — invalid redirect_uri` qaytadi. Xuddi shu qiymat serverda
@@ -333,19 +373,77 @@ nima bo'lganini aytadi.
 > `https://crm.uysot.uz/oauth/authorize` bo'lmasa — `UYSOT_OAUTH_AUTHORIZE_URL` bilan
 > almashtiring.
 
+### `PUT /api/settings/integrations/account` — amoCRM / Kommo / Bitrix24 ulash
+
+`INTEGRATION_EDIT`. Kompaniyaning joriy ulanishini (Uysot bo'lsa ham) almashtiradi va
+darhol `CONNECTED` qiladi — rozilik ekrani yo'q. Keyingi qo'ng'iroqdan boshlab quvur shu
+CRM bilan ishlaydi.
+
+**Request** (`ConnectCrmAccountRequest`):
+
+```json
+{ "provider": "AMOCRM", "baseUrl": "acme.amocrm.ru", "accessToken": "eyJ0eXAiOiJKV1Qi..." }
+```
+
+| Maydon | Majburiy | Izoh |
+|---|---|---|
+| `provider` | ha | `AMOCRM`, `KOMMO` yoki `BITRIX24` |
+| `baseUrl` | ha | amoCRM/Kommo: hisob manzili (`acme.amocrm.ru`, `https://acme.kommo.com`); Bitrix24: kiruvchi webhook URL (`https://<portal>/rest/<user>/<kod>/`). Sxemasiz yozilsa `https://` qo'shiladi, oxirgi `/` olib tashlanadi |
+| `accessToken` | amoCRM/Kommo uchun ha | amoCRM/Kommo: private integratsiyaning uzoq muddatli tokeni; Bitrix24: kerak emas — webhook URL'ning o'zi kalit |
+
+Manzil ham, token ham `SecretCipher` bilan shifrlangan holda saqlanadi va hech qachon
+qaytarilmaydi — javobda faqat `accountHost`.
+
+**Response** — `CrmIntegrationRow`: `provider`, `status: "CONNECTED"`, `accountHost`;
+`appName` — `null`, `grants` — `[]`.
+
+**Xatolar:**
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 400 | `VALIDATION_FAILED` | `provider` yoki `baseUrl` yo'q |
+| 400 | `CRM_PROVIDER_USES_OAUTH` | `provider: "UYSOT"` — Uysot faqat OAuth orqali ulanadi |
+| 400 | `CRM_ACCESS_TOKEN_REQUIRED` | amoCRM/Kommo uchun `accessToken` bo'sh |
+| 400 | `CRM_BASE_URL_INVALID` | manzil `https` emas, host topilmadi yoki ichki tarmoqqa qaraydi (localhost, 10.x, 172.16–31.x, 192.168.x, 169.254.x, Docker tarmog'i …) |
+| 409 | `ENCRYPTION_KEY_NOT_SET` | serverda shifrlash kaliti sozlanmagan |
+
+Manzil saqlashda ham, har bir so'rovdan oldin ham tekshiriladi (host keyinroq boshqa IP'ga
+qarab qolishi mumkin); redirect'lar kuzatilmaydi. Loglarga faqat host yoziladi.
+
 ### `DELETE /api/settings/integrations/uysot` — Integratsiyani uzish
-Tizimdan saqlangan token va ruxsatlarni bekor qiladi. Javob — `data: null`.
+Qaysi provayder ulangan bo'lishidan qat'i nazar, saqlangan token, manzil va ruxsatlarni
+o'chiradi (Uysot token'i Uysot tomonida ham bekor qilinadi). `provider` o'zgarmaydi: uzilgan
+amoCRM/Kommo/Bitrix24 kompaniyasining qo'ng'iroqlari hech qaysi CRM'ga yozilmaydi —
+platformaning Uysot hisobiga ham. Javob — `data: null`.
 
 ### 5.2 amoCRM & Kommo CRM Integratsiyasi
-- **Funksiyalar**:
-  - `/api/v4/contacts?query={phone}&with=leads` — Telefon orqali kontakt va faol bitimni aniqlash.
-  - `/api/v4/leads/{id}/notes` — AI qo'ng'iroq xulosasi, sentiment va QA bahosini yozish.
-  - `/api/v4/calls` — Telefoniya pleyeriga audio yozuvni biriktirish.
-  - `/api/v4/tasks` — Qayta qo'ng'iroq vazifalarini avtomatik ochish.
+
+**Kompaniya nima sozlaydi:** amoCRM (Kommo) hisobida private integratsiya yaratadi va uning
+*Ключи и доступы* bo'limidan **uzoq muddatli token** (долгосрочный токен) oladi. `baseUrl` —
+hisob manzili, `https://<subdomain>.amocrm.ru` (Kommo: `https://<subdomain>.kommo.com`).
+
+Har bir so'rov `Authorization: Bearer <token>` bilan yuboriladi:
+
+- `GET /api/v4/contacts?query={phone}&with=leads` — kiruvchi qo'ng'iroqda raqam bo'yicha kontakt ismi.
+- `POST /api/v4/leads/{id}/notes` — suhbatdan keyingi AI izoh (`common`). `{id}` —
+  `campaign_target.client_id`, ya'ni kampaniya amoCRM **lead** id'lari bilan import qilinadi.
+- `POST /api/v4/calls` — qo'ng'iroq tarixi; raqam bo'yicha kontaktga bog'lanadi, `uniq` —
+  platformaning qo'ng'iroq id'si.
+
+Lead'ni id bo'yicha o'qish (qarz summasi va h.k.) yo'q — chiquvchi qo'ng'iroq kampaniya
+import qilgan ma'lumotlar bilan ketadi. Qayta qo'ng'iroq vazifasi (`/api/v4/tasks`) ochilmaydi;
+qayta qo'ng'iroq vaqti izoh matnida yoziladi.
 
 ### 5.3 Bitrix24 Integratsiyasi
-- **Funksiyalar**:
-  - `crm.contact.list` / `crm.lead.list` — Telefon orqali kontakt topish.
-  - `crm.timeline.comment.add` — Bitim kartochkasi taymlayniga AI sharhini qoldirish.
-  - `telephony.externalcall.register/finish` — Audio yozuv va davomiylikni biriktirish.
-  - `tasks.task.add` — Qayta qo'ng'iroq vazifasini yaratish.
+
+**Kompaniya nima sozlaydi:** Bitrix24'da *Разработчикам → Другое → Входящий вебхук*, huquqlar:
+**CRM** (`crm`) va **Телефония** (`telephony`). Berilgan URL
+`https://<portal>/rest/<user_id>/<kod>/` to'liqligicha `baseUrl` ga yoziladi; `accessToken`
+kerak emas. URL ichidagi kod — maxfiy kalit: u shifrlab saqlanadi va hech qayerda
+ko'rsatilmaydi.
+
+- `crm.contact.list` (`FILTER[PHONE]`) — kiruvchi qo'ng'iroqda raqam bo'yicha kontakt ismi.
+- `crm.timeline.comment.add` — suhbatdan keyingi AI izoh kontakt taymlayniga. `ENTITY_ID` —
+  `campaign_target.client_id`, ya'ni kampaniya Bitrix24 **kontakt** id'lari bilan import qilinadi.
+- `telephony.externalcall.register` + `telephony.externalcall.finish` — qo'ng'iroq tarixi;
+  `USER_ID` — webhook URL'idagi foydalanuvchi.

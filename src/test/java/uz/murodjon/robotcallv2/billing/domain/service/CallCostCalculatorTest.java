@@ -20,6 +20,7 @@ class CallCostCalculatorTest {
             new BillingLlmRates(1000, 10_000, 100),
             60,      // stt: 60 UZS/minute
             50,      // tts: 50 UZS per 1k chars
+            300,     // realtime engine: 300 UZS/minute
             180,     // telephony: 180 UZS/minute
             120,     // platform fee: 120 UZS/minute
             0);
@@ -27,6 +28,13 @@ class CallCostCalculatorTest {
     @Test
     void chargesNothingForACallThatConsumedNothing() {
         assertThat(CallCostCalculator.calculate(CallUsage.NONE, PLAIN)).isEqualTo(CallCostBreakdown.FREE);
+    }
+
+    @Test
+    void theMinuteFloorIsTheLineTheEngineAndTheFee() {
+        // Cascade: telephony 180 + stt 60 + platform 120. Realtime: telephony 180 + engine 300 + platform 120.
+        assertThat(CallCostCalculator.minimumPerMinuteUzs(PLAIN, false)).isEqualTo(360);
+        assertThat(CallCostCalculator.minimumPerMinuteUzs(PLAIN, true)).isEqualTo(600);
     }
 
     @Test
@@ -58,7 +66,7 @@ class CallCostCalculatorTest {
 
     @Test
     void marksUpProviderCostsButNotThePlatformFee() {
-        BillingRates marked = new BillingRates(PLAIN.llm(), 60, 50, 180, 120, 2000); // +20%
+        BillingRates marked = new BillingRates(PLAIN.llm(), 60, 50, 300, 180, 120, 2000); // +20%
 
         CallCostBreakdown cost = CallCostCalculator.calculate(new CallUsage(60, 0, 0, 0, 2000), marked);
 
@@ -76,7 +84,28 @@ class CallCostCalculatorTest {
                 new CallUsage(137, 24_310, 3_820, 19_004, 1_733), PLAIN);
 
         assertThat(cost.totalUzs()).isEqualTo(
-                cost.llmUzs() + cost.sttUzs() + cost.ttsUzs() + cost.telephonyUzs() + cost.platformFeeUzs());
+                cost.llmUzs() + cost.sttUzs() + cost.ttsUzs() + cost.realtimeUzs()
+                        + cost.telephonyUzs() + cost.platformFeeUzs());
+    }
+
+    /**
+     * A realtime call is priced on the engine's minutes; the audio tokens it reported are
+     * recorded but must not also be billed at the text-LLM rate, or one call would be
+     * charged twice for the same speech.
+     */
+    @Test
+    void pricesARealtimeCallOnItsMinutesNotItsTokens() {
+        // 120s = 2 minutes: realtime 2 * 300 = 600, telephony 360, platform 240.
+        CallCostBreakdown cost = CallCostCalculator.calculate(
+                new CallUsage(120, 400_000, 50_000, 10_000, 0, 120), PLAIN);
+
+        assertThat(cost.realtimeUzs()).isEqualTo(600);
+        assertThat(cost.llmUzs()).isZero();
+        assertThat(cost.sttUzs()).isZero();
+        assertThat(cost.ttsUzs()).isZero();
+        assertThat(cost.telephonyUzs()).isEqualTo(360);
+        assertThat(cost.platformFeeUzs()).isEqualTo(240);
+        assertThat(cost.totalUzs()).isEqualTo(600 + 360 + 240);
     }
 
     @Test

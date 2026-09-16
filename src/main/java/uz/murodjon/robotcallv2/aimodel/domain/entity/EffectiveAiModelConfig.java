@@ -36,4 +36,9 @@ public record EffectiveAiModelConfig(
                 maxCallSeconds,
                 maxTokensPerCall);
     }
+
+    /** The same configuration with a tighter call-length cap — the balance's, when it runs out sooner. */
+    public EffectiveAiModelConfig withMaxCallSeconds(int seconds) {
+        return new EffectiveAiModelConfig(model, temperature, maxOutputTokens, seconds, maxTokensPerCall);
+    }
 }

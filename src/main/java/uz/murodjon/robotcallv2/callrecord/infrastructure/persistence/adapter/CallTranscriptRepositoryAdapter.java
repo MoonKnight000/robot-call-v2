@@ -4,11 +4,11 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTranscript;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallTranscriptEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallTranscriptJpaRepository;
 
-import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -44,7 +44,8 @@ public class CallTranscriptRepositoryAdapter implements CallTranscriptRepository
     }
 
     @Override
-    public int purgeEndedBefore(Instant cutoff) {
-        return callTranscriptJpaRepository.purgeForAttemptsEndedBefore(cutoff);
+    public int deleteExpired(ConversationRetention retention, int batchSize) {
+        return callTranscriptJpaRepository.deleteExpired(retention.now(), retention.defaultCutoff(),
+                retention.zeroPiiCutoff(), batchSize);
     }
 }

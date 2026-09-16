@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.knowledgebase.infrastructure.config;
 
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeIndexingTask;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.context.annotation.Bean;
@@ -21,10 +22,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class KnowledgeIndexingRabbitConfig {
 
-    public static final String KNOWLEDGE_INDEXING_QUEUE = "knowledge.indexing";
+
 
     @Bean
     public Queue knowledgeIndexingQueue() {
-        return QueueBuilder.durable(KNOWLEDGE_INDEXING_QUEUE).build();
+        return QueueBuilder.durable(KnowledgeIndexingTask.QUEUE).build();
     }
 }

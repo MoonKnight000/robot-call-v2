@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.tool.application.port.input;
 
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
 import uz.murodjon.robotcallv2.tool.application.dto.UpdateToolRequest;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
@@ -12,6 +14,9 @@ import java.util.List;
 public interface ToolUseCase {
 
     ToolRow createTool(long companyId, CreateToolRequest request);
+
+    /** Creates every one or none of them — one transaction. */
+    List<ToolRow> createTools(long companyId, List<CreateToolRequest> requests);
 
     ToolRow updateTool(long companyId, long id, UpdateToolRequest request);
 
@@ -31,4 +36,7 @@ public interface ToolUseCase {
 
     /** The bound tools as the dialog needs them — full domain rows, not a screen's view. */
     List<Tool> findAgentToolDefinitions(long companyId, long agentId);
+
+    /** Runs the tool once with the given arguments, as the model would, and returns what it would see. */
+    ToolTestResponse testTool(long companyId, long id, TestToolRequest request);
 }

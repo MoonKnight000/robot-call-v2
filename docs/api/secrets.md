@@ -1,17 +1,18 @@
 # Secrets Management API (Maxfiy Kalitlar Ombori)
 
-`uz.murodjon.robotcallv2.secret` · huquq: **SUPER_ADMIN** yoki **COMPANY_ADMIN**
+`uz.murodjon.robotcallv2.secret` · huquq: **INTEGRATION_READ** (ro'yxat, ko'rish) / **INTEGRATION_EDIT** (yaratish, tahrirlash, o'chirish)
 
 AI Agent Tool'lari, webhooklar va integratsiyalarda ishlatiladigan API token, parol va
 kalitlarni bir joyda saqlash. Tool yoki webhook konfiguratsiyasida `{{secrets.KEY}}`
 deb yoziladi, server chaqiruvni yuborishdan oldin uni haqiqiy qiymatga almashtiradi.
 
 Qiymatlar bazada **AES-256-GCM** bilan shifrlanadi (`SecretCipher`). API hech qachon
-to'liq qiymatni qaytarmaydi — faqat maskalangan ko'rinish (`sk-...xyz`; 6 belgidan qisqa
-qiymat butunlay `******`).
+to'liq qiymatni qaytarmaydi — faqat maskalangan ko'rinish: `******` va qiymatning oxirgi
+ko'pi bilan 2 belgisi, lekin hech qachon uzunligining choragidan ko'p emas (`******45`; 4 belgidan
+qisqa qiymat butunlay `******`).
 
 > ⚠️ `voice-agent.encryption.secret-key` sozlanmagan bo'lsa kalit **saqlanmaydi**:
-> `502 ENCRYPTION_KEY_NOT_SET` qaytadi. Ochiq matnda saqlab qo'yish ataylab qilinmaydi.
+> `409 ENCRYPTION_KEY_NOT_SET` qaytadi. Ochiq matnda saqlab qo'yish ataylab qilinmaydi.
 > Kalit almashtirilgan bo'lsa eski yozuvlar o'qilmaydi — ular ro'yxatda `******` bo'lib
 > ko'rinadi va `{{secrets.KEY}}` almashtirilmay qoladi.
 
@@ -30,7 +31,7 @@ Kompaniyaning barcha saqlangan kalitlarini qaytaradi.
       "id": 1,
       "companyId": 1,
       "key": "CRM_API_KEY",
-      "maskedValue": "crm...999",
+      "maskedValue": "******99",
       "description": "Asosiy CRM tizimi API tokeni",
       "createdAt": "2026-09-06T12:00:00Z",
       "updatedAt": "2026-09-06T12:00:00Z"
@@ -39,7 +40,7 @@ Kompaniyaning barcha saqlangan kalitlarini qaytaradi.
       "id": 2,
       "companyId": 1,
       "key": "PAYME_SECRET",
-      "maskedValue": "pay...888",
+      "maskedValue": "******88",
       "description": "Payme to'lov tizimi maxfiy kaliti",
       "createdAt": "2026-09-06T12:10:00Z",
       "updatedAt": "2026-09-06T12:10:00Z"
@@ -79,7 +80,7 @@ Kompaniyaning barcha saqlangan kalitlarini qaytaradi.
     "id": 1,
     "companyId": 1,
     "key": "CRM_API_KEY",
-    "maskedValue": "crm...999",
+    "maskedValue": "******99",
     "description": "Asosiy CRM tizimi API tokeni",
     "createdAt": "2026-09-06T12:00:00Z",
     "updatedAt": "2026-09-06T12:00:00Z"
@@ -143,7 +144,8 @@ Agent muloqot paytida Tool yoki Webhookni chaqirganda, tizim maxfiy kalitlarni b
 
 Bitta secret nomi tizim uchun ma'noga ega. Kompaniyada **`WEBHOOK_SIGNING_SECRET`**
 nomli secret yaratilsa, o'sha kompaniyaning barcha chiquvchi webhook'lariga
-(`initiationWebhook`, `postCallWebhook` va post-call `WEBHOOK` action'lari)
+(`initiationWebhook`, `postCallWebhook`, post-call `WEBHOOK` action'lari, bildirishnomalarning
+`WEBHOOK` kanali va qo'ng'iroq oqimidagi `WEBHOOK_ROUTER` tuguni)
 `X-RobotCall-Signature` sarlavhasi qo'shiladi — qabul qiluvchi so'rov haqiqatan
 platformadan kelganini tekshira oladi.
 
@@ -152,3 +154,19 @@ biror joyga yozish shart emas — tizim uni nomi bo'yicha o'zi topadi. Secret bo
 webhook imzosiz yuboriladi.
 
 Imzo formati va tekshirish kodi: [webhooks.md](webhooks.md) §3.2–3.3.
+
+---
+
+## Audit va kalit rotatsiyasi
+
+Har bir `POST`/`PUT`/`DELETE` audit jurnaliga yoziladi: `SECRET_CREATE`, `SECRET_UPDATE`
+(qiymat almashtirilgan bo'lsa `(value replaced)` belgisi bilan), `SECRET_DELETE` — qiymatning
+o'zi hech qachon yozilmaydi, faqat `key`.
+
+Qiymatlar AES-256-GCM bilan `ENCRYPTION_SECRET_KEY` ostida saqlanadi. Kalitni almashtirish:
+eski kalitni `ENCRYPTION_PREVIOUS_SECRET_KEYS` ga (vergul bilan, eng yangisi birinchi)
+ko'chiring, `ENCRYPTION_SECRET_KEY` ga yangisini qo'ying, ilovani qayta ishga tushiring.
+Eski secret'lar o'qilaveradi (dekodlash avval joriy, keyin eski kalitlarni sinaydi); har
+bir secret `PUT` bilan qayta saqlanganda yangi kalitga o'tadi. Hech qaysi kalit mos kelmasa
+secret `null` sifatida o'qiladi (tool/webhook'da placeholder bo'sh qoladi) va logda `ERROR`
+chiqadi.

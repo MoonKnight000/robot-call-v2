@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.agent.ami.AmiClient;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
+import uz.murodjon.robotcallv2.siptrunk.domain.service.SipTrunkValidator;
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.config.PjsipConfigProperties;
 
 import java.io.IOException;
@@ -83,6 +84,14 @@ public class PjsipConfigWriter {
                     trunk.id(), e.getMessage());
             return;
         }
+        // Rows saved before SipTrunkValidator checked these fields can still carry a line
+        // break, which would add sections of the tenant's choosing to a file every tenant shares.
+        if (!SipTrunkValidator.isValidEndpointName(trunk.pjsipEndpoint()) || !SipTrunkValidator.isValidHost(trunk.host())
+                || !SipTrunkValidator.isValidUsername(trunk.sipUsername()) || !SipTrunkValidator.isValidPassword(password)) {
+            log.warn("Skipping trunk {} in generated PJSIP config — its endpoint, host, username or password "
+                    + "has characters that are not allowed in a config line", trunk.id());
+            return;
+        }
         String endpoint = trunk.pjsipEndpoint();
         String authId = endpoint + "-auth";
         String aorId = endpoint + "-aor";
@@ -110,17 +119,18 @@ public class PjsipConfigWriter {
         sb.append("type = endpoint\n");
         sb.append("transport = transport-trunk\n");
         sb.append("context = from-trunk\n");
+        // No inbound auth here, so the default identify_by = username,ip would accept an
+        // INVITE from anywhere whose From user is this endpoint's (predictable) name.
+        sb.append("identify_by = ip\n");
         sb.append("disallow = all\n");
 
         // Codecs: if configured per trunk (e.g. ["g722", "opus", "ulaw", "alaw"]), apply in order of preference
-        List<String> codecs = (trunk.codecs() != null && !trunk.codecs().isEmpty()) ? trunk.codecs() : List.of("ulaw", "alaw");
-        for (String codec : codecs) {
-            if (codec != null) {
-                String trimmed = codec.trim().toLowerCase();
-                if (!trimmed.isEmpty()) {
-                    sb.append("allow = ").append(trimmed).append('\n');
-                }
-            }
+        List<String> codecs = trunk.codecs() == null ? List.of() : trunk.codecs().stream()
+                .filter(SipTrunkValidator::isSupportedCodec)
+                .map(codec -> codec.trim().toLowerCase())
+                .toList();
+        for (String codec : codecs.isEmpty() ? List.of("ulaw", "alaw") : codecs) {
+            sb.append("allow = ").append(codec).append('\n');
         }
 
         sb.append("direct_media = no\n");

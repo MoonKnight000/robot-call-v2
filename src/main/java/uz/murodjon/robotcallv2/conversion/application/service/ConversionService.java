@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionGoalRequest;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionResultResponse;
@@ -24,6 +24,7 @@ import uz.murodjon.robotcallv2.conversion.domain.service.ConversionAttributor;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 
 import java.time.Instant;
@@ -46,14 +47,14 @@ public class ConversionService implements ConversionUseCase {
 
     private final ConversionGoalRepository goalRepository;
     private final ConversionRepository conversionRepository;
-    private final CallRecordService callRecords;
+    private final CallAttemptUseCase callAttemptUseCase;
 
     public ConversionService(ConversionGoalRepository goalRepository,
                              ConversionRepository conversionRepository,
-                             CallRecordService callRecords) {
+                             CallAttemptUseCase callAttemptUseCase) {
         this.goalRepository = goalRepository;
         this.conversionRepository = conversionRepository;
-        this.callRecords = callRecords;
+        this.callAttemptUseCase = callAttemptUseCase;
     }
 
     @Override
@@ -128,7 +129,7 @@ public class ConversionService implements ConversionUseCase {
 
         Instant windowStart = request.occurredAt().minusSeconds((long) goal.attributionWindowHours() * 3600);
         List<AnsweredCall> candidates =
-                callRecords.findAnsweredCalls(companyId, phone, windowStart, request.occurredAt());
+                callAttemptUseCase.findAnsweredCalls(companyId, phone, windowStart, request.occurredAt());
 
         AnsweredCall earned = ConversionAttributor.attribute(candidates, request.occurredAt(),
                 goal.attributionWindowHours(), goal.attributionModel());
@@ -143,7 +144,7 @@ public class ConversionService implements ConversionUseCase {
                         goal.attributionWindowHours(), request.valueUzs()));
 
         log.info("Conversion '{}' for {} credited to call {} (campaign {}, variant {})",
-                goal.goalKey(), phone, earned.callAttemptId(), earned.campaignId(), earned.variantId());
+                goal.goalKey(), PhoneMasker.mask(phone), earned.callAttemptId(), earned.campaignId(), earned.variantId());
 
         return new ConversionResultResponse(saved.id(), true, null, false,
                 attribution.campaignId(), attribution.variantId(), attribution.callAttemptId());
@@ -157,7 +158,7 @@ public class ConversionService implements ConversionUseCase {
 
     private ConversionResultResponse saveRejected(ConversionEvent event, String reason) {
         ConversionEvent saved = conversionRepository.saveEvent(event.reject(reason));
-        log.info("Conversion '{}' for {} not attributed: {}", saved.goalKey(), saved.phone(), reason);
+        log.info("Conversion '{}' for {} not attributed: {}", saved.goalKey(), PhoneMasker.mask(saved.phone()), reason);
         return new ConversionResultResponse(saved.id(), false, reason, false, null, null, null);
     }
 

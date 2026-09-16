@@ -11,7 +11,7 @@ public interface NotificationRepository {
 
     List<Notification> listForUser(long userId);
 
-    long unreadCount(long userId);
+    long countUnreadByUserId(long userId);
 
     void markRead(long userId, long notificationId);
 

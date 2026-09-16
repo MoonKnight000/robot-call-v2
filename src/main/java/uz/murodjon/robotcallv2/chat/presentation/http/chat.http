@@ -1,0 +1,106 @@
+### Open a chat with the widget's agent — no token, the Origin header is the credential
+POST http://localhost:8080/api/public/widgets/wgt_9f2c1a7b4e6d8012/chat?language=uz-UZ
+Origin: https://shop.example.uz
+Content-Type: application/json
+
+### The answer carries sessionKey ("cht_..."), the greeting and how many messages are allowed
+
+### Say something
+POST http://localhost:8080/api/public/widgets/wgt_9f2c1a7b4e6d8012/chat/cht_4d1f8a92b6c30e57a1b2c3d4
+Origin: https://shop.example.uz
+Content-Type: application/json
+
+{
+  "text": "Salom, ikkita lavash buyurtma qilmoqchiman"
+}
+
+### The same conversation continues — the stage and what the tools recorded are read back
+### from the database, so this may land on any instance
+POST http://localhost:8080/api/public/widgets/wgt_9f2c1a7b4e6d8012/chat/cht_4d1f8a92b6c30e57a1b2c3d4
+Origin: https://shop.example.uz
+Content-Type: application/json
+
+{
+  "text": "Yunusobod, 12-kvartal, 5-uy, 42-xonadon"
+}
+
+### A foreign origin is refused the same way the call widget refuses it
+POST http://localhost:8080/api/public/widgets/wgt_9f2c1a7b4e6d8012/chat
+Origin: https://not-the-customers-site.example
+Content-Type: application/json
+
+### --- Telegram (E.4) ---
+
+### 1. The bot token goes in as a company secret, once
+POST http://localhost:8080/api/secrets
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "key": "TELEGRAM_BOT_TOKEN",
+  "value": "123456:AA-the-token-BotFather-gave-you",
+  "description": "@my_shop_bot token"
+}
+
+### 2. Register the bot against an agent — the token is named, never sent here again
+POST http://localhost:8080/api/telegram-bots
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "agentId": 42,
+  "name": "@my_shop_bot",
+  "tokenSecretKey": "TELEGRAM_BOT_TOKEN",
+  "language": "uz-UZ"
+}
+
+### 3. Tell Telegram where to send updates (https and publicly reachable)
+POST http://localhost:8080/api/telegram-bots/1/webhook
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "publicBaseUrl": "https://voice.example.uz"
+}
+
+### 4. What Telegram then posts — this is what its servers send, shown for local testing
+POST http://localhost:8080/api/public/telegram/1
+Content-Type: application/json
+X-Telegram-Bot-Api-Secret-Token: {{telegram_webhook_secret}}
+
+{
+  "update_id": 1,
+  "message": {
+    "message_id": 7,
+    "chat": { "id": 987654321, "type": "private" },
+    "text": "Salom, ikkita lavash buyurtma qilmoqchiman"
+  }
+}
+
+### Bots this company has
+GET http://localhost:8080/api/telegram-bots
+Authorization: Bearer {{auth_token}}
+
+### Remove the bot and stop its updates at Telegram's end
+DELETE http://localhost:8080/api/telegram-bots/1
+Authorization: Bearer {{auth_token}}
+
+### --- Panel: conversations (read-only) ---
+
+### Latest finished Telegram conversations of one agent
+POST http://localhost:8080/api/chats/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "orders": { "LAST_MESSAGE_AT": "DESC" },
+  "aiAgentId": 42,
+  "channel": "TELEGRAM",
+  "ended": true
+}
+
+### One conversation: what its tools recorded and the whole transcript
+GET http://localhost:8080/api/chats/318
+Authorization: Bearer {{auth_token}}

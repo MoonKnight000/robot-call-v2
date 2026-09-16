@@ -17,32 +17,33 @@ import java.util.List;
  * {@code {{secrets.KEY}}} rather than carrying in its own configuration.
  *
  * <p>No endpoint here ever returns a value: reads come back masked, and the plaintext
- * leaves the vault only inside the process, when a tool call is being built.
+ * leaves the vault only inside the process, when a tool call is being built. Guarded by
+ * the integration permissions — a secret exists to plug an external system in.
  */
 @RequestMapping("/api/secrets")
 public interface SecretController {
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping
     ResponseEntity<ResponseData<List<SecretRow>>> list(@CurrentCompanyId long companyId);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<SecretRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @PostMapping
     ResponseEntity<ResponseData<SecretRow>> create(@CurrentCompanyId long companyId,
                                                    @Valid @RequestBody CreateSecretRequest request);
 
     /** A blank {@code value} keeps the stored one, so a rename need not resend the secret. */
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @PutMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<SecretRow>> update(@CurrentCompanyId long companyId,
                                                    @PathVariable long id,
                                                    @Valid @RequestBody UpdateSecretRequest request);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN')")
+    @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @DeleteMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
 }

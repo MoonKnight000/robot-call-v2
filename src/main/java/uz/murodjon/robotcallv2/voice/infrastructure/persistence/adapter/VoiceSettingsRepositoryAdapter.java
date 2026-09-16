@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.voice.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.voice.application.mapper.VoiceSettingsMapper;
+import uz.murodjon.robotcallv2.voice.infrastructure.persistence.mapper.VoiceSettingsEntityMapper;
 import uz.murodjon.robotcallv2.voice.application.port.output.VoiceSettingsRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.VoiceSettingsEntity;
@@ -15,10 +15,10 @@ import java.time.Instant;
 public class VoiceSettingsRepositoryAdapter implements VoiceSettingsRepository {
 
     private final VoiceSettingsJpaRepository jpaRepository;
-    private final VoiceSettingsMapper mapper;
+    private final VoiceSettingsEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
 
-    public VoiceSettingsRepositoryAdapter(VoiceSettingsJpaRepository jpaRepository, VoiceSettingsMapper mapper,
+    public VoiceSettingsRepositoryAdapter(VoiceSettingsJpaRepository jpaRepository, VoiceSettingsEntityMapper mapper,
                                           CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
@@ -27,7 +27,7 @@ public class VoiceSettingsRepositoryAdapter implements VoiceSettingsRepository {
 
     @Override
     public VoiceSettings findByCompanyId(long companyId) {
-        return jpaRepository.findByCompanyId(companyId).map(mapper::entityToDomain).orElse(null);
+        return jpaRepository.findByCompanyId(companyId).map(mapper::toVoiceSettings).orElse(null);
     }
 
     @Override
@@ -40,6 +40,6 @@ public class VoiceSettingsRepositoryAdapter implements VoiceSettingsRepository {
         });
         entity.setSpeed(speed);
         entity.setPitch(pitch);
-        return mapper.entityToDomain(jpaRepository.save(entity));
+        return mapper.toVoiceSettings(jpaRepository.save(entity));
     }
 }

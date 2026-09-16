@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.tool.ToolCallback;
 import uz.murodjon.robotcallv2.agent.metrics.TurnLatency;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
@@ -14,25 +15,38 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Mutable in-memory state for one call's conversation (PROJECT.md §4, §5.1). Holds
  * the FSM state, the chat history sent to the LLM each turn, guardrail counters, and
- * the outputs a turn's tool calls record. Not thread-safe by itself — {@code busy}
- * serializes turns and the engine mutates it on a single worker thread at a time.
+ * the outputs a turn's tool calls record.
+ *
+ * <p>The per-turn machinery lives in three parts this class delegates to:
+ * {@link TurnState} (the busy claim, barge-in, deferred input, speculation),
+ * {@link SpokenAudioLedger} (what the caller actually heard of this turn) and
+ * {@link UsageLedger} (tokens, characters, latency). Each documents its own
+ * thread-safety.
+ *
+ * <p>Thread-safety of what is left here: every mutable field is volatile, atomic or a
+ * concurrent collection, because it is written on the turn, tool and watchdog threads and
+ * read on the ARI lane at teardown ({@link #disposition()} among them). Compound steps
+ * — a turn's reads and writes of the FSM state, the history and the language candidate —
+ * are not locked; {@code busy} serializes the turns that make them.
  */
 public class DialogSession implements DialogOutcomeSink {
 
@@ -43,6 +57,13 @@ public class DialogSession implements DialogOutcomeSink {
      * ({@link #switchLanguage}) — the campaign is bilingual, the caller is not.
      */
     private volatile String language;
+    /**
+     * The languages the caller may turn out to speak — the company's own list, falling
+     * back to the deployment's {@code stt.detect-languages} when it set none.
+     */
+    private volatile List<String> detectLanguages = List.of();
+    /** How often each company tool has been called on this conversation ({@code Tool.maxCallsPerCall}). */
+    private final Map<String, AtomicInteger> toolCallCounts = new ConcurrentHashMap<>();
     /** Catalog id of the voice speaking this call (§2.5); null = configured routing. */
     private volatile String ttsVoice;
     /** The campaign's voice per language, used when the call switches language. */
@@ -50,8 +71,11 @@ public class DialogSession implements DialogOutcomeSink {
     /** Silence watchdog for this call; null when the watchdog is disabled. */
     private final NoInputWatchdog watchdog;
     private final CallContext context;
-    /** The scenario this call runs (ROADMAP A.3) — resolved once at {@code startCall} and reused for the whole call. */
-    private final ScenarioDefinition scenario;
+    /**
+     * The scenario this call runs (ROADMAP A.3) — resolved at {@code startCall}, replaced
+     * only by a mid-call handoff ({@link #switchScenario}).
+     */
+    private volatile ScenarioDefinition scenario;
     private final RtpEndpoint endpoint;
     private final Runnable hangup;
     private final Runnable transfer;
@@ -84,20 +108,30 @@ public class DialogSession implements DialogOutcomeSink {
     private final List<Tool> tools;
     private final List<PronunciationRule> pronunciationRules;
     private final AiAgent agent;
-    private volatile Consumer<String> midCallSmsSender;
+    private volatile Predicate<String> midCallSmsSender;
 
     /** Whose name the §11.1 disclosure is spoken in — the company this call's campaign belongs to. */
     private final String companyName;
     /** That company's own wording of the §11.1 disclosure (company config), resolved once. */
     private final String companyDisclosureText;
-    private final List<Message> history = new ArrayList<>();
+    /**
+     * Copy-on-write: the greeting appends to it without holding {@code busy}, and a
+     * speculation copies it from another thread while a turn may be adding to it.
+     */
+    private final List<Message> history = new CopyOnWriteArrayList<>();
     private final Instant startedAt = Instant.now();
-    private final AtomicBoolean busy = new AtomicBoolean(false);
 
     /** Current stage id — a scenario StageDef.id(), not an enum (ROADMAP A.3). */
     private volatile String state;
     private volatile boolean ended = false;
-    private volatile boolean interrupted = false;
+    /**
+     * The caller's line is gone — hung up or torn down. Unlike {@link #ended}, which a
+     * farewell tool also sets while its goodbye is still to be spoken and written down,
+     * nothing more is spoken, run or written for the call once this is set.
+     */
+    private volatile boolean lineGone = false;
+    /** Set by whoever starts hanging the call up ({@code SpeechOutput#finishWhenSpoken}), so it happens once. */
+    private final AtomicBoolean closing = new AtomicBoolean();
     private volatile String lastAgentText;
     /**
      * The unchanging half of the prompt, built once on the first turn and then reused
@@ -106,6 +140,8 @@ public class DialogSession implements DialogOutcomeSink {
      * keys on this exact prefix, so it is stored rather than regenerated.
      */
     private volatile String systemPrefix;
+    /** The supervisor's latest guidance for this call (LiveCallControlHub), or null; the caller never hears it. */
+    private volatile String operatorWhisper;
     /**
      * The language the caller has been answering in while the call is still being held
      * in another one, and how many finals in a row said so. Two are required before the
@@ -116,163 +152,55 @@ public class DialogSession implements DialogOutcomeSink {
     private volatile int candidateLanguageTurns;
     /** Whether the §11.1 disclosure has already been spoken from code this call. */
     private volatile boolean disclosureSpoken;
-    private int turnCount;
 
     /**
-     * Set when the client's turn ends, cleared once the bot's first audio for that
-     * turn is queued — the two ends of the &lt;1s turnaround budget (§1.3). Null for
-     * the opening greeting, where nobody was waiting.
-     */
-    private volatile Instant turnStartedAt;
-    private final AtomicBoolean turnaroundRecorded = new AtomicBoolean(true);
-
-    /** Where this turn's wait went, stage by stage — the breakdown behind that budget. */
-    private final TurnLatency latency = new TurnLatency();
-
-    /** When the answer the caller is currently giving began, or null between answers. */
-    private Instant clientSpeechStartedAt;
-    /** Whether that answer has already had its one "aha" (§ backchannel-after-ms). */
-    private boolean backchannelSpoken;
-    /** Whether the bot has already stepped into that answer (§ interject-after-ms). */
-    private boolean interjected;
-
-    /**
-     * Whether the recognizer said it was unsure of the words this turn is answering. The
-     * turn annex then tells the model to confirm before it acts on them — a misheard date
-     * that reaches a tool is a promise recorded for a day nobody named.
-     */
-    private volatile boolean lowConfidenceInput;
-
-    /**
-     * Passages from the company's knowledge base that bear on what the caller just said,
-     * looked up once per turn and put in the turn annex. Empty when the agent has RAG
-     * switched off, when nothing matched, or when the embedding model was unreachable —
-     * the turn then runs exactly as it did before there was a knowledge base.
-     */
-    private volatile List<KnowledgePassage> knowledgePassages = List.of();
-
-    /**
-     * Raised by barge-in. A streaming turn checks it between chunks so the sentences
-     * the client talked over are never synthesized — the caller has moved on, and
-     * speaking them would talk over the client in turn.
-     */
-    private final AtomicBoolean cancelled = new AtomicBoolean(false);
-
-    /**
-     * Client speech that arrived while a turn was already running. Held rather than
-     * dropped: an LLM turn takes a second or two, and anything the client said in that
-     * window is exactly the input the next turn needs.
-     */
-    private final AtomicReference<String> pendingInput = new AtomicReference<>();
-
-    /**
-     * What this turn actually put on the wire, as opposed to what the model wrote.
+     * The MCP tool callbacks for this call, resolved once.
      *
-     * <p>The two are the same turn after turn until a barge-in, and then they are not: the
-     * caller heard the first sentence and the remaining three were never synthesized. The
-     * history, the transcript and the "you were cut off here" note all have to describe
-     * what the caller <em>heard</em> — told that it said all four, the model treats the
-     * unheard three as delivered and never comes back to them.
+     * <p>Cached on the session because building them reads the company's connections, and
+     * the tool list is re-sent on every turn — a query per turn would put a database round
+     * trip inside the pause the caller hears.
      */
-    private final StringBuilder spokenText = new StringBuilder();
+    private volatile List<ToolCallback> mcpTools;
 
-    /**
-     * This turn's lines that went out as audio, with where each one sits in the playback
-     * stream. What the caller heard of them depends on how far the wire got before a
-     * barge-in flushed the queue, so it is worked out when it is asked for, not when the
-     * audio was handed over.
-     */
-    private final List<SpokenAudio> spokenAudio = new ArrayList<>();
+    /** Whether this call's agent has a catalog to search; resolved on the first turn for the same reason as {@link #mcpTools}. */
+    private volatile Boolean catalogAvailable;
+    /** The last catalog search's answer ({@link CatalogTools}), shown again in every turn's annex until the next one. */
+    private volatile String catalogResult;
 
-    /**
-     * The tail of a reply a barge-in stopped before it could be spoken, kept in case the
-     * interruption turns out to have been noise. Cleared as soon as it is resumed or a
-     * real turn makes it stale.
-     */
-    private final AtomicReference<String> unspokenText = new AtomicReference<>();
-
-    /**
-     * A caller utterance whose turn was cancelled before one word of the reply went out:
-     * the gate closed, the caller was in fact still talking, and their next final is the
-     * rest of the same sentence. {@code TurnRunner} folds the two into one turn.
-     */
-    private final AtomicReference<String> unansweredClientText = new AtomicReference<>();
-
-    /** When the recognizer last produced an interim — the caller was speaking then. */
-    private volatile long lastInterimAtMs;
-
-    /**
-     * A reply started while the caller was still speaking, waiting to find out whether
-     * they said what the recognizer guessed they were saying ({@link Speculation}).
-     */
-    private final AtomicReference<Speculation> speculation = new AtomicReference<>();
-
-    /**
-     * What happened to this turn's guessing, for the one summary line the turn logs
-     * ({@code TurnRunner#adoptSpeculation}). An utterance produces a dozen interims and
-     * logging each of them buries the call; a count and the last reason one was turned
-     * away answer the same question in a line.
-     */
-    private final AtomicInteger interimsThisTurn = new AtomicInteger();
-    private volatile String speculationBlocker;
-
-    /**
-     * What this turn's tool calls said should be spoken, in the order they were called.
-     *
-     * <p>A tool-calling turn comes back from the provider as function calls and nothing
-     * else — no text — and the caller is then listening to silence while a second request
-     * asks for the line (a whole extra round trip inside the §1.3 budget). So every tool
-     * carries its line as an argument instead ({@link DialogTools}), and the engine speaks
-     * what the tools brought with them.
-     */
-    private final List<String> toolReplies = new CopyOnWriteArrayList<>();
+    private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
 
     // Recorded by tool calls. disposition is read at teardown (CampaignService.applyOutcome,
-    // CallFinalizer). outcome is a live-monitoring convenience only (operatorSnapshot) — the
-    // persisted call_result.outcome comes from SummaryService's independent post-call pass
-    // over the transcript, not from what fired live (ROADMAP A.3).
-    private Disposition disposition;
+    // CallFinalizer) on the ARI lane, while tools, turns and the watchdog write it on theirs —
+    // hence volatile. outcome feeds the live view (operatorSnapshot) and settles whether the
+    // scenario's goal was reached (GoalOutcome); the persisted call_result.outcome still comes
+    // from SummaryService's independent post-call pass over the transcript (ROADMAP A.3).
+    private volatile Disposition disposition;
     /** {@link #turnCount} when the first outcome was recorded; -1 until one is. */
     private volatile int outcomeTurn = -1;
     private final Map<String, Object> outcome = new ConcurrentHashMap<>();
+    /** Figures company tools answered with on this call — the fact guard's second source ({@link FactGuard}). */
+    private final Set<BigDecimal> toolFigures = ConcurrentHashMap.newKeySet();
+    /** Write-tool calls read back to the caller and waiting for their yes, by tool name ({@link HttpToolExecutor}). */
+    private final Map<String, PendingToolConfirmation> pendingConfirmations = new ConcurrentHashMap<>();
     /** Why the client asked not to be called again (§11.4); null unless they did. */
     private volatile String doNotCallReason;
 
-    /**
-     * Running total of LLM tokens this call has spent — what the per-call budget
-     * (§C14) is checked against. A call that loops instead of ending would otherwise
-     * cost without bound.
-     */
-    private final AtomicLong tokensUsed = new AtomicLong();
-
-    /** Money figures the fact guard refused to speak (§4.4); for the log and metrics. */
-    private final AtomicInteger factViolations = new AtomicInteger();
-
-    // Token/latency breakdown for the "Texnik" tab (§10.5) — Micrometer's
-    // voice_llm_tokens_*/voice_llm_turn_latency metrics are global counters with no
-    // per-call correlation (see ROADMAP), so this call's numbers have to be accumulated
-    // here and read once at teardown, before the session is dropped.
-    private final AtomicLong promptTokens = new AtomicLong();
-    private final AtomicLong completionTokens = new AtomicLong();
-    private final AtomicLong cachedTokens = new AtomicLong();
-    /**
-     * Characters this call asked a synthesizer for — what the call is billed for.
-     *
-     * <p>Counted where the text is handed to the router, so a sentence the TTS cache
-     * answers is counted too. That is deliberate: the company is billed for the speech
-     * its agent produced, and the cache is this platform's margin, measured separately as
-     * {@code voice.tts.chars.saved}.
-     */
-    private final AtomicLong ttsChars = new AtomicLong();
-    private final AtomicLong turnLatencySumMs = new AtomicLong();
-    private final AtomicInteger turnLatencyCount = new AtomicInteger();
-    private final AtomicLong turnLatencyMaxMs = new AtomicLong();
-    private final AtomicLong llmLatencySumMs = new AtomicLong();
-    private final AtomicInteger llmLatencyCount = new AtomicInteger();
-    private final AtomicLong llmLatencyMaxMs = new AtomicLong();
-
     /** Cancels the silence watchdog when the call ends; null when it is disabled. */
     private volatile ScheduledFuture<?> watchdogTask;
+
+    private final TurnState turnState;
+    private final SpokenAudioLedger spokenAudioLedger;
+    private final UsageLedger usageLedger;
+
+    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
+                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
+                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
+                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
+                         EffectiveVoiceSettings voiceSettings) {
+        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer, callAttemptId,
+                companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText, aiModel, voiceSettings,
+                true, Map.of());
+    }
 
     public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
                          ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
@@ -379,7 +307,14 @@ public class DialogSession implements DialogOutcomeSink {
         this.tools = tools == null ? List.of() : List.copyOf(tools);
         this.pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
         this.agent = agent;
+        this.turnState = new TurnState();
+        this.spokenAudioLedger = new SpokenAudioLedger(endpoint);
+        this.usageLedger = new UsageLedger();
     }
+
+    // ------------------------------------------------------------------
+    // Identity and per-call configuration
+    // ------------------------------------------------------------------
 
     public List<PronunciationRule> pronunciationRules() {
         return pronunciationRules != null ? pronunciationRules : List.of();
@@ -389,28 +324,19 @@ public class DialogSession implements DialogOutcomeSink {
         return agent;
     }
 
-    public void setMidCallSmsSender(Consumer<String> midCallSmsSender) {
+    public void setMidCallSmsSender(Predicate<String> midCallSmsSender) {
         this.midCallSmsSender = midCallSmsSender;
     }
 
-    public void triggerMidCallSms(String text) {
-        if (midCallSmsSender != null && text != null && !text.isBlank()) {
-            midCallSmsSender.accept(text.trim());
-        }
+    @Override
+    public boolean triggerMidCallSms(String text) {
+        Predicate<String> sender = midCallSmsSender;
+        return sender != null && text != null && !text.isBlank() && sender.test(text.trim());
     }
 
     public String firstMessage() {
         return firstMessage;
     }
-
-    /**
-     * The MCP tool callbacks for this call, resolved once.
-     *
-     * <p>Cached on the session because building them reads the company's connections, and
-     * the tool list is re-sent on every turn — a query per turn would put a database round
-     * trip inside the pause the caller hears.
-     */
-    private volatile List<ToolCallback> mcpTools;
 
     public List<ToolCallback> mcpTools() {
         return mcpTools;
@@ -420,22 +346,31 @@ public class DialogSession implements DialogOutcomeSink {
         this.mcpTools = mcpTools;
     }
 
+    /** Null until the first turn has asked. */
+    public Boolean catalogAvailable() {
+        return catalogAvailable;
+    }
+
+    public void setCatalogAvailable(boolean catalogAvailable) {
+        this.catalogAvailable = catalogAvailable;
+    }
+
+    @Override
+    public void rememberCatalogResult(String result) {
+        this.catalogResult = result;
+    }
+
+    /** The last catalog search's answer, or null before the first one. */
+    public String catalogResult() {
+        return catalogResult;
+    }
+
     public List<Tool> tools() {
         return tools != null ? tools : List.of();
     }
 
     public AgentPersona agentPersona() {
         return agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
-    }
-
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer, callAttemptId,
-                companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText, aiModel, voiceSettings,
-                true, Map.of());
     }
 
     public EffectiveAiModelConfig aiModel() {
@@ -484,91 +419,6 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setWatchdogTask(ScheduledFuture<?> watchdogTask) {
         this.watchdogTask = watchdogTask;
-    }
-
-    /** Add a turn's token usage to the call total and return the new total. */
-    public long addTokens(long tokens) {
-        return tokens > 0 ? tokensUsed.addAndGet(tokens) : tokensUsed.get();
-    }
-
-    public long tokensUsed() {
-        return tokensUsed.get();
-    }
-
-    /** Add one turn's token breakdown to the call's running totals (§10.5 "Texnik" tab). */
-    public void addTokenBreakdown(long prompt, long completion, long cached) {
-        if (prompt > 0) {
-            promptTokens.addAndGet(prompt);
-        }
-        if (completion > 0) {
-            completionTokens.addAndGet(completion);
-        }
-        if (cached > 0) {
-            cachedTokens.addAndGet(cached);
-        }
-    }
-
-    public long promptTokens() {
-        return promptTokens.get();
-    }
-
-    public long completionTokens() {
-        return completionTokens.get();
-    }
-
-    public long cachedTokens() {
-        return cachedTokens.get();
-    }
-
-    /** Count one line's characters towards what this call is billed for. */
-    public void addTtsChars(String text) {
-        if (text != null && !text.isBlank()) {
-            ttsChars.addAndGet(text.length());
-        }
-    }
-
-    public long ttsChars() {
-        return ttsChars.get();
-    }
-
-    /** Record one turn's client-stopped-talking -> first-audio-queued latency. */
-    public void recordTurnLatency(long ms) {
-        turnLatencySumMs.addAndGet(ms);
-        turnLatencyCount.incrementAndGet();
-        turnLatencyMaxMs.accumulateAndGet(ms, Math::max);
-    }
-
-    public Integer avgTurnLatencyMs() {
-        int count = turnLatencyCount.get();
-        return count == 0 ? null : (int) (turnLatencySumMs.get() / count);
-    }
-
-    public Integer maxTurnLatencyMs() {
-        return turnLatencyCount.get() == 0 ? null : (int) turnLatencyMaxMs.get();
-    }
-
-    /** Record one turn's LLM-only wall time. */
-    public void recordLlmLatency(long ms) {
-        llmLatencySumMs.addAndGet(ms);
-        llmLatencyCount.incrementAndGet();
-        llmLatencyMaxMs.accumulateAndGet(ms, Math::max);
-    }
-
-    public Integer avgLlmLatencyMs() {
-        int count = llmLatencyCount.get();
-        return count == 0 ? null : (int) (llmLatencySumMs.get() / count);
-    }
-
-    public Integer maxLlmLatencyMs() {
-        return llmLatencyCount.get() == 0 ? null : (int) llmLatencyMaxMs.get();
-    }
-
-    public int recordFactViolation() {
-        return factViolations.incrementAndGet();
-    }
-
-    public int factViolations() {
-        return factViolations.get();
     }
 
     public Runnable transfer() {
@@ -675,6 +525,26 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     /**
+     * Hand the rest of this call to {@code next} ({@link MultiAgentRouter}): its first stage
+     * becomes the current one, and the cached prompt prefix is dropped because that is
+     * where the scenario's role and rules live. The history stays — what was already said
+     * stays said, and the new scenario's model needs it.
+     */
+    public void switchScenario(ScenarioDefinition next) {
+        this.scenario = next;
+        setState(next.stages().get(0).id());
+        this.systemPrefix = null;
+    }
+
+    public String operatorWhisper() {
+        return operatorWhisper;
+    }
+
+    public void setOperatorWhisper(String operatorWhisper) {
+        this.operatorWhisper = operatorWhisper;
+    }
+
+    /**
      * Drop the oldest messages once the history passes {@code maxMessages}, removing
      * {@code trimBlock} at a time.
      *
@@ -698,11 +568,9 @@ public class DialogSession implements DialogOutcomeSink {
         return startedAt;
     }
 
-    public AtomicBoolean busy() {
-        return busy;
-    }
-
-    private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
+    // ------------------------------------------------------------------
+    // FSM, lifecycle and outcome
+    // ------------------------------------------------------------------
 
     public String state() {
         return state;
@@ -729,6 +597,15 @@ public class DialogSession implements DialogOutcomeSink {
         return ended;
     }
 
+    public boolean isLineGone() {
+        return lineGone;
+    }
+
+    /** Called once the call is over on the line itself — {@code DialogEngine.endCall}. */
+    public void markLineGone() {
+        this.lineGone = true;
+    }
+
     public void end(Disposition disposition) {
         this.ended = true;
         if (disposition != null) {
@@ -736,12 +613,9 @@ public class DialogSession implements DialogOutcomeSink {
         }
     }
 
-    public boolean isInterrupted() {
-        return interrupted;
-    }
-
-    public void setInterrupted(boolean interrupted) {
-        this.interrupted = interrupted;
+    /** Claim the hang-up; true for exactly one caller. */
+    public boolean beginClosing() {
+        return closing.compareAndSet(false, true);
     }
 
     public boolean isDisclosureSpoken() {
@@ -760,305 +634,6 @@ public class DialogSession implements DialogOutcomeSink {
         this.lastAgentText = lastAgentText;
     }
 
-    public int turnCount() {
-        return turnCount;
-    }
-
-    public int incrementTurn() {
-        return ++turnCount;
-    }
-
-    /** Start the turnaround clock — the client just stopped speaking. */
-    public void startTurnClock() {
-        turnStartedAt = Instant.now();
-        turnaroundRecorded.set(false);
-        latency.turnStarted();
-    }
-
-    /** This turn's stage-by-stage stamps (§1.3 breakdown). */
-    public TurnLatency latency() {
-        return latency;
-    }
-
-    /** Whether the recognizer was unsure of the words the current turn is answering. */
-    public boolean isLowConfidenceInput() {
-        return lowConfidenceInput;
-    }
-
-    public void setLowConfidenceInput(boolean lowConfidenceInput) {
-        this.lowConfidenceInput = lowConfidenceInput;
-    }
-
-    /** Knowledge-base passages the current turn may answer from; never null. */
-    public List<KnowledgePassage> knowledgePassages() {
-        return knowledgePassages;
-    }
-
-    public void setKnowledgePassages(List<KnowledgePassage> passages) {
-        this.knowledgePassages = passages == null ? List.of() : List.copyOf(passages);
-    }
-
-    /**
-     * Whether the caller has now been talking for {@code afterMs} without a backchannel,
-     * and claims the right to one if so — at most one per answer, so a long explanation
-     * gets an "aha" rather than a chorus.
-     *
-     * <p>Timed from the first interim of the answer, which is the only signal this side
-     * has that somebody is still mid-sentence. Reset by the final that ends it.
-     */
-    public synchronized boolean claimBackchannel(int afterMs) {
-        if (afterMs <= 0) {
-            return false;
-        }
-        Instant since = clientSpeechStartedAt;
-        if (since == null) {
-            clientSpeechStartedAt = Instant.now();
-            return false;
-        }
-        if (backchannelSpoken || Duration.between(since, Instant.now()).toMillis() < afterMs) {
-            return false;
-        }
-        backchannelSpoken = true;
-        return true;
-    }
-
-    /**
-     * Whether the caller has now been talking for {@code afterMs} — long past a backchannel
-     * — and the bot should step in ({@code SpeechOutput#interject}). Once per answer.
-     */
-    public synchronized boolean claimInterjection(int afterMs) {
-        Instant since = clientSpeechStartedAt;
-        if (afterMs <= 0 || since == null || interjected) {
-            return false;
-        }
-        if (Duration.between(since, Instant.now()).toMillis() < afterMs) {
-            return false;
-        }
-        interjected = true;
-        return true;
-    }
-
-    /** The caller finished: the next answer starts its own clock and earns its own "aha". */
-    public synchronized void clientAnswerEnded() {
-        clientSpeechStartedAt = null;
-        backchannelSpoken = false;
-        interjected = false;
-    }
-
-    /**
-     * Time the client has been waiting since their turn ended, or {@code null} if the
-     * turnaround for this turn was already recorded (or there was nothing to measure,
-     * as with the opening greeting). Returns a value at most once per turn.
-     */
-    public Duration takeTurnaround() {
-        Instant started = turnStartedAt;
-        if (started == null || !turnaroundRecorded.compareAndSet(false, true)) {
-            return null;
-        }
-        return Duration.between(started, Instant.now());
-    }
-
-    /**
-     * Non-consuming peek at whether {@link #takeTurnaround()} would still return a value —
-     * i.e. whether the turn's first audio has not been queued yet. Lets a caller decide
-     * *before* synthesizing whether this is the sentence the §1.3 clock is waiting on
-     * (streaming-worthy) without tripping the once-per-turn flag itself.
-     */
-    public boolean isFirstAudioPending() {
-        return turnStartedAt != null && !turnaroundRecorded.get();
-    }
-
-    /** Queue client speech that could not be handled now; merged with anything already waiting. */
-    public void deferInput(String text) {
-        pendingInput.accumulateAndGet(text, (existing, added) ->
-                existing == null || existing.isBlank() ? added : existing + " " + added);
-    }
-
-    /** Take the deferred client speech, or {@code null} if there is none. */
-    public String takeDeferredInput() {
-        return pendingInput.getAndSet(null);
-    }
-
-    /** Drop the previous turn's spoken text before a new turn starts producing its own. */
-    public synchronized void clearSpokenText() {
-        spokenText.setLength(0);
-        spokenAudio.clear();
-    }
-
-    /** Note that {@code text} was queued for the caller and is therefore heard. */
-    public synchronized void appendSpokenText(String text) {
-        if (text == null || text.isBlank()) {
-            return;
-        }
-        if (!spokenText.isEmpty()) {
-            spokenText.append(' ');
-        }
-        spokenText.append(text.trim());
-    }
-
-    /**
-     * Note that {@code text} was queued as audio occupying {@code samples} samples starting
-     * at {@code startSample} of this call's playback stream.
-     *
-     * <p>Queued is not heard. A sentence sits in the endpoint's queue for as long as it
-     * takes to say, and a barge-in three words in throws away the rest — so what the caller
-     * heard of it is decided later, by how far the wire actually got ({@link #spokenText()}).
-     * Recorded even when the turn is already cancelled: the words that did go out were
-     * still heard, and the model has to know that they were.
-     */
-    public synchronized void appendSpokenAudio(String text, long startSample, int samples) {
-        if (text == null || text.isBlank() || samples <= 0) {
-            appendSpokenText(text);
-            return;
-        }
-        spokenAudio.add(new SpokenAudio(text.trim(), startSample, samples));
-    }
-
-    /**
-     * What the caller has heard of this turn, or {@code null} if nothing.
-     *
-     * <p>Lines queued without audio accounting count whole. Lines that were queued as audio
-     * are measured against the endpoint's playback position: one fully played is whole, one
-     * cut partway through is truncated at the last word the caller can have heard, and
-     * anything behind that in the queue never reached them at all.
-     */
-    public synchronized String spokenText() {
-        StringBuilder heard = new StringBuilder(spokenText);
-        long played = endpoint != null ? endpoint.playedSamples() : Long.MAX_VALUE;
-        for (SpokenAudio line : spokenAudio) {
-            String part = line.heardPart(played);
-            if (part == null) {
-                break; // this line never started; nothing behind it did either
-            }
-            if (!heard.isEmpty()) {
-                heard.append(' ');
-            }
-            heard.append(part);
-            if (part.length() < line.text().length()) {
-                break; // cut off inside this line
-            }
-        }
-        return heard.isEmpty() ? null : heard.toString();
-    }
-
-    /** Hold the tail of a reply a barge-in cut off, in case the interruption was noise. */
-    public void setUnspokenText(String text) {
-        unspokenText.set(text == null || text.isBlank() ? null : text.trim());
-    }
-
-    /** Take the interrupted reply's unspoken tail, or {@code null} if there is none. */
-    public String takeUnspokenText() {
-        return unspokenText.getAndSet(null);
-    }
-
-    /**
-     * Non-consuming peek at whether a cut-off reply is still waiting to be resumed — i.e.
-     * whether there is anything to go back to if the interruption turns out not to have
-     * been one.
-     */
-    public boolean hasUnspokenText() {
-        return unspokenText.get() != null;
-    }
-
-    /** Remember a caller utterance the bot never got to answer; {@code null} forgets it. */
-    public void setUnansweredClientText(String text) {
-        unansweredClientText.set(text == null || text.isBlank() ? null : text.trim());
-    }
-
-    /** Take the unanswered utterance, or {@code null} if the last turn was answered. */
-    public String takeUnansweredClientText() {
-        return unansweredClientText.getAndSet(null);
-    }
-
-    /** Whether the recognizer has heard the caller within the last {@code withinMs}. */
-    public boolean heardCallerWithin(long withinMs) {
-        long at = lastInterimAtMs;
-        return at != 0 && System.currentTimeMillis() - at <= withinMs;
-    }
-
-    /**
-     * Park a speculative reply. Anything it supersedes is cancelled: the caller has said
-     * more since, so the older hypothesis is answering half a sentence.
-     */
-    public void setSpeculation(Speculation next) {
-        Speculation previous = speculation.getAndSet(next);
-        if (previous != null) {
-            previous.discard();
-        }
-    }
-
-    /** Non-consuming peek at the parked speculative reply, or {@code null} if there is none. */
-    public Speculation speculation() {
-        return speculation.get();
-    }
-
-    /** Take the parked speculative reply, leaving none behind. */
-    public Speculation takeSpeculation() {
-        return speculation.getAndSet(null);
-    }
-
-    /** The recognizer delivered another interim hypothesis for the utterance in progress. */
-    public void noteInterim() {
-        interimsThisTurn.incrementAndGet();
-        lastInterimAtMs = System.currentTimeMillis();
-    }
-
-    public int interimsThisTurn() {
-        return interimsThisTurn.get();
-    }
-
-    /** Why the last interim was not worth guessing on, or {@code null} if none was turned away. */
-    public String speculationBlocker() {
-        return speculationBlocker;
-    }
-
-    public void setSpeculationBlocker(String speculationBlocker) {
-        this.speculationBlocker = speculationBlocker;
-    }
-
-    /** Start the next turn's count; called once the turn has reported what this one did. */
-    public void resetSpeculationDiagnostics() {
-        interimsThisTurn.set(0);
-        speculationBlocker = null;
-    }
-
-    /** Cancel and drop any parked speculative reply. */
-    public void discardSpeculation() {
-        Speculation parked = speculation.getAndSet(null);
-        if (parked != null) {
-            parked.discard();
-        }
-    }
-
-    /** Record the line a tool call carried; a blank one is no line at all. */
-    public void addToolReply(String reply) {
-        if (reply != null && !reply.isBlank()) {
-            toolReplies.add(reply.trim());
-        }
-    }
-
-    /**
-     * This turn's tool-carried lines as one utterance, or {@code null} if the tools
-     * brought none. Several tools in one turn read as consecutive sentences — "va'dangizni
-     * belgilab qo'ydim" then "xayr" — which is how the model wrote them.
-     */
-    public String toolReplies() {
-        return toolReplies.isEmpty() ? null : String.join(" ", toolReplies);
-    }
-
-    /** Drop the previous turn's lines before a new turn calls its tools. */
-    public void clearToolReplies() {
-        toolReplies.clear();
-    }
-
-    public boolean isCancelled() {
-        return cancelled.get();
-    }
-
-    public void setCancelled(boolean cancelled) {
-        this.cancelled.set(cancelled);
-    }
-
     public Disposition disposition() {
         return disposition;
     }
@@ -1066,7 +641,7 @@ public class DialogSession implements DialogOutcomeSink {
     public void setDisposition(Disposition disposition) {
         this.disposition = disposition;
         if (disposition != null && outcomeTurn < 0) {
-            outcomeTurn = turnCount;
+            outcomeTurn = turnState.turnCount();
         }
     }
 
@@ -1078,7 +653,7 @@ public class DialogSession implements DialogOutcomeSink {
      * bounds how long it may go on not noticing.
      */
     public int turnsSinceOutcome() {
-        return outcomeTurn < 0 ? -1 : turnCount - outcomeTurn;
+        return outcomeTurn < 0 ? -1 : turnState.turnCount() - outcomeTurn;
     }
 
     /** Record one outcome field a tool call produced (e.g. {@code "promisedDate"}). */
@@ -1091,6 +666,62 @@ public class DialogSession implements DialogOutcomeSink {
     /** Everything tools have recorded so far this call — for the live operator/monitoring view. */
     public Map<String, Object> outcome() {
         return Map.copyOf(outcome);
+    }
+
+    @Override
+    public void recordToolFigures(Collection<BigDecimal> figures) {
+        toolFigures.addAll(figures);
+    }
+
+    /** Every figure a company tool has answered with so far this call; never null. */
+    public Set<BigDecimal> toolFigures() {
+        return Collections.unmodifiableSet(toolFigures);
+    }
+
+    @Override
+    public PendingToolConfirmation findPendingConfirmation(String toolName) {
+        return pendingConfirmations.get(toolName);
+    }
+
+    @Override
+    public void setPendingConfirmation(String toolName, PendingToolConfirmation pending) {
+        if (pending == null) {
+            pendingConfirmations.remove(toolName);
+        } else {
+            pendingConfirmations.put(toolName, pending);
+        }
+    }
+
+    /**
+     * Counted from the history rather than the turn counter, because the evaluation's
+     * simulated calls run turns without one. Only pathologically long calls trim the
+     * history, and then a held write is simply read back once more.
+     */
+    @Override
+    public int countCallerUtterances() {
+        int count = 0;
+        for (Message message : history) {
+            if (isCallerLine(message)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public String findLastCallerText() {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message message = history.get(i);
+            if (isCallerLine(message)) {
+                return message.getText();
+            }
+        }
+        return null;
+    }
+
+    /** A caller's line — not one of the notes this system adds to the history in the user's role. */
+    private static boolean isCallerLine(Message message) {
+        return message instanceof UserMessage && !SystemPromptFactory.isSystemNote(message.getText());
     }
 
     public String doNotCallReason() {
@@ -1110,6 +741,19 @@ public class DialogSession implements DialogOutcomeSink {
         this.dtmfSender = sender;
     }
 
+    public List<String> detectLanguages() {
+        return detectLanguages;
+    }
+
+    public void setDetectLanguages(List<String> detectLanguages) {
+        this.detectLanguages = detectLanguages == null ? List.of() : List.copyOf(detectLanguages);
+    }
+
+    @Override
+    public int countToolCall(String toolName) {
+        return toolCallCounts.computeIfAbsent(toolName, name -> new AtomicInteger()).incrementAndGet();
+    }
+
     @Override
     public boolean sendDtmf(String digits) {
         Consumer<String> sender = dtmfSender;
@@ -1120,32 +764,313 @@ public class DialogSession implements DialogOutcomeSink {
         return true;
     }
 
-    /**
-     * One line of this turn as it sits in the playback stream: the words, and the samples
-     * they occupy.
-     *
-     * @param startSample where the line begins in the endpoint's playback stream
-     * @param samples     how long it is — i.e. where it ends
-     */
-    private record SpokenAudio(String text, long startSample, int samples) {
+    // ------------------------------------------------------------------
+    // Turn machinery — TurnState
+    // ------------------------------------------------------------------
 
-        /**
-         * The part of this line the caller can have heard by the time the endpoint had
-         * sent {@code played} samples, or {@code null} if none of it was.
-         */
-        String heardPart(long played) {
-            if (played <= startSample) {
-                return null;
-            }
-            if (played - startSample >= samples) {
-                return text;
-            }
-            // Synthesis paces a sentence roughly evenly, so the share of its audio that
-            // went out is the share of its words that were heard — give or take a word,
-            // which is why the cut lands on a word boundary and never mid-word.
-            int chars = (int) ((played - startSample) * text.length() / samples);
-            int cut = text.lastIndexOf(' ', Math.min(chars, text.length() - 1));
-            return cut <= 0 ? null : text.substring(0, cut);
-        }
+    public AtomicBoolean busy() {
+        return turnState.busy();
+    }
+
+    public boolean isInterrupted() {
+        return turnState.isInterrupted();
+    }
+
+    public void setInterrupted(boolean interrupted) {
+        turnState.setInterrupted(interrupted);
+    }
+
+    public int turnCount() {
+        return turnState.turnCount();
+    }
+
+    public int incrementTurn() {
+        return turnState.incrementTurn();
+    }
+
+    /** Start the turnaround clock — the client just stopped speaking. */
+    public void startTurnClock() {
+        turnState.startTurnClock();
+    }
+
+    /** This turn's stage-by-stage stamps (§1.3 breakdown). */
+    public TurnLatency latency() {
+        return turnState.latency();
+    }
+
+    /** Whether the recognizer was unsure of the words the current turn is answering. */
+    public boolean isLowConfidenceInput() {
+        return turnState.isLowConfidenceInput();
+    }
+
+    public void setLowConfidenceInput(boolean lowConfidenceInput) {
+        turnState.setLowConfidenceInput(lowConfidenceInput);
+    }
+
+    /** Knowledge-base passages the current turn may answer from; never null. */
+    public List<KnowledgePassage> knowledgePassages() {
+        return turnState.knowledgePassages();
+    }
+
+    public void setKnowledgePassages(List<KnowledgePassage> passages) {
+        turnState.setKnowledgePassages(passages);
+    }
+
+    /** See {@link TurnState#claimBackchannel}. */
+    public boolean claimBackchannel(int afterMs) {
+        return turnState.claimBackchannel(afterMs);
+    }
+
+    /** See {@link TurnState#claimInterjection}. */
+    public boolean claimInterjection(int afterMs) {
+        return turnState.claimInterjection(afterMs);
+    }
+
+    /** The caller finished: the next answer starts its own clock and earns its own "aha". */
+    public void clientAnswerEnded() {
+        turnState.clientAnswerEnded();
+    }
+
+    /** See {@link TurnState#takeTurnaround}. */
+    public Duration takeTurnaround() {
+        return turnState.takeTurnaround();
+    }
+
+    /** See {@link TurnState#isFirstAudioPending}. */
+    public boolean isFirstAudioPending() {
+        return turnState.isFirstAudioPending();
+    }
+
+    /** Queue client speech that could not be handled now; merged with anything already waiting. */
+    public void deferInput(String text) {
+        turnState.deferInput(text);
+    }
+
+    /** Take the deferred client speech, or {@code null} if there is none. */
+    public String takeDeferredInput() {
+        return turnState.takeDeferredInput();
+    }
+
+    /** Remember a caller utterance the bot never got to answer; {@code null} forgets it. */
+    public void setUnansweredClientText(String text) {
+        turnState.setUnansweredClientText(text);
+    }
+
+    /** Take the unanswered utterance, or {@code null} if the last turn was answered. */
+    public String takeUnansweredClientText() {
+        return turnState.takeUnansweredClientText();
+    }
+
+    /** Whether the recognizer has heard the caller within the last {@code withinMs}. */
+    public boolean heardCallerWithin(long withinMs) {
+        return turnState.heardCallerWithin(withinMs);
+    }
+
+    /** See {@link TurnState#setSpeculation}. */
+    public void setSpeculation(Speculation next) {
+        turnState.setSpeculation(next);
+    }
+
+    /** Non-consuming peek at the parked speculative reply, or {@code null} if there is none. */
+    public Speculation speculation() {
+        return turnState.speculation();
+    }
+
+    /** Take the parked speculative reply, leaving none behind. */
+    public Speculation takeSpeculation() {
+        return turnState.takeSpeculation();
+    }
+
+    /** The recognizer delivered another interim hypothesis for the utterance in progress. */
+    public void noteInterim() {
+        turnState.noteInterim();
+    }
+
+    public int interimsThisTurn() {
+        return turnState.interimsThisTurn();
+    }
+
+    /** Why the last interim was not worth guessing on, or {@code null} if none was turned away. */
+    public String speculationBlocker() {
+        return turnState.speculationBlocker();
+    }
+
+    public void setSpeculationBlocker(String speculationBlocker) {
+        turnState.setSpeculationBlocker(speculationBlocker);
+    }
+
+    /** Start the next turn's count; called once the turn has reported what this one did. */
+    public void resetSpeculationDiagnostics() {
+        turnState.resetSpeculationDiagnostics();
+    }
+
+    /** Cancel and drop any parked speculative reply. */
+    public void discardSpeculation() {
+        turnState.discardSpeculation();
+    }
+
+    /** Record the line a tool call carried; a blank one is no line at all. */
+    public void addToolReply(String reply) {
+        turnState.addToolReply(reply);
+    }
+
+    /** See {@link TurnState#toolReplies}. */
+    public String toolReplies() {
+        return turnState.toolReplies();
+    }
+
+    /** Drop the previous turn's lines before a new turn calls its tools. */
+    public void clearToolReplies() {
+        turnState.clearToolReplies();
+    }
+
+    public boolean isCancelled() {
+        return turnState.isCancelled();
+    }
+
+    public void setCancelled(boolean cancelled) {
+        turnState.setCancelled(cancelled);
+    }
+
+    /** See {@link TurnState#clearCancelledBefore}. */
+    public void clearCancelledBefore(long startNanos) {
+        turnState.clearCancelledBefore(startNanos);
+    }
+
+    /** @return how many sentences in a row have now failed to synthesize */
+    public int recordTtsFailure() {
+        return turnState.recordTtsFailure();
+    }
+
+    public void clearTtsFailures() {
+        turnState.clearTtsFailures();
+    }
+
+    // ------------------------------------------------------------------
+    // What the caller heard — SpokenAudioLedger
+    // ------------------------------------------------------------------
+
+    /** Drop the previous turn's spoken text before a new turn starts producing its own. */
+    public void clearSpokenText() {
+        spokenAudioLedger.clearSpokenText();
+    }
+
+    /** Note that {@code text} was queued for the caller and is therefore heard. */
+    public void appendSpokenText(String text) {
+        spokenAudioLedger.appendSpokenText(text);
+    }
+
+    /** See {@link SpokenAudioLedger#appendSpokenAudio}. */
+    public void appendSpokenAudio(String text, long startSample, int samples) {
+        spokenAudioLedger.appendSpokenAudio(text, startSample, samples);
+    }
+
+    /** What the caller has heard of this turn, or {@code null} if nothing — see {@link SpokenAudioLedger#spokenText}. */
+    public String spokenText() {
+        return spokenAudioLedger.spokenText();
+    }
+
+    /** Hold the tail of a reply a barge-in cut off, in case the interruption was noise. */
+    public void setUnspokenText(String text) {
+        spokenAudioLedger.setUnspokenText(text);
+    }
+
+    /** Take the interrupted reply's unspoken tail, or {@code null} if there is none. */
+    public String takeUnspokenText() {
+        return spokenAudioLedger.takeUnspokenText();
+    }
+
+    /** See {@link SpokenAudioLedger#hasUnspokenText}. */
+    public boolean hasUnspokenText() {
+        return spokenAudioLedger.hasUnspokenText();
+    }
+
+    // ------------------------------------------------------------------
+    // Spend and speed — UsageLedger
+    // ------------------------------------------------------------------
+
+    /** Add a turn's token usage to the call total and return the new total. */
+    public long addTokens(long tokens) {
+        return usageLedger.addTokens(tokens);
+    }
+
+    public long tokensUsed() {
+        return usageLedger.tokensUsed();
+    }
+
+    /** Add one turn's token breakdown to the call's running totals (§10.5 "Texnik" tab). */
+    public void addTokenBreakdown(long prompt, long completion, long cached) {
+        usageLedger.addTokenBreakdown(prompt, completion, cached);
+    }
+
+    public long promptTokens() {
+        return usageLedger.promptTokens();
+    }
+
+    public long completionTokens() {
+        return usageLedger.completionTokens();
+    }
+
+    public long cachedTokens() {
+        return usageLedger.cachedTokens();
+    }
+
+    /** Count one line's characters towards what this call is billed for. */
+    public void addTtsChars(String text) {
+        usageLedger.addTtsChars(text);
+    }
+
+    public long ttsChars() {
+        return usageLedger.ttsChars();
+    }
+
+    /** Record one turn's client-stopped-talking -> first-audio-queued latency. */
+    public void recordTurnLatency(long ms) {
+        usageLedger.recordTurnLatency(ms);
+    }
+
+    public Integer avgTurnLatencyMs() {
+        return usageLedger.avgTurnLatencyMs();
+    }
+
+    public Integer maxTurnLatencyMs() {
+        return usageLedger.maxTurnLatencyMs();
+    }
+
+    /** Record one turn's LLM-only wall time. */
+    public void recordLlmLatency(long ms) {
+        usageLedger.recordLlmLatency(ms);
+    }
+
+    public Integer avgLlmLatencyMs() {
+        return usageLedger.avgLlmLatencyMs();
+    }
+
+    public Integer maxLlmLatencyMs() {
+        return usageLedger.maxLlmLatencyMs();
+    }
+
+    public int recordFactViolation() {
+        return usageLedger.recordFactViolation();
+    }
+
+    public int factViolations() {
+        return usageLedger.factViolations();
+    }
+
+    public void recordBargeIn() {
+        usageLedger.recordBargeIn();
+    }
+
+    public int bargeIns() {
+        return usageLedger.bargeIns();
+    }
+
+    public void recordLowConfidenceInput() {
+        usageLedger.recordLowConfidenceInput();
+    }
+
+    public int lowConfidenceInputs() {
+        return usageLedger.lowConfidenceInputs();
     }
 }

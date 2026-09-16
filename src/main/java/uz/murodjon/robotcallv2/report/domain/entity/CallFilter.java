@@ -27,6 +27,11 @@ import java.util.List;
  * @param ids             when present, {@code POST /api/reports/calls/export} returns exactly
  *                        these calls and every other filter field is ignored — this is how a
  *                        user-selected subset of rows gets exported instead of the whole filter
+ * @param afterId         keyset cursor for the call list: when set, the page holds the calls
+ *                        with an id below it, newest first — {@code page} is ignored, an
+ *                        {@code orders} other than the default is refused, and no total is
+ *                        counted. Pass the last {@code callId} of the previous page. Ignored by
+ *                        the export.
  */
 public record CallFilter(
         @Min(0) Integer page,
@@ -39,7 +44,8 @@ public record CallFilter(
         Instant dateTo,
         Integer durationMinSec,
         Integer durationMaxSec,
-        List<Long> ids)
+        List<Long> ids,
+        @Min(1) Long afterId)
         implements FilterInterface<CallTableField> {
 
     /** Newest first by default, matching what a "what just happened" view needs. */
@@ -48,6 +54,16 @@ public record CallFilter(
             orders = new LinkedHashMap<>();
             orders.put(CallTableField.CALL_ID, Sort.Direction.DESC);
         }
+    }
+
+    /** Whether this page is read after a cursor rather than by page number. */
+    public boolean hasCursor() {
+        return afterId != null;
+    }
+
+    /** Whether the page is in the default order, newest call first — the only order a cursor pages in. */
+    public boolean hasDefaultOrder() {
+        return orders.size() == 1 && orders.get(CallTableField.CALL_ID) == Sort.Direction.DESC;
     }
 }
 

@@ -6,10 +6,12 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileTableConfigUseCase;
 import uz.murodjon.robotcallv2.profile.application.port.output.TableConfigRepository;
+import uz.murodjon.robotcallv2.profile.domain.entity.TableConfig;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 @Service
 public class ProfileTableConfigService implements ProfileTableConfigUseCase {
@@ -26,15 +28,20 @@ public class ProfileTableConfigService implements ProfileTableConfigUseCase {
 
     @Override
     public JsonNode find(String key) {
-        String json = repository.find(requireUserId(), requireKey(key));
-        return json == null ? null : readValue(json);
+        TableConfig config = repository.findByUserIdAndConfigKey(requireUserId(), requireKey(key));
+        return config == null ? null : readValue(config.configValue());
     }
 
     @Override
     public JsonNode update(long companyId, String key, JsonNode value) {
-        String json = value == null || value.isNull() ? null : value.toString();
-        String saved = repository.save(companyId, requireUserId(), requireKey(key), json);
-        return saved == null ? null : readValue(saved);
+        long userId = requireUserId();
+        String configKey = requireKey(key);
+        if (value == null || value.isNull()) {
+            repository.deleteByUserIdAndConfigKey(userId, configKey);
+            return null;
+        }
+        TableConfig saved = repository.upsert(companyId, TableConfig.of(userId, configKey, value.toString()));
+        return readValue(saved.configValue());
     }
 
     private static String requireKey(String key) {
@@ -55,7 +62,7 @@ public class ProfileTableConfigService implements ProfileTableConfigUseCase {
         try {
             return JSON.readTree(json);
         } catch (Exception e) {
-            throw new IllegalStateException("Corrupt table config JSON: " + e.getMessage(), e);
+            throw new ConflictException(ErrorCode.PROFILE_TABLE_CONFIG_CORRUPT, e);
         }
     }
 }

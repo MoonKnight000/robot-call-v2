@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.dialer.application.dto;
 
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+
 /**
  * A single outbound-call instruction published to RabbitMQ and consumed to originate the
  * call (PROJECT.md §5.2, §10). Serialized as JSON.
@@ -17,6 +19,8 @@ package uz.murodjon.robotcallv2.dialer.application.dto;
  *                         leaves it alone
  * @param variantId        the variant this call was assigned to, or null when the campaign
  *                         is not testing. Only what the outcome gets counted against
+ * @param pipelineModeOverride an A/B variant's pipeline for this call, or null for the
+ *                         agent's own — the cascade-versus-realtime test
  */
 public record CallTask(
         Long campaignId,
@@ -30,6 +34,10 @@ public record CallTask(
         Long sipTrunkId,
         Long variantId,
         String ttsVoiceOverride,
-        String promptOverride
+        String promptOverride,
+        PipelineMode pipelineModeOverride
 ) {
+
+    /** The RabbitMQ queue a call task travels on, from the dialer's sweep to CallTaskConsumer. */
+    public static final String QUEUE = "call.tasks";
 }

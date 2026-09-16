@@ -30,8 +30,11 @@ import java.util.Map;
  *               scenario's factSchema
  * @param memory what the company remembers about this phone from earlier calls
  *               (nullable — a first conversation has none)
+ * @param phone  the number on the other end of the line — the one dialled, or the caller's
+ *               (nullable: a test call has none). Not a fact, so it is never pasted into the
+ *               prompt; the company tools read it as their {@code phone} variable
  */
-public record CallContext(Map<String, Object> facts, String goal, ClientMemory memory) {
+public record CallContext(Map<String, Object> facts, String goal, ClientMemory memory, String phone) {
 
     /** A fact fills one line of the prompt: a name, a sum, a date, a contract number. */
     private static final int MAX_FACT_CHARS = 200;
@@ -49,11 +52,19 @@ public record CallContext(Map<String, Object> facts, String goal, ClientMemory m
     }
 
     public CallContext(Map<String, Object> facts, String goal) {
-        this(facts, goal, null);
+        this(facts, goal, null, null);
+    }
+
+    public CallContext(Map<String, Object> facts, String goal, ClientMemory memory) {
+        this(facts, goal, memory, null);
     }
 
     public CallContext withMemory(ClientMemory memory) {
-        return new CallContext(facts, goal, memory);
+        return new CallContext(facts, goal, memory, phone);
+    }
+
+    public CallContext withPhone(String phone) {
+        return new CallContext(facts, goal, memory, phone);
     }
 
     public CallContext withMergedFacts(Map<String, Object> additionalFacts) {
@@ -62,15 +73,16 @@ public record CallContext(Map<String, Object> facts, String goal, ClientMemory m
         }
         Map<String, Object> merged = new LinkedHashMap<>(facts);
         merged.putAll(additionalFacts);
-        return new CallContext(merged, goal, memory);
+        return new CallContext(merged, goal, memory, phone);
     }
 
+    /** A {@code phone} or {@code clientPhone} fact when the call data carries one, otherwise the number on the line. */
     public String clientPhone() {
         Object p = fact("phone");
         if (p == null) {
             p = fact("clientPhone");
         }
-        return p != null ? String.valueOf(p) : null;
+        return p != null ? String.valueOf(p) : phone;
     }
 
     /**

@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -50,9 +51,23 @@ class SystemPromptFactoryTest {
     void namesTodaysDate() {
         // Without it the model invents a year for "kelasi oyning 5-sanasi" and the
         // recordPaymentPromise guardrail then rejects its own answer as a past date.
+        // In the caller's zone, not the server's: on a UTC host an evening call was being
+        // told tomorrow's date.
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
-        assertThat(prompt).contains(java.time.LocalDate.now().toString());
+        assertThat(prompt).contains(LocalDate.now(SystemPromptFactory.CALLER_ZONE).toString());
+    }
+
+    @Test
+    void anchorsThePartsOfTheDayToHours() {
+        // What a booking call is made of: "ertaga tushdan keyin" has to reach the slot tool
+        // as a date and an hour range, and neither is something to leave the model to guess.
+        String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+
+        assertThat(prompt)
+                .contains("HOZIRGI VAQT")
+                .contains("ertaga: " + LocalDate.now(SystemPromptFactory.CALLER_ZONE).plusDays(1))
+                .contains("tushdan keyin / после обеда: 13:00–17:00");
     }
 
     @Test
@@ -267,6 +282,18 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("so'rovnoma o'tkazadigan agentisiz");
         assertThat(prompt).contains("xizmat sifati");
         assertThat(prompt).doesNotContain("qarz undirish");
+        // UNIVERSAL-OPERATOR-PLAN A.2: nor the debt call's wording, which used to be platform text.
+        assertThat(prompt).doesNotContain("to'lanmayapti").doesNotContain("qarzingiz bor")
+                .doesNotContain("recordPaymentPromise");
+    }
+
+    @Test
+    void theScenariosOwnPhrasingExamplesFollowTheCallsLanguage() {
+        String uz = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+        String ru = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU"));
+
+        assertThat(uz).contains("\"Qachon to'lay olasiz?\"").doesNotContain("Когда сможете оплатить?");
+        assertThat(ru).contains("\"Когда сможете оплатить?\"").doesNotContain("\"Qachon to'lay olasiz?\"");
     }
 
     @Test
@@ -305,5 +332,33 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(session);
         assertThat(prompt).contains("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT)");
         assertThat(prompt).contains("Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman");
+    }
+
+    @Test
+    void aScenarioHandoffStartsTheTargetsFirstStageAndRebuildsThePrefix() {
+        DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
+        s.setSystemPrefix(factory.stablePrefix(s));
+        ScenarioDefinition survey = new ScenarioDefinition(
+                List.of(new StageDef("Q1", "Birinchi savolni bering", List.of(), List.of())),
+                List.of(), List.of(), List.of(), "Survey agent", List.of(), null);
+
+        s.switchScenario(survey);
+
+        assertThat(s.scenario()).isSameAs(survey);
+        assertThat(s.state()).isEqualTo("Q1");
+        assertThat(s.systemPrefix()).isNull();
+        assertThat(factory.turnAnnex(s)).contains("Q1").contains("Birinchi savolni bering");
+    }
+
+    @Test
+    void anOperatorWhisperRidesEveryTurnUntilReplaced() {
+        DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
+        assertThat(factory.turnAnnex(s)).doesNotContain("OPERATOR KO'RSATMASI");
+
+        s.setOperatorWhisper("10% chegirma taklif qiling");
+        assertThat(factory.turnAnnex(s)).contains("OPERATOR KO'RSATMASI").contains("10% chegirma taklif qiling");
+
+        s.setOperatorWhisper("Muddatni 5-sanaga suring");
+        assertThat(factory.turnAnnex(s)).contains("Muddatni 5-sanaga suring").doesNotContain("10% chegirma");
     }
 }

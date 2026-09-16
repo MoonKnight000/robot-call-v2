@@ -42,4 +42,14 @@ public record AiAgentScript(
     public AiAgentScript withFirstMessage(String newFirstMessage) {
         return new AiAgentScript(templateId, scenarioId, mode, definition, newFirstMessage, systemPrompt);
     }
+
+    /** The same script speaking an edited embedded scenario — the mode and the opening line stay. */
+    public AiAgentScript withDefinition(ScenarioDefinition newDefinition) {
+        return new AiAgentScript(templateId, scenarioId, mode, newDefinition, firstMessage, systemPrompt);
+    }
+
+    /** The same script with a different role prompt. */
+    public AiAgentScript withSystemPrompt(String newSystemPrompt) {
+        return new AiAgentScript(templateId, scenarioId, mode, definition, firstMessage, newSystemPrompt);
+    }
 }

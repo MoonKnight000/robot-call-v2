@@ -27,6 +27,10 @@ package uz.murodjon.robotcallv2.agent.dialog;
  *                          itself, so it is the answer to all three — the agent's cascade
  *                          STT/TTS providers were never used and must not be reported
  * @param llmModel          the model this call actually ran on, or null when it is not known
+ * @param bargeInCount      times the caller cut the agent off, noise included — the quality
+ *                          signals below go to {@code call_quality} (UNIVERSAL-OPERATOR-PLAN D.1)
+ * @param noInputPromptCount times the silence watchdog asked whether the caller was still there
+ * @param lowConfidenceCount caller utterances the recognizer was unsure of; 0 on a realtime call
  */
 public record DialogTechnicalSnapshot(
         int turnCount,
@@ -35,8 +39,9 @@ public record DialogTechnicalSnapshot(
         Integer avgTurnLatencyMs, Integer maxTurnLatencyMs,
         Integer avgLlmLatencyMs, Integer maxLlmLatencyMs,
         String ttsVoice, String language,
-        String engine, String llmModel) {
+        String engine, String llmModel,
+        int bargeInCount, int noInputPromptCount, int lowConfidenceCount) {
 
     public static final DialogTechnicalSnapshot NONE =
-            new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, null, null);
+            new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, null, null, 0, 0, 0);
 }

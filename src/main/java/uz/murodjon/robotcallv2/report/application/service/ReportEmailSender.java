@@ -9,7 +9,13 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
 /**
- * Sends the scheduled report email (§10.10 "Jadval bo'yicha yuborish") over SMTP.
+ * Sends the scheduled report email (§10.10 "Jadval bo'yicha yuborish") over the
+ * {@code spring.mail.*} SMTP connection — the same one the notification channels and the
+ * password-reset mail use.
+ *
+ * <p>Those settings ship blank until an operator fills them in, which is safe because the
+ * dispatch sweep is off too ({@code voice-agent.report-schedule.enabled: false}): no send
+ * is attempted against an unconfigured server.
  */
 @Component
 public class ReportEmailSender {

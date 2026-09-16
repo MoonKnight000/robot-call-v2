@@ -1,6 +1,10 @@
 package uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity;
 
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+
 import jakarta.persistence.*;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
@@ -112,7 +116,16 @@ public class AiAgentEntity {
     @Column(name = "voice_similarity_boost")
     private Double voiceSimilarityBoost = 0.75;
 
+    /** Language code → speed as JSON (NEXT-PLAN A.7); null when every language uses voice_speed. */
+    @Column(name = "voice_speed_per_language")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String voiceSpeedPerLanguage;
+
+    // Eager: the mapper reads both collections outside any transaction. SUBSELECT: an agent
+    // list loads them in one query each instead of one per agent, and a single load no
+    // longer joins the two collections into one cartesian result.
     @ManyToMany(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @JoinTable(name = "ai_agent_voice",
             joinColumns = @JoinColumn(name = "ai_agent_id"),
             inverseJoinColumns = @JoinColumn(name = "voice_id"))
@@ -150,6 +163,10 @@ public class AiAgentEntity {
 
     @Column(name = "conversation_retention_days")
     private Integer conversationRetentionDays = 30;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "realtime_facts_delivery", length = 10)
+    private RealtimeFactsDelivery realtimeFactsDelivery;
 
     @Column(name = "max_conversation_duration_seconds")
     private Integer maxConversationDurationSeconds;
@@ -223,6 +240,9 @@ public class AiAgentEntity {
     @Column(name = "transfer_message", columnDefinition = "TEXT")
     private String transferMessage;
 
+    @Column(name = "transfer_queue_id")
+    private Long transferQueueId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "interruption_sensitivity", nullable = false, length = 32)
     private InterruptionSensitivity interruptionSensitivity = InterruptionSensitivity.MEDIUM;
@@ -239,6 +259,7 @@ public class AiAgentEntity {
     private String postCallActions = "[]";
 
     @ManyToMany(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @JoinTable(name = "ai_agent_sip_trunk",
             joinColumns = @JoinColumn(name = "ai_agent_id"),
             inverseJoinColumns = @JoinColumn(name = "sip_trunk_id"))
@@ -252,6 +273,11 @@ public class AiAgentEntity {
 
     @Column(name = "created_by")
     private Long createdBy;
+
+    /** Optimistic lock: only the aiagent adapter writes this row, so every write is an edit. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     public Long getId() {
         return id;
@@ -509,6 +535,14 @@ public class AiAgentEntity {
         this.voiceSpeed = voiceSpeed;
     }
 
+    public String getVoiceSpeedPerLanguage() {
+        return voiceSpeedPerLanguage;
+    }
+
+    public void setVoiceSpeedPerLanguage(String voiceSpeedPerLanguage) {
+        this.voiceSpeedPerLanguage = voiceSpeedPerLanguage;
+    }
+
     public Double getVoiceStability() {
         return voiceStability;
     }
@@ -629,6 +663,14 @@ public class AiAgentEntity {
 
     public void setConversationRetentionDays(Integer conversationRetentionDays) {
         this.conversationRetentionDays = conversationRetentionDays;
+    }
+
+    public RealtimeFactsDelivery getRealtimeFactsDelivery() {
+        return realtimeFactsDelivery;
+    }
+
+    public void setRealtimeFactsDelivery(RealtimeFactsDelivery realtimeFactsDelivery) {
+        this.realtimeFactsDelivery = realtimeFactsDelivery;
     }
 
     public Integer getMaxConversationDurationSeconds() {
@@ -759,6 +801,14 @@ public class AiAgentEntity {
         this.transferMessage = transferMessage;
     }
 
+    public Long getTransferQueueId() {
+        return transferQueueId;
+    }
+
+    public void setTransferQueueId(Long transferQueueId) {
+        this.transferQueueId = transferQueueId;
+    }
+
     public InterruptionSensitivity getInterruptionSensitivity() {
         return interruptionSensitivity;
     }
@@ -837,5 +887,9 @@ public class AiAgentEntity {
 
     public void setCreatedBy(Long createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

@@ -1,10 +1,8 @@
 package uz.murodjon.robotcallv2.campaign.domain.service;
 
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
+import uz.murodjon.robotcallv2.shared.util.Tokens;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -74,21 +72,11 @@ public final class CampaignVariantSelector {
         return activeVariants.get(activeVariants.size() - 1);
     }
 
-    /** First eight bytes of {@code sha256(campaignId:key)} as a long. */
+    /**
+     * First eight bytes of {@code sha256(campaignId:key)} as a long — the first sixteen hex
+     * digits of the digest, read big-endian, so every number keeps the bucket it always had.
+     */
     private static long hash(long campaignId, String assignmentKey) {
-        byte[] digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256")
-                    .digest((campaignId + ":" + assignmentKey).getBytes(StandardCharsets.UTF_8));
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is required of every JVM; if it is missing the platform is broken in
-            // ways an A/B test is not going to survive anyway.
-            throw new IllegalStateException("SHA-256 is unavailable", e);
-        }
-        long value = 0;
-        for (int i = 0; i < 8; i++) {
-            value = (value << 8) | (digest[i] & 0xffL);
-        }
-        return value;
+        return Long.parseUnsignedLong(Tokens.hash(campaignId + ":" + assignmentKey).substring(0, 16), 16);
     }
 }

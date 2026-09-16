@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -20,7 +21,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -64,7 +67,15 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * itself — a plain chat id is accepted by the URL and then never answers the setup,
      * which surfaces as a connect timeout and reads like a network fault.
      */
-    private static final String DEFAULT_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+    private static final String DEFAULT_LIVE_MODEL = "gemini-3.8-live";
+
+    /**
+     * Models whose tools are declared {@code NON_BLOCKING}: the engine keeps talking while a
+     * tool runs instead of sitting silent until it answers. 3.1 Flash Live cannot do this,
+     * and 3.8 Live Extended Thinking rejects anything else — so it is the model, not a
+     * setting, that decides.
+     */
+    private static final String ASYNC_TOOL_MODEL_PREFIX = "gemini-3.8-live";
 
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
@@ -93,7 +104,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * Every language, because the engine picks one itself — native-audio models detect
      * the language from the audio rather than being told. Whether its Uzbek is
      * <em>good</em> is a quality question answered by listening
-     * ({@link RealtimeEchoTool}), not one this method can answer.
+     * ({@code RealtimeEchoTool} under src/test), not one this method can answer.
      */
     @Override
     public boolean supports(String language) {
@@ -120,8 +131,8 @@ public class GeminiLiveProvider implements RealtimeProvider {
         HttpClient current = client;
         GeminiLiveProperties live = realtimeProperties.geminiLive();
         if (current == null) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED,
-                    "gemini-live", "not initialized");
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_NOT_INITIALIZED,
+                    "gemini-live", "gemini-live");
         }
         GeminiLiveSession session = new GeminiLiveSession(current, live, config, listener);
         try {
@@ -162,7 +173,8 @@ public class GeminiLiveProvider implements RealtimeProvider {
                                        String resumptionHandle) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode setup = root.putObject("setup");
-        setup.put("model", "models/" + resolveModelName(config.modelOr(live.model())));
+        String model = resolveModelName(config.modelOr(live.model()));
+        setup.put("model", "models/" + model);
 
         // A Gemini Live connection lives about ten minutes and is then closed by the
         // server, whatever the call is doing. Asking for session resumption makes the
@@ -195,14 +207,57 @@ public class GeminiLiveProvider implements RealtimeProvider {
         setup.putObject("inputAudioTranscription");
         setup.putObject("outputAudioTranscription");
 
+        // The engine's own turn detection, tuned for a phone line rather than a laptop
+        // microphone. Only what is configured is sent; the rest stays the engine's default.
+        ObjectNode activityDetection = MAPPER.createObjectNode();
+        String startSensitivity = sensitivity(live.startOfSpeechSensitivity());
+        if (startSensitivity != null) {
+            activityDetection.put("startOfSpeechSensitivity", "START_SENSITIVITY_" + startSensitivity);
+        }
+        String endSensitivity = sensitivity(live.endOfSpeechSensitivity());
+        if (endSensitivity != null) {
+            activityDetection.put("endOfSpeechSensitivity", "END_SENSITIVITY_" + endSensitivity);
+        }
+        if (live.prefixPaddingMs() > 0) {
+            activityDetection.put("prefixPaddingMs", live.prefixPaddingMs());
+        }
+        if (live.silenceDurationMs() > 0) {
+            activityDetection.put("silenceDurationMs", live.silenceDurationMs());
+        }
+        if (!activityDetection.isEmpty()) {
+            setup.putObject("realtimeInputConfig").set("automaticActivityDetection", activityDetection);
+        }
+        // Without it a long call — many turns, tool results in between — fills the context
+        // and the server ends the session; with it the oldest turns are dropped instead.
+        // The instructions (and the facts in them) are never part of what is dropped.
+        if (live.contextCompressionTriggerTokens() > 0) {
+            ObjectNode compression = setup.putObject("contextWindowCompression");
+            compression.put("triggerTokens", live.contextCompressionTriggerTokens());
+            compression.putObject("slidingWindow");
+        }
+
         List<ToolCallback> tools = config.tools();
         if (tools != null && !tools.isEmpty()) {
             ArrayNode declarations = setup.putArray("tools").addObject().putArray("functionDeclarations");
+            boolean asyncTools = supportsAsyncTools(model);
             for (ToolCallback tool : tools) {
-                declarations.add(declarationFor(tool));
+                declarations.add(declarationFor(tool, asyncTools));
             }
         }
         return root.toString();
+    }
+
+    /** {@code HIGH}/{@code LOW} as configured, or null for blank or anything the API would reject. */
+    private static String sensitivity(String configured) {
+        if (configured == null || configured.isBlank()) {
+            return null;
+        }
+        String value = configured.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"HIGH".equals(value) && !"LOW".equals(value)) {
+            log.warn("Gemini Live speech sensitivity '{}' is neither HIGH nor LOW — using the engine default", configured);
+            return null;
+        }
+        return value;
     }
 
     private static String resolveModelName(String configured) {
@@ -220,14 +275,22 @@ public class GeminiLiveProvider implements RealtimeProvider {
         return trimmed;
     }
 
+    /** See {@link #ASYNC_TOOL_MODEL_PREFIX}; takes the already resolved model name. */
+    private static boolean supportsAsyncTools(String model) {
+        return model.startsWith(ASYNC_TOOL_MODEL_PREFIX);
+    }
+
     /**
      * One scenario tool as Gemini declares it. The schema is reused verbatim from the
      * cascade pipeline's {@link ToolCallback} — the same tool, described once.
      */
-    private static ObjectNode declarationFor(ToolCallback tool) {
+    private static ObjectNode declarationFor(ToolCallback tool, boolean async) {
         ObjectNode declaration = MAPPER.createObjectNode();
         declaration.put("name", tool.getToolDefinition().name());
         declaration.put("description", tool.getToolDefinition().description());
+        if (async) {
+            declaration.put("behavior", "NON_BLOCKING");
+        }
         try {
             JsonNode parameters = MAPPER.readTree(tool.getToolDefinition().inputSchema());
             stripUnsupportedSchemaKeywords(parameters);
@@ -284,6 +347,15 @@ public class GeminiLiveProvider implements RealtimeProvider {
         private final StringBuilder message = new StringBuilder();
         private final StringBuilder heard = new StringBuilder();
         private final StringBuilder spoken = new StringBuilder();
+        /**
+         * Whether a turn is in progress. Usage can arrive in the middle of a turn — and then
+         * more than once, each report superseding the last — or after the turn has already
+         * settled; held while a turn is open, reported at once otherwise, so it is counted
+         * once either way.
+         */
+        private boolean turnOpen;
+        /** The latest usage report of the open turn, not yet passed on. */
+        private JsonNode pendingUsage;
 
         private ResponseHandler(String channelId, RealtimeListener listener, AtomicBoolean alive,
                                 CountDownLatch ready, Map<String, String> pendingToolNames,
@@ -326,9 +398,22 @@ public class GeminiLiveProvider implements RealtimeProvider {
             return null;
         }
 
+        /**
+         * Every message arrives on the WebSocket's own thread, which knows nothing about
+         * the call — so the id goes in here, once, and everything below it (this class's
+         * logs and the dialog engine's, reached through the listener) is filed under the
+         * call it belongs to instead of {@code [call:none]}.
+         */
         private void handle(String json) {
+            CallMdc.with(channelId, () -> dispatch(json));
+        }
+
+        private void dispatch(String json) {
             try {
                 JsonNode node = MAPPER.readTree(json);
+                if (node.has("usageMetadata")) {
+                    captureUsage(node.get("usageMetadata"));
+                }
                 if (node.has("setupComplete")) {
                     ready.countDown();
                     return;
@@ -339,6 +424,13 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 }
                 if (node.has("toolCall")) {
                     handleToolCall(node.get("toolCall"));
+                    return;
+                }
+                if (node.has("toolCallCancellation")) {
+                    // The caller cut in and the engine dropped these calls; the tools are
+                    // already running and cannot be stopped, but their answers must not be sent.
+                    node.get("toolCallCancellation").path("ids")
+                            .forEach(id -> session.cancelToolCall(id.asText("")));
                     return;
                 }
                 if (node.has("sessionResumptionUpdate")) {
@@ -358,13 +450,24 @@ public class GeminiLiveProvider implements RealtimeProvider {
                     session.reconnect(generation, null);
                     return;
                 }
-                log.debug("[{}] Gemini Live message ignored: {}", channelId, json);
+                if (!node.has("usageMetadata")) {
+                    log.debug("[{}] Gemini Live message ignored: {}", channelId, json);
+                }
             } catch (Exception e) {
                 log.warn("[{}] Gemini Live sent an unparseable message ({}): {}", channelId, e.getMessage(), json);
             }
         }
 
         private void handleServerContent(JsonNode content) {
+            // 3.8 models keep reasoning and waiting on tools after turnComplete; only this
+            // status says whether an answer is still coming. Older models never send it.
+            String status = content.path("interactionStatus").asText("");
+            if (!status.isEmpty()) {
+                listener.onEngineWorking(status.endsWith("IN_PROGRESS"));
+            }
+            if (content.has("modelTurn") || content.has("inputTranscription") || content.has("outputTranscription")) {
+                turnOpen = true;
+            }
             for (JsonNode part : content.path("modelTurn").path("parts")) {
                 JsonNode inline = part.path("inlineData");
                 if (!inline.isMissingNode() && inline.hasNonNull("data")) {
@@ -379,8 +482,10 @@ public class GeminiLiveProvider implements RealtimeProvider {
             spoken.append(content.path("outputTranscription").path("text").asText(""));
 
             if (content.path("interrupted").asBoolean(false)) {
-                settleTurn();
+                // Playback is stopped first, so that the transcript released below can be
+                // trimmed to what the caller actually heard before cutting in.
                 listener.onInterrupted();
+                settleTurn();
                 return;
             }
             if (content.path("turnComplete").asBoolean(false)) {
@@ -399,10 +504,51 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 listener.onOutputTranscript(spoken.toString());
                 spoken.setLength(0);
             }
+            turnOpen = false;
+            JsonNode usage = pendingUsage;
+            pendingUsage = null;
+            if (usage != null) {
+                reportUsage(usage);
+            }
+        }
+
+        private void captureUsage(JsonNode usage) {
+            if (turnOpen) {
+                pendingUsage = usage;
+            } else {
+                reportUsage(usage);
+            }
+        }
+
+        /**
+         * One usage report, as the vendor bills it: the prompt includes the conversation so
+         * far (and tool-use prompts), the completion includes thinking. Vertex names the
+         * completion {@code candidatesTokenCount}, AI Studio {@code responseTokenCount}.
+         */
+        private void reportUsage(JsonNode usage) {
+            long prompt = usage.path("promptTokenCount").asLong(0)
+                    + usage.path("toolUsePromptTokenCount").asLong(0);
+            long completion = usage.path("responseTokenCount").asLong(usage.path("candidatesTokenCount").asLong(0))
+                    + usage.path("thoughtsTokenCount").asLong(0);
+            long cached = usage.path("cachedContentTokenCount").asLong(0);
+            if (prompt > 0 || completion > 0) {
+                listener.onUsage(prompt, completion, cached);
+            }
         }
 
         private void handleToolCall(JsonNode toolCall) {
-            for (JsonNode call : toolCall.path("functionCalls")) {
+            List<JsonNode> calls = new ArrayList<>();
+            toolCall.path("functionCalls").forEach(calls::add);
+            List<String> ids = new ArrayList<>(calls.size());
+            for (JsonNode call : calls) {
+                ids.add(call.path("id").asText(""));
+            }
+            // The engine wants one toolResponse carrying every result of the batch, so it
+            // has to be told what the batch is before the first tool finishes: the calls
+            // run in parallel on the dialog engine's executor and come back in whatever
+            // order they happen to finish.
+            session.expectToolResults(ids);
+            for (JsonNode call : calls) {
                 String id = call.path("id").asText("");
                 String name = call.path("name").asText("");
                 pendingToolNames.put(id, name);
@@ -422,15 +568,17 @@ public class GeminiLiveProvider implements RealtimeProvider {
         public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
             alive.set(false);
             ready.countDown();
-            if (statusCode != WebSocket.NORMAL_CLOSURE) {
-                log.warn("[{}] Gemini Live closed ({}): {}", channelId, statusCode, reason);
-                session.reconnect(generation, new IllegalStateException("closed " + statusCode + ": " + reason));
-            } else {
-                // A normal close is either our own hangup or the server letting a
-                // resumable connection go; the session decides which, since only it knows
-                // whether the call is over.
-                session.reconnect(generation, null);
-            }
+            CallMdc.with(channelId, () -> {
+                if (statusCode != WebSocket.NORMAL_CLOSURE) {
+                    log.warn("[{}] Gemini Live closed ({}): {}", channelId, statusCode, reason);
+                    session.reconnect(generation, new IllegalStateException("closed " + statusCode + ": " + reason));
+                } else {
+                    // A normal close is either our own hangup or the server letting a
+                    // resumable connection go; the session decides which, since only it knows
+                    // whether the call is over.
+                    session.reconnect(generation, null);
+                }
+            });
             return null;
         }
 
@@ -438,8 +586,10 @@ public class GeminiLiveProvider implements RealtimeProvider {
         public void onError(WebSocket webSocket, Throwable error) {
             alive.set(false);
             ready.countDown();
-            log.warn("[{}] Gemini Live error: {}", channelId, error.getMessage());
-            session.reconnect(generation, error);
+            CallMdc.with(channelId, () -> {
+                log.warn("[{}] Gemini Live error: {}", channelId, error.getMessage());
+                session.reconnect(generation, error);
+            });
         }
     }
 
@@ -450,12 +600,21 @@ public class GeminiLiveProvider implements RealtimeProvider {
      */
     private final class GeminiLiveSession implements RealtimeSession {
 
-        private final HttpClient http;
+        private final HttpClient httpClient;
         private final GeminiLiveProperties live;
         private final RealtimeCallConfig config;
         private final RealtimeListener listener;
+        /** Tools declared {@code NON_BLOCKING}: each result is sent on its own, as soon as it is ready. */
+        private final boolean asyncTools;
         /** Survives a reconnect: a tool call made before the drop is answered after it. */
         private final Map<String, String> pendingToolNames = new ConcurrentHashMap<>();
+        /**
+         * The tool calls of the batch being answered right now, in the order the engine
+         * asked for them, each mapped to its result or to null while it is still running.
+         * Guards itself — {@link #sendToolResult} is called from one virtual thread per
+         * tool.
+         */
+        private final Map<String, String> toolBatch = new LinkedHashMap<>();
         /** Guards against a second reconnect starting while one is still in flight. */
         private final AtomicBoolean reconnecting = new AtomicBoolean();
 
@@ -467,13 +626,18 @@ public class GeminiLiveProvider implements RealtimeProvider {
         private volatile int generation;
         private volatile boolean closed;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
+        /** Writes queued on {@link #sendChain} and not yet done — audio is dropped past the bound. */
+        private final java.util.concurrent.atomic.AtomicInteger pendingSends = new java.util.concurrent.atomic.AtomicInteger();
+        /** About two seconds of 20 ms frames. */
+        private static final int MAX_PENDING_AUDIO_SENDS = 100;
 
-        private GeminiLiveSession(HttpClient http, GeminiLiveProperties live,
+        private GeminiLiveSession(HttpClient httpClient, GeminiLiveProperties live,
                                   RealtimeCallConfig config, RealtimeListener listener) {
-            this.http = http;
+            this.httpClient = httpClient;
             this.live = live;
             this.config = config;
             this.listener = listener;
+            this.asyncTools = supportsAsyncTools(resolveModelName(config.modelOr(live.model())));
         }
 
         /**
@@ -488,28 +652,35 @@ public class GeminiLiveProvider implements RealtimeProvider {
             AtomicBoolean connectionAlive = new AtomicBoolean(true);
             CountDownLatch ready = new CountDownLatch(1);
             int nextGeneration = generation + 1;
-            WebSocket socket = http.newWebSocketBuilder()
+            WebSocket socket = httpClient.newWebSocketBuilder()
                     .connectTimeout(Duration.ofSeconds(live.connectTimeoutSeconds()))
                     .buildAsync(URI.create(live.url() + "?key=" + live.apiKey()),
                             new ResponseHandler(config.channelId(), listener, connectionAlive, ready,
                                     pendingToolNames, this, nextGeneration))
                     .get(live.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
+            // The setup goes straight to the new socket, and the session moves onto it only
+            // once the engine has acknowledged it: swapping first let audio frames from the
+            // RTP thread reach the new connection ahead of its setup message on a resume.
+            // Nothing may be sent before the acknowledgement, and a call is already ringing
+            // (or already talking) while this waits — so it is bounded by the connect timeout.
+            socket.sendText(setupMessage(config, live, handle), true)
+                    .get(live.connectTimeoutSeconds(), TimeUnit.SECONDS);
+            // The handler also releases the latch when the socket closes or fails, so a
+            // released latch alone is not an acknowledgement — a dead connection is not a
+            // resumed one.
+            if (!ready.await(live.connectTimeoutSeconds(), TimeUnit.SECONDS) || !connectionAlive.get()) {
+                socket.abort();
+                throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_SETUP_FAILED, "gemini-live",
+                        live.connectTimeoutSeconds());
+            }
             WebSocket previous = webSocket;
             synchronized (this) {
                 webSocket = socket;
                 alive = connectionAlive;
                 generation = nextGeneration;
                 sendChain = CompletableFuture.completedFuture(null);
-            }
-            send(setupMessage(config, live, handle));
-            // Nothing may be sent before the engine acknowledges the setup, and a call is
-            // already ringing (or already talking) while this waits — so it is bounded by
-            // the same timeout as the connect rather than left open.
-            if (!ready.await(live.connectTimeoutSeconds(), TimeUnit.SECONDS)) {
-                socket.abort();
-                throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_SETUP_FAILED, "gemini-live",
-                        live.connectTimeoutSeconds());
+                pendingSends.set(0);
             }
             if (previous != null) {
                 previous.abort();
@@ -544,17 +715,21 @@ public class GeminiLiveProvider implements RealtimeProvider {
             }
             // Off the WebSocket's own callback thread: connect() blocks on the handshake
             // and the setup acknowledgement, neither of which may run on it.
-            Thread.ofVirtual().name("gemini-resume-" + config.channelId()).start(() -> {
-                try {
-                    connect(resumptionHandle);
-                    log.info("[{}] Gemini Live resumed on a new connection", config.channelId());
-                } catch (Exception e) {
-                    log.warn("[{}] Gemini Live could not be resumed: {}", config.channelId(), e.getMessage());
-                    listener.onClosed(cause != null ? cause : e);
-                } finally {
-                    reconnecting.set(false);
-                }
-            });
+            Thread.ofVirtual().name("gemini-resume-" + config.channelId())
+                    .start(() -> CallMdc.with(config.channelId(), () -> {
+                        try {
+                            connect(resumptionHandle);
+                            log.info("[{}] Gemini Live resumed on a new connection", config.channelId());
+                            // A status from the dropped socket says nothing about the new one.
+                            listener.onEngineWorking(false);
+                            listener.onReconnected();
+                        } catch (Exception e) {
+                            log.warn("[{}] Gemini Live could not be resumed: {}", config.channelId(), e.getMessage());
+                            listener.onClosed(cause != null ? cause : e);
+                        } finally {
+                            reconnecting.set(false);
+                        }
+                    }));
         }
 
         @Override
@@ -568,35 +743,125 @@ public class GeminiLiveProvider implements RealtimeProvider {
             ObjectNode audio = root.putObject("realtimeInput").putObject("audio");
             audio.put("data", Base64.getEncoder().encodeToString(buffer.array()));
             audio.put("mimeType", "audio/pcm;rate=" + INPUT_RATE);
+            // A stalled socket must not grow the chain by 50 base64 frames a second: past
+            // the bound the frame is dropped — stale audio replayed later is worse than none.
+            if (pendingSends.get() >= MAX_PENDING_AUDIO_SENDS) {
+                log.debug("[{}] Gemini Live uplink {} frames behind — dropping one", config.channelId(),
+                        MAX_PENDING_AUDIO_SENDS);
+                return;
+            }
             send(root.toString());
         }
 
         @Override
         public void sendUserText(String text) {
+            // Without turnComplete the engine keeps waiting for the rest of the turn and
+            // never answers — which on a freshly answered line is heard as dead air.
+            send(clientContent(text, true));
+        }
+
+        @Override
+        public void sendContext(String text) {
+            // Here waiting is the point: the text joins the conversation and is answered
+            // together with the caller's next turn, not on its own.
+            send(clientContent(text, false));
+        }
+
+        private String clientContent(String text, boolean turnComplete) {
             ObjectNode root = MAPPER.createObjectNode();
             ObjectNode content = root.putObject("clientContent");
             content.putArray("turns").addObject()
                     .put("role", "user")
                     .putArray("parts").addObject().put("text", text);
-            // Without this the engine keeps waiting for the rest of the turn and never
-            // answers — which on a freshly answered line is heard as dead air.
-            content.put("turnComplete", true);
-            send(root.toString());
+            content.put("turnComplete", turnComplete);
+            return root.toString();
         }
 
+        /**
+         * Open a fresh batch, holding a slot per tool the engine just asked for.
+         *
+         * <p>Order is the engine's, not the order the tools happen to finish in.
+         */
+        private void expectToolResults(List<String> ids) {
+            if (asyncTools) {
+                // Non-blocking calls are not answered as a batch, and a new call may come
+                // while earlier ones are still running — clearing here would lose them.
+                return;
+            }
+            synchronized (toolBatch) {
+                toolBatch.clear();
+                ids.forEach(id -> toolBatch.put(id, null));
+            }
+        }
+
+        /**
+         * Collects one tool's result and, once the whole batch has landed, answers it in a
+         * single message.
+         *
+         * <p>One message rather than one per tool because that is what the protocol asks
+         * for: a batch is answered when every {@code functionResponse} in it is present.
+         * Answering them one at a time left the engine holding a half-answered batch — on
+         * a recorded call it made two calls in one turn, got two separate replies, and
+         * never spoke again; the caller sat in silence and hung up.
+         */
         @Override
         public void sendToolResult(String callId, String result) {
-            // The engine matches a response by id but wants the name back with it; the
-            // dialog driver only carries the id, so the name is remembered from the call.
-            String name = pendingToolNames.remove(callId);
-            ObjectNode root = MAPPER.createObjectNode();
-            ObjectNode response = root.putObject("toolResponse").putArray("functionResponses").addObject();
-            response.put("id", callId);
-            if (name != null) {
-                response.put("name", name);
+            if (asyncTools) {
+                sendAsyncToolResult(callId, result == null ? "" : result);
+                return;
             }
-            response.putObject("response").put("result", result);
-            send(root.toString());
+            String json;
+            synchronized (toolBatch) {
+                toolBatch.put(callId, result == null ? "" : result);
+                if (toolBatch.containsValue(null)) {
+                    return;
+                }
+                json = toolResponseMessage(toolBatch, null);
+                toolBatch.clear();
+            }
+            send(json);
+        }
+
+        /**
+         * A non-blocking call is answered on its own. {@code WHEN_IDLE}: the engine finishes
+         * the sentence it is saying before it uses the result, rather than being cut off
+         * mid-word ({@code INTERRUPT}) or keeping the result to itself ({@code SILENT}) —
+         * a refusal or an error has to be acted on.
+         */
+        private void sendAsyncToolResult(String callId, String result) {
+            if (!pendingToolNames.containsKey(callId)) {
+                log.debug("[{}] tool call {} was cancelled by the engine — result dropped", config.channelId(), callId);
+                return;
+            }
+            send(toolResponseMessage(Map.of(callId, result), "WHEN_IDLE"));
+        }
+
+        private void cancelToolCall(String callId) {
+            if (asyncTools) {
+                pendingToolNames.remove(callId);
+            }
+        }
+
+        /** @param scheduling when a non-blocking result is used; null for a blocking batch */
+        private String toolResponseMessage(Map<String, String> batch, String scheduling) {
+            ObjectNode root = MAPPER.createObjectNode();
+            ArrayNode responses = root.putObject("toolResponse").putArray("functionResponses");
+            batch.forEach((id, result) -> {
+                ObjectNode response = responses.addObject();
+                response.put("id", id);
+                // The engine matches a response by id but wants the name back with it; the
+                // dialog driver only carries the id, so the name is remembered from the call.
+                String name = pendingToolNames.remove(id);
+                if (name != null) {
+                    response.put("name", name);
+                }
+                ObjectNode body = response.putObject("response");
+                body.put("result", result);
+                if (scheduling != null) {
+                    body.put("scheduling", scheduling);
+                }
+            });
+            return root.toString();
         }
 
         private synchronized void send(String json) {
@@ -609,12 +874,14 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 // answer speech the caller has already moved on from.
                 return;
             }
+            pendingSends.incrementAndGet();
             sendChain = sendChain
                     .thenCompose(ignored -> socket.sendText(json, true))
-                    .thenAccept(sent -> {
-                    })
-                    .exceptionally(e -> {
-                        connectionAlive.set(false);
+                    .handle((sent, e) -> {
+                        pendingSends.decrementAndGet();
+                        if (e != null) {
+                            connectionAlive.set(false);
+                        }
                         return null;
                     });
         }

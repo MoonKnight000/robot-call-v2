@@ -2,7 +2,9 @@ package uz.murodjon.robotcallv2.agent.tts;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
 
+import java.time.LocalTime;
 import java.util.List;
+import java.util.function.LongFunction;
 import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 
@@ -38,6 +40,30 @@ public final class SpeechTextNormalizer {
 
     /** A quantity with grouping separators: {@code 1 500 000}, {@code 1.500.000}. */
     private static final Pattern QUANTITY = Pattern.compile("\\d[\\d\\s.,\\u00A0']*\\d|\\d");
+
+    /**
+     * A phone number, either with its country code ({@code +998 90 123 45 67},
+     * {@code 998901234567}) or as the local nine digits written in the groups they are said
+     * in ({@code 90 123 45 67}).
+     *
+     * <p>A bare {@code 901234567} is deliberately not here. Nothing marks it as a phone
+     * number rather than a reference, and reading an order number out in pairs is the same
+     * mistake in the other direction.
+     */
+    private static final Pattern PHONE = Pattern.compile(
+            "(?<![\\d+])\\+?998[\\s\\-]?\\d{2}[\\s\\-]?\\d{3}[\\s\\-]?\\d{2}[\\s\\-]?\\d{2}(?!\\d)"
+                    + "|(?<!\\d)\\d{2}[\\s\\-]\\d{3}[\\s\\-]\\d{2}[\\s\\-]\\d{2}(?!\\d)");
+
+    /**
+     * A clock time: {@code 9:00}, {@code 14:30}. The hour a slot or a callback is set for —
+     * without this the quantity rule reads the two halves as separate figures either side
+     * of a colon the synthesizer then has to guess at.
+     *
+     * <p>A second colon on either side rules the match out, so {@code 14:00:00} inside an
+     * ISO timestamp is left alone rather than half-converted: a tool's raw
+     * {@code startsAt} is not something to read aloud in the first place.
+     */
+    private static final Pattern CLOCK = Pattern.compile("(?<![\\d:])([01]?\\d|2[0-3]):([0-5]\\d)(?![\\d:])");
 
     private static final int MAX_QUANTITY_DIGITS = 12;
 
@@ -131,14 +157,20 @@ public final class SpeechTextNormalizer {
         out = ISO_DATE.matcher(out).replaceAll(SpeechTextNormalizer::uzbekIsoDate);
         out = DOT_DATE.matcher(out).replaceAll(SpeechTextNormalizer::uzbekDotDate);
 
-        // 4. Reference numbers
+        // 4. Phone numbers and clock times, ahead of the reference and quantity rules: both
+        // would otherwise claim the digits and read them out as something the caller cannot
+        // check against what they said.
+        out = PHONE.matcher(out).replaceAll(m -> phone(m.group(), UzbekNumberWords::cardinal));
+        out = CLOCK.matcher(out).replaceAll(m -> clock(m, "uz"));
+
+        // 5. Reference numbers
         out = REFERENCE.matcher(out).replaceAll(m -> uzbekReference(m.group()));
 
-        // 5. Ordinals (2026-yil -> ikki ming yigirma oltinchi yil)
+        // 6. Ordinals (2026-yil -> ikki ming yigirma oltinchi yil)
         out = UZ_ORDINAL.matcher(out).replaceAll(
                 m -> UzbekNumberWords.ordinal(Long.parseLong(m.group(1))) + " " + m.group(2));
 
-        // 6. Quantities
+        // 7. Quantities
         return QUANTITY.matcher(out).replaceAll(m -> uzbekQuantity(m.group()));
     }
 
@@ -204,7 +236,11 @@ public final class SpeechTextNormalizer {
         out = ISO_DATE.matcher(out).replaceAll(SpeechTextNormalizer::russianIsoDate);
         out = DOT_DATE.matcher(out).replaceAll(SpeechTextNormalizer::russianDotDate);
 
-        // 4. Quantities & Reference numbers
+        // 4. Phone numbers and clock times
+        out = PHONE.matcher(out).replaceAll(m -> phone(m.group(), RussianNumberWords::cardinal));
+        out = CLOCK.matcher(out).replaceAll(m -> clock(m, "ru"));
+
+        // 5. Quantities & Reference numbers
         out = REFERENCE.matcher(out).replaceAll(m -> russianReference(m.group()));
         return QUANTITY.matcher(out).replaceAll(m -> russianQuantity(m.group()));
     }
@@ -266,7 +302,10 @@ public final class SpeechTextNormalizer {
         // 3. Dates
         out = ISO_DATE.matcher(out).replaceAll(SpeechTextNormalizer::englishIsoDate);
 
-        // 4. Quantities & Reference numbers
+        // 4. Phone numbers
+        out = PHONE.matcher(out).replaceAll(m -> phone(m.group(), EnglishNumberWords::cardinal));
+
+        // 5. Quantities & Reference numbers
         out = REFERENCE.matcher(out).replaceAll(m -> englishReference(m.group()));
         return QUANTITY.matcher(out).replaceAll(m -> englishQuantity(m.group()));
     }
@@ -301,6 +340,42 @@ public final class SpeechTextNormalizer {
         return cleaned.length() > MAX_QUANTITY_DIGITS
                 ? EnglishNumberWords.digits(cleaned)
                 : EnglishNumberWords.cardinal(Long.parseLong(cleaned));
+    }
+
+    /**
+     * A phone number the way a person reads one back: group by group
+     * ("to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti"), never as the single
+     * enormous figure the quantity rule would otherwise make of it — a twelve-digit number
+     * is inside {@link #MAX_QUANTITY_DIGITS}, so a readback of the caller's own number was
+     * coming out as "to'qqiz yuz to'qson sakkiz milliard..." and verified nothing
+     * (UNIVERSAL-OPERATOR-PLAN B.7).
+     *
+     * <p>The comma is the point as much as the words are: it is what the synthesizer pauses
+     * on, and the pauses are what let the caller check the number against the one they know.
+     */
+    private static String phone(String written, LongFunction<String> cardinal) {
+        String digits = written.replaceAll("\\D", "");
+        int[] groups = digits.length() == 12 ? new int[]{3, 2, 3, 2, 2} : new int[]{2, 3, 2, 2};
+        StringBuilder sb = new StringBuilder();
+        int at = 0;
+        for (int size : groups) {
+            if (!sb.isEmpty()) {
+                sb.append(", ");
+            }
+            sb.append(cardinal.apply(Long.parseLong(digits.substring(at, at + size))));
+            at += size;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * A clock time in the words a prompt already uses for one ({@link SpokenNumbers#clockTime}),
+     * so the hour the agent offers a caller and the hour a queue announcement states are
+     * read the same way. English is left out: its form is the digits themselves.
+     */
+    private static String clock(MatchResult m, String language) {
+        return SpokenNumbers.clockTime(
+                LocalTime.of(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))), language);
     }
 
     private static String cleanNumber(String written) {

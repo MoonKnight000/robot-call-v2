@@ -75,6 +75,12 @@ public class CallBillingEntity {
     @Column(name = "tts_cost_uzs", nullable = false)
     private Long ttsCostUzs;
 
+    @Column(name = "realtime_seconds", nullable = false)
+    private Integer realtimeSeconds;
+
+    @Column(name = "realtime_cost_uzs", nullable = false)
+    private Long realtimeCostUzs;
+
     @Column(name = "telephony_cost_uzs", nullable = false)
     private Long telephonyCostUzs;
 
@@ -131,6 +137,10 @@ public class CallBillingEntity {
     public void setTtsCostUzs(Long ttsCostUzs) { this.ttsCostUzs = ttsCostUzs; }
     public Long getTelephonyCostUzs() { return telephonyCostUzs; }
     public void setTelephonyCostUzs(Long telephonyCostUzs) { this.telephonyCostUzs = telephonyCostUzs; }
+    public Integer getRealtimeSeconds() { return realtimeSeconds; }
+    public void setRealtimeSeconds(Integer realtimeSeconds) { this.realtimeSeconds = realtimeSeconds; }
+    public Long getRealtimeCostUzs() { return realtimeCostUzs; }
+    public void setRealtimeCostUzs(Long realtimeCostUzs) { this.realtimeCostUzs = realtimeCostUzs; }
     public Long getPlatformFeeUzs() { return platformFeeUzs; }
     public void setPlatformFeeUzs(Long platformFeeUzs) { this.platformFeeUzs = platformFeeUzs; }
     public Long getTotalUzs() { return totalUzs; }

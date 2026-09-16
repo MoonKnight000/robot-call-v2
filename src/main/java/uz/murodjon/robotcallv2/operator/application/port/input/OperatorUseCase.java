@@ -1,12 +1,15 @@
 package uz.murodjon.robotcallv2.operator.application.port.input;
 
-import uz.murodjon.robotcallv2.agent.dialog.OperatorSnapshot;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorContextResponse;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorTakeoverResponse;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorWhisperRequest;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorWhisperResponse;
 
 public interface OperatorUseCase {
 
-    OperatorSnapshot snapshot(String channelId);
+    OperatorContextResponse findContext(long companyId, String channelId);
 
-    void takeover(String channelId, String operatorExtension);
+    OperatorTakeoverResponse takeover(long companyId, String channelId, String operatorExtension);
 
-    void whisper(String channelId, String message);
+    OperatorWhisperResponse whisper(long companyId, String channelId, OperatorWhisperRequest request);
 }

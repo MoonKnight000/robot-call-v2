@@ -12,7 +12,9 @@ import java.util.Map;
  *                              nova, onyx, sage, shimmer, verse, marin, cedar)
  * @param voices                optional per-language voice names (uz-UZ -> ..., ru-RU -> ...)
  * @param instructions          free-text delivery direction this model accepts — accent,
- *                              tone, pace. Blank leaves the voice as it is
+ *                              tone, pace. Blank leaves the voice as it is. Whatever is
+ *                              written here applies to every utterance on every call, so
+ *                              it belongs to the deployment and not to a scenario
  * @param sampleRate            rate the {@code pcm} response format is returned at; OpenAI
  *                              documents 24 kHz and does not let the caller choose, so this
  *                              exists to be corrected if that ever changes, not to be tuned

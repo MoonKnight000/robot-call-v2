@@ -6,7 +6,7 @@ package uz.murodjon.robotcallv2.shared.dialog;
  *
  * <p>Both directions ask the same question and must answer it the same way: a client the
  * company knows to be Russian-speaking is spoken to in Russian whether the dialer called
- * them ({@code CallTaskConsumer}) or they called in ({@code AriService}). The rule lived
+ * them ({@code CallTaskConsumer}) or they called in ({@code CallSetupService}). The rule lived
  * in both places, and the inbound copy was the one that had already drifted — it read the
  * agent's language before the CRM and the memory were even loaded.
  *

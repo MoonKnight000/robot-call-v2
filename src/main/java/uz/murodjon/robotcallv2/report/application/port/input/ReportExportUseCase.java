@@ -18,5 +18,5 @@ public interface ReportExportUseCase {
     /** The same bytes as {@link #exportSummary}, for a scheduled report's email attachment. */
     byte[] renderSummaryBytes(String format, ReportSummary summary);
 
-    String contentType(String format);
+    String resolveContentType(String format);
 }

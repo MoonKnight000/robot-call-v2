@@ -63,8 +63,7 @@ public class AudioTranscoder {
             byte[] pcm = process.getInputStream().readAllBytes();
             if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
-                throw new ExternalServiceException(ErrorCode.AUDIO_TRANSCODER_FAILED, "ffmpeg",
-                        "timed out after " + TIMEOUT_SECONDS + "s");
+                throw new ExternalServiceException(ErrorCode.AUDIO_TRANSCODER_TIMEOUT, "ffmpeg", TIMEOUT_SECONDS);
             }
             stderrReader.join();
             if (process.exitValue() != 0) {
@@ -77,7 +76,7 @@ public class AudioTranscoder {
         } catch (InterruptedException e) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            throw new ExternalServiceException(ErrorCode.AUDIO_TRANSCODER_FAILED, "ffmpeg", e, "interrupted");
+            throw new ExternalServiceException(ErrorCode.AUDIO_TRANSCODER_INTERRUPTED, "ffmpeg", e);
         }
     }
 

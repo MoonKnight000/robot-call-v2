@@ -134,8 +134,8 @@ public class OpenAiTtsProvider implements TtsProvider {
         try {
             HttpResponse<InputStream> response = current.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() != 200) {
-                throw new ExternalServiceException(ErrorCode.TTS_OPENAI_SYNTH_FAILED, "openai-tts",
-                        "HTTP " + response.statusCode());
+                throw new ExternalServiceException(ErrorCode.TTS_OPENAI_HTTP_STATUS, "openai-tts",
+                        response.statusCode());
             }
             streamPcm(response.body(), settings.sampleRate(), onChunk);
         } catch (ExternalServiceException e) {

@@ -6,7 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
-import uz.murodjon.robotcallv2.voice.application.service.TtsVoiceService;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
@@ -37,15 +39,15 @@ public class TtsRouter {
     private final TtsProperties ttsProperties;
     private final VoiceMetrics metrics;
     private final TtsCache cache;
-    private final TtsVoiceService catalog;
+    private final TtsVoiceUseCase ttsVoiceUseCase;
 
     public TtsRouter(TtsProviderSelector selector, TtsProperties ttsProperties, VoiceMetrics metrics,
-                     TtsCache cache, TtsVoiceService catalog) {
+                     TtsCache cache, TtsVoiceUseCase ttsVoiceUseCase) {
         this.selector = selector;
         this.ttsProperties = ttsProperties;
         this.metrics = metrics;
         this.cache = cache;
-        this.catalog = catalog;
+        this.ttsVoiceUseCase = ttsVoiceUseCase;
         log.info("TTS router: providers {}", selector.names());
     }
 
@@ -91,6 +93,7 @@ public class TtsRouter {
 
         Timer.Sample sample = metrics.startTimer();
         short[] pcm;
+        boolean fellBack = false;
         try {
             pcm = r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style());
         } catch (RuntimeException e) {
@@ -100,6 +103,8 @@ public class TtsRouter {
                         r.provider().name(), e.getMessage(), fallback.name());
                 try {
                     pcm = fallback.synthesize(speech, r.lang(), null, EffectiveVoiceSettings.NONE);
+                    fellBack = true;
+                    metrics.ttsFailover();
                 } catch (RuntimeException fallbackEx) {
                     metrics.ttsError();
                     log.error("TTS fallback provider '{}' also failed: {}", fallback.name(), fallbackEx.getMessage());
@@ -115,7 +120,11 @@ public class TtsRouter {
 
         metrics.ttsCacheMiss();
         metrics.ttsCharsSynthesized(speech.length());
-        cache.put(r.provider().name(), r.lang(), r.voiceName(), speech, pcm, r.style());
+        // The key names the primary provider and voice; a fallback's audio filed under it
+        // would be served as that voice to every call, on every instance, for the cache's TTL.
+        if (!fellBack) {
+            cache.put(r.provider().name(), r.lang(), r.voiceName(), speech, pcm, r.style());
+        }
         return pcm;
     }
 
@@ -158,12 +167,20 @@ public class TtsRouter {
         } catch (RuntimeException e) {
             TtsProvider fallback = selector.findFallback(r.provider());
             if (fallback != null) {
-                log.warn("TTS streaming provider '{}' failed ({}), falling back to '{}' (batch)",
-                        r.provider().name(), e.getMessage(), fallback.name());
+                log.warn("TTS streaming provider '{}' failed ({}) after {} chunk(s), falling back to '{}' (batch)",
+                        r.provider().name(), e.getMessage(), chunks.size(), fallback.name());
                 try {
                     short[] fallbackPcm = fallback.synthesize(speech, r.lang(), null, EffectiveVoiceSettings.NONE);
-                    chunks.add(fallbackPcm);
+                    metrics.ttsFailover();
+                    // Played whole even if part of the primary's already went out: a repeated
+                    // opening is better than a sentence (an amount, a date) that never finishes.
+                    // Never cached — the primary's partial audio followed by the fallback's
+                    // whole sentence, filed under the primary's key, was what every later
+                    // call heard for this line.
                     onChunk.onChunk(fallbackPcm);
+                    metrics.ttsCacheMiss();
+                    metrics.ttsCharsSynthesized(speech.length());
+                    return; // the finally below stops the timer
                 } catch (RuntimeException fallbackEx) {
                     metrics.ttsError();
                     log.error("TTS fallback provider '{}' also failed: {}", fallback.name(), fallbackEx.getMessage());
@@ -213,6 +230,10 @@ public class TtsRouter {
                     chosen.id(), chosen.provider());
         }
         TtsProvider provider = selector.findForCall(settings.provider());
+        if (provider == null) {
+            // No provider by that name and no default either: say so, not a NullPointerException.
+            throw new ExternalServiceException(ErrorCode.TTS_PROVIDER_UNAVAILABLE, "tts", lang);
+        }
         return new Routed(provider, lang, null, settings);
     }
 
@@ -242,7 +263,7 @@ public class TtsRouter {
         if (voiceId == null || voiceId.isBlank()) {
             return null;
         }
-        TtsVoice voice = catalog.find(voiceId);
+        TtsVoice voice = ttsVoiceUseCase.find(voiceId);
         if (voice == null) {
             log.warn("Unknown TTS voice '{}' — using default routing", voiceId);
             return null;

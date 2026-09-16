@@ -7,7 +7,7 @@ import java.util.Map;
  *
  * <p>A campaign's facts arrive once, in the CSV that created its targets, and then age.
  * A list uploaded on Monday still says 1 500 000 so'm on Friday, and the bot says it —
- * to somebody who paid on Wednesday. The CRM overlay ({@code CallContextMapper#merge})
+ * to somebody who paid on Wednesday. The CRM overlay ({@code CallContextFactory#mergeCrmFacts})
  * covers the fields the CRM happens to model; this covers the rest, and covers companies
  * whose system of record is not a CRM this project has an adapter for.
  *

@@ -4,50 +4,46 @@ import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
-import uz.murodjon.robotcallv2.report.application.dto.DashboardSummaryResponse;
-import uz.murodjon.robotcallv2.report.domain.entity.*;
+import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
+import uz.murodjon.robotcallv2.report.application.dto.CallRow;
+import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
+import uz.murodjon.robotcallv2.report.domain.entity.CampaignStats;
+import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
+import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallHistoryEntry;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportedCall;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
 
 import java.util.List;
 
+/** The call list, one call, a campaign's and a route's figures, and the audit log. */
 public interface ReportUseCase {
 
-    CampaignStats campaign(long companyId, long id);
+    CampaignStats findCampaignStats(long companyId, long id);
 
-    PageableData<CallRow> campaignCalls(long companyId, long id, CallFilter filter);
+    PageableData<CallRow> findCampaignCalls(long companyId, long id, CallFilter filter);
 
-    PageableData<CallRow> calls(long companyId, CallFilter filter);
+    /**
+     * One page of calls. With {@link CallFilter#afterId()} set it is a keyset page: newest
+     * first below that id, and not counted — {@code totalElements} and {@code totalPages}
+     * come back as {@code -1}.
+     */
+    PageableData<CallRow> findCalls(long companyId, CallFilter filter);
 
     List<CallRow> exportCalls(long companyId, CallFilter filter);
 
-    BulkCallActionResult bulkAction(long companyId, BulkCallActionRequest request);
+    BulkCallActionResult applyBulkAction(long companyId, BulkCallActionRequest request);
 
-    CallDetail call(long companyId, long callId);
+    CallDetail findCallDetail(long companyId, long callId);
 
-    DownloadableFile recording(long companyId, long callId);
+    DownloadableFile findRecording(long companyId, long callId);
 
-    PageableData<AuditLog> auditLog(long companyId, AuditFilter filter);
+    PageableData<AuditLog> findAuditLog(long companyId, AuditFilter filter);
 
-    DashboardKpi dashboardKpi(long companyId, String from, String to, Long campaignId);
+    /** One page of calls without the total count — for a short list such as search results. */
+    List<ReportedCall> findRecentCalls(long companyId, CallFilter filter);
 
-    List<DashboardBucket> dashboardTimeseries(long companyId, String from, String to, Long campaignId);
+    List<PhoneCallHistoryEntry> findCallsForPhone(long companyId, String phone, int limit);
 
-    List<DashboardBucket> dynamics(long companyId, String from, String to, Long campaignId, Long scenarioId,
-                                   Boolean escalated);
-
-    List<DashboardOutcome> dashboardOutcomes(long companyId, String from, String to, Long campaignId);
-
-    List<HourlyHeatmapCell> hourlyHeatmap(long companyId, String from, String to, Long campaignId);
-
-    List<CampaignComparisonRow> campaignComparison(long companyId, String from, String to, List<Long> campaignIds);
-
-    List<DurationHistogramBucket> durationHistogram(long companyId, String from, String to, Long campaignId);
-
-    List<FunnelStage> funnel(long companyId, String from, String to, Long campaignId);
-
-    ReportSummary summary(long companyId, String from, String to, Long campaignId);
-
-    DashboardSummaryResponse dashboardSummary(long companyId, String range, String from, String to,
-                                              Long campaignId, Long scenarioId);
+    InboundRouteStats findInboundRouteStats(long companyId, long inboundRouteId);
 }

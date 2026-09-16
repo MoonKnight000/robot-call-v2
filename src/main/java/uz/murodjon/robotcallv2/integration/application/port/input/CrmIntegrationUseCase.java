@@ -1,9 +1,11 @@
 package uz.murodjon.robotcallv2.integration.application.port.input;
 
 import uz.murodjon.robotcallv2.integration.application.dto.AuthorizeUrlResponse;
+import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmCatalogEntry;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 
 import java.net.URI;
 import java.util.List;
@@ -11,11 +13,17 @@ import java.util.Optional;
 
 public interface CrmIntegrationUseCase {
 
-    List<CrmCatalogEntry> catalog();
+    List<CrmCatalogEntry> findCatalog();
 
     CrmIntegrationRow findByCompanyId(long companyId);
 
     CrmIntegrationRow connect(long companyId, ConnectIntegrationRequest request);
+
+    /**
+     * Connects amoCRM, Kommo or Bitrix24 by account address and token, replacing whatever
+     * the company was connected to. The address must be a public {@code https} one.
+     */
+    CrmIntegrationRow connectAccount(long companyId, ConnectCrmAccountRequest request);
 
     AuthorizeUrlResponse buildAuthorizeUrl(long companyId);
 
@@ -30,7 +38,15 @@ public interface CrmIntegrationUseCase {
      */
     URI handleCallback(String code, String state);
 
-    Optional<String> currentAccessToken(long companyId);
+    /** The company's Uysot OAuth token, refreshed when due; never another provider's token. */
+    Optional<String> findCurrentAccessToken(long companyId);
+
+    /**
+     * How the call pipeline reaches this company's CRM, decrypted: the provider it chose
+     * and, once connected, the address and token. For Uysot the address is platform
+     * configuration and is left {@code null}. Empty when the company has no integration.
+     */
+    Optional<CrmConnection> findConnection(long companyId);
 
     void disconnect(long companyId);
 }

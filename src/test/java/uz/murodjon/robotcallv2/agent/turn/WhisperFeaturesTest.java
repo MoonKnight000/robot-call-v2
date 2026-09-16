@@ -2,6 +2,13 @@ package uz.murodjon.robotcallv2.agent.turn;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 import static org.assertj.core.api.Assertions.*;
 
 /**
@@ -126,5 +133,27 @@ class WhisperFeaturesTest {
 
         assertThat(features.extract(pcm, pcm.length))
                 .isEqualTo(features.extract(pcm, pcm.length));
+    }
+
+    /** One instance serves every call at once (SmartTurnDetector), so extract must not share scratch. */
+    @Test
+    void concurrentCallsGetTheSameFeaturesAsOneCallAlone() throws Exception {
+        WhisperFeatures features = features();
+        short[] low = tone(300, 128000);
+        short[] high = tone(3000, 128000);
+        float[] expectedLow = features.extract(low, low.length);
+        float[] expectedHigh = features.extract(high, high.length);
+
+        try (ExecutorService pool = Executors.newFixedThreadPool(8)) {
+            List<Future<Boolean>> results = new ArrayList<>();
+            for (int i = 0; i < 32; i++) {
+                boolean useLow = i % 2 == 0;
+                results.add(pool.submit(() -> Arrays.equals(
+                        features.extract(useLow ? low : high, 128000), useLow ? expectedLow : expectedHigh)));
+            }
+            for (Future<Boolean> result : results) {
+                assertThat(result.get()).isTrue();
+            }
+        }
     }
 }

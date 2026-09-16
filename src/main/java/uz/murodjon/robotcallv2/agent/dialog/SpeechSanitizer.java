@@ -132,7 +132,7 @@ public final class SpeechSanitizer {
      * <p>Every other check here is a whole-string verdict, so one stray character makes an
      * otherwise good sentence neither speakable nor droppable: a real call ended with
      * "Xayr, salomat bo'ling!읍", and the Hangul syllable reached both the synthesizer and
-     * the stored transcript. Applied where model text enters ({@code TurnRunner.textOf},
+     * the stored transcript. Applied where model text enters ({@code LlmTurnClient.extractText},
      * {@code DialogTools.recordReply}), so the transcript and the audio see the same line.
      */
     public static String stripUnspeakableCharacters(String text) {

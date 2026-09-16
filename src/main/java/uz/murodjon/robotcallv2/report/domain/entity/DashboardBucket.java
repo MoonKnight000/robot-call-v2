@@ -11,7 +11,8 @@ import java.time.Instant;
  *
  * @param answered  connected calls (had a measured duration)
  * @param noAnswer  attempts that ended {@code NO_ANSWER}
- * @param error     attempts that ended {@code FAILED}
+ * @param error     attempts that ended {@code FAILED} or {@code CARRIER_REJECTED}
+ * @param avgDurationSec average length of the bucket's answered calls; null when none was answered
  */
 public record DashboardBucket(
         Instant bucketStart,

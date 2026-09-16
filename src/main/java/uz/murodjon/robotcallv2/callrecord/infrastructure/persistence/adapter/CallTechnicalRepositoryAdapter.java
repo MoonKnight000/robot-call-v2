@@ -48,6 +48,10 @@ public class CallTechnicalRepositoryAdapter implements CallTechnicalRepository {
         entity.setMaxTurnLatencyMs(technical.maxTurnLatencyMs());
         entity.setAvgLlmLatencyMs(technical.avgLlmLatencyMs());
         entity.setMaxLlmLatencyMs(technical.maxLlmLatencyMs());
+        entity.setRtpPacketsReceived(technical.rtpPacketsReceived());
+        entity.setRtpPacketsLost(technical.rtpPacketsLost());
+        entity.setRtpJitterMs(technical.rtpJitterMs());
+        entity.setRtpMos(technical.rtpMos());
         entity.setCreatedAt(Instant.now());
         callTechnicalJpaRepository.save(entity);
         return true;

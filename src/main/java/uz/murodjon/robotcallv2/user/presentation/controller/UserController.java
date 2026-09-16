@@ -35,7 +35,7 @@ public interface UserController {
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PutMapping("/{id}/role")
     ResponseEntity<ResponseData<UserRow>> changeRole(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                     @Valid @RequestBody UpdateUserRoleRequest r);
+                                                     @Valid @RequestBody UpdateUserRoleRequest request);
 
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PutMapping("/{id}/block")

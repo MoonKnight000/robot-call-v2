@@ -13,5 +13,5 @@ public interface NotificationSettingsRepository {
 
     NotificationSettings save(long companyId, List<NotificationChannel> channelRows, List<NotificationMatrixEntry> matrixRows);
 
-    List<NotificationChannel> enabledChannels(long companyId, NotificationType type);
+    List<NotificationChannel> findEnabledChannelsByCompanyIdAndType(long companyId, NotificationType type);
 }

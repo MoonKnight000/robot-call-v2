@@ -28,16 +28,26 @@ import java.util.regex.Pattern;
  * written), a {@code date}-type fact's year, or a run of digits embedded in a
  * {@code string}-type fact (e.g. a contract number).
  *
- * <p>Figures spelled out in words are checked too ({@link UzbekNumberParser}). That used
- * to be a documented gap, on the reasoning that a prompt which gives sums as digits gets
- * them back as digits. It holds for the cascade pipeline and not for a realtime one:
- * there the guard reads a transcript of speech, so the form is whatever the engine
- * happened to say, and the "write sums as digits" rule the cascade prompt carries exists
- * to serve a TTS step that a realtime call does not have.
+ * <p>The facts are not the only place a figure may come from. A company tool's answer is
+ * the other ({@link DialogOutcomeSink#recordToolFigures}): a shop's catalog says the price,
+ * its order endpoint the order number, and an agent reading them back states what it was
+ * given (UNIVERSAL-OPERATOR-PLAN A.3). The rule stays the same — every figure said has to
+ * have come from somewhere — only the somewhere is wider. What the guard cannot tell apart
+ * is an endpoint that echoes back a figure the model sent it; counting only a successful
+ * answer narrows that, and the rest is on whoever configured the tool.
  *
- * <p>Known limit: only Uzbek number words are read. A sum spelled out in Russian on a
- * {@code ru-RU} call still passes — the check is a net under the prompt, not a
- * replacement for it.
+ * <p>Figures spelled out in words are checked too ({@link UzbekNumberParser},
+ * {@link RussianNumberParser}). That used to be a documented gap, on the reasoning that a
+ * prompt which gives sums as digits gets them back as digits. It holds for the cascade
+ * pipeline and not for a realtime one: there the guard reads a transcript of speech, so
+ * the form is whatever the engine happened to say, and the "write sums as digits" rule
+ * the cascade prompt carries exists to serve a TTS step that a realtime call does not have.
+ *
+ * <p>Dates and day counts are deliberately <b>not</b> checked. A payment date is usually
+ * one the caller proposed, so it cannot be among the facts, and the bot has to read it
+ * back to confirm it; "3 kun ichida" or "15-sana" are conversational numbers below
+ * {@link #MONEY_SCALE}. Checking them would block ordinary confirmations while catching
+ * nothing the §4.4 rule is about — a wrong sum or an invented discount.
  */
 public final class FactGuard {
 
@@ -63,20 +73,36 @@ public final class FactGuard {
      */
     private static final Pattern NUMBER = Pattern.compile("\\d[\\d\\s.,\\u00A0']*\\d|\\d");
 
+    /**
+     * A percentage, in digits: "20%", "20 %", "20 foiz", "20 процентов". Checked at any
+     * scale, unlike other numbers — a discount the company never offered is exactly the
+     * claim PROJECT.md §4.4 forbids, and "20" alone is too small to be caught as money.
+     * Day counts and dates stay unchecked: "3 kun ichida" is ordinary speech, and a date
+     * the caller proposed cannot be in the facts.
+     */
+    private static final Pattern PERCENT = Pattern.compile(
+            "(\\d+(?:[.,]\\d+)?)\\s*(?:%|foiz|protsent|процент)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
     private FactGuard() {
     }
 
     /**
-     * Money-scale numbers in {@code text} that do not appear in {@code context}'s facts,
-     * per {@code scenario}'s factSchema (ROADMAP A.3).
+     * Money-scale numbers in {@code text} that are neither in {@code context}'s facts, per
+     * {@code scenario}'s factSchema (ROADMAP A.3), nor among the figures this call's company
+     * tools answered with.
      *
+     * @param toolFigures what company tools answered with on this call; empty when none did
      * @return the offending numbers as written, in order; empty when the text is safe
      */
-    public static List<String> violations(String text, ScenarioDefinition scenario, CallContext context) {
+    public static List<String> violations(String text, ScenarioDefinition scenario, CallContext context,
+                                          Collection<BigDecimal> toolFigures) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
         Set<BigDecimal> allowed = allowedValues(scenario, context);
+        if (toolFigures != null) {
+            allowed.addAll(toolFigures);
+        }
         List<String> bad = new ArrayList<>();
         Matcher m = NUMBER.matcher(text);
         while (m.find()) {
@@ -88,12 +114,49 @@ public final class FactGuard {
         }
         // ...and the same figures spelled out. Both paths end in the same three filters,
         // because "besh million" and "5000000" are the same claim to the person hearing it.
-        for (SpelledNumber spelled : UzbekNumberParser.findAll(text)) {
+        for (SpelledNumber spelled : spelledNumbers(text)) {
             if (isUnexplainedClaim(spelled.value(), allowed)) {
                 bad.add(spelled.words());
             }
         }
+        Matcher percent = PERCENT.matcher(text);
+        while (percent.find()) {
+            BigDecimal value = new BigDecimal(percent.group(1).replace(',', '.'));
+            if (allowed.stream().noneMatch(a -> a.compareTo(value) == 0)) {
+                bad.add(percent.group().trim());
+            }
+        }
         return bad;
+    }
+
+    /**
+     * Every number {@code text} states, however it is written — what a tool's text answer
+     * puts in front of the model, and so what it may then say
+     * ({@link DialogOutcomeSink#recordToolFigures}).
+     */
+    static List<BigDecimal> figuresIn(String text) {
+        List<BigDecimal> figures = new ArrayList<>();
+        if (text == null || text.isBlank()) {
+            return figures;
+        }
+        Matcher m = NUMBER.matcher(text);
+        while (m.find()) {
+            BigDecimal value = parse(m.group());
+            if (value != null) {
+                figures.add(value);
+            }
+        }
+        for (SpelledNumber spelled : spelledNumbers(text)) {
+            figures.add(spelled.value());
+        }
+        return figures;
+    }
+
+    /** Figures spelled out in words, in either language a call is held in. */
+    private static List<SpelledNumber> spelledNumbers(String text) {
+        List<SpelledNumber> spelled = new ArrayList<>(UzbekNumberParser.findAll(text));
+        spelled.addAll(RussianNumberParser.findAll(text));
+        return spelled;
     }
 
     /** Money-scale, not a year, and not one of the figures this call was given. */

@@ -20,7 +20,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       moving it to their ear. Speak into that gap and the caller
  *                       joins mid-greeting — "assalom" is already gone and only
  *                       "…alaykum" is heard. 0 speaks immediately
- * @param maxTurns       hard cap on conversation turns before auto-closing (§4.4)
+ * @param maxTurns       hard cap on conversation turns before auto-closing (§4.4); 0 disables
+ *                       it, on both pipelines
+ * @param languageSwitchFinals how many finals in a row the detector must hear in the other
+ *                       language before the call switches to it; 1 switches on the first
  * @param maxCallSeconds hard cap on call duration in seconds before auto-closing (§4.4)
  * @param streaming      consume the LLM reply as a token stream and synthesize it one
  *                       sentence at a time (§7.2). This is what keeps the turnaround
@@ -33,13 +36,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       stops the wait sounding like a dropped line, which is what a
  *                       caller actually reacts to. Only ever fires when the turn is
  *                       genuinely slow, never on the greeting, and never on consecutive
- *                       turns. 0 disables it
+ *                       turns. 0 disables it, which is where it stands: while the
+ *                       framework was running tools in its own loop a turn took 5–11s, so
+ *                       five turns in seven crossed 1800 ms and the caller heard "Bir
+ *                       soniya." before nearly every reply — a canned line ahead of every
+ *                       answer is worse than the silence it hides. Set a value again only
+ *                       when the turnaround metric shows a genuinely slow turn
  * @param backchannelAfterMs how long a caller may talk before the bot says "aha" under
  *                       them to show it is still listening. A person does this every few
  *                       seconds; a line that stays silent through a long explanation reads
  *                       as nobody being there, and callers stop and say "alo?". It is not
  *                       a turn and never enters the history — see
- *                       {@code SpeechOutput#speakBackchannel}. 0 disables it
+ *                       {@code SpeechOutput#speakBackchannel}. 0 disables it, and that is
+ *                       where it stands until it has been listened to on real recordings:
+ *                       on a speakerphone it can come back through the caller's own
+ *                       microphone and read as a barge-in
  * @param backchannelVolumePercent how loud that is, as a share of the normal speaking
  *                       level. At full volume it is not a backchannel, it is the bot
  *                       talking over the caller
@@ -67,7 +78,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       that says something else cancels it and the turn runs as it always
  *                       did — but a cancelled guess is still billed, so it is only worth
  *                       having while most of them land. Watch
- *                       voice.llm.speculation.hit against .started. Streaming only
+ *                       voice.llm.speculation.hit against .started, and the
+ *                       "speculation: hit/miss" log lines. Streaming only.
+ *                       <p>On since the recognizer went single-language
+ *                       ({@code stt.detect-languages: uz-UZ}). It was off before that
+ *                       because a multilingual (uz-UZ + ru-RU) stream returned Russian
+ *                       interims against an Uzbek final — "распутай" guessed against
+ *                       "yahshi bo'lsa keyingi oydan to'la boshlayman" — so no guess was
+ *                       ever a prefix of what the caller actually said. What it buys is
+ *                       the endpointing silence: on a recorded call 1.1–2.3s passed
+ *                       between the caller's last word and the final, and none of it was
+ *                       being used
  * @param preemptiveTts  carry the guess one stage further: synthesize its first sentence
  *                       into the TTS cache while the caller is still finishing, so a turn
  *                       that adopts it speaks from a cache hit instead of paying a
@@ -75,7 +96,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       spoken from here — the audio only sits in the cache, and the turn's
  *                       own fact guard still sees the sentence. Costs characters on a
  *                       miss, so it is only worth having on top of a healthy speculation
- *                       hit rate. Requires {@code preemptive}
+ *                       hit rate. Requires {@code preemptive}.
+ *                       <p>On. Without it speculation stopped at the text and the caller
+ *                       still paid a full Yandex round trip ({@code stage=tts_ttfb},
+ *                       300–600 ms) after the final — the last thing standing between them
+ *                       and the first word, and paid on every turn rather than only on a
+ *                       miss. A wasted synthesis costs characters; the wait costs the
+ *                       call. Watch voice.tts.chars.synthesized against
+ *                       voice.tts.chars.saved: if the miss rate makes this expensive the
+ *                       fix is the hit rate ({@code preemptiveMinChars}, the recognizer's
+ *                       interims), not turning it back off
  * @param preemptiveMinChars how much interim text is worth guessing from. The first
  *                       syllables of an utterance are revised constantly and are almost
  *                       never what the final says, so guessing there buys a cancelled
@@ -100,11 +130,23 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       one of them. Blank keeps every turn on the company's configured
  *                       model. This is the installation default: an agent that names its
  *                       own {@code fastLlmModel} is answered on that instead
- *                       ({@code TurnRunner#fastModelOf})
+ *                       ({@code LlmTurnClient#resolveFastModel}). What to watch: a smaller model
+ *                       calls tools less reliably, and these turns still have to fire
+ *                       {@code transitionTo} — a call that stops moving through its stages
+ *                       is this setting. A model id the API key cannot reach fails safely:
+ *                       the turn is retried on the configured model and logs
+ *                       "fast model '…' failed" ({@code LlmTurnClient#retryTurn})
  * @param fastModelMaxWords how short "almost nothing" is. Above this the caller is saying
  *                       something, and something is what the larger model is for. Length
- *                       is not the only test — a short answer that names a number goes to
- *                       the full model whatever its length ({@code TurnRunner#modelFor})
+ *                       is not the only test — a short answer that names a number
+ *                       ("yetti", "20") goes to the full model whatever its length, since
+ *                       that is the turn that sets the promised date
+ *                       ({@code LlmTurnClient#selectModel}). Set from what turns actually
+ *                       contain: on a measured call the one turn under three words
+ *                       answered in 1.1s and the three that were not took 2.4–6.2s on the
+ *                       full model, while real caller turns run 4–7 words ("keyingi oyda
+ *                       oktabrdan atib to'layman") — a three-word cut applied the
+ *                       optimisation to almost nothing
  * @param stateScopedTools send only the tools the current FSM state can legitimately
  *                       use, instead of all of them on every turn. Tool declarations
  *                       are re-billed with each request, and a tool that cannot fire
@@ -132,8 +174,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       turnaround and is the part most likely to be wrong. Off by default:
  *                       it takes the turn away from the scenario, so the wording has to be
  *                       checked against the company that is actually running
- * @param knowledgePassages how many passages from the agent's knowledge sources are put in
- *                       front of a turn ({@code useRag} agents only). Defaults to 3
+ * @param knowledgePassages how many passages from the agent's knowledge sources (uploaded
+ *                       documents and links) are put in front of a turn ({@code useRag}
+ *                       agents only). Three is about 2700 characters, past which the
+ *                       answer gets buried among near-misses — and every extra passage is
+ *                       paid for on every turn
  * @param lowConfidenceThreshold recognition confidence below which the turn is told to
  *                       repeat what it heard back before acting on it. A misheard date
  *                       that reaches {@code recordPaymentPromise} is a promise filed for a
@@ -152,7 +197,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       figure by the time anything can read it, and the caller who just
  *                       heard a demand for money they do not owe needs a person, not a
  *                       retry. 1 escalates on the first; 0 disables escalation and
- *                       leaves the violation logged and flagged on the attempt
+ *                       leaves the violation logged and flagged on the attempt. dialog.yml
+ *                       sets 2: without a key the record bound 0 and never escalated
  * @param maxTokensPerCall cumulative LLM tokens one call may spend before it is closed
  *                       politely. Bounds the cost of a call that loops or refuses to
  *                       end. 0 disables the budget
@@ -168,6 +214,7 @@ public record DialogProperties(
         String ttsVoice,
         int greetingDelayMs,
         int maxTurns,
+        int languageSwitchFinals,
         int maxCallSeconds,
         boolean streaming,
         int fillerDelayMs,

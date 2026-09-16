@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
@@ -43,6 +45,7 @@ public record CreateAiAgentRequest(
         Double voiceStability,
         Double voiceSimilarityBoost,
         Map<String, String> languageVoices,
+        Map<String, Double> languageVoiceSpeeds,
         AgentPersona persona,
         @Size(max = 120) String llmModel,
         @Size(max = 120) String fastLlmModel,
@@ -53,6 +56,7 @@ public record CreateAiAgentRequest(
         Boolean zeroPiiRetention,
         Boolean storeCallAudio,
         Integer conversationRetentionDays,
+        RealtimeFactsDelivery realtimeFactsDelivery,
         Integer maxConversationDurationSeconds,
         Integer silenceEndCallTimeoutSeconds,
         Integer turnTimeoutSeconds,
@@ -75,6 +79,7 @@ public record CreateAiAgentRequest(
         String midCallSmsTemplate,
         String transferPhoneNumber,
         String transferMessage,
+        Long transferQueueId,
         InterruptionSensitivity interruptionSensitivity,
         Integer endpointingDelayMs,
         Set<Long> sipTrunkIds,

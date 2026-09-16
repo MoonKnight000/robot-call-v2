@@ -8,25 +8,32 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
-import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
-import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
-import uz.murodjon.robotcallv2.crm.application.service.CrmClient;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
-import uz.murodjon.robotcallv2.dialer.application.mapper.CallContextMapper;
-import uz.murodjon.robotcallv2.dialer.infrastructure.config.RabbitConfig;
-import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
-import uz.murodjon.robotcallv2.memory.application.service.ClientMemoryService;
+import uz.murodjon.robotcallv2.dialer.domain.service.CallContextFactory;
+import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
-import uz.murodjon.robotcallv2.scenario.application.service.FactWebhookClient;
-import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
+import uz.murodjon.robotcallv2.scenario.application.port.input.FactWebhookUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
+
+import java.time.Instant;
 
 /**
  * Processes a single {@link CallTask} dispatched by {@link DialerService} over the
@@ -39,40 +46,46 @@ public class CallTaskConsumer {
 
     private final AriService ariService;
     private final OutboundCallRegistry registry;
-    private final CampaignService campaignService;
-    private final ScenarioService scenarioService;
-    private final CrmClient crmClient;
-    private final AuditService audit;
+    private final CampaignUseCase campaignUseCase;
+    private final CampaignTargetUseCase campaignTargetUseCase;
+    private final CrmUseCase crmUseCase;
+    private final AuditUseCase audit;
     private final DialerState dialerState;
-    private final DoNotCallRepository doNotCallRepository;
-    private final CallRecordService callRecordService;
-    private final ClientMemoryService clientMemoryService;
-    private final FactWebhookClient factWebhookClient;
-    private final AiAgentUseCase aiAgents;
+    private final DoNotCallUseCase doNotCallUseCase;
+    private final CallAttemptUseCase callAttemptUseCase;
+    private final ClientMemoryUseCase clientMemoryUseCase;
+    private final FactWebhookUseCase factWebhookUseCase;
+    private final AiAgentUseCase aiAgentUseCase;
     private final CallBillingUseCase callBilling;
+    /** Whose dial window the task is re-checked against at the last moment. */
+    private final DialerService dialerService;
+    private final CompanyUseCase companyUseCase;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
-                            CampaignService campaignService, ScenarioService scenarioService,
-                            CrmClient crmClient, AuditService audit, DialerState dialerState,
-                            DoNotCallRepository doNotCallRepository, CallRecordService callRecordService,
-                            ClientMemoryService clientMemoryService, FactWebhookClient factWebhookClient,
-                            AiAgentUseCase aiAgents, CallBillingUseCase callBilling) {
+                            CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
+                            CrmUseCase crmUseCase, AuditUseCase audit, DialerState dialerState,
+                            DoNotCallUseCase doNotCallUseCase, CallAttemptUseCase callAttemptUseCase,
+                            ClientMemoryUseCase clientMemoryUseCase, FactWebhookUseCase factWebhookUseCase,
+                            AiAgentUseCase aiAgentUseCase, CallBillingUseCase callBilling, DialerService dialerService,
+                            CompanyUseCase companyUseCase) {
+        this.dialerService = dialerService;
+        this.companyUseCase = companyUseCase;
         this.ariService = ariService;
         this.registry = registry;
-        this.campaignService = campaignService;
-        this.scenarioService = scenarioService;
-        this.crmClient = crmClient;
+        this.campaignUseCase = campaignUseCase;
+        this.campaignTargetUseCase = campaignTargetUseCase;
+        this.crmUseCase = crmUseCase;
         this.audit = audit;
         this.dialerState = dialerState;
-        this.doNotCallRepository = doNotCallRepository;
-        this.callRecordService = callRecordService;
-        this.clientMemoryService = clientMemoryService;
-        this.factWebhookClient = factWebhookClient;
-        this.aiAgents = aiAgents;
+        this.doNotCallUseCase = doNotCallUseCase;
+        this.callAttemptUseCase = callAttemptUseCase;
+        this.clientMemoryUseCase = clientMemoryUseCase;
+        this.factWebhookUseCase = factWebhookUseCase;
+        this.aiAgentUseCase = aiAgentUseCase;
         this.callBilling = callBilling;
     }
 
-    @RabbitListener(queues = RabbitConfig.CALL_TASK_QUEUE)
+    @RabbitListener(queues = CallTask.QUEUE)
     public void onMessage(CallTask task) {
         process(task, dialerState);
     }
@@ -84,32 +97,61 @@ public class CallTaskConsumer {
         boolean originateReached = false;
         try {
             // Guard: check DNC one final time before originating
-            if (doNotCallRepository.isBlocked(task.companyId(), task.phone())) {
+            if (doNotCallUseCase.contains(task.companyId(), task.phone())) {
                 log.info("Target {} ({}) is in Do-Not-Call list — skipping call origination",
-                        task.targetId(), task.phone());
-                state.release(task.companyId());
+                        task.targetId(), PhoneMasker.mask(task.phone()));
+                state.release(task.companyId(), task.campaignId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
-                callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
+                callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.DO_NOT_CALL, "number is in the do-not-call list");
-                campaignService.applyOutcome(task.companyId(), task.targetId(), Disposition.DO_NOT_CALL);
+                campaignTargetUseCase.applyOutcome(task.companyId(), task.targetId(), Disposition.DO_NOT_CALL);
+                return;
+            }
+
+            // The dialer only claims for active companies, but a task queued before a suspension
+            // would still be dialled without this.
+            Company company = companyUseCase.findById(task.companyId());
+            if (company != null && company.status() == CompanyStatus.SUSPENDED) {
+                log.info("Target {} ({}) not dialled: company {} is suspended", task.targetId(),
+                        PhoneMasker.mask(task.phone()), task.companyId());
+                state.release(task.companyId(), task.campaignId());
+                callBilling.releaseReservation(task.companyId(), task.targetId());
+                campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now());
+                return;
+            }
+
+            // Re-read at the last moment: the task may have waited in the queue while the
+            // campaign was paused or finished, or while its dial window closed. Nothing is
+            // dialled, so the claim goes back — the attempt claimDue counted included —
+            // rather than being spent on a call that was never placed.
+            Campaign campaign = task.campaignId() != null
+                    ? campaignUseCase.findCampaign(task.companyId(), task.campaignId()) : null;
+            if (campaign != null && (campaign.status() != CampaignStatus.ACTIVE
+                    || !dialerService.isWithinDialWindow(campaign))) {
+                log.info("Target {} ({}) not dialled: campaign {} is {}{}", task.targetId(),
+                        PhoneMasker.mask(task.phone()), campaign.id(), campaign.status(),
+                        campaign.status() == CampaignStatus.ACTIVE ? " but outside its dial window" : "");
+                state.release(task.companyId(), task.campaignId());
+                callBilling.releaseReservation(task.companyId(), task.targetId());
+                campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now());
                 return;
             }
 
             // Ahead of everything else, because it decides the script the facts are read
             // against and the voice the call is warmed up for.
-            AiAgent agent = aiAgents.requireAgent(task.companyId(), task.aiAgentId());
-            Scenario scenario = aiAgents.resolveScenario(task.companyId(), agent);
-            CrmClientSnapshot crm = crmClient.fetchClient(task.companyId(), task.clientId());
-            ClientMemory memory = clientMemoryService.findByCompanyIdAndPhone(task.companyId(), task.phone());
-            CallContext context = CallContextMapper.merge(
-                    CallContextMapper.fromJson(task.contextData(), null, scenario.definition().factSchema()), crm)
+            AiAgent agent = aiAgentUseCase.requirePublishedAgent(task.companyId(), task.aiAgentId());
+            Scenario scenario = aiAgentUseCase.resolveScenario(task.companyId(), agent);
+            CrmClientSnapshot crm = crmUseCase.fetchClient(task.companyId(), task.clientId());
+            ClientMemory memory = clientMemoryUseCase.findByCompanyIdAndPhone(task.companyId(), task.phone());
+            CallContext context = CallContextFactory.mergeCrmFacts(
+                    CallContextFactory.readContextData(task.contextData(), null, scenario.definition().factSchema()), crm)
                     .withMemory(memory);
             // Last and freshest. Deliberately here rather than once the call is up: the
             // number has not been dialled yet, so a slow endpoint costs this call's place in
             // the queue and not a silence the person who answered has to sit through.
             if (scenario.definition().factWebhook() != null) {
-                context = CallContextMapper.overlayJson(context,
-                        factWebhookClient.fetchFacts(scenario.definition().factWebhook(),
+                context = CallContextFactory.overlayWebhookFacts(context,
+                        factWebhookUseCase.fetchFacts(scenario.definition().factWebhook(),
                                 FactWebhookRequest.outbound(task.phone(), task.clientId(), task.campaignId())),
                         scenario.definition().factSchema());
             }
@@ -121,10 +163,16 @@ public class CallTaskConsumer {
                     ? task.ttsVoiceOverride()
                     : agent.voiceFor(language);
 
+            // The target's own opening line (agentOverrides.firstMessage, NEXT-PLAN A.8).
+            String firstMessage = CallContextFactory.readFirstMessageOverride(task.contextData());
+            if (firstMessage != null) {
+                agent = agent.withFirstMessage(firstMessage);
+            }
+
             OutboundCall outboundCall = new OutboundCall(
                     task.campaignId(), task.targetId(), task.clientId(), task.phone(),
                     language, voice, context, agent, task.companyId(), task.sipTrunkId(),
-                    task.variantId(), task.promptOverride());
+                    task.variantId(), task.promptOverride(), task.pipelineModeOverride());
 
             // Originate with atomic registry pre-arming to eliminate StasisStart race condition
             originateReached = true;
@@ -135,17 +183,18 @@ public class CallTaskConsumer {
             log.info("Originated target {} -> channel {} (lang={}, trunkId={})",
                     task.targetId(), channelId, language, task.sipTrunkId());
         } catch (Exception e) {
-            log.warn("Originate failed for target {} ({}): {}", task.targetId(), task.phone(), e.getMessage());
-            state.release(task.companyId());
+            log.warn("Originate failed for target {} ({}): {}", task.targetId(), PhoneMasker.mask(task.phone()),
+                    e.getMessage());
+            state.release(task.companyId(), task.campaignId());
             // The hold is given back either way: a call that never reached Asterisk has no
             // finalizer to settle it, and one whose originate threw leaves no attempt row
             // to charge against.
             callBilling.releaseReservation(task.companyId(), task.targetId());
             if (!originateReached) {
-                callRecordService.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
+                callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.FAILED, "call preparation failed: " + e.getMessage());
             }
-            campaignService.applyOutcome(task.companyId(), task.targetId(), Disposition.FAILED);
+            campaignTargetUseCase.applyOutcome(task.companyId(), task.targetId(), Disposition.FAILED);
         }
     }
 

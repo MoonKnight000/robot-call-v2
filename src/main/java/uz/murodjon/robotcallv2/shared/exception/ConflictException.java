@@ -12,4 +12,9 @@ public class ConflictException extends AppException {
     public ConflictException(ErrorCode code, Object... args) {
         super(HttpStatus.CONFLICT, code, code.format(args));
     }
+
+    /** @param cause what broke underneath — kept for the server log, never shown to the caller */
+    public ConflictException(ErrorCode code, Throwable cause, Object... args) {
+        super(HttpStatus.CONFLICT, code, code.format(args), cause);
+    }
 }

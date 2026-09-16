@@ -25,6 +25,9 @@ import java.util.Map;
  *                   not drop it. Synthesis is bursty — a call can go a minute between
  *                   requests — and a reconnect costs a TCP+TLS handshake inside a live
  *                   turn, exactly where the §1.3 budget cannot absorb it. 0 = no keepalive
+ * @param requestTimeoutMs gRPC deadline on one synthesis. The blocking stub waits forever
+ *                   without one, and a sentence that hung held the turn — every later
+ *                   caller utterance deferred behind it — until the ghost reaper. 0 = none
  */
 public record YandexTtsProperties(
         String apiKey,
@@ -35,6 +38,7 @@ public record YandexTtsProperties(
         String host,
         int port,
         int sampleRate,
-        int keepAliveSeconds
+        int keepAliveSeconds,
+        int requestTimeoutMs
 ) {
 }

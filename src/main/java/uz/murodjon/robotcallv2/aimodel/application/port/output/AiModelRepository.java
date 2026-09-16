@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.aimodel.application.port.output;
 
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 

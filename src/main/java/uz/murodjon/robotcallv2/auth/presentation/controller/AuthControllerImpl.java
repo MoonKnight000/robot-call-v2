@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.auth.application.dto.*;
 import uz.murodjon.robotcallv2.auth.application.port.input.AuthUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.security.RefreshTokenCookie;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -19,40 +20,45 @@ public class AuthControllerImpl implements AuthController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<LoginResponse>> login(LoginRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(authUseCase.login(request)));
+    public ResponseEntity<ResponseData<LoginResponse>> login(LoginRequest request, String clientAddress) {
+        return RefreshTokenCookie.respondWith(authUseCase.login(request, clientAddress));
     }
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> activate(ActivateRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(authUseCase.activate(request)));
+        return RefreshTokenCookie.respondWith(authUseCase.activate(request));
     }
 
     @Override
     public ResponseEntity<ResponseData<Void>> forgotPassword(ForgotPasswordRequest request) {
-        authUseCase.forgotPassword(request);
+        authUseCase.requestPasswordReset(request);
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> resetPassword(ResetPasswordRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(authUseCase.resetPassword(request)));
+        return RefreshTokenCookie.respondWith(authUseCase.resetPassword(request));
     }
 
     @Override
-    public ResponseEntity<ResponseData<LoginResponse>> refresh(RefreshTokenRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(authUseCase.refresh(request)));
+    public ResponseEntity<ResponseData<LoginResponse>> refresh(RefreshTokenRequest request, String refreshTokenCookie) {
+        return RefreshTokenCookie.respondWith(authUseCase.refresh(request, refreshTokenCookie));
     }
 
     @Override
     public ResponseEntity<ResponseData<Void>> logout() {
         authUseCase.logout();
-        return ResponseEntity.ok(ResponseData.ok(null));
+        return RefreshTokenCookie.respondCleared();
     }
 
     @Override
     public ResponseEntity<ResponseData<CurrentUserResponse>> me(long companyId) {
-        return ResponseEntity.ok(ResponseData.ok(authUseCase.me(companyId)));
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.findCurrentUser(companyId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<StreamTicketResponse>> streamTicket(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(authUseCase.createStreamTicket(companyId)));
     }
 
     @Override

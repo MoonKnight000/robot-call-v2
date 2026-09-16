@@ -145,7 +145,7 @@ final class UzbekNumberParser {
      * smaller question of whether a number was mentioned, so it can reuse the same
      * vocabulary table without inheriting the quantity rules built on top of it.
      *
-     * <p>Used to keep such a turn off the fast model ({@code TurnRunner#modelFor}), not to
+     * <p>Used to keep such a turn off the fast model ({@code LlmTurnClient#selectModel}), not to
      * check a claim — a false positive costs one slower turn and nothing else.
      */
     static boolean containsNumber(String text) {

@@ -2,14 +2,16 @@ package uz.murodjon.robotcallv2.contact.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactDataExport;
 import uz.murodjon.robotcallv2.contact.application.dto.ContactDetail;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactErasureResponse;
 import uz.murodjon.robotcallv2.contact.application.dto.ContactImportResult;
 import uz.murodjon.robotcallv2.contact.application.dto.CreateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.dto.UpdateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.port.input.ContactUseCase;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
-import uz.murodjon.robotcallv2.donotcall.application.dto.ContactDncResponse;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactDncResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -34,7 +36,7 @@ public class ContactControllerImpl implements ContactController {
 
     @Override
     public ResponseEntity<ResponseData<ContactDetail>> get(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(contactUseCase.detail(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.requireContactDetail(companyId, id)));
     }
 
     @Override
@@ -56,5 +58,15 @@ public class ContactControllerImpl implements ContactController {
     @Override
     public ResponseEntity<ResponseData<ContactDncResponse>> addToDoNotCall(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(contactUseCase.addToDoNotCall(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ContactDataExport>> exportData(long companyId, String phone) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.exportSubjectData(companyId, phone)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ContactErasureResponse>> eraseData(long companyId, String phone, boolean confirm) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.eraseSubjectData(companyId, phone, confirm)));
     }
 }

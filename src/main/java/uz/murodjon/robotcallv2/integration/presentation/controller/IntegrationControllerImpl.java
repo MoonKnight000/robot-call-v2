@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 import uz.murodjon.robotcallv2.integration.application.dto.AuthorizeUrlResponse;
+import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmCatalogEntry;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
@@ -24,7 +25,7 @@ public class IntegrationControllerImpl implements IntegrationController {
 
     @Override
     public ResponseEntity<ResponseData<List<CrmCatalogEntry>>> catalog() {
-        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.catalog()));
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.findCatalog()));
     }
 
     @Override
@@ -35,6 +36,12 @@ public class IntegrationControllerImpl implements IntegrationController {
     @Override
     public ResponseEntity<ResponseData<CrmIntegrationRow>> connect(long companyId, ConnectIntegrationRequest request) {
         return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.connect(companyId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CrmIntegrationRow>> connectAccount(long companyId,
+                                                                          ConnectCrmAccountRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.connectAccount(companyId, request)));
     }
 
     @Override

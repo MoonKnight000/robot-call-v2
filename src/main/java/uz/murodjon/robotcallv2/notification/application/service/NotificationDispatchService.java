@@ -2,40 +2,49 @@ package uz.murodjon.robotcallv2.notification.application.service;
 
 import org.springframework.stereotype.Service;
 
+import uz.murodjon.robotcallv2.notification.application.port.output.NotificationSenderPort;
 import uz.murodjon.robotcallv2.notification.application.port.output.NotificationSettingsRepository;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationChannel;
+import uz.murodjon.robotcallv2.notification.domain.enums.NotificationChannelType;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
-import uz.murodjon.robotcallv2.notification.infrastructure.request.adapter.NotificationEmailSender;
-import uz.murodjon.robotcallv2.notification.infrastructure.request.adapter.NotificationTelegramSender;
-import uz.murodjon.robotcallv2.notification.infrastructure.request.adapter.NotificationWebhookSender;
+import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
+import uz.murodjon.robotcallv2.webhook.domain.service.WebhookSigningSecret;
+
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Fans a company event out to its configured external channels (§11 settings).
+ *
+ * <p>A webhook channel is signed with the company's {@code WEBHOOK_SIGNING_SECRET} — the
+ * same secret and format as its post-call webhooks, so a receiver verifies both alike.
+ * The secret is read only when a webhook channel is about to be used.
  */
 @Service
 public class NotificationDispatchService {
 
     private final NotificationSettingsRepository notificationSettingsRepository;
-    private final NotificationEmailSender notificationEmailSender;
-    private final NotificationWebhookSender notificationWebhookSender;
-    private final NotificationTelegramSender notificationTelegramSender;
+    private final SecretUseCase secretUseCase;
+    private final Map<NotificationChannelType, NotificationSenderPort> senders = new EnumMap<>(NotificationChannelType.class);
 
     public NotificationDispatchService(NotificationSettingsRepository notificationSettingsRepository,
-                                       NotificationEmailSender notificationEmailSender,
-                                       NotificationWebhookSender notificationWebhookSender,
-                                       NotificationTelegramSender notificationTelegramSender) {
+                                       SecretUseCase secretUseCase,
+                                       List<NotificationSenderPort> senders) {
         this.notificationSettingsRepository = notificationSettingsRepository;
-        this.notificationEmailSender = notificationEmailSender;
-        this.notificationWebhookSender = notificationWebhookSender;
-        this.notificationTelegramSender = notificationTelegramSender;
+        this.secretUseCase = secretUseCase;
+        senders.forEach(sender -> this.senders.put(sender.resolveChannelType(), sender));
     }
 
     public void dispatch(long companyId, NotificationType type, String title, String message, String link) {
-        for (NotificationChannel channel : notificationSettingsRepository.enabledChannels(companyId, type)) {
-            switch (channel.channel()) {
-                case EMAIL -> notificationEmailSender.send(channel.target(), title, message == null ? "" : message);
-                case WEBHOOK -> notificationWebhookSender.send(channel.target(), type, title, message, link);
-                case TELEGRAM -> notificationTelegramSender.send(channel.target(), title + (message != null ? "\n" + message : ""));
+        List<NotificationChannel> channels = notificationSettingsRepository.findEnabledChannelsByCompanyIdAndType(companyId, type);
+        String signingSecret = channels.stream().anyMatch(channel -> channel.channel() == NotificationChannelType.WEBHOOK)
+                ? WebhookSigningSecret.findIn(secretUseCase.findDecryptedSecrets(companyId))
+                : null;
+        for (NotificationChannel channel : channels) {
+            NotificationSenderPort sender = senders.get(channel.channel());
+            if (sender != null) {
+                sender.send(channel.target(), type, title, message, link, signingSecret);
             }
         }
     }

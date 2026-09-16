@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.billing.application.port.output;
 
 import uz.murodjon.robotcallv2.billing.domain.entity.CallBilling;
+import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 import uz.murodjon.robotcallv2.billing.domain.entity.MonthlySpend;
 import uz.murodjon.robotcallv2.billing.domain.entity.PeriodUsage;
 import uz.murodjon.robotcallv2.billing.domain.entity.VariantSpend;
@@ -16,6 +17,12 @@ public interface CallBillingRepository {
 
     Optional<CallBilling> findByCallAttemptId(long callAttemptId);
 
+    /**
+     * Adds the post-call summary to a settled call's row: its tokens to their own summary
+     * columns, its price to the LLM line and the total.
+     */
+    void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, long costUzs);
+
     /** The oldest hold still open for that target, if one was taken. */
     Optional<CallBilling> findOpenHold(long companyId, long targetId);
 
@@ -30,4 +37,7 @@ public interface CallBillingRepository {
      * variant for the calls that ran none.
      */
     List<VariantSpend> findSpendByVariant(long companyId, long campaignId);
+
+    /** What the campaign's settled calls were charged since {@code since} (all time when null), in UZS. */
+    long sumSpentUzsByCampaign(long companyId, long campaignId, Instant since);
 }

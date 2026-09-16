@@ -68,8 +68,8 @@ ko'ndirib bo'lmaydi. `usableToolCount` — aynan agentga yetib borgan son;
 | `PUT` | `/api/mcp/connections/{id}` | Yangilash + qayta so'rash |
 | `DELETE` | `/api/mcp/connections/{id}` | O'chirish |
 | `POST` | `/api/mcp/connections/{id}/refresh` | Tool ro'yxatini qayta o'qish |
-| `POST` | `/api/mcp/connections/{id}/agents/{agentId}` | Agentga biriktirish |
-| `DELETE` | `/api/mcp/connections/{id}/agents/{agentId}` | Agentdan ajratish |
+| `POST` | `/api/mcp/connections/{id}/agents/{agentId}` | Agentga biriktirish (agent ham, ulanish ham kompaniyaniki bo'lishi shart — aks holda `404 AI_AGENT_NOT_FOUND` / `404 MCP_CONNECTION_NOT_FOUND`) |
+| `DELETE` | `/api/mcp/connections/{id}/agents/{agentId}` | Agentdan ajratish (xuddi shu tekshiruv) |
 
 ### Request (`McpConnectionRequest`)
 ```json

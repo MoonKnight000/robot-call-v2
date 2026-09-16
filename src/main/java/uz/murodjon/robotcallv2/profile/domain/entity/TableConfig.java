@@ -10,4 +10,9 @@ public record TableConfig(
         String configValue,
         Instant updatedAt
 ) {
+
+    /** What a save carries: the adapter stamps the id, the company and the time. */
+    public static TableConfig of(long userId, String configKey, String configValue) {
+        return new TableConfig(0, 0, userId, configKey, configValue, null);
+    }
 }

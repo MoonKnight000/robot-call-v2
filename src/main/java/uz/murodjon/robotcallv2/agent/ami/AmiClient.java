@@ -81,6 +81,12 @@ public class AmiClient {
      * Executes a CLI command via AMI (Action: Command) and returns the output lines.
      */
     public String executeCommand(String command) {
+        if (command.indexOf('\r') >= 0 || command.indexOf('\n') >= 0) {
+            // AMI actions are framed by CRLF, so a line break here would append an action of
+            // the caller's choosing (the AMI user has write=system).
+            log.warn("AMI command refused — it contains a line break");
+            return null;
+        }
         if (!amiProperties.enabled()) {
             log.debug("AMI disabled (voice-agent.asterisk.ami.enabled=false) — executeCommand skipped");
             return null;

@@ -47,12 +47,12 @@ public interface ScenarioController {
 
     @PreAuthorize("hasAuthority('SCENARIO_EDIT')")
     @PostMapping("/scenarios/validate")
-    ResponseEntity<ResponseData<ScenarioValidationResult>> validate(@RequestBody ScenarioDefinition definition);
+    ResponseEntity<ResponseData<ScenarioValidationResult>> validate(@Valid @RequestBody ScenarioDefinition definition);
 
     @PreAuthorize("hasAuthority('SCENARIO_EDIT')")
     @PostMapping("/scenarios/simulate")
     ResponseEntity<ResponseData<ScenarioSimulationResponse>> simulate(@CurrentCompanyId long companyId,
-            @RequestBody ScenarioSimulationRequest request);
+            @Valid @RequestBody ScenarioSimulationRequest request);
 
     @PreAuthorize("hasAuthority('SCENARIO_EDIT')")
     @PostMapping("/scenarios/{id:\\d+}/test-personas")

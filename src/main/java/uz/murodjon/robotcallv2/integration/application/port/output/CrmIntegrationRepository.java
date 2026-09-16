@@ -11,6 +11,12 @@ public interface CrmIntegrationRepository {
 
     CrmIntegration saveAppInfo(long companyId, String appName, String grantsJson);
 
+    /**
+     * Replaces whatever the company was connected to with an amoCRM, Kommo or Bitrix24
+     * connection built by {@link CrmIntegration#credentials}.
+     */
+    CrmIntegration saveCredentials(long companyId, CrmIntegration credentials);
+
     CrmIntegration applyTokenResponse(long companyId, String accessTokenEnc, String refreshTokenEnc,
                                       Instant tokenExpiresAt);
 

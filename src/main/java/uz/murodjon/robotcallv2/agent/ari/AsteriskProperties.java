@@ -17,10 +17,40 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                         exercised for free (dial 600) without burning trunk minutes.
  *                         Blank disables local routing: everything goes to the trunk.
  * @param localNumberPattern regex; a number matching it is dialled via {@code localEndpoint}
- *                         instead of the trunk. Default {@code \d{3,4}} — internal
- *                         extensions are short, real subscriber numbers are not.
- * @param callerId         caller id presented to the callee; blank to leave unset
+ *                         instead of the trunk. Three or four digits is an internal
+ *                         extension; a real subscriber number (998…) is not, and goes out
+ *                         over the trunk as usual. The default is spelled {@code \d\d\d\d?}
+ *                         rather than {@code \d{3,4}} on purpose — a closing brace inside a
+ *                         {@code ${...:default}} placeholder in the YAML would terminate
+ *                         the placeholder early.
+ * @param callerId         caller id presented to the callee. <b>Keep this blank unless a
+ *                         real DID in E.164 is available.</b> Blank leaves it unset, so
+ *                         PJSIP marks the presentation restricted and sends
+ *                         {@code From: "Anonymous"}; Skyline then stamps the account's own
+ *                         valid number as the A-number and the call completes. Filling it
+ *                         with the account login (781137492) is what broke outbound
+ *                         dialling on 2026-09-01 — the login is not a subscriber number,
+ *                         so it went out as the A-number and the terminating network
+ *                         answered 603 Declined about seven seconds in.
  * @param answerTimeoutSec seconds to wait for the callee to answer
+ * @param jitterBuffer     {@code adaptive} or {@code fixed} to put Asterisk's jitter buffer
+ *                         on the caller's channel ({@code JITTERBUFFER()}), so the audio
+ *                         reaching the recognizer or the realtime engine arrives evenly
+ *                         spaced; blank leaves it off. Off by default: it adds 20–60 ms to
+ *                         every turn, and whether a line needs it is now measurable —
+ *                         {@code call_technical.rtp_jitter_ms}/{@code rtp_mos} per call.
+ *                         Turn it on when jitter p95 sits above ~30 ms
+ * @param ghostCallFallbackSeconds how long an AI call may run before the ghost reaper treats
+ *                         it as lost, when {@code dialog.max-call-seconds} sets no limit of
+ *                         its own. 0 means 300
+ * @param ghostCallGraceSeconds how far past that limit a call without a StasisEnd has to be
+ *                         before it is torn down — the watchdog closes calls at the limit
+ *                         itself, and one still up a minute later is one Asterisk lost track
+ *                         of. 0 means 60
+ * @param playbackPollMs   how often a prompt played outside a dialog (a flow hand-off, a
+ *                         one-leg prompt) checks whether it has finished. 0 means 100
+ * @param playbackGraceMs  slack on top of a one-leg prompt's own length before it stops
+ *                         waiting for playback to finish. 0 means 2000
  */
 @ConfigurationProperties(prefix = "voice-agent.asterisk")
 public record AsteriskProperties(
@@ -33,6 +63,26 @@ public record AsteriskProperties(
         String localEndpoint,
         String localNumberPattern,
         String callerId,
-        int answerTimeoutSec
+        int answerTimeoutSec,
+        String jitterBuffer,
+        int ghostCallFallbackSeconds,
+        int ghostCallGraceSeconds,
+        int playbackPollMs,
+        int playbackGraceMs
 ) {
+
+    public AsteriskProperties {
+        if (ghostCallFallbackSeconds <= 0) {
+            ghostCallFallbackSeconds = 300;
+        }
+        if (ghostCallGraceSeconds <= 0) {
+            ghostCallGraceSeconds = 60;
+        }
+        if (playbackPollMs <= 0) {
+            playbackPollMs = 100;
+        }
+        if (playbackGraceMs <= 0) {
+            playbackGraceMs = 2000;
+        }
+    }
 }

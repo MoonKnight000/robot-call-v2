@@ -2,71 +2,63 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
-import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class MultiAgentRouterTest {
 
-    private ScenarioRepository scenarioRepo;
+    private static final ScenarioDefinition SALES = new ScenarioDefinition(
+            List.of(new StageDef("INTRO", "Stage 1", List.of(), List.of())),
+            List.of(), List.of(), List.of(), "Sales Bot", List.of(), null);
+
     private DialogEngine dialogEngine;
     private MultiAgentRouter router;
 
     @BeforeEach
     void setUp() {
-        scenarioRepo = mock(ScenarioRepository.class);
         dialogEngine = mock(DialogEngine.class);
-        router = new MultiAgentRouter(scenarioRepo, dialogEngine);
+        router = new MultiAgentRouter(dialogEngine);
     }
 
     @Test
-    void throwsNotFoundWhenSessionDoesNotExistOrEnded() {
+    void refusesACallWithoutACascadeDialog() {
         when(dialogEngine.findSession("chan-1")).thenReturn(null);
 
-        assertThatThrownBy(() -> router.routeToScenario("chan-1", "order-confirm"))
-                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> router.routeToScenario("chan-1", SALES))
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
-    void throwsNotFoundWhenTargetScenarioNotFound() {
+    void refusesADialogThatHasEnded() {
         DialogSession session = mock(DialogSession.class);
-        when(session.isEnded()).thenReturn(false);
+        when(session.isEnded()).thenReturn(true);
         when(dialogEngine.findSession("chan-1")).thenReturn(session);
-        when(scenarioRepo.findActiveByKey("unknown-scenario")).thenReturn(null);
 
-        assertThatThrownBy(() -> router.routeToScenario("chan-1", "unknown-scenario"))
-                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> router.routeToScenario("chan-1", SALES))
+                .isInstanceOf(ConflictException.class);
+        verify(session, never()).switchScenario(any());
     }
 
     @Test
-    void routesToTargetScenarioSuccessfully() {
+    void switchesTheSessionToTheTarget() {
         DialogSession session = mock(DialogSession.class);
-        when(session.isEnded()).thenReturn(false);
         when(dialogEngine.findSession("chan-1")).thenReturn(session);
+        when(session.state()).thenReturn("GREETING", "INTRO");
 
-        ScenarioDefinition currentDef = ScenarioFixtures.debtCollection();
-        when(session.scenario()).thenReturn(currentDef);
+        String stage = router.routeToScenario("chan-1", SALES);
 
-        StageDef newStage = new StageDef("INTRO", "Stage 1", List.of(), List.of());
-        ScenarioDefinition targetDef = new ScenarioDefinition(
-                List.of(newStage), List.of(), List.of(), List.of(), "Sales Bot", List.of(), null);
-        Scenario targetScenario = new Scenario(
-                2L, "sales", 1, "Sales Agent", null, false, true, targetDef, Instant.now(), null);
-
-        when(scenarioRepo.findActiveByKey("sales")).thenReturn(targetScenario);
-
-        boolean success = router.routeToScenario("chan-1", "sales");
-
-        assertThat(success).isTrue();
-        verify(session).setState("INTRO");
+        verify(session).switchScenario(SALES);
+        assertThat(stage).isEqualTo("INTRO");
     }
 }

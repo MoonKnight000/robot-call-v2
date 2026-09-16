@@ -1,0 +1,67 @@
+### Pack catalog
+GET http://localhost:8080/api/packs
+Authorization: Bearer {{auth_token}}
+
+### Install the online-shop pack, with its catalog feed
+POST http://localhost:8080/api/packs/ecommerce/install
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "catalogUrl": "https://shop.example.uz/api/products",
+  "catalogItemsPath": "$.data"
+}
+
+### Install without a catalog — add it later through /api/knowledge-base/sources
+POST http://localhost:8080/api/packs/ecommerce/install
+Authorization: Bearer {{auth_token}}
+
+### Then set the secrets the answer lists as missing
+POST http://localhost:8080/api/secrets
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "key": "SHOP_API_URL",
+  "value": "https://shop.example.uz/api",
+  "description": "Magazin API manzili"
+}
+
+### Generate a pack for a business the catalog has no pack for (E.1) — creates nothing
+POST http://localhost:8080/api/packs/generate
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "business": "Men gul do'koniman. Mijozlar qo'ng'iroq qilib buket buyurtma qiladi, yetkazib berish Toshkent bo'ylab. Ish vaqti 9 dan 21 gacha. Yetkazib berish 30 ming so'm. Bayram kunlari oldindan buyurtma olamiz.",
+  "openApiUrl": "https://gullar.example.uz/openapi.json",
+  "secretPrefix": "FLOWERS",
+  "language": "uz-UZ"
+}
+
+### Without an API — a pack whose result is recorded in the conversation itself
+POST http://localhost:8080/api/packs/generate
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "business": "Fitnes klubman. Sinov mashg'ulotiga yozilgan odamlarga qo'ng'iroq qilib, kelish-kelmasligini tasdiqlataman."
+}
+
+### Install the draft, as the person edited it
+POST http://localhost:8080/api/packs/install-draft
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "pack": {
+    "key": "gul-dokoni",
+    "name": "Gul do'koni: buyurtma",
+    "description": "Buket buyurtmasini qabul qiladi",
+    "industry": "flowers",
+    "agent": { "name": "Gul do'koni operatori", "language": "uz-UZ", "firstMessage": "...", "useRag": true, "scenario": { "stages": [], "outcomeSchema": [], "rolePrompt": "...", "guardrails": [] } },
+    "tools": [],
+    "testCases": [],
+    "secrets": []
+  }
+}

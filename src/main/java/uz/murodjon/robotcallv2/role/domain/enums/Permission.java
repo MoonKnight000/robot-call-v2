@@ -53,6 +53,21 @@ public enum Permission {
     INBOUND_ROUTE_READ("inb.r", PermissionGroup.INBOUND_ROUTE),
     INBOUND_ROUTE_EDIT("inb.w", PermissionGroup.INBOUND_ROUTE),
 
+    /** Call flows, business schedules, holidays and voicemail boxes (caller rules sit under INBOUND_ROUTE_*). */
+    CALL_FLOW_READ("cfl.r", PermissionGroup.CALL_FLOW),
+    CALL_FLOW_EDIT("cfl.w", PermissionGroup.CALL_FLOW),
+
+    /** Operator queues and their members. */
+    CALL_QUEUE_READ("cq.r", PermissionGroup.CALL_QUEUE),
+    CALL_QUEUE_EDIT("cq.w", PermissionGroup.CALL_QUEUE),
+
+    /** Missed and abandoned calls, and the voicemail left on them — an operator's work list. */
+    MISSED_CALL_READ("msc.r", PermissionGroup.MISSED_CALL),
+    MISSED_CALL_EDIT("msc.w", PermissionGroup.MISSED_CALL),
+
+    /** Supervisor: listen to, whisper into or barge into another person's live call (the wallboard is CALL_QUEUE_READ). */
+    CALL_MONITOR("mon.w", PermissionGroup.LIVE),
+
     SIP_TRUNK_READ("sip.r", PermissionGroup.SIP_TRUNK),
     SIP_TRUNK_EDIT("sip.w", PermissionGroup.SIP_TRUNK),
 
@@ -85,6 +100,10 @@ public enum Permission {
 
     API_KEY_READ("apk.r", PermissionGroup.API_KEY),
     API_KEY_EDIT("apk.w", PermissionGroup.API_KEY),
+
+    /** The review inbox: the calls the quality judge flagged, and a person's verdict on them. */
+    QUALITY_REVIEW_READ("qrv.r", PermissionGroup.QUALITY_REVIEW),
+    QUALITY_REVIEW_EDIT("qrv.w", PermissionGroup.QUALITY_REVIEW),
 
     /** Tenant onboarding and suspension — platform staff only, never grantable to a company role. */
     PLATFORM_ADMIN("plt.a", PermissionGroup.PLATFORM, PermissionScope.PLATFORM);

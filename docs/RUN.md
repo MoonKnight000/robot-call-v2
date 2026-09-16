@@ -38,7 +38,9 @@ curl.exe http://localhost:8080/actuator/health
 
 ## Kirish tokeni
 
-`/api/**` va `/actuator/**` `Authorization: Bearer <token>` talab qiladi —
+`/api/**` va `/actuator/**` `Authorization: Bearer <token>` talab qiladi (`/actuator/**` —
+`health` va `info` dan tashqari — faqat `PLATFORM_ADMIN` tokeni bilan: metrikalar butun
+platformaniki, tenant foydalanuvchisi yoki API kaliti `403` oladi) —
 `POST /api/calls` real trunk orqali qo'ng'iroq qiladi, shuning uchun hech qachon
 ochiq qolmaydi. Token `POST /api/auth/login` dan olinadi; birinchi admin hisobi
 `.env` dagi `BOOTSTRAP_ADMIN_*` bilan seed qilinadi. `JWT_SECRET` qo'yilmasa app
@@ -94,22 +96,82 @@ docker compose down -v       # volume'lar bilan o'chirish (DB ma'lumotlari yo'qo
 |   | Servis   | Port                                                       |
 |:--|----------|------------------------------------------------------------|
 |   | app      | 8080                                                       |
-|   | Asterisk | 5060/udp (SIP trunk), 5062/udp (SIP softphone), 8088 (ARI + brauzer SIP/WS) |
+|   | Asterisk | 5060/udp (SIP trunk), 5062/udp (SIP softphone), 8088 (ARI + brauzer SIP/WS — default faqat `127.0.0.1`; LAN'dagi boshqa kompyuterdan brauzer test uchun `.env` da `ASTERISK_HTTP_BIND=0.0.0.0`) |
 |   | RTP      | 10000-10200/udp                                            |
-|   | Postgres | 5432                                                       |
-|   | Redis    | 6379                                                       |
-|   | RabbitMQ | 5672, 15672 (UI)                                           |
-|   | MinIO    | 9000 (S3), 9001 (konsol)                                   |
+|   | Postgres | 5432 (faqat `127.0.0.1`)                                   |
+|   | Redis    | 6379 (faqat `127.0.0.1`)                                   |
+|   | RabbitMQ | 5672, 15672 (UI) (faqat `127.0.0.1`)                       |
+|   | MinIO    | 9000 (S3), 9001 (konsol) (faqat `127.0.0.1`)               |
+|   | AMI      | 5038 (faqat `127.0.0.1`)                                   |
+
+## Postgres — pgvector
+
+Baza `pgvector/pgvector:pg18` image'ida ishlaydi: V11 migratsiyasi `CREATE EXTENSION vector` qiladi
+(katalog qidiruvi, [knowledge-base.md](api/knowledge-base.md)). Oldingi `postgres:18-alpine` dan o'tganda:
+
+- Mavjud `pgdata` volume ishlayveradi (major versiya va katalog tuzilishi bir xil). Lekin alpine (musl)
+  va Debian (glibc) collation'lari farq qiladi, shuning uchun matn indekslarining tartibi buzilishi mumkin.
+  O'tgandan keyin bir marta ishga tushiring:
+  `docker compose exec postgres psql -U ${DB_USER:-robot_call} -d ${DB_NAME:-robot_call} -c 'REINDEX DATABASE ${DB_NAME:-robot_call};'`
+  va ogohlantirish chiqsa `ALTER DATABASE … REFRESH COLLATION VERSION;`.
+- Boshqa Postgres'da (managed) `vector` kengaytmasi **0.8+** bo'lishi va migratsiya foydalanuvchisi
+  `CREATE EXTENSION` qila olishi kerak.
+- Integration testlar (Testcontainers `postgres:16-alpine`) V11 da yiqiladi. Image'ni
+  `DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres")` ga almashtirish kerak.
+
+`.env`siz `docker compose up` ishlamaydi: har bir parol `${VAR:?}` bilan majburiy
+(`DB_PASSWORD`, `RABBITMQ_PASSWORD`, `MINIO_PASSWORD`, `JWT_SECRET`, `ARI_PASSWORD`,
+`AMI_PASSWORD`, `SOFTPHONE_PASSWORD`, `WEB_TEST_SIP_PASSWORD`). Asterisk parollari
+`ari.conf`/`manager.conf`/`pjsip.conf`da emas — `asterisk-auth-sync` init-konteyneri
+(`asterisk/render-auth.sh`) ularni `.env`dan gitignored `*_auth.conf` fayllarga yozadi va
+`CHANGE_ME` qiymatni rad etadi.
+
+App konteyneriga Asterisk konfiguratsiyasidan faqat `asterisk/etc/asterisk/generated/`
+mount qilinadi (`/etc/asterisk/generated`, `SIPTRUNK_CONFIG_DIR`). App u yerga
+`pjsip_trunks.conf` (boshqariladigan trunk'lar) va `pjsip_operators.conf` (operator
+endpointlari) ni yozadi, `pjsip.conf` ularni `#tryinclude generated/...` bilan o'qiydi va
+app AMI orqali `res_pjsip` ni qayta yuklaydi. `*_auth.conf` va boshqa fayllar app
+konteyneriga ko'rinmaydi.
+
+## Bir nechta instance (topologiya)
+
+Ikkinchi app instance'i ishga tushsa ham cluster darajasidagi `@Scheduled` job'lar
+takrorlanmaydi: har biri Postgres session-level advisory lock ostida ishlaydi
+(`shared/lock/ClusterJobLock`, `config/PostgresClusterJobLock`). Lock band bo'lsa
+instance o'sha tick'ni o'tkazib yuboradi; DB'ga ulanib bo'lmasa ham job o'tkaziladi.
+Bu "bir vaqtda bittasi" degani, "intervalda bir marta" emas — job'lar ishni umumiy
+holatdan (claim, status, `last_sent_at`) o'qiydi, shuning uchun ketma-ket ikkinchi run
+qiladigan ish qolmagan bo'ladi.
+
+- **Lock ostida:** `CatalogFeedRefreshScheduler.refreshDueFeeds`, `DialerService.dispatch` (concurrency va kunlik cap'lar
+  check-then-reserve) va `reclaimExpiredClaims`, `CallOutboxService.sweep`,
+  `AutoCallbackScheduler`, `AutoRechargeService`, `ReportScheduleService.sendDue`,
+  `AlertingService.checkSuccessRate`, `RetentionService.purge`,
+  `RecurringCampaignScheduler` (avvalgi Redis `SET NX` lock o'rniga).
+- **Lock'siz, xavfsiz:** `WebhookDeliveryService.retryDue` (har qator shartli update
+  bilan claim qilinadi), `TopupSettlementService.expireStaleTopups` (bitta idempotent
+  UPDATE).
+- **Har node o'zi (ataylab):** faqat shu JVM xotirasiga tegadigan job'lar —
+  `DialerService.reclaimStale`, `AriService.reapGhostCalls`/`ensureConnected`,
+  `CallQueueDispatcher.dispatch`, `OperatorPresenceService.releaseWrapUps`,
+  `TrunkRegistrationMonitor` (dialer'ning `TrunkHealth` i shu node xotirasini o'qiydi),
+  `AlertingService` ning turnaround/efficiency/provider-health tekshiruvlari (JVM
+  metrikalari), live/KPI/wallboard/SSE heartbeat'lar.
+
+Qo'ng'iroq holati (ARI sessiyalar, `OutboundCallRegistry`, navbat, operator holati) hali ham
+bitta node xotirasida — media uchun **bitta** instance ishlashi kerak. Ikkinchi instance
+faqat API/scheduler uchun xavfsiz; ikki media node'ni qo'llab-quvvatlash alohida ish
+(`docs/AUDIT-2026-09-13.md` §7.4).
 
 ## Softphone
 
 MicroSIP / Zoiper sozlamalari:
 
-|   | Maydon | Qiymat               |
-|:--|--------|----------------------|
-|   | server | `192.168.0.100:5062` |
-|   | user   | `softphone`          |
-|   | parol  | `softphone123`       |
+|   | Maydon | Qiymat                          |
+|:--|--------|---------------------------------|
+|   | server | `192.168.0.100:5062`            |
+|   | user   | `softphone`                     |
+|   | parol  | `.env` dagi `SOFTPHONE_PASSWORD` |
 
 Port **5062**, 5060 emas — 5060 trunk uchun band (`pjsip.conf` dagi ikkita transport).
 
@@ -222,7 +284,7 @@ Yandex STT — oqimga uzatilgan audio-sekund. Har biri uchun tejash yoqilgan va 
 metrika bilan o'lchanadi. Prometheus'dan ko'rish:
 
 ```powershell
-$token = "..."   # POST /api/auth/login dan
+$token = "..."   # POST /api/auth/login dan (PLATFORM_ADMIN hisobi)
 curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/actuator/prometheus |
   Select-String "voice_llm_tokens|voice_tts_chars|voice_stt_audio|voice_tts_cache"
 ```
@@ -306,12 +368,12 @@ curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/actuator/pro
   Select-String "voice_rtp"
 ```
 
-| Metrika | Nimani ko'rsatadi |
-|---|---|
-| `voice_rtp_packets_received_total` / `_lost_total` | kelgan / ketma-ketlik bo'yicha umuman kelmagan paketlar |
-| `voice_rtp_packets_reordered_total` | kech yoki ikki marta kelgan paketlar |
-| `voice_rtp_calls_silent_total` | bitta ham kiruvchi paket kelmagan qo'ng'iroqlar |
-| `voice_rtp_jitter` / `voice_rtp_loss` | har qo'ng'iroq uchun jitter (ms) va yo'qotish (%) taqsimoti |
+| Metrika                                            | Nimani ko'rsatadi                                           |
+|----------------------------------------------------|-------------------------------------------------------------|
+| `voice_rtp_packets_received_total` / `_lost_total` | kelgan / ketma-ketlik bo'yicha umuman kelmagan paketlar     |
+| `voice_rtp_packets_reordered_total`                | kech yoki ikki marta kelgan paketlar                        |
+| `voice_rtp_calls_silent_total`                     | bitta ham kiruvchi paket kelmagan qo'ng'iroqlar             |
+| `voice_rtp_jitter` / `voice_rtp_loss`              | har qo'ng'iroq uchun jitter (ms) va yo'qotish (%) taqsimoti |
 
 Nimaga qarash kerak:
 
@@ -430,7 +492,7 @@ Kuzatiladigan narsalar:
 Panelning **6 · Natijalar** bo'limi, yoki to'g'ridan-to'g'ri:
 
 ```powershell
-$token = "..."   # POST /api/auth/login dan
+$token = "..."   # POST /api/auth/login dan (PLATFORM_ADMIN hisobi)
 
 # kampaniya natijasi: disposition taqsimoti, va'da foizi, o'rtacha davomiylik
 curl.exe -s -H "Authorization: Bearer $token" http://localhost:8080/api/reports/campaigns/1
@@ -447,8 +509,10 @@ curl.exe -s -H "Authorization: Bearer $token" -o call-12.wav `
 ```
 
 Yozuv MinIO yoqilgan bo'lsa u yerga redirect qilinadi, aks holda diskdagi fayl
-beriladi (`recording_url` `file:` bilan boshlanadi). `STORAGE_RETENTION_DAYS` o'tgach
-yozuv ham, transkript ham o'chadi — `call_attempt`/`call_result` esa qoladi.
+beriladi (`recording_url` `file:` bilan boshlanadi). Agentning `conversationRetentionDays`
+(agentsiz qo'ng'iroqda `RETENTION_CONVERSATION_DAYS`, eski nomi `STORAGE_RETENTION_DAYS`)
+o'tgach yozuv ham, transkript ham o'chadi — `call_attempt` qoladi, `call_result` esa faqat
+`RETENTION_SUMMARY_DAYS` berilgan bo'lsa o'chadi (`.env.example` → "Data retention").
 
 Fayl **stereo**: chap kanal — mijoz, o'ng kanal — botning o'z ovozi (8 kHz, 16-bit).
 Ikkalasi aralashtirilmagan, shuning uchun ikkovi bir vaqtda gapirganda ham kim nima

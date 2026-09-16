@@ -15,6 +15,7 @@ public record WebTestCall(
         OutboundCall outbound,
         ScenarioDefinition definition,
         Long scenarioId,
+        long companyId,
         Instant createdAt
 ) {
 }

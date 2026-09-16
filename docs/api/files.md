@@ -25,7 +25,16 @@ Interfeysdan har qanday fayllarni (rasmlar, audio namunalar, CSV/hujjatlar) yukl
 
 **Form Data (Multipart params)**:
 - `file` (majburiy, `MultipartFile`): Yuklanayotgan fayl baytlari.
-- `category` (ixtiyoriy, string enum): `IMAGE`, `AUDIO`, `DOCUMENT`. Agar ko'rsatilsa shu kategoriya o'rnatiladi, agar ko'rsatilmasa faylning MIME-type'idan avtomatik aniqlanadi (`image/*` -> `IMAGE`, `audio/*` -> `AUDIO`, boshqa -> `DOCUMENT`).
+- `category` (ixtiyoriy, string enum): `IMAGE`, `AUDIO`, `DOCUMENT`. Agar ko'rsatilsa shu kategoriya o'rnatiladi, agar ko'rsatilmasa faylning aniqlangan turidan avtomatik aniqlanadi (`image/*` -> `IMAGE`, `audio/*` -> `AUDIO`, boshqa -> `DOCUMENT`).
+
+**Fayl turi baytlardan aniqlanadi**, brauzer yuborgan `Content-Type`ga ishonilmaydi (u
+faqat DOCX/XLSX va CSV/TXT ni ajratish uchun o'qiladi). Ruxsat etilgan turlar: `png`,
+`jpeg`, `webp`, `wav`, `mp3`, `ogg`, `pdf`, `docx`, `xlsx`, `csv`, `txt`. Boshqa har qanday
+fayl (SVG, HTML, exe, "png" deb nomlangan HTML va h.k.) — `400 FILE_TYPE_NOT_ALLOWED`.
+Baytlar hech bir ruxsat etilgan turga mos kelmasa va brauzer `Content-Type` ham yubormagan
+bo'lsa — `400 FILE_TYPE_UNRECOGNIZED` (avval shu holatda `FILE_TYPE_NOT_ALLOWED` "unknown" bilan qaytardi).
+MinIO'dagi obyekt nomi kengaytmasi ham aniqlangan turdan olinadi, foydalanuvchi bergan
+nomdan emas. `contentType` javobda — aniqlangan tur.
 
 **Response** (`FileUploadResponse`):
 
@@ -72,9 +81,13 @@ xuddi `GET /api/reports/calls/{id}/recording` uchun qilingani kabi.
 
 | Kategoriya | `Content-Disposition` | Qayerdan kelgan |
 |---|---|---|
-| Rasm (`IMAGE`) | `inline` | `POST /api/files/upload`, `POST /api/companies/{id}/logo`, `POST /api/profile/avatar` |
-| Audio (`AUDIO`) | `inline` | `CallFinalizer`, `POST /api/files/upload` |
+| Rasm (`IMAGE`) | `inline` (faqat `png`/`jpeg`/`webp`) | `POST /api/files/upload`, `POST /api/companies/{id}/logo`, `POST /api/profile/avatar` |
+| Audio (`AUDIO`) | `inline` (faqat `wav`/`mp3`/`ogg`) | `CallFinalizer`, `POST /api/files/upload` |
 | Hujjat (`DOCUMENT`) | `attachment` | `POST /api/files/upload` |
+
+Boshqa har qanday saqlangan tur `attachment` bilan qaytadi. Har javobda
+`X-Content-Type-Options: nosniff` va `Content-Security-Policy: sandbox` bor — fayl ichida
+nima bo'lmasin, u API origin'ida bajarilmaydi.
 
 Javobda doim `Content-Length` va `Accept-Ranges: bytes` bo'ladi. So'rovda
 `Range: bytes=<start>-<end>` bo'lsa javob `206 Partial Content` va

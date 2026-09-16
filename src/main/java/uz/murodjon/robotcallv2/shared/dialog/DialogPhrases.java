@@ -36,6 +36,18 @@ public final class DialogPhrases {
                 : "Assalomu alaykum! Men " + company + " kompaniyasining robotiman. Suhbat yozib olinmoqda.";
     }
 
+    /**
+     * The recording half of the §11.1 disclosure on its own — what a {@code HUMAN_LIKE}
+     * agent says. Its company was allowed an agent that does not say it is a machine;
+     * that the call is recorded is owed to every caller.
+     */
+    public static String recordingNotice(String language) {
+        if (english(language)) return "This call is being recorded for quality purposes.";
+        return russian(language)
+                ? "Разговор записывается для контроля качества."
+                : "Suhbat sifat nazorati uchun yozib olinmoqda.";
+    }
+
     /** Closing line when a guardrail (turn cap, duration cap) ends the call. */
     public static String farewell(String language) {
         if (english(language)) return "Thank you for your time. Goodbye.";
@@ -66,6 +78,17 @@ public final class DialogPhrases {
         return russian(language)
                 ? "Алло, вы меня слышите?"
                 : "Alo, meni eshityapsizmi?";
+    }
+
+    /**
+     * First line of a call that lost its speech-to-speech engine mid-conversation and
+     * carries on in the cascade pipeline — in a different voice, so it has to be said.
+     */
+    public static String reconnected(String language) {
+        if (english(language)) return "Sorry, the line dropped for a moment. Let's continue.";
+        return russian(language)
+                ? "Извините, связь на секунду прервалась. Продолжим."
+                : "Kechirasiz, aloqada kichik uzilish bo'ldi. Suhbatimizni davom ettiramiz.";
     }
 
     /** Technical error line. */
@@ -151,11 +174,13 @@ public final class DialogPhrases {
     public static List<String> forLanguage(String language, String companyName) {
         List<String> lines = new ArrayList<>(List.of(
                 disclosure(language, companyName),
+                recordingNotice(language),
                 farewell(language),
                 didNotCatch(language),
                 stillThere(language),
                 transferring(language),
-                technicalError(language)
+                technicalError(language),
+                reconnected(language)
         ));
         lines.addAll(thinking(language));
         lines.addAll(confirmations(language));

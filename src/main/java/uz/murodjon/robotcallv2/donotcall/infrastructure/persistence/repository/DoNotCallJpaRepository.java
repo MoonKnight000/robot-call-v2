@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.donotcall.infrastructure.persistence.entity.DoNotCallEntity;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 public interface DoNotCallJpaRepository extends JpaRepository<DoNotCallEntity, Long> {
@@ -32,6 +33,10 @@ public interface DoNotCallJpaRepository extends JpaRepository<DoNotCallEntity, L
                 @Param("companyId") long companyId);
 
     boolean existsByCompanyIdAndPhoneAndRemovedAtIsNull(long companyId, String phone);
+
+    @Query("SELECT d.phone FROM DoNotCallEntity d WHERE d.company.id = :companyId AND d.removedAt IS NULL "
+            + "AND d.phone IN :phones")
+    List<String> findActivePhones(@Param("companyId") long companyId, @Param("phones") Collection<String> phones);
 
     List<DoNotCallEntity> findByCompanyIdAndRemovedAtIsNull(long companyId, Pageable pageable);
 

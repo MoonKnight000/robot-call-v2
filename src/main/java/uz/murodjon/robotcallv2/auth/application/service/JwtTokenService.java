@@ -9,15 +9,14 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
 import uz.murodjon.robotcallv2.auth.application.dto.IssuedToken;
+import uz.murodjon.robotcallv2.auth.application.port.input.AccessTokenUseCase;
 import uz.murodjon.robotcallv2.auth.infrastructure.config.JwtProperties;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.shared.util.Tokens;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -26,7 +25,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
-public class JwtTokenService {
+public class JwtTokenService implements AccessTokenUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(JwtTokenService.class);
 
@@ -34,19 +33,22 @@ public class JwtTokenService {
     private static final String PERMISSIONS_CLAIM = "perms";
 
     private final JwtProperties jwtProperties;
+    private final TokenRevocationService revocation;
     private final SecretKey key;
 
-    public JwtTokenService(JwtProperties jwtProperties) {
+    public JwtTokenService(JwtProperties jwtProperties, TokenRevocationService revocation) {
         this.jwtProperties = jwtProperties;
-        this.key = jwtProperties.configured() ? Keys.hmacShaKeyFor(sha256(jwtProperties.secret())) : null;
+        this.revocation = revocation;
+        this.key = jwtProperties.configured() ? Keys.hmacShaKeyFor(Tokens.sha256(jwtProperties.secret())) : null;
         if (!jwtProperties.configured()) {
-            log.error("voice-agent.security.jwt.secret is not set — no user can log in until it is.");
+            log.error("voice-agent.security.jwt.secret is blank, shorter than 32 characters or still a CHANGE_ME "
+                    + "placeholder — no user can log in until it is set (e.g. openssl rand -base64 48).");
         }
     }
 
     public IssuedToken issue(AuthenticatedUser user) {
         if (key == null) {
-            throw new ExternalServiceException(ErrorCode.JWT_KEY_NOT_SET, "auth");
+            throw new ConflictException(ErrorCode.JWT_KEY_NOT_SET);
         }
         Instant now = Instant.now();
         Instant expiresAt = now.plus(jwtProperties.expiryMinutesOrDefault(), ChronoUnit.MINUTES);
@@ -65,15 +67,21 @@ public class JwtTokenService {
         return new IssuedToken(token, expiresAt);
     }
 
+    @Override
     public AuthenticatedUser parse(String token) {
         if (key == null) {
             return null;
         }
         try {
             var claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+            long userId = Long.parseLong(claims.getSubject());
+            Date issuedAt = claims.getIssuedAt();
+            if (revocation.isRevoked(userId, issuedAt == null ? null : issuedAt.toInstant())) {
+                return null;
+            }
             Number roleId = (Number) claims.get("roleId");
             return new AuthenticatedUser(
-                    Long.parseLong(claims.getSubject()),
+                    userId,
                     ((Number) claims.get("companyId")).longValue(),
                     roleId == null ? 0L : roleId.longValue(),
                     claims.get("role", String.class),
@@ -105,13 +113,5 @@ public class JwtTokenService {
             }
         }
         return permissions;
-    }
-
-    private static byte[] sha256(String value) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

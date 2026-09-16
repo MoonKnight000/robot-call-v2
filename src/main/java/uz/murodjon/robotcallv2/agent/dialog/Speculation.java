@@ -24,12 +24,17 @@ import reactor.core.publisher.Flux;
  * @param inputText the interim transcript this was written for. The final has to say the
  *                  same thing, or the reply answers words the caller never said
  * @param responses the cached, already-running reply stream
- * @param warmUp    the subscription keeping it running — and what cancels it
+ * @param warmUp    the subscription keeping it running
+ * @param upstream  the connection to the LLM stream itself — disposing it cancels the
+ *                  request; disposing {@code warmUp} alone left it streaming to the end
  */
-public record Speculation(String inputText, Flux<ChatResponse> responses, Disposable warmUp) {
+public record Speculation(String inputText, Flux<ChatResponse> responses, Disposable warmUp, Disposable upstream) {
 
     /** Stop the request and throw away whatever it had produced. */
     void discard() {
         warmUp.dispose();
+        if (upstream != null) {
+            upstream.dispose();
+        }
     }
 }

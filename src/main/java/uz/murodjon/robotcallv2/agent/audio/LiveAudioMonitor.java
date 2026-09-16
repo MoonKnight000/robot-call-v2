@@ -46,12 +46,18 @@ public class LiveAudioMonitor implements AudioListener, Closeable {
     /** Caller-side tap — registered as this call's {@link AudioListener}. */
     @Override
     public void onAudio(short[] pcm, int length) {
-        offer(callerFrames, Arrays.copyOf(pcm, length));
+        // Nobody listening — the usual case — means no copy: this runs for every 20 ms
+        // frame of every call, on the call's RTP consumer thread.
+        if (ticking.get()) {
+            offer(callerFrames, Arrays.copyOf(pcm, length));
+        }
     }
 
     /** Bot-side tap — called directly from {@code RtpEndpoint}'s playback pacer. */
     public void onBotAudio(short[] pcm, int length) {
-        offer(botFrames, Arrays.copyOf(pcm, length));
+        if (ticking.get()) {
+            offer(botFrames, Arrays.copyOf(pcm, length));
+        }
     }
 
     private static void offer(BlockingQueue<short[]> queue, short[] frame) {
@@ -130,6 +136,9 @@ public class LiveAudioMonitor implements AudioListener, Closeable {
             t.cancel(false);
             tick = null;
         }
+        // Left true, an operator subscribing after close never started a tick and so never
+        // received the EOF below — their stream hung instead of ending.
+        ticking.set(false);
         for (BlockingQueue<byte[]> sub : subscribers) {
             sub.offer(EOF);
         }

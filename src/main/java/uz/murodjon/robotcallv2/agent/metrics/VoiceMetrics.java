@@ -74,6 +74,7 @@ public class VoiceMetrics {
     private final Timer turnaround;
     private final Timer callDuration;
     private final AtomicInteger active = new AtomicInteger(0);
+    private final java.util.Map<String, AtomicInteger> trunkRegistrations = new java.util.concurrent.ConcurrentHashMap<>();
 
     public VoiceMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -663,5 +664,187 @@ public class VoiceMetrics {
 
     public void recordCallDuration(long seconds) {
         callDuration.record(Duration.ofSeconds(Math.max(0, seconds)));
+    }
+
+    /**
+     * One finished call's estimated MOS ({@code MosEstimator}). A distribution for the same
+     * reason as jitter and loss: the calls worth looking at are the tail.
+     */
+    public void recordRtpMos(double mos) {
+        DistributionSummary.builder("voice.rtp.mos")
+                .description("estimated mean opinion score of one call's inbound audio (1.0-4.4)")
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(mos);
+    }
+
+    /**
+     * The realtime counterpart of {@link #recordTurnaround}: the caller stopped talking
+     * (measured by our own VAD, not the engine's) until the first audio of the engine's
+     * answer was queued. Our VAD rather than the vendor's endpointer so that engines —
+     * and the cascade pipeline — are compared on the same clock; tagged by engine because
+     * that comparison is the point of having it.
+     */
+    public void recordRealtimeTurnaround(String engine, Duration elapsed) {
+        Timer.builder("voice.realtime.turnaround.latency")
+                .description("caller stopped talking -> first audio of the realtime engine's answer queued")
+                .tag("engine", tagValue(engine))
+                .publishPercentileHistogram()
+                .publishPercentiles(SLO_PERCENTILE)
+                .register(registry)
+                .record(elapsed);
+    }
+
+    /**
+     * Opening line to first audio on a realtime call — how long the caller sat on a
+     * freshly answered, silent line. The worst place for latency: they have not heard
+     * anything yet and are deciding whether anyone is there.
+     */
+    public void recordRealtimeFirstAudio(String engine, Duration elapsed) {
+        Timer.builder("voice.realtime.first.audio.latency")
+                .description("realtime call answered -> first audio of the engine queued")
+                .tag("engine", tagValue(engine))
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(elapsed);
+    }
+
+    /** How long one tool call held a realtime engine's answer — heard by the caller as silence. */
+    public void recordRealtimeToolLatency(String tool, Duration elapsed) {
+        Timer.builder("voice.realtime.tool.latency")
+                .description("realtime engine asked for a tool -> result sent back")
+                .tag("tool", tagValue(tool))
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(elapsed);
+    }
+
+    /**
+     * Tokens one realtime engine response cost. Kept apart from {@code voice.llm.tokens.*}:
+     * those drive the cascade pipeline's cache-efficiency check, and audio tokens priced
+     * at a different rate would only muddy it.
+     */
+    public void recordRealtimeUsage(String engine, long prompt, long completion, long cached) {
+        realtimeTokens(engine, "prompt", prompt);
+        realtimeTokens(engine, "completion", completion);
+        realtimeTokens(engine, "cached", cached);
+    }
+
+    private void realtimeTokens(String engine, String kind, long tokens) {
+        if (tokens <= 0) {
+            return;
+        }
+        Counter.builder("voice.realtime.tokens")
+                .description("tokens reported by a realtime engine")
+                .tag("engine", tagValue(engine))
+                .tag("kind", kind)
+                .register(registry)
+                .increment(tokens);
+    }
+
+    /** Connected seconds on a realtime engine — the unit speech-to-speech vendors bill in. */
+    public void realtimeSessionSeconds(String engine, long seconds) {
+        if (seconds <= 0) {
+            return;
+        }
+        Counter.builder("voice.realtime.session.seconds")
+                .description("seconds a realtime engine session was open")
+                .tag("engine", tagValue(engine))
+                .register(registry)
+                .increment(seconds);
+    }
+
+    /**
+     * The language one spoken realtime reply was in, as far as the script detector can
+     * tell. The prompt rule "answer in the caller's language" has no other witness: a
+     * rising {@code ru} share on an uz campaign is the rule failing.
+     */
+    public void realtimeLanguage(String engine, String language) {
+        Counter.builder("voice.realtime.language")
+                .description("realtime agent replies by detected language")
+                .tag("engine", tagValue(engine))
+                .tag("lang", tagValue(language))
+                .register(registry)
+                .increment();
+    }
+
+    /** The engine dropped and resumed the same conversation on a new connection. */
+    public void realtimeReconnect(String engine) {
+        Counter.builder("voice.realtime.reconnects")
+                .description("realtime sessions resumed on a new connection mid-call")
+                .tag("engine", tagValue(engine))
+                .register(registry)
+                .increment();
+    }
+
+    /**
+     * The engine could not be kept and the call continued on the cascade pipeline — or,
+     * when that was not possible, was hung up. Should be rare; every one is a caller who
+     * heard the voice change mid-call.
+     */
+    public void realtimeFallback(String engine) {
+        Counter.builder("voice.realtime.fallbacks")
+                .description("realtime calls that lost their engine and fell back to the cascade pipeline")
+                .tag("engine", tagValue(engine))
+                .register(registry)
+                .increment();
+    }
+
+    /** The caller talked over a realtime engine and it stopped — the counterpart of {@code voice.dialog.barge.in}. */
+    public void realtimeInterruption(String engine) {
+        Counter.builder("voice.realtime.interruptions")
+                .description("realtime engine replies the caller interrupted")
+                .tag("engine", tagValue(engine))
+                .register(registry)
+                .increment();
+    }
+
+    /**
+     * Caller audio withheld from a realtime engine because it was only the bot's own voice
+     * coming back down the line. Non-zero on most calls means the far end has no echo
+     * cancellation; zero everywhere means the gate is doing nothing and could be off.
+     */
+    public void realtimeEchoSuppressed(double seconds) {
+        if (seconds <= 0) {
+            return;
+        }
+        Counter.builder("voice.realtime.echo.suppressed.seconds")
+                .description("seconds of caller audio attenuated as echo of the bot's own voice")
+                .register(registry)
+                .increment(seconds);
+    }
+
+    /**
+     * One SIP registration's state as Asterisk last reported it: 1 registered, 0 anything
+     * else. A trunk that drops its registration fails every outbound call through it, and
+     * the first sign otherwise is a campaign whose calls all end in seconds.
+     */
+    public void trunkRegistration(String registration, boolean registered) {
+        trunkRegistrations.computeIfAbsent(tagValue(registration), name -> {
+            AtomicInteger state = new AtomicInteger();
+            Gauge.builder("voice.trunk.registered", state, AtomicInteger::get)
+                    .description("1 when the SIP registration is Registered, 0 otherwise")
+                    .tag("registration", name)
+                    .register(registry);
+            return state;
+        }).set(registered ? 1 : 0);
+    }
+
+    /**
+     * How many calls have been given a MOS so far, and the sum of their scores — the two
+     * running totals an alert takes a windowed mean from. {0, 0} before the first call.
+     */
+    public double[] mosTotals() {
+        DistributionSummary summary = registry.find("voice.rtp.mos").summary();
+        return summary == null ? new double[]{0, 0} : new double[]{summary.count(), summary.totalAmount()};
+    }
+
+    /** Sum of every series of one counter across its tags — a fleet-wide total for alerting. */
+    public double counterTotal(String name) {
+        return registry.find(name).counters().stream().mapToDouble(Counter::count).sum();
+    }
+
+    private static String tagValue(String value) {
+        return value == null || value.isBlank() ? "unknown" : value;
     }
 }

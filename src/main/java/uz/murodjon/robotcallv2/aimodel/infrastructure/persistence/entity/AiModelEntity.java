@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 
 @Entity

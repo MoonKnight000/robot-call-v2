@@ -3,12 +3,13 @@ package uz.murodjon.robotcallv2.agent.stt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
-import uz.murodjon.robotcallv2.agent.audio.Resampler;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
+import uz.murodjon.robotcallv2.agent.audio.StreamingUpsampler;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 
 import java.io.Closeable;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntConsumer;
 
 /**
@@ -44,29 +45,14 @@ public class SttStreamBridge implements AudioListener, Closeable {
      */
     private static final long READY_GRACE_MS = 2000;
 
-    /** Circular replay buffer to recover speech frames lost during gRPC drops (~2 seconds @ 8kHz). */
-    private static final int MAX_REPLAY_SAMPLES = 16000;
-
-    /**
-     * How long after a promoted final the provider's own final for the same utterance
-     * is still expected, and dropped. Past this a final belongs to the next utterance.
-     */
-    private static final long PROMOTED_FINAL_TTL_MS = 2500;
-
-    /**
-     * Failures of one provider — a stream that would not open, or one that took audio
-     * without ever answering — before the call is moved to another vendor. Two, not one:
-     * a single dropped stream is ordinary and the reopen above recovers it, and switching
-     * vendors mid-sentence costs the recognizer whatever context it had built up.
-     */
-    private static final int FAILOVER_AFTER_FAILURES = 2;
-
     private final String channelId;
     private final int sourceSampleRate;
     private final SpeechGate gate;
     private final VoiceMetrics metrics;
     /** Where another provider comes from when this one stops working; null disables failover. */
     private final SttProviderSelector selector;
+    /** Replay buffer size, promoted-final window and failover threshold ({@code stt.stream.*}). */
+    private final SttStreamProperties streamProperties;
     /**
      * The provider recognizing this call, and the rate it wants audio in. Not final: a
      * provider that keeps failing is replaced mid-call ({@link #failOver()}), and the
@@ -75,6 +61,13 @@ public class SttStreamBridge implements AudioListener, Closeable {
      */
     private volatile SttProvider provider;
     private volatile int targetSampleRate;
+    /**
+     * Carries the interpolation filter across frames for a provider that wants more than
+     * 8 kHz; null when it takes the telephone rate as-is. Replaced whenever the audio it is
+     * fed stops being one continuous stream — a new utterance after the gate, a reopened
+     * stream, another provider — so no filter history crosses a gap. RTP thread only.
+     */
+    private volatile StreamingUpsampler upsampler;
     /**
      * Failures charged to the provider in hand. Cleared by a transcript and by nothing
      * else: a reopen that succeeds proves the socket opens, not that anything is being
@@ -109,6 +102,21 @@ public class SttStreamBridge implements AudioListener, Closeable {
 
     private final Deque<short[]> replayBuffer = new ArrayDeque<>();
     private int replayBufferedSamples = 0;
+    /**
+     * Guards the replay buffer and the stream swap. A lock rather than {@code synchronized}:
+     * {@link #reopen()} opens a network stream while holding it, on the call's virtual
+     * consumer thread, and blocking inside {@code synchronized} pins the carrier — during a
+     * provider outage every call reopening at once stalled every virtual thread in the JVM.
+     */
+    private final ReentrantLock lock = new ReentrantLock();
+    /** Whether the stream in hand has answered anything since it was opened. */
+    private volatile boolean heardSinceOpen;
+    /** Audio sent on the stream in hand since it was opened. RTP thread only. */
+    private long sentSinceOpen;
+    /** Whether the stream in hand has already been charged to {@link #providerFailures}. */
+    private boolean chargedThisStream;
+    /** Whether the last successful {@link #reopen()} fed the replay buffer to the new stream. */
+    private boolean replayedLastReopen;
 
     private volatile SttSession session;
     /** Set by {@link #close()} — a call that has ended must not reopen anything. */
@@ -121,21 +129,21 @@ public class SttStreamBridge implements AudioListener, Closeable {
     /** When the stream in hand was opened — what {@link #READY_GRACE_MS} is measured from. */
     private long streamOpenedAt;
     /** Whether this stream's transport has ever been ready; before that it is still coming up. */
-    private boolean everReady;
+    private volatile boolean everReady;
 
     /** Whether the previous frame was sent — only used to log gate transitions. */
-    private boolean streaming = true;
+    private volatile boolean streaming = true;
 
     // Promoting a late final (EndpointingProperties#finalGraceMs). Guarded by finalLock:
     // the provider's final and the grace timer race for the same utterance.
     private final Object finalLock = new Object();
     private final long finalGraceMs;
     /** The provider's last interim for the utterance in hand. */
-    private String lastInterim;
+    private volatile String lastInterim;
     /** An EOU has been sent and the provider has not answered it with a final yet. */
     private boolean finalPending;
     /** When the last interim was promoted, or 0 — the provider's late final is dropped for a while. */
-    private long promotedAt;
+    private volatile long promotedAt;
 
     /**
      * @param endpointing       when enabled <em>and</em> a gate is installed, this call decides
@@ -156,13 +164,15 @@ public class SttStreamBridge implements AudioListener, Closeable {
                            String language, List<String> alternativeLanguages, TranscriptListener listener,
                            SpeechGate gate, VoiceMetrics metrics, EndpointingProperties endpointing,
                            int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
-                           SttProviderSelector selector, String model) {
+                           SttProviderSelector selector, String model, SttStreamProperties streamProperties) {
+        this.streamProperties = streamProperties;
         this.selector = selector;
         this.model = (model == null || model.isBlank()) ? null : model.trim();
         this.channelId = channelId;
         this.hints = hints == null ? List.of() : List.copyOf(hints);
         this.onUtteranceEnd = onUtteranceEnd != null ? onUtteranceEnd : ms -> { };
         this.targetSampleRate = targetSampleRate;
+        this.upsampler = upsamplerFor(targetSampleRate);
         this.sourceSampleRate = sourceSampleRate;
         this.gate = gate;
         this.metrics = metrics;
@@ -173,6 +183,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.listener = (text, isFinal, confidence) -> {
             lastResponseAt = System.currentTimeMillis();
             providerFailures = 0;
+            heardSinceOpen = true;
             if (closed) {
                 log.warn("[{}] transcript arrived after the call ended, ignored: {}", channelId, text);
                 return;
@@ -219,6 +230,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         }
         if (gate != null && !streaming) {
             streaming = true;
+            upsampler = upsamplerFor(targetSampleRate);
             log.debug("[{}] STT stream resumed (speech)", channelId);
             short[] preRoll = gate.drainPreRoll();
             if (preRoll != null) {
@@ -230,26 +242,42 @@ public class SttStreamBridge implements AudioListener, Closeable {
         send(pcm, length);
     }
 
-    private synchronized void bufferForReplay(short[] pcm, int length) {
+    private void bufferForReplay(short[] pcm, int length) {
         short[] copy = Arrays.copyOf(pcm, length);
-        replayBuffer.addLast(copy);
-        replayBufferedSamples += length;
-        while (replayBufferedSamples > MAX_REPLAY_SAMPLES && !replayBuffer.isEmpty()) {
-            short[] removed = replayBuffer.removeFirst();
-            replayBufferedSamples -= removed.length;
+        lock.lock();
+        try {
+            replayBuffer.addLast(copy);
+            replayBufferedSamples += length;
+            while (replayBufferedSamples > streamProperties.replayBufferSamples() && !replayBuffer.isEmpty()) {
+                short[] removed = replayBuffer.removeFirst();
+                replayBufferedSamples -= removed.length;
+            }
+        } finally {
+            lock.unlock();
         }
     }
 
-    private synchronized void clearReplayBuffer() {
-        replayBuffer.clear();
-        replayBufferedSamples = 0;
+    private void clearReplayBuffer() {
+        lock.lock();
+        try {
+            replayBuffer.clear();
+            replayBufferedSamples = 0;
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void send(short[] pcm, int length) {
         SttSession current = session;
-        if (!current.isAlive() && !reopen()) {
-            // Still no stream - frame already saved in replayBuffer for replay upon reconnect
-            return;
+        if (!current.isAlive()) {
+            if (!reopen()) {
+                return; // still no stream — the frame waits in the replay buffer
+            }
+            if (replayedLastReopen) {
+                // The replay that fed the new stream already held this frame; sending it
+                // again as well doubled it at the seam.
+                return;
+            }
         }
         if (session.isReady()) {
             everReady = true;
@@ -274,11 +302,9 @@ public class SttStreamBridge implements AudioListener, Closeable {
         }
         short[] samples;
         int len;
-        if (targetSampleRate == 16000) {
-            samples = Resampler.upsample8kTo16k(pcm, length);
-            len = samples.length;
-        } else if (targetSampleRate == 24000) {
-            samples = Resampler.upsample8kTo24k(pcm, length);
+        StreamingUpsampler up = upsampler;
+        if (up != null) {
+            samples = up.push(pcm, length);
             len = samples.length;
         } else {
             samples = pcm;
@@ -288,6 +314,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
             current.sendAudio(toLittleEndian(samples, len));
             metrics.sttAudioSent(seconds(length));
             utteranceSamples += length;
+            sentSinceOpen += length;
             if (utteranceSamples >= maxUtteranceSamples) {
                 log.warn("[{}] utterance ran past {} ms — forcing end of utterance",
                         channelId, maxUtteranceSamples * 1000 / sourceSampleRate);
@@ -357,7 +384,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
             promotedAt = System.currentTimeMillis();
         }
         metrics.sttFinalPromoted();
-        log.info("[{}] no final {} ms after the EOU — using the last interim: {}", channelId, finalGraceMs, text);
+        // DEBUG: the text is what the caller said, and INFO goes to a two-week disk log.
+        log.debug("[{}] no final {} ms after the EOU — using the last interim: {}", channelId, finalGraceMs, text);
         clearReplayBuffer();
         if (downstream != null) {
             downstream.onTranscript(text, true, 0f);
@@ -376,13 +404,13 @@ public class SttStreamBridge implements AudioListener, Closeable {
             if (promotedAt == 0) {
                 return true;
             }
-            boolean stale = System.currentTimeMillis() - promotedAt < PROMOTED_FINAL_TTL_MS;
+            boolean stale = System.currentTimeMillis() - promotedAt < streamProperties.promotedFinalTtlMs();
             promotedAt = 0;
             if (!stale) {
                 return true;
             }
         }
-        log.info("[{}] late final dropped, already answered from the interim: {}", channelId, text);
+        log.debug("[{}] late final dropped, already answered from the interim: {}", channelId, text);
         return false;
     }
 
@@ -399,6 +427,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         // what this used to do — and a call spent listening to a recognizer that never
         // speaks is indistinguishable, from the caller's side, from a bot that ignores them.
         providerFailures++;
+        chargedThisStream = true;
         try {
             session.close();
         } catch (Exception e) {
@@ -409,55 +438,80 @@ public class SttStreamBridge implements AudioListener, Closeable {
     /**
      * Replace a stream that is no longer carrying audio.
      */
-    private synchronized boolean reopen() {
-        SttSession current = session;
-        if (current.isAlive()) {
-            return true;
-        }
-        if (closed) {
-            return false;
-        }
-        long now = System.currentTimeMillis();
-        if (now - lastReopenAttemptAt < REOPEN_COOLDOWN_MS) {
-            return false;
-        }
-        lastReopenAttemptAt = now;
+    private boolean reopen() {
+        lock.lock();
         try {
-            current.close();
-        } catch (Exception e) {
-            log.debug("[{}] closing the dead STT session failed: {}", channelId, e.getMessage());
-        }
-        if (providerFailures >= FAILOVER_AFTER_FAILURES) {
-            failOver();
-        }
-        try {
-            utteranceSamples = 0;
-            session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints, model);
-            lastResponseAt = now;
-            streamOpenedAt = now;
-            everReady = false;
-            droppedFrames = 0;
-            log.warn("[{}] STT stream had died — reopened on {}", channelId, provider.name());
-
-            // Replay buffered audio into the fresh stream so speech mid-sentence is not lost!
-            if (!replayBuffer.isEmpty()) {
-                log.info("[{}] replaying {} ms of speech into reopened STT stream to prevent lost turn",
-                        channelId, replayBufferedSamples * 1000 / sourceSampleRate);
-                List<short[]> toReplay = new ArrayList<>(replayBuffer);
-                for (short[] chunk : toReplay) {
-                    sendDirect(chunk, chunk.length);
-                }
+            replayedLastReopen = false;
+            SttSession current = session;
+            if (current.isAlive()) {
+                return true;
             }
-            return true;
-        } catch (Exception e) {
-            metrics.sttError();
-            log.warn("[{}] STT stream reopen failed: {}", channelId, e.getMessage());
-            return false;
+            if (closed) {
+                return false;
+            }
+            long now = System.currentTimeMillis();
+            if (now - lastReopenAttemptAt < REOPEN_COOLDOWN_MS) {
+                return false;
+            }
+            lastReopenAttemptAt = now;
+            // A stream that took audio and died without answering a word is the provider
+            // failing whether or not it said so — a refused connection, a 401, an immediate
+            // UNAVAILABLE. Before this only a stall counted, so a hard outage never reached
+            // the failover below and the call stayed deaf to the end. Charged once per
+            // stream: a stall dropStalledStream already counted is not counted again.
+            if (!chargedThisStream && sentSinceOpen > 0 && !heardSinceOpen) {
+                providerFailures++;
+                chargedThisStream = true;
+            }
+            try {
+                current.close();
+            } catch (Exception e) {
+                log.debug("[{}] closing the dead STT session failed: {}", channelId, e.getMessage());
+            }
+            if (providerFailures >= streamProperties.failoverAfterFailures()) {
+                failOver();
+            }
+            try {
+                utteranceSamples = 0;
+                upsampler = upsamplerFor(targetSampleRate);
+                session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints, model);
+                lastResponseAt = now;
+                streamOpenedAt = now;
+                everReady = false;
+                droppedFrames = 0;
+                heardSinceOpen = false;
+                sentSinceOpen = 0;
+                chargedThisStream = false;
+                log.warn("[{}] STT stream had died — reopened on {}", channelId, provider.name());
+
+                // Replay buffered audio into the fresh stream so speech mid-sentence is not lost!
+                if (!replayBuffer.isEmpty()) {
+                    log.info("[{}] replaying {} ms of speech into reopened STT stream to prevent lost turn",
+                            channelId, replayBufferedSamples * 1000 / sourceSampleRate);
+                    List<short[]> toReplay = new ArrayList<>(replayBuffer);
+                    for (short[] chunk : toReplay) {
+                        sendDirect(chunk, chunk.length);
+                    }
+                    replayedLastReopen = true;
+                }
+                return true;
+            } catch (Exception e) {
+                // A reopen that fails outright is this provider failing too. Uncounted, a
+                // vendor refusing every connection was retried once a second for the whole
+                // call and the failover never came.
+                providerFailures++;
+                metrics.sttError();
+                log.warn("[{}] STT stream reopen failed ({} failure(s) on {}): {}",
+                        channelId, providerFailures, provider.name(), e.getMessage());
+                return false;
+            }
+        } finally {
+            lock.unlock();
         }
     }
 
     /**
-     * Move the call to another vendor after {@link #FAILOVER_AFTER_FAILURES} failures of
+     * Move the call to another vendor after {@code stt.stream.failover-after-failures} failures of
      * the one in hand. Called from {@link #reopen()} with its lock held, so the next
      * stream is opened on whatever this leaves behind.
      *
@@ -492,19 +546,32 @@ public class SttStreamBridge implements AudioListener, Closeable {
         providerFailures = 0;
     }
 
+    /**
+     * A band-limited upsampler for a provider above the telephone rate; null for one that
+     * takes 8 kHz, or a rate there is no filter for — sent as-is, as it always was.
+     */
+    private static StreamingUpsampler upsamplerFor(int targetRate) {
+        return targetRate == 16000 || targetRate == 24000 ? StreamingUpsampler.from8kTo(targetRate) : null;
+    }
+
     /** Duration of a frame at the source rate — what the provider bills, upsampled or not. */
     private double seconds(int samples) {
         return (double) samples / sourceSampleRate;
     }
 
     @Override
-    public synchronized void close() {
-        closed = true;
-        clearReplayBuffer();
+    public void close() {
+        lock.lock();
         try {
-            session.close();
-        } catch (Exception e) {
-            log.warn("Failed to close STT session [{}]: {}", channelId, e.getMessage());
+            closed = true;
+            clearReplayBuffer();
+            try {
+                session.close();
+            } catch (Exception e) {
+                log.warn("Failed to close STT session [{}]: {}", channelId, e.getMessage());
+            }
+        } finally {
+            lock.unlock();
         }
     }
 

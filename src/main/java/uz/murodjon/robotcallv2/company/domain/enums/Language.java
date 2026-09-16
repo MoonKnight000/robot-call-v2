@@ -2,11 +2,11 @@ package uz.murodjon.robotcallv2.company.domain.enums;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * BCP-47 languages the platform can speak (report #6).
@@ -27,15 +27,18 @@ public enum Language {
         return code;
     }
 
-    /** @throws ValidationException if code matches none of the supported languages */
+    /** The language {@code code} names, case-insensitively; empty for anything else. */
+    public static Optional<Language> findByCode(String code) {
+        return Arrays.stream(values()).filter(language -> language.code.equalsIgnoreCase(code)).findFirst();
+    }
+
+    /**
+     * Jackson's way in only; code reads a language with {@link CompanyValidator#parseLanguage}
+     * or {@link #findByCode}.
+     */
     @JsonCreator
     public static Language fromCode(String code) {
-        for (Language language : values()) {
-            if (language.code.equalsIgnoreCase(code)) {
-                return language;
-            }
-        }
-        throw new ValidationException(ErrorCode.LANGUAGE_CODE_INVALID, code, codes());
+        return CompanyValidator.parseLanguage(code);
     }
 
     public static List<String> codes() {

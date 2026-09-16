@@ -1,6 +1,5 @@
 package uz.murodjon.robotcallv2.report.application.port.output;
 
-import uz.murodjon.robotcallv2.report.application.dto.CreateReportScheduleRequest;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSchedule;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportScheduleFilter;
 
@@ -12,7 +11,7 @@ import java.util.List;
  */
 public interface ReportScheduleRepository {
 
-    long create(long companyId, CreateReportScheduleRequest request);
+    long create(long companyId, ReportSchedule schedule);
 
     ReportSchedule find(long companyId, long id);
 

@@ -15,19 +15,39 @@ public interface CampaignRepository {
 
     List<Campaign> findAll(long companyId, CampaignFilter filter);
 
-    long count(long companyId);
+    long countByCompanyId(long companyId);
 
-    long count(long companyId, CampaignFilter filter);
+    long countByFilter(long companyId, CampaignFilter filter);
 
     List<Campaign> searchByName(long companyId, String q, int limit);
 
+    /** ACTIVE campaigns of companies that are not suspended — what the dialer may dial now. */
     List<Campaign> findActive();
 
     List<Campaign> findRecurring();
 
+    /** SCHEDULED campaigns whose startAt has come. */
+    List<Campaign> findScheduledDue(Instant now);
+
+    /** ACTIVE campaigns whose endAt has passed. */
+    List<Campaign> findActiveExpired(Instant now);
+
     void updateStatus(long companyId, long id, CampaignStatus status);
+
+    /**
+     * ACTIVE → COMPLETED in one statement, only when no target is still PENDING or
+     * IN_PROGRESS; whichever concurrent caller gets {@code true} announces it.
+     */
+    boolean completeIfFinished(long companyId, long id);
 
     void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status);
 
-    void update(long companyId, long id, Campaign row);
+    /**
+     * Writes the editable fields of {@code row}, only while the stored campaign is still at
+     * {@code row.version()}.
+     *
+     * @return {@code false} when someone saved the campaign after it was read — nothing is
+     *         written; {@code true} otherwise, including for a campaign that no longer exists
+     */
+    boolean update(long companyId, long id, Campaign row);
 }

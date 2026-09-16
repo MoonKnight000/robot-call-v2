@@ -3,9 +3,16 @@ HELP.md
 recordings/
 # SIP trunk credentials (secret) — included by pjsip.conf
 asterisk/etc/asterisk/pjsip_auth.conf
-# Generated per-company managed SIP trunk config (report #7) — written by
-# PjsipConfigWriter, contains plaintext passwords (PJSIP requires it), never committed.
-asterisk/etc/asterisk/pjsip_trunks.conf
+# ARI / AMI / softphone / web-test credentials — generated from .env by
+# asterisk/render-auth.sh, included by ari.conf, manager.conf and pjsip.conf
+asterisk/etc/asterisk/ari_auth.conf
+asterisk/etc/asterisk/manager_auth.conf
+asterisk/etc/asterisk/pjsip_local_auth.conf
+# Generated PJSIP config — managed SIP trunks (PjsipConfigWriter, report #7) and operator
+# endpoints (PjsipOperatorEndpointConfigAdapter). Plaintext passwords (PJSIP requires it),
+# never committed. The directory itself is kept so the app's bind mount has a source.
+asterisk/etc/asterisk/generated/*
+!asterisk/etc/asterisk/generated/.gitkeep
 # Cloud credentials — Google STT/TTS read them via GOOGLE_APPLICATION_CREDENTIALS
 # (a path outside the repo), so a key file must never live here.
 **/credential/

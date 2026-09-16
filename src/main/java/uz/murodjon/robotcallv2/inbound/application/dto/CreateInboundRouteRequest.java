@@ -32,6 +32,9 @@ public record CreateInboundRouteRequest(
         @Schema(type = "string", pattern = DateTimeProperties.TIME_PATTERN, example = "18:00:00")
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN)
         LocalTime businessHoursEnd,
-        String fallbackMessage
+        String fallbackMessage,
+        Long callbackCampaignId,
+        Long scheduleId,
+        Long callFlowId
 ) {
 }

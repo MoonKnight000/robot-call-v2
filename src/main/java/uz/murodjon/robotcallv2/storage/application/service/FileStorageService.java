@@ -3,9 +3,9 @@ package uz.murodjon.robotcallv2.storage.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 
-import uz.murodjon.robotcallv2.company.application.service.CompanyAccessGuard;
+import uz.murodjon.robotcallv2.security.CompanyAccessGuard;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
@@ -17,9 +17,9 @@ import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort
 import uz.murodjon.robotcallv2.storage.application.port.output.StoredFileRepository;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
 import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
+import uz.murodjon.robotcallv2.storage.domain.service.FileStorageValidator;
 import uz.murodjon.robotcallv2.storage.infrastructure.config.AudioStorageProperties;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,7 +48,7 @@ public class FileStorageService implements FileStorageUseCase {
     }
 
     @Override
-    public FileUploadResponse upload(long callerCompanyId, MultipartFile file, Long companyId,
+    public FileUploadResponse upload(long callerCompanyId, UploadedFile file, Long companyId,
                                      FileCategory category) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException(ErrorCode.IMAGE_UPLOAD_FILE_MISSING);
@@ -57,21 +57,16 @@ public class FileStorageService implements FileStorageUseCase {
         if (companyId != null) {
             companyAccessGuard.requireOwnOrSuperadmin(callerCompanyId, companyId);
         }
-        FileCategory resolvedCategory = category != null ? category : detectCategory(file.getContentType());
+        byte[] data = file.bytes();
 
-        byte[] data;
-        try {
-            data = file.getBytes();
-        } catch (IOException e) {
-            throw new ValidationException(ErrorCode.IMAGE_UPLOAD_READ_FAILED, e.getMessage());
-        }
-
-        String originalName = file.getOriginalFilename() != null && !file.getOriginalFilename().isBlank()
-                ? file.getOriginalFilename()
+        // The bytes decide the type; the browser's Content-Type only breaks ties the bytes
+        // cannot. What is stored — and served back inline — is therefore always one of the
+        // allowed formats, whatever the upload called itself.
+        String contentType = FileStorageValidator.detectContentType(data, file.contentType());
+        FileCategory resolvedCategory = category != null ? category : detectCategory(contentType);
+        String originalName = file.originalFilename() != null && !file.originalFilename().isBlank()
+                ? file.originalFilename()
                 : "file";
-        String contentType = file.getContentType() != null && !file.getContentType().isBlank()
-                ? file.getContentType()
-                : "application/octet-stream";
 
         StoredFile stored = store(data, resolvedCompanyId, resolvedCategory, originalName, contentType);
         if (stored == null) {
@@ -93,18 +88,20 @@ public class FileStorageService implements FileStorageUseCase {
         return FileCategory.DOCUMENT;
     }
 
+    @Override
     public StoredFile store(byte[] data, long companyId, FileCategory category, String originalName,
                             String contentType) {
-        String objectKey = objectKey(companyId, category, originalName);
+        String objectKey = objectKey(companyId, category, originalName, contentType);
         if (!objectStoragePort.upload(data, bucket, objectKey, contentType)) {
             return null;
         }
         return save(companyId, category, originalName, objectKey, contentType, data.length);
     }
 
+    @Override
     public StoredFile store(Path file, long companyId, FileCategory category, String originalName,
                             String contentType) {
-        String objectKey = objectKey(companyId, category, originalName);
+        String objectKey = objectKey(companyId, category, originalName, contentType);
         if (!objectStoragePort.uploadFile(file, bucket, objectKey, contentType)) {
             return null;
         }
@@ -132,6 +129,22 @@ public class FileStorageService implements FileStorageUseCase {
         }
     }
 
+    @Override
+    public boolean delete(long companyId, long id) {
+        StoredFile file = storedFileRepository.find(id);
+        if (file == null || file.companyId() != companyId) {
+            return false;
+        }
+        try {
+            objectStoragePort.delete(file.bucket(), file.path());
+        } catch (Exception e) {
+            log.warn("Stored file {} ({}/{}) could not be deleted: {}", id, file.bucket(), file.path(), e.getMessage());
+            return false;
+        }
+        storedFileRepository.delete(id);
+        return true;
+    }
+
     private StoredFile save(long companyId, FileCategory category, String originalName, String objectKey,
                             String contentType, long sizeBytes) {
         long id = storedFileRepository.create(companyId, category, originalName, objectKey, bucket, contentType, sizeBytes);
@@ -139,15 +152,29 @@ public class FileStorageService implements FileStorageUseCase {
         return storedFileRepository.find(id);
     }
 
-    private static String objectKey(long companyId, FileCategory category, String originalName) {
-        return "com-" + companyId + "/" + category.folder() + "/" + UUID.randomUUID() + extensionOf(originalName);
+    /**
+     * The extension comes from the type, and only from a type this app knows; the client's
+     * file name never reaches the object key (it could carry {@code ..} or a NUL). A type
+     * without a known extension — an internal store of a recording in some other container —
+     * falls back to the name's own suffix, letters and digits only.
+     */
+    private static String objectKey(long companyId, FileCategory category, String originalName, String contentType) {
+        String extension = FileStorageValidator.extensionFor(contentType);
+        if (extension.isEmpty()) {
+            extension = safeExtensionOf(originalName);
+        }
+        return "com-" + companyId + "/" + category.folder() + "/" + UUID.randomUUID() + extension;
     }
 
-    private static String extensionOf(String originalName) {
+    private static String safeExtensionOf(String originalName) {
         if (originalName == null) {
             return "";
         }
         int dot = originalName.lastIndexOf('.');
-        return dot < 0 ? "" : originalName.substring(dot);
+        if (dot < 0) {
+            return "";
+        }
+        String suffix = originalName.substring(dot + 1);
+        return suffix.matches("[A-Za-z0-9]{1,8}") ? "." + suffix.toLowerCase() : "";
     }
 }

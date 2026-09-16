@@ -5,8 +5,9 @@
 -- added and then re-defaulted twice is noise once no database anywhere replays it.
 --
 -- Tables are declared in dependency order so every REFERENCES points at something that
--- already exists; the single exception is company.logo_file_id, which is added by ALTER
--- below because company and stored_file reference each other.
+-- already exists. Two pairs reference each other and are closed with an ALTER once both
+-- exist: company <-> stored_file (company.logo_file_id) and ai_agent <-> call_queue
+-- (ai_agent.transfer_queue_id).
 
 -- ---------------------------------------------------------------------------
 -- Tenant, files, company settings
@@ -41,16 +42,44 @@ CREATE INDEX idx_stored_file_category_created ON stored_file(category, created_a
 ALTER TABLE company ADD CONSTRAINT fk_company_logo_file
     FOREIGN KEY (logo_file_id) REFERENCES stored_file(id) ON DELETE SET NULL;
 
--- Company operational settings — working hours window, timezone, and default language.
+-- Company operational settings — working hours window, timezone, default language, and the
+-- contact policy.
+--
+-- Contact policy: how often one phone number may be called, across every campaign the
+-- company runs — not per campaign, which is the only cap there was. Collection rules
+-- elsewhere (US Regulation F: more than 7 attempts in 7 days, or a call within 7 days of a
+-- conversation, is presumed harassment) are written in these terms; the numbers are the
+-- company's to set against Uzbek law.
+--
+--   max_attempts_per_phone_per_week  placed outbound attempts to one number in any 7 days; 0 = no cap
+--   quiet_days_after_conversation    days after a real conversation before the next outbound call; 0 = none
+--   respect_promised_date            no call while a promise to pay is still in its term
+--
+-- human_like_persona_allowed: whether this company's agents may present as a person and
+-- skip the §11.1 "this is an automated call" disclosure. A legal decision, not a voice
+-- setting — so it lives with the company and is audited there, and a new company starts
+-- without it until a platform admin allows it.
+--
+-- holidays: days the company does not call at all — public holidays, Navruz, a company day
+-- off. ISO dates, comma-separated; empty means every allowed weekday dials. The dialer skips
+-- them in the company's own time zone and the retry schedule steps over them.
+--
+-- The column defaults match CompanyConfig.defaults(), which the application writes
+-- explicitly; they apply to a row inserted without the columns, such as the seeded tenant.
 CREATE TABLE company_config (
-    id                 BIGSERIAL PRIMARY KEY,
-    company_id         BIGINT      NOT NULL REFERENCES company(id),
-    dial_window_start  TIME        NOT NULL,
-    dial_window_end    TIME        NOT NULL,
-    timezone           VARCHAR(64) NOT NULL,
-    default_language   VARCHAR(10) NOT NULL,
-    disclosure_text    VARCHAR(500),
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                              BIGSERIAL PRIMARY KEY,
+    company_id                      BIGINT      NOT NULL REFERENCES company(id),
+    dial_window_start               TIME        NOT NULL DEFAULT '09:00',
+    dial_window_end                 TIME        NOT NULL DEFAULT '20:00',
+    timezone                        VARCHAR(64) NOT NULL,
+    default_language                VARCHAR(10) NOT NULL,
+    disclosure_text                 VARCHAR(500),
+    max_attempts_per_phone_per_week INT         NOT NULL DEFAULT 0,
+    quiet_days_after_conversation   INT         NOT NULL DEFAULT 0,
+    respect_promised_date           BOOLEAN     NOT NULL DEFAULT true,
+    human_like_persona_allowed      BOOLEAN     NOT NULL DEFAULT false,
+    holidays                        TEXT        NOT NULL DEFAULT '',
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX idx_company_config_company ON company_config(company_id);
 
@@ -76,15 +105,18 @@ CREATE TABLE tts_voice (
     role     VARCHAR(32)                 -- voice mood or role nuance (optional)
 );
 
--- LLM model catalog. What ai_model_config.model and ai_agent.llm_model may be set to,
--- seeded in R__seed_data.sql — a table rather than a YAML list so the agent form asks the
--- same source the save-time check does, and a wrong model id is a 400 instead of a call
--- that fails when it is already ringing.
+-- Model catalog. What ai_model_config.model and ai_agent.llm_model / stt_model / tts_model
+-- may be set to, seeded in R__seed_data.sql — a table rather than a YAML list so the agent
+-- form asks the same source the save-time check does, and a wrong model id is a 400 instead
+-- of a call that fails when it is already ringing.
 --
+-- kind splits the catalog into the three families (LLM, STT, TTS). They never mix: what
+-- Deepgram calls nova-3 is not a model Gemini answers for, and neither is a chat model id.
 -- mode splits two sets that never overlap: a CASCADE model reads text and writes text,
 -- a REALTIME one hears and speaks, and neither provider recognises the other's ids.
 CREATE TABLE ai_model (
     id       VARCHAR(120) PRIMARY KEY,   -- model id sent to the provider, e.g. 'gemini-3.8-flash'
+    kind     VARCHAR(10)  NOT NULL DEFAULT 'LLM', -- LLM | STT | TTS
     provider VARCHAR(50)  NOT NULL,      -- google-genai | openai | gemini-live | openai-realtime | qwen-omni | moshi | pipecat
     mode     VARCHAR(20)  NOT NULL,      -- CASCADE | REALTIME
     label    VARCHAR(255) NOT NULL       -- human-readable name for the settings and agent forms
@@ -110,6 +142,10 @@ CREATE TABLE scenario (
 CREATE UNIQUE INDEX idx_scenario_active_key ON scenario(scenario_key) WHERE is_active;
 CREATE INDEX idx_scenario_key_version ON scenario(scenario_key, version DESC);
 CREATE INDEX idx_scenario_company ON scenario(company_id);
+-- ScenarioService.update writes maxVersion + 1, so two concurrent edits could both write the
+-- same version; with this index the second one fails cleanly instead of leaving two rows
+-- that claim one version.
+CREATE UNIQUE INDEX uq_scenario_key_version ON scenario(scenario_key, version);
 
 -- ---------------------------------------------------------------------------
 -- Telephony endpoints
@@ -148,7 +184,7 @@ CREATE UNIQUE INDEX idx_sip_trunk_default ON sip_trunk(company_id) WHERE is_defa
 CREATE TABLE app_role (
     id          BIGSERIAL PRIMARY KEY,
     company_id  BIGINT       NOT NULL REFERENCES company(id),
-    code        VARCHAR(50),             -- DEVELOPER, ADMIN, OPERATOR, VIEWER, SUPERADMIN; NULL for a company's own role
+    code        VARCHAR(50),             -- DEVELOPER, ADMIN, OPERATOR, VIEWER, SUPERVISOR, SUPERADMIN; NULL for a company's own role
     name        VARCHAR(120) NOT NULL,
     description VARCHAR(500),
     is_system   BOOLEAN      NOT NULL DEFAULT false,
@@ -193,6 +229,39 @@ CREATE INDEX idx_app_user_company ON app_user(company_id);
 CREATE INDEX idx_app_user_role ON app_user(role_id);
 CREATE INDEX idx_app_user_invite_token ON app_user(invite_token_hash);
 CREATE INDEX idx_app_user_reset_token ON app_user(reset_token_hash);
+
+-- ---------------------------------------------------------------------------
+-- Machine access: a company's own systems calling this API without a person logging in.
+-- An integration used to either run as somebody's account — inheriting whatever that
+-- person may do, and dying when they leave — or not run at all.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE api_key (
+    id            BIGSERIAL PRIMARY KEY,
+    company_id    BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    name          VARCHAR(128) NOT NULL,
+    -- The readable half of the key, shown in the console so a key can be recognised
+    -- after it has been issued, and used to find the row before the hash is compared.
+    key_prefix    VARCHAR(32)  NOT NULL UNIQUE,
+    -- SHA-256 of the whole key. The key itself is shown once, at creation, and never
+    -- stored: a leaked database must not hand anyone a working credential.
+    key_hash      VARCHAR(64)  NOT NULL,
+    created_by    BIGINT       REFERENCES app_user(id) ON DELETE SET NULL,
+    last_used_at  TIMESTAMPTZ,
+    expires_at    TIMESTAMPTZ,
+    revoked_at    TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_api_key_company ON api_key(company_id, created_at DESC);
+
+-- Permission names this key was granted. What it may actually do is this list intersected
+-- at authentication time with the hardcoded allowlist in ApiKeyScopes, so a key cannot
+-- gain a right by having its rows edited.
+CREATE TABLE api_key_scope (
+    api_key_id BIGINT      NOT NULL REFERENCES api_key(id) ON DELETE CASCADE,
+    permission VARCHAR(64) NOT NULL,
+    PRIMARY KEY (api_key_id, permission)
+);
 
 -- ---------------------------------------------------------------------------
 -- AI agent — WHO speaks, pointing at the scenario that says WHAT is said
@@ -243,12 +312,23 @@ CREATE TABLE ai_agent (
     tts_provider           VARCHAR(64),           -- yandex, aisha, gemini, cartesia
     tts_model              VARCHAR(120),
     llm_model              VARCHAR(120),          -- NULL = the company's ai_model_config
+    -- The cascade pipeline answers a very short caller turn on a cheaper model than the
+    -- rest of the call. NULL keeps the installation default (dialog.fast-model); an agent
+    -- that wants no downgrade at all sets this to the same id as llm_model.
+    fast_llm_model         VARCHAR(120),
     temperature            DOUBLE PRECISION,      -- NULL = the company's
     max_output_tokens      INT,                   -- NULL = the company's
+    -- How a REALTIME call is given its facts: written into the engine's instructions
+    -- (PROMPT) or fetched one at a time with getCallFact (TOOL). NULL keeps the
+    -- installation default (voice-agent.realtime.facts-in-prompt).
+    realtime_facts_delivery VARCHAR(10),
 
     -- How it sounds.
     tts_voice              VARCHAR(64)  REFERENCES tts_voice(id),  -- NULL = the configured provider's own default voice
-    voice_speed            DOUBLE PRECISION DEFAULT 1.0,
+    voice_speed            DOUBLE PRECISION DEFAULT 1.0,           -- 0.25–3.0 (VoiceSettingsValidator)
+    -- Language code -> speed as JSON, for an agent whose Russian voice reads faster than its
+    -- Uzbek one at the same setting; NULL keeps voice_speed for every language.
+    voice_speed_per_language JSONB,
     voice_stability        DOUBLE PRECISION DEFAULT 0.5,
     voice_similarity_boost DOUBLE PRECISION DEFAULT 0.75,
     emotion_adaptive_voice BOOLEAN      NOT NULL DEFAULT true,
@@ -266,10 +346,13 @@ CREATE TABLE ai_agent (
 
     -- Call dynamics, human handoff, voicemail and mid-call SMS.
     dtmf_input_enabled       BOOLEAN     NOT NULL DEFAULT true,
-    interruption_sensitivity VARCHAR(32) NOT NULL DEFAULT 'MEDIUM', -- LOW, MEDIUM, HIGH
+    interruption_sensitivity VARCHAR(32) NOT NULL DEFAULT 'MEDIUM', -- LOW, MEDIUM, HIGH, OFF
     endpointing_delay_ms     INT         NOT NULL DEFAULT 700,
     transfer_phone_number    VARCHAR(32),          -- NULL = the platform's operator endpoint
     transfer_message         TEXT,
+    -- Where this agent's handover to a human goes. Wins over transfer_phone_number. The
+    -- foreign key is added below, once call_queue exists.
+    transfer_queue_id        BIGINT,
     voicemail_action         VARCHAR(30) NOT NULL DEFAULT 'LEAVE_MESSAGE', -- HANGUP, LEAVE_MESSAGE, IGNORE
     voicemail_message        TEXT,
     mid_call_sms_enabled     BOOLEAN     NOT NULL DEFAULT false,
@@ -322,13 +405,93 @@ CREATE TABLE ai_agent_sip_trunk (
     PRIMARY KEY (ai_agent_id, sip_trunk_id)
 );
 
+-- An agent's edits do not reach running campaigns the moment they are saved. The ai_agent
+-- row is the DRAFT every editor writes to; a call runs on the latest PUBLISHED snapshot from
+-- this table, and an agent that was never published keeps running on its row. Publishing
+-- copies the row here as version N and archives N-1; rollback re-applies an old snapshot to
+-- the row and publishes it again as N+1, so the history is append-only and a version number
+-- never means two different things.
+CREATE TABLE ai_agent_version (
+    id           BIGSERIAL PRIMARY KEY,
+    agent_id     BIGINT      NOT NULL REFERENCES ai_agent (id) ON DELETE CASCADE,
+    company_id   BIGINT      NOT NULL REFERENCES company (id) ON DELETE CASCADE,
+    version      INT         NOT NULL,
+    status       VARCHAR(10) NOT NULL,
+    snapshot     JSONB       NOT NULL,
+    note         VARCHAR(500),
+    published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_by BIGINT      REFERENCES app_user (id) ON DELETE SET NULL,
+    CONSTRAINT uq_ai_agent_version UNIQUE (agent_id, version)
+);
+-- Exactly one live version per agent.
+CREATE UNIQUE INDEX idx_ai_agent_version_published
+    ON ai_agent_version (agent_id) WHERE status = 'PUBLISHED';
+
+-- An agent's own regression suite. A test case is a scripted caller (a persona prompt for a
+-- second model) plus what the call must come to; an evaluation run plays every case against
+-- the agent — draft or a published version — and keeps each transcript and verdict, so a
+-- prompt change is checked before it is published.
+CREATE TABLE agent_test_case (
+    id                 BIGSERIAL PRIMARY KEY,
+    company_id         BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    agent_id           BIGINT       NOT NULL REFERENCES ai_agent(id) ON DELETE CASCADE,
+    name               VARCHAR(200) NOT NULL,
+    persona_prompt     TEXT         NOT NULL,
+    facts              JSONB        NOT NULL DEFAULT '{}',
+    language           VARCHAR(10),
+    expect_disposition VARCHAR(40),
+    expect_stage       VARCHAR(100),
+    must_say           JSONB        NOT NULL DEFAULT '[]',
+    must_not_say       JSONB        NOT NULL DEFAULT '[]',
+    max_turns          INT          NOT NULL DEFAULT 12,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_agent_test_case_agent ON agent_test_case (agent_id);
+
+CREATE TABLE agent_eval_run (
+    id            BIGSERIAL PRIMARY KEY,
+    company_id    BIGINT      NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    agent_id      BIGINT      NOT NULL REFERENCES ai_agent(id) ON DELETE CASCADE,
+    agent_version INT,
+    status        VARCHAR(16) NOT NULL,
+    total         INT         NOT NULL DEFAULT 0,
+    passed        INT         NOT NULL DEFAULT 0,
+    avg_qa_score  INT,
+    error         VARCHAR(500),
+    started_at    TIMESTAMPTZ NOT NULL,
+    finished_at   TIMESTAMPTZ
+);
+CREATE INDEX idx_agent_eval_run_agent ON agent_eval_run (agent_id, started_at DESC);
+
+CREATE TABLE agent_eval_result (
+    id                  BIGSERIAL PRIMARY KEY,
+    run_id              BIGINT       NOT NULL REFERENCES agent_eval_run(id) ON DELETE CASCADE,
+    test_case_id        BIGINT       REFERENCES agent_test_case(id) ON DELETE SET NULL,
+    case_name           VARCHAR(200) NOT NULL,
+    passed              BOOLEAN      NOT NULL,
+    disposition         VARCHAR(40),
+    stage               VARCHAR(100),
+    problems            JSONB        NOT NULL DEFAULT '[]',
+    transcript          TEXT         NOT NULL,
+    qa_score            INT,
+    guardrail_violation BOOLEAN      NOT NULL DEFAULT false,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_agent_eval_result_run ON agent_eval_result (run_id);
+
 -- ---------------------------------------------------------------------------
--- Agent tool library and website widgets
+-- Agent tool library, MCP servers and website widgets
 -- ---------------------------------------------------------------------------
 
 -- An HTTP endpoint the model may call mid-conversation, defined once per company and
 -- bound to as many agents as want it. The four *_params columns are the OpenAPI-ish
 -- description of the request; dynamic_variables names what the call may substitute in.
+--
+--   response_mapping   {"order_status": "$.data.status"}: the model gets these fields only,
+--                      not the raw body; null keeps the raw (truncated) body
+--   retry_attempts     extra tries after a 5xx or a network failure. 0, the default, never
+--                      retries: a POST that half-succeeded must not run twice unasked
+--   max_calls_per_call how often one conversation may call the tool; 0 means no limit
 CREATE TABLE tool (
     id                    BIGSERIAL PRIMARY KEY,
     company_id            BIGINT        NOT NULL REFERENCES company(id) ON DELETE CASCADE,
@@ -347,6 +510,9 @@ CREATE TABLE tool (
     -- not left listening to silence while an API answers.
     force_pre_tool_speech BOOLEAN       NOT NULL DEFAULT true,
     pre_tool_speech       VARCHAR(500),
+    response_mapping      JSONB,
+    retry_attempts        INT           NOT NULL DEFAULT 0,
+    max_calls_per_call    INT           NOT NULL DEFAULT 3,
     created_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
@@ -360,6 +526,50 @@ CREATE TABLE ai_agent_tool (
 );
 CREATE INDEX idx_ai_agent_tool_agent ON ai_agent_tool(ai_agent_id);
 CREATE INDEX idx_ai_agent_tool_tool ON ai_agent_tool(tool_id);
+
+-- MCP: tools a company hosts somewhere else, offered to its agent during a call. The `tool`
+-- table covers "call this REST endpoint with these parameters", which a company has to
+-- describe field by field; an MCP server describes its own tools, so a company that already
+-- runs one gets them all by pasting a URL.
+CREATE TABLE mcp_connection (
+    id            BIGSERIAL    PRIMARY KEY,
+    company_id    BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    name          VARCHAR(128) NOT NULL,
+    -- HTTPS only, and screened against internal addresses before every call.
+    url           VARCHAR(500) NOT NULL,
+    -- NONE or BEARER. A bearer token is not stored here: secret_key names a row in the
+    -- company's secret store, so the credential lives in one place with the rest.
+    auth_type     VARCHAR(16)  NOT NULL DEFAULT 'NONE',
+    secret_key    VARCHAR(128),
+    -- PENDING -> CONNECTED, or AUTH_REQUIRED / ERROR / DISABLED.
+    status        VARCHAR(24)  NOT NULL DEFAULT 'PENDING',
+    -- How many tools the last refresh found, and how many of those the model is allowed
+    -- to see. The second number is the one worth looking at: a server offering forty
+    -- tools of which two are usable is a server that needs allow_writes turning on.
+    tool_count    INT          NOT NULL DEFAULT 0,
+    usable_tool_count INT      NOT NULL DEFAULT 0,
+    -- Off by default: a tool the server does not mark read-only can change something at
+    -- the other end, and a model on a live call is talkable-into things.
+    allow_writes  BOOLEAN      NOT NULL DEFAULT FALSE,
+    -- The tool list as the last refresh read it, so a call builds its tools from a row
+    -- instead of waiting on somebody else's server between the caller answering and the
+    -- agent speaking.
+    tools_json    JSONB,
+    last_error    VARCHAR(500),
+    refreshed_at  TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_mcp_connection_name UNIQUE (company_id, name)
+);
+CREATE INDEX idx_mcp_connection_company ON mcp_connection(company_id);
+
+-- Which agents may use which connection. Not every agent should reach every tool: a
+-- collections agent and a support agent share a company, not a toolbox.
+CREATE TABLE ai_agent_mcp_connection (
+    ai_agent_id       BIGINT NOT NULL REFERENCES ai_agent(id) ON DELETE CASCADE,
+    mcp_connection_id BIGINT NOT NULL REFERENCES mcp_connection(id) ON DELETE CASCADE,
+    PRIMARY KEY (ai_agent_id, mcp_connection_id)
+);
 
 -- A browser-side entry point to one agent: the widget_key is public, so allowed_origins
 -- is what stops a copied key from being embedded on somebody else's page.
@@ -382,45 +592,26 @@ CREATE INDEX idx_agent_widget_agent ON agent_widget(agent_id);
 CREATE INDEX idx_agent_widget_key ON agent_widget(widget_key);
 
 -- ---------------------------------------------------------------------------
--- Inbound routing
--- ---------------------------------------------------------------------------
-
--- Maps incoming phone numbers (DIDs) to an AI agent, IVR, or operator queue.
-CREATE TABLE inbound_route (
-    id                       BIGSERIAL PRIMARY KEY,
-    company_id               BIGINT       NOT NULL REFERENCES company(id),
-    did_number               VARCHAR(32)  NOT NULL,
-    ai_agent_id              BIGINT       REFERENCES ai_agent(id),
-    route_type               VARCHAR(32)  NOT NULL DEFAULT 'SCENARIO', -- SCENARIO, QUEUE, IVR, DIRECT_USER
-    target_destination       VARCHAR(128),
-    queue_strategy           VARCHAR(32)  NOT NULL DEFAULT 'RING_ALL',
-    ring_timeout_sec         INT          NOT NULL DEFAULT 20,
-    failover_action          VARCHAR(32)  NOT NULL DEFAULT 'SCENARIO',
-    failover_destination     VARCHAR(128),
-    after_hours_action       VARCHAR(32)  NOT NULL DEFAULT 'PLAY_MESSAGE_AND_HANGUP',
-    after_hours_destination  VARCHAR(128),
-    ivr_menu_config          TEXT,
-    business_hours_start     TIME,
-    business_hours_end       TIME,
-    fallback_message         TEXT,
-    enabled                  BOOLEAN      NOT NULL DEFAULT true,
-    created_at               TIMESTAMPTZ  NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX idx_inbound_route_did ON inbound_route(did_number) WHERE enabled;
-CREATE INDEX idx_inbound_route_company ON inbound_route(company_id);
-CREATE INDEX idx_inbound_route_ai_agent ON inbound_route(ai_agent_id);
-
--- ---------------------------------------------------------------------------
 -- Campaigns — who to call and when
 -- ---------------------------------------------------------------------------
 
+-- priority: campaigns compete for the dialer's batch by it (1 low … 5 urgent).
+-- retry_policy: per-disposition override of the retry delay / attempt cap instead of one
+--   retry_interval_minutes for everything:
+--   {"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}}
+-- start_at: in the future it parks the campaign as SCHEDULED, and the recurrence sweep flips
+--   it to ACTIVE when the moment comes; end_at closes an ACTIVE campaign as COMPLETED
+--   whether or not every target was reached.
+-- budget_uzs / daily_budget_uzs: a spend ceiling. When settled calls reach it (for the whole
+--   run, or since the company's midnight) the dialer parks the campaign as PAUSED with a
+--   BUDGET_CAP notice instead of dialling on.
 CREATE TABLE campaign (
     id                     BIGSERIAL PRIMARY KEY,
     company_id             BIGINT       NOT NULL REFERENCES company(id),
     ai_agent_id            BIGINT       NOT NULL REFERENCES ai_agent(id),
     name                   VARCHAR(255) NOT NULL,
-    type                   VARCHAR(50)  NOT NULL,   -- DEBT_COLLECTION, SURVEY, NOTIFICATION, etc.
-    status                 VARCHAR(50)  NOT NULL,   -- DRAFT, ACTIVE, PAUSED, COMPLETED, ARCHIVED
+    type                   VARCHAR(50)  NOT NULL,   -- DEBT_COLLECTION, SURVEY
+    status                 VARCHAR(50)  NOT NULL,   -- DRAFT, SCHEDULED, ACTIVE, PAUSED, COMPLETED, ARCHIVED
     script_config          JSONB        NOT NULL,
     dial_window_start      TIME         NOT NULL DEFAULT '07:00',
     dial_window_end        TIME         NOT NULL DEFAULT '23:00',
@@ -433,8 +624,19 @@ CREATE TABLE campaign (
     cron_expression        VARCHAR(100),
     auto_reset_targets     BOOLEAN      NOT NULL DEFAULT false,
     last_run_at            TIMESTAMPTZ,
+    priority               INT          NOT NULL DEFAULT 3,
+    retry_policy           JSONB,
+    start_at               TIMESTAMPTZ,
+    end_at                 TIMESTAMPTZ,
+    budget_uzs             BIGINT,
+    daily_budget_uzs       BIGINT,
     created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by             BIGINT
+    created_by             BIGINT,
+    -- Native SQL in the report and dialer code compares this column with string literals,
+    -- so a value outside CampaignStatus would silently drop out of every count. A new enum
+    -- constant needs a migration that widens the constraint, or its first write fails.
+    CONSTRAINT ck_campaign_status
+        CHECK (status IN ('DRAFT', 'SCHEDULED', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED'))
 );
 CREATE INDEX idx_campaign_company ON campaign(company_id);
 CREATE INDEX idx_campaign_ai_agent ON campaign(ai_agent_id);
@@ -447,6 +649,10 @@ CREATE TABLE campaign_dial_day (
 );
 
 -- A/B testing: two agents (or one agent and a prompt override) split a campaign's traffic.
+-- pipeline_mode lets a variant run its calls on a different pipeline than the campaign's
+-- agent — the same agent, script and voice budget, once through the cascade pipeline and
+-- once through a speech-to-speech engine: the only fair comparison of the two. NULL keeps
+-- the agent's own pipeline.
 CREATE TABLE campaign_variant (
     id              BIGSERIAL PRIMARY KEY,
     campaign_id     BIGINT       NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
@@ -455,6 +661,7 @@ CREATE TABLE campaign_variant (
     ai_agent_id     BIGINT       REFERENCES ai_agent(id),
     prompt_override TEXT,
     tts_voice_id    VARCHAR(64)  REFERENCES tts_voice(id),
+    pipeline_mode   VARCHAR(16),
     traffic_weight  INT          NOT NULL DEFAULT 50,
     calls_count     INT          NOT NULL DEFAULT 0,
     answered_count  INT          NOT NULL DEFAULT 0,
@@ -480,18 +687,41 @@ CREATE TABLE campaign_target (
     attempts        INT          NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMPTZ,
     do_not_call     BOOLEAN      NOT NULL DEFAULT false,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_campaign_target_status
+        CHECK (status IN ('PENDING', 'IN_PROGRESS', 'DONE', 'FAILED', 'EXHAUSTED'))
 );
 CREATE INDEX idx_target_dial ON campaign_target(campaign_id, status, next_attempt_at);
 CREATE INDEX idx_campaign_target_company ON campaign_target(company_id);
+CREATE INDEX idx_campaign_target_variant ON campaign_target(variant_id);
+-- One queued row per number per campaign. The same CSV uploaded twice, or a target source
+-- synced without replaceTargets, used to insert every number again and dial every person
+-- twice. Partial: finished rows (DONE / EXHAUSTED / FAILED) do not count, so a callback or
+-- an instant call to a number the campaign already finished with is still a new target.
+CREATE UNIQUE INDEX idx_campaign_target_queued_phone
+    ON campaign_target (campaign_id, phone)
+    WHERE status IN ('PENDING', 'IN_PROGRESS');
 
 -- Where a campaign's call list comes from, when it does not come from a CSV somebody
--- uploads by hand. A DAILY campaign with a source configured fetches the list from the
--- company's own API on each recurrence sweep and dials whatever it answers with. One
--- source per campaign, so the shape stays a settings page and not a pipeline builder.
+-- uploads by hand. A DAILY campaign with a source configured fetches the list on each
+-- recurrence sweep and dials whatever it answers with. One source per campaign, so the
+-- shape stays a settings page and not a pipeline builder.
+--
+-- provider picks the kind of list:
+--   GENERIC        one request to the company's own API, whose answer is already an array
+--                  of rows carrying a phone each (TargetApiImporter). Requires url.
+--   UYSOT_DEBTORS  Uysot's Open API has no endpoint that answers "today's debtors with
+--                  their phone numbers" — contract/filter knows who is overdue, contract/{id}
+--                  adds the lead, lead/{id} has the phones — so it is a chain of three reads
+--                  compiled into the platform. No url of its own: it reads voice-agent.crm.*,
+--                  so prod and dev switch hosts in one place.
+--   CHAINED        that same shape as configuration: steps holds an ordered array of
+--                  requests, the first lists rows, each later one is called per row to add
+--                  what the list did not carry. NULL for every other provider.
 CREATE TABLE campaign_target_source (
     campaign_id        BIGINT PRIMARY KEY REFERENCES campaign(id) ON DELETE CASCADE,
-    url                VARCHAR(1000) NOT NULL,
+    provider           VARCHAR(24)   NOT NULL DEFAULT 'GENERIC', -- GENERIC, UYSOT_DEBTORS, CHAINED
+    url                VARCHAR(1000),
     http_method        VARCHAR(10)   NOT NULL DEFAULT 'GET',   -- GET, POST
     request_body       TEXT,                                   -- POST only, sent as-is
     auth_header_name   VARCHAR(100),
@@ -503,6 +733,7 @@ CREATE TABLE campaign_target_source (
     replace_targets    BOOLEAN       NOT NULL DEFAULT false,   -- clear the list before importing
     sync_on_recurrence BOOLEAN       NOT NULL DEFAULT true,
     enabled            BOOLEAN       NOT NULL DEFAULT true,
+    steps              JSONB,
     last_sync_at       TIMESTAMPTZ,
     last_sync_added    INT,
     last_sync_error    VARCHAR(1000),
@@ -510,56 +741,307 @@ CREATE TABLE campaign_target_source (
 );
 
 -- ---------------------------------------------------------------------------
+-- Business hours as data (docs/INBOUND-PBX-PLAN.md §5). A schedule is a company's weekly
+-- slots, reused by any number of routes, call flows and queues; a holiday is a dated
+-- exception to all of them.
+--
+-- business_schedule.timezone NULL means the company's own (company_config.timezone).
+-- business_schedule_slot: end_time < start_time is an overnight slot (22:00-06:00).
+-- holiday.kind: CLOSED (whole day), SHORT_DAY / WORKING_DAY (open within open_time-close_time).
+-- Uzbekistan moves days off by decree, so a worked Saturday is a WORKING_DAY row.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE business_schedule (
+    id         BIGSERIAL PRIMARY KEY,
+    company_id BIGINT       NOT NULL REFERENCES company(id),
+    name       VARCHAR(255) NOT NULL,
+    timezone   VARCHAR(64),
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_business_schedule_company ON business_schedule(company_id);
+
+CREATE TABLE business_schedule_slot (
+    schedule_id BIGINT      NOT NULL REFERENCES business_schedule(id) ON DELETE CASCADE,
+    ord         INT         NOT NULL,
+    day_of_week VARCHAR(10) NOT NULL,
+    start_time  TIME        NOT NULL,
+    end_time    TIME        NOT NULL,
+    PRIMARY KEY (schedule_id, ord)
+);
+
+CREATE TABLE holiday (
+    id           BIGSERIAL PRIMARY KEY,
+    company_id   BIGINT       NOT NULL REFERENCES company(id),
+    holiday_date DATE         NOT NULL,
+    name         VARCHAR(255) NOT NULL,
+    kind         VARCHAR(20)  NOT NULL DEFAULT 'CLOSED',
+    open_time    TIME,
+    close_time   TIME,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    UNIQUE (company_id, holiday_date)
+);
+
+-- ---------------------------------------------------------------------------
+-- Human operators as telephony endpoints, and the queue that feeds them
+-- (docs/INBOUND-PBX-PLAN.md §7).
+-- ---------------------------------------------------------------------------
+
+-- The PJSIP endpoint an operator's softphone signs in as. One per user; endpoint_name
+-- (op-<userId>) is what Asterisk sees, app_user.sip_extension what colleagues dial.
+-- webrtc=true is the browser softphone in the operator panel; false is a desk or mobile SIP
+-- phone on the LAN transport. forward_number rings the operator's mobile over the trunk
+-- when the softphone is offline.
+CREATE TABLE operator_sip_account (
+    user_id        BIGINT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+    company_id     BIGINT      NOT NULL REFERENCES company(id),
+    endpoint_name  VARCHAR(64) NOT NULL UNIQUE,
+    password_enc   TEXT        NOT NULL,
+    webrtc         BOOLEAN     NOT NULL DEFAULT true,
+    forward_number VARCHAR(20),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_operator_sip_account_company ON operator_sip_account(company_id);
+
+-- Every presence change (AVAILABLE, RINGING, ON_CALL, WRAP_UP, BREAK, OFFLINE). The live
+-- state is held in memory; this is the history "time in status" reports are built from,
+-- and what a restart restores AVAILABLE/BREAK from. ended_at NULL = the current status.
+CREATE TABLE operator_status_log (
+    id         BIGSERIAL PRIMARY KEY,
+    company_id BIGINT      NOT NULL REFERENCES company(id),
+    user_id    BIGINT      NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    status     VARCHAR(20) NOT NULL,
+    reason     VARCHAR(255),
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at   TIMESTAMPTZ
+);
+CREATE INDEX idx_operator_status_log_user ON operator_status_log(user_id, started_at);
+CREATE INDEX idx_operator_status_log_company ON operator_status_log(company_id, started_at);
+
+-- An operator queue (ACD). Waiting callers hear hold music and their position; operators
+-- are offered calls by `strategy`. overflow_target is read by overflow_action:
+--   QUEUE -> call_queue id, AI_AGENT -> ai_agent id, VOICEMAIL -> voicemail_box id,
+--   EXTERNAL_NUMBER -> E.164 number, CALLBACK / HANGUP -> none.
+-- 0 switches a timer off (announcements, callback offer, sticky routing).
+CREATE TABLE call_queue (
+    id                          BIGSERIAL PRIMARY KEY,
+    company_id                  BIGINT       NOT NULL REFERENCES company(id),
+    name                        VARCHAR(255) NOT NULL,
+    strategy                    VARCHAR(20)  NOT NULL DEFAULT 'LEAST_RECENT',
+    ring_timeout_sec            INT          NOT NULL DEFAULT 15,
+    wrap_up_sec                 INT          NOT NULL DEFAULT 10,
+    max_wait_sec                INT          NOT NULL DEFAULT 300,
+    max_length                  INT          NOT NULL DEFAULT 0,
+    announce_position_every_sec INT          NOT NULL DEFAULT 60,
+    announce_wait_time          BOOLEAN      NOT NULL DEFAULT true,
+    periodic_announce_text      TEXT,
+    periodic_announce_every_sec INT          NOT NULL DEFAULT 0,
+    hold_music_file_id          BIGINT REFERENCES stored_file(id) ON DELETE SET NULL,
+    callback_offer_after_sec    INT          NOT NULL DEFAULT 0,
+    callback_campaign_id        BIGINT REFERENCES campaign(id) ON DELETE SET NULL,
+    overflow_action             VARCHAR(20)  NOT NULL DEFAULT 'CALLBACK',
+    overflow_target             VARCHAR(64),
+    service_level_sec           INT          NOT NULL DEFAULT 20,
+    sticky_seconds              INT          NOT NULL DEFAULT 0,
+    post_call_survey            BOOLEAN      NOT NULL DEFAULT false,
+    waiting_agent_id            BIGINT REFERENCES ai_agent(id) ON DELETE SET NULL,
+    auto_callback               BOOLEAN      NOT NULL DEFAULT false,
+    enabled                     BOOLEAN      NOT NULL DEFAULT true,
+    created_at                  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_call_queue_company ON call_queue(company_id);
+CREATE INDEX idx_call_queue_callback_campaign ON call_queue(callback_campaign_id);
+
+-- skills: comma-separated tags (uz-UZ,ru-RU,sales); SKILL_BASED prefers a member holding the
+-- caller's language. priority: lower rings first.
+CREATE TABLE call_queue_member (
+    queue_id BIGINT NOT NULL REFERENCES call_queue(id) ON DELETE CASCADE,
+    user_id  BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    priority INT    NOT NULL DEFAULT 0,
+    skills   VARCHAR(255),
+    PRIMARY KEY (queue_id, user_id)
+);
+
+ALTER TABLE ai_agent ADD FOREIGN KEY (transfer_queue_id) REFERENCES call_queue(id) ON DELETE SET NULL;
+
+-- ---------------------------------------------------------------------------
+-- Call flows and inbound routing (docs/INBOUND-PBX-PLAN.md §4, §9)
+-- ---------------------------------------------------------------------------
+
+-- A call flow is a graph of nodes (PLAY, SCHEDULE, MENU, LANGUAGE_SELECT, AI_AGENT, QUEUE, ...)
+-- an inbound call walks. Edits go to draft_graph; calls only ever run published_graph, which
+-- publishing copies from the draft after validation — so a half-finished edit never reaches
+-- a caller. version counts publications.
+CREATE TABLE call_flow (
+    id              BIGSERIAL PRIMARY KEY,
+    company_id      BIGINT       NOT NULL REFERENCES company(id),
+    name            VARCHAR(255) NOT NULL,
+    description     TEXT,
+    draft_graph     JSONB        NOT NULL,
+    published_graph JSONB,
+    version         INT          NOT NULL DEFAULT 0,
+    published_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_call_flow_company ON call_flow(company_id);
+
+-- Maps incoming phone numbers (DIDs) to an AI agent, IVR, or operator queue.
+--
+-- callback_campaign_id: where an inbound caller who asks to be called back goes — the caller
+--   becomes a target there, due at the time they asked for. NULL records the request on the
+--   call and nothing more.
+-- schedule_id: a route may point at a schedule instead of its own daily window; the schedule wins.
+-- call_flow_id: a route with a call flow runs the flow; without one it answers with its AI agent.
+CREATE TABLE inbound_route (
+    id                       BIGSERIAL PRIMARY KEY,
+    company_id               BIGINT       NOT NULL REFERENCES company(id),
+    did_number               VARCHAR(32)  NOT NULL,
+    ai_agent_id              BIGINT       REFERENCES ai_agent(id),
+    route_type               VARCHAR(32)  NOT NULL DEFAULT 'SCENARIO', -- SCENARIO, OPERATOR_QUEUE, EXTENSION, EXTERNAL_NUMBER, STICKY_AGENT, IVR_MENU, VOICEMAIL
+    target_destination       VARCHAR(128),
+    queue_strategy           VARCHAR(32)  NOT NULL DEFAULT 'RING_ALL',
+    ring_timeout_sec         INT          NOT NULL DEFAULT 20,
+    failover_action          VARCHAR(32)  NOT NULL DEFAULT 'SCENARIO',
+    failover_destination     VARCHAR(128),
+    after_hours_action       VARCHAR(32)  NOT NULL DEFAULT 'PLAY_MESSAGE_AND_HANGUP',
+    after_hours_destination  VARCHAR(128),
+    ivr_menu_config          TEXT,
+    business_hours_start     TIME,
+    business_hours_end       TIME,
+    fallback_message         TEXT,
+    callback_campaign_id     BIGINT       REFERENCES campaign(id) ON DELETE SET NULL,
+    schedule_id              BIGINT       REFERENCES business_schedule(id) ON DELETE SET NULL,
+    call_flow_id             BIGINT       REFERENCES call_flow(id) ON DELETE SET NULL,
+    enabled                  BOOLEAN      NOT NULL DEFAULT true,
+    created_at               TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_inbound_route_did ON inbound_route(did_number) WHERE enabled;
+CREATE INDEX idx_inbound_route_company ON inbound_route(company_id);
+CREATE INDEX idx_inbound_route_ai_agent ON inbound_route(ai_agent_id);
+CREATE INDEX idx_inbound_route_callback_campaign ON inbound_route(callback_campaign_id);
+
+-- Who is refused or put first before any flow runs. Matched on the longest digit prefix of the
+-- caller's number. action: BLOCK_HANGUP, BLOCK_BUSY, BLOCK_MESSAGE (speaks `message`), VIP.
+-- Separate from do_not_call_list on purpose: that is outbound consent, this is spam and abuse.
+CREATE TABLE inbound_caller_rule (
+    id           BIGSERIAL PRIMARY KEY,
+    company_id   BIGINT       NOT NULL REFERENCES company(id),
+    phone_prefix VARCHAR(20)  NOT NULL,
+    action       VARCHAR(20)  NOT NULL,
+    message      TEXT,
+    note         VARCHAR(255),
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    UNIQUE (company_id, phone_prefix)
+);
+
+-- ---------------------------------------------------------------------------
 -- Calls
 -- ---------------------------------------------------------------------------
 
 -- Call attempt (PROJECT.md §7) — tracks Asterisk channel lifecycle and telephony disposition.
+--
+-- target_id is NULL for a call no campaign placed — manual, test, widget, operator and
+-- inbound calls.
+-- queue_id … survey_score: the queue facts reports aggregate over, kept on the call itself
+-- so SLA / ASA / abandon rate are one scan of call_attempt rather than a reconstruction from
+-- call_event rows.
+-- ai_agent_id / agent_version: which agent, and which published version of it, ran the
+-- call — so a version's results can be read next to the one before it. NULL for a call no
+-- agent spoke on; agent_version NULL for a call that ran on a never-published draft.
 CREATE TABLE call_attempt (
-    id                 BIGSERIAL PRIMARY KEY,
-    company_id         BIGINT       NOT NULL REFERENCES company(id),
-    target_id          BIGINT       NOT NULL REFERENCES campaign_target(id),
-    variant_id         BIGINT       REFERENCES campaign_variant(id) ON DELETE SET NULL,
-    phone              VARCHAR(20),
-    sip_call_id        VARCHAR(255),
-    asterisk_channel   VARCHAR(255),
-    language           VARCHAR(10)  NOT NULL,
-    started_at         TIMESTAMPTZ,
-    answered_at        TIMESTAMPTZ,
-    ended_at           TIMESTAMPTZ,
-    duration_sec       INT,
-    disposition        VARCHAR(50),
-    hangup_cause       VARCHAR(50),
-    recording_file_id  BIGINT       REFERENCES stored_file(id) ON DELETE SET NULL,
-    error_message      TEXT,
-    finalize_attempts  INT          NOT NULL DEFAULT 0,
-    inbound_route_id   BIGINT       REFERENCES inbound_route(id),
-    operator_user_id   BIGINT       REFERENCES app_user(id),
-    created_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+    id                   BIGSERIAL PRIMARY KEY,
+    company_id           BIGINT       NOT NULL REFERENCES company(id),
+    target_id            BIGINT       REFERENCES campaign_target(id),
+    variant_id           BIGINT       REFERENCES campaign_variant(id) ON DELETE SET NULL,
+    phone                VARCHAR(20),
+    sip_call_id          VARCHAR(255),
+    asterisk_channel     VARCHAR(255),
+    language             VARCHAR(10)  NOT NULL,
+    started_at           TIMESTAMPTZ,
+    answered_at          TIMESTAMPTZ,
+    ended_at             TIMESTAMPTZ,
+    duration_sec         INT,
+    disposition          VARCHAR(50),
+    hangup_cause         VARCHAR(50),
+    recording_file_id    BIGINT       REFERENCES stored_file(id) ON DELETE SET NULL,
+    error_message        TEXT,
+    finalize_attempts    INT          NOT NULL DEFAULT 0,
+    inbound_route_id     BIGINT       REFERENCES inbound_route(id),
+    operator_user_id     BIGINT       REFERENCES app_user(id),
+    queue_id             BIGINT       REFERENCES call_queue(id) ON DELETE SET NULL,
+    enqueued_at          TIMESTAMPTZ,
+    operator_answered_at TIMESTAMPTZ,
+    wait_seconds         INT,
+    abandoned            BOOLEAN      NOT NULL DEFAULT false,
+    survey_score         SMALLINT,
+    ai_agent_id          BIGINT,
+    agent_version        INT,
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Mirrors shared.dialog.Disposition; NULL until the call is settled.
+    CONSTRAINT ck_call_attempt_disposition
+        CHECK (disposition IS NULL OR disposition IN (
+            'PROMISE_TO_PAY', 'REFUSED', 'NO_ANSWER', 'CARRIER_REJECTED', 'WRONG_NUMBER', 'DO_NOT_CALL',
+            'HUNG_UP', 'TRANSFERRED', 'VOICEMAIL', 'CALLBACK_REQUESTED', 'FAILED', 'COMPLETED'))
 );
 CREATE INDEX idx_attempt_target ON call_attempt(target_id);
 CREATE INDEX idx_attempt_ended ON call_attempt(ended_at) WHERE ended_at IS NOT NULL;
 CREATE INDEX idx_call_attempt_company ON call_attempt(company_id);
 CREATE INDEX idx_call_attempt_inbound_route ON call_attempt(inbound_route_id);
+CREATE INDEX idx_call_attempt_queue ON call_attempt(queue_id, enqueued_at) WHERE queue_id IS NOT NULL;
+CREATE INDEX idx_call_attempt_agent_version ON call_attempt (ai_agent_id, agent_version)
+    WHERE ai_agent_id IS NOT NULL;
+-- recordHangupCause / finishUnanswered / findIdsByChannel look a row up by channel on
+-- every ARI channel event.
+CREATE INDEX idx_call_attempt_channel ON call_attempt(asterisk_channel);
+-- Conversion attribution looks up a company's answered calls to one number.
+CREATE INDEX idx_call_attempt_company_phone_answered
+    ON call_attempt(company_id, phone, answered_at)
+    WHERE answered_at IS NOT NULL;
+-- findRecentPlacedStartTimes (every outbound dial, contact frequency policy) and
+-- findLastOperatorUserId (every inbound call); the partial index above cannot serve either.
+CREATE INDEX idx_call_attempt_company_phone_started
+    ON call_attempt(company_id, phone, started_at DESC);
+-- Every dashboard query filters one company over a started_at period.
+CREATE INDEX idx_call_attempt_company_started ON call_attempt(company_id, started_at);
+-- dashboardLiveCalls: the calls of a company that are still on the line.
+CREATE INDEX idx_call_attempt_company_live
+    ON call_attempt(company_id, started_at) WHERE ended_at IS NULL;
+-- operatorReport joins on it; also backs the FK to app_user.
+CREATE INDEX idx_call_attempt_operator_user ON call_attempt(operator_user_id);
+-- Summary outbox (attemptsAwaitingSummary): finished calls still inside their retry budget.
+-- Matches the default voice-agent.outbox max of 3 attempts; the planner uses it only when
+-- it can prove the bound parameter is <= 3.
+CREATE INDEX idx_call_attempt_awaiting_summary
+    ON call_attempt(id) WHERE ended_at IS NOT NULL AND finalize_attempts < 3;
+CREATE INDEX idx_call_attempt_variant ON call_attempt(variant_id);
+CREATE INDEX idx_call_attempt_recording_file ON call_attempt(recording_file_id);
 
--- Call technical details (latencies, token consumption, provider info).
+-- Call technical details (latencies, token consumption, provider info) and inbound audio
+-- quality. rtp_mos is an estimate (MosEstimator, simplified ITU-T G.107), NULL when the call
+-- received no RTP at all — a silent media path is a fault, not a quality score.
 CREATE TABLE call_technical (
-    call_id             BIGINT PRIMARY KEY REFERENCES call_attempt(id) ON DELETE CASCADE,
-    channel_name        VARCHAR(255),
-    trunk               VARCHAR(100),
-    amd_result          VARCHAR(20),
-    stt_provider        VARCHAR(50),
-    tts_provider        VARCHAR(50),
-    tts_voice           VARCHAR(50),
-    llm_model           VARCHAR(100),
-    prompt_tokens       INT,
-    completion_tokens   INT,
-    cached_tokens       INT,
-    turn_count          INT,
-    avg_turn_latency_ms INT,
-    max_turn_latency_ms INT,
-    avg_llm_latency_ms  INT,
-    max_llm_latency_ms  INT,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+    call_id              BIGINT PRIMARY KEY REFERENCES call_attempt(id) ON DELETE CASCADE,
+    channel_name         VARCHAR(255),
+    trunk                VARCHAR(100),
+    amd_result           VARCHAR(20),
+    stt_provider         VARCHAR(50),
+    tts_provider         VARCHAR(50),
+    tts_voice            VARCHAR(50),
+    llm_model            VARCHAR(100),
+    prompt_tokens        INT,
+    completion_tokens    INT,
+    cached_tokens        INT,
+    turn_count           INT,
+    avg_turn_latency_ms  INT,
+    max_turn_latency_ms  INT,
+    avg_llm_latency_ms   INT,
+    max_llm_latency_ms   INT,
+    rtp_packets_received INT,
+    rtp_packets_lost     INT,
+    rtp_jitter_ms        INT,
+    rtp_mos              DOUBLE PRECISION,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Call transcript — speech turns recorded turn-by-turn.
@@ -576,6 +1058,10 @@ CREATE TABLE call_transcript (
 CREATE INDEX idx_transcript_call ON call_transcript(call_id, seq);
 
 -- Call result (PROJECT.md §7.3) — AI summary, extracted facts, sentiment, and CRM status.
+--
+-- crm_note_id is the CRM's own reference for the posted note, in whatever shape that CRM
+-- issues it — Uysot's Open API answers a note write with a requestId (a UUID), not a number.
+-- It is only ever read as "did this note land" (the outbox sweep queues rows where it is NULL).
 CREATE TABLE call_result (
     id              BIGSERIAL PRIMARY KEY,
     call_id         BIGINT       NOT NULL UNIQUE REFERENCES call_attempt(id) ON DELETE CASCADE,
@@ -587,13 +1073,114 @@ CREATE TABLE call_result (
     needs_follow_up BOOLEAN      NOT NULL DEFAULT false,
     follow_up_note  TEXT,
     escalated       BOOLEAN      NOT NULL DEFAULT false,
-    crm_note_id     BIGINT,
+    crm_note_id     VARCHAR(64),
     crm_attempts    INT          NOT NULL DEFAULT 0,
     crm_last_error  TEXT,
     outcome         JSONB        NOT NULL,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_result_crm_pending ON call_result(crm_attempts) WHERE crm_note_id IS NULL;
+
+-- The timeline of one call: which flow nodes it went through, the digits pressed, when it was
+-- queued, which operators rang and who answered, transfers, the survey score. Append-only;
+-- queue and operator reports are computed from these rows plus the call_attempt columns.
+CREATE TABLE call_event (
+    id              BIGSERIAL PRIMARY KEY,
+    company_id      BIGINT      NOT NULL REFERENCES company(id),
+    call_attempt_id BIGINT      NOT NULL REFERENCES call_attempt(id) ON DELETE CASCADE,
+    at              TIMESTAMPTZ NOT NULL,
+    type            VARCHAR(32) NOT NULL,
+    payload         JSONB
+);
+CREATE INDEX idx_call_event_attempt ON call_event(call_attempt_id, at);
+CREATE INDEX idx_call_event_company ON call_event(company_id, type, at);
+
+-- Every MCP tool call, with what it cost. Somebody's server answering slowly is felt as
+-- silence on a live call, so this is where that gets proved rather than argued about.
+CREATE TABLE mcp_tool_execution (
+    id                BIGSERIAL    PRIMARY KEY,
+    company_id        BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    mcp_connection_id BIGINT       REFERENCES mcp_connection(id) ON DELETE SET NULL,
+    call_attempt_id   BIGINT       REFERENCES call_attempt(id) ON DELETE SET NULL,
+    tool_name         VARCHAR(128) NOT NULL,
+    status            VARCHAR(16)  NOT NULL,
+    latency_ms        INT          NOT NULL DEFAULT 0,
+    -- Truncated on the way in. These are for reading a failure back, not for keeping a
+    -- copy of everything a customer's server was told.
+    args_preview      VARCHAR(500),
+    result_preview    VARCHAR(500),
+    error             VARCHAR(500),
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_mcp_execution_company_created ON mcp_tool_execution(company_id, created_at DESC);
+CREATE INDEX idx_mcp_execution_call ON mcp_tool_execution(call_attempt_id);
+
+-- ---------------------------------------------------------------------------
+-- Voicemail and missed calls (docs/INBOUND-PBX-PLAN.md §8)
+-- ---------------------------------------------------------------------------
+
+-- Where a caller can leave a message. greeting_text is spoken with TTS unless a recorded
+-- greeting_file_id is set. transcribe=true runs the message through STT as it is recorded,
+-- so the operator reads it instead of listening to it.
+CREATE TABLE voicemail_box (
+    id               BIGSERIAL PRIMARY KEY,
+    company_id       BIGINT       NOT NULL REFERENCES company(id),
+    name             VARCHAR(255) NOT NULL,
+    greeting_text    TEXT,
+    greeting_file_id BIGINT REFERENCES stored_file(id) ON DELETE SET NULL,
+    max_seconds      INT          NOT NULL DEFAULT 120,
+    transcribe       BOOLEAN      NOT NULL DEFAULT true,
+    enabled          BOOLEAN      NOT NULL DEFAULT true,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_voicemail_box_company ON voicemail_box(company_id);
+
+-- status: NEW, HEARD, ARCHIVED
+CREATE TABLE voicemail_message (
+    id              BIGSERIAL PRIMARY KEY,
+    company_id      BIGINT      NOT NULL REFERENCES company(id),
+    box_id          BIGINT      NOT NULL REFERENCES voicemail_box(id) ON DELETE CASCADE,
+    call_attempt_id BIGINT      REFERENCES call_attempt(id) ON DELETE SET NULL,
+    caller_phone    VARCHAR(32),
+    stored_file_id  BIGINT      REFERENCES stored_file(id) ON DELETE SET NULL,
+    duration_sec    INT         NOT NULL DEFAULT 0,
+    transcript      TEXT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'NEW',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_voicemail_message_company ON voicemail_message(company_id, created_at DESC);
+
+-- One open row per company and phone — a caller who rings three times after hours is one
+-- item on the operators' list with call_count 3, not three. reason is the latest:
+-- AFTER_HOURS, ABANDONED, NO_OPERATOR, CALLBACK_REQUESTED, VOICEMAIL. status: NEW,
+-- IN_PROGRESS, CALLED_BACK, RESOLVED. A later answered call from the same number closes it.
+CREATE TABLE missed_call (
+    id                   BIGSERIAL PRIMARY KEY,
+    company_id           BIGINT      NOT NULL REFERENCES company(id),
+    phone                VARCHAR(32) NOT NULL,
+    reason               VARCHAR(20) NOT NULL,
+    status               VARCHAR(20) NOT NULL DEFAULT 'NEW',
+    call_count           INT         NOT NULL DEFAULT 1,
+    first_at             TIMESTAMPTZ NOT NULL,
+    last_at              TIMESTAMPTZ NOT NULL,
+    queue_id             BIGINT REFERENCES call_queue(id) ON DELETE SET NULL,
+    inbound_route_id     BIGINT REFERENCES inbound_route(id) ON DELETE SET NULL,
+    last_call_attempt_id BIGINT REFERENCES call_attempt(id) ON DELETE SET NULL,
+    voicemail_message_id BIGINT REFERENCES voicemail_message(id) ON DELETE SET NULL,
+    assigned_user_id     BIGINT REFERENCES app_user(id) ON DELETE SET NULL,
+    callback_attempts    INT         NOT NULL DEFAULT 0,
+    last_callback_at     TIMESTAMPTZ,
+    resolved_at          TIMESTAMPTZ,
+    resolved_by_user_id  BIGINT REFERENCES app_user(id) ON DELETE SET NULL,
+    note                 TEXT
+);
+CREATE UNIQUE INDEX uq_missed_call_open ON missed_call(company_id, phone) WHERE status IN ('NEW', 'IN_PROGRESS');
+CREATE INDEX idx_missed_call_company ON missed_call(company_id, last_at DESC);
+CREATE INDEX idx_missed_call_queue ON missed_call(queue_id);
+CREATE INDEX idx_missed_call_inbound_route ON missed_call(inbound_route_id);
+CREATE INDEX idx_missed_call_last_call_attempt ON missed_call(last_call_attempt_id);
+CREATE INDEX idx_missed_call_voicemail_message ON missed_call(voicemail_message_id);
+CREATE INDEX idx_missed_call_assigned_user ON missed_call(assigned_user_id);
 
 -- ---------------------------------------------------------------------------
 -- Client-facing data: contacts, opt-out, cross-call memory, knowledge base
@@ -619,7 +1206,7 @@ CREATE TABLE do_not_call_list (
     company_id BIGINT       NOT NULL REFERENCES company(id),
     phone      VARCHAR(20)  NOT NULL,
     reason     TEXT,
-    source     VARCHAR(20)  NOT NULL DEFAULT 'CALL',   -- CALL, MANUAL, IMPORT
+    source     VARCHAR(20)  NOT NULL DEFAULT 'CALL',   -- CALL, CRM, MANUAL
     removed_at TIMESTAMPTZ,
     removed_by VARCHAR(64),
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
@@ -709,6 +1296,81 @@ CREATE TABLE knowledge_chunk (
 CREATE INDEX idx_knowledge_chunk_source ON knowledge_chunk(source_id);
 
 -- ---------------------------------------------------------------------------
+-- Conversions. Did the call actually work? The disposition the bot recorded —
+-- "PROMISE_TO_PAY" — is a promise, not a payment. These three tables let a company's own
+-- system say what really happened afterwards, and tie it back to the call, the campaign
+-- and the A/B variant that produced it.
+-- ---------------------------------------------------------------------------
+
+-- What counts as a conversion for this company, and how long after a call it still counts.
+-- Company-scoped rather than per campaign: the system posting the event knows a customer
+-- paid, not which campaign called them — that is what attribution works out.
+CREATE TABLE conversion_goal (
+    id                      BIGSERIAL PRIMARY KEY,
+    company_id              BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    -- What the posting system names it: 'payment', 'appointment', 'renewal'.
+    goal_key                VARCHAR(64)  NOT NULL,
+    name                    VARCHAR(128) NOT NULL,
+    -- How long after a call a conversion may still be credited to it. Past this the
+    -- customer is assumed to have acted for some other reason.
+    attribution_window_hours INT         NOT NULL DEFAULT 72,
+    -- LAST_CALL or FIRST_CALL: which call in the window gets the credit.
+    attribution_model       VARCHAR(24)  NOT NULL DEFAULT 'LAST_CALL',
+    enabled                 BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_conversion_goal_key UNIQUE (company_id, goal_key)
+);
+CREATE INDEX idx_conversion_goal_company ON conversion_goal(company_id);
+
+-- One thing that happened out in the world, as reported to us.
+CREATE TABLE conversion_event (
+    id                BIGSERIAL PRIMARY KEY,
+    company_id        BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    goal_key          VARCHAR(64)  NOT NULL,
+    -- The customer, matched to a call by the number that was dialled. A phone is what
+    -- both sides already agree on; an internal id would need a mapping table that has to
+    -- be kept in step with somebody else's CRM.
+    phone             VARCHAR(20)  NOT NULL,
+    occurred_at       TIMESTAMPTZ  NOT NULL,
+    value_uzs         BIGINT,
+    -- Where it came from: 'crm', 'payme', an integration's name.
+    source            VARCHAR(64),
+    -- Whatever the poster wants kept for later argument: an order id, a receipt.
+    evidence          JSONB,
+    -- The poster's own id for the thing. A retried webhook writes the same key and is
+    -- refused by the index rather than counted twice.
+    dedupe_key        VARCHAR(128) NOT NULL,
+    -- Kept, not dropped: "no call in the window" is a useful answer, and deleting the row
+    -- would make the same event arrive again on the next retry.
+    rejected          BOOLEAN      NOT NULL DEFAULT FALSE,
+    rejection_reason  VARCHAR(255),
+    ingested_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_conversion_event_dedupe UNIQUE (company_id, dedupe_key)
+);
+CREATE INDEX idx_conversion_event_company_occurred ON conversion_event(company_id, occurred_at DESC);
+CREATE INDEX idx_conversion_event_goal ON conversion_event(company_id, goal_key);
+
+-- Which call earned it. One row per attributed event; an event that matched nothing has
+-- no row here and carries its reason on conversion_event instead.
+CREATE TABLE conversion_attribution (
+    id                    BIGSERIAL PRIMARY KEY,
+    conversion_event_id   BIGINT      NOT NULL UNIQUE REFERENCES conversion_event(id) ON DELETE CASCADE,
+    company_id            BIGINT      NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    campaign_id           BIGINT      REFERENCES campaign(id) ON DELETE SET NULL,
+    variant_id            BIGINT      REFERENCES campaign_variant(id) ON DELETE SET NULL,
+    call_attempt_id       BIGINT      REFERENCES call_attempt(id) ON DELETE SET NULL,
+    -- Stamped so an old attribution can still be explained after the goal is retuned.
+    attribution_model     VARCHAR(24) NOT NULL,
+    window_hours          INT         NOT NULL,
+    attributed_value_uzs  BIGINT,
+    computed_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_conversion_attribution_campaign ON conversion_attribution(campaign_id, computed_at DESC);
+CREATE INDEX idx_conversion_attribution_variant ON conversion_attribution(variant_id);
+CREATE INDEX idx_conversion_attribution_call_attempt ON conversion_attribution(call_attempt_id);
+
+-- ---------------------------------------------------------------------------
 -- Notifications
 -- ---------------------------------------------------------------------------
 
@@ -773,24 +1435,46 @@ CREATE TABLE personal_notification_matrix (
 CREATE UNIQUE INDEX idx_personal_notification_matrix_unique ON personal_notification_matrix(user_id, type, channel);
 
 -- ---------------------------------------------------------------------------
--- Sessions, schedules, per-user UI state
+-- Sessions, two-factor, schedules, per-user UI state
 -- ---------------------------------------------------------------------------
 
 -- Tracks active tokens and refresh sessions per browser/device.
+--
+-- previous_refresh_token_hash: refresh-token reuse detection. A rotation keeps the hash it
+-- replaced, so a refresh token presented a second time — one that was stolen and then
+-- rotated by its thief, or vice versa — is recognised and the whole session revoked,
+-- instead of being indistinguishable from a random invalid token.
 CREATE TABLE user_session (
-    id                 BIGSERIAL PRIMARY KEY,
-    company_id         BIGINT      NOT NULL REFERENCES company(id),
-    user_id            BIGINT      NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
-    refresh_token_hash VARCHAR(64) NOT NULL,
-    device             VARCHAR(255),
-    ip_address         VARCHAR(64),
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_activity_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at         TIMESTAMPTZ NOT NULL,
-    revoked_at         TIMESTAMPTZ
+    id                          BIGSERIAL PRIMARY KEY,
+    company_id                  BIGINT      NOT NULL REFERENCES company(id),
+    user_id                     BIGINT      NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    refresh_token_hash          VARCHAR(64) NOT NULL,
+    previous_refresh_token_hash VARCHAR(64),
+    device                      VARCHAR(255),
+    ip_address                  VARCHAR(64),
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_activity_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at                  TIMESTAMPTZ NOT NULL,
+    revoked_at                  TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX idx_user_session_refresh_token_hash ON user_session(refresh_token_hash);
 CREATE INDEX idx_user_session_user ON user_session(user_id);
+CREATE INDEX idx_user_session_previous_hash ON user_session(previous_refresh_token_hash)
+    WHERE previous_refresh_token_hash IS NOT NULL;
+
+-- Two-factor login with an authenticator app (TOTP, RFC 6238). One row per user who started
+-- setting it up; enabled flips once they prove a code. The secret is encrypted with the
+-- secret-vault key. last_used_step makes a code count once: a code read over someone's
+-- shoulder cannot be replayed within its 30 seconds.
+CREATE TABLE user_totp (
+    user_id          BIGINT      PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+    company_id       BIGINT      NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    secret_encrypted TEXT        NOT NULL,
+    enabled          BOOLEAN     NOT NULL DEFAULT false,
+    last_used_step   BIGINT      NOT NULL DEFAULT 0,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    enabled_at       TIMESTAMPTZ
+);
 
 -- Operator work schedule (UI-DESIGN §8.3 "Ish jadvali" tab) — weekly hours.
 CREATE TABLE user_schedule_slot (
@@ -832,9 +1516,9 @@ CREATE INDEX idx_report_schedule_company ON report_schedule(company_id);
 CREATE INDEX idx_report_schedule_due ON report_schedule(enabled, last_sent_at) WHERE enabled;
 
 -- ---------------------------------------------------------------------------
--- Per-company settings (§11). A missing row means "use the config/*.yml default", so none
--- of these is seeded — writing a row would pin the value in the database and make the YAML
--- default unreachable.
+-- Per-company settings (§11). A missing row means "use the config/*.yml default": a row
+-- pins the value in the database and makes the YAML default unreachable, so the seed
+-- writes these only where it means to show an override.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE ai_model_config (
@@ -848,7 +1532,9 @@ CREATE TABLE ai_model_config (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Per-company TTS tuning overrides (§11 "GET/PUT /api/settings/voice").
+-- Per-company TTS tuning overrides (§11 "GET/PUT /api/settings/voice"). speed is capped at
+-- 0.25–3.0 (VoiceSettingsValidator): the range every synthesizer a per-call speed reaches
+-- accepts — Yandex takes at most 3.0, Google and OpenAI at least 0.25.
 CREATE TABLE voice_settings (
     id          BIGSERIAL PRIMARY KEY,
     company_id  BIGINT NOT NULL UNIQUE REFERENCES company(id),
@@ -857,7 +1543,11 @@ CREATE TABLE voice_settings (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Per-company Uysot CRM OAuth connection (§11 "GET/PUT /api/settings/integrations").
+-- Per-company CRM connection (§11 "GET/PUT /api/settings/integrations"). Uysot's address
+-- is platform configuration (voice-agent.crm.base-url); base_url_enc is where a
+-- token-connected CRM lives per company — an amoCRM/Kommo account address, or a Bitrix24
+-- inbound webhook URL. The webhook URL carries its secret in its path, so the column holds
+-- SecretCipher ciphertext like the tokens beside it, never plaintext.
 CREATE TABLE crm_integration (
     id                BIGSERIAL PRIMARY KEY,
     company_id        BIGINT      NOT NULL UNIQUE REFERENCES company(id),
@@ -866,6 +1556,7 @@ CREATE TABLE crm_integration (
     grants_json       TEXT,
     access_token_enc  TEXT,
     refresh_token_enc TEXT,
+    base_url_enc      TEXT,
     token_expires_at  TIMESTAMPTZ,
     status            VARCHAR(20) NOT NULL DEFAULT 'NOT_CONNECTED',
     connected_at      TIMESTAMPTZ,
@@ -885,6 +1576,26 @@ CREATE TABLE secret (
     CONSTRAINT uk_secret_company_key UNIQUE (company_id, key)
 );
 CREATE INDEX idx_secret_company_id ON secret(company_id);
+
+-- A post-call webhook that failed is kept and tried again (1 min, 5 min, 30 min) instead of
+-- being lost to a log line. sealed_target is the resolved URL and headers — credentials by
+-- then — encrypted with the same key as the secret vault; host is what may be shown.
+-- Delivered rows are deleted after a week.
+CREATE TABLE webhook_delivery (
+    id              BIGSERIAL PRIMARY KEY,
+    company_id      BIGINT       NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    source          VARCHAR(32)  NOT NULL,
+    host            VARCHAR(255),
+    sealed_target   TEXT         NOT NULL,
+    payload         JSONB        NOT NULL,
+    status          VARCHAR(16)  NOT NULL,
+    attempts        INT          NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ,
+    last_error      VARCHAR(500),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    delivered_at    TIMESTAMPTZ
+);
+CREATE INDEX idx_webhook_delivery_due ON webhook_delivery (next_attempt_at) WHERE status = 'PENDING';
 
 -- ---------------------------------------------------------------------------
 -- Audit
@@ -906,22 +1617,29 @@ CREATE INDEX idx_audit_action ON audit_log(action, created_at DESC);
 CREATE INDEX idx_audit_log_company ON audit_log(company_id);
 
 -- ---------------------------------------------------------------------------
--- Billing & invoicing. Every row here is created on demand by BillingService
--- (CompanyBilling.defaultFor / BillingUsage.defaultFor), so nothing is seeded.
+-- Billing & invoicing. company_billing and billing_usage rows are created on demand by
+-- BillingService (CompanyBilling.defaultFor / BillingUsage.defaultFor).
+--
+-- What makes the figures the customer sees reproducible: call_billing says what one call
+-- was charged and at which price list, billing_ledger says how every balance got to where
+-- it is, and company_billing.reserved_uzs holds money for calls that are still in the air.
 -- ---------------------------------------------------------------------------
 
+-- The balance itself is not touched until a call is settled, so a company can see what it
+-- has left to spend as balance_uzs - reserved_uzs. (At what balance auto_recharge fires and
+-- by how much is platform-wide, in config/billing.yml.)
 CREATE TABLE company_billing (
     id                 BIGSERIAL PRIMARY KEY,
     company_id         BIGINT NOT NULL UNIQUE REFERENCES company(id) ON DELETE CASCADE,
     plan_code          VARCHAR(64) NOT NULL DEFAULT 'PRO_MONTHLY',
     plan_name          VARCHAR(128) NOT NULL DEFAULT 'Professional (Pro)',
     balance_uzs        BIGINT NOT NULL DEFAULT 0,
+    reserved_uzs       BIGINT NOT NULL DEFAULT 0,
     auto_recharge      BOOLEAN NOT NULL DEFAULT FALSE,
     next_billing_date  TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_company_billing_company ON company_billing(company_id);
 
 -- Resource usage per monthly billing period.
 CREATE TABLE billing_usage (
@@ -944,7 +1662,6 @@ CREATE TABLE billing_usage (
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_company_billing_period UNIQUE (company_id, billing_period)
 );
-CREATE INDEX idx_billing_usage_company_period ON billing_usage(company_id, billing_period);
 
 CREATE TABLE invoice (
     id            VARCHAR(64) PRIMARY KEY, -- e.g. 'INV-2026-003'
@@ -965,9 +1682,121 @@ CREATE TABLE payment_topup (
     user_id        BIGINT REFERENCES app_user(id) ON DELETE SET NULL,
     amount_uzs     BIGINT NOT NULL,
     payment_method VARCHAR(32) NOT NULL, -- PAYME, CLICK, BANK_TRANSFER
-    status         VARCHAR(32) NOT NULL DEFAULT 'PENDING', -- PENDING, COMPLETED, FAILED, CANCELLED
+    status         VARCHAR(32) NOT NULL DEFAULT 'PENDING', -- PENDING, COMPLETED, FAILED, CANCELLED, EXPIRED
     checkout_url   VARCHAR(1000),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     paid_at        TIMESTAMPTZ
 );
 CREATE INDEX idx_payment_topup_company ON payment_topup(company_id, created_at DESC);
+-- The expiry sweep and auto-recharge both look for PENDING top-ups by age.
+CREATE INDEX idx_payment_topup_pending_created ON payment_topup(created_at) WHERE status = 'PENDING';
+
+-- Real Payme / Click top-ups: one row per payment a provider starts against a payment_topup.
+-- A provider repeats its callbacks whenever it gets no answer, so what it started is
+-- recorded here under its own transaction id — unique per provider — and a repeated
+-- callback finds the row it already wrote instead of starting, or crediting, the same
+-- payment twice. The credit itself goes through billing_ledger with the key
+-- 'topup:<payment_id>', which refuses a second one on its own as well.
+CREATE TABLE payment_provider_transaction (
+    id                       BIGSERIAL PRIMARY KEY,
+    -- PAYME or CLICK (PaymentMethod).
+    provider                 VARCHAR(16)  NOT NULL,
+    -- Payme's transaction id, Click's click_trans_id.
+    provider_transaction_id  VARCHAR(64)  NOT NULL,
+    topup_id                 BIGINT       NOT NULL REFERENCES payment_topup(id) ON DELETE CASCADE,
+    -- What the provider is paying, in tiyin (UZS * 100) — always the top-up's whole amount.
+    amount_tiyin             BIGINT       NOT NULL,
+    -- CREATED -> PERFORMED (balance credited) or CREATED -> CANCELLED (ProviderTransactionState).
+    state                    VARCHAR(16)  NOT NULL,
+    -- When the provider says it created the transaction (Payme's `time`); Payme's
+    -- GetStatement filters on it. Null for Click.
+    provider_time            TIMESTAMPTZ,
+    -- Payme's 12-hour timeout runs from here; also its create_time.
+    created_at               TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    performed_at             TIMESTAMPTZ,
+    cancelled_at             TIMESTAMPTZ,
+    -- Why it was cancelled: Payme's reason code, or the negative error Click reported.
+    reason                   INT,
+    CONSTRAINT uq_payment_provider_transaction UNIQUE (provider, provider_transaction_id),
+    CONSTRAINT ck_payment_provider_transaction_provider CHECK (provider IN ('PAYME', 'CLICK')),
+    CONSTRAINT ck_payment_provider_transaction_state CHECK (state IN ('CREATED', 'PERFORMED', 'CANCELLED'))
+);
+-- "Does this top-up already have a payment under way?" on every new one; also backs the FK.
+CREATE INDEX idx_payment_provider_transaction_topup ON payment_provider_transaction(topup_id, state);
+-- Payme's GetStatement: a provider's transactions over a time window.
+CREATE INDEX idx_payment_provider_transaction_provider_time
+    ON payment_provider_transaction(provider, provider_time);
+
+-- What one call cost, and at which price list version.
+--
+-- A realtime (speech-to-speech) call is priced per connected minute of the engine, not per
+-- token, second of recognition and character of synthesis: one vendor did all three and
+-- bills its own way, and its audio tokens are an order of magnitude more numerous than a
+-- text LLM's. realtime_seconds is stored next to the rest of the usage so a disputed
+-- charge can still be recomputed from the row.
+CREATE TABLE call_billing (
+    id                   BIGSERIAL PRIMARY KEY,
+    -- Null while the hold is open: the money is put aside before Asterisk gives the
+    -- call a channel, so the attempt row it will be charged to does not exist yet.
+    call_attempt_id      BIGINT      UNIQUE REFERENCES call_attempt(id) ON DELETE CASCADE,
+    -- What the hold was taken for. A hold and the call that spends it are paired through
+    -- this rather than carried along the call itself, which would mean threading an
+    -- amount through the queue, the originate and the media session to no other purpose.
+    target_id            BIGINT      REFERENCES campaign_target(id) ON DELETE SET NULL,
+    company_id           BIGINT      NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    -- RESERVED -> SETTLED (the call was charged) or RELEASED (it never connected).
+    status               VARCHAR(16) NOT NULL DEFAULT 'RESERVED',
+    rate_version         VARCHAR(32) NOT NULL,
+    reserved_uzs         BIGINT      NOT NULL DEFAULT 0,
+    -- Measured usage, kept so a disputed charge can be recomputed from the same inputs.
+    duration_sec         INT         NOT NULL DEFAULT 0,
+    prompt_tokens        BIGINT      NOT NULL DEFAULT 0,
+    completion_tokens    BIGINT      NOT NULL DEFAULT 0,
+    cached_tokens        BIGINT      NOT NULL DEFAULT 0,
+    tts_chars            BIGINT      NOT NULL DEFAULT 0,
+    realtime_seconds     INT         NOT NULL DEFAULT 0,
+    -- The same usage priced, split the way an invoice line is read.
+    llm_cost_uzs         BIGINT      NOT NULL DEFAULT 0,
+    stt_cost_uzs         BIGINT      NOT NULL DEFAULT 0,
+    tts_cost_uzs         BIGINT      NOT NULL DEFAULT 0,
+    telephony_cost_uzs   BIGINT      NOT NULL DEFAULT 0,
+    realtime_cost_uzs    BIGINT      NOT NULL DEFAULT 0,
+    platform_fee_uzs     BIGINT      NOT NULL DEFAULT 0,
+    total_uzs            BIGINT      NOT NULL DEFAULT 0,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    settled_at           TIMESTAMPTZ,
+    CONSTRAINT ck_call_billing_status CHECK (status IN ('RESERVED', 'SETTLED', 'RELEASED'))
+);
+CREATE INDEX idx_call_billing_company_created ON call_billing(company_id, created_at DESC);
+CREATE INDEX idx_call_billing_open_hold ON call_billing(company_id, target_id, created_at)
+    WHERE status = 'RESERVED';
+-- idx_call_billing_open_hold is partial and leads with company_id; ON DELETE SET NULL from
+-- campaign_target needs a plain one.
+CREATE INDEX idx_call_billing_target ON call_billing(target_id);
+
+-- Every movement of money, append-only. Application code never updates or deletes a row
+-- here: a balance that can be edited in place cannot be audited, and the before/after
+-- columns are what lets a disagreement about a balance be settled by reading the table.
+CREATE TABLE billing_ledger (
+    id                  BIGSERIAL PRIMARY KEY,
+    company_id          BIGINT      NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    -- TOPUP, RESERVE, RELEASE, CALL_CHARGE, ADJUSTMENT (LedgerEntryType).
+    entry_type          VARCHAR(24) NOT NULL,
+    -- Signed: what this entry did to the balance. A reservation does not move the
+    -- balance, so it carries 0 and moves reserved_uzs instead.
+    amount_uzs          BIGINT      NOT NULL,
+    balance_before_uzs  BIGINT      NOT NULL,
+    balance_after_uzs   BIGINT      NOT NULL,
+    -- What caused it: 'call_attempt' + its id, 'payment_topup' + its payment id, etc.
+    reference_type      VARCHAR(32),
+    reference_id        VARCHAR(64),
+    -- Makes replay safe: a retried settlement or a redelivered payment callback writes
+    -- the same key and is rejected by the index rather than charged twice.
+    idempotency_key     VARCHAR(128) NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_billing_ledger_idempotency UNIQUE (company_id, idempotency_key),
+    CONSTRAINT ck_billing_ledger_entry_type
+        CHECK (entry_type IN ('TOPUP', 'RESERVE', 'RELEASE', 'CALL_CHARGE', 'ADJUSTMENT'))
+);
+CREATE INDEX idx_billing_ledger_company_created ON billing_ledger(company_id, created_at DESC);
+CREATE INDEX idx_billing_ledger_reference ON billing_ledger(reference_type, reference_id);

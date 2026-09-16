@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.callrecord.presentation.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -18,11 +19,12 @@ import java.util.List;
 public interface CallController {
 
     /**
-     * Every call still in conversation (§10.2/§10.3 UI-DESIGN.md "Jonli qo'ng'iroqlar").
+     * Every call of the caller's company still in conversation (§10.2/§10.3 UI-DESIGN.md
+     * "Jonli qo'ng'iroqlar"). Other tenants' calls are never listed.
      */
     @PreAuthorize("hasAuthority('LIVE_READ')")
     @GetMapping("/live")
-    ResponseEntity<ResponseData<List<LiveCallRow>>> live();
+    ResponseEntity<ResponseData<List<LiveCallRow>>> live(@CurrentCompanyId long companyId);
 
     /**
      * @param scenarioId test-drive this scenario without a campaign (ROADMAP A.3/A.4
@@ -47,7 +49,7 @@ public interface CallController {
             @CurrentCompanyId long companyId,
             @RequestParam String number,
             @RequestParam(required = false) Long sipTrunkId,
-            @RequestBody ScenarioDefinition definition);
+            @Valid @RequestBody ScenarioDefinition definition);
 
     /**
      * Test-drive a campaign (or a scenario / draft) from the browser instead of a phone:
@@ -56,11 +58,13 @@ public interface CallController {
      */
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping("/web-test")
-    ResponseEntity<ResponseData<WebTestCallResponse>> webTest(@CurrentCompanyId long companyId, @RequestBody WebTestCallRequest request);
+    ResponseEntity<ResponseData<WebTestCallResponse>> webTest(@CurrentCompanyId long companyId, @Valid @RequestBody WebTestCallRequest request);
 
+    /** Every {@code {channelId}} endpoint answers {@code 409 CALL_NOT_ACTIVE} for a channel that is not a live call of the caller's company. */
     @PreAuthorize("hasAuthority('LIVE_EDIT')")
     @PostMapping("/{channelId}/play")
-    ResponseEntity<ResponseData<PlayResponse>> play(@PathVariable String channelId, @RequestParam String file);
+    ResponseEntity<ResponseData<PlayResponse>> play(@CurrentCompanyId long companyId, @PathVariable String channelId,
+                                                    @RequestParam String file);
 
     /**
      * Audition TTS before creating a campaign with it (§2.5).
@@ -68,6 +72,7 @@ public interface CallController {
     @PreAuthorize("hasAuthority('LIVE_EDIT')")
     @PostMapping("/{channelId}/say")
     ResponseEntity<ResponseData<SayResponse>> say(
+            @CurrentCompanyId long companyId,
             @PathVariable String channelId,
             @RequestParam String text,
             @RequestParam(required = false) String language,
@@ -82,7 +87,47 @@ public interface CallController {
     /** "Operatorga uzatish" (§10.3, §11.6) — bridge a live channel to a human operator. */
     @PreAuthorize("hasAuthority('LIVE_EDIT')")
     @PostMapping("/{channelId}/transfer")
-    ResponseEntity<ResponseData<TransferResponse>> transfer(@CurrentCompanyId long companyId, @PathVariable String channelId);
+    ResponseEntity<ResponseData<TransferResponse>> transfer(@CurrentCompanyId long companyId, @PathVariable String channelId,
+                                                            @Valid @RequestBody(required = false) TransferCallRequest request);
+
+    /** Hold (docs/INBOUND-PBX-PLAN.md §7.4): the caller hears music, the operator is taken out of the call. */
+    @PreAuthorize("hasAuthority('LIVE_EDIT')")
+    @PostMapping("/{channelId}/hold")
+    ResponseEntity<ResponseData<TransferResponse>> hold(@CurrentCompanyId long companyId, @PathVariable String channelId);
+
+    @PreAuthorize("hasAuthority('LIVE_EDIT')")
+    @PostMapping("/{channelId}/unhold")
+    ResponseEntity<ResponseData<TransferResponse>> unhold(@CurrentCompanyId long companyId, @PathVariable String channelId);
+
+    /** Attended transfer, step one: the caller holds while the operator speaks to the colleague. */
+    @PreAuthorize("hasAuthority('LIVE_EDIT')")
+    @PostMapping("/{channelId}/consult")
+    ResponseEntity<ResponseData<TransferResponse>> consult(@CurrentCompanyId long companyId, @PathVariable String channelId,
+                                                           @Valid @RequestBody TransferCallRequest request);
+
+    /** Attended transfer, done: the colleague takes the caller, the operator drops off. */
+    @PreAuthorize("hasAuthority('LIVE_EDIT')")
+    @PostMapping("/{channelId}/consult/complete")
+    ResponseEntity<ResponseData<TransferResponse>> completeConsult(@CurrentCompanyId long companyId,
+                                                                   @PathVariable String channelId);
+
+    /** Attended transfer, called off: the colleague is hung up, the operator is back with the caller. */
+    @PreAuthorize("hasAuthority('LIVE_EDIT')")
+    @PostMapping("/{channelId}/consult/cancel")
+    ResponseEntity<ResponseData<TransferResponse>> cancelConsult(@CurrentCompanyId long companyId,
+                                                                 @PathVariable String channelId);
+
+    /** Supervisor: rings the current user's phone and joins the call to listen, whisper to the operator, or barge in. */
+    @PreAuthorize("hasAuthority('CALL_MONITOR')")
+    @PostMapping("/{channelId}/monitor")
+    ResponseEntity<ResponseData<MonitorCallResponse>> monitor(@CurrentCompanyId long companyId, @PathVariable String channelId,
+                                                              @Valid @RequestBody MonitorCallRequest request);
+
+    /** Click-to-call: rings the current operator's phone, then dials {@code phone} and records the call. */
+    @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
+    @PostMapping("/click-to-call")
+    ResponseEntity<ResponseData<ClickToCallResponse>> clickToCall(@CurrentCompanyId long companyId,
+                                                                  @Valid @RequestBody ClickToCallRequest request);
 
     /**
      * "Tinglash" (§10.3) — join a live channel as a listener.

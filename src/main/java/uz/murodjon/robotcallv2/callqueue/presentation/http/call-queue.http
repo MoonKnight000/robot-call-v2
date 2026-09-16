@@ -1,0 +1,37 @@
+### Create a queue: two Uzbek-speaking operators and one Russian-speaking, position announced every minute
+POST http://localhost:8080/api/call-queues
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Sotuv bo'limi",
+  "strategy": "SKILL_BASED",
+  "ringTimeoutSec": 15,
+  "wrapUpSec": 10,
+  "maxWaitSec": 300,
+  "announcePositionEverySec": 60,
+  "announceWaitTime": true,
+  "periodicAnnounceText": "Qo'ng'irog'ingiz biz uchun muhim. Iltimos, kuting.",
+  "periodicAnnounceEverySec": 120,
+  "callbackOfferAfterSec": 90,
+  "overflowAction": "CALLBACK",
+  "serviceLevelSec": 20,
+  "postCallSurvey": true,
+  "autoCallback": true,
+  "members": [
+    { "userId": 2, "priority": 0, "skills": ["uz-UZ"] },
+    { "userId": 3, "priority": 0, "skills": ["uz-UZ", "ru-RU"] },
+    { "userId": 4, "priority": 10, "skills": ["ru-RU"] }
+  ]
+}
+
+### List queues
+POST http://localhost:8080/api/call-queues/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "page": 0, "size": 20 }
+
+### Live state of every queue (waiting callers, operators by status)
+GET http://localhost:8080/api/call-queues/live
+Authorization: Bearer {{auth_token}}

@@ -6,9 +6,10 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.ContactHistory;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
-import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignVariantEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignVariantJpaRepository;
@@ -70,8 +71,8 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     }
 
     @Override
-    public Optional<Long> findTargetIdByPhone(String phone) {
-        return campaignTargetJpaRepository.findFirstByPhoneOrderById(phone).map(CampaignTargetEntity::getId);
+    public Long findInboundRouteIdById(long id) {
+        return callAttemptJpaRepository.findInboundRouteIdById(id);
     }
 
     /**
@@ -85,7 +86,7 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     public long create(CallAttempt attempt) {
         Instant now = Instant.now();
         CallAttemptEntity entity = new CallAttemptEntity();
-        entity.setTarget(campaignTargetJpaRepository.getReferenceById(attempt.targetId()));
+        entity.setTarget(attempt.targetId() > 0 ? campaignTargetJpaRepository.getReferenceById(attempt.targetId()) : null);
         entity.setAsteriskChannel(attempt.asteriskChannel());
         entity.setPhone(attempt.phone());
         entity.setLanguage(attempt.language());
@@ -98,7 +99,10 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
         }
         if (attempt.disposition() != null) {
             entity.setEndedAt(now);
-            entity.setDurationSec(attempt.durationSec() != null ? attempt.durationSec() : 0);
+            // Null unless the caller measured one: reports read a null duration as "never
+            // connected", and the zero this used to write counted never-dialled attempts
+            // as answered calls.
+            entity.setDurationSec(attempt.durationSec());
             entity.setDisposition(attempt.disposition());
             entity.setErrorMessage(attempt.errorMessage());
         }
@@ -114,6 +118,42 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
                         row[2] != null ? ((Number) row[2]).longValue() : null,
                         (Instant) row[3]))
                 .toList();
+    }
+
+    @Override
+    public ContactHistory findContactHistory(long companyId, String phone, Instant since, int attemptLimit) {
+        List<Instant> attempts = callAttemptJpaRepository
+                .findRecentPlacedStartTimes(companyId, phone, since, attemptLimit).stream()
+                .map(CallAttemptRepositoryAdapter::toInstant)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        return new ContactHistory(attempts,
+                toInstant(callAttemptJpaRepository.findLastConversationAt(companyId, phone)),
+                toLocalDate(callAttemptJpaRepository.findLatestPromisedDate(companyId, phone)));
+    }
+
+    /** A native timestamp column comes back as whichever type the driver prefers. */
+    private static Instant toInstant(Object value) {
+        if (value instanceof Instant instant) {
+            return instant;
+        }
+        if (value instanceof java.time.OffsetDateTime offset) {
+            return offset.toInstant();
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toInstant();
+        }
+        return null;
+    }
+
+    private static java.time.LocalDate toLocalDate(Object value) {
+        if (value instanceof java.time.LocalDate date) {
+            return date;
+        }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate();
+        }
+        return null;
     }
 
     @Override
@@ -162,12 +202,53 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     }
 
     @Override
+    public void markEnqueued(long callId, long queueId, Instant at) {
+        callAttemptJpaRepository.markEnqueued(callId, queueId, at);
+    }
+
+    @Override
+    public void markOperatorAnswered(long callId, long userId, Instant at, int waitSeconds) {
+        callAttemptJpaRepository.markOperatorAnswered(callId, userId, at, waitSeconds);
+    }
+
+    @Override
+    public void markAbandoned(long callId, int waitSeconds) {
+        callAttemptJpaRepository.markAbandoned(callId, waitSeconds);
+    }
+
+    @Override
+    public void recordSurveyScore(long callId, int score) {
+        callAttemptJpaRepository.recordSurveyScore(callId, score);
+    }
+
+    @Override
+    public Long findLastOperatorUserId(long companyId, String phone, Instant since) {
+        return callAttemptJpaRepository.findLastOperatorUserId(companyId, phone, since).stream().findFirst().orElse(null);
+    }
+
+    @Override
     public void finishAttempt(long callId, Instant endedAt, int durationSec, Disposition disposition, Long recordingFileId) {
         callAttemptJpaRepository.finishAttempt(callId, endedAt, durationSec, disposition, recordingFileId);
+    }
+
+    @Override
+    public void updateDisposition(long callId, Disposition disposition) {
+        callAttemptJpaRepository.updateDisposition(callId, disposition);
     }
 
     /** Null for a call the campaign dialled without an A/B variant. */
     private CampaignVariantEntity variantReference(Long id) {
         return id != null ? campaignVariantJpaRepository.getReferenceById(id) : null;
+    }
+
+    @Override
+    public void recordAgent(long callId, Long agentId, Integer agentVersion) {
+        callAttemptJpaRepository.recordAgent(callId, agentId, agentVersion);
+    }
+
+    @Override
+    public List<Long> findExpiredRecordingFileIds(ConversationRetention retention, int batchSize) {
+        return callAttemptJpaRepository.findExpiredRecordingFileIds(retention.now(), retention.defaultCutoff(),
+                retention.zeroPiiCutoff(), batchSize);
     }
 }

@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.siptrunk.application.mapper.SipTrunkMapper;
+import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.mapper.SipTrunkEntityMapper;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
@@ -19,10 +19,10 @@ import java.util.List;
 public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
 
     private final SipTrunkJpaRepository jpaRepository;
-    private final SipTrunkMapper mapper;
+    private final SipTrunkEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
 
-    public SipTrunkRepositoryAdapter(SipTrunkJpaRepository jpaRepository, SipTrunkMapper mapper,
+    public SipTrunkRepositoryAdapter(SipTrunkJpaRepository jpaRepository, SipTrunkEntityMapper mapper,
                                      CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
@@ -57,7 +57,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
 
     @Override
     public SipTrunk find(long companyId, long id) {
-        return jpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::entityToDomain).orElse(null);
+        return jpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::toSipTrunk).orElse(null);
     }
 
     @Override
@@ -112,7 +112,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
     @Override
     public List<SipTrunk> findAll(long companyId, SipTrunkFilter filter) {
         return jpaRepository.findByCompanyId(companyId, filter.pageable()).stream()
-                .map(mapper::entityToDomain)
+                .map(mapper::toSipTrunk)
                 .toList();
     }
 
@@ -124,13 +124,13 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
     @Override
     public SipTrunk findDefaultForCompany(long companyId) {
         return jpaRepository.findByCompanyIdAndIsDefaultTrueAndEnabledTrue(companyId)
-                .map(mapper::entityToDomain).orElse(null);
+                .map(mapper::toSipTrunk).orElse(null);
     }
 
     @Override
     public List<SipTrunk> findAllEnabledByCompany(long companyId) {
         return jpaRepository.findByCompanyIdAndEnabledTrue(companyId).stream()
-                .map(mapper::entityToDomain)
+                .map(mapper::toSipTrunk)
                 .toList();
     }
 
@@ -140,12 +140,12 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
             return List.of();
         }
         return jpaRepository.findByIdInAndCompanyIdAndEnabledTrue(ids, companyId).stream()
-                .map(mapper::entityToDomain)
+                .map(mapper::toSipTrunk)
                 .toList();
     }
 
     @Override
     public List<SipTrunk> findAllManagedEnabled() {
-        return jpaRepository.findByHostIsNotNullAndEnabledTrue().stream().map(mapper::entityToDomain).toList();
+        return jpaRepository.findByHostIsNotNullAndEnabledTrue().stream().map(mapper::toSipTrunk).toList();
     }
 }

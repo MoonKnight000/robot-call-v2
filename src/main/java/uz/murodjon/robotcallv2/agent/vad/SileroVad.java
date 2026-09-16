@@ -11,6 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,9 +37,47 @@ public class SileroVad {
 
     private static final Logger log = LoggerFactory.getLogger(SileroVad.class);
 
+    /** The recurrent state's shape — {@link #newState()}. */
+    private static final long[] STATE_SHAPE = {2, 1, 128};
+    private static final int STATE_SIZE = 2 * 128;
+
     private final VadProperties vadProperties;
     private OrtEnvironment env;
     private volatile OrtSession session;
+    /** The {@code sr} input never changes, so it is one tensor shared by every call's every window. */
+    private OnnxTensor sampleRateTensor;
+
+    /**
+     * Input buffers reused window after window instead of three arrays and a map every
+     * 32 ms. Per thread, because the session is shared by every call at once while a thread
+     * scores one window at a time — each call's audio is read by its own RTP worker.
+     */
+    private final ThreadLocal<VadScratch> scratch = ThreadLocal.withInitial(VadScratch::new);
+
+    /**
+     * One thread's inputs. Direct and in native byte order: that is what lets ORT read them
+     * in place, where a heap array is copied into a fresh native buffer on every run.
+     */
+    private static final class VadScratch {
+        private final FloatBuffer state = directFloats(STATE_SIZE);
+        private final Map<String, OnnxTensor> inputs = new HashMap<>(4);
+        private FloatBuffer input = directFloats(0);
+        private long[] inputShape = {1, 0};
+
+        /** The input buffer, cleared and sized for {@code length} samples — reallocated only if that changes. */
+        private FloatBuffer inputFor(int length) {
+            if (inputShape[1] != length) {
+                input = directFloats(length);
+                inputShape = new long[]{1, length};
+            }
+            input.clear();
+            return input;
+        }
+
+        private static FloatBuffer directFloats(int count) {
+            return ByteBuffer.allocateDirect(count * Float.BYTES).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        }
+    }
 
     public SileroVad(VadProperties vadProperties) {
         this.vadProperties = vadProperties;
@@ -55,7 +96,16 @@ public class SileroVad {
         }
         try {
             env = OrtEnvironment.getEnvironment();
-            session = env.createSession(path, new OrtSession.SessionOptions());
+            sampleRateTensor = OnnxTensor.createTensor(env,
+                    LongBuffer.wrap(new long[]{vadProperties.sampleRate()}), new long[]{});
+            // One thread per inference: every call scores its own 32 ms windows at the same
+            // time, and ORT's default per-session thread pools had all of them contending
+            // for every core over a model this small.
+            try (OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+                options.setIntraOpNumThreads(1);
+                options.setInterOpNumThreads(1);
+                session = env.createSession(path, options);
+            }
             log.info("Silero VAD ready (model={}, sampleRate={}, window={})",
                     path, vadProperties.sampleRate(), vadProperties.windowSamples());
         } catch (Exception e) {
@@ -105,23 +155,29 @@ public class SileroVad {
         if (current == null) {
             return -1f;
         }
-        float[] scored = new float[context.length + window.length];
-        System.arraycopy(context, 0, scored, 0, context.length);
-        System.arraycopy(window, 0, scored, context.length, window.length);
-        Map<String, OnnxTensor> inputs = new HashMap<>();
-        try (OnnxTensor in = OnnxTensor.createTensor(env, new float[][]{scored});
-             OnnxTensor st = OnnxTensor.createTensor(env, state);
-             OnnxTensor sr = OnnxTensor.createTensor(env,
-                     LongBuffer.wrap(new long[]{vadProperties.sampleRate()}), new long[]{})) {
+        VadScratch buffers = scratch.get();
+        FloatBuffer input = buffers.inputFor(context.length + window.length);
+        input.put(context).put(window).flip();
+        FloatBuffer stateIn = buffers.state;
+        stateIn.clear();
+        for (float[][] layer : state) {
+            stateIn.put(layer[0]);
+        }
+        stateIn.flip();
+        // A tensor is still new per run — ORT takes ownership of one per call — but over the
+        // reused direct buffers it is a view, not a copy.
+        try (OnnxTensor in = OnnxTensor.createTensor(env, input, buffers.inputShape);
+             OnnxTensor st = OnnxTensor.createTensor(env, stateIn, STATE_SHAPE)) {
+            Map<String, OnnxTensor> inputs = buffers.inputs;
             inputs.put("input", in);
             inputs.put("state", st);
-            inputs.put("sr", sr);
+            inputs.put("sr", sampleRateTensor);
             try (OrtSession.Result result = current.run(inputs)) {
-                float prob = ((float[][]) result.get(0).getValue())[0][0];
-                float[][][] next = (float[][][]) result.get(1).getValue();
-                // Copy the returned state back into the caller's buffer.
-                for (int a = 0; a < 2; a++) {
-                    System.arraycopy(next[a][0], 0, state[a][0], 0, state[a][0].length);
+                float prob = ((OnnxTensor) result.get(0)).getFloatBuffer().get(0);
+                // Copy the returned state back into the caller's buffer, layer by layer.
+                FloatBuffer next = ((OnnxTensor) result.get(1)).getFloatBuffer();
+                for (float[][] layer : state) {
+                    next.get(layer[0]);
                 }
                 System.arraycopy(window, window.length - context.length, context, 0, context.length);
                 return prob;
@@ -141,6 +197,9 @@ public class SileroVad {
             } catch (OrtException e) {
                 log.debug("VAD session close failed: {}", e.getMessage());
             }
+        }
+        if (sampleRateTensor != null) {
+            sampleRateTensor.close();
         }
     }
 }

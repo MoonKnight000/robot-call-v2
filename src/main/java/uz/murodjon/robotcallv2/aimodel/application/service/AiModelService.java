@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;

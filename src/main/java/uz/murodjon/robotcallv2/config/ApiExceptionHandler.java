@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -19,6 +21,7 @@ import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The one place an exception becomes an HTTP response, always in the project's standard
@@ -50,7 +53,7 @@ public class ApiExceptionHandler {
     /** Every failure the application raises on purpose. */
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ResponseData<Object>> appException(AppException e) {
-        return respond(e.status(), e.code(), e.getMessage(), null, e);
+        return respond(e.status(), e.code(), e.getMessage(), e.errors(), e);
     }
 
     /** A {@code @Valid @RequestBody} failed Bean Validation — one message per failed field. */
@@ -58,6 +61,20 @@ public class ApiExceptionHandler {
     public ResponseEntity<ResponseData<Object>> validationFailed(MethodArgumentNotValidException e) {
         List<String> errors = e.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .toList();
+        return respond(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.format(),
+                errors, e);
+    }
+
+    /**
+     * A constraint on a controller parameter itself failed — {@code @Size} on a raw CSV
+     * body, say. Without this it fell through to the catch-all below as a 500.
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ResponseData<Object>> parameterValidationFailed(HandlerMethodValidationException e) {
+        List<String> errors = e.getParameterValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> result.getMethodParameter().getParameterName() + ": " + error.getDefaultMessage()))
                 .toList();
         return respond(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.format(),
                 errors, e);
@@ -127,6 +144,31 @@ public class ApiExceptionHandler {
     public ResponseEntity<ResponseData<Object>> accessDenied(AccessDeniedException e) {
         return respond(HttpStatus.FORBIDDEN, ErrorCode.PERMISSION_DENIED, ErrorCode.PERMISSION_DENIED.format(),
                 null, e);
+    }
+
+    /**
+     * An edit lost the race to another one saved between its read and its write, caught by
+     * {@code @Version} when the transaction flushed — the same answer as the stale
+     * {@code version} in a request that the services check first.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ResponseData<Object>> optimisticLockFailed(ObjectOptimisticLockingFailureException e) {
+        return respond(HttpStatus.CONFLICT, ErrorCode.ENTITY_VERSION_CONFLICT,
+                ErrorCode.ENTITY_VERSION_CONFLICT.format(entityNameOf(e), e.getIdentifier()), null, e);
+    }
+
+    /**
+     * The row's kind as the services name it in the same message — {@code CampaignEntity}
+     * becomes {@code campaign}, {@code AiAgentEntity} {@code ai_agent}. Hibernate does not
+     * always say which entity a batched update lost; then it is only "record".
+     */
+    private static String entityNameOf(ObjectOptimisticLockingFailureException e) {
+        Class<?> persistentClass = e.getPersistentClass();
+        if (persistentClass == null) {
+            return "record";
+        }
+        String simpleName = persistentClass.getSimpleName().replaceFirst("Entity$", "");
+        return simpleName.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
     }
 
     /** Catch-all for truly unexpected errors. */

@@ -5,18 +5,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
-import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
+import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 /**
  * Periodically checks what a degrading deployment shows up in first: the recent
- * call success rate ("success" = a promise to pay), the §1.3 turnaround budget, and
+ * call success rate ("success" = a conversion, {@link Disposition#isConversion}: a promise
+ * to pay or a completed scenario — the definition the reports use), the §1.3 turnaround budget, and
  * whether the pipeline's own optimizations are still paying for themselves.
  * Each is logged as an alert when it crosses its threshold (PROJECT.md §10 Bosqich 12).
  * Log-based by design — wire the WARN log to your alerting sink (e.g. Loki/Alertmanager).
@@ -27,11 +29,16 @@ public class AlertingService {
 
     private static final Logger log = LoggerFactory.getLogger(AlertingService.class);
 
-    private final CallAttemptRepository callAttemptRepository;
-    private final NotificationService notificationService;
+    private final CallAttemptUseCase callAttemptUseCase;
+    private final NotificationUseCase notificationService;
     private final CompanyProperties companyProperties;
     private final VoiceMetrics voiceMetrics;
     private final AlertingProperties alertingProperties;
+    /**
+     * Held by {@link #checkSuccessRate} only: it is the one check that reads shared data. The
+     * other three read this JVM's own metrics, which every instance has to watch for itself.
+     */
+    private final ClusterJobLock clusterJobLock;
 
     /** Turns already counted when {@link #checkTurnaround} last ran — the window is the delta. */
     private long lastTurnaroundCount;
@@ -44,12 +51,19 @@ public class AlertingService {
     private long lastPromptTokens;
     private long lastCachedTokens;
 
-    public AlertingService(CallAttemptRepository callAttemptRepository,
-                           NotificationService notificationService,
+    /** Failover counters and MOS totals as {@link #checkProviderHealth} last saw them. */
+    private double lastFailovers;
+    private double lastMosCount;
+    private double lastMosTotal;
+
+    public AlertingService(CallAttemptUseCase callAttemptUseCase,
+                           NotificationUseCase notificationService,
                            CompanyProperties companyProperties,
                            VoiceMetrics voiceMetrics,
-                           AlertingProperties alertingProperties) {
-        this.callAttemptRepository = callAttemptRepository;
+                           AlertingProperties alertingProperties,
+                           ClusterJobLock clusterJobLock) {
+        this.clusterJobLock = clusterJobLock;
+        this.callAttemptUseCase = callAttemptUseCase;
         this.notificationService = notificationService;
         this.companyProperties = companyProperties;
         this.voiceMetrics = voiceMetrics;
@@ -61,13 +75,22 @@ public class AlertingService {
         if (!alertingProperties.enabled()) {
             return;
         }
+        clusterJobLock.runExclusively("alerting.success-rate", this::evaluateSuccessRate);
+    }
+
+    private void evaluateSuccessRate() {
         try {
             Instant since = Instant.now().minus(alertingProperties.windowMinutes(), ChronoUnit.MINUTES);
-            long total = callAttemptRepository.countEndedSince(since);
+            long total = callAttemptUseCase.countEndedSince(since);
             if (total < alertingProperties.minSample()) {
                 return; // not enough data to judge
             }
-            long success = callAttemptRepository.countEndedSinceWithDisposition(since, Disposition.PROMISE_TO_PAY);
+            long success = 0;
+            for (Disposition disposition : Disposition.values()) {
+                if (disposition.isConversion()) {
+                    success += callAttemptUseCase.countEndedSinceWithDisposition(since, disposition);
+                }
+            }
             double rate = success / (double) total;
             if (rate < alertingProperties.successThreshold()) {
                 log.error("ALERT: call success rate {}% over last {}min ({}/{}) below threshold {}%",
@@ -177,6 +200,57 @@ public class AlertingService {
             }
         } catch (Exception e) {
             log.warn("Efficiency check failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * The two things that go wrong underneath a conversation and never show up in the
+     * success rate until much later: a vendor that keeps failing (and is being covered by
+     * failover, so every call still "works"), and a network that is chewing the audio.
+     *
+     * <p>Failovers are summed across STT, TTS and realtime engines: which vendor it is,
+     * the tags on the counters say ({@code voice.stt.failover{from,to}},
+     * {@code voice.realtime.fallbacks{engine}}); that one is, is what needs a human now.
+     */
+    @Scheduled(fixedDelayString = "#{${voice-agent.alerting.check-minutes:5} * 60 * 1000}")
+    public void checkProviderHealth() {
+        if (!alertingProperties.enabled()) {
+            return;
+        }
+        try {
+            double failovers = voiceMetrics.counterTotal("voice.stt.failover")
+                    + voiceMetrics.counterTotal("voice.tts.failovers")
+                    + voiceMetrics.counterTotal("voice.realtime.fallbacks");
+            double window = failovers - lastFailovers;
+            lastFailovers = failovers;
+            if (window > alertingProperties.providerFailoverThreshold()) {
+                log.error("ALERT: {} provider failovers since the last check (threshold {}) — "
+                                + "a speech vendor is failing and failover is covering it",
+                        Math.round(window), alertingProperties.providerFailoverThreshold());
+                notificationService.notify(companyProperties.defaultId(), NotificationType.ERROR_OCCURRED,
+                        "Provayder nosoz", "Oxirgi tekshiruvdan beri " + Math.round(window)
+                                + " marta STT/TTS/realtime provayder almashtirildi — provayderlardan biri ishlamayapti",
+                        null);
+            }
+
+            double[] mos = voiceMetrics.mosTotals();
+            double calls = mos[0] - lastMosCount;
+            double total = mos[1] - lastMosTotal;
+            lastMosCount = mos[0];
+            lastMosTotal = mos[1];
+            if (calls >= alertingProperties.minSample()) {
+                double mean = total / calls;
+                if (mean < alertingProperties.minMeanMos()) {
+                    log.error("ALERT: mean inbound MOS {} over the last {} calls is below {} — "
+                                    + "the trunk or the network is degrading the audio",
+                            Math.round(mean * 100) / 100.0, Math.round(calls), alertingProperties.minMeanMos());
+                    notificationService.notify(companyProperties.defaultId(), NotificationType.ERROR_OCCURRED,
+                            "Ovoz sifati past", "Oxirgi " + Math.round(calls) + " ta qo'ng'iroqda o'rtacha MOS "
+                                    + Math.round(mean * 100) / 100.0 + " — trunk yoki tarmoq ovozni buzmoqda", null);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Provider health check failed: {}", e.getMessage());
         }
     }
 

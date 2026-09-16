@@ -8,7 +8,7 @@ import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.Call
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.mcp.application.mapper.McpToolExecutionMapper;
+import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.mapper.McpToolExecutionEntityMapper;
 import uz.murodjon.robotcallv2.mcp.application.port.output.McpToolExecutionRepository;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpToolExecution;
 import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.entity.McpConnectionEntity;
@@ -25,13 +25,13 @@ public class McpToolExecutionRepositoryAdapter implements McpToolExecutionReposi
     private final CompanyJpaRepository companyJpaRepository;
     private final McpConnectionJpaRepository mcpConnectionJpaRepository;
     private final CallAttemptJpaRepository callAttemptJpaRepository;
-    private final McpToolExecutionMapper mapper;
+    private final McpToolExecutionEntityMapper mapper;
 
     public McpToolExecutionRepositoryAdapter(McpToolExecutionJpaRepository jpaRepository,
                                              CompanyJpaRepository companyJpaRepository,
                                              McpConnectionJpaRepository mcpConnectionJpaRepository,
                                              CallAttemptJpaRepository callAttemptJpaRepository,
-                                             McpToolExecutionMapper mapper) {
+                                             McpToolExecutionEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mcpConnectionJpaRepository = mcpConnectionJpaRepository;
@@ -43,7 +43,7 @@ public class McpToolExecutionRepositoryAdapter implements McpToolExecutionReposi
     public void record(McpToolExecution execution) {
         try {
             CompanyEntity company = companyJpaRepository.getReferenceById(execution.companyId());
-            jpaRepository.save(mapper.toEntity(execution, company,
+            jpaRepository.save(mapper.toMcpToolExecutionEntity(execution, company,
                     connectionReference(execution.connectionId()), callAttemptReference(execution.callAttemptId())));
         } catch (Exception e) {
             // This runs on a live call. Losing the log line is a smaller problem than

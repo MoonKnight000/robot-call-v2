@@ -106,7 +106,7 @@ class KnowledgeRetrievalServiceTest {
         }
 
         @Override
-        public boolean available() {
+        public boolean isAvailable() {
             return queryVector != null;
         }
 

@@ -106,6 +106,13 @@ public class RtpStats {
         return sent == 0 ? 0.0 : lost * 100.0 / sent;
     }
 
+    /** Everything above in one consistent read, with the MOS estimate derived from it. */
+    public synchronized RtpQuality quality() {
+        double jitterMs = jitterMillis();
+        Double mos = received == 0 ? null : MosEstimator.estimate(lossPercent(), jitterMs);
+        return new RtpQuality(received, lost, (int) Math.round(jitterMs), mos);
+    }
+
     private void updateJitter(long rtpTimestamp, long arrivalNanos) {
         // Both sides in clock ticks: the constant offset between our clock and the
         // sender's cancels out in the difference below.

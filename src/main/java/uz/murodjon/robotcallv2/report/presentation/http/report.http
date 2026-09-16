@@ -22,6 +22,16 @@ Content-Type: application/json
   "size": 20
 }
 
+### List All Calls — next page after a cursor (keyset; totalElements comes back -1)
+POST {{host}}/api/reports/calls/list
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "size": 20,
+  "afterId": 1052
+}
+
 ### Get Call Detail
 GET {{host}}/api/reports/calls/1
 Authorization: Bearer {{token}}

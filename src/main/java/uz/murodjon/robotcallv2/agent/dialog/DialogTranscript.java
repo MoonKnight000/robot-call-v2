@@ -1,8 +1,8 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
-import uz.murodjon.robotcallv2.live.application.service.LiveBroadcastService;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
+import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
 import uz.murodjon.robotcallv2.live.domain.entity.LiveTranscriptEvent;
 import uz.murodjon.robotcallv2.live.domain.enums.LiveEventType;
 
@@ -17,20 +17,24 @@ import java.time.Instant;
 @Component
 public class DialogTranscript {
 
-    private final CallRecordService records;
-    private final LiveBroadcastService broadcast;
+    private final CallTranscriptUseCase callTranscriptUseCase;
+    private final LiveUseCase liveUseCase;
 
-    public DialogTranscript(CallRecordService records, LiveBroadcastService broadcast) {
-        this.records = records;
-        this.broadcast = broadcast;
+    public DialogTranscript(CallTranscriptUseCase callTranscriptUseCase, LiveUseCase liveUseCase) {
+        this.callTranscriptUseCase = callTranscriptUseCase;
+        this.liveUseCase = liveUseCase;
     }
 
     /** Persist and publish one line the bot spoke. */
     public void recordAgentLine(DialogSession s, String line) {
+        if (s.isLineGone()) {
+            // The caller hung up while this turn was running; the call has been (or is being)
+            // summarized already, and a line written now was never heard.
+            return;
+        }
         String safeLine = PiiRedactor.redact(line);
-        records.addTranscript(s.callAttemptId(), "AGENT", safeLine, s.state(), offsetMs(s), null);
-        broadcast.publish(LiveEventType.TRANSCRIPT,
-                new LiveTranscriptEvent(s.channelId(), "AGENT", safeLine, s.state()));
+        callTranscriptUseCase.addTranscript(s.callAttemptId(), "AGENT", safeLine, s.state(), offsetMs(s), null);
+        publishLine(s.companyId(), s.channelId(), "AGENT", safeLine, s.state());
     }
 
     /**
@@ -38,8 +42,16 @@ public class DialogTranscript {
      */
     public void publishClientLine(DialogSession s, String text) {
         String safeText = PiiRedactor.redact(text);
-        broadcast.publish(LiveEventType.TRANSCRIPT,
-                new LiveTranscriptEvent(s.channelId(), "CLIENT", safeText, s.state()));
+        publishLine(s.companyId(), s.channelId(), "CLIENT", safeText, s.state());
+    }
+
+    /**
+     * Put one already-redacted line on the live feed (§11.8). Shared with the realtime
+     * pipeline, whose lines are stored by {@code RealtimeTranscriptRecorder}.
+     */
+    void publishLine(long companyId, String channelId, String role, String safeText, String state) {
+        liveUseCase.publish(companyId, LiveEventType.TRANSCRIPT,
+                new LiveTranscriptEvent(channelId, role, safeText, state));
     }
 
     /** Where in the recording this line falls, for the transcript player. */

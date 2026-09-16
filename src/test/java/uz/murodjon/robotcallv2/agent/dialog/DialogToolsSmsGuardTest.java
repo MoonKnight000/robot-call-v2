@@ -1,0 +1,183 @@
+package uz.murodjon.robotcallv2.agent.dialog;
+
+import org.junit.jupiter.api.Test;
+
+import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The SMS tools reach a real gateway, so what the model can make them send is bounded here:
+ * one SMS a call, to the call's own number, of a length a phone shows, only through the
+ * agent's template — and a send that did not happen is never reported to the model as one
+ * that did.
+ */
+class DialogToolsSmsGuardTest {
+
+    /** A template that is nothing but the slot, so the guards see the model's text as sent. */
+    private static final String SLOT_ONLY = "{{text}}";
+
+    private final List<String> sent = new ArrayList<>();
+
+    @Test
+    void refusesToSendWithoutATemplate() {
+        DialogTools tools = new DialogTools(session(Map.of(), sent::add));
+
+        String result = tools.sendMidCallSms("SMS yubordim.", "Karta raqami: 8600 1234 5678 9012");
+
+        assertThat(result).startsWith("XATO:");
+        assertThat(sent).isEmpty();
+    }
+
+    @Test
+    void sendsOnlyOneSmsPerCall() {
+        DialogTools tools = new DialogTools(sessionWithTemplate(SLOT_ONLY, Map.of(), sent::add));
+
+        String first = tools.sendMidCallSms(null, "Karta raqami: 8600 1234 5678 9012");
+        String second = tools.sendMidCallSms("Yana yubordim.", "Yana bir SMS");
+
+        assertThat(first).doesNotStartWith("XATO:");
+        assertThat(second).startsWith("XATO:");
+        assertThat(sent).containsExactly("Karta raqami: 8600 1234 5678 9012");
+    }
+
+    @Test
+    void thePaymentLinkAndAMidCallSmsShareTheOneSms() {
+        DialogTools tools = new DialogTools(
+                sessionWithTemplate(SLOT_ONLY, Map.of("paymentLink", "https://pay.example.uz/abc123"), sent::add));
+
+        String link = tools.sendSmsPaymentLink(null, null);
+        String other = tools.sendMidCallSms(null, "Yana bir SMS");
+
+        assertThat(link).doesNotStartWith("XATO:");
+        assertThat(other).startsWith("XATO:");
+        // The model decides when, not what: the text is fixed and the link is the call's own.
+        assertThat(sent).containsExactly("To'lov havolasi: https://pay.example.uz/abc123");
+    }
+
+    @Test
+    void refusesAnOverlongTextWithoutSpendingTheCallsSms() {
+        DialogTools tools = new DialogTools(sessionWithTemplate(SLOT_ONLY, Map.of(), sent::add));
+
+        String overlong = tools.sendMidCallSms(null, "a".repeat(DialogTools.MAX_SMS_CHARS + 1));
+        String shortOne = tools.sendMidCallSms(null, "Qisqa matn");
+
+        assertThat(overlong).startsWith("XATO:").contains(String.valueOf(DialogTools.MAX_SMS_CHARS));
+        assertThat(shortOne).doesNotStartWith("XATO:");
+        assertThat(sent).containsExactly("Qisqa matn");
+    }
+
+    @Test
+    void reportsAnSmsTheGatewayRefusedAsNotSent() {
+        DialogSession session = sessionWithTemplate(SLOT_ONLY, Map.of(), text -> false);
+        DialogTools tools = new DialogTools(session);
+
+        String result = tools.sendMidCallSms("SMS yubordim.", "Salom");
+
+        assertThat(result).startsWith("XATO:");
+        // The line claims an SMS that never went — it must not be spoken.
+        assertThat(session.toolReplies()).isNull();
+        assertThat(session.outcome()).doesNotContainKey("midCallSmsSent");
+    }
+
+    @Test
+    void reportsNotSentWhenTheCallHasNoSmsSender() {
+        DialogSession session = sessionWithTemplate(SLOT_ONLY, Map.of(), null);
+
+        String result = new DialogTools(session).sendMidCallSms(null, "Salom");
+
+        assertThat(result).startsWith("XATO:");
+    }
+
+    @Test
+    void onlyRecordsThePaymentLinkRequestWhenTheCallHasNoLink() {
+        DialogSession session = session(Map.of(), sent::add);
+
+        String result = new DialogTools(session).sendSmsPaymentLink(null, "rekvizitlar");
+
+        assertThat(result).doesNotStartWith("XATO:");
+        assertThat(sent).isEmpty();
+        assertThat(session.outcome()).containsEntry("sendSmsRequested", true);
+    }
+
+    @Test
+    void doesNotSendAPaymentLinkThatIsNotAWebAddress() {
+        DialogSession session = session(Map.of("paymentLink", "+998 90 123 45 67 ga qo'ng'iroq qiling"), sent::add);
+
+        new DialogTools(session).sendSmsPaymentLink(null, null);
+
+        assertThat(sent).isEmpty();
+        assertThat(session.outcome()).containsEntry("sendSmsRequested", true);
+    }
+
+    @Test
+    void fillsTheAgentsSmsTemplateInsteadOfSendingTheModelsText() {
+        DialogSession session = sessionWithTemplate(
+                "Hurmatli {{clientName | mijoz}}, to'lov havolasi: {{text}}", Map.of("clientName", "Murodjon"),
+                sent::add);
+
+        String result = new DialogTools(session).sendMidCallSms(null, "https://pay.example.uz/abc123");
+
+        assertThat(result).doesNotStartWith("XATO:");
+        assertThat(sent).containsExactly("Hurmatli Murodjon, to'lov havolasi: https://pay.example.uz/abc123");
+        assertThat(session.outcome())
+                .containsEntry("midCallSmsText", "Hurmatli Murodjon, to'lov havolasi: https://pay.example.uz/abc123");
+    }
+
+    @Test
+    void refusesAnEmptyTemplateSlotWithoutSpendingTheCallsSms() {
+        DialogTools tools = new DialogTools(sessionWithTemplate("To'lov havolasi: {{text}}", Map.of(), sent::add));
+
+        String empty = tools.sendMidCallSms(null, " ");
+        String filled = tools.sendMidCallSms(null, "https://pay.example.uz/abc123");
+
+        assertThat(empty).startsWith("XATO:");
+        assertThat(filled).doesNotStartWith("XATO:");
+        assertThat(sent).containsExactly("To'lov havolasi: https://pay.example.uz/abc123");
+    }
+
+    @Test
+    void sendsATemplateWithoutASlotAsItStands() {
+        DialogTools tools = new DialogTools(
+                sessionWithTemplate("Operatorimiz tez orada siz bilan bog'lanadi.", Map.of(), sent::add));
+
+        tools.sendMidCallSms(null, "model yozgan boshqa matn");
+
+        assertThat(sent).containsExactly("Operatorimiz tez orada siz bilan bog'lanadi.");
+    }
+
+    private static DialogSession session(Map<String, Object> facts, Predicate<String> smsSender) {
+        DialogSession session = new DialogSession("chan-1", "uz-UZ", null, new CallContext(facts, "goal"),
+                ScenarioFixtures.debtCollection(), null, null, null, 42L, 1L, null, true, "Uysot", null, null,
+                EffectiveVoiceSettings.NONE);
+        session.setMidCallSmsSender(smsSender);
+        return session;
+    }
+
+    private static DialogSession sessionWithTemplate(String template, Map<String, Object> facts,
+                                                     Predicate<String> smsSender) {
+        AiAgent base = AiAgentFixtures.agent(3L, 1L, 10L, "uz-UZ", "nigora");
+        AiAgentCallBehaviour behaviour = new AiAgentCallBehaviour(InterruptionSensitivity.MEDIUM, 700, false,
+                VoicemailAction.LEAVE_MESSAGE, null, true, template, null, null, null);
+        AiAgent agent = base.withAdvanced(base.ambience(), behaviour, base.dataPolicy(), base.voice(),
+                base.preemptiveGeneration(), base.ivrNavigationEnabled(), base.useRag(),
+                base.initiationWebhook(), base.postCallWebhook());
+        DialogSession session = new DialogSession("chan-1", "uz-UZ", null, new CallContext(facts, "goal"),
+                ScenarioFixtures.debtCollection(), null, null, null, 42L, 1L, null, true, "Uysot", null, null,
+                EffectiveVoiceSettings.NONE, true, AgentPersona.AI_ASSISTANT, Map.of(), null, List.of(), List.of(),
+                agent);
+        session.setMidCallSmsSender(smsSender);
+        return session;
+    }
+}

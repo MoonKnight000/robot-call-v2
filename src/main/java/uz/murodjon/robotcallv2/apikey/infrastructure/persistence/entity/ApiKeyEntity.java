@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.apikey.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
@@ -35,9 +37,11 @@ public class ApiKeyEntity {
 
     /**
      * Eager because the one call that matters — authenticating a request — needs them
-     * immediately and runs outside any session a lazy load could use.
+     * immediately and runs outside any session a lazy load could use. SUBSELECT: the key
+     * list loads every key's scopes in one query, not one per key.
      */
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @CollectionTable(name = "api_key_scope", joinColumns = @JoinColumn(name = "api_key_id"))
     @Enumerated(EnumType.STRING)
     @Column(name = "permission", nullable = false, length = 64)

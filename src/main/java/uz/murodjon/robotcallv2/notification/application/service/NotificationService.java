@@ -8,7 +8,7 @@ import uz.murodjon.robotcallv2.notification.domain.entity.Notification;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.List;
 

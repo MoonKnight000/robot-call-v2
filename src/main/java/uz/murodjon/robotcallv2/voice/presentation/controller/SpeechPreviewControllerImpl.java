@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.voice.application.dto.PreviewVoiceRequest;
 import uz.murodjon.robotcallv2.voice.application.dto.SttPreviewResponse;
 import uz.murodjon.robotcallv2.voice.application.port.input.SpeechPreviewUseCase;
@@ -33,6 +34,6 @@ public class SpeechPreviewControllerImpl implements SpeechPreviewController {
     public ResponseEntity<ResponseData<SttPreviewResponse>> previewStt(long companyId, MultipartFile file,
                                                                         String provider, String language) {
         return ResponseEntity.ok(ResponseData.ok(
-                speechPreviewUseCase.previewStt(companyId, file, provider, language)));
+                speechPreviewUseCase.previewStt(companyId, UploadedFile.from(file), provider, language)));
     }
 }

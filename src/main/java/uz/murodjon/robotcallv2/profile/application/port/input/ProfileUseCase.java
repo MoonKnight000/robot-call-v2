@@ -1,6 +1,10 @@
 package uz.murodjon.robotcallv2.profile.application.port.input;
 
-import org.springframework.web.multipart.MultipartFile;
+import uz.murodjon.robotcallv2.auth.application.dto.TwoFactorSetupResponse;
+import uz.murodjon.robotcallv2.profile.application.dto.DisableTwoFactorRequest;
+import uz.murodjon.robotcallv2.profile.application.dto.TwoFactorCodeRequest;
+
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.profile.application.dto.ChangePasswordRequest;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdateCallColumnsRequest;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdateProfileRequest;
@@ -15,11 +19,18 @@ public interface ProfileUseCase {
 
     Profile update(long companyId, UpdateProfileRequest request);
 
-    Profile uploadAvatar(long companyId, MultipartFile file);
+    Profile uploadAvatar(long companyId, UploadedFile file);
 
     void changePassword(long companyId, ChangePasswordRequest request);
 
     List<String> updateCallColumns(long companyId, UpdateCallColumnsRequest request);
 
-    TodayStats todayStats(long companyId);
+    TodayStats findTodayStats(long companyId);
+
+    /** A new authenticator secret for the calling user (NEXT-PLAN S.3). */
+    TwoFactorSetupResponse setupTwoFactor(long companyId);
+
+    void enableTwoFactor(long companyId, TwoFactorCodeRequest request);
+
+    void disableTwoFactor(long companyId, DisableTwoFactorRequest request);
 }

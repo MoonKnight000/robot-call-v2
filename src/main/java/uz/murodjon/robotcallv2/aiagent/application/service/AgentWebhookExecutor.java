@@ -4,13 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.InitiationWebhookResult;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
-import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookSenderPort;
+import uz.murodjon.robotcallv2.webhook.application.port.input.WebhookDeliveryUseCase;
 import uz.murodjon.robotcallv2.webhook.domain.service.WebhookSigningSecret;
 
 import java.util.HashMap;
@@ -22,16 +23,21 @@ import java.util.Map;
  * Automatically resolves {{secrets.KEY}} in URLs and HTTP headers.
  */
 @Component
-public class AgentWebhookExecutor {
+public class AgentWebhookExecutor implements AgentWebhookUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(AgentWebhookExecutor.class);
 
     private final SecretUseCase secretUseCase;
-    private final WebhookSenderPort webhookSender;
+    /**
+     * Both hooks go through here: the post-call one with {@code deliver}, so a failure is
+     * retried rather than lost; the initiation one with {@code postForReply}, as its answer
+     * is needed at once.
+     */
+    private final WebhookDeliveryUseCase webhookDelivery;
 
-    public AgentWebhookExecutor(SecretUseCase secretUseCase, WebhookSenderPort webhookSender) {
+    public AgentWebhookExecutor(SecretUseCase secretUseCase, WebhookDeliveryUseCase webhookDelivery) {
         this.secretUseCase = secretUseCase;
-        this.webhookSender = webhookSender;
+        this.webhookDelivery = webhookDelivery;
     }
 
     /**
@@ -78,7 +84,7 @@ public class AgentWebhookExecutor {
                 payload.put("variables", initialVariables);
             }
 
-            Map<String, Object> response = webhookSender.postForObject(
+            Map<String, Object> response = webhookDelivery.postForReply(
                     targetUrl, resolveHeaders(companyId, config), payload, signingSecret(companyId));
 
             if (response != null) {
@@ -160,9 +166,10 @@ public class AgentWebhookExecutor {
                 payload.put("transcript", transcript);
             }
 
-            webhookSender.post(targetUrl, resolveHeaders(companyId, config), payload, signingSecret(companyId));
-            log.info("[{}] Post-call webhook delivered to {} for agent {}",
-                    callAttemptId, config.webhookUrl(), agent.id());
+            boolean delivered = webhookDelivery.deliver(companyId, "POST_CALL", targetUrl,
+                    resolveHeaders(companyId, config), payload);
+            log.info("[{}] Post-call webhook for agent {} {}", callAttemptId, agent.id(),
+                    delivered ? "delivered" : "queued for retry");
         } catch (Exception e) {
             log.warn("[{}] Post-call webhook failed for agent {}: {}",
                     callAttemptId, agent.id(), e.getMessage());

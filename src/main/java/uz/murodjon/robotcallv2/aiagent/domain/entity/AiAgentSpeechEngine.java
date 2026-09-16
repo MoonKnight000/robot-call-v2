@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 /**
  * Which engines run the call.

@@ -14,8 +14,12 @@ import java.math.RoundingMode;
  * argue with, so it has to be testable by handing it two records and reading the answer.
  *
  * <p>The markup applies to what the providers charged — tokens, recognition, synthesis,
- * the trunk — and not to the platform fee, which is already this platform's own price
- * rather than a cost being resold.
+ * a realtime engine, the trunk — and not to the platform fee, which is already this
+ * platform's own price rather than a cost being resold.
+ *
+ * <p>A call that ran on a speech-to-speech engine is priced on that engine's minutes
+ * instead of tokens, recognition and synthesis: those three happened inside the one
+ * vendor, and the tokens it reports are audio tokens that the text-LLM rate does not fit.
  */
 public final class CallCostCalculator {
 
@@ -32,30 +36,55 @@ public final class CallCostCalculator {
             return CallCostBreakdown.FREE;
         }
 
-        BigDecimal minutes = BigDecimal.valueOf(usage.durationSec())
-                .divide(SECONDS_PER_MINUTE, 6, RoundingMode.HALF_UP);
+        BigDecimal minutes = minutes(usage.durationSec());
 
-        BigDecimal llm = perMillion(usage.billablePromptTokens(), rates.llm().promptPerMillionUzs())
-                .add(perMillion(usage.completionTokens(), rates.llm().completionPerMillionUzs()))
-                .add(perMillion(usage.cachedTokens(), rates.llm().cachedPromptPerMillionUzs()));
-
-        BigDecimal stt = minutes.multiply(BigDecimal.valueOf(rates.sttPerMinuteUzs()));
-        BigDecimal tts = BigDecimal.valueOf(usage.ttsChars())
-                .divide(CHARS_PER_THOUSAND, 6, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(rates.ttsPer1kCharsUzs()));
+        BigDecimal llm = BigDecimal.ZERO;
+        BigDecimal stt = BigDecimal.ZERO;
+        BigDecimal tts = BigDecimal.ZERO;
+        BigDecimal realtime = BigDecimal.ZERO;
+        if (usage.realtime()) {
+            realtime = minutes(usage.realtimeSeconds()).multiply(BigDecimal.valueOf(rates.realtimePerMinuteUzs()));
+        } else {
+            llm = perMillion(usage.billablePromptTokens(), rates.llm().promptPerMillionUzs())
+                    .add(perMillion(usage.completionTokens(), rates.llm().completionPerMillionUzs()))
+                    .add(perMillion(usage.cachedTokens(), rates.llm().cachedPromptPerMillionUzs()));
+            stt = minutes.multiply(BigDecimal.valueOf(rates.sttPerMinuteUzs()));
+            tts = BigDecimal.valueOf(usage.ttsChars())
+                    .divide(CHARS_PER_THOUSAND, 6, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(rates.ttsPer1kCharsUzs()));
+        }
         BigDecimal telephony = minutes.multiply(BigDecimal.valueOf(rates.telephonyPerMinuteUzs()));
 
         long llmUzs = withMarkup(llm, rates.markupBasisPoints());
         long sttUzs = withMarkup(stt, rates.markupBasisPoints());
         long ttsUzs = withMarkup(tts, rates.markupBasisPoints());
+        long realtimeUzs = withMarkup(realtime, rates.markupBasisPoints());
         long telephonyUzs = withMarkup(telephony, rates.markupBasisPoints());
         long platformFeeUzs = round(minutes.multiply(BigDecimal.valueOf(rates.platformFeePerMinuteUzs())));
 
         // Summed from the rounded lines, not rounded separately: an invoice the customer
         // adds up by hand has to reach the same total.
-        long total = llmUzs + sttUzs + ttsUzs + telephonyUzs + platformFeeUzs;
+        long total = llmUzs + sttUzs + ttsUzs + realtimeUzs + telephonyUzs + platformFeeUzs;
 
-        return new CallCostBreakdown(llmUzs, sttUzs, ttsUzs, telephonyUzs, platformFeeUzs, total);
+        return new CallCostBreakdown(llmUzs, sttUzs, ttsUzs, realtimeUzs, telephonyUzs, platformFeeUzs, total);
+    }
+
+    /**
+     * What one minute of a call costs before its tokens and speech: the trunk, recognition
+     * or the realtime engine, and the platform fee. The floor a call's length is budgeted
+     * against when the balance is enforced — the rest is only known once the call ends.
+     */
+    public static long minimumPerMinuteUzs(BillingRates rates, boolean realtime) {
+        if (rates == null) {
+            return 0;
+        }
+        long engine = realtime ? rates.realtimePerMinuteUzs() : rates.sttPerMinuteUzs();
+        return withMarkup(BigDecimal.valueOf(rates.telephonyPerMinuteUzs() + engine), rates.markupBasisPoints())
+                + rates.platformFeePerMinuteUzs();
+    }
+
+    private static BigDecimal minutes(int seconds) {
+        return BigDecimal.valueOf(seconds).divide(SECONDS_PER_MINUTE, 6, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal perMillion(long tokens, long pricePerMillionUzs) {

@@ -31,30 +31,36 @@ public record InboundRouteRow(
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime businessHoursStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime businessHoursEnd,
         String fallbackMessage,
+        Long callbackCampaignId,
+        Long scheduleId,
+        Long callFlowId,
         boolean enabled,
         Instant createdAt
 ) {
 
-    public static InboundRouteRow of(InboundRoute r, String aiAgentName) {
+    public static InboundRouteRow of(InboundRoute route, String aiAgentName) {
         return new InboundRouteRow(
-                r.id(),
-                r.didNumber(),
-                r.aiAgentId(),
+                route.id(),
+                route.didNumber(),
+                route.aiAgentId(),
                 aiAgentName,
-                r.routeType(),
-                r.targetDestination(),
-                r.queueStrategy(),
-                r.ringTimeoutSec(),
-                r.failoverAction(),
-                r.failoverDestination(),
-                r.afterHoursAction(),
-                r.afterHoursDestination(),
-                r.ivrMenuConfig(),
-                r.businessHoursStart(),
-                r.businessHoursEnd(),
-                r.fallbackMessage(),
-                r.enabled(),
-                r.createdAt()
+                route.routeType(),
+                route.targetDestination(),
+                route.queueStrategy(),
+                route.ringTimeoutSec(),
+                route.failoverAction(),
+                route.failoverDestination(),
+                route.afterHoursAction(),
+                route.afterHoursDestination(),
+                route.ivrMenuConfig(),
+                route.businessHoursStart(),
+                route.businessHoursEnd(),
+                route.fallbackMessage(),
+                route.callbackCampaignId(),
+                route.scheduleId(),
+                route.callFlowId(),
+                route.enabled(),
+                route.createdAt()
         );
     }
 }

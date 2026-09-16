@@ -78,6 +78,15 @@ public class InboundRouteEntity {
     @Column(name = "fallback_message")
     private String fallbackMessage;
 
+    @Column(name = "callback_campaign_id")
+    private Long callbackCampaignId;
+
+    @Column(name = "schedule_id")
+    private Long scheduleId;
+
+    @Column(name = "call_flow_id")
+    private Long callFlowId;
+
     @Column(nullable = false)
     private boolean enabled = true;
 
@@ -219,6 +228,30 @@ public class InboundRouteEntity {
 
     public void setFallbackMessage(String fallbackMessage) {
         this.fallbackMessage = fallbackMessage;
+    }
+
+    public Long getCallbackCampaignId() {
+        return callbackCampaignId;
+    }
+
+    public void setCallbackCampaignId(Long callbackCampaignId) {
+        this.callbackCampaignId = callbackCampaignId;
+    }
+
+    public Long getScheduleId() {
+        return scheduleId;
+    }
+
+    public void setScheduleId(Long scheduleId) {
+        this.scheduleId = scheduleId;
+    }
+
+    public Long getCallFlowId() {
+        return callFlowId;
+    }
+
+    public void setCallFlowId(Long callFlowId) {
+        this.callFlowId = callFlowId;
     }
 
     public boolean isEnabled() {

@@ -26,7 +26,7 @@ public interface ScenarioUseCase {
 
     PageableData<ScenarioRow> list(long companyId, ScenarioFilter filter);
 
-    ScenarioRow scenarioRow(long companyId, long id);
+    ScenarioRow findScenarioRow(long companyId, long id);
 
     Scenario requireScenario(long companyId, long id);
 
@@ -36,5 +36,5 @@ public interface ScenarioUseCase {
 
     List<Scenario> findAllActiveForWarmup();
 
-    Map<Long, String> scenarioNamesByIds(long companyId, Collection<Long> ids);
+    Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids);
 }

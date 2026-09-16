@@ -3,12 +3,13 @@ package uz.murodjon.robotcallv2.voice.application.service;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.voice.application.dto.UpdateVoiceSettingsRequest;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 import uz.murodjon.robotcallv2.voice.application.port.output.VoiceSettingsRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
+import uz.murodjon.robotcallv2.voice.domain.service.VoiceSettingsValidator;
 
 /**
  * Per-company TTS overrides (§11 settings).
@@ -17,11 +18,11 @@ import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
 public class VoiceSettingsService implements VoiceSettingsUseCase {
 
     private final VoiceSettingsRepository voiceSettingsRepository;
-    private final AuditService auditService;
+    private final AuditUseCase auditService;
     private final TtsProperties ttsProperties;
 
     public VoiceSettingsService(VoiceSettingsRepository voiceSettingsRepository,
-                                AuditService auditService,
+                                AuditUseCase auditService,
                                 TtsProperties ttsProperties) {
         this.voiceSettingsRepository = voiceSettingsRepository;
         this.auditService = auditService;
@@ -35,13 +36,14 @@ public class VoiceSettingsService implements VoiceSettingsUseCase {
 
     @Override
     public VoiceSettings updateByCompanyId(long companyId, UpdateVoiceSettingsRequest request) {
+        VoiceSettingsValidator.validateSpeed(request.speed());
         VoiceSettings row = voiceSettingsRepository.upsert(companyId, request.speed(), request.pitch());
         auditService.record(companyId, "VOICE_SETTINGS_UPDATE", "voice_settings", String.valueOf(row.companyId()), null);
         return row;
     }
 
     @Override
-    public EffectiveVoiceSettings effective(long companyId) {
+    public EffectiveVoiceSettings findEffectiveByCompanyId(long companyId) {
         String provider = ttsProperties.provider();
         VoiceSettings row = voiceSettingsRepository.findByCompanyId(companyId);
         return row == null ? new EffectiveVoiceSettings(provider, null, null, null)

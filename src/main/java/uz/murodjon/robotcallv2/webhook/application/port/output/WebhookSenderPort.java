@@ -19,11 +19,16 @@ import java.util.Map;
  * here. It is passed in rather than looked up because only a service knows whose call
  * this is. When it is null the request goes unsigned, which is what a company that has
  * not set the secret gets.
+ *
+ * <p>{@code deliveryId} goes out as {@code X-RobotCall-Delivery}. It names the delivery,
+ * not the try: a retry passes the same id, so a receiver that already processed it can
+ * answer 2xx and do nothing.
  */
 public interface WebhookSenderPort {
 
     /** POSTs {@code payload} as JSON and discards whatever comes back. */
-    void post(String url, Map<String, String> headers, Map<String, Object> payload, String signingSecret);
+    void post(String url, Map<String, String> headers, Map<String, Object> payload, String signingSecret,
+              String deliveryId);
 
     /**
      * POSTs {@code payload} as JSON and reads the reply as a JSON object.
@@ -31,5 +36,5 @@ public interface WebhookSenderPort {
      * @return the reply, or {@code null} when the endpoint answered with no body
      */
     Map<String, Object> postForObject(String url, Map<String, String> headers, Map<String, Object> payload,
-                                      String signingSecret);
+                                      String signingSecret, String deliveryId);
 }

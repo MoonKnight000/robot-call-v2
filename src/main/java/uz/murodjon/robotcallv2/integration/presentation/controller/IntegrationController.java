@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.integration.application.dto.AuthorizeUrlResponse;
+import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmCatalogEntry;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
@@ -32,15 +33,26 @@ public interface IntegrationController {
     ResponseEntity<ResponseData<CrmIntegrationRow>> connect(@CurrentCompanyId long companyId,
             @Valid @RequestBody ConnectIntegrationRequest request);
 
+    /**
+     * Connects amoCRM, Kommo or Bitrix24 by account address and token, replacing whatever
+     * the company was connected to — these have no consent screen to go through. Calls are
+     * routed to the new CRM from the next one on; {@code PUT /uysot} switches back.
+     */
+    @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
+    @PutMapping("/account")
+    ResponseEntity<ResponseData<CrmIntegrationRow>> connectAccount(@CurrentCompanyId long companyId,
+            @Valid @RequestBody ConnectCrmAccountRequest request);
+
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/uysot/authorize-url")
     ResponseEntity<ResponseData<AuthorizeUrlResponse>> authorizeUrl(@CurrentCompanyId long companyId);
 
     /**
-     * Where Uysot redirects the browser after the company approves the connection.
+     * Where the frontend navigates the browser with the {@code code} and {@code state} Uysot
+     * returned to its integrations page after the company approved the connection.
      *
-     * <p>Unauthenticated on purpose: the request arrives from Uysot's site, not from this
-     * platform's UI, so there is no bearer token on it. The company it belongs to comes
+     * <p>Unauthenticated on purpose: it is a plain page navigation, so there is no bearer
+     * token on it. The company it belongs to comes
      * from {@code state}, which was HMAC-signed when the authorize link was built.
      *
      * <p>Answers {@code 302} rather than a {@code ResponseData} envelope — the third

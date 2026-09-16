@@ -6,10 +6,10 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.profile.application.port.output.TableConfigRepository;
+import uz.murodjon.robotcallv2.profile.domain.entity.TableConfig;
 import uz.murodjon.robotcallv2.profile.infrastructure.persistence.entity.TableConfigEntity;
+import uz.murodjon.robotcallv2.profile.infrastructure.persistence.mapper.TableConfigEntityMapper;
 import uz.murodjon.robotcallv2.profile.infrastructure.persistence.repository.TableConfigJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
@@ -31,28 +31,30 @@ public class TableConfigRepositoryAdapter implements TableConfigRepository {
     }
 
     @Override
-    public String find(long userId, String configKey) {
-        return tableConfigJpaRepository.findByUserIdAndConfigKey(userId, configKey).map(TableConfigEntity::getConfigValue).orElse(null);
+    public TableConfig findByUserIdAndConfigKey(long userId, String configKey) {
+        return tableConfigJpaRepository.findByUserIdAndConfigKey(userId, configKey)
+                .map(TableConfigEntityMapper::toTableConfig).orElse(null);
     }
 
     @Override
     @Transactional
-    public String save(long companyId, long userId, String configKey, String configValueJson) {
-        if (configValueJson == null) {
-            tableConfigJpaRepository.deleteByUserIdAndConfigKey(userId, configKey);
-            return null;
-        }
-        UserEntity user = userJpaRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity comp = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+    public TableConfig upsert(long companyId, TableConfig config) {
+        UserEntity user = userJpaRepository.getReferenceById(config.userId());
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
-        TableConfigEntity entity = tableConfigJpaRepository.findByUserIdAndConfigKey(userId, configKey).orElseGet(TableConfigEntity::new);
+        TableConfigEntity entity = tableConfigJpaRepository.findByUserIdAndConfigKey(config.userId(), config.configKey())
+                .orElseGet(TableConfigEntity::new);
         entity.setCompany(comp);
         entity.setUser(user);
-        entity.setConfigKey(configKey);
-        entity.setConfigValue(configValueJson);
+        entity.setConfigKey(config.configKey());
+        entity.setConfigValue(config.configValue());
         entity.setUpdatedAt(Instant.now());
-        return tableConfigJpaRepository.save(entity).getConfigValue();
+        return TableConfigEntityMapper.toTableConfig(tableConfigJpaRepository.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public void deleteByUserIdAndConfigKey(long userId, String configKey) {
+        tableConfigJpaRepository.deleteByUserIdAndConfigKey(userId, configKey);
     }
 }

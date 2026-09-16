@@ -2,12 +2,15 @@ package uz.murodjon.robotcallv2.agent.realtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -20,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -97,7 +101,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         HttpClient current = client;
         PipecatRealtimeProperties p = realtimeProperties.pipecat();
         if (current == null || p == null) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "pipecat", "not initialized");
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_NOT_INITIALIZED, "pipecat", "pipecat");
         }
 
         AtomicBoolean alive = new AtomicBoolean(true);
@@ -113,11 +117,11 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
                 wsBuilder.header("Authorization", "Bearer " + p.apiKey());
             }
 
-            WebSocket ws = wsBuilder.buildAsync(URI.create(targetWsUrl),
+            WebSocket webSocket = wsBuilder.buildAsync(URI.create(targetWsUrl),
                             new PipecatResponseHandler(config.channelId(), listener, alive, ready))
                     .get(p.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
-            PipecatRealtimeSession session = new PipecatRealtimeSession(ws, alive);
+            PipecatRealtimeSession session = new PipecatRealtimeSession(webSocket, alive);
             session.send(handshakeMessage(config, p));
 
             // Wait for ready event with timeout, or proceed if connection is open
@@ -131,7 +135,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
                     config.channelId(), p.agentName(), effectiveModel, config.pipecatStt(), config.pipecatTts());
             return session;
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "pipecat", e, e.getMessage());
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_CONNECT_FAILED, "pipecat", e, "pipecat", e.getMessage());
         }
     }
 
@@ -193,7 +197,8 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         return url;
     }
 
-    private String handshakeMessage(RealtimeCallConfig config, PipecatRealtimeProperties p) {
+    /** Package-private for the test: what the bot is told at connect, its tools included. */
+    static String handshakeMessage(RealtimeCallConfig config, PipecatRealtimeProperties p) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "session_init");
         root.put("agent", p.agentName());
@@ -210,6 +215,26 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         }
         if (config.voice() != null && !config.voice().isBlank()) {
             root.put("voice", config.voice());
+        }
+        // The bot answers with tool_call / function_call events (handled below) and gets a
+        // tool_result back, but it can only call what it was offered here. Without this list
+        // it had nothing to call: no endCall, no transfer, no call facts. Same function
+        // shape as the OpenAI provider's session.update.
+        List<ToolCallback> tools = config.tools();
+        if (tools != null && !tools.isEmpty()) {
+            ArrayNode toolArray = root.putArray("tools");
+            for (ToolCallback tool : tools) {
+                ObjectNode declaration = toolArray.addObject();
+                declaration.put("type", "function");
+                declaration.put("name", tool.getToolDefinition().name());
+                declaration.put("description", tool.getToolDefinition().description());
+                try {
+                    declaration.set("parameters", MAPPER.readTree(tool.getToolDefinition().inputSchema()));
+                } catch (Exception e) {
+                    // Still offered, only without a schema the bot can check arguments against.
+                    log.debug("Tool {} has an unreadable input schema: {}", tool.getToolDefinition().name(), e.getMessage());
+                }
+            }
         }
         return root.toString();
     }
@@ -254,7 +279,17 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
             return null;
         }
 
+        /**
+         * Every message arrives on the WebSocket's own thread, which knows nothing about
+         * the call — so the id goes in here, once, and everything below it (this class's
+         * logs and the dialog engine's, reached through the listener) is filed under the
+         * call it belongs to instead of {@code [call:none]}.
+         */
         private void handle(String json) {
+            CallMdc.with(channelId, () -> dispatch(json));
+        }
+
+        private void dispatch(String json) {
             try {
                 JsonNode node = MAPPER.readTree(json);
                 String type = node.path("type").asText(node.path("event").asText(""));
@@ -324,13 +359,25 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         }
     }
 
+    /**
+     * Audio frames (binary) and control messages (text) go through one chain: the JDK
+     * WebSocket refuses a send while another is in flight, and a tool result that lost that
+     * race was thrown away — the engine then waited on it forever.
+     */
     private static final class PipecatRealtimeSession implements RealtimeSession {
 
-        private final WebSocket ws;
-        private final AtomicBoolean alive;
+        /** About two seconds of 20 ms frames. */
+        private static final int MAX_PENDING_AUDIO_SENDS = 100;
 
-        private PipecatRealtimeSession(WebSocket ws, AtomicBoolean alive) {
-            this.ws = ws;
+        private final WebSocket webSocket;
+        private final AtomicBoolean alive;
+        private final java.util.concurrent.atomic.AtomicInteger pendingSends = new java.util.concurrent.atomic.AtomicInteger();
+        private final Object sendLock = new Object();
+        private java.util.concurrent.CompletableFuture<Void> sendChain =
+                java.util.concurrent.CompletableFuture.completedFuture(null);
+
+        private PipecatRealtimeSession(WebSocket webSocket, AtomicBoolean alive) {
+            this.webSocket = webSocket;
             this.alive = alive;
         }
 
@@ -339,12 +386,16 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
             if (!alive.get() || pcm == null || pcm.length == 0) {
                 return;
             }
+            if (pendingSends.get() >= MAX_PENDING_AUDIO_SENDS) {
+                log.debug("Pipecat uplink {} frames behind — dropping one", MAX_PENDING_AUDIO_SENDS);
+                return;
+            }
             ByteBuffer buf = ByteBuffer.allocate(pcm.length * 2).order(ByteOrder.LITTLE_ENDIAN);
             for (short s : pcm) {
                 buf.putShort(s);
             }
             buf.flip();
-            ws.sendBinary(buf, true);
+            enqueue(socket -> socket.sendBinary(buf, true));
         }
 
         @Override
@@ -374,15 +425,31 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         public void close() {
             if (alive.compareAndSet(true, false)) {
                 try {
-                    ws.sendClose(WebSocket.NORMAL_CLOSURE, "call ended");
-                } catch (Exception ignored) {
+                    webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "call ended");
+                } catch (Exception e) {
+                    log.debug("Pipecat close frame not sent: {}", e.getMessage());
                 }
             }
         }
 
         private void send(String payload) {
             if (alive.get()) {
-                ws.sendText(payload, true);
+                enqueue(socket -> socket.sendText(payload, true));
+            }
+        }
+
+        private void enqueue(java.util.function.Function<WebSocket, java.util.concurrent.CompletableFuture<WebSocket>> write) {
+            pendingSends.incrementAndGet();
+            synchronized (sendLock) {
+                sendChain = sendChain
+                        .thenCompose(ignored -> write.apply(webSocket))
+                        .handle((socket, e) -> {
+                            pendingSends.decrementAndGet();
+                            if (e != null) {
+                                alive.set(false);
+                            }
+                            return null;
+                        });
             }
         }
     }

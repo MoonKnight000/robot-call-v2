@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.stt;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
 
 import java.util.*;
 
@@ -48,14 +49,21 @@ public final class SttHints {
     /**
      * Terms to bias this call's recognition towards, most specific first.
      *
-     * @param context the call's facts, or {@code null} for a call with none (an inbound
-     *                caller nobody recognized) — the shared vocabulary still applies
+     * @param context       the call's facts, or {@code null} for a call with none (an inbound
+     *                      caller nobody recognized) — the shared vocabulary still applies
+     * @param pronunciation the agent's pronunciation dictionary: the words its owner already
+     *                      knows are mis-heard or mis-said, so the recognizer expects them too
      */
-    public static List<String> of(CallContext context) {
+    public static List<String> of(CallContext context, List<PronunciationRule> pronunciation) {
         Set<String> hints = new LinkedHashSet<>();
         if (context != null) {
             for (Map.Entry<String, Object> fact : context.facts().entrySet()) {
                 addWords(hints, fact.getValue());
+            }
+        }
+        if (pronunciation != null) {
+            for (PronunciationRule rule : pronunciation) {
+                addWords(hints, rule.word());
             }
         }
         hints.addAll(DOMAIN_TERMS);

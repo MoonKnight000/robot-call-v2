@@ -6,7 +6,7 @@ import java.nio.file.Path;
 /** Outbound port SPI for object storage (MinIO/S3). */
 public interface ObjectStoragePort {
 
-    boolean available();
+    boolean isAvailable();
 
     boolean upload(byte[] data, String bucket, String objectName, String contentType);
 

@@ -38,6 +38,8 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
     private static final double MIN_KEYWORD_SCORE = 0.20;
     /** A question is not a query below this; "ha", "yo'q", "mmm" match everything and nothing. */
     private static final int MIN_QUERY_CHARS = 8;
+    /** Reciprocal-rank fusion constant: the usual 60, so one list's top hit cannot drown the other list. */
+    private static final int RRF_K = 60;
 
     private final KnowledgeChunkRepository chunkRepository;
     private final TextEmbedderPort textEmbedder;
@@ -83,15 +85,14 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
             return List.of();
         }
 
+        List<KnowledgePassage> keywordHits = byScore(scoreByKeywords(chunks, question));
         float[] queryVector = textEmbedder.embedQuery(question);
-        List<KnowledgePassage> hits = queryVector != null
-                ? scoreBySimilarity(chunks, queryVector)
-                : scoreByKeywords(chunks, question);
-
-        return hits.stream()
-                .sorted(Comparator.comparingDouble(KnowledgePassage::score).reversed())
-                .limit(limit)
-                .toList();
+        if (queryVector == null) {
+            return keywordHits.stream().limit(limit).toList();
+        }
+        // Hybrid (NEXT-PLAN A.3): the passage an embedding ranks low — a contract number, a
+        // product code, a name — is often exactly the one whose words the caller said.
+        return fuse(byScore(scoreBySimilarity(chunks, queryVector)), keywordHits, limit);
     }
 
     @Override
@@ -117,6 +118,34 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
         // The cache holds the whole company; narrowing to this agent's own sources plus
         // the company-wide ones happens here, on a list that is already in memory.
         return all.stream().filter(chunk -> chunk.visibleTo(agentId)).toList();
+    }
+
+    private static List<KnowledgePassage> byScore(List<KnowledgePassage> hits) {
+        return hits.stream().sorted(Comparator.comparingDouble(KnowledgePassage::score).reversed()).toList();
+    }
+
+    /**
+     * Reciprocal rank fusion of the semantic and the keyword ranking: each passage scores
+     * the sum of 1/(k + rank) over the lists it appears in, so one both lists found rises
+     * above one only either found. The passage keeps its own best score, and identical
+     * text indexed from two sources counts once.
+     */
+    private static List<KnowledgePassage> fuse(List<KnowledgePassage> semantic, List<KnowledgePassage> keyword,
+                                               int limit) {
+        Map<String, Double> fused = new LinkedHashMap<>();
+        Map<String, KnowledgePassage> best = new LinkedHashMap<>();
+        for (List<KnowledgePassage> ranking : List.of(semantic, keyword)) {
+            for (int rank = 0; rank < ranking.size(); rank++) {
+                KnowledgePassage passage = ranking.get(rank);
+                fused.merge(passage.content(), 1.0 / (RRF_K + rank + 1), Double::sum);
+                best.merge(passage.content(), passage, (kept, other) -> kept.score() >= other.score() ? kept : other);
+            }
+        }
+        return fused.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .limit(limit)
+                .map(entry -> best.get(entry.getKey()))
+                .toList();
     }
 
     private static List<KnowledgePassage> scoreBySimilarity(List<IndexedChunk> chunks, float[] query) {

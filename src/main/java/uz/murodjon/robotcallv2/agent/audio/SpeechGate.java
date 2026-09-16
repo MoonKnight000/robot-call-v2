@@ -88,13 +88,14 @@ public class SpeechGate {
 
     // What the last interim said about the utterance (TranscriptTurnCues). At most one of
     // the three is set; a neutral interim clears them all, because the verdict was about
-    // the words before it.
+    // the words before it. Written on the recognizer's callback thread and read on the
+    // RTP consumer thread, hence volatile — a stale read only costs one VAD window.
     /** Reads as mid-sentence — the extension applies whatever the acoustic model says. */
-    private boolean continuationClause;
+    private volatile boolean continuationClause;
     /** Reads as a one- or two-word answer — the short hangover applies. */
-    private boolean confirmedQuickAnswer;
+    private volatile boolean confirmedQuickAnswer;
     /** Reads as a finished sentence — {@link #completeHangoverSamples} applies, if set. */
-    private boolean completeCue;
+    private volatile boolean completeCue;
     /** Hangover for a finished-sounding utterance; 0 leaves the words unable to shorten it. */
     private int completeHangoverSamples;
 

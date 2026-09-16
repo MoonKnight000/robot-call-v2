@@ -42,6 +42,9 @@ public class CrmIntegrationEntity {
     @Column(name = "refresh_token_enc")
     private String refreshTokenEnc;
 
+    @Column(name = "base_url_enc")
+    private String baseUrlEnc;
+
     @Column(name = "token_expires_at")
     private Instant tokenExpiresAt;
 
@@ -113,6 +116,14 @@ public class CrmIntegrationEntity {
 
     public void setRefreshTokenEnc(String refreshTokenEnc) {
         this.refreshTokenEnc = refreshTokenEnc;
+    }
+
+    public String getBaseUrlEnc() {
+        return baseUrlEnc;
+    }
+
+    public void setBaseUrlEnc(String baseUrlEnc) {
+        this.baseUrlEnc = baseUrlEnc;
     }
 
     public Instant getTokenExpiresAt() {

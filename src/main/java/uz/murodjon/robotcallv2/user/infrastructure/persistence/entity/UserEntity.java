@@ -33,8 +33,9 @@ public class UserEntity {
     @Column(name = "password_hash")
     private String passwordHash;
 
-    // Eager: UserMapper reads the role name and code outside any transaction, where a lazy
-    // proxy would fail, and a company has at most a handful of roles.
+    // Eager: UserEntityMapper reads the role name and code outside any transaction, where a lazy
+    // proxy would fail, and a company has at most a handful of roles. RoleEntity is
+    // @BatchSize, so a user list loads its roles in one query.
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "role_id", nullable = false)
     private RoleEntity role;

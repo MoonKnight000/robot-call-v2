@@ -11,6 +11,9 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignReposito
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 
 import java.time.*;
 import java.util.List;
@@ -23,21 +26,27 @@ import java.util.List;
 public class RecurringCampaignScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(RecurringCampaignScheduler.class);
-    private static final ZoneId ZONE = ZoneId.of("Asia/Tashkent");
 
-    private final CampaignRepository campaigns;
+    private final CampaignRepository repository;
     private final CampaignUseCase campaignUseCase;
+    private final CompanyConfigUseCase companyConfig;
+    /** One sweep at a time across the cluster — two at once would reset the same list twice. */
+    private final ClusterJobLock clusterJobLock;
     private final Clock clock;
     private final boolean enabled;
 
     public RecurringCampaignScheduler(
-            CampaignRepository campaigns,
+            CampaignRepository repository,
             CampaignUseCase campaignUseCase,
+            CompanyConfigUseCase companyConfig,
+            ClusterJobLock clusterJobLock,
             Clock clock,
             @Value("${voice-agent.campaign.recurrence-enabled:true}") boolean enabled
     ) {
-        this.campaigns = campaigns;
+        this.repository = repository;
         this.campaignUseCase = campaignUseCase;
+        this.companyConfig = companyConfig;
+        this.clusterJobLock = clusterJobLock;
         this.clock = clock;
         this.enabled = enabled;
     }
@@ -47,12 +56,24 @@ public class RecurringCampaignScheduler {
         if (!enabled) {
             return;
         }
+        clusterJobLock.runExclusively("campaign.recurrence-sweep", this::sweepDueCampaigns);
+    }
 
-        ZonedDateTime now = ZonedDateTime.now(clock.withZone(ZONE));
-        List<Campaign> recurring = campaigns.findRecurring();
+    private void sweepDueCampaigns() {
+        // Same minute tick, same lock: startAt/endAt moments are honoured here too.
+        try {
+            campaignUseCase.sweepScheduledCampaigns();
+        } catch (Exception e) {
+            log.error("Scheduled campaign sweep failed: {}", e.getMessage(), e);
+        }
+
+        List<Campaign> recurring = repository.findRecurring();
 
         for (Campaign c : recurring) {
             try {
+                // "Every day at 09:00" is 09:00 on the company's clock, not the server's.
+                CompanyConfig config = companyConfig.find(c.companyId());
+                ZonedDateTime now = ZonedDateTime.now(config != null ? clock.withZone(config.zoneId()) : clock);
                 if (isDue(c, now)) {
                     log.info("Recurring campaign {} ({}) is due. Triggering execution...", c.id(), c.name());
                     campaignUseCase.triggerRecurrenceRun(c.companyId(), c.id(), c.autoResetTargets());
@@ -68,7 +89,10 @@ public class RecurringCampaignScheduler {
             return false;
         }
 
-        if (c.status() == CampaignStatus.ACTIVE) {
+        // Only a finished run starts the next one. PAUSED is someone's decision — an operator
+        // after a complaint, or the platform after a dead trunk or a spent budget — a DRAFT is
+        // not ready yet, and SCHEDULED has a start of its own.
+        if (c.status() != CampaignStatus.COMPLETED) {
             return false;
         }
 
@@ -87,7 +111,7 @@ public class RecurringCampaignScheduler {
         }
 
         if (c.lastRunAt() != null) {
-            LocalDate lastRunDate = c.lastRunAt().atZone(ZONE).toLocalDate();
+            LocalDate lastRunDate = c.lastRunAt().atZone(now.getZone()).toLocalDate();
             if (lastRunDate.isEqual(today)) {
                 return false;
             }

@@ -53,15 +53,13 @@ public class CampaignValidator {
             TargetSourceStep step = steps.get(index);
             String name = step.name() != null && !step.name().isBlank() ? step.name() : String.valueOf(index + 1);
             if (step.url() == null || step.url().isBlank()) {
-                throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_INVALID, name, "no url");
+                throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_URL_MISSING, name);
             }
             if (index > 0 && step.paginate()) {
-                throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_INVALID, name,
-                        "only the first step may paginate");
+                throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_PAGINATION_NOT_FIRST, name);
             }
             if (step.extract().isEmpty()) {
-                throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_INVALID, name,
-                        "extracts nothing, so it cannot affect the list");
+                throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_EXTRACTS_NOTHING, name);
             }
         }
     }

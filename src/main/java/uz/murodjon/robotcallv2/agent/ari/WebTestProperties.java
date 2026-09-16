@@ -8,10 +8,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * authenticates as, and the extension that lands in the Stasis app
  * (asterisk/etc/asterisk/pjsip.conf, extensions.conf).
  *
- * @param wsUrl       {@code ws://host:8088/ws} (or {@code wss://} when the UI is served
- *                    over https); blank disables the feature
+ * <p>The browser dials {@code dialNumber}, which lands in the Stasis app exactly as a
+ * softphone dialling 600 does — so this exercises the real inbound path, not a mock.
+ *
+ * @param wsUrl       {@code ws://host:8088/ws}, or {@code wss://} ({@code http.conf} TLS)
+ *                    when the UI itself is served over https. It has to be reachable
+ *                    <em>from the browser</em>: the host's LAN IP, never {@code asterisk}.
+ *                    Blank disables the endpoint (409 {@code WEB_TEST_NOT_CONFIGURED})
  * @param sipUser     PJSIP endpoint / auth username the browser dials as
- * @param sipPassword its password
+ * @param sipPassword its password — must match {@code pjsip.conf [webtest-auth]}
  * @param dialNumber  extension the browser dials to reach the AI
  */
 @ConfigurationProperties(prefix = "voice-agent.asterisk.web-test")

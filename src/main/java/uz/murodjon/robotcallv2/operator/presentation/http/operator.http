@@ -1,3 +1,12 @@
 ### Get Operator Call Snapshot
 GET {{host}}/api/operator/calls/PJSIP-trunk-0000001
 Authorization: Bearer {{token}}
+
+### Whisper (a blank or >1000-char message is 400 VALIDATION_FAILED)
+POST {{host}}/api/operator/calls/PJSIP-trunk-0000001/whisper
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Mijozga 10 foiz chegirma taklif qiling"
+}

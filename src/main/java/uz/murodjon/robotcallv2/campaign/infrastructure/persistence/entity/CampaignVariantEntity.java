@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
@@ -44,6 +45,10 @@ public class CampaignVariantEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tts_voice_id")
     private TtsVoiceEntity ttsVoice;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pipeline_mode", length = 16)
+    private PipelineMode pipelineMode;
 
     @Column(name = "traffic_weight", nullable = false)
     private int trafficWeight = 50;
@@ -127,6 +132,14 @@ public class CampaignVariantEntity {
 
     public void setPromptOverride(String promptOverride) {
         this.promptOverride = promptOverride;
+    }
+
+    public PipelineMode getPipelineMode() {
+        return pipelineMode;
+    }
+
+    public void setPipelineMode(PipelineMode pipelineMode) {
+        this.pipelineMode = pipelineMode;
     }
 
     public TtsVoiceEntity getTtsVoice() {

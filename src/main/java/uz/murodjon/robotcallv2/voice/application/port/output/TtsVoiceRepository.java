@@ -6,11 +6,11 @@ import java.util.List;
 
 public interface TtsVoiceRepository {
 
-    List<TtsVoice> all();
+    List<TtsVoice> findAll();
 
-    List<TtsVoice> forLanguage(String language);
+    List<TtsVoice> findByLanguage(String language);
 
     TtsVoice find(String id);
 
-    List<String> ids();
+    List<String> findIds();
 }

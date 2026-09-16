@@ -7,7 +7,12 @@ package uz.murodjon.robotcallv2.agent.stt;
  * <p>The model has to be one that supports {@code bidiGenerateContent}. Plain
  * {@code gemini-3.5-transcribe} is the batch ({@code generateContent}) model and the
  * socket closes on it at setup with "not found ... or is not supported for
- * bidiGenerateContent" — which is what every Gemini-STT call did until 2026-09-05.
+ * bidiGenerateContent" — which is what every Gemini-STT call did until 2026-09-05, so no
+ * caller was ever transcribed.
+ *
+ * <p>Measured on a recorded uz-UZ call: the interims are usable, but the finals sometimes
+ * come back in another script or language entirely. {@code GeminiSttProvider} handles that
+ * by keeping the last interim.
  *
  * @param apiKey                Gemini API key (defaults to GEMINI_API_KEY)
  * @param url                   WebSocket URL for BidiGenerateContent

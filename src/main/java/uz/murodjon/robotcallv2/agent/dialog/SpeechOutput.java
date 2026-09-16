@@ -44,18 +44,18 @@ public class SpeechOutput {
 
     private static final Logger log = LoggerFactory.getLogger(SpeechOutput.class);
 
-    /** Cap on waiting for queued audio to drain before hanging up anyway. */
-    private static final Duration MAX_DRAIN = Duration.ofSeconds(30);
-
     private final DialogProperties dialogProperties;
     private final TtsProperties ttsProperties;
     private final TtsRouter ttsRouter;
     private final VoiceMetrics metrics;
     private final DialogExecutors executors;
     private final VoiceEmotionResolver emotionResolver;
+    private final DialogPolicy dialogPolicy;
 
     public SpeechOutput(DialogProperties dialogProperties, TtsProperties ttsProperties, TtsRouter ttsRouter,
-                        VoiceMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver) {
+                        VoiceMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver,
+                        DialogPolicy dialogPolicy) {
+        this.dialogPolicy = dialogPolicy;
         this.dialogProperties = dialogProperties;
         this.ttsProperties = ttsProperties;
         this.ttsRouter = ttsRouter;
@@ -89,9 +89,10 @@ public class SpeechOutput {
             }
             s.addTtsChars(spoken);
             short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings);
+            s.clearTtsFailures();
             return deliver(s, new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN));
         } catch (Exception e) {
-            log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
+            onTtsFailure(s, e);
             return SpeechOutcome.SKIPPED;
         }
     }
@@ -119,9 +120,10 @@ public class SpeechOutput {
         try {
             s.addTtsChars(spoken);
             short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
+            s.clearTtsFailures();
             return new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN);
         } catch (Exception e) {
-            log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
+            onTtsFailure(s, e);
             return PreparedLine.refused(text, SpeechOutcome.SKIPPED);
         }
     }
@@ -161,20 +163,18 @@ public class SpeechOutput {
                     s.channelId(), s.state(), text);
             return SpeechOutcome.SKIPPED;
         }
-        if (dialogProperties.factGuard()) {
-            List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
-            if (!bad.isEmpty()) {
-                // Not spoken, not recorded as said: the caller must never hear a sum
-                // that is not in their file (§4.4). The caller-facing recovery is the
-                // turn's, not this method's — see TurnRunner.recoverFromFactBlock.
-                s.recordFactViolation();
-                metrics.factGuardBlock();
-                log.error("[{}] fact guard BLOCKED a sentence in {}: figures {} are not in the "
-                                + "call facts ({}) — text was: {}",
-                        s.channelId(), s.state(), bad,
-                        s.context() != null ? s.context().facts() : null, text);
-                return SpeechOutcome.BLOCKED;
-            }
+        List<String> bad = dialogPolicy.findFactViolations(text, s.scenario(), s.context(), s.toolFigures());
+        if (!bad.isEmpty()) {
+            // Not spoken, not recorded as said: the caller must never hear a sum
+            // that is not in their file (§4.4). The caller-facing recovery is the
+            // turn's, not this method's — see FactBlockRecovery.
+            s.recordFactViolation();
+            metrics.factGuardBlock();
+            log.error("[{}] fact guard BLOCKED a sentence in {}: figures {} are not in the "
+                            + "call facts ({}) — text was: {}",
+                    s.channelId(), s.state(), bad,
+                    s.context() != null ? s.context().facts() : null, text);
+            return SpeechOutcome.BLOCKED;
         }
         return null;
     }
@@ -213,8 +213,9 @@ public class SpeechOutput {
         try {
             s.addTtsChars(text);
             ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), dynamicSettings, onChunk);
+            s.clearTtsFailures();
         } catch (Exception e) {
-            log.warn("TTS streaming failed during dialog [{}]: {}", s.channelId(), e.getMessage());
+            onTtsFailure(s, e);
         }
         // Whatever reached the endpoint before a mid-stream barge-in still counts as
         // spoken, same as any other sentence already queued when cancellation lands.
@@ -443,6 +444,25 @@ public class SpeechOutput {
         }
     }
 
+    /** Sentences in a row the synthesizer may fail on before the call stops trying to speak. */
+    private static final int TTS_FAILURES_BEFORE_HANGUP = 2;
+
+    /**
+     * A failed sentence is still skipped rather than aborting the turn. But with the
+     * synthesizer down every reply was skipped, and the fallback line went through the same
+     * dead synthesizer: the caller sat in silence until the watchdog or the ghost reaper.
+     * After two sentences in a row nothing can be said, so the call ends as FAILED.
+     */
+    private void onTtsFailure(DialogSession s, Exception e) {
+        log.warn("TTS failed during dialog [{}]: {}", s.channelId(), e.getMessage());
+        int failures = s.recordTtsFailure();
+        if (failures >= TTS_FAILURES_BEFORE_HANGUP && !s.isEnded()) {
+            log.error("[{}] TTS failed on {} sentences in a row — ending the call as FAILED", s.channelId(), failures);
+            s.end(Disposition.FAILED);
+            executors.submit(() -> finishWhenSpoken(s));
+        }
+    }
+
     /** Whether the caller is still sitting in silence and would benefit from a filler. */
     private static boolean fillerStillWanted(DialogSession s) {
         return !s.isEnded() && !s.isCancelled() && s.isFirstAudioPending();
@@ -455,19 +475,17 @@ public class SpeechOutput {
      * <p>Polls the endpoint rather than sleeping for a precomputed duration: with
      * sentence streaming the total length is not known when the last sentence is
      * queued, and hanging up early would cut off the goodbye.
+     *
+     * <p>Reached from a closing turn, the silence watchdog, a fast-path answer and a dead
+     * synthesizer — sometimes more than one of them for the same call — so it runs at most
+     * once per call: a second run would hang up (or transfer) a line already handed on.
      */
     public void finishWhenSpoken(DialogSession s) {
-        long deadline = System.nanoTime() + MAX_DRAIN.toNanos();
-        try {
-            while (s.endpoint().isPlaying() && System.nanoTime() < deadline) {
-                Thread.sleep(100);
-            }
-            Thread.sleep(500); // let the tail reach the caller before the channel drops
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        if (!s.beginClosing()) {
+            return;
         }
-        Runnable action = (s.disposition() == Disposition.TRANSFERRED && s.transfer() != null)
-                ? s.transfer() : s.hangup();
+        dialogPolicy.awaitPlaybackDrained(s.endpoint());
+        Runnable action = DialogPolicy.selectClosingAction(s.disposition(), s.transfer(), s.hangup());
         if (action != null) {
             action.run();
         }

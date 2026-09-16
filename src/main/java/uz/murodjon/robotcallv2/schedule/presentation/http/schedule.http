@@ -1,0 +1,47 @@
+### Create a weekly schedule (Mon-Fri 09:00-18:00 with a lunch break, Sat 10:00-15:00)
+POST http://localhost:8080/api/schedules
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Ofis ish vaqti",
+  "timezone": "Asia/Tashkent",
+  "slots": [
+    { "dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "13:00" },
+    { "dayOfWeek": "MONDAY", "startTime": "14:00", "endTime": "18:00" },
+    { "dayOfWeek": "TUESDAY", "startTime": "09:00", "endTime": "18:00" },
+    { "dayOfWeek": "WEDNESDAY", "startTime": "09:00", "endTime": "18:00" },
+    { "dayOfWeek": "THURSDAY", "startTime": "09:00", "endTime": "18:00" },
+    { "dayOfWeek": "FRIDAY", "startTime": "09:00", "endTime": "18:00" },
+    { "dayOfWeek": "SATURDAY", "startTime": "10:00", "endTime": "15:00" }
+  ]
+}
+
+### List schedules
+POST http://localhost:8080/api/schedules/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "page": 0, "size": 20 }
+
+### Is it open right now?
+GET http://localhost:8080/api/schedules/1/status
+Authorization: Bearer {{auth_token}}
+
+### Add this year's fixed public holidays
+POST http://localhost:8080/api/holidays/fixed?year=2027
+Authorization: Bearer {{auth_token}}
+
+### A shortened pre-holiday day
+POST http://localhost:8080/api/holidays
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "date": "2027-03-20", "name": "Navro'z arafasi", "kind": "SHORT_DAY", "openTime": "09:00", "closeTime": "14:00" }
+
+### Holidays of one year
+POST http://localhost:8080/api/holidays/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "year": 2027 }

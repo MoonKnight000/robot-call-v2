@@ -130,14 +130,27 @@ class DialogToolsTest {
     }
 
     @Test
-    void refusesATransitionTheScenarioDoesNotAllow() {
-        // GREETING leads to IDENTITY_CHECK: jumping past it skips verifying who answered.
+    void walksTheStagesInBetween() {
+        // A refused jump strands the call in its stage, so the stages the graph leads
+        // through are walked instead.
         String result = tools.transitionTo("Sizning qarzingiz bor.", "DEBT_NOTICE");
+
+        assertThat(session.state()).isEqualTo("DEBT_NOTICE");
+        // The model has to be told what it passed, or it keeps asking for those stages.
+        assertThat(result).doesNotStartWith("XATO:").contains("IDENTITY_CHECK");
+        assertThat(session.toolReplies()).isEqualTo("Sizning qarzingiz bor.");
+    }
+
+    @Test
+    void refusesAStageTheGraphDoesNotLeadTo() {
+        session.setState("CLOSING");
+
+        String result = tools.transitionTo("Qarzingiz bor.", "DEBT_NOTICE");
 
         assertThat(result).startsWith("XATO:");
         // The model has to be told where it may go, or it re-sends the same stage.
-        assertThat(result).contains("IDENTITY_CHECK");
-        assertThat(session.state()).isEqualTo("GREETING");
+        assertThat(result).contains("END_CALL");
+        assertThat(session.state()).isEqualTo("CLOSING");
         assertThat(session.toolReplies()).isNull();
     }
 

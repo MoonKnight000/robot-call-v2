@@ -1,59 +1,81 @@
+# Everything that has no larger home: clustering, shutdown, QA scoring, simulation,
+# alerting, the live SSE channel, the default company.
 voice-agent:
+  # CallRouteRegistry (§5.1)
   routing:
-    # Sticky routing (§5.1): call_id -> instance_id in Redis. Blank id -> hostname.
     instance-id: ${INSTANCE_ID:}
     ttl-minutes: ${ROUTING_TTL_MINUTES:30}
+
+  # ShutdownProperties — drain, then parallel teardown, then ARI event lanes (§12)
   shutdown:
-    # Seconds to let active calls finish before the app stops (§12).
     drain-timeout-sec: ${SHUTDOWN_DRAIN_TIMEOUT:60}
+    teardown-timeout-sec: ${SHUTDOWN_TEARDOWN_TIMEOUT:30}
+    event-lane-timeout-sec: 5
+
+  # LLM-as-judge scoring of finished calls — QualityProperties
   quality:
-    # Automated QA: a second model reads each finished call's transcript and marks it
-    # against a rubric (guardrail broken, wrong language, talked over the caller, wrong
-    # disposition). Results go to voice.qa.score / voice.qa.flags and the log — nothing is
-    # written to the customer's record. Off by default: it is one more LLM call per call,
-    # and it is only worth paying for around a change you want to watch.
-    enabled: ${QUALITY_ENABLED:false}
-    # Share of finished calls scored, 0..1. Turn it down once a change has settled.
+    enabled: ${QUALITY_ENABLED:true}
     sample-rate: ${QUALITY_SAMPLE_RATE:1.0}
     model: ${QUALITY_MODEL:gemini-3.8-flash}
     max-tokens: ${QUALITY_MAX_TOKENS:512}
+
+  # The widget's text channel — ChatProperties, ChatService (UNIVERSAL-OPERATOR-PLAN E.4).
+  # Ceilings, not preferences: the endpoint is open to anything that can send an HTTP request
+  # and every message it holds is a model call somebody pays for.
+  chat:
+    max-messages-per-session: ${CHAT_MAX_MESSAGES:40}
+    daily-sessions-per-agent: ${CHAT_DAILY_SESSIONS:200}
+    session-ttl-minutes: ${CHAT_SESSION_TTL_MINUTES:120}
+
+  # Writes a pack draft from a business description — PackGeneratorProperties,
+  # SpringAiPackGeneratorAdapter (UNIVERSAL-OPERATOR-PLAN E.1). Used only when somebody presses
+  # "generate", so a larger model than the judge's is worth it: the draft is a whole scenario.
+  pack-generator:
+    model: ${PACK_GENERATOR_MODEL:gemini-3.8-pro}
+    max-tokens: ${PACK_GENERATOR_MAX_TOKENS:8192}
+
+  # The nightly job that reads what the judge wrote and proposes what to change —
+  # InsightProperties, DailyInsightJob (UNIVERSAL-OPERATOR-PLAN D.3). It reads the quality
+  # rows above, so it proposes nothing on a deployment with the judge turned off.
+  insight:
+    enabled: ${INSIGHT_ENABLED:true}
+    # Early morning, so the night's proposals are waiting rather than appearing during the day.
+    # Sinash uchun: INSIGHT_CRON="0 * * * * *" — har daqiqada.
+    cron: ${INSIGHT_CRON:0 20 6 * * *}
+    window-hours: ${INSIGHT_WINDOW_HOURS:24}
+    min-calls: ${INSIGHT_MIN_CALLS:10}
+    max-per-agent: ${INSIGHT_MAX_PER_AGENT:5}
+    model: ${INSIGHT_MODEL:gemini-3.8-flash}
+    max-tokens: ${INSIGHT_MAX_TOKENS:2048}
+
+  # Scripted callers against the real prompt and tools, at startup — DialogSimulationRunner,
+  # SimulationProperties. Never on in production: it spends tokens on every boot.
   simulation:
-    # Persona simulation (docs/VOICE-QUALITY-PLAN.md D.2): runs scripted callers against
-    # the real prompt, tools and guardrails at startup, then reports. No audio and no
-    # telephony — TurnReplayTool covers that side. Never leave this on in production: it
-    # spends LLM tokens on every boot.
     enabled: ${SIMULATION_ENABLED:false}
     personas-path: ${SIMULATION_PERSONAS:}
     scenario-id: ${SIMULATION_SCENARIO_ID:0}
     language: ${SIMULATION_LANGUAGE:uz-UZ}
     max-turns: ${SIMULATION_MAX_TURNS:12}
-    # The model playing the caller. A different one from the agent's is the point: two
-    # copies of the same model agree with each other far too easily.
     persona-model: ${SIMULATION_PERSONA_MODEL:gemini-3.8-flash}
+
+  # Success rate, turnaround SLO and speculation hit rate — AlertingProperties
   alerting:
-    # Alert when the recent call success rate (promise-to-pay) drops below threshold.
     enabled: ${ALERTING_ENABLED:true}
     window-minutes: ${ALERTING_WINDOW_MINUTES:30}
     min-sample: ${ALERTING_MIN_SAMPLE:20}
     success-threshold: ${ALERTING_SUCCESS_THRESHOLD:0.3}
     check-minutes: ${ALERTING_CHECK_MINUTES:5}
-    # Turnaround SLO (§1.3): caller stops speaking -> first bot audio on the wire, p95.
-    # 1000 ms is the budget the spec sets, so an alert here means the pipeline is outside
-    # what the project promised — raise it only as a deliberate decision, not to silence it.
     turnaround-budget-ms: ${ALERTING_TURNAROUND_BUDGET_MS:1000}
-    # Turns the window must hold before its p95 is judged; a handful of turns says nothing.
     turnaround-min-turns: ${ALERTING_TURNAROUND_MIN_TURNS:30}
-    # Share of speculative replies (dialog.preemptive) the final transcript has to confirm.
-    # A miss is billed and thrown away, so below this the guesses cost more than the
-    # latency they buy — raise preemptive-min-chars, or turn preemptive off.
     speculation-min-hit-rate: ${ALERTING_SPECULATION_MIN_HIT_RATE:0.5}
+    provider-failover-threshold: ${ALERTING_PROVIDER_FAILOVER_THRESHOLD:5}
+    min-mean-mos: ${ALERTING_MIN_MEAN_MOS:3.5}
+
+  # Live SSE channel (§0.7) — LiveProperties
   live:
-    # Live SSE channel (§0.7): KPI ticks, live-call list, transcript lines, notifications.
-    # Audio-level events are opt-in — they run on the RTP thread of every active call.
     audio-level-enabled: ${LIVE_AUDIO_LEVEL_ENABLED:false}
     kpi-poll-ms: ${LIVE_KPI_POLL_MS:2000}
+
+  # Owner of startup work with no request behind it — CompanyProperties
   company:
-    # The company that owns startup-time work with no request behind it (CompanyBootstrap,
-    # TtsWarmup, DialogSimulationRunner). A request's company always comes from its token
-    # instead (@CurrentCompanyId). Matches the bootstrap row R__seed_data.sql seeds as id 1.
     default-id: ${COMPANY_DEFAULT_ID:1}

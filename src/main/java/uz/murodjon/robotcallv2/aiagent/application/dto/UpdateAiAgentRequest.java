@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
@@ -15,6 +17,11 @@ import java.util.Set;
 
 /**
  * Full edit of an agent ({@code PUT /api/ai-agents/{id}}).
+ *
+ * <p>{@code version} is the one {@link AiAgentRow} carried when the form was opened — the
+ * draft row's lock counter, not {@code publishedVersion}. An agent saved by someone else
+ * since is answered 409 instead of being overwritten. Optional, so an older client that
+ * does not send it keeps working.
  */
 public record UpdateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
@@ -43,6 +50,7 @@ public record UpdateAiAgentRequest(
         Double voiceStability,
         Double voiceSimilarityBoost,
         Map<String, String> languageVoices,
+        Map<String, Double> languageVoiceSpeeds,
         AgentPersona persona,
         @Size(max = 120) String llmModel,
         @Size(max = 120) String fastLlmModel,
@@ -53,6 +61,7 @@ public record UpdateAiAgentRequest(
         Boolean zeroPiiRetention,
         Boolean storeCallAudio,
         Integer conversationRetentionDays,
+        RealtimeFactsDelivery realtimeFactsDelivery,
         Integer maxConversationDurationSeconds,
         Integer silenceEndCallTimeoutSeconds,
         Integer turnTimeoutSeconds,
@@ -75,9 +84,11 @@ public record UpdateAiAgentRequest(
         @Size(max = 500) String midCallSmsTemplate,
         String transferPhoneNumber,
         String transferMessage,
+        Long transferQueueId,
         InterruptionSensitivity interruptionSensitivity,
         Integer endpointingDelayMs,
         Set<Long> sipTrunkIds,
-        Boolean enabled
+        Boolean enabled,
+        Long version
 ) {
 }

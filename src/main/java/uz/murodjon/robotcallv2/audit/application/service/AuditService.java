@@ -2,18 +2,14 @@ package uz.murodjon.robotcallv2.audit.application.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.context.request.RequestAttributes;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
-import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -25,16 +21,20 @@ public class AuditService implements AuditUseCase {
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
     private final AuditLogRepository repository;
+    /** Who did it and from where — "system" and no address on a thread with no request. */
+    private final CurrentUser currentUser;
 
-    public AuditService(AuditLogRepository repository) {
+    public AuditService(AuditLogRepository repository, CurrentUser currentUser) {
         this.repository = repository;
+        this.currentUser = currentUser;
     }
 
     @Override
     public void record(long companyId, String action, String entity, String entityId, String detail) {
-        String actor = currentActor();
+        String actor = currentUser.actorName();
         try {
-            repository.save(companyId, AuditLog.entry(actor, action, entity, entityId, detail, currentIp()));
+            repository.save(companyId, AuditLog.entry(actor, action, entity, entityId, detail,
+                    currentUser.remoteAddress().orElse(null)));
         } catch (Exception e) {
             log.warn("Audit write failed ({} {} {} by {}: {}): {}",
                     action, entity, entityId, actor, detail, e.getMessage());
@@ -42,7 +42,7 @@ public class AuditService implements AuditUseCase {
     }
 
     @Override
-    public List<AuditLog> recent(long companyId, AuditFilter filter) {
+    public List<AuditLog> findRecent(long companyId, AuditFilter filter) {
         try {
             return repository.findByCompanyId(companyId, filter);
         } catch (Exception e) {
@@ -61,27 +61,8 @@ public class AuditService implements AuditUseCase {
         }
     }
 
-    private static String currentActor() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) {
-            return "system";
-        }
-        if (auth.getPrincipal() instanceof AuthenticatedUser user) {
-            String identifier = user.email() != null && !user.email().isBlank() ? user.email() : ("user:" + user.userId());
-            return user.roleCode() != null ? identifier + " (" + user.roleCode() + ")" : identifier;
-        }
-        String name = auth.getName();
-        if (name == null || name.isBlank() || name.startsWith("AuthenticatedUser[")) {
-            return "system";
-        }
-        return name;
-    }
-
-    private static String currentIp() {
-        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
-        if (!(attrs instanceof ServletRequestAttributes servletAttrs)) {
-            return null;
-        }
-        return servletAttrs.getRequest().getRemoteAddr();
+    @Override
+    public int deleteCreatedBefore(Instant cutoff, int batchSize) {
+        return repository.deleteCreatedBefore(cutoff, batchSize);
     }
 }

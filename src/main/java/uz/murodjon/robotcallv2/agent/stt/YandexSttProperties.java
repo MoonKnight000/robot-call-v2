@@ -19,11 +19,32 @@ package uz.murodjon.robotcallv2.agent.stt;
  * @param interimResults    deliver partial (interim) hypotheses in addition to finals
  * @param eouSensitivity    how eagerly the server declares the utterance over; see
  *                          {@link EouSensitivity}. The turn cannot start before the final
- *                          arrives, so this is the biggest single lever on turnaround
+ *                          arrives, so this is the biggest single lever on turnaround.
+ *                          {@code DEFAULT}, not {@code HIGH}: {@code HIGH} ends the
+ *                          utterance at the first opportunity, and paired with a 500 ms
+ *                          pause hint it cut callers off mid-sentence
  * @param eouMaxPauseHintMs hint for the longest pause that is still mid-utterance. A
  *                          caller who lists numbers slowly ("bir … ikki … uch") needs a
  *                          larger value than one who runs sentences together. 0 = no
- *                          hint, let SpeechKit decide
+ *                          hint, let SpeechKit decide.
+ *                          <p><b>Not read on the default path.</b> {@code stt.vad-gating}
+ *                          + {@code stt.endpointing} switch SpeechKit to the external
+ *                          classifier, where this side says when the utterance ended and
+ *                          {@code vad-gating.post-roll-ms} is the budget. This value is
+ *                          what a call falls back to when gating is turned off — no VAD
+ *                          model, or a gate that turns out to cut callers off.
+ *                          <p>900. It was 500, which does not survive real speech: on a
+ *                          recorded call it ended the turn on a 0.60 s pause and again on
+ *                          a 0.78 s one, both times mid-sentence. The second cost the call
+ *                          — "keyingi oy" was finalized, the bot answered and hung up, and
+ *                          "to'layman oktyabrda" arrived 0.2 s later with nobody left to
+ *                          hear it. It was then 1200, which cleared both with room to
+ *                          spare and put 1.2–2.3 s in front of every reply. 900 clears the
+ *                          0.78 s pause that actually broke a call and gives back 300 ms
+ *                          of margin nothing was using; speculation pays for what is left.
+ *                          <p>SpeechKit accepts [500, 5000] and nothing else: below 500 it
+ *                          does not clamp or ignore the hint, it kills the session with
+ *                          {@code INVALID_ARGUMENT} on every call
  * @param keepAliveSeconds  how often to ping an idle gRPC connection so the far side
  *                          does not drop it; 0 = no keepalive
  */

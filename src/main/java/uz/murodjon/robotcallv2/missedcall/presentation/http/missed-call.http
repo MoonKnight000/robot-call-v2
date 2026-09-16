@@ -1,0 +1,24 @@
+### Open missed calls, newest first
+POST http://localhost:8080/api/missed-calls/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "status": "NEW" }
+
+### Take one
+PUT http://localhost:8080/api/missed-calls/1/assign
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "userId": 2 }
+
+### Call back — rings my softphone first, then the caller
+POST http://localhost:8080/api/missed-calls/1/call-back
+Authorization: Bearer {{auth_token}}
+
+### Close with a note
+PUT http://localhost:8080/api/missed-calls/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "status": "RESOLVED", "note": "Mijoz o'zi qayta qo'ng'iroq qildi" }

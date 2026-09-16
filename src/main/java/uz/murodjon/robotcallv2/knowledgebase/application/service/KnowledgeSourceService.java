@@ -5,7 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.CreateKnowledgeSourceItem;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.CreateKnowledgeSourceRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeSourceRow;
@@ -43,14 +43,14 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
     private final KnowledgeIndexingService indexingService;
     private final KnowledgeRetrievalUseCase knowledgeRetrievalUseCase;
     private final AiAgentUseCase aiAgentUseCase;
-    private final AuditService auditService;
+    private final AuditUseCase auditService;
 
     public KnowledgeSourceService(KnowledgeSourceRepository repository,
                                   KnowledgeChunkRepository chunkRepository,
                                   KnowledgeIndexingService indexingService,
                                   KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
                                   AiAgentUseCase aiAgentUseCase,
-                                  AuditService auditService) {
+                                  AuditUseCase auditService) {
         this.repository = repository;
         this.chunkRepository = chunkRepository;
         this.indexingService = indexingService;
@@ -82,7 +82,10 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                     null,
                     null,
                     0,
-                    now
+                    now,
+                    item.feedItemsPath(),
+                    item.feedKeyField(),
+                    item.refreshMinutes()
             )));
         }
 
@@ -146,7 +149,10 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                 existing.errorMessage(),
                 existing.lastIndexedAt(),
                 existing.chunkCount(),
-                existing.createdAt()
+                existing.createdAt(),
+                existing.feedItemsPath(),
+                existing.feedKeyField(),
+                request.refreshMinutes() != null ? request.refreshMinutes() : existing.refreshMinutes()
         );
         KnowledgeSource saved = repository.save(reindex ? updated.queuedForIndexing() : updated);
         audit(companyId, "KNOWLEDGE_SOURCE_UPDATE", saved);
@@ -188,6 +194,11 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
         if (item.sourceType() == KnowledgeSourceType.URL) {
             if (item.url() == null || item.url().isBlank()) {
                 throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_REQUIRED);
+            }
+        } else if (item.sourceType() == KnowledgeSourceType.STRUCTURED_FEED) {
+            // A catalog is uploaded or fetched from the shop's own list endpoint — either will do.
+            if ((item.url() == null || item.url().isBlank()) && item.storedFileId() == null) {
+                throw new ValidationException(ErrorCode.KNOWLEDGE_FEED_LOCATION_REQUIRED);
             }
         } else if (item.storedFileId() == null) {
             throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_FILE_REQUIRED, item.sourceType());
@@ -236,7 +247,10 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                 source.errorMessage(),
                 source.lastIndexedAt(),
                 source.chunkCount(),
-                source.createdAt()
+                source.createdAt(),
+                source.feedItemsPath(),
+                source.feedKeyField(),
+                source.refreshMinutes()
         );
     }
 }

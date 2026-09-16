@@ -50,7 +50,7 @@ class WavRecorderTest {
     @Test
     void spatialStereoCrossFeedsChannels(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("call.wav");
-        try (WavRecorder recorder = new WavRecorder(file, RATE, WavRecorder.RecordingMode.SPATIAL_STEREO)) {
+        try (WavRecorder recorder = new WavRecorder(file, RATE, RecordingMode.SPATIAL_STEREO)) {
             recorder.writeBot(shorts(100), 1);
             recorder.writeCaller(shorts(1000), 1);
         }
@@ -119,6 +119,50 @@ class WavRecorderTest {
         }
 
         assertThat(samplesOf(file)).containsExactly(shorts(1, 0, 0, 7, 0, 8));
+    }
+
+    /** Caller audio in 20 ms frames whose samples count up, so order and gaps are checkable. */
+    private static void writeCountingCaller(WavRecorder recorder, int samples) throws IOException {
+        short[] frame = new short[160];
+        for (int written = 0; written < samples; written += frame.length) {
+            int len = Math.min(frame.length, samples - written);
+            for (int i = 0; i < len; i++) {
+                frame[i] = (short) ((written + i) % Short.MAX_VALUE);
+            }
+            recorder.writeCaller(frame, len);
+        }
+    }
+
+    @Test
+    void writesEachSecondToDiskBeforeTheCallEnds(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("call.wav");
+        try (WavRecorder recorder = new WavRecorder(file, RATE)) {
+            writeCountingCaller(recorder, RATE * 12 / 10); // 1.2 s
+
+            // The first full second is on disk already — a crash now loses the last 0.2 s only.
+            assertThat(Files.size(file)).isEqualTo(WavHeader.SIZE + RATE * 4L);
+        }
+        assertThat(Files.size(file)).isEqualTo(WavHeader.SIZE + RATE * 12 / 10 * 4L);
+    }
+
+    @Test
+    void headerCountsEveryBatchedByteAndKeepsTheOrder(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("call.wav");
+        int samples = RATE * 5 / 2 + 7; // several full buffers plus a partial one
+        try (WavRecorder recorder = new WavRecorder(file, RATE)) {
+            writeCountingCaller(recorder, samples);
+            recorder.writeBot(shorts(9, 9), 2); // a goodbye tail after the caller's last frame
+        }
+
+        byte[] raw = Files.readAllBytes(file);
+        assertThat(intAt(raw, 40)).isEqualTo(raw.length - WavHeader.SIZE);
+        assertThat(raw.length - WavHeader.SIZE).isEqualTo((samples + 2) * 4);
+        short[] interleaved = samplesOf(file);
+        for (int i = 0; i < samples; i++) {
+            assertThat(interleaved[i * 2]).as("caller sample %d", i).isEqualTo((short) (i % Short.MAX_VALUE));
+        }
+        assertThat(interleaved[samples * 2 + 1]).isEqualTo((short) 9);
+        assertThat(interleaved[samples * 2 + 3]).isEqualTo((short) 9);
     }
 
     @Test

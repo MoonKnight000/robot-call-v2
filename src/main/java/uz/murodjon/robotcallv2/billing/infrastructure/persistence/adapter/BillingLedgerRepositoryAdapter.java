@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.billing.infrastructure.persistence.adapter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.billing.application.mapper.BillingLedgerMapper;
+import uz.murodjon.robotcallv2.billing.infrastructure.persistence.mapper.BillingLedgerEntityMapper;
 import uz.murodjon.robotcallv2.billing.application.port.output.BillingLedgerRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.LedgerEntry;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.repository.BillingLedgerJpaRepository;
@@ -15,11 +15,11 @@ public class BillingLedgerRepositoryAdapter implements BillingLedgerRepository {
 
     private final BillingLedgerJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final BillingLedgerMapper mapper;
+    private final BillingLedgerEntityMapper mapper;
 
     public BillingLedgerRepositoryAdapter(BillingLedgerJpaRepository jpaRepository,
                                           CompanyJpaRepository companyJpaRepository,
-                                          BillingLedgerMapper mapper) {
+                                          BillingLedgerEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -34,7 +34,7 @@ public class BillingLedgerRepositoryAdapter implements BillingLedgerRepository {
         }
         try {
             CompanyEntity company = companyJpaRepository.getReferenceById(entry.companyId());
-            jpaRepository.save(mapper.toEntity(entry, company));
+            jpaRepository.save(mapper.toBillingLedgerEntity(entry, company));
             return true;
         } catch (DataIntegrityViolationException alreadyWritten) {
             return false;

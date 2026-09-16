@@ -50,7 +50,7 @@ Query parametrlar: `?kind=LLM|STT|TTS` (berilmasa `LLM`) va `?mode=CASCADE|REALT
 | `kind` + `mode` | Qaytadigan modellar |
 |---|---|
 | `LLM` + `CASCADE` | `spring.ai.model.chat` provayderining matn modellari (`google-genai` → `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`; `openai` → `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-6-astra`, `gpt-5.5`, `gpt-5.4-mini`) |
-| `LLM` + `REALTIME` | shu build'da yoqilgan speech-to-speech engine modellari (`gemini-live` → `gemini-3.1-flash-live-preview`, `gemini-2.5-flash-native-audio-latest`; `openai-realtime` → `gpt-realtime-2.1`, `gpt-realtime-2.1-mini`; `qwen-omni`, `moshi`, `pipecat`) |
+| `LLM` + `REALTIME` | shu build'da yoqilgan speech-to-speech engine modellari (`gemini-live` → `gemini-3.8-live`, `gemini-3.8-live-extended-thinking`, `gemini-3.1-flash-live-preview`, `gemini-2.5-flash-native-audio-latest`; `openai-realtime` → `gpt-realtime-2.1`, `gpt-realtime-2.1-mini`; `qwen-omni`, `moshi`, `pipecat`) |
 | `STT` | kaliti sozlangan STT provayderining tanish modellari (`gemini` → `gemini-3.5-transcribe-live`, `deepgram` → `nova-3`, `yandex` → `general`, `openai` → `gpt-live-transcribe`, `gpt-transcribe`) |
 | `TTS` | kaliti sozlangan TTS provayderining modellari (`gemini` → `gemini-3.1-flash-tts-preview`, `cartesia` → `sonic-multilingual`, `openai` → `gpt-4o-mini-tts`) |
 

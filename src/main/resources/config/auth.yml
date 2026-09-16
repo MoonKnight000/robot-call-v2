@@ -1,40 +1,37 @@
+# Login, tokens and the first admin account. See SecurityProperties, JwtProperties,
+# EncryptionProperties, UserBootstrapProperties.
 voice-agent:
   security:
-    # Serve the static test panel and swagger-ui without logging in. The panel still
-    # sends its Bearer token with every API call it makes. Set false to hide them too.
-    public-ui: ${SECURITY_PUBLIC_UI:true}
-    # Browser origins allowed to call the API cross-origin (comma-separated). The bundled
-    # static panel is same-origin and never needs this; a separately hosted frontend (e.g.
-    # a Vite dev server) does. Empty = no cross-origin browser calls allowed.
+    # Empty = no cross-origin browser may call the API (never a wildcard).
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5174,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:3000}
     jwt:
-      # HS256 signing key for user login (ROADMAP E.1, Authorization: Bearer). Blank =
-      # fail-closed: nobody can log in. Hashed to 256 bits before use, so any non-blank
-      # value works — length beyond that adds no extra security.
       secret: ${JWT_SECRET:}
-      # Access token lifetime. No server-side revocation exists — logout is a client-side
-      # token discard (stateless JWT), see AuthController.logout.
-      expiry-minutes: ${JWT_EXPIRY_MINUTES:720}
+      # Short on purpose: revocation (logout, password/role change, block) is enforced
+      # through Redis, and this is the longest a token outlives it on an instance that
+      # cannot reach Redis. Refresh tokens last 30 days, so nobody logs in hourly.
+      expiry-minutes: ${JWT_EXPIRY_MINUTES:60}
+    # Per-address ceilings on the endpoints that need no token — RateLimitProperties,
+    # RateLimitFilter. Counted in Redis, so they hold across instances.
+    rate-limit:
+      enabled: ${RATE_LIMIT_ENABLED:true}
+      # Only behind a reverse proxy that sets X-Forwarded-For itself.
+      trust-forwarded-for: ${RATE_LIMIT_TRUST_FORWARDED_FOR:false}
+      login-per-minute: ${RATE_LIMIT_LOGIN_PER_MINUTE:5}
+      # Failed logins one username may collect from one client address before that
+      # username+address pair is locked for lockout-minutes.
+      login-failures-per-user: ${RATE_LIMIT_LOGIN_FAILURES_PER_USER:10}
+      lockout-minutes: ${RATE_LIMIT_LOCKOUT_MINUTES:15}
+      refresh-per-minute: ${RATE_LIMIT_REFRESH_PER_MINUTE:30}
+      password-reset-per-hour: ${RATE_LIMIT_PASSWORD_RESET_PER_HOUR:3}
+      public-widget-per-minute: ${RATE_LIMIT_PUBLIC_WIDGET_PER_MINUTE:20}
     password-reset:
-      # "Parolni unutdingizmi?" email sender (backend-uchun-talablar.md §9) — same
-      # spring.mail.* SMTP connection as report-schedule. Unlike report-schedule there is
-      # no enabled flag: POST /api/auth/forgot-password always answers 200 regardless of
-      # whether the send actually succeeds (never reveal whether an email is registered),
-      # so an unconfigured SMTP server just means the send silently fails server-side.
       from: ${PASSWORD_RESET_FROM:no-reply@uysot.uz}
   encryption:
-    # AES-256 key (base64, 32 bytes) for secrets that must be read back — Uysot OAuth
-    # client_secret/access/refresh tokens (§11 integrations, shared.util.SecretCipher).
-    # Unlike JWT_SECRET, this cannot be "any non-blank value": it is decoded as
-    # raw key bytes, so it must be exactly 32 bytes once base64-decoded. Generate one:
-    #   openssl rand -base64 32
-    # Blank = the integrations feature stays inert (fails closed) rather than storing
-    # secrets in plaintext.
     secret-key: ${ENCRYPTION_SECRET_KEY:}
+    # Rotation: move the old key here (comma-separated, newest first), set a new
+    # secret-key, restart. Stored secrets keep decrypting; re-save them to move them over.
+    previous-secret-keys: ${ENCRYPTION_PREVIOUS_SECRET_KEYS:}
   user:
-    # First admin account, seeded once on startup if the default company has no users yet
-    # (UserBootstrap) — otherwise nobody could ever call POST /api/auth/login to create
-    # the rest through the API. Blank email/password = nothing seeded (fail-closed).
     bootstrap-admin-name: ${BOOTSTRAP_ADMIN_NAME:Admin}
     bootstrap-admin-username: ${BOOTSTRAP_ADMIN_USERNAME:}
     bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}

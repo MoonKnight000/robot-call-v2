@@ -24,7 +24,7 @@ public interface ScenarioJpaRepository extends JpaRepository<ScenarioEntity, Lon
     List<Object[]> findNamesByIds(@Param("ids") Collection<Long> ids, @Param("companyId") long companyId);
 
     @Query("SELECT MAX(s.version) FROM ScenarioEntity s WHERE s.scenarioKey = :scenarioKey")
-    Integer maxVersion(@Param("scenarioKey") String scenarioKey);
+    Integer findMaxVersion(@Param("scenarioKey") String scenarioKey);
 
     boolean existsByScenarioKey(String scenarioKey);
 
@@ -41,8 +41,10 @@ public interface ScenarioJpaRepository extends JpaRepository<ScenarioEntity, Lon
             + "AND (:builtinOnly IS NULL OR s.builtin = :builtinOnly)")
     long countVisible(@Param("companyId") long companyId, @Param("builtinOnly") Boolean builtinOnly);
 
+    /** 1 when {@code version} was the active one and is now retired, 0 when it was not active. */
     @Modifying
     @Transactional
-    @Query("UPDATE ScenarioEntity s SET s.active = false WHERE s.scenarioKey = :scenarioKey AND s.active = true")
-    void deactivate(@Param("scenarioKey") String scenarioKey);
+    @Query("UPDATE ScenarioEntity s SET s.active = false WHERE s.scenarioKey = :scenarioKey "
+            + "AND s.version = :version AND s.active = true")
+    int deactivate(@Param("scenarioKey") String scenarioKey, @Param("version") int version);
 }

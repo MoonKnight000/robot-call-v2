@@ -6,6 +6,9 @@ import uz.murodjon.robotcallv2.donotcall.domain.entity.DoNotCallFilter;
 import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
+import java.util.Collection;
+import java.util.Set;
+
 /**
  * Inbound UseCase port for Do-Not-Call (DNC) list operations (§10.8).
  */
@@ -18,4 +21,10 @@ public interface DoNotCallUseCase {
     void add(long companyId, String phone, String reason, DoNotCallSource source);
 
     boolean contains(long companyId, String phone);
+
+    /**
+     * The numbers among {@code phones} the company's list holds, matched the way
+     * {@link #contains} matches one — for a bulk import, in one lookup rather than one per row.
+     */
+    Set<String> findBlockedPhones(long companyId, Collection<String> phones);
 }

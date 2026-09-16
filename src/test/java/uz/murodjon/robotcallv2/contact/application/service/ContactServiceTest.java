@@ -1,17 +1,25 @@
 package uz.murodjon.robotcallv2.contact.application.service;
 
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.OutboxMessageUseCase;
+import uz.murodjon.robotcallv2.contact.application.port.output.ContactPrivacyRepository;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.storage.application.service.FileStorageService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.contact.application.dto.CreateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.dto.UpdateContactRequest;
+import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
-import uz.murodjon.robotcallv2.donotcall.application.dto.ContactDncResponse;
-import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
-import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
-import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
+import uz.murodjon.robotcallv2.contact.domain.event.ContactOptOutEvent;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactDncResponse;
+import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 
@@ -25,20 +33,34 @@ import static org.mockito.Mockito.*;
 class ContactServiceTest {
 
     private ContactRepository contactRepository;
-    private ReportRepository reportRepository;
-    private DoNotCallRepository doNotCallRepository;
+    private ReportUseCase reportUseCase;
+    private ApplicationEventPublisher applicationEventPublisher;
     private AuditService auditService;
     private ContactService contactService;
 
     @BeforeEach
     void setUp() {
         contactRepository = mock(ContactRepository.class);
-        reportRepository = mock(ReportRepository.class);
-        doNotCallRepository = mock(DoNotCallRepository.class);
+        reportUseCase = mock(ReportUseCase.class);
+        applicationEventPublisher = mock(ApplicationEventPublisher.class);
         auditService = mock(AuditService.class);
 
         contactService = new ContactService(
-                contactRepository, reportRepository, doNotCallRepository, auditService);
+                contactRepository, providerOf(reportUseCase), applicationEventPublisher, auditService,
+                mock(ContactPrivacyRepository.class),
+                mock(ClientMemoryUseCase.class),
+                mock(CallTranscriptUseCase.class),
+                mock(OutboxMessageUseCase.class),
+                mock(FileStorageService.class),
+                new ContactMapper());
+    }
+
+    /** ContactService resolves the report use case lazily (bean cycle); the test hands it the mock directly. */
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> providerOf(T bean) {
+        ObjectProvider<T> provider = mock(ObjectProvider.class);
+        when(provider.getObject()).thenReturn(bean);
+        return provider;
     }
 
     private Contact sampleContact(long id, String name, String phone) {
@@ -59,7 +81,7 @@ class ContactServiceTest {
         assertThat(created).isNotNull();
         assertThat(created.id()).isEqualTo(10L);
         assertThat(created.phone()).isEqualTo(normalizedPhone);
-        verify(auditService).record("CONTACT_CREATE", "contact", "10", normalizedPhone);
+        verify(auditService).record(1L, "CONTACT_CREATE", "contact", "10", normalizedPhone);
     }
 
     @Test
@@ -84,7 +106,7 @@ class ContactServiceTest {
 
         assertThat(result.name()).isEqualTo("Aziz Updated");
         verify(contactRepository).update(1L, 10L, Contact.profile("Aziz Updated", "Samarkand", "lead", "Updated notes"));
-        verify(auditService).record("CONTACT_UPDATE", "contact", "10", "+998901234567");
+        verify(auditService).record(1L, "CONTACT_UPDATE", "contact", "10", "+998901234567");
     }
 
     @Test
@@ -95,7 +117,7 @@ class ContactServiceTest {
         contactService.delete(1L, 10L);
 
         verify(contactRepository).delete(1L, 10L);
-        verify(auditService).record("CONTACT_DELETE", "contact", "10", "+998901234567");
+        verify(auditService).record(1L, "CONTACT_DELETE", "contact", "10", "+998901234567");
     }
 
     @Test
@@ -103,8 +125,7 @@ class ContactServiceTest {
         ContactFilter filter = new ContactFilter(0, 10, null, null);
         Contact c = sampleContact(1L, "Ali", "+998901112233");
 
-        when(contactRepository.findAll(1L, filter)).thenReturn(List.of(c));
-        when(contactRepository.count(1L, filter)).thenReturn(1L);
+        when(contactRepository.findPage(1L, filter)).thenReturn(PageableData.of(List.of(c), 0, 10, 1L));
 
         PageableData<Contact> result = contactService.list(1L, filter);
 
@@ -121,7 +142,7 @@ class ContactServiceTest {
 
         assertThat(response.contactId()).isEqualTo(5L);
         assertThat(response.doNotCall()).isTrue();
-        verify(doNotCallRepository).add(1L, "+998905556677", "opted out via contact", DoNotCallSource.MANUAL);
-        verify(auditService).record("CONTACT_DNC", "contact", "5", "+998905556677");
+        verify(applicationEventPublisher).publishEvent(new ContactOptOutEvent(1L, "+998905556677", "opted out via contact"));
+        verify(auditService).record(1L, "CONTACT_DNC", "contact", "5", "+998905556677");
     }
 }

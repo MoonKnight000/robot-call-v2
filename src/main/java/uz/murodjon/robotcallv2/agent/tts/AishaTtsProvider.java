@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Aisha realtime text-to-speech over its WebSocket API (PROJECT.md §2.5). A line is sent
@@ -64,10 +65,11 @@ public class AishaTtsProvider implements TtsProvider {
 
     /** Lines waiting for their audio, by {@code request_id}. */
     private final Map<String, CompletableFuture<byte[]>> pending = new ConcurrentHashMap<>();
-    /** The same ids in send order — how a reply is matched when it carries no id. */
-    private final ConcurrentLinkedQueue<String> order = new ConcurrentLinkedQueue<>();
 
     private volatile WebSocket webSocket;
+    /** Guards opening the socket — a lock, not a monitor, so a caller waiting on it doesn't pin a virtual thread. */
+    private final ReentrantLock connectLock = new ReentrantLock();
+    private final Object sendChainLock = new Object();
     private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
     public AishaTtsProvider(TtsProperties ttsProperties) {
@@ -116,7 +118,6 @@ public class AishaTtsProvider implements TtsProvider {
         String requestId = UUID.randomUUID().toString();
         CompletableFuture<byte[]> audio = new CompletableFuture<>();
         pending.put(requestId, audio);
-        order.add(requestId);
         try {
             send(request(requestId, text, language, voice, style).toString());
             byte[] wav = audio.get(aisha.requestTimeoutMs(), TimeUnit.MILLISECONDS);
@@ -129,13 +130,12 @@ public class AishaTtsProvider implements TtsProvider {
             Thread.currentThread().interrupt();
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "aisha-tts", e, e.getMessage());
         } catch (TimeoutException e) {
-            throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "aisha-tts", e,
-                    "no audio within " + aisha.requestTimeoutMs() + " ms");
+            throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_TIMEOUT, "aisha-tts", e,
+                    aisha.requestTimeoutMs());
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "aisha-tts", e, e.getMessage());
         } finally {
             pending.remove(requestId);
-            order.remove(requestId);
         }
     }
 
@@ -215,8 +215,8 @@ public class AishaTtsProvider implements TtsProvider {
             return audio.samples();
         }
         if (audio.sampleRate() != AISHA_SAMPLE_RATE) {
-            throw new ExternalServiceException(ErrorCode.TTS_AISHA_AUDIO_PARSE_FAILED, "aisha-tts",
-                    "unexpected sample rate " + audio.sampleRate());
+            throw new ExternalServiceException(ErrorCode.TTS_AISHA_SAMPLE_RATE_UNEXPECTED, "aisha-tts",
+                    audio.sampleRate());
         }
         return Resampler.downsample16kTo8k(audio.samples(), audio.samples().length);
     }
@@ -229,7 +229,7 @@ public class AishaTtsProvider implements TtsProvider {
     private void send(String json) throws Exception {
         WebSocket current = connect();
         CompletableFuture<Void> sent;
-        synchronized (this) {
+        synchronized (sendChainLock) {
             sendChain = sendChain
                     .thenCompose(ignored -> current.sendText(json, true))
                     .thenAccept(ws -> {
@@ -243,29 +243,40 @@ public class AishaTtsProvider implements TtsProvider {
     }
 
     /** The shared socket, opened (or reopened after a drop) on demand. */
-    private synchronized WebSocket connect() {
+    private WebSocket connect() {
         WebSocket current = webSocket;
         if (current != null && !current.isOutputClosed() && !current.isInputClosed()) {
             return current;
         }
-        AishaTtsProperties aisha = ttsProperties.aisha();
-        if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
-            throw new ExternalServiceException(ErrorCode.TTS_AISHA_CONNECT_FAILED, "aisha-tts", "no api key");
-        }
-        URI uri = URI.create(aisha.url() + "?token=" + aisha.apiKey());
+        connectLock.lock();
         try {
+            current = webSocket;
+            if (current != null && !current.isOutputClosed() && !current.isInputClosed()) {
+                return current; // another caller reopened it while this one waited
+            }
+            AishaTtsProperties aisha = ttsProperties.aisha();
+            if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
+                throw new ExternalServiceException(ErrorCode.TTS_AISHA_CLIENT_UNAVAILABLE, "aisha-tts");
+            }
+            URI uri = URI.create(aisha.url() + "?token=" + aisha.apiKey());
             WebSocket opened = client.newWebSocketBuilder()
                     .connectTimeout(CONNECT_TIMEOUT)
                     .buildAsync(uri, new AudioHandler())
                     .get(CONNECT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-            sendChain = CompletableFuture.completedFuture(null);
+            synchronized (sendChainLock) {
+                sendChain = CompletableFuture.completedFuture(null);
+            }
             webSocket = opened;
             return opened;
+        } catch (ExternalServiceException e) {
+            throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_CONNECT_FAILED, "aisha-tts", e, e.getMessage());
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_CONNECT_FAILED, "aisha-tts", e, e.getMessage());
+        } finally {
+            connectLock.unlock();
         }
     }
 
@@ -275,7 +286,6 @@ public class AishaTtsProvider implements TtsProvider {
             entry.getValue().completeExceptionally(new IllegalStateException(reason));
         }
         pending.clear();
-        order.clear();
     }
 
     @PreDestroy
@@ -346,7 +356,7 @@ public class AishaTtsProvider implements TtsProvider {
                 if (waiting != null) {
                     waiting.complete(wav);
                 } else {
-                    log.warn("Aisha TTS delivered {} bytes nobody was waiting for", wav.length);
+                    log.warn("Aisha TTS delivered {} bytes that match no waiting line — dropped", wav.length);
                 }
             }
             socket.request(1);
@@ -354,19 +364,22 @@ public class AishaTtsProvider implements TtsProvider {
         }
 
         /**
-         * The request this frame belongs to: the id the metadata frame carried, or —
-         * if it carried none — the oldest line still waiting, since Aisha answers in
-         * the order it was asked.
+         * The request this frame belongs to: the id the metadata frame carried, or — if it
+         * carried none — the one line waiting, when exactly one is. With several waiting
+         * the reply could be anyone's; guessing "the oldest" played one caller's line into
+         * another company's call, so the reply is dropped and those lines run into their
+         * timeout (and the TTS fallback) instead.
          */
         private CompletableFuture<byte[]> claim() {
             String requestId = currentRequestId;
             currentRequestId = null;
             if (requestId == null) {
-                requestId = order.poll();
-            } else {
-                order.remove(requestId);
+                if (pending.size() != 1) {
+                    return null;
+                }
+                requestId = pending.keySet().iterator().next();
             }
-            return requestId == null ? null : pending.remove(requestId);
+            return pending.remove(requestId);
         }
 
         @Override

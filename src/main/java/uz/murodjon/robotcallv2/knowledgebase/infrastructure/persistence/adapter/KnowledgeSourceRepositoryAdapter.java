@@ -7,7 +7,10 @@ import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiA
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeSourceRepository;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeSource;
+import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceStatus;
+import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
 import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.entity.KnowledgeSourceEntity;
+import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.mapper.KnowledgeSourceEntityMapper;
 import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.repository.KnowledgeSourceJpaRepository;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.StoredFileJpaRepository;
@@ -20,15 +23,18 @@ import java.util.Optional;
 public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceRepository {
 
     private final KnowledgeSourceJpaRepository jpaRepository;
+    private final KnowledgeSourceEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
     private final AiAgentJpaRepository aiAgentJpaRepository;
     private final StoredFileJpaRepository storedFileJpaRepository;
 
     public KnowledgeSourceRepositoryAdapter(KnowledgeSourceJpaRepository jpaRepository,
+                                            KnowledgeSourceEntityMapper mapper,
                                             CompanyJpaRepository companyJpaRepository,
                                             AiAgentJpaRepository aiAgentJpaRepository,
                                             StoredFileJpaRepository storedFileJpaRepository) {
         this.jpaRepository = jpaRepository;
+        this.mapper = mapper;
         this.companyJpaRepository = companyJpaRepository;
         this.aiAgentJpaRepository = aiAgentJpaRepository;
         this.storedFileJpaRepository = storedFileJpaRepository;
@@ -48,25 +54,17 @@ public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceReposito
 
         entity.setCompany(companyJpaRepository.getReferenceById(source.companyId()));
         entity.setAgent(aiAgentReference(source.agentId()));
-        entity.setName(source.name());
-        entity.setSourceType(source.sourceType());
-        entity.setOriginalFileName(source.originalFileName());
         entity.setStoredFile(storedFileReference(source.storedFileId()));
-        entity.setChunkCount(source.chunkCount());
-        entity.setUrl(source.url());
-        entity.setStatus(source.status());
-        entity.setErrorCode(source.errorCode());
-        entity.setErrorMessage(source.errorMessage());
-        entity.setLastIndexedAt(source.lastIndexedAt());
+        mapper.applyToEntity(source, entity);
 
         KnowledgeSourceEntity saved = jpaRepository.save(entity);
-        return toKnowledgeSource(saved);
+        return mapper.toKnowledgeSource(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<KnowledgeSource> findByCompanyIdAndId(long companyId, long id) {
-        return jpaRepository.findByCompanyIdAndId(companyId, id).map(this::toKnowledgeSource);
+        return jpaRepository.findByCompanyIdAndId(companyId, id).map(mapper::toKnowledgeSource);
     }
 
     @Override
@@ -74,7 +72,7 @@ public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceReposito
     public List<KnowledgeSource> findByCompanyId(long companyId) {
         return jpaRepository.findByCompanyIdOrderByCreatedAtDesc(companyId)
                 .stream()
-                .map(this::toKnowledgeSource)
+                .map(mapper::toKnowledgeSource)
                 .toList();
     }
 
@@ -83,7 +81,7 @@ public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceReposito
     public List<KnowledgeSource> findByCompanyIdAndAgentId(long companyId, long agentId) {
         return jpaRepository.findByCompanyIdAndAgentIdOrderByCreatedAtDesc(companyId, agentId)
                 .stream()
-                .map(this::toKnowledgeSource)
+                .map(mapper::toKnowledgeSource)
                 .toList();
     }
 
@@ -93,23 +91,12 @@ public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceReposito
         jpaRepository.deleteByCompanyIdAndId(companyId, id);
     }
 
-    private KnowledgeSource toKnowledgeSource(KnowledgeSourceEntity entity) {
-        return new KnowledgeSource(
-                entity.getId(),
-                entity.getCompanyId(),
-                entity.getAgentId(),
-                entity.getName(),
-                entity.getSourceType(),
-                entity.getOriginalFileName(),
-                entity.getStoredFileId(),
-                entity.getUrl(),
-                entity.getStatus(),
-                entity.getErrorCode(),
-                entity.getErrorMessage(),
-                entity.getLastIndexedAt(),
-                entity.getChunkCount(),
-                entity.getCreatedAt()
-        );
+    @Override
+    @Transactional(readOnly = true)
+    public List<KnowledgeSource> findRefreshable(KnowledgeSourceType sourceType, KnowledgeSourceStatus status) {
+        return jpaRepository.findRefreshable(sourceType, status).stream()
+                .map(mapper::toKnowledgeSource)
+                .toList();
     }
 
     /** Null for a company-wide source that every agent reads. */

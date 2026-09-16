@@ -13,6 +13,10 @@ public interface UserSessionRepository {
 
     Optional<UserSession> findActiveByHash(String tokenHash);
 
+    /** The session that rotated away from {@code tokenHash} — a token presented after its rotation. */
+    Optional<UserSession> findByPreviousHash(String tokenHash);
+
+    /** Replaces the refresh token, remembering the one it replaces for reuse detection. */
     void rotate(long id, String newTokenHash, Instant newExpiresAt, String device, String ipAddress);
 
     void revoke(long id, long userId);

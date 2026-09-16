@@ -22,29 +22,29 @@ import java.util.List;
 @RequestMapping("/api")
 public interface AgentWidgetController {
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'OPERATOR')")
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping("/ai-agents/{agentId:\\d+}/widgets")
     ResponseEntity<ResponseData<WidgetRow>> create(@CurrentCompanyId long companyId,
                                                     @PathVariable long agentId,
                                                     @Valid @RequestBody CreateWidgetRequest request);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'OPERATOR')")
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/ai-agents/{agentId:\\d+}/widgets")
     ResponseEntity<ResponseData<List<WidgetRow>>> listByAgent(@CurrentCompanyId long companyId,
                                                                @PathVariable long agentId);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'OPERATOR')")
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/widgets/{widgetId:\\d+}")
     ResponseEntity<ResponseData<WidgetRow>> get(@CurrentCompanyId long companyId,
                                                  @PathVariable long widgetId);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'OPERATOR')")
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PutMapping("/widgets/{widgetId:\\d+}")
     ResponseEntity<ResponseData<WidgetRow>> update(@CurrentCompanyId long companyId,
                                                     @PathVariable long widgetId,
                                                     @Valid @RequestBody UpdateWidgetRequest request);
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'OPERATOR')")
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @DeleteMapping("/widgets/{widgetId:\\d+}")
     ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId,
                                                @PathVariable long widgetId);

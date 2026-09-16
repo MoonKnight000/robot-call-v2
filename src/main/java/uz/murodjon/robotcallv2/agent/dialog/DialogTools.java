@@ -5,13 +5,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Tools the LLM can call to drive the FSM and record outcomes (PROJECT.md §4.2, MASTER_ROADMAP.md §5).
@@ -32,6 +39,39 @@ public class DialogTools {
             "sendSmsPaymentLink", "requestPaymentExtension", "endCall", "sendDtmfTones"
     );
 
+    /**
+     * Tools every call gets whatever its scenario declares: the one that drives the FSM,
+     * and the four ways out of a conversation that should not continue — hand the caller
+     * to a person, mark the wrong person, blacklist the number, hang up.
+     *
+     * <p>A scenario cannot opt out of these, and both pipelines have to agree on that. A
+     * model that is only given the outcome tools its scenario happens to declare reaches
+     * for one of those when it should be reaching for an exit: on a recorded realtime
+     * call the caller said "alo", and the only outcome tool on offer was
+     * recordPaymentPromise.
+     */
+    static final Set<String> ALWAYS_AVAILABLE_TOOL_NAMES = Set.of(
+            "transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall"
+    );
+
+    /**
+     * One SMS a call, counted across sendMidCallSms and sendSmsPaymentLink on the counter
+     * company tools use too — hence a key no company tool is expected to be named.
+     */
+    static final String SMS_BUDGET_KEY = "sms:perCall";
+
+    /** Three Latin-script segments: anything longer is an essay the model wrote, not an SMS. */
+    static final int MAX_SMS_CHARS = 480;
+
+    /** The call fact a payment link arrives under, from the contact's data or the CRM. */
+    static final String PAYMENT_LINK_FACT = "paymentLink";
+
+    private static final String PAYMENT_LINK_SMS_TEXT = "To'lov havolasi: ";
+
+    /** The slot in {@code midCallSmsTemplate} the model's text goes into: {@code {{text}}}. */
+    static final String SMS_TEXT_PLACEHOLDER = "text";
+    private static final Pattern SMS_TEXT_SLOT = Pattern.compile("\\{\\{\\s*" + SMS_TEXT_PLACEHOLDER + "\\s*[|}]");
+
     private final DialogOutcomeSink session;
 
     public DialogTools(DialogOutcomeSink session) {
@@ -45,7 +85,7 @@ public class DialogTools {
             // (SystemPromptFactory#turnAnnex). Nothing to record and nothing to warn about.
             return;
         }
-        // Text carried in a tool argument never passed through TurnRunner.textOf, so this
+        // Text carried in a tool argument never passed through LlmTurnClient.extractText, so this
         // is the second and last door model text comes in by.
         String speakable = SpeechSanitizer.stripUnspeakableCharacters(reply);
         if (!SpeechSanitizer.isUnspeakable(speakable)) {
@@ -58,10 +98,10 @@ public class DialogTools {
     /**
      * The stages the scenario lets the current one move to, or empty when it names none.
      *
-     * <p>Checked rather than trusted, because a skipped stage is skipped work: a call
-     * that jumps GREETING straight to DEBT_NOTICE never verified it had the right
-     * person on the line. The prompt lists the transitions either way, but a rule that
-     * lives only in the prompt is one the model can talk itself out of.
+     * <p>Checked rather than trusted: a jump past these is only taken along the scenario's
+     * own graph ({@link #pathTo}), so a stage the call cannot reach from here is still
+     * refused. The stages walked on the way are not verified as done — the prompt still
+     * asks for each one to be served.
      */
     private List<String> allowedTransitions() {
         StageDef stage = session.scenario() == null ? null : session.scenario().findStage(session.state());
@@ -69,11 +109,60 @@ public class DialogTools {
         return allowed == null ? List.of() : allowed;
     }
 
+    /**
+     * The stages from the current one to {@code target} along the scenario's transitions,
+     * the shortest way — {@code target} last, the current stage left out — or null when
+     * the graph does not lead there.
+     */
+    private List<String> pathTo(String target) {
+        ScenarioDefinition scenario = session.scenario();
+        String start = session.state();
+        if (scenario == null || start == null || target == null) {
+            return null;
+        }
+        Map<String, String> cameFrom = new HashMap<>();
+        cameFrom.put(start, null);
+        Deque<String> queue = new ArrayDeque<>(List.of(start));
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            StageDef stage = scenario.findStage(current);
+            if (stage == null || stage.allowedTransitions() == null) {
+                continue;
+            }
+            for (String next : stage.allowedTransitions()) {
+                if (cameFrom.containsKey(next)) {
+                    continue;
+                }
+                cameFrom.put(next, current);
+                if (next.equals(target)) {
+                    Deque<String> path = new ArrayDeque<>();
+                    for (String at = target; !at.equals(start); at = cameFrom.get(at)) {
+                        path.addFirst(at);
+                    }
+                    return new ArrayList<>(path);
+                }
+                queue.add(next);
+            }
+        }
+        return null;
+    }
+
     @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
     public String transitionTo(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                @ToolParam(description = "keyingi bosqich id'si") String nextStage) {
         List<String> allowed = allowedTransitions();
-        if (!allowed.isEmpty() && !allowed.contains(nextStage)) {
+        List<String> walked = List.of();
+        // A refused jump strands the call: on a recorded realtime call every jump was
+        // refused, each refusal was heard as a repeat, the call never left GREETING, and the
+        // caller's payment promise was refused along with it. The stages the graph leads
+        // through are walked instead; a stage it does not lead to is still refused.
+        boolean jump = !allowed.isEmpty() && !allowed.contains(nextStage);
+        List<String> path = jump ? pathTo(nextStage) : null;
+        if (path != null) {
+            walked = path.subList(0, path.size() - 1);
+            log.warn("[{}] transition {} -> {} walked the skipped stages {}",
+                    session.channelId(), session.state(), nextStage, walked);
+        } else if (jump) {
             log.warn("[{}] refused transition {} -> {}", session.channelId(), session.state(), nextStage);
             // The last sentence is the safety net for a realtime call, where the model may
             // already be speaking when the refusal lands: without it, stepping into the
@@ -90,10 +179,11 @@ public class DialogTools {
         // the only place the model is told again — and on a recorded call it spent three
         // turns guessing stage names it was not allowed to reach.
         List<String> next = allowedTransitions();
+        String moved = "Holat " + nextStage + " ga o'tkazildi"
+                + (walked.isEmpty() ? "" : " (oraliq bosqichlar: " + String.join(", ", walked) + ")");
         return next.isEmpty()
-                ? "Holat " + nextStage + " ga o'tkazildi"
-                : "Holat " + nextStage + " ga o'tkazildi. Bu bosqichdan keyin faqat "
-                        + String.join(", ", next) + " ga o'tish mumkin.";
+                ? moved
+                : moved + ". Bu bosqichdan keyin faqat " + String.join(", ", next) + " ga o'tish mumkin.";
     }
 
     @Tool(description = "Mijoz ANIQ KUNni o'zi aytganda chaqiriladi (masalan \"10-oktabr\", \"ertaga\"). "
@@ -156,18 +246,87 @@ public class DialogTools {
         return "Operatorga o'tkazish so'raldi. Mijoz bilan xayrlashing.";
     }
 
-    @Tool(description = "Mijozga suhbat davomida real-vaqtda SMS xabar, havola yoki kod yuboradi")
+    @Tool(description = "Mijozga suhbat davomida real-vaqtda SMS xabar, havola yoki kod yuboradi. "
+            + "Faqat shu mijozning raqamiga, qo'ng'iroq davomida bir marta, ko'pi bilan " + MAX_SMS_CHARS + " belgi")
     public String sendMidCallSms(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                 @ToolParam(description = "Yuboriladigan SMS matni yoki havola") String text) {
+                                 @ToolParam(description = "Yuboriladigan SMS matni yoki havola. Agentning SMS shabloni "
+                                         + "bo'lsa — butun xabar emas, faqat shablonga qo'yiladigan qism (havola yoki kod)",
+                                         required = false) String text) {
+        String template = midCallSmsTemplate();
+        if (template == null) {
+            // Without a template the model would write the whole message itself, in words
+            // nobody reviewed — and a gateway delivers only registered templates anyway.
+            return "XATO: bu agentda SMS shabloni yo'q, SMS yuborib bo'lmaydi. "
+                    + "Mijozga hozir SMS yubora olmasligingizni ayting.";
+        }
+        if (SMS_TEXT_SLOT.matcher(template).find() && (text == null || text.isBlank())) {
+            return "XATO: SMS shablonga qo'yiladigan havola yoki kodni text parametrida bering.";
+        }
+        String body = renderSmsTemplate(template, text);
+        String refusal = sendGuardedSms(body);
+        if (refusal != null) {
+            return refusal;
+        }
         recordReply(reply);
-        session.triggerMidCallSms(text);
         session.recordOutcome("midCallSmsSent", true);
-        session.recordOutcome("midCallSmsText", text);
-        log.info("[{}] mid-call SMS triggered: text={}", session.channelId(), text);
-        return "SMS mijozning telefoniga darhol yuborildi. Mijozga SMS yuborilganini bildiring.";
+        session.recordOutcome("midCallSmsText", body.trim());
+        log.info("[{}] mid-call SMS sent ({} chars)", session.channelId(), body.trim().length());
+        return "SMS mijozning telefoniga yuborildi. Mijozga SMS yuborilganini bildiring.";
     }
 
-    @Tool(description = "Telefonni ko'targan odam qarzdor emasligi aniqlanganda chaqiriladi")
+    /** The agent's {@code midCallSmsTemplate}, or null when it has none — and then no mid-call SMS is sent. */
+    private String midCallSmsTemplate() {
+        String template = session.agent() != null ? session.agent().callBehaviour().midCallSmsTemplate() : null;
+        return template == null || template.isBlank() ? null : template.trim();
+    }
+
+    /**
+     * The SMS a template makes. SMS gateways deliver only texts matching a template
+     * registered with them (Eskiz, in production), so with a template the model no longer
+     * writes the message: it fills the template's {@code {{text}}} slot — a link, a code —
+     * and the call's facts fill the rest ({@code {{debtAmount}}}). A template without the
+     * slot is sent as it stands, whatever the model wrote.
+     */
+    private String renderSmsTemplate(String template, String text) {
+        Map<String, Object> values = new HashMap<>();
+        CallContext context = session.context();
+        if (context != null && context.facts() != null) {
+            values.putAll(context.facts());
+        }
+        values.put(SMS_TEXT_PLACEHOLDER, text == null ? "" : text.trim());
+        return PromptTemplateEngine.render(template, values);
+    }
+
+    /**
+     * Every SMS the model asks for goes through here. The number is not a parameter at all:
+     * the session sends to the number this call is with, so no argument can address anyone
+     * else. The checks run in the order that keeps a malformed request from spending the
+     * call's one SMS; a send that failed does spend it — a timed-out request may still have
+     * been delivered, and a retry would be the customer's second copy.
+     *
+     * @return the refusal to hand back to the model, or {@code null} once the gateway took the SMS
+     */
+    private String sendGuardedSms(String text) {
+        if (text == null || text.isBlank()) {
+            return "XATO: SMS matni bo'sh. Yuboriladigan matnni yozing.";
+        }
+        String body = text.trim();
+        if (body.length() > MAX_SMS_CHARS) {
+            return "XATO: SMS matni " + body.length() + " belgi, ko'pi bilan " + MAX_SMS_CHARS
+                    + " bo'lishi mumkin. Qisqaroq matn bilan qayta chaqiring.";
+        }
+        if (session.countToolCall(SMS_BUDGET_KEY) > 1) {
+            return "XATO: bu qo'ng'iroqda SMS allaqachon yuborilgan, ikkinchisi yuborilmaydi. "
+                    + "Mijozga oldingi SMSni ko'rishini ayting.";
+        }
+        if (!session.triggerMidCallSms(body)) {
+            log.warn("[{}] SMS not sent ({} chars)", session.channelId(), body.length());
+            return "XATO: SMS yuborilmadi. Mijozga SMS yuborildi demang, hozir yubora olmasligingizni ayting.";
+        }
+        return null;
+    }
+
+    @Tool(description = "Telefonni ko'targan odam qo'ng'iroq qilingan shaxs emasligi aniqlanganda chaqiriladi")
     public String recordWrongPerson(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                     @ToolParam(description = "tafsilot") String detail) {
         recordReply(reply);
@@ -189,11 +348,42 @@ public class DialogTools {
     @Tool(description = "Mijoz to'lov havolasini yoki rekvizitlarni SMS orqali yuborishni so'raganda chaqiriladi")
     public String sendSmsPaymentLink(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                      @ToolParam(description = "SMS xabar turi yoki qo'shimcha matn", required = false) String note) {
-        recordReply(reply);
         session.recordOutcome("sendSmsRequested", true);
         session.recordOutcome("smsNote", note);
-        log.info("[{}] SMS payment link requested: note={}", session.channelId(), note);
-        return "To'lov havolasi SMS orqali yuboriladigan bo'ldi.";
+        String link = findPaymentLink(session.context());
+        if (link == null) {
+            // No link on this call to send from here: the request stays recorded for whoever
+            // follows up after the call, as it always was.
+            recordReply(reply);
+            log.info("[{}] SMS payment link requested, none on this call", session.channelId());
+            return "To'lov havolasi SMS orqali yuboriladigan bo'ldi.";
+        }
+        // The model decides when, never what: the text is fixed and the link is the call's own.
+        String refusal = sendGuardedSms(PAYMENT_LINK_SMS_TEXT + link);
+        if (refusal != null) {
+            return refusal;
+        }
+        recordReply(reply);
+        session.recordOutcome("paymentLinkSmsSent", true);
+        log.info("[{}] payment link SMS sent", session.channelId());
+        return "To'lov havolasi mijozning telefoniga SMS orqali yuborildi. Mijozga SMSni tekshirishni ayting.";
+    }
+
+    /**
+     * The call's payment link, when its {@value #PAYMENT_LINK_FACT} fact is a whole web
+     * address. A fact longer than {@link CallContext} keeps arrives cut and ending in "…",
+     * and half a link is worse than none.
+     */
+    private static String findPaymentLink(CallContext context) {
+        Object fact = context != null ? context.fact(PAYMENT_LINK_FACT) : null;
+        if (!(fact instanceof String value)) {
+            return null;
+        }
+        String link = value.trim();
+        boolean webAddress = (link.startsWith("https://") || link.startsWith("http://"))
+                && !link.endsWith("…")
+                && link.chars().noneMatch(Character::isWhitespace);
+        return webAddress ? link : null;
     }
 
     @Tool(description = "Mijoz to'lov muddatini bir necha kunga uzaytirishni (kechiktirishni) so'raganda chaqiriladi")

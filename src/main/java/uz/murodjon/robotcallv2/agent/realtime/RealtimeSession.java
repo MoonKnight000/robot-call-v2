@@ -34,6 +34,18 @@ public interface RealtimeSession {
     void sendUserText(String text);
 
     /**
+     * Add {@code text} to the conversation without handing the turn to the engine: it
+     * shapes the engine's next answer instead of getting one of its own. For guidance the
+     * caller must not hear answered — a supervisor's whisper.
+     *
+     * <p>Falls back to {@link #sendUserText} for an engine that has no way to add context
+     * quietly; that engine answers it straight away.
+     */
+    default void sendContext(String text) {
+        sendUserText(text);
+    }
+
+    /**
      * Answer a tool call the engine made ({@link RealtimeListener#onToolCall}). The
      * engine resumes speaking once it has the result, so a slow tool is heard as a
      * silence — run it off the pipeline's threads and reply as soon as it returns.
@@ -42,6 +54,20 @@ public interface RealtimeSession {
      * @param result what the tool returned, as the engine should see it
      */
     void sendToolResult(String callId, String result);
+
+    /**
+     * Tell the engine how much of the reply it was cut off in actually reached the caller.
+     *
+     * <p>An engine generates speech faster than it is played, so when the caller barges in
+     * its own history holds the whole reply — including the part nobody heard, which it
+     * will later refer back to ("as I said…"). Engines that keep that history on the
+     * server and accept a correction (OpenAI's {@code conversation.item.truncate}) are told
+     * here; those that do not, need not do anything.
+     *
+     * @param heardMs milliseconds of the interrupted reply that were played to the caller
+     */
+    default void truncatePlayback(long heardMs) {
+    }
 
     /**
      * End the conversation and release the connection. Safe to call more than once —

@@ -6,158 +6,112 @@ import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentLimits;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.widget.application.port.output.WidgetCallCounterPort;
+import uz.murodjon.robotcallv2.widget.domain.entity.WidgetCallBooking;
+import uz.murodjon.robotcallv2.widget.domain.enums.WidgetBookingResult;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+/**
+ * The gate decides which limits a widget call is booked against and what a refusal is;
+ * the counting itself is one atomic step in the store behind {@link WidgetCallCounterPort}.
+ */
 class WidgetCallGateTest {
 
     private static final ZoneId TASHKENT = ZoneId.of("Asia/Tashkent");
     private static final Instant NOON = Instant.parse("2026-09-07T07:00:00Z");
 
+    private final WidgetCallCounterPort counter = mock(WidgetCallCounterPort.class);
+
     @Test
-    void anAgentWithNoLimitsStillMeetsTheDefaultCeiling() {
-        WidgetCallGate gate = new WidgetCallGate(Clock.fixed(NOON, TASHKENT));
-        AiAgent agent = agentWith(null, null);
+    void anAgentWithNoLimitsIsBookedAgainstTheDefaultCeiling() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.BOOKED);
 
-        // Unset is not unlimited on a public endpoint: the fifth concurrent session is
-        // the last one the default ceiling lets through.
-        for (int i = 0; i < 5; i++) {
-            gate.checkCallAllowed(agent);
-            gate.recordBooking(agent, "session-" + i);
-        }
+        // Unset is not unlimited on a public endpoint.
+        WidgetCallBooking booking = gateAt(NOON).reserve(agentWith(null, null));
 
-        assertThatThrownBy(() -> gate.checkCallAllowed(agent))
+        assertThat(booking.agentId()).isEqualTo(7L);
+        assertThat(booking.concurrentLimit()).isEqualTo(5);
+        assertThat(booking.dailyLimit()).isEqualTo(200);
+        assertThat(booking.reservationId()).isNotBlank();
+        verify(counter).book(booking);
+    }
+
+    @Test
+    void theAgentsOwnLimitsWinOverTheDefault() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.BOOKED);
+
+        WidgetCallBooking booking = gateAt(NOON).reserve(agentWith(8, 50));
+
+        assertThat(booking.concurrentLimit()).isEqualTo(8);
+        assertThat(booking.dailyLimit()).isEqualTo(50);
+    }
+
+    @Test
+    void theDayIsTheAgentsCalendarDayInTashkent() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.BOOKED);
+
+        // 20:00 UTC is already one in the morning of the next day in Tashkent.
+        WidgetCallBooking booking = gateAt(Instant.parse("2026-09-07T20:00:00Z")).reserve(agentWith(null, null));
+
+        assertThat(booking.day()).isEqualTo(LocalDate.of(2026, 9, 8));
+    }
+
+    @Test
+    void fullLinesAreRefusedAsBusy() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.CONCURRENT_LIMIT_REACHED);
+
+        assertThatThrownBy(() -> gateAt(NOON).reserve(agentWith(2, null)))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("5");
+                .hasMessageContaining("2 concurrent calls");
     }
 
     @Test
-    void theAgentsOwnLimitWinsOverTheDefault() {
-        WidgetCallGate gate = new WidgetCallGate(Clock.fixed(NOON, TASHKENT));
-        AiAgent agent = agentWith(8, null);
+    void aSpentDayIsRefused() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.DAILY_LIMIT_REACHED);
 
-        for (int i = 0; i < 8; i++) {
-            gate.checkCallAllowed(agent);
-            gate.recordBooking(agent, "session-" + i);
-        }
-
-        assertThatThrownBy(() -> gate.checkCallAllowed(agent))
+        assertThatThrownBy(() -> gateAt(NOON).reserve(agentWith(null, 3)))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("8");
+                .hasMessageContaining("daily call limit (3)");
     }
 
     @Test
-    void theConcurrentLimitRefusesTheCallAfterIt() {
-        WidgetCallGate gate = new WidgetCallGate(Clock.fixed(NOON, TASHKENT));
-        AiAgent agent = agentWith(2, null);
+    void anUnreachableCounterRefusesTheCallInsteadOfLettingItThrough() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.UNAVAILABLE);
 
-        gate.checkCallAllowed(agent);
-        gate.recordBooking(agent, "a");
-        gate.checkCallAllowed(agent);
-        gate.recordBooking(agent, "b");
-
-        assertThatThrownBy(() -> gate.checkCallAllowed(agent))
-                .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("2");
+        assertThatThrownBy(() -> gateAt(NOON).reserve(agentWith(null, null)))
+                .isInstanceOf(ExternalServiceException.class)
+                .hasMessageContaining("call-limit store is unavailable");
     }
 
     @Test
-    void anAbandonedSessionStopsHoldingItsLineAfterTheTimeout() {
-        MutableClock clock = new MutableClock(NOON);
-        WidgetCallGate gate = new WidgetCallGate(clock);
-        AiAgent agent = agentWith(1, null);
+    void aBookingThatWasNotUsedIsHandedBack() {
+        when(counter.book(any())).thenReturn(WidgetBookingResult.BOOKED);
+        WidgetCallGate gate = gateAt(NOON);
+        WidgetCallBooking booking = gate.reserve(agentWith(null, 1));
 
-        gate.checkCallAllowed(agent);
-        gate.recordBooking(agent, "never-dialled-in");
-        assertThatThrownBy(() -> gate.checkCallAllowed(agent)).isInstanceOf(ConflictException.class);
+        gate.release(booking);
 
-        // Past the five minutes Asterisk keeps the pending session for, the slot is free:
-        // that browser can no longer dial in with it.
-        clock.advance(Duration.ofMinutes(6));
-        assertThatCode(() -> gate.checkCallAllowed(agent)).doesNotThrowAnyException();
+        verify(counter).release(booking);
     }
 
-    @Test
-    void theDailyLimitRefusesTheCallAfterIt() {
-        WidgetCallGate gate = new WidgetCallGate(Clock.fixed(NOON, TASHKENT));
-        AiAgent agent = agentWith(null, 3);
-
-        for (int i = 0; i < 3; i++) {
-            gate.checkCallAllowed(agent);
-            gate.recordBooking(agent, "session-" + i);
-        }
-
-        assertThatThrownBy(() -> gate.checkCallAllowed(agent))
-                .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("3");
-    }
-
-    @Test
-    void theDailyCountResetsOnTheAgentsOwnCalendarDay() {
-        MutableClock clock = new MutableClock(NOON);
-        WidgetCallGate gate = new WidgetCallGate(clock);
-        AiAgent agent = agentWith(null, 1);
-
-        gate.checkCallAllowed(agent);
-        gate.recordBooking(agent, "yesterday");
-        assertThatThrownBy(() -> gate.checkCallAllowed(agent)).isInstanceOf(ConflictException.class);
-
-        clock.advance(Duration.ofDays(1));
-        assertThatCode(() -> gate.checkCallAllowed(agent)).doesNotThrowAnyException();
-    }
-
-    @Test
-    void aBookingThatNeverHappenedDoesNotSpendTheAllowance() {
-        WidgetCallGate gate = new WidgetCallGate(Clock.fixed(NOON, TASHKENT));
-        AiAgent agent = agentWith(null, 1);
-
-        // The check passed but the session was never booked — a scenario that failed to
-        // resolve, say. The allowance must be untouched.
-        gate.checkCallAllowed(agent);
-        gate.checkCallAllowed(agent);
-
-        assertThatCode(() -> {
-            gate.checkCallAllowed(agent);
-            gate.recordBooking(agent, "the-one-that-worked");
-        }).doesNotThrowAnyException();
+    private WidgetCallGate gateAt(Instant now) {
+        return new WidgetCallGate(Clock.fixed(now, TASHKENT), counter);
     }
 
     private static AiAgent agentWith(Integer concurrent, Integer daily) {
         return AiAgentFixtures.agent(7L, 1L, 3L, "uz-UZ", "nigora")
                 .withLimits(new AiAgentLimits(null, null, null, concurrent, daily));
-    }
-
-    /** A clock the test moves by hand — the gate's whole job is about elapsed time. */
-    private static final class MutableClock extends Clock {
-        private Instant now;
-
-        private MutableClock(Instant now) {
-            this.now = now;
-        }
-
-        private void advance(Duration by) {
-            now = now.plus(by);
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return TASHKENT;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return now;
-        }
     }
 }

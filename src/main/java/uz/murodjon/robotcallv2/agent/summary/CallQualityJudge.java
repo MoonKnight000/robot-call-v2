@@ -15,11 +15,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 /**
  * Scores finished calls against a rubric, so a change to the prompt, the model or the
@@ -30,13 +33,13 @@ import java.util.concurrent.ThreadLocalRandom;
  * {@code call_result} and shown to people, so it must keep working exactly as it does. This
  * one exists to judge <em>us</em>: it asks different questions ("did the agent state a
  * figure the facts do not support?", "did it answer in the wrong language?"), it is
- * sampled rather than run on everything, and its answer goes to the metrics and the log
- * instead of the customer's record. Mixing the two would make every future change to the
- * QA rubric a change to what the CRM receives.
+ * sampled rather than run on everything, and its answer goes to the metrics, the log and
+ * {@code call_quality} (UNIVERSAL-OPERATOR-PLAN D.1) — never to the customer's record. Mixing
+ * the two would make every future change to the QA rubric a change to what the CRM receives.
  *
- * <p>Off by default: it is a second LLM call per call, and it buys nothing on a deployment
- * nobody is watching. Turn it on around a change, read
- * {@code voice.qa.score} and {@code voice.qa.flags}, and turn the sample rate down again.
+ * <p>On by default since D.1, every call sampled: the review inbox and the daily insight job
+ * read what it finds. It is a second LLM call per call — once its flags are trusted, lower
+ * {@code QUALITY_SAMPLE_RATE} (the plan's target is 0.2).
  *
  * <p>Best-effort throughout — a failed or unparseable verdict is logged and dropped. QA
  * that can break a call is worse than no QA.
@@ -60,6 +63,12 @@ public class CallQualityJudge {
               javob berdimi (true/false).
             - outcomeCorrect: qo'ng'iroq yozilgan yakun (disposition) transkriptdagi haqiqiy
               holatga mos keladimi (true/false).
+            - goalReached: qo'ng'iroq quyida berilgan MAQSADga erishdimi (true/false).
+            - unansweredQuestion: mijoz savol berdi-yu, agent unga javob bera olmadi,
+              "bilmayman" dedi yoki javobni aylanib o'tdi (true/false).
+            - toolMisuse: agent tool bilan bajariladigan ishni (buyurtma, bron, ma'lumotni
+              tekshirish) tool'siz bajargandek gapirdi, natijani o'zi to'qidi yoki kerakli
+              ma'lumotni so'ramasdan ishni yakunladi (true/false). Transkriptda dalil bo'lmasa false.
             - note: eng jiddiy kamchilik haqida bitta jumla (o'zbekcha). Kamchilik bo'lmasa null.
             """;
 
@@ -106,7 +115,28 @@ public class CallQualityJudge {
      * @return the verdict, or {@code null} when scoring is off, not sampled, or failed
      */
     public QualityVerdict judge(String transcript, ScenarioDefinition scenario, Disposition disposition) {
-        if (chatClient == null || transcript == null || transcript.isBlank() || !sampled()) {
+        if (!sampled()) {
+            return null;
+        }
+        QualityVerdict verdict = score(transcript, scenario, disposition);
+        if (verdict != null) {
+            publish(verdict);
+        }
+        return verdict;
+    }
+
+    /**
+     * Scores {@code transcript} every time and leaves the production QA metrics alone: for
+     * an agent evaluation (NEXT-PLAN A.2), whose simulated calls are not calls.
+     *
+     * @return the verdict, or {@code null} when scoring is off or failed
+     */
+    public QualityVerdict evaluate(String transcript, ScenarioDefinition scenario, Disposition disposition) {
+        return score(transcript, scenario, disposition);
+    }
+
+    private QualityVerdict score(String transcript, ScenarioDefinition scenario, Disposition disposition) {
+        if (chatClient == null || transcript == null || transcript.isBlank()) {
             return null;
         }
         try {
@@ -133,11 +163,7 @@ public class CallQualityJudge {
                     .user("QO'NG'IROQ YAKUNI: " + disposition + "\n\nTRANSKRIPT:\n" + transcript)
                     .call()
                     .entity(new MapOutputConverter());
-            QualityVerdict verdict = toVerdict(raw);
-            if (verdict != null) {
-                publish(verdict);
-            }
-            return verdict;
+            return toVerdict(raw);
         } catch (Exception e) {
             log.warn("Call quality scoring failed: {}", e.getMessage());
             return null;
@@ -149,12 +175,41 @@ public class CallQualityJudge {
         return sampleRate >= 1.0 || (sampleRate > 0 && ThreadLocalRandom.current().nextDouble() < sampleRate);
     }
 
-    /** The scenario's own rules, so the judge marks against the same ones the agent was given. */
+    /**
+     * What the agent is marked against: the scenario's own rules — the same ones it was
+     * given — its goal, and the tools it had, since a tool it never reached for is only a
+     * miss if it had one.
+     */
     private static String rules(ScenarioDefinition scenario) {
-        if (scenario == null || scenario.guardrails() == null || scenario.guardrails().isEmpty()) {
+        if (scenario == null) {
             return "";
         }
-        return "\nSSENARIY QOIDALARI:\n- " + String.join("\n- ", scenario.guardrails()) + '\n';
+        StringBuilder sb = new StringBuilder();
+        if (scenario.guardrails() != null && !scenario.guardrails().isEmpty()) {
+            sb.append("\nSSENARIY QOIDALARI:\n- ").append(String.join("\n- ", scenario.guardrails())).append('\n');
+        }
+        sb.append("\nMAQSAD: ").append(goalOf(scenario)).append('\n');
+        if (scenario.tools() != null && !scenario.tools().isEmpty()) {
+            sb.append("AGENTDAGI TOOL'LAR: ")
+                    .append(scenario.tools().stream().map(ToolDef::name).collect(Collectors.joining(", ")))
+                    .append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * The goal field when the scenario names one (UNIVERSAL-OPERATOR-PLAN A.4), otherwise
+     * the role it gave the agent — the only statement of purpose such a scenario has.
+     */
+    private static String goalOf(ScenarioDefinition scenario) {
+        if (scenario.outcomeSchema() != null) {
+            for (OutcomeField field : scenario.outcomeSchema()) {
+                if (field.goal()) {
+                    return field.name() + (field.description() != null ? " — " + field.description() : "");
+                }
+            }
+        }
+        return scenario.rolePrompt();
     }
 
     private void publish(QualityVerdict verdict) {
@@ -170,6 +225,12 @@ public class CallQualityJudge {
         }
         if (!verdict.outcomeCorrect()) {
             metrics.qualityFlag("outcome");
+        }
+        if (verdict.unansweredQuestion()) {
+            metrics.qualityFlag("unanswered");
+        }
+        if (verdict.toolMisuse()) {
+            metrics.qualityFlag("tool_misuse");
         }
         // A guardrail violation is the one finding that is never acceptable, so it is
         // logged where an alert can pick it up rather than as one more scored call.
@@ -194,6 +255,9 @@ public class CallQualityJudge {
                 // Absent means the judge said nothing about it; treating that as "wrong"
                 // would flag every call whose JSON came back short.
                 !Boolean.FALSE.equals(raw.get("outcomeCorrect")),
+                Boolean.TRUE.equals(raw.get("goalReached")),
+                Boolean.TRUE.equals(raw.get("unansweredQuestion")),
+                Boolean.TRUE.equals(raw.get("toolMisuse")),
                 raw.get("note") == null ? null : raw.get("note").toString());
     }
 

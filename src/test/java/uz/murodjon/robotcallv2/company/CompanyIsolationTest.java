@@ -16,7 +16,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
-import uz.murodjon.robotcallv2.company.application.service.CurrentCompany;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
@@ -25,18 +25,21 @@ import java.util.EnumSet;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies the {@code company_id} filtering added across the repository layer
- * (ROADMAP B.2) actually excludes another company's rows, rather than only compiling.
+ * Verifies the {@code company_id} filtering across the repository layer (ROADMAP B.2)
+ * actually excludes another company's rows, rather than only compiling.
  *
- * <p>{@link CurrentCompany} in this process always resolves to the single configured
- * default (id 1 — see {@code voice-agent.company.default-id}), since there is no
- * per-request resolution yet. A second company's data is therefore seeded directly
- * with raw JDBC here, standing in for "some other tenant's row that must never surface
- * through this instance's repositories."
+ * <p>The company is an explicit argument of every repository call — it comes from the
+ * request's token, never from a thread-local — so "this instance's" tenant is simply
+ * the one passed in: {@value #OWN_COMPANY_ID}, the default R__seed_data creates. A second
+ * company's data is seeded with raw JDBC, standing in for "some other tenant's row that
+ * must never surface through a call made for company 1."
  */
 @SpringBootTest
 @Testcontainers
 class CompanyIsolationTest {
+
+    private static final long OWN_COMPANY_ID = 1L;
+    private static final long OTHER_COMPANY_ID = 2L;
 
     @Container
     @ServiceConnection
@@ -60,52 +63,61 @@ class CompanyIsolationTest {
     JdbcTemplate jdbc;
 
     private long otherCompanyCampaignId;
-    private long scenarioId;
+    private long ownAgentId;
 
     @BeforeEach
     void setUp() {
-        jdbc.update("INSERT INTO company(id, name) VALUES (2, 'Other') ON CONFLICT (id) DO NOTHING");
-        scenarioId = jdbc.queryForObject(
-                "SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active", Long.class);
+        jdbc.update("INSERT INTO company(id, name) VALUES (?, 'Other') ON CONFLICT (id) DO NOTHING", OTHER_COMPANY_ID);
+        // A campaign speaks as an agent (ai_agent_id NOT NULL); nothing seeds one.
+        ownAgentId = agentOf(OWN_COMPANY_ID);
+        long otherAgentId = agentOf(OTHER_COMPANY_ID);
         otherCompanyCampaignId = jdbc.queryForObject(
-                "INSERT INTO campaign(name, type, status, goal_prompt, script_config, company_id, scenario_id) "
-                        + "VALUES ('other-company-campaign', 'DEBT_COLLECTION', 'ACTIVE', '', '{}'::jsonb, 2, ?) "
+                "INSERT INTO campaign(company_id, ai_agent_id, name, type, status, script_config) "
+                        + "VALUES (?, ?, 'other-company-campaign', 'DEBT_COLLECTION', 'ACTIVE', '{}'::jsonb) "
                         + "RETURNING id",
-                Long.class, scenarioId);
+                Long.class, OTHER_COMPANY_ID, otherAgentId);
+    }
+
+    private long agentOf(long companyId) {
+        return jdbc.queryForObject(
+                "INSERT INTO ai_agent(company_id, name) VALUES (?, 'isolation-agent') RETURNING id",
+                Long.class, companyId);
+    }
+
+    private Campaign ownCampaign(String name) {
+        return new Campaign(0, name, CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
+                LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
+                3, 24, 5, 0, ownAgentId, OWN_COMPANY_ID, null, RecurrenceType.ONCE, null, null, false, null);
     }
 
     @Test
     void anotherCompanysCampaignIsInvisibleById() {
-        assertThat(campaigns.find(otherCompanyCampaignId)).isNull();
+        assertThat(campaigns.find(OWN_COMPANY_ID, otherCompanyCampaignId)).isNull();
     }
 
     @Test
     void anotherCompanysCampaignIsExcludedFromTheList() {
-        long ownId = campaigns.create(new Campaign(0, "my-campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
-                "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
-                3, 24, 5, null, 0, scenarioId, 0, true, null));
+        long ownId = campaigns.create(OWN_COMPANY_ID, ownCampaign("my-campaign"));
 
-        var page = campaigns.findAll(new CampaignFilter(null, 500, null, null));
+        var page = campaigns.findAll(OWN_COMPANY_ID, new CampaignFilter(null, 500, null, null));
 
         assertThat(page).extracting(Campaign::id).contains(ownId).doesNotContain(otherCompanyCampaignId);
     }
 
     @Test
     void countExcludesAnotherCompanysCampaigns() {
-        long before = campaigns.count();
+        long before = campaigns.count(OWN_COMPANY_ID);
 
-        campaigns.create(new Campaign(0, "counted-campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
-                "goal", "uz-UZ", LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
-                3, 24, 5, null, 0, scenarioId, 0, true, null));
+        campaigns.create(OWN_COMPANY_ID, ownCampaign("counted-campaign"));
 
         // +1 for the campaign just created in *this* company; otherCompanyCampaignId
         // (seeded in setUp under company 2) must not also be reflected here.
-        assertThat(campaigns.count()).isEqualTo(before + 1);
+        assertThat(campaigns.count(OWN_COMPANY_ID)).isEqualTo(before + 1);
     }
 
     @Test
     void updatingAnotherCompanysCampaignIsANoOp() {
-        campaigns.updateStatus(1L, otherCompanyCampaignId, CampaignStatus.PAUSED);
+        campaigns.updateStatus(OWN_COMPANY_ID, otherCompanyCampaignId, CampaignStatus.PAUSED);
 
         String status = jdbc.queryForObject(
                 "SELECT status FROM campaign WHERE id = ?", String.class, otherCompanyCampaignId);

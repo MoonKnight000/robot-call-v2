@@ -38,7 +38,7 @@ public class ScenarioControllerImpl implements ScenarioController {
 
     @Override
     public ResponseEntity<ResponseData<ScenarioRow>> get(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(scenarioUseCase.scenarioRow(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(scenarioUseCase.findScenarioRow(companyId, id)));
     }
 
     @Override

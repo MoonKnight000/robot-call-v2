@@ -4,7 +4,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.aiagent.application.mapper.AiAgentMapper;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.mapper.AiAgentEntityMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.Scenar
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.repository.SipTrunkJpaRepository;
+import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.repository.TtsVoiceJpaRepository;
 
@@ -25,13 +26,13 @@ import java.util.*;
 public class AiAgentRepositoryAdapter implements AiAgentRepository {
 
     private final AiAgentJpaRepository jpaRepository;
-    private final AiAgentMapper mapper;
+    private final AiAgentEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
     private final ScenarioJpaRepository scenarioJpaRepository;
     private final SipTrunkJpaRepository sipTrunkJpaRepository;
     private final TtsVoiceJpaRepository ttsVoiceJpaRepository;
 
-    public AiAgentRepositoryAdapter(AiAgentJpaRepository jpaRepository, AiAgentMapper mapper,
+    public AiAgentRepositoryAdapter(AiAgentJpaRepository jpaRepository, AiAgentEntityMapper mapper,
                                     CompanyJpaRepository companyJpaRepository,
                                     ScenarioJpaRepository scenarioJpaRepository,
                                     SipTrunkJpaRepository sipTrunkJpaRepository,
@@ -58,16 +59,21 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
 
     @Override
     @Transactional
-    public void update(long companyId, long id, AiAgent agent) {
+    public boolean update(long companyId, long id, AiAgent agent) {
         AiAgentEntity entity = jpaRepository.findByIdAndCompanyId(id, companyId).orElse(null);
         if (entity == null) {
-            return;
+            return true;
+        }
+        if (entity.getVersion() != agent.version()) {
+            return false;
         }
         // The scenario is editable here and identity is not: an agent that reads a different
         // script is the same agent with a new script, but it never changes company or id.
+        // An edit landing between this read and the commit is caught by @Version at flush.
         mapper.applyEditableFields(entity, agent, scenarioReference(agent.script().scenarioId()),
                 sipTrunkReferences(agent.sipTrunkIds()), languageVoiceReferences(agent.voice().perLanguage()));
         jpaRepository.save(entity);
+        return true;
     }
 
     @Override
@@ -117,6 +123,11 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
         return jpaRepository.countInboundRoutesUsing(id);
     }
 
+    @Override
+    public boolean existsCallQueueByCompanyIdAndId(long companyId, long queueId) {
+        return jpaRepository.countCallQueuesByCompanyIdAndId(companyId, queueId) > 0;
+    }
+
     /** Null for an agent whose script is inline rather than a stored scenario. */
     private ScenarioEntity scenarioReference(Long scenarioId) {
         return scenarioId != null ? scenarioJpaRepository.getReferenceById(scenarioId) : null;
@@ -154,7 +165,8 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
                 predicates.add(cb.equal(root.get("enabled"), filter.enabled()));
             }
             if (filter.search() != null && !filter.search().isBlank()) {
-                predicates.add(cb.like(cb.lower(root.get("name")), "%" + filter.search().toLowerCase() + "%"));
+                predicates.add(cb.like(cb.lower(root.get("name")),
+                        LikePatterns.buildContainsPattern(filter.search().toLowerCase()), LikePatterns.ESCAPE));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };

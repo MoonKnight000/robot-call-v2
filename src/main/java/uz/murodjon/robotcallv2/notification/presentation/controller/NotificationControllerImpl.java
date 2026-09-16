@@ -31,8 +31,8 @@ public class NotificationControllerImpl implements NotificationController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> updatePreference(UpdatePreferenceRequest r) {
-        notificationUseCase.setPreference(r.type(), r.enabled());
+    public ResponseEntity<ResponseData<Void>> updatePreference(UpdatePreferenceRequest request) {
+        notificationUseCase.setPreference(request.type(), request.enabled());
         return ResponseEntity.ok(ResponseData.ok(null));
     }
 }

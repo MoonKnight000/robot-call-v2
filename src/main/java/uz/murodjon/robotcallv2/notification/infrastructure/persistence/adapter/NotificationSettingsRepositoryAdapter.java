@@ -5,7 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.notification.application.mapper.NotificationSettingsMapper;
+import uz.murodjon.robotcallv2.notification.infrastructure.persistence.mapper.NotificationSettingsEntityMapper;
 import uz.murodjon.robotcallv2.notification.application.port.output.NotificationSettingsRepository;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationChannel;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationMatrixEntry;
@@ -23,12 +23,12 @@ public class NotificationSettingsRepositoryAdapter implements NotificationSettin
 
     private final NotificationChannelJpaRepository notificationChannelJpaRepository;
     private final NotificationMatrixJpaRepository notificationMatrixJpaRepository;
-    private final NotificationSettingsMapper mapper;
+    private final NotificationSettingsEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
 
     public NotificationSettingsRepositoryAdapter(NotificationChannelJpaRepository notificationChannelJpaRepository,
                                                  NotificationMatrixJpaRepository notificationMatrixJpaRepository,
-                                                 NotificationSettingsMapper mapper,
+                                                 NotificationSettingsEntityMapper mapper,
                                                  CompanyJpaRepository companyJpaRepository) {
         this.notificationChannelJpaRepository = notificationChannelJpaRepository;
         this.notificationMatrixJpaRepository = notificationMatrixJpaRepository;
@@ -39,10 +39,10 @@ public class NotificationSettingsRepositoryAdapter implements NotificationSettin
     @Override
     public NotificationSettings findByCompanyId(long companyId) {
         List<NotificationChannel> channelRows = notificationChannelJpaRepository.findByCompanyId(companyId).stream()
-                .map(mapper::channelEntityToDomain)
+                .map(mapper::toNotificationChannel)
                 .toList();
         List<NotificationMatrixEntry> matrixRows = notificationMatrixJpaRepository.findByCompanyId(companyId).stream()
-                .map(mapper::matrixEntityToDomain)
+                .map(mapper::toNotificationMatrixEntry)
                 .toList();
         return new NotificationSettings(channelRows, matrixRows);
     }
@@ -55,16 +55,16 @@ public class NotificationSettingsRepositoryAdapter implements NotificationSettin
         Instant now = Instant.now();
         CompanyEntity company = companyJpaRepository.getReferenceById(companyId);
         for (NotificationChannel row : channelRows) {
-            notificationChannelJpaRepository.save(mapper.channelDomainToEntity(row, company, now));
+            notificationChannelJpaRepository.save(mapper.toNotificationChannelEntity(row, company, now));
         }
         for (NotificationMatrixEntry row : matrixRows) {
-            notificationMatrixJpaRepository.save(mapper.matrixDomainToEntity(row, company));
+            notificationMatrixJpaRepository.save(mapper.toNotificationMatrixEntity(row, company));
         }
         return findByCompanyId(companyId);
     }
 
     @Override
-    public List<NotificationChannel> enabledChannels(long companyId, NotificationType type) {
+    public List<NotificationChannel> findEnabledChannelsByCompanyIdAndType(long companyId, NotificationType type) {
         List<NotificationChannelEntity> configured = notificationChannelJpaRepository.findByCompanyId(companyId);
         return notificationMatrixJpaRepository.findByCompanyIdAndTypeAndEnabledTrue(companyId, type).stream()
                 .flatMap(m -> configured.stream()

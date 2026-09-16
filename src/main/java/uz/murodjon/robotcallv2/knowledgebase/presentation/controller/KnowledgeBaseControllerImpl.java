@@ -26,7 +26,7 @@ public class KnowledgeBaseControllerImpl implements KnowledgeBaseController {
 
     @Override
     public ResponseEntity<ResponseData<KnowledgeItemResponse>> get(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(knowledgeBaseUseCase.get(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(knowledgeBaseUseCase.findItem(companyId, id)));
     }
 
     @Override

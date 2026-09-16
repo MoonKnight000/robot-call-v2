@@ -12,7 +12,8 @@ public interface CampaignVariantUseCase {
 
     CampaignVariantResponse create(long companyId, long campaignId, CampaignVariantCreateRequest request);
 
-    CampaignVariantResponse get(long companyId, long campaignId, long variantId);
+    /** The campaign's variant — 404 when it has none by that id. */
+    CampaignVariantResponse requireVariant(long companyId, long campaignId, long variantId);
 
     CampaignVariantResponse update(long companyId, long campaignId, long variantId,
                                    CampaignVariantUpdateRequest request);
@@ -21,7 +22,7 @@ public interface CampaignVariantUseCase {
 
     List<CampaignVariantResponse> list(long companyId, long campaignId);
 
-    AbTestReportResponse getReport(long companyId, long campaignId);
+    AbTestReportResponse findAbTestReport(long companyId, long campaignId);
 
     /**
      * The variant this call should run, or null when the campaign is not A/B testing.

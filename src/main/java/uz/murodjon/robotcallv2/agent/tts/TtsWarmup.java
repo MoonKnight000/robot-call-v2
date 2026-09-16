@@ -8,18 +8,17 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
-import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
-import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
-import uz.murodjon.robotcallv2.company.application.service.CompanyService;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
+import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
-import uz.murodjon.robotcallv2.voice.application.service.VoiceSettingsService;
+import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.*;
@@ -52,30 +51,27 @@ public class TtsWarmup {
     private final DialogProperties dialogProperties;
     private final TtsRouter router;
     private final TtsCache cache;
-    private final CompanyService companyService;
-    private final CompanyConfigService companyConfigService;
-    private final VoiceSettingsService voiceSettingsService;
-    private final ScenarioService scenarioService;
-    private final CampaignRepository campaignRepository;
+    private final CompanyUseCase companyUseCase;
+    private final CompanyConfigUseCase companyConfigService;
+    private final VoiceSettingsUseCase voiceSettingsUseCase;
+    private final ScenarioUseCase scenarioUseCase;
     private final AiAgentUseCase aiAgentService;
 
     private final Set<Long> warmedCampaigns = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public TtsWarmup(TtsProperties ttsProperties, DialogProperties dialogProperties, TtsRouter router,
-                     TtsCache cache, CompanyService companyService,
-                     CompanyConfigService companyConfigService,
-                     VoiceSettingsService voiceSettingsService, ScenarioService scenarioService,
-                     CampaignRepository campaignRepository,
+                     TtsCache cache, CompanyUseCase companyUseCase,
+                     CompanyConfigUseCase companyConfigService,
+                     VoiceSettingsUseCase voiceSettingsUseCase, ScenarioUseCase scenarioUseCase,
                      AiAgentUseCase aiAgentService) {
         this.ttsProperties = ttsProperties;
         this.dialogProperties = dialogProperties;
         this.router = router;
         this.cache = cache;
-        this.companyService = companyService;
+        this.companyUseCase = companyUseCase;
         this.companyConfigService = companyConfigService;
-        this.voiceSettingsService = voiceSettingsService;
-        this.scenarioService = scenarioService;
-        this.campaignRepository = campaignRepository;
+        this.voiceSettingsUseCase = voiceSettingsUseCase;
+        this.scenarioUseCase = scenarioUseCase;
         this.aiAgentService = aiAgentService;
     }
 
@@ -91,19 +87,16 @@ public class TtsWarmup {
      * Pre-warms TTS audio specifically for a campaign prior to dialing.
      * Bypassed if the campaign's agent runs in REALTIME mode.
      */
-    public void warmUpForCampaign(long companyId, long campaignId) {
+    public void warmUpForCampaign(Campaign campaign) {
         if (!ttsProperties.enabled() || !cache.prewarmEnabled()) {
             return;
         }
-        if (warmedCampaigns.contains(campaignId)) {
+        if (warmedCampaigns.contains(campaign.id())) {
             return;
         }
-        Thread.ofVirtual().name("tts-warmup-camp-" + campaignId).start(() -> {
-            Campaign c = campaignRepository.find(companyId, campaignId);
-            if (c != null) {
-                warmUpForCampaign(c, aiAgentService.requireAgent(c.companyId(), c.aiAgentId()));
-            }
-        });
+        Thread.ofVirtual().name("tts-warmup-camp-" + campaign.id()).start(() ->
+                warmUpForCampaign(campaign,
+                        aiAgentService.requirePublishedAgent(campaign.companyId(), campaign.aiAgentId())));
     }
 
     /**
@@ -130,12 +123,12 @@ public class TtsWarmup {
             return;
         }
 
-        Company company = companyService.findById(campaign.companyId());
+        Company company = companyUseCase.findById(campaign.companyId());
         String companyName = company != null ? company.name() : null;
         CompanyConfig config = companyConfigService.find(campaign.companyId());
-        EffectiveVoiceSettings style = voiceSettingsService.effective(campaign.companyId());
+        EffectiveVoiceSettings style = voiceSettingsUseCase.findEffectiveByCompanyId(campaign.companyId());
 
-        Scenario scenario = scenarioService.findById(campaign.companyId(), agent.script().scenarioId());
+        Scenario scenario = scenarioUseCase.findById(campaign.companyId(), agent.script().scenarioId());
         List<Scenario> scenarios = scenario != null ? List.of(scenario) : List.of();
 
         Set<String> languages = new LinkedHashSet<>();
@@ -194,8 +187,8 @@ public class TtsWarmup {
     }
 
     private Set<Spoken> linesToWarm(String language) {
-        List<Company> companies = companyService.findAllForWarmup();
-        List<Scenario> scenarios = scenarioService.findAllActiveForWarmup();
+        List<Company> companies = companyUseCase.findAllForWarmup();
+        List<Scenario> scenarios = scenarioUseCase.findAllActiveForWarmup();
         if (companies.isEmpty()) {
             return spoken(linesFor(null, language, scenarios, null), EffectiveVoiceSettings.NONE);
         }
@@ -204,7 +197,7 @@ public class TtsWarmup {
             CompanyConfig config = companyConfigService.find(company.id());
             lines.addAll(spoken(linesFor(company.name(), language, scenarios,
                             config != null ? config.disclosureText() : null),
-                    voiceSettingsService.effective(company.id())));
+                    voiceSettingsUseCase.findEffectiveByCompanyId(company.id())));
         }
         return lines;
     }

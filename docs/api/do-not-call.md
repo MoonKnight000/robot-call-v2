@@ -67,6 +67,11 @@ Faqat **faol** (o'chirilmagan) yozuvlarni qaytaradi.
 
 ---
 
+**Raqam formati.** Raqam qanday yozilgani ahamiyatsiz (`+998 90 123-45-67`, `998901234567`,
+`901234567`): qo'shishda E.164 (`+998901234567`) ga normalizatsiya qilinib saqlanadi, tekshirish va
+chiqarishda ham normalizatsiya qilingan va yozilgan shakli bilan qidiriladi. Ilgari ro'yxat faqat
+aynan bir xil yozuvni tanirdi — boshqacha yozilgan raqam ro'yxatdan o'tib ketardi.
+
 ## `POST /api/do-not-call/{phone}/remove` — ro'yxatdan chiqarish
 
 Body yo'q, `phone` — path parametr. Soft-delete qiladi (`removed_at`/
@@ -90,3 +95,4 @@ Body yo'q, `phone` — path parametr. Soft-delete qiladi (`removed_at`/
 
 Hech qachon opt-out bo'lmagan yoki allaqachon olib tashlangan raqam uchun —
 `404 Not Found`.
+Bo'sh `phone` (masalan `%20`) — `400 PHONE_INVALID` (ilgari `404` edi).

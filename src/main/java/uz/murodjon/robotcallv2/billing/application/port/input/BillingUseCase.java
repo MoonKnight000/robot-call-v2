@@ -8,15 +8,15 @@ import java.util.List;
 
 public interface BillingUseCase {
 
-    BillingOverviewResponse overview(long companyId);
+    BillingOverviewResponse findOverview(long companyId);
 
-    List<SpendMonthDto> spendChart(long companyId, int months);
+    List<SpendMonthDto> findSpendChart(long companyId, int months);
 
-    PageableData<InvoiceDto> invoices(long companyId, int page, int size);
+    PageableData<InvoiceDto> findInvoices(long companyId, int page, int size);
 
-    byte[] invoicePdf(long companyId, String invoiceId);
+    byte[] renderInvoicePdf(long companyId, String invoiceId);
 
-    TopupResponse topup(long companyId, TopupRequest request);
+    TopupResponse createTopup(long companyId, TopupRequest request);
 
     /**
      * What each A/B variant of a campaign has cost, for the A/B report.

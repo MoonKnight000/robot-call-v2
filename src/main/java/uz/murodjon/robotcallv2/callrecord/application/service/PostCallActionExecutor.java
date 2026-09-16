@@ -4,11 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
-import uz.murodjon.robotcallv2.aiagent.application.service.AgentWebhookExecutor;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallAction;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.PostCallActionType;
-import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
+import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -16,8 +16,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
 import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
-import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookSenderPort;
-import uz.murodjon.robotcallv2.webhook.domain.service.WebhookSigningSecret;
+import uz.murodjon.robotcallv2.webhook.application.port.input.WebhookDeliveryUseCase;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -35,20 +34,20 @@ public class PostCallActionExecutor {
 
     private final SmsUseCase smsUseCase;
     private final SecretUseCase secretUseCase;
-    private final NotificationService notificationService;
-    private final AgentWebhookExecutor agentWebhookExecutor;
-    private final WebhookSenderPort webhookSender;
+    private final NotificationUseCase notificationService;
+    private final AgentWebhookUseCase agentWebhookUseCase;
+    private final WebhookDeliveryUseCase webhookDelivery;
 
     public PostCallActionExecutor(SmsUseCase smsUseCase,
                                   SecretUseCase secretUseCase,
-                                  NotificationService notificationService,
-                                  AgentWebhookExecutor agentWebhookExecutor,
-                                  WebhookSenderPort webhookSender) {
+                                  NotificationUseCase notificationService,
+                                  AgentWebhookUseCase agentWebhookUseCase,
+                                  WebhookDeliveryUseCase webhookDelivery) {
         this.smsUseCase = smsUseCase;
         this.secretUseCase = secretUseCase;
         this.notificationService = notificationService;
-        this.agentWebhookExecutor = agentWebhookExecutor;
-        this.webhookSender = webhookSender;
+        this.agentWebhookUseCase = agentWebhookUseCase;
+        this.webhookDelivery = webhookDelivery;
     }
 
     public void executeActions(long companyId, long callAttemptId, String phone,
@@ -60,7 +59,7 @@ public class PostCallActionExecutor {
         if (agent.postCallWebhook() != null && agent.postCallWebhook().webhookUrl() != null
                 && !agent.postCallWebhook().webhookUrl().isBlank()) {
             try {
-                agentWebhookExecutor.executePostCall(
+                agentWebhookUseCase.executePostCall(
                         companyId,
                         callAttemptId,
                         phone,
@@ -120,7 +119,7 @@ public class PostCallActionExecutor {
         if (action.actionType() == PostCallActionType.SEND_SMS) {
             if (phone != null && !phone.isBlank() && renderedText != null && !renderedText.isBlank()) {
                 boolean sent = smsUseCase.sendSms(companyId, new SmsSendRequest(phone, renderedText));
-                log.info("[{}] Post-call SMS sent to {}: status={}", callAttemptId, phone, sent);
+                log.info("[{}] Post-call SMS sent: status={}", callAttemptId, sent);
             }
         } else if (action.actionType() == PostCallActionType.WEBHOOK) {
             if (action.webhookUrl() != null && !action.webhookUrl().isBlank()) {
@@ -145,9 +144,9 @@ public class PostCallActionExecutor {
                     log.warn("[{}] Post-call action webhook is not publicly callable — skipped", callAttemptId);
                     return;
                 }
-                String signingSecret = WebhookSigningSecret.findIn(secretUseCase.findDecryptedSecrets(companyId));
-                webhookSender.post(targetUrl, resolveHeaders(companyId, action.headers()), payload, signingSecret);
-                log.info("[{}] Post-call webhook delivered to {}", callAttemptId, action.webhookUrl());
+                boolean delivered = webhookDelivery.deliver(companyId, "POST_CALL_ACTION", targetUrl,
+                        resolveHeaders(companyId, action.headers()), payload);
+                log.info("[{}] Post-call action webhook {}", callAttemptId, delivered ? "delivered" : "queued for retry");
             }
         } else if (action.actionType() == PostCallActionType.TELEGRAM) {
             notificationService.notify(companyId, NotificationType.OPERATOR_REQUEST,

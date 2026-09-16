@@ -32,7 +32,7 @@ public class InboundRouteControllerImpl implements InboundRouteController {
 
     @Override
     public ResponseEntity<ResponseData<InboundRouteRow>> get(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.routeRow(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.requireRouteRow(companyId, id)));
     }
 
     @Override
@@ -47,7 +47,7 @@ public class InboundRouteControllerImpl implements InboundRouteController {
 
     @Override
     public ResponseEntity<ResponseData<InboundRouteStats>> stats(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.stats(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(inboundRouteUseCase.findStats(companyId, id)));
     }
 }
 

@@ -1,12 +1,15 @@
 package uz.murodjon.robotcallv2.contact.application.port.input;
 
+import uz.murodjon.robotcallv2.contact.application.dto.ContactDataExport;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactErasureResponse;
+
 import uz.murodjon.robotcallv2.contact.application.dto.ContactDetail;
 import uz.murodjon.robotcallv2.contact.application.dto.ContactImportResult;
 import uz.murodjon.robotcallv2.contact.application.dto.CreateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.dto.UpdateContactRequest;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
-import uz.murodjon.robotcallv2.donotcall.application.dto.ContactDncResponse;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactDncResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 import java.util.Collection;
@@ -23,13 +26,20 @@ public interface ContactUseCase {
 
     PageableData<Contact> list(long companyId, ContactFilter filter);
 
-    ContactDetail detail(long companyId, long id);
+    /** The contact with its call-history timeline — 404 when the company has no such contact. */
+    ContactDetail requireContactDetail(long companyId, long id);
 
     Contact requireContact(long companyId, long id);
 
-    Map<String, String> namesByPhones(long companyId, Collection<String> phones);
+    Map<String, String> findNamesByPhones(long companyId, Collection<String> phones);
 
     ContactImportResult importCsv(long companyId, String csv);
 
     ContactDncResponse addToDoNotCall(long companyId, long id);
+
+    /** Everything held about {@code phone}: contact, memory, calls with transcripts (NEXT-PLAN S.7). */
+    ContactDataExport exportSubjectData(long companyId, String phone);
+
+    /** Deletes or anonymizes everything held about {@code phone}; {@code confirm} must be true. */
+    ContactErasureResponse eraseSubjectData(long companyId, String phone, boolean confirm);
 }

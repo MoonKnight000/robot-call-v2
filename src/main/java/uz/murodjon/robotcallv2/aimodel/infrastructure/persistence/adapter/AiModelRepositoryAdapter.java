@@ -1,8 +1,8 @@
 package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
-import uz.murodjon.robotcallv2.aimodel.application.mapper.AiModelMapper;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.mapper.AiModelEntityMapper;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
@@ -14,9 +14,9 @@ import java.util.List;
 public class AiModelRepositoryAdapter implements AiModelRepository {
 
     private final AiModelJpaRepository jpaRepository;
-    private final AiModelMapper mapper;
+    private final AiModelEntityMapper mapper;
 
-    public AiModelRepositoryAdapter(AiModelJpaRepository jpaRepository, AiModelMapper mapper) {
+    public AiModelRepositoryAdapter(AiModelJpaRepository jpaRepository, AiModelEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
     }

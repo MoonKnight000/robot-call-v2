@@ -1,7 +1,12 @@
 ﻿# Qidiruv (command palette) API
 
-`uz.murodjon.robotcallv2.search` · huquq: talab qilinmaydi (kirgan bo'lsa yetarli) ·
+`uz.murodjon.robotcallv2.search` · huquq: **CALL_READ** yoki **CAMPAIGN_READ** (kamida bittasi) ·
 UI-DESIGN §11.9, §9
+
+Har guruh faqat tegishli huquq bilan to'ldiriladi: `campaigns` — **CAMPAIGN_READ**, `calls`
+(telefon raqamlari bilan) — **CALL_READ**; huquq yo'q guruh bo'sh ro'yxat bo'lib keladi. Ikkalasi
+ham yo'q bo'lsa — `403`. (Ilgari har qanday login qilgan foydalanuvchi va API kaliti ikkalasini
+ham olardi.)
 
 `⌘K` command palette'ning ma'lumot manbasi. "Sahifalar" va "Buyruqlar"
 guruhlari klient tomonda (statik navigatsiya/buyruq ro'yxati) — bu endpoint

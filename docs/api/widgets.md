@@ -8,7 +8,7 @@ The Website Widget module allows embedding real-time AI voice agents directly in
 
 `POST /api/ai-agents/{agentId}/widgets`
 
-**Authorization:** `Bearer <token>` (SUPER_ADMIN, COMPANY_ADMIN, OPERATOR)
+**Authorization:** `Bearer <token>` — `AI_AGENT_EDIT` (yaratish/tahrirlash/o'chirish), `AI_AGENT_READ` (ko'rish)
 
 ### Request Body:
 ```json
@@ -174,6 +174,12 @@ An agent that set **no** limit of its own is not unlimited here: it falls back t
 
 `language` is optional; without it the call runs in the agent's own language.
 
+On top of the agent's limits, every `/api/public/widgets/**` request is rate-limited
+**per client address** — 20 per minute by default (`config/auth.yml` `rate-limit`
+`public-widget-per-minute`), shared across instances through Redis. Over the line the
+answer is `429 RATE_LIMITED` with a `Retry-After` header, before any widget or agent
+lookup happens.
+
 **Response:**
 ```json
 {
@@ -207,14 +213,23 @@ dials in.
 > trunk (`asterisk/etc/asterisk/pjsip.conf`) — that would turn this response into toll
 > fraud.
 
-**Errors:** `403 AGENT_WIDGET_ORIGIN_FORBIDDEN`, `404 AGENT_WIDGET_NOT_FOUND`,
+**Errors:** `403 AGENT_WIDGET_ORIGIN_FORBIDDEN`, `403 COMPANY_SUSPENDED`, `404 AGENT_WIDGET_NOT_FOUND`,
 `409 AGENT_WIDGET_DISABLED`, `409 AGENT_WIDGET_BUSY` (concurrent limit),
-`409 AGENT_WIDGET_DAILY_LIMIT_REACHED`, `502 WEB_TEST_NOT_CONFIGURED`
-(`voice-agent.asterisk.web-test.ws-url` is blank on the server).
+`409 CALL_BALANCE_INSUFFICIENT` (only with `BILLING_ENFORCE_BALANCE=true`),
+`409 AGENT_WIDGET_DAILY_LIMIT_REACHED`, `409 WEB_TEST_NOT_CONFIGURED`
+(`voice-agent.asterisk.web-test.ws-url` is blank on the server),
+`502 AGENT_WIDGET_LIMIT_UNAVAILABLE` (the call-limit store — Redis — is unreachable; retry shortly).
 
-> ⚠️ The limits are counted **per application instance**, not in the database. They are a
-> safety ceiling against a runaway page, not billing: behind two instances each enforces
-> its own allowance.
+> ℹ️ The limits are shared by every application instance through Redis (`widget:inflight:{agentId}` —
+> booked sessions, `widget:daily:{agentId}:{date}` — today's calls). Checking both limits and booking
+> the call is **one atomic step** (a Lua script), so a burst of requests for the last free line gets
+> exactly one session. A booking whose session could not be prepared is handed back and spends
+> nothing.
+>
+> **Redis down → fail closed.** While Redis is unreachable every widget call is refused with
+> `502 AGENT_WIDGET_LIMIT_UNAVAILABLE` (`messageCode`). There is no per-instance fallback any more:
+> this endpoint is open to anything that can send an HTTP request, and a ceiling that switches
+> itself off during an outage is no ceiling. The embed script should show "try again later".
 
 ---
 

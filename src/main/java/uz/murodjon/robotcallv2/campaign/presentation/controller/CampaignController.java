@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.campaign.presentation.controller;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,6 +22,12 @@ import java.util.List;
  */
 @RequestMapping("/api")
 public interface CampaignController {
+
+    /**
+     * A CSV body is a raw String, so the 5 MB multipart limit never applies to it; this
+     * caps it at about the same size (a 400, not an import of whatever was sent).
+     */
+    int MAX_CSV_CHARS = 5_000_000;
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns")
@@ -57,12 +64,12 @@ public interface CampaignController {
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping(value = "/campaigns/{id:\\d+}/targets/csv", consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
     ResponseEntity<ResponseData<TargetImportResult>> addTargetsCsv(@CurrentCompanyId long companyId, @PathVariable long id,
-            @RequestBody String csv);
+            @RequestBody @Size(max = MAX_CSV_CHARS) String csv);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping(value = "/campaigns/{id:\\d+}/targets/csv/preview", consumes = {"text/csv", MediaType.TEXT_PLAIN_VALUE})
     ResponseEntity<ResponseData<TargetCsvPreview>> previewTargetsCsv(@CurrentCompanyId long companyId, @PathVariable long id,
-            @RequestBody String csv);
+            @RequestBody @Size(max = MAX_CSV_CHARS) String csv);
 
     /** The campaign's API target source, or {@code null} when it loads its list by hand. */
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")

@@ -1,8 +1,9 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import uz.murodjon.robotcallv2.company.domain.enums.Language;
-import uz.murodjon.robotcallv2.company.infrastructure.persistence.converter.LanguageConverter;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -37,7 +38,10 @@ public class CompanyConfigEntity {
     @Column(name = "default_language", nullable = false)
     private Language defaultLanguage;
 
+    // Eager (the mapper reads it outside any transaction); SUBSELECT loads it for a whole
+    // list of configs in one query instead of one per config.
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @CollectionTable(name = "company_config_language", joinColumns = @JoinColumn(name = "company_config_id"))
     @OrderColumn(name = "ord")
     @Convert(converter = LanguageConverter.class)
@@ -46,6 +50,22 @@ public class CompanyConfigEntity {
 
     @Column(name = "disclosure_text", length = 500)
     private String disclosureText;
+
+    @Column(name = "max_attempts_per_phone_per_week", nullable = false)
+    private int maxAttemptsPerPhonePerWeek;
+
+    @Column(name = "quiet_days_after_conversation", nullable = false)
+    private int quietDaysAfterConversation;
+
+    @Column(name = "respect_promised_date", nullable = false)
+    private boolean respectPromisedDate;
+
+    @Column(name = "human_like_persona_allowed", nullable = false)
+    private boolean humanLikePersonaAllowed;
+
+    /** Days nothing is dialled on: ISO dates, comma-separated (NEXT-PLAN C.4). */
+    @Column(name = "holidays", nullable = false)
+    private String holidays = "";
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -126,6 +146,46 @@ public class CompanyConfigEntity {
 
     public void setDisclosureText(String disclosureText) {
         this.disclosureText = disclosureText;
+    }
+
+    public int getMaxAttemptsPerPhonePerWeek() {
+        return maxAttemptsPerPhonePerWeek;
+    }
+
+    public void setMaxAttemptsPerPhonePerWeek(int maxAttemptsPerPhonePerWeek) {
+        this.maxAttemptsPerPhonePerWeek = maxAttemptsPerPhonePerWeek;
+    }
+
+    public int getQuietDaysAfterConversation() {
+        return quietDaysAfterConversation;
+    }
+
+    public void setQuietDaysAfterConversation(int quietDaysAfterConversation) {
+        this.quietDaysAfterConversation = quietDaysAfterConversation;
+    }
+
+    public boolean isRespectPromisedDate() {
+        return respectPromisedDate;
+    }
+
+    public void setRespectPromisedDate(boolean respectPromisedDate) {
+        this.respectPromisedDate = respectPromisedDate;
+    }
+
+    public boolean isHumanLikePersonaAllowed() {
+        return humanLikePersonaAllowed;
+    }
+
+    public void setHumanLikePersonaAllowed(boolean humanLikePersonaAllowed) {
+        this.humanLikePersonaAllowed = humanLikePersonaAllowed;
+    }
+
+    public String getHolidays() {
+        return holidays;
+    }
+
+    public void setHolidays(String holidays) {
+        this.holidays = holidays;
     }
 
     public Instant getCreatedAt() {

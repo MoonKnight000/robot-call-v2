@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.secret.application.dto.CreateSecretRequest;
 import uz.murodjon.robotcallv2.secret.application.dto.SecretRow;
 import uz.murodjon.robotcallv2.secret.application.dto.UpdateSecretRequest;
@@ -14,7 +15,6 @@ import uz.murodjon.robotcallv2.secret.domain.entity.Secret;
 import uz.murodjon.robotcallv2.secret.domain.service.SecretPlaceholders;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 
@@ -37,10 +37,12 @@ public class SecretService implements SecretUseCase {
 
     private final SecretRepository secretRepository;
     private final SecretCipher secretCipher;
+    private final AuditUseCase auditService;
 
-    public SecretService(SecretRepository secretRepository, SecretCipher secretCipher) {
+    public SecretService(SecretRepository secretRepository, SecretCipher secretCipher, AuditUseCase auditService) {
         this.secretRepository = secretRepository;
         this.secretCipher = secretCipher;
+        this.auditService = auditService;
     }
 
     @Override
@@ -62,6 +64,7 @@ public class SecretService implements SecretUseCase {
                 Instant.now()
         ));
         log.info("[Company {}] Created secret '{}'", companyId, key);
+        auditService.record(companyId, "SECRET_CREATE", "secret", String.valueOf(saved.id()), key);
         return toRow(saved, plaintext);
     }
 
@@ -88,6 +91,8 @@ public class SecretService implements SecretUseCase {
                 Instant.now()
         ));
         log.info("[Company {}] Updated secret '{}' (id={})", companyId, existing.key(), id);
+        auditService.record(companyId, "SECRET_UPDATE", "secret", String.valueOf(id),
+                existing.key() + (replacingValue ? " (value replaced)" : ""));
         return toRow(saved, plaintext);
     }
 
@@ -112,6 +117,7 @@ public class SecretService implements SecretUseCase {
         Secret existing = requireSecret(companyId, id);
         secretRepository.deleteByCompanyIdAndId(companyId, id);
         log.info("[Company {}] Deleted secret '{}' (id={})", companyId, existing.key(), id);
+        auditService.record(companyId, "SECRET_DELETE", "secret", String.valueOf(id), existing.key());
     }
 
     @Override
@@ -148,7 +154,7 @@ public class SecretService implements SecretUseCase {
      */
     private String encrypt(String plaintext) {
         if (!secretCipher.available()) {
-            throw new ExternalServiceException(ErrorCode.ENCRYPTION_KEY_NOT_SET, "secret-vault");
+            throw new ConflictException(ErrorCode.ENCRYPTION_KEY_NOT_SET);
         }
         return secretCipher.encrypt(plaintext);
     }
@@ -165,7 +171,11 @@ public class SecretService implements SecretUseCase {
         try {
             return secretCipher.decrypt(encrypted);
         } catch (Exception e) {
-            log.warn("Secret could not be decrypted: {}", e.getMessage());
+            // ERROR, not WARN: every tool and webhook that names this secret is now broken,
+            // and the usual cause is a rotated ENCRYPTION_SECRET_KEY without the old one
+            // listed in ENCRYPTION_PREVIOUS_SECRET_KEYS.
+            log.error("Secret could not be decrypted — check ENCRYPTION_SECRET_KEY / "
+                    + "ENCRYPTION_PREVIOUS_SECRET_KEYS: {}", e.getMessage());
             return null;
         }
     }

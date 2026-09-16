@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.Com
 import uz.murodjon.robotcallv2.secret.application.port.output.SecretRepository;
 import uz.murodjon.robotcallv2.secret.domain.entity.Secret;
 import uz.murodjon.robotcallv2.secret.infrastructure.persistence.entity.SecretEntity;
+import uz.murodjon.robotcallv2.secret.infrastructure.persistence.mapper.SecretEntityMapper;
 import uz.murodjon.robotcallv2.secret.infrastructure.persistence.repository.SecretJpaRepository;
 
 import java.time.Instant;
@@ -17,11 +18,14 @@ public class SecretRepositoryAdapter implements SecretRepository {
 
     private final SecretJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
+    private final SecretEntityMapper mapper;
 
     public SecretRepositoryAdapter(SecretJpaRepository jpaRepository,
-                                   CompanyJpaRepository companyJpaRepository) {
+                                   CompanyJpaRepository companyJpaRepository,
+                                   SecretEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
+        this.mapper = mapper;
     }
 
     @Override
@@ -42,13 +46,13 @@ public class SecretRepositoryAdapter implements SecretRepository {
         entity.setUpdatedAt(Instant.now());
 
         SecretEntity saved = jpaRepository.save(entity);
-        return toSecret(saved);
+        return mapper.toSecret(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<Secret> findByCompanyIdAndId(long companyId, long id) {
-        return jpaRepository.findByCompanyIdAndId(companyId, id).map(this::toSecret);
+        return jpaRepository.findByCompanyIdAndId(companyId, id).map(mapper::toSecret);
     }
 
     @Override
@@ -56,7 +60,7 @@ public class SecretRepositoryAdapter implements SecretRepository {
     public List<Secret> findByCompanyId(long companyId) {
         return jpaRepository.findAllByCompanyIdOrderByKeyAsc(companyId)
                 .stream()
-                .map(this::toSecret)
+                .map(mapper::toSecret)
                 .toList();
     }
 
@@ -70,17 +74,5 @@ public class SecretRepositoryAdapter implements SecretRepository {
     @Transactional
     public void deleteByCompanyIdAndId(long companyId, long id) {
         jpaRepository.deleteByCompanyIdAndId(companyId, id);
-    }
-
-    private Secret toSecret(SecretEntity entity) {
-        return new Secret(
-                entity.getId(),
-                entity.getCompanyId(),
-                entity.getKey(),
-                entity.getValue(),
-                entity.getDescription(),
-                entity.getCreatedAt(),
-                entity.getUpdatedAt()
-        );
     }
 }

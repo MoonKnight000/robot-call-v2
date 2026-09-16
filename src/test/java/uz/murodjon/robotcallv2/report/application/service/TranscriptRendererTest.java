@@ -1,8 +1,8 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.report.domain.entity.CallDetail;
-import uz.murodjon.robotcallv2.report.domain.entity.CallRow;
+import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
+import uz.murodjon.robotcallv2.report.application.dto.CallRow;
 import uz.murodjon.robotcallv2.report.domain.entity.TranscriptLine;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 

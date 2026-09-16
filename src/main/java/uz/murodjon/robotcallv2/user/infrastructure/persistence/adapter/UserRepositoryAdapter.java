@@ -6,11 +6,9 @@ import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.Company
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.StoredFileJpaRepository;
-import uz.murodjon.robotcallv2.user.application.mapper.UserMapper;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.mapper.UserEntityMapper;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
@@ -30,12 +28,12 @@ public class UserRepositoryAdapter implements UserRepository {
     private final UserJpaRepository userJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
     private final RoleJpaRepository roleJpaRepository;
-    private final UserMapper mapper;
+    private final UserEntityMapper mapper;
     private final StoredFileJpaRepository storedFileJpaRepository;
 
     public UserRepositoryAdapter(UserJpaRepository userJpaRepository, CompanyJpaRepository companyJpaRepository,
                                  RoleJpaRepository roleJpaRepository,
-                                 UserMapper mapper,
+                                 UserEntityMapper mapper,
                                  StoredFileJpaRepository storedFileJpaRepository) {
         this.userJpaRepository = userJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
@@ -47,8 +45,7 @@ public class UserRepositoryAdapter implements UserRepository {
     @Override
     public long create(long companyId, String name, String username, String email, String passwordHash,
                                   long roleId, UserStatus status) {
-        CompanyEntity comp = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         UserEntity entity = new UserEntity();
         entity.setCompany(comp);
@@ -73,23 +70,28 @@ public class UserRepositoryAdapter implements UserRepository {
     }
 
     @Override
+    public boolean existsByPasswordHash(String passwordHash) {
+        return userJpaRepository.existsByPasswordHash(passwordHash);
+    }
+
+    @Override
     public Optional<User> findByEmail(String email) {
-        return userJpaRepository.findByEmail(email).map(mapper::entityToDomain);
+        return userJpaRepository.findByEmail(email).map(mapper::toUser);
     }
 
     @Override
     public Optional<User> findByUsername(String username) {
-        return userJpaRepository.findByUsername(username).map(mapper::entityToDomain);
+        return userJpaRepository.findByUsername(username).map(mapper::toUser);
     }
 
     @Override
     public Optional<User> findById(long id) {
-        return userJpaRepository.findById(id).map(mapper::entityToDomain);
+        return userJpaRepository.findById(id).map(mapper::toUser);
     }
 
     @Override
     public User find(long companyId, long id) {
-        return userJpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::entityToDomain).orElse(null);
+        return userJpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::toUser).orElse(null);
     }
 
     @Override
@@ -97,16 +99,16 @@ public class UserRepositoryAdapter implements UserRepository {
         if (sipExtension == null || sipExtension.isBlank()) {
             return null;
         }
-        return userJpaRepository.findBySipExtensionAndCompanyId(sipExtension, companyId).map(mapper::entityToDomain).orElse(null);
+        return userJpaRepository.findBySipExtensionAndCompanyId(sipExtension, companyId).map(mapper::toUser).orElse(null);
     }
 
     @Override
     public List<User> findAll(long companyId) {
-        return userJpaRepository.findByCompanyIdOrderById(companyId).stream().map(mapper::entityToDomain).toList();
+        return userJpaRepository.findByCompanyIdOrderById(companyId).stream().map(mapper::toUser).toList();
     }
 
     @Override
-    public Map<Long, String> namesByIds(long companyId, Collection<Long> ids) {
+    public Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids) {
         if (ids.isEmpty()) {
             return Map.of();
         }
@@ -118,7 +120,7 @@ public class UserRepositoryAdapter implements UserRepository {
     public List<User> findActiveByCompany(long companyId) {
         return userJpaRepository.findByCompanyIdOrderById(companyId).stream()
                 .filter(e -> e.getStatus() == UserStatus.ACTIVE)
-                .map(mapper::entityToDomain)
+                .map(mapper::toUser)
                 .toList();
     }
 
@@ -146,7 +148,7 @@ public class UserRepositoryAdapter implements UserRepository {
 
     @Override
     public Optional<User> findByInviteTokenHash(String tokenHash) {
-        return userJpaRepository.findByInviteTokenHash(tokenHash).map(mapper::entityToDomain);
+        return userJpaRepository.findByInviteTokenHash(tokenHash).map(mapper::toUser);
     }
 
     @Override
@@ -171,7 +173,7 @@ public class UserRepositoryAdapter implements UserRepository {
 
     @Override
     public Optional<User> findByResetTokenHash(String tokenHash) {
-        return userJpaRepository.findByResetTokenHash(tokenHash).map(mapper::entityToDomain);
+        return userJpaRepository.findByResetTokenHash(tokenHash).map(mapper::toUser);
     }
 
     @Override
@@ -244,8 +246,7 @@ public class UserRepositoryAdapter implements UserRepository {
     }
 
     private RoleEntity roleReference(long roleId) {
-        return roleJpaRepository.findById(roleId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.ROLE_NOT_FOUND, roleId));
+        return roleJpaRepository.getReferenceById(roleId);
     }
 
     /** Null when the user has no avatar. */

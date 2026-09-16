@@ -3,27 +3,25 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.audio.SpeechLevelNormalizer;
 import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.*;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.callrecord.application.service.CallRecordService;
-import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
-import uz.murodjon.robotcallv2.company.application.service.CompanyService;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.RealtimeFactsDelivery;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
-import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.voice.application.service.TtsVoiceService;
+import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
 import java.time.Duration;
@@ -32,6 +30,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -41,9 +40,16 @@ import java.util.function.Consumer;
  * <p>Two engines rather than one with a mode switch, because almost nothing in the middle
  * is shared: there is no utterance to wait for, no prompt to rebuild per turn, no reply to
  * inspect before speaking, no sentence to synthesize. What this class does is narrow —
- * connect the engine, carry audio both ways, run the tools it asks for, and record what
- * the call produced — and keeping it separate means the cascade path, which every call
- * runs on today, is untouched by any of it.
+ * connect the engine, carry audio both ways, run the tools it asks for
+ * ({@link RealtimeToolRunner}), and record what the call produced
+ * ({@link RealtimeTranscriptRecorder}) — and keeping it separate means the cascade path,
+ * which every call runs on today, is untouched by any of it.
+ *
+ * <p>What it owns besides that is what the platform owes a call whoever does the talking:
+ * the same measurements the cascade pipeline takes (turn latency, tokens), the same
+ * silence watchdog and limits ({@link RealtimeWatchdogRunner}), and a transcript of what
+ * the caller actually heard — a reply the caller cut into is recorded up to where it was
+ * cut, not as the engine wrote it.
  *
  * <p>In REALTIME mode, all audio and speech generation (including the opening greeting
  * and §11.1 legal disclosure) are performed natively by the speech-to-speech provider's
@@ -54,8 +60,8 @@ public class RealtimeDialogEngine implements CallDialog {
 
     private static final Logger log = LoggerFactory.getLogger(RealtimeDialogEngine.class);
 
-    /** Longest a farewell is allowed to drain before the line is dropped anyway. */
-    private static final Duration MAX_DRAIN = Duration.ofSeconds(30);
+    /** The phone leg runs at 8 kHz: this many samples make a millisecond of playback. */
+    private static final int SAMPLES_PER_MS = 8;
 
     /**
      * The synthetic caller line that gets the engine to speak first. Never heard by
@@ -63,42 +69,78 @@ public class RealtimeDialogEngine implements CallDialog {
      */
     private static final String GREETING_BOOTSTRAP =
             "[TIZIM: qo'ng'iroq boshlandi, mijoz go'shakni ko'tardi. Suhbatni boshlang.]";
+    private static final String TOKEN_CAP = "[TIZIM: suhbat uchun ajratilgan hisob tugadi. Bir gap bilan "
+            + "xushmuomala xayrlashing va suhbatni yakunlang.]";
+    private static final String LOW_CONFIDENCE = "[TIZIM: mijozning oxirgi gapi noaniq eshitildi. Unda raqam, "
+            + "sana yoki ism bo'lsa — takrorlab, tasdiqlatib oling.]";
+    /** The languages a reply is sorted into for the {@code voice.realtime.language} metric. */
+    private static final List<String> LANGUAGE_TAGS = List.of("uz", "ru");
+
+    /**
+     * Sent once, after the opening, when the §11.1 line cannot be found in what the engine
+     * said — typically because the caller spoke over the greeting. The requirement is that
+     * the caller heard it, not that it was in the instructions.
+     */
+    private static final String DISCLOSURE_NUDGE = "[TIZIM: qonuniy ogohlantirish to'liq aytilmadi. "
+            + "Hozir bir gap bilan ayting: \"%s\" — va suhbatni to'xtagan joyidan davom ettiring.]";
+
+    /**
+     * A supervisor's guidance ({@link LiveCallControlHub}), worded as the cascade prompt
+     * words it. Added to the conversation as context, never answered on its own.
+     */
+    private static final String OPERATOR_WHISPER = "[TIZIM: OPERATOR KO'RSATMASI — mijoz buni eshitmaydi, "
+            + "uni so'zma-so'z o'qib bermang, suhbatning qolgan qismida faqat amal qiling: %s]";
+
+    /** Sent when the call reaches its turn cap, the realtime counterpart of the cascade farewell. */
+    private static final String TURN_CAP = "[TIZIM: suhbat juda cho'zilib ketdi. Bir gap bilan "
+            + "muloyim xayrlashing va endCall chaqiring.]";
 
     private final RealtimeProviderRegistry registry;
     private final RealtimeSystemPromptFactory promptFactory;
-    private final CallRecordService records;
-    private final CompanyService companyService;
-    private final CompanyConfigService companyConfigService;
+    private final CallAttemptUseCase callAttemptUseCase;
+    private final CompanyUseCase companyUseCase;
+    private final CompanyConfigUseCase companyConfigService;
     private final DialogProperties dialogProperties;
     private final RealtimeProperties realtimeProperties;
     private final VoiceMetrics metrics;
-    private final TtsVoiceService voiceCatalog;
-    private final KnowledgeRetrievalUseCase knowledgeRetrieval;
+    private final TtsVoiceUseCase ttsVoiceUseCase;
+    private final RealtimeWatchdogRunner watchdogRunner;
+    private final LanguageDetector languageDetector;
+    private final MidCallSmsSender midCallSmsSender;
+    private final DialogPolicy dialogPolicy;
+    private final RealtimeToolRunner toolRunner;
+    private final RealtimeTranscriptRecorder transcriptRecorder;
 
     private final Map<String, RealtimeDialogSession> sessions = new ConcurrentHashMap<>();
     /**
-     * Tool bodies hit the database and the CRM, and they arrive on the engine's network
-     * thread — the same thread its next audio frame comes in on. Virtual threads because
-     * the work is all waiting, and there is one per tool call, not one per call.
+     * The engine's own delayed and blocking work — the delayed opening request, the drain
+     * before a hangup, the cascade fallback — kept off the provider's network thread.
      */
-    private final ExecutorService toolExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService engineTaskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public RealtimeDialogEngine(RealtimeProviderRegistry registry,
-                                RealtimeSystemPromptFactory promptFactory, CallRecordService records,
-                                CompanyService companyService, CompanyConfigService companyConfigService,
+                                RealtimeSystemPromptFactory promptFactory, CallAttemptUseCase callAttemptUseCase,
+                                CompanyUseCase companyUseCase, CompanyConfigUseCase companyConfigService,
                                 DialogProperties dialogProperties, RealtimeProperties realtimeProperties,
-                                VoiceMetrics metrics, TtsVoiceService voiceCatalog,
-                                KnowledgeRetrievalUseCase knowledgeRetrieval) {
+                                VoiceMetrics metrics, TtsVoiceUseCase ttsVoiceUseCase,
+                                RealtimeWatchdogRunner watchdogRunner, LanguageDetector languageDetector,
+                                MidCallSmsSender midCallSmsSender, DialogPolicy dialogPolicy,
+                                RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder) {
         this.registry = registry;
         this.promptFactory = promptFactory;
-        this.records = records;
-        this.companyService = companyService;
+        this.callAttemptUseCase = callAttemptUseCase;
+        this.companyUseCase = companyUseCase;
         this.companyConfigService = companyConfigService;
         this.dialogProperties = dialogProperties;
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
-        this.voiceCatalog = voiceCatalog;
-        this.knowledgeRetrieval = knowledgeRetrieval;
+        this.ttsVoiceUseCase = ttsVoiceUseCase;
+        this.watchdogRunner = watchdogRunner;
+        this.languageDetector = languageDetector;
+        this.midCallSmsSender = midCallSmsSender;
+        this.dialogPolicy = dialogPolicy;
+        this.toolRunner = toolRunner;
+        this.transcriptRecorder = transcriptRecorder;
     }
 
     @Override
@@ -123,6 +165,8 @@ public class RealtimeDialogEngine implements CallDialog {
      *                 mid-conversation and cannot be recovered; null hangs up instead
      * @param dtmf     how this call presses keypad tones for IVR navigation, or null when
      *                 it cannot
+     * @return false when no engine could be opened — nothing has been said to the caller,
+     *         so the caller of this method may still run the call some other way
      */
     public boolean startCall(String channelId, RtpEndpoint endpoint, CallContext context,
                              ScenarioDefinition scenario, String language, String voice,
@@ -130,9 +174,11 @@ public class RealtimeDialogEngine implements CallDialog {
                              Runnable hangup, Runnable transfer, long callAttemptId,
                              RealtimeAudioBridge bridge, Runnable fallback,
                              Consumer<String> dtmf) {
-        boolean disclosureEnabled = agent == null || agent.disclosureEnabled();
-        AgentPersona agentPersona = agent != null ? agent.persona() : AgentPersona.AI_ASSISTANT;
-        long companyId = records.companyIdOf(callAttemptId);
+        long companyId = callAttemptUseCase.findCompanyIdByAttemptId(callAttemptId);
+        callAttemptUseCase.recordAgent(callAttemptId, agent);
+        CompanyConfig companyConfig = companyConfigService.find(companyId);
+        AgentPersona agentPersona = DialogPolicy.resolvePersona(agent, companyConfig);
+        boolean disclosureEnabled = agentPersona == AgentPersona.AI_ASSISTANT;
         String preferredRealtime = (agent != null && agent.speechEngine().realtimeProvider() != null && !agent.speechEngine().realtimeProvider().isBlank())
                 ? agent.speechEngine().realtimeProvider().trim()
                 : null;
@@ -145,17 +191,39 @@ public class RealtimeDialogEngine implements CallDialog {
         RealtimeDialogSession session = new RealtimeDialogSession(channelId, language, callAttemptId,
                 companyId, agent, scenario, context, endpoint, hangup, transfer);
         session.setDtmfSender(dtmf);
-        Company company = companyService.findById(companyId);
+        if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
+            session.setMidCallSmsSender(text -> midCallSmsSender.send(companyId, callAttemptId, channelId, context, text));
+        }
+        Company company = companyUseCase.findById(companyId);
         String companyName = company != null ? company.name() : null;
 
         String disclosureText = null;
-        if (dialogProperties.mandatoryDisclosure() && disclosureEnabled && agentPersona != AgentPersona.HUMAN_LIKE) {
-            CompanyConfig companyConfig = companyConfigService.find(companyId);
-            disclosureText = disclosureLine(session, companyConfig != null ? companyConfig.disclosureText() : null, companyName);
+        if (dialogProperties.mandatoryDisclosure()) {
+            // A HUMAN_LIKE agent was allowed not to say it is a machine, not to leave out
+            // that the call is recorded: it opens with the recording notice alone.
+            disclosureText = disclosureEnabled
+                    ? DialogPolicy.resolveDisclosureLine(session.scenario(),
+                            companyConfig != null ? companyConfig.disclosureText() : null,
+                            session.language(), companyName)
+                    : DialogPhrases.recordingNotice(language);
+        }
+        if (disclosureText != null) {
+            Map<String, Object> facts = context != null && context.facts() != null ? context.facts() : Map.of();
+            session.setPendingDisclosure(PromptTemplateEngine.render(disclosureText.trim(), facts));
         }
 
-        String prompt = promptFactory.build(session, companyName, disclosureText, voice, agentPersona);
-        session.setTools(toolsFor(session));
+        boolean factsInPrompt = factsInPrompt(agent);
+        String prompt = promptFactory.build(session, companyName, disclosureText, voice, agentPersona, factsInPrompt);
+        session.setTools(toolRunner.buildTools(session, factsInPrompt));
+        if (provider.lacksToolCalling() && !session.tools().isEmpty()) {
+            // Saving an agent on such an engine is refused, but an older agent or the
+            // configured default can still land here. Nothing has been said yet, so the
+            // cascade pipeline takes the call rather than a bot that cannot hang up.
+            log.error("[{}] realtime engine {} cannot call tools ({} needed) — call goes to the cascade pipeline",
+                    channelId, provider.name(), session.tools().size());
+            metrics.realtimeFallback(provider.name());
+            return false;
+        }
         RealtimeCallConfig config = new RealtimeCallConfig(channelId, language, prompt,
                 voiceFor(voice, provider), session.tools(),
                 agent != null ? agent.speechEngine().pipecatStt() : null,
@@ -165,20 +233,147 @@ public class RealtimeDialogEngine implements CallDialog {
         // The catalog id only counts as the call's voice if the engine took it (voiceFor).
         session.setEngineIdentity(provider.name(), provider.resolveModel(config),
                 config.voice() != null ? voice : null);
+        RealtimeSession engine = null;
         try {
-            RealtimeSession engine = provider.startSession(config,
-                    new EngineListener(session, provider.outputSampleRate(), fallback, bridge));
+            EngineListener listener = new EngineListener(session, provider.outputSampleRate(), fallback, bridge);
+            engine = provider.startSession(config, listener);
+            bridge.arm(engine, provider.inputSampleRate(), endpoint::recentOutboundLevel,
+                    realtimeProperties.echoGateRatio(), realtimeProperties.echoMinBotLevel());
             session.setEngine(engine);
+            session.setAudioBridge(bridge);
             sessions.put(channelId, session);
-            bridge.arm(engine, provider.inputSampleRate());
-            engine.sendUserText(GREETING_BOOTSTRAP);
-            log.info("Realtime dialog started [{}] engine={} lang={} state={}",
-                    channelId, provider.name(), language, session.state());
+            if (!listener.goLive()) {
+                // The engine reported ready and then closed before the session was even
+                // registered. That is a failed start: registering it anyway left a dead
+                // realtime session next to the cascade fallback its close had started, and
+                // the call's outcome went to the dead one.
+                log.error("[{}] realtime engine {} closed during setup", channelId, provider.name());
+                sessions.remove(channelId, session);
+                engine.close();
+                metrics.realtimeFallback(provider.name());
+                return false;
+            }
+            requestOpening(session, engine);
+            watchdogRunner.start(session, this::finishWhenSpoken);
+            log.info("Realtime dialog started [{}] engine={} lang={} state={} facts={}",
+                    channelId, provider.name(), language, session.state(), factsInPrompt ? "prompt" : "tool");
             return true;
         } catch (Exception e) {
             log.error("[{}] realtime engine {} failed to start: {}", channelId, provider.name(), e.getMessage());
+            sessions.remove(channelId);
+            if (engine != null) {
+                engine.close();
+            }
+            metrics.realtimeFallback(provider.name());
             return false;
         }
+    }
+
+    /**
+     * Asks the engine for its opening line after the same quiet moment the cascade
+     * pipeline leaves ({@code greeting-delay-ms}): a greeting on the very first frame
+     * lands on the click of the handset and the caller's own "alo".
+     */
+    private void requestOpening(RealtimeDialogSession session, RealtimeSession engine) {
+        int delayMs = dialogProperties.greetingDelayMs();
+        if (delayMs <= 0) {
+            session.markOpeningRequested();
+            engine.sendUserText(GREETING_BOOTSTRAP);
+            return;
+        }
+        engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), () -> {
+            try {
+                Thread.sleep(delayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (session.isEnded()) {
+                return;
+            }
+            session.markOpeningRequested();
+            engine.sendUserText(GREETING_BOOTSTRAP);
+        }));
+    }
+
+    /**
+     * The caller pressed a key. A speech-to-speech engine hears audio only, so the digit
+     * is told to it in words — the same IVR-style menu a cascade agent gets as a turn.
+     */
+    public void onDtmf(String channelId, String digit) {
+        RealtimeDialogSession s = sessions.get(channelId);
+        RealtimeSession engine = s != null ? s.engine() : null;
+        if (s == null || s.isEnded() || engine == null) {
+            return;
+        }
+        s.touch();
+        engine.sendUserText("[TIZIM: mijoz telefon tugmasini bosdi: " + digit
+                + ". Buni menyu tanlovi yoki savolga javob sifatida qabul qiling.]");
+    }
+
+    /**
+     * Give the engine a supervisor's guidance for the rest of this call. It goes in as
+     * context ({@link RealtimeSession#sendContext}), so the engine acts on it in its next
+     * answer instead of answering the whisper. While a reply is being generated it is held
+     * until that reply is done ({@link EngineListener#onTurnComplete}): new content cuts a
+     * speaking engine off mid-sentence.
+     *
+     * @return {@code false} when this engine has no live conversation on {@code channelId}
+     */
+    public boolean offerWhisper(String channelId, String instruction) {
+        RealtimeDialogSession s = sessions.get(channelId);
+        RealtimeSession engine = s != null ? s.engine() : null;
+        if (s == null || s.isEnded() || engine == null) {
+            return false;
+        }
+        if (s.replyOpen()) {
+            s.holdWhisper(instruction);
+            log.info("[{}] operator whisper held until the reply ends ({} chars)", channelId, instruction.length());
+        } else {
+            engine.sendContext(OPERATOR_WHISPER.formatted(instruction));
+            log.info("[{}] operator whisper injected ({} chars)", channelId, instruction.length());
+        }
+        return true;
+    }
+
+    /**
+     * Whether this call's facts go into the engine's instructions: the agent's own choice
+     * where it made one, the deployment's otherwise.
+     */
+    private boolean factsInPrompt(AiAgent agent) {
+        RealtimeFactsDelivery delivery = agent != null ? agent.dataPolicy().realtimeFactsDelivery() : null;
+        return delivery == null ? realtimeProperties.factsInPrompt() : delivery == RealtimeFactsDelivery.PROMPT;
+    }
+
+    /**
+     * The caller finished an utterance — told by our own VAD, the one clock every engine
+     * is timed against. Only counts when the line was free: an "aha" over the bot's own
+     * sentence is agreement, not a turn handed over.
+     *
+     * @param waitMs the silence the VAD already waited out before saying so
+     */
+    public void notifyUtteranceEnd(String channelId, int waitMs) {
+        RealtimeDialogSession s = sessions.get(channelId);
+        if (s == null || s.isEnded() || s.endpoint().isPlaying()) {
+            return;
+        }
+        s.markCallerStopped(System.nanoTime() - waitMs * 1_000_000L);
+        s.touch();
+    }
+
+    /**
+     * The caller is talking. The engine does its own barge-in, so this interrupts nothing
+     * — it only keeps the silence watchdog quiet and restarts the turnaround clock.
+     *
+     * @return always false: nothing was interrupted here, so the VAD stays armed
+     */
+    public boolean notifyCallerSpeaking(String channelId) {
+        RealtimeDialogSession s = sessions.get(channelId);
+        if (s != null) {
+            s.clearCallerStopped();
+            s.touch();
+        }
+        return false;
     }
 
     /**
@@ -196,7 +391,7 @@ public class RealtimeDialogEngine implements CallDialog {
         if (voiceId == null || voiceId.isBlank()) {
             return null;
         }
-        TtsVoice voice = voiceCatalog.find(voiceId);
+        TtsVoice voice = ttsVoiceUseCase.find(voiceId);
         if (voice == null) {
             return null;
         }
@@ -208,67 +403,30 @@ public class RealtimeDialogEngine implements CallDialog {
         return voice.name();
     }
 
-    private static String disclosureLine(RealtimeDialogSession s, String companyDisclosureText, String companyName) {
-        String scenarioLine = Disclosure.resolve(
-                s.scenario() != null ? s.scenario().disclosureText() : null, s.language(), companyName);
-        if (scenarioLine != null) {
-            return scenarioLine;
-        }
-        String companyLine = Disclosure.resolve(companyDisclosureText, s.language(), companyName);
-        return companyLine != null ? companyLine : DialogPhrases.disclosure(s.language(), companyName);
-    }
-
-    /**
-     * Every tool this call's scenario allows, declared once at connect.
-     */
-    private List<ToolCallback> toolsFor(RealtimeDialogSession s) {
-        Set<String> declared = new HashSet<>();
-        if (s.scenario().tools() != null) {
-            s.scenario().tools().forEach(t -> declared.add(t.name()));
-        }
-        List<ToolCallback> callbacks = new ArrayList<>();
-        if (!realtimeProperties.factsInPrompt()) {
-            callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
-                    .toolObjects(new RealtimeFactTools(s)).build().getToolCallbacks()));
-        }
-        // Only for agents that asked for it: an engine offered a tool it never needs still
-        // pays for the description in every request, and may call it out of curiosity.
-        if (s.agent() != null && s.agent().useRag()) {
-            callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
-                    .toolObjects(new RealtimeKnowledgeTools(s, knowledgeRetrieval))
-                    .build().getToolCallbacks()));
-        }
-        for (ToolCallback fixed : MethodToolCallbackProvider.builder()
-                .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
-            String name = fixed.getToolDefinition().name();
-            if (!DialogTools.HARDCODED_TOOL_NAMES.contains(name) || declared.contains(name)) {
-                callbacks.add(fixed);
-            }
-        }
-        if (s.scenario().tools() != null) {
-            for (ToolDef toolDef : s.scenario().tools()) {
-                if (!DialogTools.HARDCODED_TOOL_NAMES.contains(toolDef.name())) {
-                    callbacks.add(ScenarioToolCallbackFactory.build(toolDef, s));
-                }
-            }
-        }
-        return callbacks;
-    }
-
     @Override
     public DialogOutcome outcome(String channelId) {
         RealtimeDialogSession s = sessions.get(channelId);
-        return s == null ? DialogOutcome.NONE : new DialogOutcome(s.disposition(), s.doNotCallReason());
+        return s == null ? DialogOutcome.NONE
+                : new DialogOutcome(GoalOutcome.settle(s.disposition(), s.scenario(), s.outcome()), s.doNotCallReason());
     }
 
+    /**
+     * Tokens and turn latency as the engine reported and our VAD measured them. There is
+     * no separate LLM latency on a realtime call — recognition, reasoning and speech are
+     * one wait — so those two stay null, and synthesis is never billed by the character.
+     */
     @Override
     public DialogTechnicalSnapshot technicalSnapshot(String channelId) {
         RealtimeDialogSession s = sessions.get(channelId);
         if (s == null) {
             return DialogTechnicalSnapshot.NONE;
         }
-        return new DialogTechnicalSnapshot(s.turnCount(), 0, 0, 0, 0, null, null, null, null,
-                s.ttsVoice(), s.language(), s.engineName(), s.llmModel());
+        // No recognizer confidence on a realtime call: the engine hears the audio itself.
+        return new DialogTechnicalSnapshot(s.turnCount(),
+                s.promptTokens(), s.completionTokens(), s.cachedTokens(), 0,
+                s.avgTurnLatencyMs(), s.maxTurnLatencyMs(), null, null,
+                s.ttsVoice(), s.language(), s.engineName(), s.llmModel(),
+                s.bargeIns(), s.watchdog() != null ? s.watchdog().prompts() : 0, 0);
     }
 
     @Override
@@ -291,10 +449,21 @@ public class RealtimeDialogEngine implements CallDialog {
         if (engine != null) {
             engine.close();
         }
+        release(s);
         log.info("Realtime dialog ended [{}] turns={} disposition={}",
                 channelId, s.turnCount(), s.disposition());
         if (s.factViolations() > 0) {
             log.error("[{}] {} fact-guard violation(s) were spoken this call", channelId, s.factViolations());
+        }
+    }
+
+    /** What every way out of a realtime call has to do once: stop the watchdog, count the session. */
+    private void release(RealtimeDialogSession s) {
+        watchdogRunner.stop(s);
+        metrics.realtimeSessionSeconds(s.engineName(), Duration.between(s.startedAt(), Instant.now()).getSeconds());
+        RealtimeAudioBridge bridge = s.audioBridge();
+        if (bridge != null) {
+            metrics.realtimeEchoSuppressed(bridge.echoSuppressedSeconds());
         }
     }
 
@@ -303,7 +472,7 @@ public class RealtimeDialogEngine implements CallDialog {
         return sessions.values().stream()
                 .filter(s -> !s.isEnded())
                 .map(s -> new LiveDialogSnapshot(s.channelId(), s.startedAt(), s.state(), s.language(),
-                        s.context() != null ? asText(s.context().fact("clientName")) : null))
+                        factText(s.context(), "clientName")))
                 .toList();
     }
 
@@ -313,46 +482,68 @@ public class RealtimeDialogEngine implements CallDialog {
         if (s == null) {
             return null;
         }
+        // A call with no facts (a manual test line) has no context at all, as on the cascade pipeline.
         CallContext c = s.context();
         return new OperatorSnapshot(channelId,
-                asText(c.fact("clientName")), asText(c.fact("debtAmount")), asText(c.fact("currency")),
-                asText(c.fact("dueDate")), asText(c.fact("contractNumber")),
+                factText(c, "clientName"), factText(c, "debtAmount"), factText(c, "currency"),
+                factText(c, "dueDate"), factText(c, "contractNumber"),
                 s.state(), s.transcriptText());
     }
 
-    private static String asText(Object value) {
+    private static String factText(CallContext c, String factName) {
+        if (c == null) {
+            return null;
+        }
+        Object value = c.fact(factName);
         return value == null ? null : value.toString();
     }
 
-    private void auditFacts(RealtimeDialogSession s, String text) {
-        if (!dialogProperties.factGuard()) {
-            return;
+    /**
+     * The words of {@code text} a caller who heard {@code share} of its audio can have
+     * heard — cut at a word boundary, and null when that is nothing at all. Speech rate
+     * is close enough to even over one reply that the share of audio is the share of words;
+     * the cascade pipeline, which knows each sentence's own audio, measures per sentence.
+     */
+    static String heardPart(String text, double share) {
+        if (text == null || text.isBlank()) {
+            return null;
         }
-        List<String> bad = FactGuard.violations(text, s.scenario(), s.context());
-        if (bad.isEmpty()) {
-            return;
+        String[] words = text.trim().split("\\s+");
+        int keep = (int) Math.round(words.length * Math.max(0, Math.min(1, share)));
+        if (keep <= 0) {
+            return null;
         }
-        int violations = s.recordFactViolation();
-        metrics.factGuardSpoken();
-        log.error("[{}] fact guard: figures {} were SPOKEN in {} but are not in the call facts ({}) "
-                        + "— text was: {}",
-                s.channelId(), bad, s.state(), s.context() != null ? s.context().facts() : null, text);
-        records.recordError(s.callAttemptId(),
-                "fact guard: spoken figures not in call facts: " + String.join(", ", bad));
-
-        int limit = dialogProperties.factViolationEscalateAfter();
-        if (limit <= 0 || violations < limit || s.isEnded()) {
-            return;
-        }
-        log.error("[{}] escalating to an operator after {} spoken fact violation(s)",
-                s.channelId(), violations);
-        s.end(Disposition.TRANSFERRED);
+        return keep >= words.length ? text.trim() : String.join(" ", Arrays.copyOfRange(words, 0, keep));
     }
 
-    private void recordLine(RealtimeDialogSession s, String role, String text) {
-        s.addTranscriptLine(role, text);
-        int offsetMs = (int) (Instant.now().toEpochMilli() - s.startedAt().toEpochMilli());
-        records.addTranscript(s.callAttemptId(), role, text, s.state(), offsetMs, null);
+    /**
+     * After the opening turn: if the §11.1 line does not appear in what the caller heard,
+     * ask the engine to say it now. Once per call, whatever the check finds.
+     */
+    private void checkDisclosure(RealtimeDialogSession s) {
+        String disclosure = s.pendingDisclosure();
+        if (disclosure == null || s.spokenTurnCount() < 1) {
+            return;
+        }
+        s.clearPendingDisclosure();
+        if (DisclosureCheck.covered(disclosure, s.openingSpeech())) {
+            return;
+        }
+        log.warn("[{}] the disclosure was not heard in the opening — asking the engine to say it", s.channelId());
+        RealtimeSession engine = s.engine();
+        if (engine != null) {
+            engine.sendUserText(DISCLOSURE_NUDGE.formatted(disclosure));
+        }
+    }
+
+    /** Past the turn cap, the engine is asked to close — the same cap the cascade pipeline has. */
+    private void enforceTurnCap(RealtimeDialogSession s) {
+        int maxTurns = dialogProperties.maxTurns();
+        if (maxTurns <= 0 || s.isEnded() || s.spokenTurnCount() < maxTurns) {
+            return;
+        }
+        log.warn("[{}] realtime call reached {} spoken turns — closing", s.channelId(), maxTurns);
+        watchdogRunner.requestFarewell(s, TURN_CAP, this::finishWhenSpoken);
     }
 
     /** Carries one engine's output into the call: its audio, its words, its tool calls. */
@@ -361,9 +552,12 @@ public class RealtimeDialogEngine implements CallDialog {
         private final RealtimeDialogSession session;
         /**
          * Carries the anti-aliasing filter across the engine's chunks: resampling each one
-         * on its own put a click at every chunk boundary (StreamingDownsampler).
+         * on its own put a click at every chunk boundary (StreamingDownsampler). Null when
+         * the engine already speaks at the telephone rate.
          */
         private final StreamingDownsampler downsampler;
+        /** Null when output level normalization is switched off. */
+        private final SpeechLevelNormalizer normalizer;
         /** Runs the call on the cascade pipeline instead; null leaves hanging up as the only option. */
         private final Runnable fallback;
         /**
@@ -373,12 +567,21 @@ public class RealtimeDialogEngine implements CallDialog {
          */
         private final RealtimeAudioBridge bridge;
 
+        private static final int STARTING = 0;
+        private static final int LIVE = 1;
+        private static final int CLOSED_DURING_SETUP = 2;
+        /** Whether startCall has registered the session yet, or the engine closed before it did. */
+        private final AtomicInteger phase = new AtomicInteger(STARTING);
+
         private EngineListener(RealtimeDialogSession session, int engineRate, Runnable fallback,
                                RealtimeAudioBridge bridge) {
             this.session = session;
-            this.downsampler = engineRate == 24000
-                    ? StreamingDownsampler.from24kTo8k()
-                    : StreamingDownsampler.from16kTo8k();
+            this.downsampler = switch (engineRate) {
+                case 8000 -> null;
+                case 24000 -> StreamingDownsampler.from24kTo8k();
+                default -> StreamingDownsampler.from16kTo8k();
+            };
+            this.normalizer = realtimeProperties.normalizeOutputLevel() ? new SpeechLevelNormalizer() : null;
             this.fallback = fallback;
             this.bridge = bridge;
         }
@@ -386,31 +589,94 @@ public class RealtimeDialogEngine implements CallDialog {
         @Override
         public void onBotAudio(short[] pcm) {
             bridge.open();
-            short[] telephone = downsampler.push(pcm, pcm.length);
-            if (telephone.length > 0) {
-                session.endpoint().enqueuePcm(telephone);
+            short[] telephone = downsampler == null ? pcm : downsampler.push(pcm, pcm.length);
+            if (telephone.length == 0) {
+                return;
+            }
+            if (normalizer != null) {
+                normalizer.process(telephone, telephone.length);
+            }
+            RtpEndpoint endpoint = session.endpoint();
+            if (!session.replyOpen()) {
+                beginReply(endpoint.queuedSamples());
+            }
+            endpoint.enqueuePcm(telephone);
+            session.touch();
+        }
+
+        /** The first audio of a reply: where truncation measures from, and where the caller's wait ends. */
+        private void beginReply(long startSample) {
+            long now = System.nanoTime();
+            session.startReply(startSample);
+            Duration opening = session.takeOpeningLatency(now);
+            if (opening != null) {
+                metrics.recordRealtimeFirstAudio(session.engineName(), opening);
+            }
+            Long turnaround = session.takeTurnaroundMs(now);
+            if (turnaround != null) {
+                session.recordTurnLatency(turnaround);
+                metrics.recordRealtimeTurnaround(session.engineName(), Duration.ofMillis(turnaround));
             }
         }
 
         @Override
         public void onInputTranscript(String text, boolean isFinal) {
+            session.touch();
             if (isFinal) {
-                recordLine(session, "CLIENT", text);
-                log.info("[{}] FINAL: {}", session.channelId(), text);
+                CallMdc.with(session.channelId(), () -> {
+                    transcriptRecorder.recordLine(session, "CLIENT", text);
+                    // What the caller said is personal data: kept in the transcript, not in INFO logs.
+                    log.debug("[{}] FINAL: {}", session.channelId(), text);
+                });
             }
         }
 
         @Override
         public void onOutputTranscript(String text) {
-            recordLine(session, "AGENT", text);
-            log.info("[{}] AGENT: {}", session.channelId(), text);
-            auditFacts(session, text);
+            CallMdc.with(session.channelId(), () -> {
+                Double share = session.takeHeardShare();
+                String heard = share == null ? text : heardPart(text, share);
+                if (heard == null) {
+                    log.debug("[{}] AGENT (cut off before a word was heard): {}", session.channelId(), text);
+                    return;
+                }
+                transcriptRecorder.recordLine(session, "AGENT", heard);
+                if (share == null) {
+                    log.debug("[{}] AGENT: {}", session.channelId(), heard);
+                } else {
+                    log.debug("[{}] AGENT (cut off at {}%): {}", session.channelId(), Math.round(share * 100), heard);
+                }
+                // What was never played was never said: only the heard part is audited.
+                transcriptRecorder.auditFacts(session, heard);
+                session.appendOpeningSpeech(heard);
+                String spokenLanguage = languageDetector.detect(heard, LANGUAGE_TAGS);
+                if (spokenLanguage != null) {
+                    metrics.realtimeLanguage(session.engineName(), spokenLanguage);
+                }
+            });
         }
 
         @Override
         public void onInterrupted() {
-            session.endpoint().flushPlayback();
-            log.debug("[{}] caller barged in", session.channelId());
+            RtpEndpoint endpoint = session.endpoint();
+            long start = session.replyStartSample();
+            if (start >= 0) {
+                long queued = endpoint.queuedSamples() - start;
+                long played = Math.max(0, endpoint.playedSamples() - start);
+                if (queued > 0 && played < queued) {
+                    session.setHeardShare(played / (double) queued);
+                    metrics.realtimeInterruption(session.engineName());
+                    session.recordBargeIn();
+                    RealtimeSession engine = session.engine();
+                    if (engine != null) {
+                        engine.truncatePlayback(played / SAMPLES_PER_MS);
+                    }
+                }
+            }
+            session.endReply();
+            endpoint.flushPlayback();
+            session.touch();
+            CallMdc.with(session.channelId(), () -> log.debug("[{}] caller barged in", session.channelId()));
         }
 
         @Override
@@ -419,68 +685,128 @@ public class RealtimeDialogEngine implements CallDialog {
             // otherwise leave the caller unheard for the rest of the call.
             bridge.open();
             session.countTurn();
-            if (session.isEnded()) {
-                toolExecutor.execute(() -> finishWhenSpoken(session));
+            boolean spoke = session.replyOpen();
+            session.closeReply();
+            // A whisper that came in while this reply was being generated goes in now.
+            String whisper = session.takeHeldWhisper();
+            RealtimeSession engine = session.engine();
+            if (whisper != null && engine != null && !session.isEnded()) {
+                engine.sendContext(OPERATOR_WHISPER.formatted(whisper));
+            }
+            // A cut-off reply whose transcript never came must not trim the next one.
+            session.takeHeardShare();
+            if (spoke) {
+                session.countSpokenTurn();
+            }
+            session.touch();
+            CallMdc.with(session.channelId(), () -> {
+                if (session.isEnded()) {
+                    engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), () -> finishWhenSpoken(session)));
+                    return;
+                }
+                checkDisclosure(session);
+                enforceTurnCap(session);
+            });
+        }
+
+        /** See {@link RealtimeToolRunner#handleToolCall}. */
+        @Override
+        public void onToolCall(String callId, String name, String argumentsJson) {
+            toolRunner.handleToolCall(session, callId, name, argumentsJson);
+        }
+
+        @Override
+        public void onUsage(long promptTokens, long completionTokens, long cachedTokens) {
+            session.addUsage(promptTokens, completionTokens, cachedTokens);
+            metrics.recordRealtimeUsage(session.engineName(), promptTokens, completionTokens, cachedTokens);
+            // Cost cap (§C14), the same budget the cascade pipeline closes on.
+            long cap = session.maxTokensPerCall();
+            if (DialogPolicy.isTokenBudgetSpent(cap, session.tokensUsed()) && !session.isEnded()) {
+                CallMdc.with(session.channelId(), () -> {
+                    log.warn("[{}] realtime call spent {} tokens of {} — closing", session.channelId(),
+                            session.tokensUsed(), cap);
+                    watchdogRunner.requestFarewell(session, TOKEN_CAP, RealtimeDialogEngine.this::finishWhenSpoken);
+                });
             }
         }
 
         @Override
-        public void onToolCall(String callId, String name, String argumentsJson) {
-            toolExecutor.execute(() -> runTool(session, callId, name, argumentsJson));
+        public void onLowConfidenceInput(String text) {
+            RealtimeSession engine = session.engine();
+            if (engine == null || session.isEnded()) {
+                return;
+            }
+            CallMdc.with(session.channelId(), () -> log.debug("[{}] low-confidence transcript, asking to confirm: {}",
+                    session.channelId(), text));
+            engine.sendUserText(LOW_CONFIDENCE);
+        }
+
+        @Override
+        public void onReconnected() {
+            metrics.realtimeReconnect(session.engineName());
+        }
+
+        @Override
+        public void onEngineWorking(boolean working) {
+            session.setEngineWorking(working);
+        }
+
+        /** Marks the session registered; false when the engine already closed before that. */
+        boolean goLive() {
+            return phase.compareAndSet(STARTING, LIVE);
         }
 
         @Override
         public void onClosed(Throwable cause) {
-            if (cause == null) {
+            String reason = cause != null ? cause.getMessage() : "closed by the engine";
+            if (phase.compareAndSet(STARTING, CLOSED_DURING_SETUP)) {
+                // startCall is still setting the call up; it sees this and reports a failed
+                // start, so the caller's fallback runs once, from there.
+                CallMdc.with(session.channelId(), () -> log.warn("[{}] realtime engine closed during setup: {}",
+                        session.channelId(), reason));
                 return;
             }
-            // Reached only once the provider has exhausted its own recovery — Gemini Live,
-            // for one, resumes onto a fresh connection first and only reports here when
-            // even that failed. The caller is still on the line either way, so the cascade
-            // pipeline takes over rather than the call being dropped on them.
-            log.warn("[{}] realtime engine closed: {}", session.channelId(), cause.getMessage());
-            sessions.remove(session.channelId());
-            toolExecutor.execute(fallback != null ? fallback : session.hangup());
-        }
-    }
-
-    private void runTool(RealtimeDialogSession s, String callId, String name, String argumentsJson) {
-        String result;
-        try {
-            ToolCallback callback = s.tools().stream()
-                    .filter(t -> t.getToolDefinition().name().equals(name))
-                    .findFirst()
-                    .orElse(null);
-            if (callback == null) {
-                log.warn("[{}] engine called unknown tool {}", s.channelId(), name);
-                result = "XATO: bunday tool yo'q";
-            } else {
-                result = callback.call(argumentsJson);
-                log.info("[{}] tool {} -> {}", s.channelId(), name, result);
+            // Only a session still registered for this call is this listener's to act on. One
+            // already removed was closed by this side — a hangup, a teardown — and its close is
+            // expected. A clean close used to be ignored outright, which left a caller whose
+            // engine the server had closed normally (code 1000) mid-call in dead air.
+            if (!sessions.remove(session.channelId(), session)) {
+                return;
             }
-        } catch (Exception e) {
-            log.warn("[{}] tool {} failed: {}", s.channelId(), name, e.getMessage());
-            result = "XATO: " + e.getMessage();
-        }
-        RealtimeSession engine = s.engine();
-        if (engine != null) {
-            engine.sendToolResult(callId, result);
+            CallMdc.with(session.channelId(), () -> {
+                log.warn("[{}] realtime engine closed: {}", session.channelId(), reason);
+                release(session);
+                // A call that was already on its way out only needs the line dropped once
+                // the goodbye has played; starting it over on another pipeline would greet
+                // a caller who was just told goodbye.
+                if (session.isEnded()) {
+                    engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), () -> finishWhenSpoken(session)));
+                    return;
+                }
+                // Reached only once the provider has exhausted its own recovery — Gemini
+                // Live, for one, resumes onto a fresh connection first and only reports here
+                // when even that failed. The caller is still on the line either way, so the
+                // cascade pipeline takes over rather than the call being dropped on them.
+                metrics.realtimeFallback(session.engineName());
+                Runnable continuation = fallback != null ? fallback : session.hangup();
+                engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), continuation));
+            });
         }
     }
 
+    /**
+     * Hang up — or transfer — once whatever is still queued has played. Reached from the
+     * engine's turn completing, from the watchdog's grace timer and from a lost engine on
+     * a call that was already ending, so it runs at most once per call.
+     */
     private void finishWhenSpoken(RealtimeDialogSession s) {
-        long deadline = System.nanoTime() + MAX_DRAIN.toNanos();
-        try {
-            while (s.endpoint().isPlaying() && System.nanoTime() < deadline) {
-                Thread.sleep(100);
-            }
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        if (!s.beginClosing()) {
             return;
         }
-        Runnable action = (s.disposition() == Disposition.TRANSFERRED && s.transfer() != null)
-                ? s.transfer() : s.hangup();
+        if (!dialogPolicy.awaitPlaybackDrained(s.endpoint())) {
+            return;
+        }
+        Runnable action = DialogPolicy.selectClosingAction(s.disposition(), s.transfer(), s.hangup());
         if (action != null) {
             action.run();
         }
@@ -488,6 +814,6 @@ public class RealtimeDialogEngine implements CallDialog {
 
     @PreDestroy
     public void shutdown() {
-        toolExecutor.shutdownNow();
+        engineTaskExecutor.shutdownNow();
     }
 }

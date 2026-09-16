@@ -11,6 +11,9 @@ import java.time.Instant;
  * plus the persisted call_attempt id and timing needed to finalize the call (Stage 9).
  *
  * @param channelId         the caller's Asterisk channel id
+ * @param companyId         the tenant this call belongs to — every live-call endpoint and
+ *                          the live SSE feed are scoped by it, so an operator of one company
+ *                          can neither see nor touch another company's channel
  * @param extMediaChannelId the externalMedia channel id bridged to the caller
  * @param bridgeId          the mixing bridge id
  * @param rtpPort           the UDP port allocated for this call's RTP
@@ -39,6 +42,7 @@ import java.time.Instant;
  */
 public record CallSession(
         String channelId,
+        long companyId,
         String extMediaChannelId,
         String bridgeId,
         int rtpPort,
@@ -53,11 +57,21 @@ public record CallSession(
         boolean dtmfInputEnabled,
         AiAgent agent
 ) {
-    public CallSession(String channelId, String extMediaChannelId, String bridgeId, int rtpPort,
+    public CallSession(String channelId, long companyId, String extMediaChannelId, String bridgeId, int rtpPort,
                        RtpEndpoint endpoint, long callAttemptId, Instant startedAt, String wavPath,
                        String channelName, String trunk, long scenarioId, LiveAudioMonitor audioMonitor,
                        boolean dtmfInputEnabled) {
-        this(channelId, extMediaChannelId, bridgeId, rtpPort, endpoint, callAttemptId, startedAt,
+        this(channelId, companyId, extMediaChannelId, bridgeId, rtpPort, endpoint, callAttemptId, startedAt,
                 wavPath, channelName, trunk, scenarioId, audioMonitor, dtmfInputEnabled, null);
+    }
+
+    /**
+     * The same call, now run by {@code newAgent} — an AI_AGENT node in a call flow starts an
+     * agent on a call that was answered without one, and the finalizer summarises against
+     * the scenario that agent ran.
+     */
+    public CallSession withAgent(AiAgent newAgent, long newScenarioId, boolean newDtmfInputEnabled) {
+        return new CallSession(channelId, companyId, extMediaChannelId, bridgeId, rtpPort, endpoint, callAttemptId,
+                startedAt, wavPath, channelName, trunk, newScenarioId, audioMonitor, newDtmfInputEnabled, newAgent);
     }
 }

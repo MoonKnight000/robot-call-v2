@@ -9,8 +9,6 @@ import uz.murodjon.robotcallv2.profile.application.port.output.UserScheduleRepos
 import uz.murodjon.robotcallv2.profile.domain.entity.ScheduleSlot;
 import uz.murodjon.robotcallv2.profile.infrastructure.persistence.entity.UserScheduleSlotEntity;
 import uz.murodjon.robotcallv2.profile.infrastructure.persistence.repository.UserScheduleJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
@@ -43,10 +41,8 @@ public class UserScheduleRepositoryAdapter implements UserScheduleRepository {
     @Transactional
     public List<ScheduleSlot> save(long companyId, long userId, List<ScheduleSlot> slots) {
         userScheduleJpaRepository.deleteByUserId(userId);
-        UserEntity user = userJpaRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
-        CompanyEntity comp = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        UserEntity user = userJpaRepository.getReferenceById(userId);
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         Instant now = Instant.now();
         for (ScheduleSlot slot : slots) {

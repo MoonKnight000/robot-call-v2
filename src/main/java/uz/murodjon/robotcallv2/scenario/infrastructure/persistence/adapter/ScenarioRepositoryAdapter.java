@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.scenario.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.scenario.application.mapper.ScenarioMapper;
+import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.mapper.ScenarioEntityMapper;
 import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -20,10 +20,10 @@ import java.util.stream.Collectors;
 public class ScenarioRepositoryAdapter implements ScenarioRepository {
 
     private final ScenarioJpaRepository jpaRepository;
-    private final ScenarioMapper mapper;
+    private final ScenarioEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
 
-    public ScenarioRepositoryAdapter(ScenarioJpaRepository jpaRepository, ScenarioMapper mapper,
+    public ScenarioRepositoryAdapter(ScenarioJpaRepository jpaRepository, ScenarioEntityMapper mapper,
                                      CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
@@ -54,17 +54,17 @@ public class ScenarioRepositoryAdapter implements ScenarioRepository {
     }
 
     @Override
-    public void deactivate(String scenarioKey) {
-        jpaRepository.deactivate(scenarioKey);
+    public boolean deactivate(String scenarioKey, int version) {
+        return jpaRepository.deactivate(scenarioKey, version) > 0;
     }
 
     @Override
     public Scenario find(long companyId, long id) {
-        return jpaRepository.findVisible(id, companyId).map(mapper::entityToDomain).orElse(null);
+        return jpaRepository.findVisible(id, companyId).map(mapper::toScenario).orElse(null);
     }
 
     @Override
-    public Map<Long, String> namesByIds(long companyId, Collection<Long> ids) {
+    public Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids) {
         if (ids.isEmpty()) {
             return Map.of();
         }
@@ -73,13 +73,13 @@ public class ScenarioRepositoryAdapter implements ScenarioRepository {
     }
 
     @Override
-    public String nameById(long companyId, long id) {
-        return namesByIds(companyId, List.of(id)).get(id);
+    public String findNameById(long companyId, long id) {
+        return findNamesByIds(companyId, List.of(id)).get(id);
     }
 
     @Override
-    public int maxVersion(String scenarioKey) {
-        Integer max = jpaRepository.maxVersion(scenarioKey);
+    public int findMaxVersion(String scenarioKey) {
+        Integer max = jpaRepository.findMaxVersion(scenarioKey);
         return max != null ? max : 0;
     }
 
@@ -90,13 +90,13 @@ public class ScenarioRepositoryAdapter implements ScenarioRepository {
 
     @Override
     public Scenario findActiveByKey(String scenarioKey) {
-        return jpaRepository.findByScenarioKeyAndActiveTrue(scenarioKey).map(mapper::entityToDomain).orElse(null);
+        return jpaRepository.findByScenarioKeyAndActiveTrue(scenarioKey).map(mapper::toScenario).orElse(null);
     }
 
     @Override
     public List<Scenario> findAll(long companyId, ScenarioFilter filter) {
         return jpaRepository.findVisible(companyId, filter.builtinOnly(), filter.pageable()).stream()
-                .map(mapper::entityToDomain)
+                .map(mapper::toScenario)
                 .toList();
     }
 
@@ -107,6 +107,6 @@ public class ScenarioRepositoryAdapter implements ScenarioRepository {
 
     @Override
     public List<Scenario> findAllActive() {
-        return jpaRepository.findByActiveTrue().stream().map(mapper::entityToDomain).toList();
+        return jpaRepository.findByActiveTrue().stream().map(mapper::toScenario).toList();
     }
 }

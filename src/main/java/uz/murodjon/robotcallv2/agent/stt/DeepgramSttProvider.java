@@ -17,10 +17,13 @@ import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 /**
  * Deepgram Streaming Speech-to-Text Provider (Nova-2 / Nova-3 WebSocket API).
@@ -80,36 +83,50 @@ public class DeepgramSttProvider implements SttProvider {
         HttpClient current = client;
         DeepgramSttProperties d = sttProperties.deepgram();
         if (current == null || d == null) {
-            throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_CONNECT_FAILED, "deepgram client not initialized");
+            throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_CLIENT_UNAVAILABLE, "deepgram");
         }
 
         String lang = languageCode != null && languageCode.length() >= 2 ? languageCode.substring(0, 2) : "ru";
         String chosenModel = (model != null && !model.isBlank()) ? model.trim() : d.model();
-        String wsUrl = String.format("%s?model=%s&language=%s&encoding=linear16&sample_rate=%d&channels=1&interim_results=%s&smart_format=true&endpointing=300",
-                d.url(), chosenModel, lang, d.sampleRate(), d.interimResults());
+        // utterance_end_ms is Deepgram's backstop for speech_final, which it may never send
+        // when the caller's audio stays noisy after they stop; it needs interim results.
+        String wsUrl = String.format("%s?model=%s&language=%s&encoding=linear16&sample_rate=%d&channels=1&interim_results=%s&smart_format=true&endpointing=300%s",
+                d.url(), chosenModel, lang, d.sampleRate(), d.interimResults(),
+                d.interimResults() ? "&utterance_end_ms=1000" : "");
 
         AtomicBoolean alive = new AtomicBoolean(true);
         CountDownLatch connected = new CountDownLatch(1);
 
         try {
-            WebSocket ws = current.newWebSocketBuilder()
+            WebSocket webSocket = current.newWebSocketBuilder()
                     .header("Authorization", "Token " + d.apiKey())
                     .connectTimeout(Duration.ofSeconds(d.connectTimeoutSeconds()))
                     .buildAsync(URI.create(wsUrl), new DeepgramResponseHandler(listener, alive, connected, metrics, d.interimResults()))
                     .get(d.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
             if (!connected.await(d.connectTimeoutSeconds(), TimeUnit.SECONDS)) {
-                ws.abort();
-                throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_STREAM_FAILED, "deepgram connect timeout");
+                webSocket.abort();
+                throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_CONNECT_TIMEOUT, "deepgram",
+                        d.connectTimeoutSeconds());
             }
 
             log.info("Opened Deepgram STT stream for lang={} (model={})", lang, chosenModel);
-            return new DeepgramSttSession(ws, alive);
+            return new DeepgramSttSession(webSocket, alive, externalEndpointing);
+        } catch (ExternalServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.STT_DEEPGRAM_STREAM_FAILED, "deepgram", e, e.getMessage());
         }
     }
 
+    /**
+     * Turns Deepgram's result stream into one final per utterance. {@code is_final} only
+     * means "this stretch of audio will not be re-transcribed" and arrives several times
+     * within one utterance; forwarding each as a final split one sentence into several
+     * turns. Finalized stretches are collected here and emitted as the utterance's final
+     * on {@code speech_final}, on an {@code UtteranceEnd} message, or on the result of a
+     * {@code Finalize} request ({@code from_finalize}).
+     */
     private static final class DeepgramResponseHandler implements WebSocket.Listener {
 
         private final TranscriptListener listener;
@@ -118,6 +135,9 @@ public class DeepgramSttProvider implements SttProvider {
         private final VoiceMetrics metrics;
         private final boolean interimResults;
         private final StringBuilder message = new StringBuilder();
+        /** Finalized stretches of the utterance in progress. Only touched from onText, which is sequential. */
+        private final StringBuilder utterance = new StringBuilder();
+        private float utteranceConfidence = 1.0f;
 
         private DeepgramResponseHandler(TranscriptListener listener, AtomicBoolean alive,
                                         CountDownLatch connected, VoiceMetrics metrics, boolean interimResults) {
@@ -148,25 +168,46 @@ public class DeepgramSttProvider implements SttProvider {
         private void parseAndDispatch(String json) {
             try {
                 JsonNode root = MAPPER.readTree(json);
-                JsonNode channel = root.path("channel");
-                JsonNode alternatives = channel.path("alternatives");
-                if (alternatives.isArray() && !alternatives.isEmpty()) {
-                    JsonNode best = alternatives.get(0);
-                    String transcript = best.path("transcript").asText("");
-                    double confidence = best.path("confidence").asDouble(1.0);
-                    boolean isFinal = root.path("is_final").asBoolean(false);
-
+                if ("UtteranceEnd".equals(root.path("type").asText(""))) {
+                    emitUtterance();
+                    return;
+                }
+                JsonNode alternatives = root.path("channel").path("alternatives");
+                if (!alternatives.isArray() || alternatives.isEmpty()) {
+                    return;
+                }
+                JsonNode best = alternatives.get(0);
+                String transcript = best.path("transcript").asText("");
+                float confidence = (float) best.path("confidence").asDouble(1.0);
+                if (root.path("is_final").asBoolean(false)) {
                     if (!transcript.isBlank()) {
-                        if (isFinal) {
-                            listener.onTranscript(transcript, true, (float) confidence);
-                        } else if (interimResults) {
-                            listener.onTranscript(transcript, false, (float) confidence);
+                        if (!utterance.isEmpty()) {
+                            utterance.append(' ');
                         }
+                        utterance.append(transcript.trim());
+                        utteranceConfidence = Math.min(utteranceConfidence, confidence);
                     }
+                    if (root.path("speech_final").asBoolean(false) || root.path("from_finalize").asBoolean(false)) {
+                        emitUtterance();
+                    } else if (interimResults && !utterance.isEmpty()) {
+                        listener.onTranscript(utterance.toString(), false, utteranceConfidence);
+                    }
+                } else if (interimResults && !transcript.isBlank()) {
+                    String partial = utterance.isEmpty() ? transcript : utterance + " " + transcript.trim();
+                    listener.onTranscript(partial, false, confidence);
                 }
             } catch (Exception e) {
                 log.debug("Failed to parse Deepgram message: {}", e.getMessage());
             }
+        }
+
+        private void emitUtterance() {
+            if (utterance.isEmpty()) {
+                return;
+            }
+            listener.onTranscript(utterance.toString(), true, utteranceConfidence);
+            utterance.setLength(0);
+            utteranceConfidence = 1.0f;
         }
 
         @Override
@@ -182,14 +223,35 @@ public class DeepgramSttProvider implements SttProvider {
         }
     }
 
+    /**
+     * Every write goes through one chain: the JDK WebSocket refuses a send while another is
+     * still in flight, and handing it 20 ms frames straight from the RTP thread lost them
+     * with an IllegalStateException nobody saw. The chain is bounded — past
+     * {@link #MAX_PENDING_SENDS} frames behind, audio is dropped and {@link #isReady()}
+     * says so instead of the backlog growing without end.
+     */
     private static final class DeepgramSttSession implements SttSession {
 
-        private final WebSocket ws;
-        private final AtomicBoolean alive;
+        /** About one second of 20 ms frames. */
+        private static final int MAX_PENDING_SENDS = 50;
+        /** Deepgram closes a stream after ~10 s without data; a KeepAlive every 5 s of silence prevents it. */
+        private static final long KEEP_ALIVE_AFTER_NANOS = TimeUnit.SECONDS.toNanos(5);
 
-        private DeepgramSttSession(WebSocket ws, AtomicBoolean alive) {
-            this.ws = ws;
+        private final WebSocket webSocket;
+        private final AtomicBoolean alive;
+        private final boolean externalEndpointing;
+        private final AtomicInteger pendingSends = new AtomicInteger();
+        private final Object sendLock = new Object();
+        private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
+        private volatile long lastSentNanos = System.nanoTime();
+
+        private DeepgramSttSession(WebSocket webSocket, AtomicBoolean alive, boolean externalEndpointing) {
+            this.webSocket = webSocket;
             this.alive = alive;
+            this.externalEndpointing = externalEndpointing;
+            // Audio stops reaching the recognizer while the VAD gate holds it back during
+            // silence, which is exactly when Deepgram would time the stream out.
+            Thread.ofVirtual().name("deepgram-keepalive").start(this::keepAlive);
         }
 
         @Override
@@ -197,7 +259,19 @@ public class DeepgramSttProvider implements SttProvider {
             if (!alive.get()) {
                 return;
             }
-            ws.sendBinary(ByteBuffer.wrap(pcm16le), true);
+            if (pendingSends.get() >= MAX_PENDING_SENDS) {
+                log.debug("Deepgram uplink {} frames behind — dropping one", MAX_PENDING_SENDS);
+                return;
+            }
+            enqueue(socket -> socket.sendBinary(ByteBuffer.wrap(pcm16le), true));
+        }
+
+        /** With external endpointing the caller's silence is ours to call: ask Deepgram to finalize now. */
+        @Override
+        public void endUtterance() {
+            if (externalEndpointing && alive.get()) {
+                enqueue(socket -> socket.sendText("{\"type\":\"Finalize\"}", true));
+            }
         }
 
         @Override
@@ -206,12 +280,53 @@ public class DeepgramSttProvider implements SttProvider {
         }
 
         @Override
+        public boolean isReady() {
+            return pendingSends.get() < MAX_PENDING_SENDS;
+        }
+
+        @Override
         public void close() {
             if (alive.compareAndSet(true, false)) {
-                try {
-                    ws.sendClose(WebSocket.NORMAL_CLOSURE, "bye");
-                } catch (Exception ignored) {
+                synchronized (sendLock) {
+                    sendChain = sendChain
+                            .thenCompose(ignored -> webSocket.sendText("{\"type\":\"CloseStream\"}", true))
+                            .thenCompose(socket -> socket.sendClose(WebSocket.NORMAL_CLOSURE, "bye"))
+                            .handle((socket, e) -> {
+                                if (e != null) {
+                                    log.debug("Deepgram close not sent: {}", e.getMessage());
+                                }
+                                return null;
+                            });
                 }
+            }
+        }
+
+        private void enqueue(Function<WebSocket, CompletableFuture<WebSocket>> write) {
+            pendingSends.incrementAndGet();
+            lastSentNanos = System.nanoTime();
+            synchronized (sendLock) {
+                sendChain = sendChain
+                        .thenCompose(ignored -> write.apply(webSocket))
+                        .handle((socket, e) -> {
+                            pendingSends.decrementAndGet();
+                            if (e != null) {
+                                alive.set(false);
+                            }
+                            return null;
+                        });
+            }
+        }
+
+        private void keepAlive() {
+            try {
+                while (alive.get()) {
+                    Thread.sleep(1000);
+                    if (alive.get() && System.nanoTime() - lastSentNanos >= KEEP_ALIVE_AFTER_NANOS) {
+                        enqueue(socket -> socket.sendText("{\"type\":\"KeepAlive\"}", true));
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
     }

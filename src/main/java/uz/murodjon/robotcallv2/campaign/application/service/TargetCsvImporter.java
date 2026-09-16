@@ -151,16 +151,22 @@ public final class TargetCsvImporter {
         }
 
         long clientId = 0;
+        String textClientId = null;
         String rawClientId = value(cells, fieldToIndex, COL_CLIENT_ID);
         if (rawClientId != null && !rawClientId.isBlank()) {
             try {
                 clientId = Long.parseLong(rawClientId.trim());
             } catch (NumberFormatException e) {
-                // If not numeric, keep clientId as 0 and put into context
+                // A CRM id that is not a number ("C-1001") keeps clientId at 0 and travels in
+                // the context instead, where the prompt and the tools can still read it.
+                textClientId = rawClientId.trim();
             }
         }
 
         ObjectNode context = MAPPER.createObjectNode();
+        if (textClientId != null) {
+            context.put(COL_CLIENT_ID, textClientId);
+        }
 
         // 1. Populate known context fields (clientName, debtAmount, debtDay, dueDate, contractNumber, etc.)
         for (Map.Entry<String, Integer> entry : fieldToIndex.entrySet()) {

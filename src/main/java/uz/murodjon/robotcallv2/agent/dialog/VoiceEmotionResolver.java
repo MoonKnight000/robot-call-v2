@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
@@ -34,14 +35,14 @@ public class VoiceEmotionResolver {
         EffectiveVoiceSettings base = s.voiceSettings() != null ? s.voiceSettings() : EffectiveVoiceSettings.NONE;
         VoiceEmotion emotion = determineEmotion(s);
 
-        Double effectiveSpeed = base.speed();
+        Double effectiveSpeed = agentSpeed(s, base.speed());
         if (s.emotionAdaptiveVoice()) {
             if (s.lastCustomerSentiment() == CustomerSentiment.FRUSTRATED) {
                 // Calm, softer, slightly slower pace during customer frustration
-                double speed = base.speed() != null ? base.speed() : 1.0;
+                double speed = effectiveSpeed != null ? effectiveSpeed : 1.0;
                 effectiveSpeed = Math.round(speed * 0.92 * 100.0) / 100.0;
             } else if (s.lastCustomerSentiment() == CustomerSentiment.CONFUSED) {
-                double speed = base.speed() != null ? base.speed() : 1.0;
+                double speed = effectiveSpeed != null ? effectiveSpeed : 1.0;
                 effectiveSpeed = Math.round(speed * 0.96 * 100.0) / 100.0;
             }
         }
@@ -51,6 +52,20 @@ public class VoiceEmotionResolver {
                 s.channelId(), s.state(), s.lastCustomerSentiment(), emotion, role, effectiveSpeed);
 
         return new EffectiveVoiceSettings(base.provider(), effectiveSpeed, base.pitch(), role);
+    }
+
+    /**
+     * The agent's own pace for the call's current language (NEXT-PLAN A.7) — the language
+     * a call switched to included. 1.0, what every agent has until someone sets it,
+     * leaves the company's speed in charge.
+     */
+    private static Double agentSpeed(DialogSession s, Double companySpeed) {
+        AiAgent agent = s.agent();
+        if (agent == null) {
+            return companySpeed;
+        }
+        double own = agent.voice().speedFor(s.language());
+        return own != 1.0 ? own : companySpeed;
     }
 
     /**

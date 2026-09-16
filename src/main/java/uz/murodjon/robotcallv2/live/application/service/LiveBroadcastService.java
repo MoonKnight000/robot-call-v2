@@ -1,73 +1,69 @@
 package uz.murodjon.robotcallv2.live.application.service;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
+import uz.murodjon.robotcallv2.live.domain.entity.LiveNotification;
 import uz.murodjon.robotcallv2.live.domain.enums.LiveEventType;
+import uz.murodjon.robotcallv2.operator.domain.event.OperatorNotificationEvent;
+import uz.murodjon.robotcallv2.shared.stream.EventSink;
+import uz.murodjon.robotcallv2.shared.stream.EventStreamHub;
+import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
 
-import java.io.IOException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Fans out live events (§0.7) to every connected {@code GET /api/live/stream} client.
+ * Fans out live events (§0.7) to the connected {@code GET /api/live/stream} clients of one
+ * company. Every subscription is bound to the company of the token that opened it, and every
+ * event names the company it belongs to — a transcript line or KPI tick never crosses a tenant.
+ *
+ * <p>{@link #publish} is called from media threads — the RTP consumer (audio levels), STT
+ * and turn threads — so it only ever queues the event for the stream's own writer
+ * ({@link EventStreamHub}): one supervisor's browser on a bad network must not stall the
+ * inbound audio of every call of its company.
  */
 @Service
 public class LiveBroadcastService implements LiveUseCase {
 
-    private static final Logger log = LoggerFactory.getLogger(LiveBroadcastService.class);
-
     private static final long HEARTBEAT_MS = 15_000;
 
-    private final ConcurrentHashMap<Long, SseEmitter> sessions = new ConcurrentHashMap<>();
-    private final AtomicLong nextId = new AtomicLong();
+    private final EventStreamHub<Long> streams = new EventStreamHub<>("live-sse");
 
     @Override
-    public SseEmitter subscribe() {
-        SseEmitter emitter = new SseEmitter(0L);
-        long id = nextId.incrementAndGet();
-        sessions.put(id, emitter);
-        emitter.onCompletion(() -> sessions.remove(id));
-        emitter.onTimeout(() -> sessions.remove(id));
-        emitter.onError(e -> sessions.remove(id));
-        try {
-            emitter.send(SseEmitter.event().name("connected").data(id));
-        } catch (IOException e) {
-            sessions.remove(id);
-        }
-        return emitter;
+    public EventSubscription subscribe(long companyId, EventSink sink) {
+        return streams.subscribe(companyId, sink);
+    }
+
+    @Override
+    public void publish(long companyId, LiveEventType type, Object payload) {
+        streams.publish(streamCompanyId -> streamCompanyId == companyId, type.name(), payload);
     }
 
     /** Id of the most recent subscription, so {@link LiveKpiPublisher} can notice a new client. */
-    public long lastSubscriptionId() {
-        return nextId.get();
+    public long findLastSubscriptionId() {
+        return streams.findLastSubscriptionId();
     }
 
-    public void publish(LiveEventType type, Object payload) {
-        if (sessions.isEmpty()) {
-            return;
-        }
-        sessions.forEach((id, emitter) -> {
-            try {
-                emitter.send(SseEmitter.event().name(type.name()).data(payload));
-            } catch (IOException | IllegalStateException e) {
-                sessions.remove(id);
-            }
-        });
+    /** Every company with at least one stream open right now. */
+    public Set<Long> findSubscribedCompanyIds() {
+        return new HashSet<>(streams.findAudiences());
+    }
+
+    /**
+     * A takeover or whisper from the operator screen, on the company's live panels — as the
+     * {@code LiveNotification(kind, text, channelId)} that screen has always sent.
+     */
+    @EventListener
+    public void publishOperatorNotification(OperatorNotificationEvent event) {
+        publish(event.companyId(), LiveEventType.NOTIFICATION,
+                new LiveNotification(event.kind(), event.text(), event.channelId()));
     }
 
     @Scheduled(fixedRate = HEARTBEAT_MS)
     void heartbeat() {
-        sessions.forEach((id, emitter) -> {
-            try {
-                emitter.send(SseEmitter.event().comment("ping"));
-            } catch (IOException | IllegalStateException e) {
-                sessions.remove(id);
-            }
-        });
+        streams.sendHeartbeat();
     }
 }

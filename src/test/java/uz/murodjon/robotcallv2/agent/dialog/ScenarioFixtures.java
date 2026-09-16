@@ -94,9 +94,48 @@ final class ScenarioFixtures {
                                 + "bilan operatorga o'tkaz.",
                         "Mijozga 'suhbatdoshim' yoki 'mijoz' deb gapirma. 'Siz [Ism]misiz?' deb so'rama — xuddi "
                                 + "tirik operatordek: 'Men [Ism] aka bilan gaplashayapmanmi?' yoki '[Ism] aka, "
-                                + "sizmisiz?' deb so'ra."
+                                + "sizmisiz?' deb so'ra.",
+                        "Og'zaki shaklni tanla: \"to'lovni amalga oshirasiz\" emas — \"to'laysiz\"; "
+                                + "\"qarzdorligingiz mavjud\" emas — \"qarzingiz bor\"; \"to'lanishi kerak bo'lgan "
+                                + "summa\" emas — \"qarz\".",
+                        "Qarz bor-yo'qligi muhokama mavzusi emas: mijozdan qarzini tasdiqlashini so'rama — "
+                                + "sen uni xabar qilyapsan.",
+                        "Mijoz aniq to'lov sanasini aytgan zahoti SHU javobning o'zida recordPaymentPromise va "
+                                + "endCall'ni birga chaqir. Sanani qayta tasdiqlatuvchi savol berma (\"20-oktabrda "
+                                + "1500000 so'm to'lay olasizmi?\") — mijoz sanani allaqachon aytdi. Yakuniy gap "
+                                + "savol emas, XABAR bo'lsin: sana va summani takrorlab, to'lovni kutayotganingni "
+                                + "ayt va xayrlash."
                 ),
-                null
+                null,
+                null,
+                List.of(
+                        new StyleExample("uz", "\"Ushbu to'lov qachon amalga oshirilishi kutilmoqda?\"",
+                                "\"Qachon to'lay olasiz?\""),
+                        new StyleExample("uz", "\"Sizning A56 shartnomangiz bo'yicha 1500000 so'm qarzingiz bor ekan, "
+                                + "to'lov muddati 1-iyulda o'tib ketgan.\"",
+                                "\"Murodjon aka, 1500000 so'm qarzingiz bor. To'lov muddati 1-iyulda o'tgan.\""),
+                        new StyleExample("uz", "\"Sizda qarzdorlik bor ekan, to'g'rimi?\"",
+                                "\"1500000 so'm qarzingiz bor. Nima uchun to'lanmayapti?\""),
+                        new StyleExample("uz", "(bo'sh, tasdiqlovchi savol) \"1500000 so'm qarzingiz bor, muddati "
+                                + "1-iyulda o'tgan — bu haqda xabaringiz bormidi?\"",
+                                "\"1500000 so'm qarzingiz bor, muddati 1-iyulda o'tgan. Nima uchun to'lanmayapti?\""),
+                        new StyleExample("uz", "\"Murodjon aka, eshitib turibsizmi, to'lovni bu hafta oxirigacha "
+                                + "qila olasizmi?\"", "\"Qachon to'lay olasiz?\""),
+                        new StyleExample("uz", "(o'tgan javobda \"qachon to'laysiz?\" so'ralgan) \"Bu to'lovni qachon "
+                                + "to'lab bera olasiz?\"", "\"Tushunarli. Sabab nimada — vaqtinchalik qiyinchilikmi?\""),
+                        new StyleExample("uz", "(mijoz \"20-sanada\" dedi, endi tasdiqlatyapti) \"Aha. 20-oktabrda "
+                                + "1500000 so'm to'lay olasizmi?\"",
+                                "\"Kelishdik. 20-oktabr kuni 1500000 so'mni kutib qolamiz. Salomat bo'ling!\""),
+                        new StyleExample("uz", "(mijoz javobi tushunarsiz chiqdi) \"Gapingizni to'liq tushunolmadim. "
+                                + "Bu to'lovni qachon to'lay olasiz?\"", "\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\""),
+                        new StyleExample("uz", "(mijoz \"aha o'zgartir\" dedi — bu \"nima uchun to'lanmayapti?\" "
+                                + "savoliga javob emas) \"Pul bo'lmagani uchun to'lolmayapman deng. Xo'p, qachon to'lay "
+                                + "olasiz?\"", "\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\""),
+                        new StyleExample("ru", "\"Когда ожидается осуществление данного платежа?\"",
+                                "\"Когда сможете оплатить?\""),
+                        new StyleExample("ru", "(ответ клиента не разобран) \"Я вас не совсем понял. Когда сможете "
+                                + "оплатить?\"", "\"Плохо слышно. Почему не оплачено?\"")
+                )
         );
     }
 

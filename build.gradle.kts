@@ -64,6 +64,16 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
+    // Outbound calls to tenant-supplied URLs (shared/http). Apache HttpClient 5 because it
+    // lets us plug in the DNS resolver: the address a socket connects to is the one
+    // PublicUrlGuard vetted, not a second lookup an attacker's DNS can change (SSRF DNS
+    // rebinding). Version from the Spring Boot BOM.
+    implementation("org.apache.httpcomponents.client5:httpclient5")
+
+    // YAML OpenAPI documents for the tool importer (UNIVERSAL-OPERATOR-PLAN B.2). Spring Boot
+    // already brings it in for application.yml; named here because this code uses it. Version from the BOM.
+    implementation("org.yaml:snakeyaml")
+
     // JWT for user login (ROADMAP E.1) — X-Api-Key stays for machine-to-machine callers.
     // Versions for api, impl, and jackson are kept 100% in sync via jjwtVersion.
     val jjwtVersion = "0.13.0"
@@ -122,6 +132,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
+    // CLAUDE.md layering rules checked by the build (ArchitectureTest), not only in review.
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

@@ -28,6 +28,10 @@ public class UserSessionEntity {
     @Column(name = "refresh_token_hash", nullable = false)
     private String refreshTokenHash;
 
+    /** The hash the last rotation replaced — presented again, it means the token was stolen. */
+    @Column(name = "previous_refresh_token_hash")
+    private String previousRefreshTokenHash;
+
     @Column(name = "device")
     private String device;
 
@@ -84,6 +88,14 @@ public class UserSessionEntity {
 
     public void setRefreshTokenHash(String refreshTokenHash) {
         this.refreshTokenHash = refreshTokenHash;
+    }
+
+    public String getPreviousRefreshTokenHash() {
+        return previousRefreshTokenHash;
+    }
+
+    public void setPreviousRefreshTokenHash(String previousRefreshTokenHash) {
+        this.previousRefreshTokenHash = previousRefreshTokenHash;
     }
 
     public String getDevice() {

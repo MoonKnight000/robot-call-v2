@@ -6,13 +6,15 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.ari.WebTestProperties;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.widget.application.dto.*;
 import uz.murodjon.robotcallv2.widget.application.port.input.AgentWidgetUseCase;
 import uz.murodjon.robotcallv2.widget.application.port.output.AgentWidgetRepository;
 import uz.murodjon.robotcallv2.widget.domain.entity.AgentWidget;
+import uz.murodjon.robotcallv2.widget.domain.entity.WidgetCallBooking;
 import uz.murodjon.robotcallv2.widget.domain.entity.WidgetTheme;
+import uz.murodjon.robotcallv2.widget.domain.entity.WidgetTarget;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,7 +38,7 @@ public class AgentWidgetService implements AgentWidgetUseCase {
     private final WidgetCallGate callGate;
     private final WebTestProperties webTestProperties;
     private final AiAgentUseCase aiAgentUseCase;
-    private final AuditService auditService;
+    private final AuditUseCase auditService;
 
     public AgentWidgetService(
             AgentWidgetRepository repository,
@@ -44,7 +46,7 @@ public class AgentWidgetService implements AgentWidgetUseCase {
             WidgetCallGate callGate,
             WebTestProperties webTestProperties,
             AiAgentUseCase aiAgentUseCase,
-            AuditService auditService
+            AuditUseCase auditService
     ) {
         this.repository = repository;
         this.ariService = ariService;
@@ -159,18 +161,30 @@ public class AgentWidgetService implements AgentWidgetUseCase {
     public PublicWidgetSessionResponse startPublicSession(String widgetKey, String origin, String language) {
         AgentWidget widget = requirePublicWidget(widgetKey, origin);
         if (webTestProperties.wsUrl() == null || webTestProperties.wsUrl().isBlank()) {
-            throw new ExternalServiceException(ErrorCode.WEB_TEST_NOT_CONFIGURED, "asterisk");
+            throw new ConflictException(ErrorCode.WEB_TEST_NOT_CONFIGURED);
         }
-        AiAgent agent = aiAgentUseCase.requireAgent(widget.companyId(), widget.agentId());
-        callGate.checkCallAllowed(agent);
+        AiAgent agent = aiAgentUseCase.requirePublishedAgent(widget.companyId(), widget.agentId());
+        WidgetCallBooking booking = callGate.reserve(agent);
 
-        String sessionId = ariService.prepareWidgetCall(widget.companyId(), agent, language);
-        callGate.recordBooking(agent, sessionId);
+        String sessionId;
+        try {
+            sessionId = ariService.prepareWidgetCall(widget.companyId(), agent, language);
+        } catch (RuntimeException e) {
+            // A session that was never prepared must not hold a line or spend the day's allowance.
+            callGate.release(booking);
+            throw e;
+        }
         auditService.record(widget.companyId(), "WIDGET_CALL_START", "agent_widget",
                 String.valueOf(widget.id()), origin);
         return new PublicWidgetSessionResponse(sessionId, webTestProperties.wsUrl(),
                 webTestProperties.sipUser(), webTestProperties.sipPassword(),
                 webTestProperties.dialNumber(), WIDGET_SESSION_HEADER);
+    }
+
+    @Override
+    public WidgetTarget findPublicTarget(String widgetKey, String origin) {
+        AgentWidget widget = requirePublicWidget(widgetKey, origin);
+        return new WidgetTarget(widget.id(), widget.companyId(), widget.agentId());
     }
 
     /**

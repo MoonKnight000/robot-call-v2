@@ -12,7 +12,9 @@ package uz.murodjon.robotcallv2.agent.vad;
  * @param minContinuousSpeechMs   continuous speech that means a recording rather than
  *                                a person. Deliberately generous — cutting off a
  *                                talkative human is worse than paying for one wasted
- *                                voicemail
+ *                                voicemail. 3500, up from 2800: "Alo, assalomu alaykum,
+ *                                eshitaman, kim bu?" runs about three seconds, and at 2800
+ *                                that person was hung up on as a voicemail
  * @param silenceToleranceMs      silence allowed inside one speech run before it
  *                                counts as a real pause (speech dips below the
  *                                threshold on plosives)

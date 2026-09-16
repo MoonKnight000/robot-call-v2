@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.siptrunk.application.port.input;
 
+import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkDeleteResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.CreateSipTrunkRequest;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
@@ -18,7 +19,7 @@ public interface SipTrunkUseCase {
 
     SipTrunkRow makeDefault(long companyId, long id);
 
-    void delete(long companyId, long id);
+    SipTrunkDeleteResponse delete(long companyId, long id);
 
     PageableData<SipTrunkRow> list(long companyId, SipTrunkFilter filter);
 
@@ -30,7 +31,7 @@ public interface SipTrunkUseCase {
 
     List<SipTrunkRow> findAllEnabledForCompany(long companyId);
 
-    SipTrunkStatus getStatus(long companyId, long id);
+    SipTrunkStatus findStatus(long companyId, long id);
 
-    List<SipTrunkStatus> getAllStatuses(long companyId);
+    List<SipTrunkStatus> findAllStatuses(long companyId);
 }

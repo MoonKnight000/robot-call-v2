@@ -104,7 +104,7 @@ public class AishaSttProvider implements SttProvider {
         // bilingual call is only served by the other providers.
         HttpClient current = client;
         if (current == null) {
-            throw new ExternalServiceException(ErrorCode.STT_AISHA_CONNECT_FAILED, "aisha-stt", "no api key");
+            throw new ExternalServiceException(ErrorCode.STT_AISHA_CLIENT_UNAVAILABLE, "aisha-stt");
         }
         AishaSttProperties aisha = sttProperties.aisha();
         AtomicBoolean alive = new AtomicBoolean(true);
@@ -226,6 +226,10 @@ public class AishaSttProvider implements SttProvider {
         private final AtomicBoolean alive;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private boolean closed;
+        /** Frames queued on {@link #sendChain} and not yet written; past the bound new ones are dropped. */
+        private final java.util.concurrent.atomic.AtomicInteger pendingSends = new java.util.concurrent.atomic.AtomicInteger();
+        /** About one second of 20 ms frames. */
+        private static final int MAX_PENDING_SENDS = 50;
 
         private AishaSttSession(WebSocket webSocket, AtomicBoolean alive) {
             this.webSocket = webSocket;
@@ -234,17 +238,25 @@ public class AishaSttProvider implements SttProvider {
 
         @Override
         public synchronized void sendAudio(byte[] pcm16le) {
-            if (closed || !alive.get()) {
+            if (closed || !alive.get() || pendingSends.get() >= MAX_PENDING_SENDS) {
                 return;
             }
+            pendingSends.incrementAndGet();
             sendChain = sendChain
                     .thenCompose(ignored -> webSocket.sendBinary(ByteBuffer.wrap(pcm16le), true))
-                    .thenAccept(sent -> {
-                    })
-                    .exceptionally(e -> {
-                        alive.set(false);
+                    .handle((sent, e) -> {
+                        pendingSends.decrementAndGet();
+                        if (e != null) {
+                            alive.set(false);
+                        }
                         return null;
                     });
+        }
+
+        /** A stalled uplink shows here instead of as a caller who says nothing (SttSession#isReady). */
+        @Override
+        public boolean isReady() {
+            return pendingSends.get() < MAX_PENDING_SENDS;
         }
 
         @Override

@@ -26,8 +26,10 @@ package uz.murodjon.robotcallv2.agent.turn;
  * not a power of two, so a model exported with the stock config cannot be served here —
  * which the detector says out loud rather than silently returning noise.
  *
- * <p>Not thread-safe: the scratch buffers are reused between calls. One instance belongs
- * to the single detector that owns it.
+ * <p>Thread-safe: every {@link #extract} allocates its own FFT scratch. The one instance
+ * belongs to the detector, and the detector serves every call at once — with shared
+ * scratch, two calls ending an utterance at the same moment overwrote each other's
+ * spectrum and both got a meaningless end-of-turn score.
  */
 final class WhisperFeatures {
 
@@ -46,11 +48,6 @@ final class WhisperFeatures {
     private final double[] window;
     private final double[][] melFilters;
 
-    // Reused scratch: one frame's real and imaginary parts, and one frame's power spectrum.
-    private final double[] re;
-    private final double[] im;
-    private final double[] power;
-
     WhisperFeatures(int sampleRate, int nFft, int hop, int nMels, int frames) {
         if (Integer.bitCount(nFft) != 1) {
             throw new IllegalArgumentException("nFft must be a power of two, was " + nFft);
@@ -63,9 +60,6 @@ final class WhisperFeatures {
         this.samples = frames * hop;
         this.window = hann(nFft);
         this.melFilters = melFilterbank(sampleRate, nFft, nMels);
-        this.re = new double[nFft];
-        this.im = new double[nFft];
-        this.power = new double[bins];
     }
 
     /** How much 16 kHz audio one call consumes; anything shorter is padded with silence. */
@@ -93,9 +87,14 @@ final class WhisperFeatures {
         double[] padded = pad(pcm, length);
         float[] out = new float[nMels * frames];
         double loudest = Double.NEGATIVE_INFINITY;
+        // One frame's real and imaginary parts and power spectrum, reused across this
+        // extract's frames only — see the class note on thread safety.
+        double[] re = new double[nFft];
+        double[] im = new double[nFft];
+        double[] power = new double[bins];
 
         for (int frame = 0; frame < frames; frame++) {
-            powerSpectrum(padded, frame * hop);
+            powerSpectrum(padded, frame * hop, re, im, power);
             for (int mel = 0; mel < nMels; mel++) {
                 double[] filter = melFilters[mel];
                 double sum = 0;
@@ -139,8 +138,8 @@ final class WhisperFeatures {
         return padded;
     }
 
-    /** One frame's |FFT|² into {@link #power}. */
-    private void powerSpectrum(double[] signal, int offset) {
+    /** One frame's |FFT|² into {@code power}, using {@code re}/{@code im} as scratch. */
+    private void powerSpectrum(double[] signal, int offset, double[] re, double[] im, double[] power) {
         for (int i = 0; i < nFft; i++) {
             re[i] = signal[offset + i] * window[i];
             im[i] = 0;

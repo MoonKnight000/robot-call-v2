@@ -1,25 +1,30 @@
 package uz.murodjon.robotcallv2.profile.application.service;
 
+import uz.murodjon.robotcallv2.auth.application.dto.TwoFactorSetupResponse;
+import uz.murodjon.robotcallv2.auth.application.port.input.TwoFactorUseCase;
+import uz.murodjon.robotcallv2.profile.application.dto.DisableTwoFactorRequest;
+import uz.murodjon.robotcallv2.profile.application.dto.TwoFactorCodeRequest;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
 import uz.murodjon.robotcallv2.profile.application.dto.ChangePasswordRequest;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdateCallColumnsRequest;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdateProfileRequest;
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileUseCase;
 import uz.murodjon.robotcallv2.profile.domain.entity.Profile;
 import uz.murodjon.robotcallv2.profile.domain.entity.TodayStats;
-import uz.murodjon.robotcallv2.report.application.port.output.ReportRepository;
+import uz.murodjon.robotcallv2.report.application.port.input.DashboardReportUseCase;
 import uz.murodjon.robotcallv2.report.domain.entity.DashboardTotals;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.storage.application.service.ImageUploadService;
+import uz.murodjon.robotcallv2.storage.application.port.input.ImageUploadUseCase;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
-import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 
 import java.time.Instant;
@@ -29,21 +34,26 @@ import java.util.List;
 @Service
 public class ProfileService implements ProfileUseCase {
 
-    private final UserRepository users;
+    private final UserUseCase userUseCase;
     private final CurrentUser currentUser;
     private final PasswordEncoder passwordEncoder;
-    private final ImageUploadService images;
-    private final AuditService audit;
-    private final ReportRepository reports;
+    private final ImageUploadUseCase imageUploadUseCase;
+    private final AuditUseCase audit;
+    private final DashboardReportUseCase dashboardReportUseCase;
+    private final SessionUseCase sessionUseCase;
+    private final TwoFactorUseCase twoFactor;
 
-    public ProfileService(UserRepository users, CurrentUser currentUser, PasswordEncoder passwordEncoder,
-                          ImageUploadService images, AuditService audit, ReportRepository reports) {
-        this.users = users;
+    public ProfileService(UserUseCase userUseCase, CurrentUser currentUser, PasswordEncoder passwordEncoder,
+                          ImageUploadUseCase imageUploadUseCase, AuditUseCase audit, DashboardReportUseCase dashboardReportUseCase,
+                          SessionUseCase sessionUseCase, TwoFactorUseCase twoFactor) {
+        this.twoFactor = twoFactor;
+        this.userUseCase = userUseCase;
         this.currentUser = currentUser;
         this.passwordEncoder = passwordEncoder;
-        this.images = images;
+        this.imageUploadUseCase = imageUploadUseCase;
         this.audit = audit;
-        this.reports = reports;
+        this.dashboardReportUseCase = dashboardReportUseCase;
+        this.sessionUseCase = sessionUseCase;
     }
 
     @Override
@@ -52,48 +62,51 @@ public class ProfileService implements ProfileUseCase {
     }
 
     @Override
-    public Profile update(long companyId, UpdateProfileRequest r) {
+    public Profile update(long companyId, UpdateProfileRequest request) {
         User user = requireUser(companyId);
-        if (!user.email().equalsIgnoreCase(r.email()) && users.existsByEmail(r.email())) {
+        if (!user.email().equalsIgnoreCase(request.email()) && userUseCase.existsByEmail(request.email())) {
             throw new ValidationException(ErrorCode.EMAIL_ALREADY_TAKEN);
         }
-        users.updateProfile(companyId, user.id(), r.name(), r.email(), r.phone(), r.position(),
+        userUseCase.updateProfile(companyId, user.id(), request.name(), request.email(), request.phone(), request.position(),
                 user.sipExtension());
-        audit.record(companyId, "PROFILE_UPDATE", "user", String.valueOf(user.id()), r.name());
+        audit.record(companyId, "PROFILE_UPDATE", "user", String.valueOf(user.id()), request.name());
         return find(companyId);
     }
 
     @Override
-    public Profile uploadAvatar(long companyId, MultipartFile file) {
+    public Profile uploadAvatar(long companyId, UploadedFile file) {
         User user = requireUser(companyId);
-        StoredFile stored = images.upload(file, user.companyId());
-        users.updateAvatarFileId(companyId, user.id(), stored.id());
+        StoredFile stored = imageUploadUseCase.upload(file, user.companyId());
+        userUseCase.updateAvatarFileId(companyId, user.id(), stored.id());
         audit.record(companyId, "PROFILE_AVATAR_UPLOAD", "user", String.valueOf(user.id()), String.valueOf(stored.id()));
         return find(companyId);
     }
 
     @Override
-    public void changePassword(long companyId, ChangePasswordRequest r) {
+    public void changePassword(long companyId, ChangePasswordRequest request) {
         User user = requireUser(companyId);
-        if (user.passwordHash() == null || !passwordEncoder.matches(r.currentPassword(), user.passwordHash())) {
+        if (user.passwordHash() == null || !passwordEncoder.matches(request.currentPassword(), user.passwordHash())) {
             throw new ValidationException(ErrorCode.CURRENT_PASSWORD_INCORRECT);
         }
-        users.updatePassword(companyId, user.id(), passwordEncoder.encode(r.newPassword()));
+        userUseCase.updatePassword(companyId, user.id(), passwordEncoder.encode(request.newPassword()));
         audit.record(companyId, "PROFILE_PASSWORD_CHANGE", "user", String.valueOf(user.id()), null);
+        // A password is changed because the old one may be in the wrong hands — and so
+        // may every session and token that was opened with it. This device logs in again.
+        sessionUseCase.revokeAllForUser(user.id());
     }
 
     @Override
-    public List<String> updateCallColumns(long companyId, UpdateCallColumnsRequest r) {
+    public List<String> updateCallColumns(long companyId, UpdateCallColumnsRequest request) {
         User user = requireUser(companyId);
-        users.updateCallColumns(companyId, user.id(), String.join(",", r.columns()));
-        return r.columns();
+        userUseCase.updateCallColumns(companyId, user.id(), String.join(",", request.columns()));
+        return request.columns();
     }
 
     @Override
-    public TodayStats todayStats(long companyId) {
+    public TodayStats findTodayStats(long companyId) {
         long userId = requireUserId();
         Instant startOfToday = Instant.now().truncatedTo(ChronoUnit.DAYS);
-        DashboardTotals totals = reports.operatorTotals(companyId, startOfToday, Instant.now(), userId);
+        DashboardTotals totals = dashboardReportUseCase.findOperatorTotals(companyId, startOfToday, Instant.now(), userId);
         double onAirMinutes = totals.avgDurationSec() == null
                 ? 0
                 : totals.avgDurationSec() * totals.answeredCalls() / 60.0;
@@ -106,12 +119,7 @@ public class ProfileService implements ProfileUseCase {
     }
 
     private User requireUser(long companyId) {
-        long id = requireUserId();
-        User user = users.find(companyId, id);
-        if (user == null) {
-            throw new NotFoundException(ErrorCode.USER_NOT_FOUND, id);
-        }
-        return user;
+        return userUseCase.requireUser(companyId, requireUserId());
     }
 
     private static Profile toProfile(User u) {
@@ -123,5 +131,25 @@ public class ProfileService implements ProfileUseCase {
     private static List<String> parseCallColumns(String stored) {
         return stored == null || stored.isBlank() ? null : List.of(stored.split(","));
     }
-}
 
+    @Override
+    public TwoFactorSetupResponse setupTwoFactor(long companyId) {
+        User user = requireUser(companyId);
+        return twoFactor.startTwoFactorSetup(companyId, user.id(), user.username());
+    }
+
+    @Override
+    public void enableTwoFactor(long companyId, TwoFactorCodeRequest request) {
+        twoFactor.enable(companyId, requireUser(companyId).id(), request.code());
+    }
+
+    /** Both factors: the password proves who is asking, the code proves they still hold the phone. */
+    @Override
+    public void disableTwoFactor(long companyId, DisableTwoFactorRequest request) {
+        User user = requireUser(companyId);
+        if (user.passwordHash() == null || !passwordEncoder.matches(request.currentPassword(), user.passwordHash())) {
+            throw new ValidationException(ErrorCode.CURRENT_PASSWORD_INCORRECT);
+        }
+        twoFactor.disable(companyId, user.id(), request.code());
+    }
+}

@@ -16,15 +16,21 @@ public interface ScenarioRepository {
     long insertVersion(long companyId, String scenarioKey, int version, String name, String description,
                        boolean builtin, ScenarioDefinition definition, Long createdBy);
 
-    void deactivate(String scenarioKey);
+    /**
+     * Retires the active row of {@code scenarioKey}, only while it is still {@code version}.
+     *
+     * @return {@code false} when that version is no longer the active one — another edit
+     *         already replaced it — and nothing was changed
+     */
+    boolean deactivate(String scenarioKey, int version);
 
     Scenario find(long companyId, long id);
 
-    Map<Long, String> namesByIds(long companyId, Collection<Long> ids);
+    Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids);
 
-    String nameById(long companyId, long id);
+    String findNameById(long companyId, long id);
 
-    int maxVersion(String scenarioKey);
+    int findMaxVersion(String scenarioKey);
 
     boolean existsByKey(String scenarioKey);
 

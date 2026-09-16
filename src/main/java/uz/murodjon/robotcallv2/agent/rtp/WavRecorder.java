@@ -23,6 +23,10 @@ import java.util.concurrent.BlockingQueue;
  * where there is none. That is also why {@link #writeBot} only enqueues: it is called
  * from the Netty event loop, which must never touch the disk (PROJECT.md §7.1, §7.3).
  *
+ * <p>Encoded audio collects in one reused buffer holding a second of it, and goes to disk
+ * whenever that fills: one write per second instead of fifty, and no fresh array per 20ms
+ * frame. A crash can therefore lose at most the last second of the recording.
+ *
  * <p>A 44-byte placeholder header is reserved up front and rewritten with final sizes
  * on {@link #close()}, so audio is flushed to disk as it arrives without buffering the
  * whole call.
@@ -43,6 +47,10 @@ public class WavRecorder implements Closeable {
     private final int sampleRate;
     private final RecordingMode mode;
     private final BlockingQueue<short[]> botFrames = new ArrayBlockingQueue<>(MAX_PENDING_BOT_FRAMES);
+    /** Encoded stereo frames not yet on disk — one second of audio at most. */
+    private final byte[] pending;
+    private int pendingLength;
+    /** Bytes of audio actually written to disk — what the header reports. */
     private int dataBytes;
 
     /** The bot frame currently being drawn from, and how far into it we are. */
@@ -56,6 +64,7 @@ public class WavRecorder implements Closeable {
     public WavRecorder(Path path, int sampleRate, RecordingMode mode) throws IOException {
         this.sampleRate = sampleRate;
         this.mode = mode != null ? mode : RecordingMode.STEREO;
+        this.pending = new byte[Math.max(1, sampleRate) * BYTES_PER_FRAME];
         this.raf = new RandomAccessFile(path.toFile(), "rw");
         raf.setLength(0);
         raf.write(new byte[WavHeader.SIZE]);
@@ -66,32 +75,18 @@ public class WavRecorder implements Closeable {
      * queued behind it. Called from the RTP consumer thread.
      */
     public synchronized void writeCaller(short[] pcm, int len) throws IOException {
-        byte[] buf = new byte[len * BYTES_PER_FRAME];
         for (int i = 0; i < len; i++) {
             short caller = pcm[i];
             short bot = nextBotSample();
-            short left;
-            short right;
             switch (mode) {
-                case SPATIAL_STEREO -> {
-                    left = clamp16((int) (caller + bot * 0.35));
-                    right = clamp16((int) (bot + caller * 0.35));
-                }
+                case SPATIAL_STEREO -> append(clamp16((int) (caller + bot * 0.35)), clamp16((int) (bot + caller * 0.35)));
                 case DUAL_MONO -> {
                     short mixed = clamp16((caller + bot) / 2);
-                    left = mixed;
-                    right = mixed;
+                    append(mixed, mixed);
                 }
-                default -> {
-                    left = caller;
-                    right = bot;
-                }
+                default -> append(caller, bot);
             }
-            putLE(buf, i * BYTES_PER_FRAME, left);
-            putLE(buf, i * BYTES_PER_FRAME + 2, right);
         }
-        raf.write(buf);
-        dataBytes += buf.length;
     }
 
     /**
@@ -110,6 +105,7 @@ public class WavRecorder implements Closeable {
     public synchronized void close() throws IOException {
         try {
             drainBot();
+            flush();
             raf.seek(0);
             raf.write(WavHeader.bytes(sampleRate, CHANNELS, dataBytes));
         } finally {
@@ -136,43 +132,51 @@ public class WavRecorder implements Closeable {
      * a dispute turns on.
      */
     private void drainBot() throws IOException {
-        int pending = pendingBotSamples();
-        if (pending == 0) {
-            return;
-        }
-        byte[] buf = new byte[pending * BYTES_PER_FRAME];
-        for (int i = 0; i < pending; i++) {
+        int remaining = pendingBotSamples();
+        for (int i = 0; i < remaining; i++) {
             short bot = nextBotSample();
-            short left;
-            short right;
             switch (mode) {
-                case SPATIAL_STEREO -> {
-                    left = clamp16((int) (bot * 0.35));
-                    right = bot;
-                }
+                case SPATIAL_STEREO -> append(clamp16((int) (bot * 0.35)), bot);
                 case DUAL_MONO -> {
                     short mixed = clamp16(bot / 2);
-                    left = mixed;
-                    right = mixed;
+                    append(mixed, mixed);
                 }
-                default -> {
-                    left = 0;
-                    right = bot;
-                }
+                default -> append((short) 0, bot);
             }
-            putLE(buf, i * BYTES_PER_FRAME, left);
-            putLE(buf, i * BYTES_PER_FRAME + 2, right);
         }
-        raf.write(buf);
-        dataBytes += buf.length;
+    }
+
+    /** One stereo frame into the pending buffer, which goes to disk whenever it fills. */
+    private void append(short left, short right) throws IOException {
+        putLE(pending, pendingLength, left);
+        putLE(pending, pendingLength + 2, right);
+        pendingLength += BYTES_PER_FRAME;
+        if (pendingLength == pending.length) {
+            flush();
+        }
+    }
+
+    /**
+     * Write the pending frames. The buffer counts as empty even if the write fails: the
+     * endpoint gives up on the recording after its first failed write, and a buffer left
+     * full would only overflow on the next frame.
+     */
+    private void flush() throws IOException {
+        if (pendingLength == 0) {
+            return;
+        }
+        int length = pendingLength;
+        pendingLength = 0;
+        raf.write(pending, 0, length);
+        dataBytes += length;
     }
 
     private int pendingBotSamples() {
-        int pending = currentBotFrame != null ? currentBotFrame.length - botOffset : 0;
+        int remaining = currentBotFrame != null ? currentBotFrame.length - botOffset : 0;
         for (short[] frame : botFrames) {
-            pending += frame.length;
+            remaining += frame.length;
         }
-        return pending;
+        return remaining;
     }
 
     private static short clamp16(int val) {

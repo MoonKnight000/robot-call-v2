@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.scenario.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioRow;
@@ -16,8 +16,8 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioValidationResult;
 import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.*;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
-import uz.murodjon.robotcallv2.user.application.service.UserService;
+import uz.murodjon.robotcallv2.security.CurrentUser;
+import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,58 +30,67 @@ public class ScenarioService implements ScenarioUseCase {
 
     private final ScenarioRepository repository;
     private final CurrentUser currentUser;
-    private final UserService users;
-    private final AuditService audit;
+    private final UserUseCase userUseCase;
+    private final AuditUseCase audit;
 
-    public ScenarioService(ScenarioRepository repository, CurrentUser currentUser, UserService users, AuditService audit) {
+    public ScenarioService(ScenarioRepository repository, CurrentUser currentUser, UserUseCase userUseCase,
+                           AuditUseCase audit) {
         this.repository = repository;
         this.currentUser = currentUser;
-        this.users = users;
+        this.userUseCase = userUseCase;
         this.audit = audit;
     }
 
     @Override
-    public ScenarioRow create(long companyId, CreateScenarioRequest r) {
-        requireValid(r.definition());
-        String key = keyOf(r.scenarioKey(), r.name());
+    public ScenarioRow create(long companyId, CreateScenarioRequest request) {
+        requireValid(request.definition());
+        String key = keyOf(request.scenarioKey(), request.name());
         if (repository.existsByKey(key)) {
             throw new ConflictException(ErrorCode.SCENARIO_KEY_EXISTS, key);
         }
-        long id = repository.create(companyId, key, r.name(), r.description(), false, r.definition(),
+        long id = repository.create(companyId, key, request.name(), request.description(), false, request.definition(),
                 currentUser.id().orElse(null));
         audit.record(companyId, "SCENARIO_CREATE", "scenario", String.valueOf(id), key);
-        return scenarioRow(companyId, id);
+        return findScenarioRow(companyId, id);
     }
 
     @Override
     @Transactional
-    public ScenarioRow update(long companyId, long id, UpdateScenarioRequest r) {
+    public ScenarioRow update(long companyId, long id, UpdateScenarioRequest request) {
         Scenario current = requireScenario(companyId, id);
         if (current.builtin()) {
             throw new ForbiddenException(ErrorCode.SCENARIO_BUILTIN_READONLY, current.scenarioKey());
         }
-        requireValid(r.definition());
-        int nextVersion = repository.maxVersion(current.scenarioKey()) + 1;
-        repository.deactivate(current.scenarioKey());
-        long newId = repository.insertVersion(companyId, current.scenarioKey(), nextVersion, r.name(),
-                r.description(), false, r.definition(), currentUser.id().orElse(null));
+        requireValid(request.definition());
+        int latestVersion = repository.findMaxVersion(current.scenarioKey());
+        // Rows are copy-on-write, so the scenario's own version is the optimistic lock. Not
+        // sent: the latest, so a client that predates it edits as before. Retiring it is
+        // conditional, so of two edits racing on one version the second is answered 409
+        // rather than failing on uq_scenario_key_version.
+        int expectedVersion = request.version() != null ? request.version() : latestVersion;
+        if (!repository.deactivate(current.scenarioKey(), expectedVersion)) {
+            throw new ConflictException(ErrorCode.ENTITY_VERSION_CONFLICT, "scenario", id);
+        }
+        int nextVersion = latestVersion + 1;
+        long newId = repository.insertVersion(companyId, current.scenarioKey(), nextVersion, request.name(),
+                request.description(), false, request.definition(), currentUser.id().orElse(null));
         audit.record(companyId, "SCENARIO_UPDATE", "scenario", String.valueOf(newId),
                 current.scenarioKey() + " v" + nextVersion);
-        return scenarioRow(companyId, newId);
+        return findScenarioRow(companyId, newId);
     }
 
     @Override
-    public ScenarioRow clone(long companyId, long id, CloneScenarioRequest r) {
+    public ScenarioRow clone(long companyId, long id, CloneScenarioRequest request) {
         Scenario source = requireScenario(companyId, id);
-        String key = keyOf(r.scenarioKey(), r.name());
+        String key = keyOf(request.scenarioKey(), request.name());
         if (repository.existsByKey(key)) {
             throw new ConflictException(ErrorCode.SCENARIO_KEY_EXISTS, key);
         }
-        long newId = repository.create(companyId, key, r.name(), source.description(), false,
+        long newId = repository.create(companyId, key, request.name(), source.description(), false,
                 source.definition(), currentUser.id().orElse(null));
         audit.record(companyId, "SCENARIO_CLONE", "scenario", String.valueOf(newId),
                 "from " + source.scenarioKey() + " v" + source.version());
-        return scenarioRow(companyId, newId);
+        return findScenarioRow(companyId, newId);
     }
 
     @Override
@@ -98,7 +107,7 @@ public class ScenarioService implements ScenarioUseCase {
     }
 
     private List<ScenarioRow> toRows(long companyId, List<Scenario> rows) {
-        Map<Long, String> creatorNames = users.namesByIds(companyId,
+        Map<Long, String> creatorNames = userUseCase.findNamesByIds(companyId,
                 rows.stream().map(Scenario::createdBy).filter(Objects::nonNull).collect(Collectors.toSet()));
         return rows.stream()
                 .map(s -> ScenarioRow.of(s, s.createdBy() != null ? creatorNames.get(s.createdBy()) : null))
@@ -106,10 +115,10 @@ public class ScenarioService implements ScenarioUseCase {
     }
 
     @Override
-    public ScenarioRow scenarioRow(long companyId, long id) {
+    public ScenarioRow findScenarioRow(long companyId, long id) {
         Scenario s = requireScenario(companyId, id);
         String createdByName = s.createdBy() != null
-                ? users.namesByIds(companyId, List.of(s.createdBy())).get(s.createdBy())
+                ? userUseCase.findNamesByIds(companyId, List.of(s.createdBy())).get(s.createdBy())
                 : null;
         return ScenarioRow.of(s, createdByName);
     }
@@ -143,14 +152,15 @@ public class ScenarioService implements ScenarioUseCase {
     }
 
     @Override
-    public Map<Long, String> scenarioNamesByIds(long companyId, Collection<Long> ids) {
-        return repository.namesByIds(companyId, ids);
+    public Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids) {
+        return repository.findNamesByIds(companyId, ids);
     }
 
+    /** Every problem the validator found goes to the client as its own entry of {@code errors}. */
     private static void requireValid(ScenarioDefinition definition) {
         List<String> errors = ScenarioValidator.validate(definition);
         if (!errors.isEmpty()) {
-            throw new ValidationException(ErrorCode.SCENARIO_DEFINITION_INVALID, String.join("; ", errors));
+            throw ValidationException.withErrors(ErrorCode.SCENARIO_DEFINITION_INVALID, errors, errors.size());
         }
     }
 

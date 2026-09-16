@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.billing.domain.enums.LedgerEntryType;
 import uz.murodjon.robotcallv2.billing.domain.service.CallCostCalculator;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingRateProperties;
 
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -37,6 +38,7 @@ public class CallBillingService implements CallBillingUseCase {
 
     private static final String CALL_REFERENCE = "call_attempt";
     private static final String TARGET_REFERENCE = "campaign_target";
+    private static final int MIN_AFFORDABLE_CALL_SECONDS = 60;
 
     private final CompanyBillingRepository companyBillingRepository;
     private final CallBillingRepository callBillingRepository;
@@ -61,6 +63,23 @@ public class CallBillingService implements CallBillingUseCase {
         return companyBillingRepository.findByCompanyId(companyId)
                 .map(billing -> billing.spendableUzs() >= billingRateProperties.reservationUzs())
                 .orElse(false);
+    }
+
+    @Override
+    public int findAffordableCallSeconds(long companyId, boolean realtime) {
+        if (!billingRateProperties.enforceBalance()) {
+            return 0;
+        }
+        long perMinuteUzs = CallCostCalculator.minimumPerMinuteUzs(billingRateProperties.rates(), realtime);
+        if (perMinuteUzs <= 0) {
+            return 0;
+        }
+        // The call's own hold is part of what it may spend, so it is counted back in.
+        long budgetUzs = companyBillingRepository.findByCompanyId(companyId)
+                .map(CompanyBilling::spendableUzs)
+                .orElse(0L) + billingRateProperties.reservationUzs();
+        // Never less than a minute: a caller already on the line gets a goodbye, not a click.
+        return Math.clamp(budgetUzs * 60 / perMinuteUzs, MIN_AFFORDABLE_CALL_SECONDS, Integer.MAX_VALUE);
     }
 
     @Override
@@ -120,43 +139,95 @@ public class CallBillingService implements CallBillingUseCase {
     }
 
     @Override
+    public long sumSpentUzsByCampaign(long companyId, long campaignId, Instant since) {
+        return callBillingRepository.sumSpentUzsByCampaign(companyId, campaignId, since);
+    }
+
+    @Override
     @Transactional
     public void settleCall(long companyId, long callAttemptId, Long targetId, CallUsage usage) {
-        try {
-            if (callBillingRepository.findByCallAttemptId(callAttemptId)
-                    .filter(row -> row.status() == CallBillingStatus.SETTLED)
-                    .isPresent()) {
-                return;
-            }
-
-            // The hold this call was dialled under, or a fresh unheld row for a call that
-            // never had one: an inbound call, or one placed before billing was switched on.
-            CallBilling charge = (targetId == null ? Optional.<CallBilling>empty()
-                    : callBillingRepository.findOpenHold(companyId, targetId))
-                    .orElseGet(() -> CallBilling.unheld(callAttemptId, companyId, billingRateProperties.version()));
-
-            CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
-
-            // The ledger entry is the gate: if it was already written, this settlement is a
-            // redelivery and must not move the balance a second time.
-            long balanceBefore = balanceOf(companyId);
-            long balanceAfter = balanceBefore - cost.totalUzs();
-            boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
-                    LedgerEntryType.CALL_CHARGE, -cost.totalUzs(), balanceBefore, balanceAfter,
-                    CALL_REFERENCE, String.valueOf(callAttemptId), "call-charge:" + callAttemptId));
-            if (!written) {
-                return;
-            }
-
-            companyBillingRepository.charge(companyId, charge.reservedUzs(), cost.totalUzs());
-            callBillingRepository.save(charge.settle(callAttemptId, usage, cost, billingRateProperties.version()));
-
-            log.info("[{}] charged {} UZS to company {} ({}s, {} tokens, {} tts chars)",
-                    callAttemptId, cost.totalUzs(), companyId, usage.durationSec(),
-                    usage.promptTokens() + usage.completionTokens(), usage.ttsChars());
-        } catch (Exception e) {
-            log.error("[{}] settlement failed for company {}: {}", callAttemptId, companyId, e.getMessage());
+        // No catch in here. Swallowing a failure inside the transaction committed whatever
+        // had already run — a CALL_CHARGE ledger row with no balance change, whose
+        // idempotency key then refused every retry. A failure now rolls the whole
+        // settlement back and reaches the caller (CallFinalizer logs it).
+        if (callBillingRepository.findByCallAttemptId(callAttemptId)
+                .filter(row -> row.status() == CallBillingStatus.SETTLED)
+                .isPresent()) {
+            return;
         }
+
+        // The hold this call was dialled under, or a fresh unheld row for a call that
+        // never had one: an inbound call, or one placed before billing was switched on.
+        CallBilling charge = (targetId == null ? Optional.<CallBilling>empty()
+                : callBillingRepository.findOpenHold(companyId, targetId))
+                .orElseGet(() -> CallBilling.unheld(callAttemptId, companyId, billingRateProperties.version()));
+
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
+
+        // The ledger entry is the gate: if it was already written, this settlement is a
+        // redelivery and must not move the balance a second time.
+        long balanceBefore = balanceOf(companyId);
+        long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
+        long balanceAfter = balanceBefore - chargedUzs;
+        boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
+                LedgerEntryType.CALL_CHARGE, -chargedUzs, balanceBefore, balanceAfter,
+                CALL_REFERENCE, String.valueOf(callAttemptId), "call-charge:" + callAttemptId));
+        if (!written) {
+            return;
+        }
+
+        companyBillingRepository.charge(companyId, charge.reservedUzs(), chargedUzs);
+        callBillingRepository.save(charge.settle(callAttemptId, usage, cost, billingRateProperties.version()));
+
+        if (chargedUzs < cost.totalUzs()) {
+            log.warn("[{}] company {} could cover {} of the call's {} UZS — the rest is written off",
+                    callAttemptId, companyId, chargedUzs, cost.totalUzs());
+        }
+        log.info("[{}] charged {} UZS to company {} ({}s, {} tokens, {} tts chars)",
+                callAttemptId, chargedUzs, companyId, usage.durationSec(),
+                usage.promptTokens() + usage.completionTokens(), usage.ttsChars());
+    }
+
+    @Override
+    @Transactional
+    public void chargeSummary(long companyId, long callAttemptId, CallUsage summaryUsage) {
+        if (summaryUsage == null || summaryUsage.promptTokens() + summaryUsage.completionTokens() == 0) {
+            return;
+        }
+        // The summary is added to the call's charge. With none — the settlement failed or
+        // never ran — charging the summary alone would bill a call that was never billed.
+        if (callBillingRepository.findByCallAttemptId(callAttemptId)
+                .filter(row -> row.status() == CallBillingStatus.SETTLED)
+                .isEmpty()) {
+            log.warn("[{}] summary tokens not charged: the call has no settled charge", callAttemptId);
+            return;
+        }
+
+        CallCostBreakdown cost = CallCostCalculator.calculate(summaryUsage, billingRateProperties.rates());
+        long balanceBefore = balanceOf(companyId);
+        long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
+        // Its own key, so a summary retried by the outbox is charged once and the call's own
+        // settlement is not mistaken for it.
+        boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
+                LedgerEntryType.CALL_CHARGE, -chargedUzs, balanceBefore, balanceBefore - chargedUzs,
+                CALL_REFERENCE, String.valueOf(callAttemptId), "summary-charge:" + callAttemptId));
+        if (!written) {
+            return;
+        }
+
+        companyBillingRepository.charge(companyId, 0, chargedUzs);
+        callBillingRepository.addSummaryCharge(callAttemptId, summaryUsage, cost.totalUzs());
+        log.info("[{}] charged {} UZS to company {} for the summary ({} tokens)",
+                callAttemptId, chargedUzs, companyId, summaryUsage.promptTokens() + summaryUsage.completionTokens());
+    }
+
+    /**
+     * What is actually taken off the balance. With the balance enforced a company cannot end
+     * up owing: what it cannot cover is written off, and the call-length cap set from its
+     * balance keeps that small.
+     */
+    private long chargeableUzs(long costUzs, long balanceBefore) {
+        return billingRateProperties.enforceBalance() ? Math.min(costUzs, Math.max(balanceBefore, 0)) : costUzs;
     }
 
     /** The balance, locked for the rest of this transaction so the ledger stays truthful. */

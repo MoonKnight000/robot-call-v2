@@ -5,6 +5,8 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
+import java.util.List;
+
 public interface CampaignUseCase {
 
     CreateCampaignResponse createCampaign(long companyId, CreateCampaignRequest request);
@@ -13,9 +15,11 @@ public interface CampaignUseCase {
 
     CampaignRow clone(long companyId, long id);
 
-    CampaignRow campaignRow(long companyId, long id);
+    /** The campaign as the campaigns page shows it — 404 when the company has no such campaign. */
+    CampaignRow requireCampaignRow(long companyId, long id);
 
-    Campaign getCampaign(long companyId, long id);
+    /** The company's campaign, or null when it has none by that id. */
+    Campaign findCampaign(long companyId, long id);
 
     Campaign requireCampaign(long companyId, long id);
 
@@ -30,4 +34,25 @@ public interface CampaignUseCase {
     CampaignStatusResponse archive(long companyId, long campaignId);
 
     void triggerRecurrenceRun(long companyId, long campaignId, boolean resetTargets);
+
+    /**
+     * The dialer found the campaign cannot place a call at all and parks it, telling the owner
+     * why. Called off a scheduler thread, for any company; a campaign that is no longer
+     * ACTIVE is left as it is.
+     */
+    void pauseByPlatform(long companyId, long campaignId, String reason);
+
+    /** Tells the owner the dialer is holding this campaign's calls for want of balance. */
+    void notifyBalanceExhausted(long companyId, long campaignId);
+
+    /**
+     * Activates SCHEDULED campaigns whose startAt has come and completes ACTIVE ones whose
+     * endAt has passed. Run from the recurrence sweep, for every company.
+     */
+    void sweepScheduledCampaigns();
+
+    /** Every company's ACTIVE campaigns — what the dialer walks on each tick. */
+    List<Campaign> findActiveCampaigns();
+
+    List<Campaign> findCampaignsByName(long companyId, String query, int limit);
 }

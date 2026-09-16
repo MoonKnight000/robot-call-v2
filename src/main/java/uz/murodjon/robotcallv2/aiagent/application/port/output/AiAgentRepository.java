@@ -11,7 +11,14 @@ public interface AiAgentRepository {
 
     long create(AiAgent agent);
 
-    void update(long companyId, long id, AiAgent agent);
+    /**
+     * Writes the editable fields of {@code agent}, only while the stored row is still at
+     * {@code agent.version()}.
+     *
+     * @return {@code false} when someone saved the agent after it was read — nothing is
+     *         written; {@code true} otherwise, including for an agent that no longer exists
+     */
+    boolean update(long companyId, long id, AiAgent agent);
 
     AiAgent findByCompanyIdAndId(long companyId, long id);
 
@@ -27,4 +34,7 @@ public interface AiAgentRepository {
     long countCampaignsUsing(long id);
 
     long countInboundRoutesUsing(long id);
+
+    /** Whether {@code queueId} is one of the company's call queues — the transfer queue an agent may name. */
+    boolean existsCallQueueByCompanyIdAndId(long companyId, long queueId);
 }

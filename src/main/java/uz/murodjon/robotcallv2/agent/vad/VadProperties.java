@@ -7,11 +7,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@code voice-agent.vad.*} (PROJECT.md §7.2, §12).
  *
  * @param enabled            when false no VAD runs and the bot cannot be interrupted
- * @param modelPath          path to {@code silero_vad.onnx}; blank means VAD is unavailable
+ * @param modelPath          path to {@code silero_vad.onnx}. A local run (IDE/bootRun)
+ *                           reads {@code models/silero_vad.onnx} from the project root —
+ *                           the Silero v5.1.2 file the Dockerfile bakes into the image
+ *                           (the download line is in .gitignore); Docker sets
+ *                           {@code VAD_MODEL_PATH} itself. Without a model there is no
+ *                           barge-in, no STT gating and no endpointing on this side: the
+ *                           call silently falls back to the recognizer's own EOU, which is
+ *                           why an IDE run sounded nothing like Docker
  * @param sampleRate         audio rate fed to the model (8000 = native telephone, no resample)
  * @param windowSamples      samples per inference window (256 @ 8 kHz ≈ 32 ms, Silero's step)
  * @param threshold          speech probability above which a window counts as speech (0..1)
- * @param minSpeechMs        continuous speech required to trigger barge-in (ignores short "aha")
+ * @param minSpeechMs        continuous speech required to trigger barge-in (ignores short
+ *                           "aha"). 400, up from 250 — LiveKit ships 500. At 250 a cough,
+ *                           a door, or the bot's own voice off a speakerphone silenced the
+ *                           line for the whole {@code dialog.false-interruption-timeout-ms}
+ *                           before the reply resumed
  * @param silenceResetMs     silence gap that re-arms the detector for the next utterance
  * @param amd                answering-machine detection, driven by the same window scores
  * @param listeningThreshold more sensitive speech probability threshold when the bot is silent and listening (0..1)
@@ -20,8 +31,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                           before it may interrupt the bot, as a multiple of that noise.
  *                           {@code minEnergyRms} alone is a fixed line and a caller on a
  *                           street sits above it permanently, so every passing car cut the
- *                           bot off; this raises the line with the call. 0 or less keeps the
- *                           fixed threshold only.
+ *                           bot off; this raises the line with the call. 2.5 is about 8 dB
+ *                           over the measured floor, and the floor can only push the
+ *                           threshold to 6× {@code minEnergyRms} so a loud line never
+ *                           becomes one the caller cannot interrupt at all. 0 or less
+ *                           keeps the fixed threshold only.
  */
 @ConfigurationProperties(prefix = "voice-agent.vad")
 public record VadProperties(

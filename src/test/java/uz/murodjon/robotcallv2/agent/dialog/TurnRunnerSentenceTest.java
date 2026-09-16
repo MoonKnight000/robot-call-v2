@@ -10,7 +10,7 @@ class TurnRunnerSentenceTest {
     void carriesShortAffirmationIntoTheNextSentence() {
         // "Aha." alone is under a second of audio and cannot cover the next round trip.
         StringBuilder pending = new StringBuilder("Aha. Sizga qanday yordam bera olaman? Qachon");
-        String first = TurnRunner.takeSentence(pending);
+        String first = SentenceSplitter.takeSentence(pending);
 
         assertThat(first).isEqualTo("Aha. Sizga qanday yordam bera olaman?");
         assertThat(pending.toString()).isEqualTo(" Qachon");
@@ -19,7 +19,7 @@ class TurnRunnerSentenceTest {
     @Test
     void waitsForMoreTextWhenEverythingSoFarIsShort() {
         StringBuilder pending = new StringBuilder("Salom! Qayerdansiz?");
-        String first = TurnRunner.takeSentence(pending);
+        String first = SentenceSplitter.takeSentence(pending);
 
         assertThat(first).isNull();
         assertThat(pending.toString()).isEqualTo("Salom! Qayerdansiz?");
@@ -28,7 +28,7 @@ class TurnRunnerSentenceTest {
     @Test
     void doesNotSplitOnDecimalsOrFormattedSums() {
         StringBuilder pending = new StringBuilder("Qarzingiz 1.500.000 so'mni tashkil etadi.");
-        String sentence = TurnRunner.takeSentence(pending);
+        String sentence = SentenceSplitter.takeSentence(pending);
 
         assertThat(sentence).isEqualTo("Qarzingiz 1.500.000 so'mni tashkil etadi.");
         assertThat(pending.toString()).isEmpty();
@@ -37,12 +37,12 @@ class TurnRunnerSentenceTest {
     @Test
     void splitsOnLongCommaClausesForEarlyTtsStreaming() {
         StringBuilder pending = new StringBuilder("Assalomu alaykum hurmatli Murodjon aka, sizga bugun bankdan qo'ng'iroq qilyapmiz.");
-        String firstClause = TurnRunner.takeSentence(pending);
+        String firstClause = SentenceSplitter.takeSentence(pending);
 
         assertThat(firstClause).isEqualTo("Assalomu alaykum hurmatli Murodjon aka,");
         assertThat(pending.toString()).isEqualTo(" sizga bugun bankdan qo'ng'iroq qilyapmiz.");
 
-        String secondClause = TurnRunner.takeSentence(pending);
+        String secondClause = SentenceSplitter.takeSentence(pending);
         assertThat(secondClause).isEqualTo("sizga bugun bankdan qo'ng'iroq qilyapmiz.");
         assertThat(pending.toString()).isEmpty();
     }
@@ -50,21 +50,21 @@ class TurnRunnerSentenceTest {
     @Test
     void speculationCompatibilityMatchesExactAndPrefix() {
         // Exact normalized match
-        assertThat(TurnRunner.isSpeculationCompatible("ha men murodjon", "Ha, men Murodjon.")).isTrue();
+        assertThat(SpeculationManager.isSpeculationCompatible("ha men murodjon", "Ha, men Murodjon.")).isTrue();
 
         // Interim prefix of final sentence
-        assertThat(TurnRunner.isSpeculationCompatible("ha men murodjon", "Ha, men Murodjonman.")).isTrue();
-        assertThat(TurnRunner.isSpeculationCompatible("eshityapman siz", "Eshityapman sizni.")).isTrue();
+        assertThat(SpeculationManager.isSpeculationCompatible("ha men murodjon", "Ha, men Murodjonman.")).isTrue();
+        assertThat(SpeculationManager.isSpeculationCompatible("eshityapman siz", "Eshityapman sizni.")).isTrue();
 
         // Different intent / speech
-        assertThat(TurnRunner.isSpeculationCompatible("yo'q", "ha albatta")).isFalse();
-        assertThat(TurnRunner.isSpeculationCompatible("salom", "xayr")).isFalse();
+        assertThat(SpeculationManager.isSpeculationCompatible("yo'q", "ha albatta")).isFalse();
+        assertThat(SpeculationManager.isSpeculationCompatible("salom", "xayr")).isFalse();
     }
 
     @Test
     void doesNotSplitOnAbbreviations() {
         StringBuilder pending = new StringBuilder("Sizning 1.5 mln. so'm qarzingiz bor.");
-        String sentence = TurnRunner.takeSentence(pending);
+        String sentence = SentenceSplitter.takeSentence(pending);
 
         assertThat(sentence).isEqualTo("Sizning 1.5 mln. so'm qarzingiz bor.");
         assertThat(pending.toString()).isEmpty();
@@ -73,7 +73,7 @@ class TurnRunnerSentenceTest {
     @Test
     void doesNotSplitOnCityAbbreviation() {
         StringBuilder pending = new StringBuilder("Idora Toshkent sh. Chilonzor tumanida joylashgan.");
-        String sentence = TurnRunner.takeSentence(pending);
+        String sentence = SentenceSplitter.takeSentence(pending);
 
         assertThat(sentence).isEqualTo("Idora Toshkent sh. Chilonzor tumanida joylashgan.");
         assertThat(pending.toString()).isEmpty();
@@ -82,7 +82,7 @@ class TurnRunnerSentenceTest {
     @Test
     void doesNotSplitOnDomainName() {
         StringBuilder pending = new StringBuilder("Iltimos, uysot.uz saytiga kiring.");
-        String sentence = TurnRunner.takeSentence(pending);
+        String sentence = SentenceSplitter.takeSentence(pending);
 
         assertThat(sentence).isEqualTo("Iltimos, uysot.uz saytiga kiring.");
         assertThat(pending.toString()).isEmpty();

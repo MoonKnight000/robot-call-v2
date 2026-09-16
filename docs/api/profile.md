@@ -89,13 +89,62 @@ Body (`ChangePasswordRequest`):
 ```json
 {
   "currentPassword": "eski-parol",
-  "newPassword": "kamida-8-belgi"
+  "newPassword": "kamida10belgi"
 }
 ```
 
-`currentPassword` mos kelmasa — `400`. Muvaffaqiyatda `200` (`ResponseData<Void>`), boshqa
-sessiyalar (`user_session`) darhol bekor qilinmaydi — kerak bo'lsa
-foydalanuvchi ularni pastdagi endpoint bilan alohida tugatadi.
+`newPassword` — 10–128 belgi, kamida bitta harf va bitta raqam (`400 VALIDATION_FAILED`);
+`currentPassword` mos kelmasa — `400 CURRENT_PASSWORD_INCORRECT`. Muvaffaqiyatda `200`
+(`ResponseData<Void>`) va foydalanuvchining **barcha** sessiyalari hamda access tokenlari
+bekor qilinadi (eski parol begona qo'lda bo'lishi mumkin edi) — shu qurilma ham qaytadan
+login qiladi.
+
+---
+
+## `POST /api/profile/2fa/setup` — ikki bosqichli kirishni sozlash {#2fa}
+
+Autentifikator ilovasi (Google Authenticator, Microsoft Authenticator, 1Password…) uchun
+yangi sir yaratadi. Body yo'q. Login bu bosqichda **o'zgarmaydi** — faqat `/2fa/enable`
+koddan keyin kuchga kiradi. Qayta chaqirilsa, tasdiqlanmagan sir almashtiriladi.
+
+```json
+{
+  "accept": true,
+  "data": {
+    "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "otpauthUri": "otpauth://totp/RobotCall%3Aadmin?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=RobotCall&algorithm=SHA1&digits=6&period=30"
+  }
+}
+```
+
+`otpauthUri` — QR kod sifatida ko'rsatiladi; `secret` — qo'lda kiritish uchun. Xatolar:
+`409 TOTP_ALREADY_ENABLED` (allaqachon yoqilgan — avval o'chiring), `409 TOTP_UNAVAILABLE`
+(serverda shifrlash kaliti sozlanmagan).
+
+## `POST /api/profile/2fa/enable` — yoqish
+
+```json
+{ "code": "287082" }
+```
+
+Ilovadagi joriy 6 xonali kod. To'g'ri bo'lsa ikki bosqichli kirish yoqiladi (audit
+`TOTP_ENABLED`) va keyingi loginlardan `otpCode` talab qilinadi
+([auth.md](auth.md#post-apiauthlogin--kirish)). Xatolar: `400 TOTP_CODE_INVALID`,
+`409 TOTP_NOT_SET_UP` (`/2fa/setup` chaqirilmagan).
+
+## `POST /api/profile/2fa/disable` — o'chirish
+
+```json
+{ "currentPassword": "joriy-parol", "code": "123456" }
+```
+
+Ikkala omil ham kerak: faqat o'g'irlangan sessiya bilan ikkinchi omilni olib tashlab
+bo'lmasin. Xatolar: `400 CURRENT_PASSWORD_INCORRECT`, `400 TOTP_CODE_INVALID`,
+`409 TOTP_NOT_SET_UP`. Audit `TOTP_DISABLED`.
+
+Kod standart TOTP (RFC 6238: HMAC-SHA1, 30 soniya, 6 raqam); telefon soati farqi uchun
+±30 soniya qabul qilinadi. Bir kod **bir marta** ishlaydi — ishlatilgan kodni qayta
+yuborish rad etiladi.
 
 ---
 

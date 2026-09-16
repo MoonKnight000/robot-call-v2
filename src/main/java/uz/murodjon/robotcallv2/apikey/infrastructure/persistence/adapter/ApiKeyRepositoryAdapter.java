@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.apikey.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import uz.murodjon.robotcallv2.apikey.application.mapper.ApiKeyMapper;
+import uz.murodjon.robotcallv2.apikey.infrastructure.persistence.mapper.ApiKeyEntityMapper;
 import uz.murodjon.robotcallv2.apikey.application.port.output.ApiKeyRepository;
 import uz.murodjon.robotcallv2.apikey.domain.entity.ApiKey;
 import uz.murodjon.robotcallv2.apikey.infrastructure.persistence.entity.ApiKeyEntity;
@@ -20,11 +20,11 @@ public class ApiKeyRepositoryAdapter implements ApiKeyRepository {
 
     private final ApiKeyJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final ApiKeyMapper mapper;
+    private final ApiKeyEntityMapper mapper;
 
     public ApiKeyRepositoryAdapter(ApiKeyJpaRepository jpaRepository,
                                    CompanyJpaRepository companyJpaRepository,
-                                   ApiKeyMapper mapper) {
+                                   ApiKeyEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -33,7 +33,7 @@ public class ApiKeyRepositoryAdapter implements ApiKeyRepository {
     @Override
     public ApiKey save(ApiKey apiKey) {
         CompanyEntity company = companyJpaRepository.getReferenceById(apiKey.companyId());
-        return mapper.toApiKey(jpaRepository.save(mapper.toEntity(apiKey, company)));
+        return mapper.toApiKey(jpaRepository.save(mapper.toApiKeyEntity(apiKey, company)));
     }
 
     @Override

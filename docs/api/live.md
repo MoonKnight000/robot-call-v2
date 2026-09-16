@@ -15,8 +15,8 @@ oqimi bundan mustasno**, pastga qarang.
 
 ## `GET /api/calls/live` — jonli qo'ng'iroqlar ro'yxati (bir martalik) {#get-apicallslive}
 
-Hozir suhbatda bo'lgan har bir qo'ng'iroq. `DialogEngine.liveDialogs()`
-(xotiradagi sessiyalar) `AriService.liveCalls()`da birlashtiriladi.
+Hozir suhbatda bo'lgan har bir qo'ng'iroq — **faqat token kompaniyasiniki**. Boshqa
+kompaniyaning qo'ng'iroqlari ro'yxatga umuman tushmaydi (`AriService.liveCalls(companyId)`).
 
 **Response** — `List<LiveCallRow>`, `ResponseData` ichida:
 
@@ -55,6 +55,10 @@ yuboraveradi. **`ResponseData<T>` konvertiga o'ralmagan** — `EventSource`
 xom event-stream tanasini kutadi, uni yana bitta JSON qatlamiga o'rash oqimni
 o'zini parse qilib bo'lmaydigan holga keltiradi.
 
+Oqim tokendagi kompaniyaga bog'lanadi: `KPI`, `LIVE_CALLS`, `TRANSCRIPT`, `AUDIO_LEVEL`
+va `NOTIFICATION` — hammasi faqat shu kompaniyaning qo'ng'iroqlari bo'yicha. `KPI.activeCalls`
+ham butun server emas, shu kompaniya liniyasidagi qo'ng'iroqlar soni.
+
 ### Muhim: browser'ning tayyor `EventSource`i ishlamaydi
 
 `EventSource` maxsus sarlavha (`Authorization`) qo'ya olmaydi, bu esa autentifikatsiya
@@ -78,10 +82,14 @@ fetchEventSource('/api/live/stream', {
 });
 ```
 
-Panel foydalanuvchisi uchun `EventSource` ham ishlaydi, chunki `/api/live/stream` tokenni
-query parametr sifatida ham qabul qiladi: `new EventSource('/api/live/stream?token=' +
-accessToken)`. Ikkala usulda ham **LIVE_READ** huquqi talab qilinadi — tokensiz ulanish
-`401`, huquqsiz token `403` oladi.
+Panel foydalanuvchisi uchun brauzerning oddiy `EventSource`i ham ishlaydi — URL'ga bir martalik
+ticket qo'yiladi: avval
+[`POST /api/auth/stream-ticket`](auth.md#post-apiauthstream-ticket--oqim-uchun-bir-martalik-ticket),
+keyin `new EventSource('/api/live/stream?ticket=' + ticket)`. Ticket 60 soniya yashaydi va bir
+marta ishlatiladi, shuning uchun har bir qayta ulanishdan oldin yangisi olinadi. Eskicha
+`?token=<accessToken>` / `?access_token=` hali qabul qilinadi, lekin **deprecated** (to'liq
+token URL orqali access/proxy loglariga tushadi). Har qanday usulda **LIVE_READ** huquqi talab
+qilinadi — tokensiz yoki yaroqsiz/ishlatilgan ticket bilan ulanish `401`, huquqsiz — `403` oladi.
 
 "Ulanish uzildi" holati serverdan alohida push qilinmaydi — standart
 `onerror`/qayta-ulanish + ~15s heartbeat orqali klient o'zi aniqlaydi.
@@ -133,9 +141,19 @@ animatsiyasi uchun).
 
 ---
 
-## 2. Jonli Suhbatni Boshqarish (Whisper & Takeover)
+## 2. Jonli Suhbatni Boshqarish (Whisper, Takeover, Scenario)
 
-Operator jonli qo'ng'iroqni eshitib turgan paytda botga ko'rinmas ko'rsatma yuborishi (`whisper`) yoki qo'ng'iroqni o'zining ichki SIP raqamiga o'tkazib olishi (`takeover`) mumkin.
+Operator jonli qo'ng'iroqni eshitib turgan paytda botga ko'rinmas ko'rsatma yuborishi (`whisper`),
+qo'ng'iroqni o'zining ichki SIP raqamiga o'tkazib olishi (`takeover`) yoki qo'ng'iroqni boshqa
+ssenariyga o'tkazishi (`scenario`) mumkin.
+
+Uchalasi ham faqat token kompaniyasining jonli qo'ng'irog'i uchun ishlaydi: kanal yo'q,
+allaqachon tugagan yoki **boshqa kompaniyaniki** bo'lsa — `409 CALL_NOT_ACTIVE` (uchala holat
+bir xil javob oladi, kanal mavjudligi oshkor qilinmaydi).
+
+Bir nechta instance ishlayotganda qo'ng'iroq boshqa instance'da bo'lsa (Redis'dagi
+`call:route:{channelId}` yozuvi, faqat o'z kompaniyangizniki uchun) — `409 CALL_ON_OTHER_INSTANCE`,
+xabarda o'sha instance nomi bor: so'rovni o'sha instance'ga yuboring.
 
 ### `POST /api/calls/live/{channelId}/whisper` — Botga yashirin yo'l-yo'riq berish (Whisper Injection)
 
@@ -148,7 +166,19 @@ Operator kiritgan matn mijozga eshitilmaydi. Bot keyingi javobni shakllantirishd
 }
 ```
 
-`instruction` majburiy va bo'sh bo'lmasligi kerak — aks holda `400 VALIDATION_FAILED`.
+`instruction` majburiy, bo'sh bo'lmasligi va 1000 belgidan oshmasligi kerak — aks holda `400 VALIDATION_FAILED`.
+
+`CASCADE` qo'ng'iroqda ko'rsatma keyingi turn'dan boshlab botning har turn'dagi promptiga
+qo'shiladi va yangi whisper kelguncha amal qiladi (yangisi eskisining o'rnini egallaydi).
+
+`REALTIME` qo'ng'iroqda ko'rsatma engine suhbatiga **kontekst** sifatida qo'shiladi — unga
+alohida javob so'ralmaydi, bot uni keyingi javobida inobatga oladi va suhbat oxirigacha
+eslab qoladi. Bot ayni paytda gapirayotgan bo'lsa, ko'rsatma u gapini tugatguncha kutib
+turadi: yangi kontent gapirayotgan engine'ni gap o'rtasida to'xtatadi. Gemini Live va
+OpenAI Realtime shunday ishlaydi; kontekstni jim qo'sha olmaydigan engine'lar (Moshi, Qwen
+Omni, Pipecat) ko'rsatmani oddiy xabar sifatida oladi va darhol javob beradi.
+
+Allaqachon operatorga uzatilgan (yoki tugagan) qo'ng'iroqda bot yo'q — `404 CALL_NOT_FOUND`.
 
 **Response:**
 ```json
@@ -165,7 +195,20 @@ Operator kiritgan matn mijozga eshitilmaydi. Bot keyingi javobni shakllantirishd
 
 ### `POST /api/calls/live/{channelId}/takeover` — Qo'ng'iroqni tirik operatorga olish (Human Takeover)
 
-AI bot darhol ovozni to'xtatadi va qo'ng'iroq ko'rsatilgan operator ichki raqamiga (SIP extension) yoki navbatga uzatiladi.
+Qo'ng'iroq operatorga uzatiladi. `extension` berilsa — **shu kompaniyaning** o'sha ichki
+raqamli ([users.md](users.md) `sipExtension`) va SIP akkaunti bor operatorining telefoniga
+(`PJSIP/op-<userId>`), agentning navbati va raqamidan ustun; berilmasa — agentning
+`transferQueueId` navbatiga, u bo'lmasa `transferPhoneNumber` ga, u ham bo'lmasa o'rnatmaning
+operator endpoint'iga. `CASCADE` va `REALTIME` qo'ng'iroqlarda bir xil ishlaydi.
+
+| Holat | Javob |
+|---|---|
+| `extension` 2–8 raqam emas | `400 VALIDATION_FAILED` |
+| Kompaniyada bunday ichki raqamli foydalanuvchi yo'q (boshqa kompaniyaniki ham), yoki uning SIP akkaunti yo'q | `404 OPERATOR_EXTENSION_NOT_FOUND` |
+
+> Ilgari `extension` dial string'ga tekshiruvsiz qo'yilardi: istalgan raqam Asterisk'dagi
+> o'sha nomli istalgan endpoint'ga (boshqa tenant telefoniga ham) yetardi, kompaniya
+> operatorlari (`op-<userId>`) esa ichki raqami orqali umuman chaqirilmasdi.
 
 **Request Body** (ixtiyoriy):
 ```json
@@ -186,3 +229,44 @@ AI bot darhol ovozni to'xtatadi va qo'ng'iroq ko'rsatilgan operator ichki raqami
   "errors": null
 }
 ```
+
+### `POST /api/calls/live/{channelId}/scenario` — Qo'ng'iroqni boshqa ssenariyga o'tkazish (Handoff)
+
+Qo'ng'iroq to'xtamasdan boshqa ssenariy bilan davom etadi (masalan, lidni saralashdan buyurtmani
+tasdiqlashga). Suhbat tarixi, yig'ilgan faktlar va mijoz konteksti saqlanadi; qo'ng'iroq yangi
+ssenariyning **birinchi bosqichidan** davom etadi va keyingi turn'dayoq uning roli va qoidalari
+bilan gapiradi. Rol: `OPERATOR_EDIT`.
+
+**Request Body:**
+```json
+{
+  "scenarioId": 12
+}
+```
+
+**Response:**
+```json
+{
+  "accept": true,
+  "data": {
+    "channelId": "1710000000.12",
+    "status": "SCENARIO_SWITCHED"
+  },
+  "messageCode": null,
+  "errors": null
+}
+```
+
+| Holat | Javob |
+|---|---|
+| `scenarioId` yo'q yoki musbat emas | `400 VALIDATION_FAILED` |
+| Ssenariy topilmadi yoki boshqa kompaniyaniki | `404 SCENARIO_NOT_FOUND` |
+| Ssenariy faol emas | `409 SCENARIO_NOT_ACTIVE` |
+| Ssenariyda bosqich yo'q | `400 SCENARIO_HAS_NO_STAGES` (ilgari `SCENARIO_DEFINITION_INVALID` edi; xabar argumenti — ssenariy id'si) |
+| Qo'ng'iroq realtime engine'da yoki allaqachon operatorda (ssenariyli bot dialogi yo'q) | `409 CALL_SCENARIO_SWITCH_UNAVAILABLE` |
+| Kanal jonli qo'ng'iroq emas / boshqa instance'da | `409 CALL_NOT_ACTIVE` / `409 CALL_ON_OTHER_INSTANCE` |
+
+> Realtime qo'ng'iroqda ssenariy almashtirilmaydi (ataylab): engine'ning ko'rsatmalari va
+> tool'lari sessiya ochilganda bir marta beriladi — Gemini Live ularni sessiya o'rtasida
+> o'zgartirishga imkon bermaydi, yangi sessiya ochish esa ovozni va suhbat kontekstini
+> uzadi. Realtime qo'ng'iroqni yo'naltirish kerak bo'lsa — whisper ishlating.

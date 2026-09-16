@@ -6,6 +6,8 @@ import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepo
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallResult;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallResultJpaRepository;
 
+import java.time.Instant;
+
 @Component
 public class CallResultRepositoryAdapter implements CallResultRepository {
 
@@ -29,5 +31,15 @@ public class CallResultRepositoryAdapter implements CallResultRepository {
                 result.escalated(),
                 result.crmNoteId(),
                 result.outcome());
+    }
+
+    @Override
+    public void markCrmPosted(long callId, String crmNoteId) {
+        jpaRepository.markCrmPosted(callId, crmNoteId);
+    }
+
+    @Override
+    public int deleteCreatedBefore(Instant cutoff, int batchSize) {
+        return jpaRepository.deleteCreatedBefore(cutoff, batchSize);
     }
 }

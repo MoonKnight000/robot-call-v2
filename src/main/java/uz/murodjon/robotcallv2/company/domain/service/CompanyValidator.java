@@ -12,6 +12,12 @@ public final class CompanyValidator {
     private CompanyValidator() {
     }
 
+    /** @throws ValidationException {@code LANGUAGE_CODE_INVALID} when code names none of the supported languages */
+    public static Language parseLanguage(String code) {
+        return Language.findByCode(code)
+                .orElseThrow(() -> new ValidationException(ErrorCode.LANGUAGE_CODE_INVALID, code, Language.codes()));
+    }
+
     public static void validateLanguages(Language defaultLanguage, List<Language> supportedLanguages) {
         if (supportedLanguages == null || !supportedLanguages.contains(defaultLanguage)) {
             List<String> codes = supportedLanguages != null

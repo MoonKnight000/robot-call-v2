@@ -28,11 +28,13 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 ## Mavzu (`topic`)
 
-`topic` — **erkin matn** (`VARCHAR(50)`), enum emas: DTO va `KnowledgeItem` da u `String`.
-Kodda `KnowledgeTopic` enum'i bor (`PAYMENT`, `LEGAL`, `TERMS`, `LOCATIONS`, `GENERAL`),
-lekin API uni tekshirmaydi va `V7__knowledge_base.sql` seed'i **kichik harfda**
-(`payment`, `legal`, `terms`, `locations`) yozadi. Frontend tanlagichni shu beshtalik
-bilan cheklashi tavsiya etiladi; qiymatni bitta registrga keltirib yuboring.
+`topic` — **erkin matn** (`VARCHAR(50)`), enum emas: kompaniya o'z mavzularini o'zi
+nomlaydi, qat'iy ro'yxat esa o'ylab topilgan har bir mavzuni rad etardi. Saqlashda chetdagi
+bo'shliqlar olib tashlanadi va **kichik harfga** keltiriladi (`" Payment "` → `"payment"`) —
+bitta mavzu registr farqi bilan filtrda ikkiga bo'linmaydi. Seed yozuvlari `payment`,
+`legal`, `terms`, `locations` ishlatadi: frontend tanlagichda shularni taklif qilib, yangi
+mavzu kiritishga ham ruxsat berishi mumkin. (Hech qayerda ishlatilmagan `KnowledgeTopic`
+enum'i olib tashlandi.)
 
 ---
 
@@ -167,7 +169,9 @@ yozing.
 `/api/knowledge-base/sources` · huquq: **KNOWLEDGE_BASE_READ** / **KNOWLEDGE_BASE_EDIT**
 
 Yozuvlar qo'lda yoziladi; manbalar esa tayyor hujjat (PDF, TXT, DOCX, CSV, XLSX, XLS)
-yoki tashqi havola (URL) sifatida ro'yxatga olinadi va agentga biriktiriladi.
+yoki tashqi havola (URL) sifatida ro'yxatga olinadi va agentga biriktiriladi. Mahsulot
+katalogi — alohida tur, `STRUCTURED_FEED` (§Katalog): u parchalanmaydi, har qatori alohida
+mahsulot bo'ladi.
 
 ## Manba qanday ishlaydi
 
@@ -183,6 +187,10 @@ yoki tashqi havola (URL) sifatida ro'yxatga olinadi va agentga biriktiriladi.
 4. Qo'ng'iroq paytida mijozning savoli ham vektorga aylantiriladi va eng yaqin parchalar
    (kosinus o'xshashligi, ostona 0.62) modelning promptiga qo'yiladi. Model javobni o'z
    so'zi bilan aytadi — matnni o'qib bermaydi.
+   **Hybrid** (NEXT-PLAN A.3): shu bilan birga savol so'zlari bo'yicha kalit so'z reytingi ham
+   tuziladi va ikkala reyting RRF (reciprocal rank fusion) bilan birlashtiriladi — embedding past
+   baholagan, lekin mijoz aytgan shartnoma raqami, mahsulot kodi yoki ismni o'z ichiga olgan parcha
+   ham yuqoriga chiqadi. Matni bir xil parcha bir marta sanaladi.
 
 > ℹ️ **Qidiruv faqat `useRag: true` agentlar uchun ishlaydi**
 > ([ai-agents.md](ai-agents.md) → Advanced). O'chirilgan bo'lsa manbalar saqlanadi, lekin
@@ -221,10 +229,16 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Bitta so'rovda bir nechta hujjat yuboriladi.
 | `agentId` | number | ❌ | Berilsa — agent shu kompaniyaniki ekani tekshiriladi (`404 AI_AGENT_NOT_FOUND`). `null` — kompaniyaning barcha agentlari uchun |
 | `documents` | array | ✅ (`@NotEmpty`) | Kamida bitta hujjat |
 | `documents[].name` | string | ✅ (≤200) | UI da ko'rinadigan nom |
-| `documents[].sourceType` | enum | ✅ | `PDF`, `TXT`, `DOCX`, `CSV`, `XLSX`, `XLS`, `URL` |
+| `documents[].sourceType` | enum | ✅ | `PDF`, `TXT`, `DOCX`, `CSV`, `XLSX`, `XLS`, `URL`, `STRUCTURED_FEED` (§Katalog) |
 | `documents[].url` | string | `sourceType=URL` bo'lsa ✅ | Aks holda `400 KNOWLEDGE_SOURCE_URL_REQUIRED` |
 | `documents[].storedFileId` | number | `URL` bo'lmasa ✅ | `POST /api/files?category=DOCUMENT` qaytargan `data.id`. Berilmasa `400 KNOWLEDGE_SOURCE_FILE_REQUIRED` |
 | `documents[].originalFileName` | string | ❌ (≤255) | Foydalanuvchi yuklagan fayl nomi |
+| `documents[].feedItemsPath` | string | ❌ (≤200) | Faqat `STRUCTURED_FEED`: JSON javobdagi mahsulotlar massivining JSONPath'i (`$.data.items`). Bo'sh — butun javob massiv |
+| `documents[].feedKeyField` | string | ❌ (≤100) | Faqat `STRUCTURED_FEED`: kalit ustun (SKU). Standart `sku`, katta-kichik harf farqi yo'q |
+| `documents[].refreshMinutes` | int | ❌ (≥15) | Faqat URL'li `STRUCTURED_FEED`: feed necha daqiqada qayta yuklanadi. Bo'sh — faqat qo'lda (`/retry`) |
+
+`STRUCTURED_FEED` uchun `url` yoki `storedFileId` dan biri kerak — ikkalasi ham bo'lmasa `400 KNOWLEDGE_FEED_LOCATION_REQUIRED`.
+`KnowledgeSourceRow` javobida ham `feedItemsPath`, `feedKeyField`, `refreshMinutes` qaytadi; katalog uchun `chunkCount` — mahsulotlar soni.
 
 Javob — yaratilgan manbalar ro'yxati (`KnowledgeSourceRow[]`):
 
@@ -265,8 +279,60 @@ soniyada qayta so'rab statusni kuzatadi.
 
 Eng ko'p uchraydigan `errorCode` lar: `KNOWLEDGE_SOURCE_EMPTY` (matn qatlami yo'q,
 odatda skanerlangan PDF), `KNOWLEDGE_SOURCE_UNREADABLE` (buzuq yoki qo'llab-quvvatlanmagan
-fayl), `KNOWLEDGE_SOURCE_FETCH_FAILED` (URL ochilmadi), `FILE_NOT_FOUND` (yuklangan fayl
+fayl), `KNOWLEDGE_SOURCE_FETCH_FAILED` (URL ochilmadi),
+`KNOWLEDGE_SOURCE_FETCH_INTERRUPTED` (URL yuklanishi to'xtatildi — odatda server qayta ishga tushganda; `/retry`), `FILE_NOT_FOUND` (yuklangan fayl
 o'chirilgan).
+
+---
+
+## Katalog (`STRUCTURED_FEED`) — mahsulot qidiruvi
+
+Magazin, restoran menyusi yoki xizmatlar ro'yxati — minglab qatorli jadval. U hujjat kabi ~900
+belgilik parchalarga bo'linmaydi: **har qator — bitta mahsulot**, alohida vektor bilan. Qo'ng'iroqda
+agent mijoz aytgan mahsulotni ("qora 42 razmer krossovka") shu katalogdan qidiradi va buyurtma
+tool'iga ([tools.md](tools.md)) katalogdagi haqiqiy SKU ni beradi.
+
+```json
+{
+  "agentId": 5,
+  "documents": [
+    { "name": "Mahsulotlar", "sourceType": "STRUCTURED_FEED",
+      "url": "https://shop.uz/api/products", "feedItemsPath": "$.data", "feedKeyField": "sku",
+      "refreshMinutes": 60 }
+  ]
+}
+```
+
+**Format.** Fayl sifatida: CSV (birinchi qator — ustun nomlari; `,` / `;` / tab avtomatik aniqlanadi),
+XLSX/XLS (birinchi varaq, birinchi bo'sh bo'lmagan qator — sarlavha), yoki `.json` (obyektlar massivi).
+URL sifatida: javob `[` yoki `{` bilan boshlansa JSON (`feedItemsPath` dagi massiv), aks holda CSV.
+JSON obyektning har bir maydoni — ustun; ichma-ich qiymat JSON matn sifatida saqlanadi.
+
+**Kalit.** Har qatorda `feedKeyField` (standart `sku`) ustuni bo'lishi kerak. Kalitsiz qator tashlab
+yuboriladi, takroriy kalitdan birinchisi qoladi. Birorta qatorda ham kalit bo'lmasa, manba
+`FAILED` + `CATALOG_KEY_FIELD_MISSING` bo'ladi — feed noto'g'ri ustunga qaratilgan.
+
+**Chegaralar.** 50 000 qator, URL javobi 32 MB va 30 soniya. Qator matni (barcha ustunlar
+`ustun: qiymat; …`) 1000 belgigacha. Feed faqat ochiq URL'dan yuklanadi — header/secret bilan himoyalangan
+feed hozircha qo'llab-quvvatlanmaydi (§6.1 dagi manzil tekshiruvi xuddi URL manbadagidek).
+
+**Yangilanish.** `refreshMinutes` berilgan URL feed shu oraliqda qayta yuklanadi (bir daqiqalik
+tekshiruv, ikki instance'da takrorlanmaydi). Faqat `INDEXED` feed yangilanadi. `FAILED` feed
+`/retry` ni kutadi, chunki xato qatorda yozilgan va har daqiqa urinish uni tuzatmaydi. Qayta
+yuklashda faqat matni o'zgargan qatorlar qayta vektorlanadi. Yuklash yiqilsa, eski mahsulotlar
+**o'chiriladi**: qo'ng'iroqda eskirgan narx aytilgandan ko'ra "topilmadi" yaxshiroq.
+
+**Qidiruv.** Katalog Postgres'da (`catalog_item`, pgvector HNSW indeksi + matn indeksi) saqlanadi.
+Mijozning so'zlari bo'yicha ham, embedding bo'yicha ham 50 tadan nomzod olinadi. Keyin ular mijoz
+so'zlarining qancha qismini o'z ichiga olgani bo'yicha tartiblanadi, embedding esa teng holatda
+hal qiladi. Raqam faqat o'ziga mos keladi ("42" ≠ "420"); 4+ harfli so'z qo'shimchasiz ham topiladi
+("krossovkalar" → "krossovka"). "menga", "kerak", "bormi" kabi so'zlar hisobga olinmaydi.
+
+**Agentda.** Agentga ko'rinadigan `INDEXED` katalog bo'lsa, `searchCatalog(query)` tool'i avtomatik
+beriladi — ikkala pipeline'da, `useRag` dan qat'i nazar. Tool eng mos 5 qatorni `SKU …: ustun: qiymat; …`
+ko'rinishida qaytaradi. Undagi raqamlar (narx, qoldiq) agent aytishi mumkin bo'lgan raqamlarga
+qo'shiladi (fact guard). Cascade qo'ng'iroqda oxirgi natija keyingi qidiruvgacha har turn promptida
+turadi — buyurtma tool'i SKU'ni o'sha yerdan oladi.
 
 ---
 
@@ -294,6 +360,8 @@ Huquq: **KNOWLEDGE_BASE_EDIT**.
 
 Berilmagan (`null`) maydon o'zgarmaydi. `sourceType`, `storedFileId` va
 `originalFileName` tahrirlanmaydi — hujjatni almashtirish uchun yangisini qo'shing.
+Katalog feed uchun `refreshMinutes` (≥15) ham yuborish mumkin — qayta indekslamaydi, faqat
+keyingi yangilanish vaqtini o'zgartiradi. `feedItemsPath` va `feedKeyField` tahrirlanmaydi.
 
 `url` o'zgarsa manba **qayta indekslanadi** (status `PENDING` ga tushadi). Faqat nom yoki
 agent o'zgarsa parchalar o'sha-o'sha qoladi — bir xil vektorlarni qayta hisoblash

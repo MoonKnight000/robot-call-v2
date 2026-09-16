@@ -1,22 +1,33 @@
 package uz.murodjon.robotcallv2.scenario.application.service;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.scenario.application.port.output.FactWebhookFetcherPort;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhook;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * The URL here is written by a customer through the scenario API, so the interesting cases
- * are the ones where it points back at us. Every URL below is rejected before a socket is
- * opened, which is also why this test needs no network: a literal address is parsed rather
- * than resolved, and {@code localhost} comes from the hosts file.
+ * are the ones where it points back at us. Every URL below is rejected before a request is
+ * made — the fetcher is never called — which is also why this test needs no network: a
+ * literal address is parsed rather than resolved, and {@code localhost} comes from the
+ * hosts file.
  */
 class FactWebhookClientTest {
 
-    private final FactWebhookClient client = new FactWebhookClient();
+    private final FactWebhookFetcherPort fetcher = mock(FactWebhookFetcherPort.class);
+    private final FactWebhookClient client = new FactWebhookClient(fetcher);
     private static final FactWebhookRequest CALL =
             FactWebhookRequest.inbound("998901234567", "998712000000");
+
+    @AfterEach
+    void nothingWasFetched() {
+        verifyNoInteractions(fetcher);
+    }
 
     @Test
     void refusesLoopback() {

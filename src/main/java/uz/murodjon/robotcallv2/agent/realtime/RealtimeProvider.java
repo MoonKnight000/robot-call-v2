@@ -49,6 +49,17 @@ public interface RealtimeProvider {
     String resolveModel(RealtimeCallConfig config);
 
     /**
+     * Whether this engine has no way to call tools. Such an engine cannot end the call, hand
+     * it to an operator or look up a call fact, and every agent needs at least {@code endCall}
+     * — so an agent cannot be saved on it ({@code ENGINE_REALTIME_TOOLS_UNSUPPORTED}), and a
+     * call that still resolves to it (an older agent, or the configured default) runs on the
+     * cascade pipeline instead.
+     */
+    default boolean lacksToolCalling() {
+        return false;
+    }
+
+    /**
      * Open a conversation. The returned session is live from this point: the engine may
      * start speaking (a greeting) before any audio has been sent to it.
      *

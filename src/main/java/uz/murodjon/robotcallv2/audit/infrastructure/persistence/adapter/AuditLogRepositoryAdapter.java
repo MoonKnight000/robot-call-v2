@@ -4,7 +4,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.audit.application.mapper.AuditLogMapper;
+import uz.murodjon.robotcallv2.audit.infrastructure.persistence.mapper.AuditLogEntityMapper;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
@@ -12,8 +12,6 @@ import uz.murodjon.robotcallv2.audit.infrastructure.persistence.entity.AuditLogE
 import uz.murodjon.robotcallv2.audit.infrastructure.persistence.repository.AuditLogJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,11 +22,11 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
 
     private final AuditLogJpaRepository auditLogJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final AuditLogMapper mapper;
+    private final AuditLogEntityMapper mapper;
 
     public AuditLogRepositoryAdapter(AuditLogJpaRepository auditLogJpaRepository,
                                      CompanyJpaRepository companyJpaRepository,
-                                     AuditLogMapper mapper) {
+                                     AuditLogEntityMapper mapper) {
         this.auditLogJpaRepository = auditLogJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -36,8 +34,7 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
 
     @Override
     public AuditLog save(long companyId, AuditLog log) {
-        CompanyEntity comp = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         AuditLogEntity entity = new AuditLogEntity();
         entity.setCompany(comp);
@@ -48,14 +45,14 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
         entity.setDetail(log.detail());
         entity.setCreatedAt(Instant.now());
         entity.setIpAddress(truncate(log.ipAddress(), 45));
-        return mapper.entityToDomain(auditLogJpaRepository.save(entity));
+        return mapper.toAuditLog(auditLogJpaRepository.save(entity));
     }
 
     @Override
     public List<AuditLog> findByCompanyId(long companyId, AuditFilter filter) {
         Specification<AuditLogEntity> spec = buildSpecification(companyId, filter);
         return auditLogJpaRepository.findAll(spec, filter.pageable()).stream()
-                .map(mapper::entityToDomain)
+                .map(mapper::toAuditLog)
                 .toList();
     }
 
@@ -63,6 +60,11 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
     public long countByCompanyId(long companyId, AuditFilter filter) {
         Specification<AuditLogEntity> spec = buildSpecification(companyId, filter);
         return auditLogJpaRepository.count(spec);
+    }
+
+    @Override
+    public int deleteCreatedBefore(Instant cutoff, int batchSize) {
+        return auditLogJpaRepository.deleteCreatedBefore(cutoff, batchSize);
     }
 
     private static Specification<AuditLogEntity> buildSpecification(long companyId, AuditFilter filter) {

@@ -109,9 +109,74 @@ Mavjud bo'lmagan kontakt uchun — `404 Not Found`.
 
 ---
 
+## `GET /api/contacts/data?phone=...` — shaxs ma'lumotlari eksporti {#subject-export}
+
+Kompaniyada shu telefon raqami bo'yicha saqlangan hamma narsa bitta JSON'da: kontakt,
+xotira (`client_memory`) va har bir qo'ng'iroq (sana, davomiylik, natija, xulosa, to'liq
+transkript). Ma'lumot egasining so'rovi uchun. Huquq: `CONTACT_READ`. Audit: `SUBJECT_EXPORTED`.
+
+`phone` istalgan yozuvda bo'lishi mumkin: `+998901234567` va `998901234567` ikkalasi ham
+qidiriladi. Noto'g'ri raqam — `400 PHONE_INVALID`.
+
+```json
+{
+  "accept": true,
+  "data": {
+    "phone": "+998901234567",
+    "contact": { "id": 5, "name": "Aziz Karimov", "phone": "+998901234567" },
+    "memory": { "preferredName": "Aziz aka", "preferredLanguage": "uz-UZ", "recentCalls": [] },
+    "calls": [
+      {
+        "callId": 1042,
+        "startedAt": "2026-09-10T06:12:00Z",
+        "durationSec": 94,
+        "disposition": "PROMISE_TO_PAY",
+        "summary": "Mijoz 15-sentabrgacha to'lashga va'da berdi.",
+        "transcript": "AGENT: Assalomu alaykum...\nCLIENT: Va alaykum assalom..."
+      }
+    ]
+  }
+}
+```
+
+`contact` yoki `memory` bo'lmasa — `null`.
+
+---
+
+## `DELETE /api/contacts/data?phone=...&confirm=true` — shaxs ma'lumotlarini o'chirish {#subject-erasure}
+
+**Qaytarib bo'lmaydi.** `confirm=true` bo'lmasa — `400 SUBJECT_ERASURE_NOT_CONFIRMED`.
+Huquq: `CONTACT_EDIT`. Audit: `SUBJECT_ERASED` (raqam niqoblangan holda).
+
+| Ma'lumot | Nima bo'ladi |
+|---|---|
+| Kontakt, xotira (`client_memory`) | O'chiriladi |
+| Transkriptlar | O'chiriladi |
+| Qo'ng'iroq yozuvlari va ovozli xabarlar (MinIO) | Fayl va uning qatori o'chiriladi |
+| Qo'ng'iroq xulosasi | `summary` → `[o'chirildi]`, `outcome` → `{}`, izohlar tozalanadi; `reasonCode`, va'da sanasi va summasi hisobot uchun qoladi |
+| Qo'ng'iroq, nishon, o'tkazib yuborilgan qo'ng'iroq, konversiya qatorlari | Hisobot va billing uchun qoladi, lekin raqam qaytarib bo'lmaydigan tamg'a (`x` + 16 belgi) bilan almashtiriladi; nishonning `contextData`si tozalanadi, navbatdagi nishon `DONE` bo'ladi |
+| Qo'ng'iroq voqealari (`call_event`) | `payload` tozalanadi |
+| CRM'ga hali yetkazilmagan yozuvlar (outbox: eslatma, qo'ng'iroqlar tarixi) | `PENDING` va `DEAD` xabarlarning `payload`i tozalanadi; `PENDING` xabar `DEAD` bo'ladi va CRM'ga yuborilmaydi |
+| DNC ro'yxati | **Qoladi**, aks holda raqamga yana qo'ng'iroq qilinardi |
+
+CRM'ga allaqachon yuborilgan eslatmalar bu yerdan o'chirilmaydi, ularni CRM'ning o'zida
+o'chirish kerak.
+
+```json
+{
+  "accept": true,
+  "data": { "phone": "+99890*****67", "callsAnonymized": 7, "filesDeleted": 5 }
+}
+```
+
+Bu raqam bo'yicha hech narsa bo'lmasa ham `200`, nollar bilan.
+
+---
+
 ## `POST /api/contacts/csv` — CSV import {#csv-import}
 
-`Content-Type: text/csv` (yoki `text/plain`), body — CSV faylning o'zi:
+`Content-Type: text/csv` (yoki `text/plain`), body — CSV faylning o'zi (ko'pi bilan 5 000 000
+belgi; uzunrog'i → `400 VALIDATION_FAILED`):
 
 ```csv
 name,phone,address,tags,notes

@@ -61,9 +61,10 @@ class SpeechSanitizerTest {
         assertThat(SpeechSanitizer.isUnspeakable("Aha, xo'p bo'ladi.")).isFalse();
     }
 
+    /** The character that reached a real caller's synthesizer; the rest of the line survives. */
     @Test
-    void stripsTagsInSanitize() {
-        String input = "<thought>Thinking about debt</thought>To'lovni qachon amalga oshirasiz?";
-        assertThat(SpeechSanitizer.sanitize(input)).isEqualTo("Thinking about debtTo'lovni qachon amalga oshirasiz?");
+    void stripsUnspeakableCharactersButKeepsTheLine() {
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("Xayr, salomat bo'ling!읍"))
+                .isEqualTo("Xayr, salomat bo'ling!");
     }
 }

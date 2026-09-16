@@ -4,9 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.dialer.application.port.input.DialerSlotUseCase;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -23,48 +25,57 @@ import java.util.concurrent.atomic.AtomicInteger;
  * promise more media than exists.
  */
 @Component
-public class DialerState {
+public class DialerState implements DialerSlotUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(DialerState.class);
 
     private static final String TOTAL_KEY = "dialer:active";
     private static final String COMPANY_KEY_PREFIX = "dialer:active:company:";
+    private static final String CAMPAIGN_KEY_PREFIX = "dialer:active:campaign:";
 
     private static final Duration TTL = Duration.ofHours(6);
     private static final Duration DAILY_TTL = Duration.ofDays(2);
 
-    private final StringRedisTemplate redis;
+    private final StringRedisTemplate redisTemplate;
     private final AtomicInteger localTotal = new AtomicInteger(0);
 
-    public DialerState(StringRedisTemplate redis) {
-        this.redis = redis;
+    public DialerState(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
     }
 
     /** Calls this company is holding right now. */
-    public int active(long companyId) {
+    public int countActive(long companyId) {
         return count(companyKey(companyId));
     }
 
     /** Calls the whole platform is holding right now — the figure the port range caps. */
-    public int activeTotal() {
+    public int countActiveTotal() {
         return count(TOTAL_KEY);
     }
 
-    public void reserve(long companyId) {
+    /** Calls this campaign is holding right now — what its own maxConcurrentCalls is measured against. */
+    public int countActiveForCampaign(long campaignId) {
+        return count(campaignKey(campaignId));
+    }
+
+    public void reserve(long companyId, long campaignId) {
         localTotal.incrementAndGet();
         increment(TOTAL_KEY);
         increment(companyKey(companyId));
+        increment(campaignKey(campaignId));
     }
 
-    public void release(long companyId) {
+    @Override
+    public void release(long companyId, long campaignId) {
         localTotal.updateAndGet(n -> n > 0 ? n - 1 : 0);
         decrement(TOTAL_KEY);
         decrement(companyKey(companyId));
+        decrement(campaignKey(campaignId));
     }
 
     private int count(String key) {
         try {
-            String value = redis.opsForValue().get(key);
+            String value = redisTemplate.opsForValue().get(key);
             return value == null ? 0 : Math.max(0, Integer.parseInt(value));
         } catch (Exception e) {
             log.warn("Redis unavailable for the concurrency counter, falling back to the local one: {}",
@@ -78,8 +89,13 @@ public class DialerState {
 
     private void increment(String key) {
         try {
-            redis.opsForValue().increment(key);
-            redis.expire(key, TTL);
+            Long count = redisTemplate.opsForValue().increment(key);
+            // The TTL is the safety net for a counter whose release never came (a crash
+            // between dispatch and originate). Set when the key is born, not on every
+            // reserve — refreshing it under steady traffic kept a leaked count alive for ever.
+            if (count != null && count == 1) {
+                redisTemplate.expire(key, TTL);
+            }
         } catch (Exception e) {
             log.warn("Concurrency reserve not recorded in Redis for {}: {}", key, e.getMessage());
         }
@@ -87,9 +103,9 @@ public class DialerState {
 
     private void decrement(String key) {
         try {
-            Long remaining = redis.opsForValue().decrement(key);
+            Long remaining = redisTemplate.opsForValue().decrement(key);
             if (remaining != null && remaining < 0) {
-                redis.opsForValue().set(key, "0");
+                redisTemplate.opsForValue().set(key, "0");
             }
         } catch (Exception e) {
             log.warn("Concurrency release not recorded in Redis for {}: {}", key, e.getMessage());
@@ -100,23 +116,31 @@ public class DialerState {
         return COMPANY_KEY_PREFIX + companyId;
     }
 
+    private static String campaignKey(long campaignId) {
+        return CAMPAIGN_KEY_PREFIX + campaignId;
+    }
+
     public void countDispatch(long campaignId, LocalDate day) {
         String key = dailyKey(campaignId, day);
         try {
-            redis.opsForValue().increment(key);
-            redis.expire(key, DAILY_TTL);
+            redisTemplate.opsForValue().increment(key);
+            redisTemplate.expire(key, DAILY_TTL);
         } catch (Exception e) {
             log.warn("Daily dispatch count not recorded for campaign {}: {}", campaignId, e.getMessage());
         }
     }
 
-    public int dispatchedToday(long campaignId, LocalDate day) {
+    /**
+     * Calls this campaign dispatched on {@code day}; empty when the count cannot be read,
+     * so the caller can refuse to dial rather than read an outage as "none yet".
+     */
+    public OptionalInt countDispatchedToday(long campaignId, LocalDate day) {
         try {
-            String value = redis.opsForValue().get(dailyKey(campaignId, day));
-            return value == null ? 0 : Math.max(0, Integer.parseInt(value));
+            String value = redisTemplate.opsForValue().get(dailyKey(campaignId, day));
+            return OptionalInt.of(value == null ? 0 : Math.max(0, Integer.parseInt(value)));
         } catch (Exception e) {
-            log.warn("Daily dispatch count unavailable for campaign {}: {}", campaignId, e.getMessage());
-            return 0;
+            log.debug("Daily dispatch count unavailable for campaign {}: {}", campaignId, e.getMessage());
+            return OptionalInt.empty();
         }
     }
 

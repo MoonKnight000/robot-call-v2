@@ -4,6 +4,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
+import uz.murodjon.robotcallv2.shared.api.SseEventStreams;
 
 @RestController
 public class LiveControllerImpl implements LiveController {
@@ -15,7 +16,7 @@ public class LiveControllerImpl implements LiveController {
     }
 
     @Override
-    public SseEmitter stream() {
-        return liveUseCase.subscribe();
+    public SseEmitter stream(long companyId) {
+        return SseEventStreams.open(sink -> liveUseCase.subscribe(companyId, sink));
     }
 }

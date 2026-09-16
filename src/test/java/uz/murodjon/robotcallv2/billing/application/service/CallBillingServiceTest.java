@@ -1,10 +1,12 @@
 package uz.murodjon.robotcallv2.billing.application.service;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.billing.application.port.output.BillingLedgerRepository;
 import uz.murodjon.robotcallv2.billing.application.port.output.CallBillingRepository;
 import uz.murodjon.robotcallv2.billing.application.port.output.CompanyBillingRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.*;
+import uz.murodjon.robotcallv2.billing.domain.enums.CallBillingStatus;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingAutoRecharge;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingRateProperties;
 
@@ -32,7 +34,7 @@ class CallBillingServiceTest {
 
     private static BillingRateProperties rates(boolean enforce) {
         return new BillingRateProperties("test-v1", enforce, 5000,
-                new BillingRates(new BillingLlmRates(1000, 10_000, 100), 60, 50, 180, 120, 0),
+                new BillingRates(new BillingLlmRates(1000, 10_000, 100), 60, 50, 300, 180, 120, 0),
                 new BillingAutoRecharge(0, 0, "0 0 0 * * *"));
     }
 
@@ -52,6 +54,58 @@ class CallBillingServiceTest {
 
         verify(companyBilling).charge(COMPANY, 0L, 460L);
         verify(callBilling).save(any(CallBilling.class));
+    }
+
+    /** Enforced, a company cannot end up owing: what the balance does not cover is written off. */
+    @Test
+    void neverTakesTheBalanceBelowZeroWhenEnforced() {
+        when(callBilling.findByCallAttemptId(CALL)).thenReturn(Optional.empty());
+        when(callBilling.findOpenHold(COMPANY, TARGET)).thenReturn(Optional.empty());
+        when(companyBilling.findBalanceForUpdate(COMPANY)).thenReturn(Optional.of(300L));
+        when(ledger.append(any())).thenReturn(true);
+
+        // The call costs 460 (see above); only 300 is there.
+        service(true).settleCall(COMPANY, CALL, TARGET, new CallUsage(60, 0, 0, 0, 2000));
+
+        verify(companyBilling).charge(COMPANY, 0L, 300L);
+    }
+
+    @Test
+    void chargesInFullWhenEnforcementIsOff() {
+        when(callBilling.findByCallAttemptId(CALL)).thenReturn(Optional.empty());
+        when(callBilling.findOpenHold(COMPANY, TARGET)).thenReturn(Optional.empty());
+        when(companyBilling.findBalanceForUpdate(COMPANY)).thenReturn(Optional.of(300L));
+        when(ledger.append(any())).thenReturn(true);
+
+        service(false).settleCall(COMPANY, CALL, TARGET, new CallUsage(60, 0, 0, 0, 2000));
+
+        verify(companyBilling).charge(COMPANY, 0L, 460L);
+    }
+
+    @Test
+    void budgetsTheCallLengthOnWhatTheBalanceStillPaysFor() {
+        when(companyBilling.findByCompanyId(COMPANY)).thenReturn(Optional.of(
+                new CompanyBilling(1L, COMPANY, "PRO", "Pro", 10_000, 5000, false, null, null, null)));
+
+        // 10 000 less 5000 held, plus this call's own 5000 hold = 10 000 UZS to spend.
+        // Cascade minute: telephony 180 + stt 60 + platform 120 = 360 → 10 000 * 60 / 360 = 1666 s.
+        assertThat(service(true).findAffordableCallSeconds(COMPANY, false)).isEqualTo(1666);
+        // Realtime minute: telephony 180 + engine 300 + platform 120 = 600 → 1000 s.
+        assertThat(service(true).findAffordableCallSeconds(COMPANY, true)).isEqualTo(1000);
+    }
+
+    @Test
+    void leavesAtLeastAMinuteForAGoodbye() {
+        when(companyBilling.findByCompanyId(COMPANY)).thenReturn(Optional.of(
+                new CompanyBilling(1L, COMPANY, "PRO", "Pro", 0, 10_000, false, null, null, null)));
+
+        assertThat(service(true).findAffordableCallSeconds(COMPANY, false)).isEqualTo(60);
+    }
+
+    @Test
+    void setsNoLengthLimitWhenEnforcementIsOff() {
+        assertThat(service(false).findAffordableCallSeconds(COMPANY, false)).isZero();
+        verify(companyBilling, never()).findByCompanyId(anyLong());
     }
 
     /**
@@ -113,11 +167,66 @@ class CallBillingServiceTest {
         verify(companyBilling, never()).findByCompanyId(anyLong());
     }
 
-    /** A billing failure must never be what ends somebody's call. */
+    /** The post-call summary is its own ledger entry, priced at the LLM rate and added to the call's row. */
     @Test
-    void swallowsStorageFailuresDuringSettlement() {
+    void chargesTheSummaryOnTopOfASettledCall() {
+        when(callBilling.findByCallAttemptId(CALL)).thenReturn(Optional.of(settledCall()));
+        when(companyBilling.findBalanceForUpdate(COMPANY)).thenReturn(Optional.of(100_000L));
+        when(ledger.append(any())).thenReturn(true);
+        CallUsage summary = new CallUsage(0, 100_000, 10_000, 0, 0);
+
+        // 100k prompt @ 1000/M = 100, 10k completion @ 10 000/M = 100. No minutes, no speech.
+        service(true).chargeSummary(COMPANY, CALL, summary);
+
+        ArgumentCaptor<LedgerEntry> entry = ArgumentCaptor.forClass(LedgerEntry.class);
+        verify(ledger).append(entry.capture());
+        assertThat(entry.getValue().idempotencyKey()).isEqualTo("summary-charge:" + CALL);
+        assertThat(entry.getValue().amountUzs()).isEqualTo(-200L);
+        verify(companyBilling).charge(COMPANY, 0L, 200L);
+        verify(callBilling).addSummaryCharge(CALL, summary, 200L);
+    }
+
+    /** A summary is added to the call's charge; with no charge to add it to, nothing is billed. */
+    @Test
+    void doesNotChargeTheSummaryOfACallThatWasNeverSettled() {
+        when(callBilling.findByCallAttemptId(CALL)).thenReturn(Optional.empty());
+
+        service(true).chargeSummary(COMPANY, CALL, new CallUsage(0, 100_000, 10_000, 0, 0));
+
+        verify(ledger, never()).append(any());
+        verify(companyBilling, never()).charge(anyLong(), anyLong(), anyLong());
+    }
+
+    /** The outbox may summarize a call again; the summary's key already written moves no money. */
+    @Test
+    void doesNotChargeTheSameSummaryTwice() {
+        when(callBilling.findByCallAttemptId(CALL)).thenReturn(Optional.of(settledCall()));
+        when(companyBilling.findBalanceForUpdate(COMPANY)).thenReturn(Optional.of(100_000L));
+        when(ledger.append(any())).thenReturn(false);
+
+        service(true).chargeSummary(COMPANY, CALL, new CallUsage(0, 100_000, 10_000, 0, 0));
+
+        verify(companyBilling, never()).charge(anyLong(), anyLong(), anyLong());
+        verify(callBilling, never()).addSummaryCharge(anyLong(), any(), anyLong());
+    }
+
+    private static CallBilling settledCall() {
+        return new CallBilling(1L, CALL, TARGET, COMPANY, CallBillingStatus.SETTLED, "test-v1", 0,
+                CallUsage.NONE, CallCostBreakdown.FREE, null, null);
+    }
+
+    /**
+     * A failure reaches the caller so the transaction rolls back whole — swallowed inside
+     * it, a ledger row could commit without its balance change. That a billing failure
+     * never ends somebody's call is CallFinalizer's job: it catches around this.
+     */
+    @Test
+    void letsStorageFailuresReachTheCallerSoTheSettlementRollsBack() {
         when(callBilling.findByCallAttemptId(CALL)).thenThrow(new IllegalStateException("db down"));
 
-        service(true).settleCall(COMPANY, CALL, TARGET, new CallUsage(60, 0, 0, 0, 0));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        service(true).settleCall(COMPANY, CALL, TARGET, new CallUsage(60, 0, 0, 0, 0)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(companyBilling, never()).charge(anyLong(), anyLong(), anyLong());
     }
 }

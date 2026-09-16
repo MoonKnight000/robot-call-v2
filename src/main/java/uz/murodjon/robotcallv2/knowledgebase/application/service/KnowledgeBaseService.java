@@ -41,7 +41,7 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
                 companyId,
                 request.agentId(),
                 request.key().trim(),
-                request.topic().trim(),
+                normalizeTopic(request.topic()),
                 request.title().trim(),
                 request.answerUz().trim(),
                 request.answerRu() != null ? request.answerRu().trim() : null,
@@ -57,7 +57,7 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
     }
 
     @Override
-    public KnowledgeItemResponse get(long companyId, long id) {
+    public KnowledgeItemResponse findItem(long companyId, long id) {
         KnowledgeItem item = repository.findByIdAndCompanyId(id, companyId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.KNOWLEDGE_ITEM_NOT_FOUND, id));
         return toResponse(item);
@@ -77,7 +77,7 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
                 companyId,
                 request.agentId() != null ? request.agentId() : existing.agentId(),
                 request.key().trim(),
-                request.topic().trim(),
+                normalizeTopic(request.topic()),
                 request.title().trim(),
                 request.answerUz().trim(),
                 request.answerRu() != null ? request.answerRu().trim() : null,
@@ -102,11 +102,11 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
 
     @Override
     public PageableData<KnowledgeItemResponse> list(long companyId, KnowledgeItemFilter filter) {
-        List<KnowledgeItemResponse> responses = repository.findAllByCompanyId(companyId, filter).stream()
+        PageableData<KnowledgeItem> page = repository.findPageByCompanyId(companyId, filter);
+        List<KnowledgeItemResponse> responses = page.data().stream()
                 .map(this::toResponse)
                 .toList();
-        return PageableData.of(responses, filter.pageable().getPageNumber(), filter.pageable().getPageSize(),
-                repository.countByCompanyId(companyId, filter));
+        return new PageableData<>(page.totalPages(), page.currentPage(), page.totalElements(), responses);
     }
 
     @Override
@@ -124,11 +124,25 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
         return null;
     }
 
+    @Override
+    public List<KnowledgeItem> findAllActiveByCompanyIdAndAgentId(long companyId, Long agentId) {
+        return repository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
+    }
+
     /** Refuses an agent that is not this company's, so an item cannot be bound across tenants. */
     private void requireOwnAgent(long companyId, Long agentId) {
         if (agentId != null) {
             aiAgentUseCase.requireAgent(companyId, agentId);
         }
+    }
+
+    /**
+     * A topic is free text a company names its own categories with — a closed list would
+     * refuse every topic a company made up. One spelling per topic, though: "Payment" and
+     * "payment" must not become two categories in the filter.
+     */
+    private static String normalizeTopic(String topic) {
+        return topic.trim().toLowerCase(Locale.ROOT);
     }
 
     private boolean matches(String query, KnowledgeItem item) {

@@ -1,54 +1,55 @@
 package uz.murodjon.robotcallv2.storage.application.service;
 
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
+import uz.murodjon.robotcallv2.storage.application.port.input.ImageUploadUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
 import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
 
-import java.io.IOException;
 import java.util.Set;
 
 /**
- * Company logo / user avatar uploads.
+ * Company logo / user avatar uploads (report #4, #11).
+ *
+ * <p>{@link #MAX_BYTES} and {@code spring.servlet.multipart.max-file-size} move together:
+ * Spring Boot's own default is 1 MB, which would reject a file before this check ever
+ * runs, so the caller would get a container error instead of {@code ErrorCode}.
  */
 @Service
-public class ImageUploadService {
+public class ImageUploadService implements ImageUploadUseCase {
 
     private static final long MAX_BYTES = 5L * 1024 * 1024;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
 
-    private final FileStorageService files;
+    private final FileStorageUseCase fileStorageUseCase;
 
-    public ImageUploadService(FileStorageService files) {
-        this.files = files;
+    public ImageUploadService(FileStorageUseCase fileStorageUseCase) {
+        this.fileStorageUseCase = fileStorageUseCase;
     }
 
     /** @param companyId the owning company — namespaces the MinIO object key */
-    public StoredFile upload(MultipartFile file, long companyId) {
+    @Override
+    public StoredFile upload(UploadedFile file, long companyId) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException(ErrorCode.IMAGE_UPLOAD_FILE_MISSING);
         }
-        if (file.getSize() > MAX_BYTES) {
+        if (file.size() > MAX_BYTES) {
             throw new ValidationException(ErrorCode.IMAGE_UPLOAD_TOO_LARGE);
         }
-        if (!ALLOWED_CONTENT_TYPES.contains(file.getContentType())) {
+        if (file.contentType() == null || !ALLOWED_CONTENT_TYPES.contains(file.contentType())) {
             throw new ValidationException(
-                    ErrorCode.IMAGE_UPLOAD_TYPE_UNSUPPORTED, file.getContentType(), ALLOWED_CONTENT_TYPES);
+                    ErrorCode.IMAGE_UPLOAD_TYPE_UNSUPPORTED, file.contentType(), ALLOWED_CONTENT_TYPES);
         }
-        byte[] data;
-        try {
-            data = file.getBytes();
-        } catch (IOException e) {
-            throw new ValidationException(ErrorCode.IMAGE_UPLOAD_READ_FAILED, e.getMessage());
-        }
-        String originalName = file.getOriginalFilename() != null && !file.getOriginalFilename().isBlank()
-                ? file.getOriginalFilename()
+        String originalName = file.originalFilename() != null && !file.originalFilename().isBlank()
+                ? file.originalFilename()
                 : "image";
-        StoredFile stored = files.store(data, companyId, FileCategory.IMAGE, originalName, file.getContentType());
+        StoredFile stored = fileStorageUseCase.store(file.bytes(), companyId, FileCategory.IMAGE, originalName,
+                file.contentType());
         if (stored == null) {
             throw new ExternalServiceException(ErrorCode.IMAGE_UPLOAD_STORAGE_UNAVAILABLE, "object-storage");
         }

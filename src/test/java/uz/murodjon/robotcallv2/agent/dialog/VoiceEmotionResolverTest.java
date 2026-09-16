@@ -1,8 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.agent.dialog.SentimentDetector.CustomerSentiment;
-import uz.murodjon.robotcallv2.agent.dialog.VoiceEmotionResolver.VoiceEmotion;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;

@@ -144,8 +144,7 @@ public class GeminiSttProvider implements SttProvider {
             if (!ready.await(timeoutSeconds, TimeUnit.SECONDS)) {
                 alive.set(false);
                 webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "setup-timeout");
-                throw new ExternalServiceException(ErrorCode.STT_GEMINI_CONNECT_FAILED,
-                        "gemini-stt", "session setup was not acknowledged within " + timeoutSeconds + "s");
+                throw new ExternalServiceException(ErrorCode.STT_GEMINI_SETUP_TIMEOUT, "gemini-stt", timeoutSeconds);
             }
 
             log.info("Gemini STT streaming session open (lang={}, model={}, endpointing={})",
@@ -359,6 +358,10 @@ public class GeminiSttProvider implements SttProvider {
         private volatile boolean closed;
         /** An activityStart has been sent and its activityEnd has not. */
         private boolean inActivity;
+        /** Writes queued on {@link #sendChain} and not yet done; past the bound audio frames are dropped. */
+        private final java.util.concurrent.atomic.AtomicInteger pendingSends = new java.util.concurrent.atomic.AtomicInteger();
+        /** About one second of 20 ms frames. */
+        private static final int MAX_PENDING_SENDS = 50;
 
         private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics,
                                  boolean externalEndpointing) {
@@ -381,11 +384,20 @@ public class GeminiSttProvider implements SttProvider {
                 start.putObject("realtimeInput").putObject("activityStart");
                 send(start.toString());
             }
+            if (pendingSends.get() >= MAX_PENDING_SENDS) {
+                return; // a stalled socket: the frame is dropped rather than queued without end
+            }
             ObjectNode root = MAPPER.createObjectNode();
             ObjectNode audio = root.putObject("realtimeInput").putObject("audio");
             audio.put("mimeType", "audio/pcm;rate=16000");
             audio.put("data", Base64.getEncoder().encodeToString(pcm16le));
             send(root.toString());
+        }
+
+        /** A stalled uplink shows here instead of as a caller who says nothing (SttSession#isReady). */
+        @Override
+        public boolean isReady() {
+            return pendingSends.get() < MAX_PENDING_SENDS;
         }
 
         @Override
@@ -400,14 +412,16 @@ public class GeminiSttProvider implements SttProvider {
         }
 
         private void send(String payload) {
+            pendingSends.incrementAndGet();
             sendChain = sendChain
                     .thenCompose(ignored -> webSocket.sendText(payload, true))
-                    .thenAccept(sent -> {
-                    })
-                    .exceptionally(e -> {
-                        alive.set(false);
-                        metrics.sttError();
-                        log.warn("Gemini STT send failed: {}", e.getMessage());
+                    .handle((sent, e) -> {
+                        pendingSends.decrementAndGet();
+                        if (e != null) {
+                            alive.set(false);
+                            metrics.sttError();
+                            log.warn("Gemini STT send failed: {}", e.getMessage());
+                        }
                         return null;
                     });
         }

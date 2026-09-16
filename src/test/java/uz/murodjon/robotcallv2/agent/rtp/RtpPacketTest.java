@@ -16,7 +16,7 @@ class RtpPacketTest {
                 0x11, 0x22, 0x33, 0x44,   // SSRC
                 (byte) 0xAA, (byte) 0xBB, (byte) 0xCC // payload
         };
-        RtpPacket p = RtpPacket.parse(data, data.length);
+        RtpPacket p = RtpPacket.tryParse(data, data.length);
 
         assertEquals(0, p.payloadType());
         assertEquals(0x0102, p.sequenceNumber());
@@ -36,7 +36,7 @@ class RtpPacketTest {
                 0x00, 0x00, 0x00, 0x00,
                 0x01
         };
-        RtpPacket p = RtpPacket.parse(data, data.length);
+        RtpPacket p = RtpPacket.tryParse(data, data.length);
         assertTrue(p.marker());
         assertEquals(8, p.payloadType());
     }
@@ -52,12 +52,12 @@ class RtpPacketTest {
                 (byte) 0xAA,             // real payload
                 0x00, 0x02               // 2 padding bytes, last byte = pad count
         };
-        RtpPacket p = RtpPacket.parse(data, data.length);
+        RtpPacket p = RtpPacket.tryParse(data, data.length);
         assertArrayEquals(new byte[]{(byte) 0xAA}, p.payload());
     }
 
     @Test
     void rejectsTooShortBuffer() {
-        assertThrows(IllegalArgumentException.class, () -> RtpPacket.parse(new byte[8], 8));
+        assertNull(RtpPacket.tryParse(new byte[8], 8));
     }
 }

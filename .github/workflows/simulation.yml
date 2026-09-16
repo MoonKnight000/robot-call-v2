@@ -31,7 +31,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # pgvector: Flyway runs V11 (CREATE EXTENSION vector) on the way up.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: uysot_voice
           POSTGRES_USER: uysot

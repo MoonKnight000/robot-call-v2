@@ -22,8 +22,11 @@ import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
  * under-report a turn — visibly so, since {@code totalTokenCount} is then larger than
  * prompt + completion — and would let a call slip past {@code maxTokensPerCall}. So
  * thoughts are folded into the completion figure here.
+ *
+ * <p>Public for the post-call summary ({@code SummaryService}), which is billed to the call
+ * from the same counts.
  */
-class TokenUsage {
+public class TokenUsage {
 
     private static final Logger log = LoggerFactory.getLogger(TokenUsage.class);
 
@@ -33,7 +36,7 @@ class TokenUsage {
     private long lastPrompt = -1;
     private long lastCompletion = -1;
 
-    void add(ChatResponse response) {
+    public void add(ChatResponse response) {
         if (response == null || response.getMetadata() == null) {
             return;
         }
@@ -59,6 +62,21 @@ class TokenUsage {
     /** Everything this turn was billed for — what the per-call budget counts (§C14). */
     long total() {
         return prompt + completion;
+    }
+
+    /** Prompt tokens, cached ones included. */
+    public long promptTokens() {
+        return prompt;
+    }
+
+    /** Tokens the model wrote, thinking included. */
+    public long completionTokens() {
+        return completion;
+    }
+
+    /** Of {@link #promptTokens()}, how many the provider served at the cached rate. */
+    public long cachedTokens() {
+        return cached;
     }
 
     void publish(DialogSession s, VoiceMetrics metrics) {

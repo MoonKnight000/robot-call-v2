@@ -5,7 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.mcp.application.mapper.McpConnectionMapper;
+import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.mapper.McpConnectionEntityMapper;
 import uz.murodjon.robotcallv2.mcp.application.port.output.McpConnectionRepository;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpConnection;
 import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.entity.McpConnectionEntity;
@@ -19,11 +19,11 @@ public class McpConnectionRepositoryAdapter implements McpConnectionRepository {
 
     private final McpConnectionJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final McpConnectionMapper mapper;
+    private final McpConnectionEntityMapper mapper;
 
     public McpConnectionRepositoryAdapter(McpConnectionJpaRepository jpaRepository,
                                           CompanyJpaRepository companyJpaRepository,
-                                          McpConnectionMapper mapper) {
+                                          McpConnectionEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -32,7 +32,7 @@ public class McpConnectionRepositoryAdapter implements McpConnectionRepository {
     @Override
     public McpConnection save(McpConnection connection) {
         CompanyEntity company = companyJpaRepository.getReferenceById(connection.companyId());
-        return mapper.toMcpConnection(jpaRepository.save(mapper.toEntity(connection, company)));
+        return mapper.toMcpConnection(jpaRepository.save(mapper.toMcpConnectionEntity(connection, company)));
     }
 
     @Override

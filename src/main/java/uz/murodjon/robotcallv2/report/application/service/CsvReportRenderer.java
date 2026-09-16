@@ -1,7 +1,11 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.report.domain.entity.*;
+import uz.murodjon.robotcallv2.report.application.dto.CallRow;
+import uz.murodjon.robotcallv2.report.domain.entity.CampaignComparison;
+import uz.murodjon.robotcallv2.report.domain.entity.DashboardOutcome;
+import uz.murodjon.robotcallv2.report.domain.entity.FunnelStage;
+import uz.murodjon.robotcallv2.report.domain.entity.ReportSummary;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.nio.charset.StandardCharsets;
@@ -90,7 +94,7 @@ public class CsvReportRenderer {
 
         appendRow(sb, "campaign_id", "campaign_name", "total_calls", "answered_calls", "answer_rate",
                 "avg_duration_sec", "promises");
-        for (CampaignComparisonRow c : summary.campaigns()) {
+        for (CampaignComparison c : summary.campaigns()) {
             appendRow(sb, String.valueOf(c.campaignId()), c.campaignName(), String.valueOf(c.totalCalls()),
                     String.valueOf(c.answeredCalls()), String.valueOf(c.answerRate()),
                     c.avgDurationSec() != null ? c.avgDurationSec().toString() : "",
@@ -113,6 +117,12 @@ public class CsvReportRenderer {
     private static String escape(String cell) {
         if (cell == null) {
             return "";
+        }
+        // Excel and Sheets run a cell that starts with = + - @ as a formula, and the
+        // summary column is written by the LLM from what the caller said. A plain number
+        // or phone (+998..., -5) is left alone.
+        if (!cell.isEmpty() && "=+-@\t\r".indexOf(cell.charAt(0)) >= 0 && !cell.matches("[+-]?[\\d\\s().]+")) {
+            cell = "'" + cell;
         }
         if (cell.indexOf(',') >= 0 || cell.indexOf('"') >= 0 || cell.indexOf('\n') >= 0 || cell.indexOf('\r') >= 0) {
             return "\"" + cell.replace("\"", "\"\"") + "\"";

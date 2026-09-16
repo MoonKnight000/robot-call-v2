@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.memory.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.memory.application.mapper.ClientMemoryMapper;
+import uz.murodjon.robotcallv2.memory.infrastructure.persistence.mapper.ClientMemoryEntityMapper;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.infrastructure.persistence.entity.ClientMemoryEntity;
@@ -14,10 +14,10 @@ import java.time.Instant;
 public class ClientMemoryRepositoryAdapter implements ClientMemoryRepository {
 
     private final ClientMemoryJpaRepository jpaRepository;
-    private final ClientMemoryMapper mapper;
+    private final ClientMemoryEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
 
-    public ClientMemoryRepositoryAdapter(ClientMemoryJpaRepository jpaRepository, ClientMemoryMapper mapper,
+    public ClientMemoryRepositoryAdapter(ClientMemoryJpaRepository jpaRepository, ClientMemoryEntityMapper mapper,
                                          CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
@@ -44,5 +44,10 @@ public class ClientMemoryRepositoryAdapter implements ClientMemoryRepository {
             entity.setUpdatedAt(Instant.now());
         }
         return mapper.toClientMemory(jpaRepository.save(entity));
+    }
+
+    @Override
+    public int deleteNotUpdatedSince(Instant cutoff, int batchSize) {
+        return jpaRepository.deleteNotUpdatedSince(cutoff, batchSize);
     }
 }

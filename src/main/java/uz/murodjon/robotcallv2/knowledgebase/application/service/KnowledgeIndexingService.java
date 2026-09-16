@@ -10,23 +10,30 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeIndexingTask;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.CatalogFeedReaderPort;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.CatalogItemRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.DocumentTextExtractorPort;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeSourceRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.CatalogItem;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeChunk;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeSource;
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
+import uz.murodjon.robotcallv2.knowledgebase.domain.service.CatalogItems;
 import uz.murodjon.robotcallv2.knowledgebase.domain.service.KnowledgeChunker;
-import uz.murodjon.robotcallv2.knowledgebase.infrastructure.config.KnowledgeIndexingRabbitConfig;
 import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
 import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Turns a registered source into searchable passages: read the document, split it, embed
@@ -55,6 +62,8 @@ public class KnowledgeIndexingService {
     private final FileStorageUseCase fileStorage;
     private final KnowledgeRetrievalUseCase knowledgeRetrievalUseCase;
     private final RabbitTemplate rabbitTemplate;
+    private final CatalogFeedReaderPort feedReader;
+    private final CatalogItemRepository catalogItemRepository;
 
     public KnowledgeIndexingService(KnowledgeSourceRepository sourceRepository,
                                     KnowledgeChunkRepository chunkRepository,
@@ -62,7 +71,9 @@ public class KnowledgeIndexingService {
                                     TextEmbedderPort textEmbedder,
                                     FileStorageUseCase fileStorage,
                                     KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
-                                    RabbitTemplate rabbitTemplate) {
+                                    RabbitTemplate rabbitTemplate,
+                                    CatalogFeedReaderPort feedReader,
+                                    CatalogItemRepository catalogItemRepository) {
         this.sourceRepository = sourceRepository;
         this.chunkRepository = chunkRepository;
         this.textExtractor = textExtractor;
@@ -70,6 +81,8 @@ public class KnowledgeIndexingService {
         this.fileStorage = fileStorage;
         this.knowledgeRetrievalUseCase = knowledgeRetrievalUseCase;
         this.rabbitTemplate = rabbitTemplate;
+        this.feedReader = feedReader;
+        this.catalogItemRepository = catalogItemRepository;
     }
 
     /**
@@ -95,11 +108,11 @@ public class KnowledgeIndexingService {
     }
 
     private void send(KnowledgeIndexingTask task) {
-        rabbitTemplate.convertAndSend(KnowledgeIndexingRabbitConfig.KNOWLEDGE_INDEXING_QUEUE, task);
+        rabbitTemplate.convertAndSend(KnowledgeIndexingTask.QUEUE, task);
         log.info("[company {}] Knowledge source {} queued for indexing", task.companyId(), task.sourceId());
     }
 
-    @RabbitListener(queues = KnowledgeIndexingRabbitConfig.KNOWLEDGE_INDEXING_QUEUE)
+    @RabbitListener(queues = KnowledgeIndexingTask.QUEUE)
     public void onTask(KnowledgeIndexingTask task) {
         KnowledgeSource source = sourceRepository
                 .findByCompanyIdAndId(task.companyId(), task.sourceId())
@@ -117,6 +130,10 @@ public class KnowledgeIndexingService {
         long startedAt = System.currentTimeMillis();
         sourceRepository.save(source.indexing());
         try {
+            if (source.sourceType() == KnowledgeSourceType.STRUCTURED_FEED) {
+                indexCatalog(source, startedAt);
+                return;
+            }
             String text = readText(source);
             List<String> passages = KnowledgeChunker.chunk(text);
             if (passages.isEmpty()) {
@@ -150,12 +167,73 @@ public class KnowledgeIndexingService {
         }
     }
 
+    /**
+     * A catalog feed (UNIVERSAL-OPERATOR-PLAN B.4): one item per row rather than passages of
+     * prose, each embedded on its own. A refresh reads the whole feed again but embeds only
+     * the rows whose text changed — a 5000-row catalog fetched every hour would otherwise
+     * spend the embedding quota on the same vectors all day.
+     */
+    private void indexCatalog(KnowledgeSource source, long startedAt) {
+        List<CatalogItem> items = CatalogItems.fromRows(source.id(), readRows(source), source.feedKeyField());
+        if (items.isEmpty()) {
+            fail(source, ErrorCode.KNOWLEDGE_SOURCE_EMPTY.name(), ErrorCode.KNOWLEDGE_SOURCE_EMPTY.format());
+            return;
+        }
+        Map<String, float[]> known = catalogItemRepository.findEmbeddingsBySourceId(source.id());
+        List<CatalogItem> embedded = new ArrayList<>(items.size());
+        List<Integer> missing = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            float[] vector = known.get(items.get(i).contentHash());
+            embedded.add(vector != null ? items.get(i).withEmbedding(vector) : items.get(i));
+            if (vector == null) {
+                missing.add(i);
+            }
+        }
+        List<float[]> vectors = textEmbedder.embedAll(missing.stream().map(i -> items.get(i).content()).toList());
+        for (int j = 0; j < missing.size() && j < vectors.size(); j++) {
+            if (vectors.get(j) != null) {
+                embedded.set(missing.get(j), items.get(missing.get(j)).withEmbedding(vectors.get(j)));
+            }
+        }
+        catalogItemRepository.replaceBySourceId(source.companyId(), source.id(), embedded);
+        sourceRepository.save(source.indexed(embedded.size(), Instant.now()));
+
+        log.info("[company {}] Indexed catalog source {} ('{}'): {} items, {} newly embedded, {} ms",
+                source.companyId(), source.id(), source.name(), embedded.size(), missing.size(),
+                System.currentTimeMillis() - startedAt);
+    }
+
+    /** A feed from its URL — screened first, as a knowledge URL is — or from the uploaded file. */
+    private List<Map<String, String>> readRows(KnowledgeSource source) {
+        if (source.url() != null && !source.url().isBlank()) {
+            return feedReader.fetchRows(requirePublicUrl(source.url()), source.feedItemsPath());
+        }
+        DownloadableFile file = fileStorage.download(source.companyId(), source.storedFileId());
+        return feedReader.parseRows(file.content(), file.meta().originalName());
+    }
+
     private String readText(KnowledgeSource source) {
         if (source.sourceType() == KnowledgeSourceType.URL) {
-            return textExtractor.extractFromUrl(source.url());
+            return textExtractor.extractFromUrl(requirePublicUrl(source.url()));
         }
         DownloadableFile file = fileStorage.download(source.companyId(), source.storedFileId());
         return textExtractor.extract(file.content(), source.sourceType());
+    }
+
+    /**
+     * The address to fetch. Screened here, before any request leaves: without it the indexer
+     * would fetch internal addresses on a tenant's behalf.
+     */
+    private static URI requirePublicUrl(String url) {
+        if (url == null || url.isBlank()) {
+            throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_REQUIRED);
+        }
+        String trimmed = url.trim();
+        URI uri = PublicUrlGuard.parsePublic(trimmed);
+        if (uri == null) {
+            throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_INVALID, trimmed);
+        }
+        return uri;
     }
 
     private void fail(KnowledgeSource source, String failureCode, String failureMessage) {
@@ -163,6 +241,7 @@ public class KnowledgeIndexingService {
         // what it used to say, or an operator who replaced a withdrawn price list would
         // still hear the withdrawn prices on calls.
         chunkRepository.deleteBySourceId(source.id());
+        catalogItemRepository.deleteBySourceId(source.id());
         sourceRepository.save(source.failed(failureCode, trim(failureMessage)));
         knowledgeRetrievalUseCase.evictCompany(source.companyId());
         log.warn("[company {}] Knowledge source {} ('{}') failed to index: {} — {}",

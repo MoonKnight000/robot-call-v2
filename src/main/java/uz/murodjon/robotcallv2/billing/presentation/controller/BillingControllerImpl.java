@@ -22,22 +22,22 @@ public class BillingControllerImpl implements BillingController {
 
     @Override
     public ResponseEntity<ResponseData<BillingOverviewResponse>> getOverview(long companyId) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.overview(companyId)));
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.findOverview(companyId)));
     }
 
     @Override
     public ResponseEntity<ResponseData<List<SpendMonthDto>>> getSpendChart(long companyId, int months) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.spendChart(companyId, months)));
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.findSpendChart(companyId, months)));
     }
 
     @Override
     public ResponseEntity<ResponseData<PageableData<InvoiceDto>>> getInvoices(long companyId, int page, int size) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.invoices(companyId, page, size)));
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.findInvoices(companyId, page, size)));
     }
 
     @Override
     public ResponseEntity<byte[]> downloadInvoicePdf(long companyId, String id) {
-        byte[] pdfBytes = billingUseCase.invoicePdf(companyId, id);
+        byte[] pdfBytes = billingUseCase.renderInvoicePdf(companyId, id);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invoice-" + id + ".pdf\"")
@@ -46,6 +46,6 @@ public class BillingControllerImpl implements BillingController {
 
     @Override
     public ResponseEntity<ResponseData<TopupResponse>> topup(long companyId, TopupRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(billingUseCase.topup(companyId, request)));
+        return ResponseEntity.ok(ResponseData.ok(billingUseCase.createTopup(companyId, request)));
     }
 }

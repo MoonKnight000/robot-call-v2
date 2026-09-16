@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
-import uz.murodjon.robotcallv2.memory.application.service.ClientMemoryService;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -21,12 +21,12 @@ public class CallMemoryWriter {
 
     private static final Logger log = LoggerFactory.getLogger(CallMemoryWriter.class);
 
-    private final CallRecordService records;
-    private final ClientMemoryService clientMemoryService;
+    private final CallRecordService callRecordService;
+    private final ClientMemoryUseCase clientMemoryUseCase;
 
-    public CallMemoryWriter(CallRecordService records, ClientMemoryService clientMemoryService) {
-        this.records = records;
-        this.clientMemoryService = clientMemoryService;
+    public CallMemoryWriter(CallRecordService callRecordService, ClientMemoryUseCase clientMemoryUseCase) {
+        this.callRecordService = callRecordService;
+        this.clientMemoryUseCase = clientMemoryUseCase;
     }
 
     public void remember(long callAttemptId, long companyId, Scenario scenario, Disposition disposition,
@@ -35,13 +35,13 @@ public class CallMemoryWriter {
             return;
         }
         try {
-            String phone = records.phoneOf(callAttemptId);
+            String phone = callRecordService.findPhoneByAttemptId(callAttemptId);
             if (phone == null) {
                 return;
             }
             RememberedCall call = new RememberedCall(Instant.now(),
                     scenario != null ? scenario.scenarioKey() : null, disposition, summary.summary());
-            clientMemoryService.rememberCall(companyId, phone, call, summary.outcome());
+            clientMemoryUseCase.rememberCall(companyId, phone, call, summary.outcome());
         } catch (Exception e) {
             log.warn("[{}] could not update client memory: {}", callAttemptId, e.getMessage());
         }

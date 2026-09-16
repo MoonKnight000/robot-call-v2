@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.conversion.application.mapper.ConversionGoalMapper;
+import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionGoalEntityMapper;
 import uz.murodjon.robotcallv2.conversion.application.port.output.ConversionGoalRepository;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionGoal;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.entity.ConversionGoalEntity;
@@ -18,11 +18,11 @@ public class ConversionGoalRepositoryAdapter implements ConversionGoalRepository
 
     private final ConversionGoalJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final ConversionGoalMapper mapper;
+    private final ConversionGoalEntityMapper mapper;
 
     public ConversionGoalRepositoryAdapter(ConversionGoalJpaRepository jpaRepository,
                                            CompanyJpaRepository companyJpaRepository,
-                                           ConversionGoalMapper mapper) {
+                                           ConversionGoalEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -31,7 +31,7 @@ public class ConversionGoalRepositoryAdapter implements ConversionGoalRepository
     @Override
     public ConversionGoal save(ConversionGoal goal) {
         CompanyEntity company = companyJpaRepository.getReferenceById(goal.companyId());
-        return mapper.toConversionGoal(jpaRepository.save(mapper.toEntity(goal, company)));
+        return mapper.toConversionGoal(jpaRepository.save(mapper.toConversionGoalEntity(goal, company)));
     }
 
     @Override

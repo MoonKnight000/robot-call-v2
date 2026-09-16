@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.company.application.port.output;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 import java.util.List;
 
@@ -26,9 +27,8 @@ public interface CompanyRepository {
 
     void updateStatus(long id, CompanyStatus status);
 
-    List<Company> findAll();
+    List<Company> findAllCompanies();
 
-    List<Company> findAll(CompanyFilter filter);
-
-    long count(CompanyFilter filter);
+    /** One page of the filter's companies together with the total, from one list query and at most one count. */
+    PageableData<Company> findPage(CompanyFilter filter);
 }

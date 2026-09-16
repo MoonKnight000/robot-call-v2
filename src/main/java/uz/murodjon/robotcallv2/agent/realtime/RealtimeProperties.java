@@ -17,7 +17,24 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      without naming one; blank means there is no default
  * @param factsInPrompt whether the call's facts — the debt amount, the due date — are
  *                      written into the engine's instructions the way the cascade
- *                      pipeline writes them (§4.4).
+ *                      pipeline writes them (§4.4). The deployment default only: an agent
+ *                      that sets {@code realtimeFactsDelivery} decides for itself
+ * @param normalizeOutputLevel bring the engine's speech to one steady level before it is
+ *                      encoded for the phone line ({@code SpeechLevelNormalizer}). Engines
+ *                      differ by several dB from each other and within one call, and the
+ *                      loud end reaches µ-law clipped
+ * @param echoGateRatio caller audio quieter than this share of the bot's own recent output
+ *                      level is treated as the bot's voice coming back down the line and
+ *                      attenuated before the engine hears it — otherwise an engine on a line
+ *                      without echo cancellation interrupts itself. 0.15 is about −16 dB,
+ *                      under any caller actually talking over the bot and over most line
+ *                      echo; 0 turns the gate off
+ * @param echoMinBotLevel bot output level (RMS) below which the gate stays open — the bot
+ *                      is not really saying anything, so there is nothing to echo
+ * @param toolTimeoutSeconds the longest a tool call the engine made may run before the
+ *                      engine is told it failed and asked to carry on. A tool that hangs
+ *                      otherwise leaves the caller in silence with no cap at all — the
+ *                      no-input watchdog stands down while a tool is in flight
  * @param geminiLive    Gemini Live settings
  * @param openAi        OpenAI Realtime settings
  * @param moshi         Kyutai Moshi settings
@@ -29,6 +46,10 @@ public record RealtimeProperties(
         boolean enabled,
         String provider,
         boolean factsInPrompt,
+        boolean normalizeOutputLevel,
+        double echoGateRatio,
+        double echoMinBotLevel,
+        int toolTimeoutSeconds,
         GeminiLiveProperties geminiLive,
         OpenAiRealtimeProperties openAi,
         MoshiRealtimeProperties moshi,

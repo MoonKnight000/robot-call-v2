@@ -39,10 +39,10 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     /** What the audit trail and the console show instead of a role name. */
     private static final String ROLE_CODE = "API_KEY";
 
-    private final ApiKeyUseCase apiKeys;
+    private final ApiKeyUseCase apiKeyUseCase;
 
-    public ApiKeyAuthFilter(ApiKeyUseCase apiKeys) {
-        this.apiKeys = apiKeys;
+    public ApiKeyAuthFilter(ApiKeyUseCase apiKeyUseCase) {
+        this.apiKeyUseCase = apiKeyUseCase;
     }
 
     /** Same reason as {@code JwtAuthFilter}: an SSE stream completes on an ASYNC dispatch. */
@@ -59,7 +59,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         // ignored rather than allowed to widen or narrow that identity.
         if (presented != null && !presented.isBlank()
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
-            ApiKey apiKey = apiKeys.findUsableByKey(presented);
+            ApiKey apiKey = apiKeyUseCase.findUsableByKey(presented);
             if (apiKey != null) {
                 Set<Permission> permissions = ApiKeyScopes.intersect(apiKey.scopes());
                 // The key's prefix stands where an email would: the audit trail names the

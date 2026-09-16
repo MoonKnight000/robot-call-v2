@@ -1,0 +1,64 @@
+# Prometheus alerting rules for the voice agent (IMPROVEMENT-PLAN §6.1).
+#
+# Metric names are Micrometer's, as /actuator/prometheus exports them: dots become
+# underscores, timers get _seconds, counters _total. Load with
+#   rule_files: [ "alerts.yml" ]
+# The in-process AlertingService raises the same conditions as notifications; these are for
+# a deployment that already routes Prometheus alerts somewhere people look.
+groups:
+  - name: voice-agent
+    rules:
+      - alert: CascadeTurnaroundOverBudget
+        expr: histogram_quantile(0.95, sum(rate(voice_turnaround_latency_seconds_bucket[10m])) by (le)) > 1.0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Cascade turnaround p95 above 1 s (§1.3 budget)"
+          description: "Check voice_turn_stage_latency_seconds by stage to see which stage grew."
+
+      - alert: RealtimeTurnaroundOverBudget
+        expr: histogram_quantile(0.95, sum(rate(voice_realtime_turnaround_latency_seconds_bucket[10m])) by (le, engine)) > 1.0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Realtime turnaround p95 above 1 s on {{ $labels.engine }}"
+
+      - alert: RealtimeEngineFallbacks
+        expr: sum(increase(voice_realtime_fallbacks_total[10m])) by (engine) > 3
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.engine }} dropped {{ $value }} calls in 10 minutes"
+          description: "Calls are continuing on the cascade pipeline (different voice). Check the vendor status page."
+
+      - alert: SttFailoverBurst
+        expr: sum(increase(voice_stt_failover_total[10m])) by (from) > 3
+        labels: { severity: critical }
+        annotations:
+          summary: "STT provider {{ $labels.from }} is failing over"
+
+      - alert: SpokenFactViolation
+        expr: increase(voice_dialog_fact_guard_spoken_total[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "A realtime call spoke a figure that is not in the call facts"
+          description: "Find the call by 'fact guard: figures' in the logs; consider realtimeFactsDelivery=TOOL for that agent."
+
+      - alert: PoorInboundAudio
+        expr: histogram_quantile(0.5, sum(rate(voice_rtp_mos_bucket[30m])) by (le)) < 3.5
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Median call MOS below 3.5 — trunk or network problem, not the agent"
+
+      - alert: SilentCalls
+        expr: increase(voice_rtp_calls_silent_total[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Calls with no inbound RTP at all — media path broken (docs/NETWORK.md)"
+
+      - alert: TrunkUnregistered
+        expr: voice_trunk_registered == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "SIP registration {{ $labels.registration }} is not Registered"

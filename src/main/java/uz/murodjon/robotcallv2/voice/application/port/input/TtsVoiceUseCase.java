@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.voice.application.port.input;
 
-import uz.murodjon.robotcallv2.aiagent.domain.enums.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
 import java.util.List;

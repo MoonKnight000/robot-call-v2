@@ -12,7 +12,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort
 import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.DebtorImportProperties;
-import uz.murodjon.robotcallv2.integration.application.service.CrmIntegrationService;
+import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -55,7 +55,7 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
 
     private static final Logger log = LoggerFactory.getLogger(UysotDebtorSourceAdapter.class);
 
-    /** Nobody is on the line waiting for this, unlike the lookups {@code CrmClient} makes. */
+    /** Nobody is on the line waiting for this, unlike the lookups {@code CrmService} makes. */
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     /** Contracts still in force. A cancelled or finished one has nothing to collect on. */
@@ -63,17 +63,17 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
 
     private final CrmProperties crmProperties;
     private final DebtorImportProperties debtorImportProperties;
-    private final CrmIntegrationService integrations;
+    private final CrmIntegrationUseCase crmIntegrationUseCase;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient http = HttpClient.newBuilder()
+    private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public UysotDebtorSourceAdapter(CrmProperties crmProperties, DebtorImportProperties debtorImportProperties,
-                                    CrmIntegrationService integrations) {
+                                    CrmIntegrationUseCase crmIntegrationUseCase) {
         this.crmProperties = crmProperties;
         this.debtorImportProperties = debtorImportProperties;
-        this.integrations = integrations;
+        this.crmIntegrationUseCase = crmIntegrationUseCase;
     }
 
     @Override
@@ -223,7 +223,7 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
     private JsonNode send(long companyId, HttpRequest.Builder request, String path) {
         authToken(companyId).ifPresent(token -> request.header("X-Open-Api-Token", token));
         try {
-            HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
                 log.warn("Uysot {} answered HTTP {}: {}", path, response.statusCode(), response.body());
                 return null;
@@ -245,7 +245,7 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
     }
 
     private Optional<String> authToken(long companyId) {
-        Optional<String> connected = integrations.currentAccessToken(companyId);
+        Optional<String> connected = crmIntegrationUseCase.findCurrentAccessToken(companyId);
         if (connected.isPresent()) {
             return connected;
         }

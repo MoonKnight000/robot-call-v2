@@ -68,7 +68,16 @@ public class SmartTurnDetector {
         }
         try {
             env = OrtEnvironment.getEnvironment();
-            OrtSession candidate = env.createSession(path, new OrtSession.SessionOptions());
+            OrtSession candidate;
+            // One thread per inference, as in SileroVad: every call can reach the end of an
+            // utterance at the same moment, and ORT's default per-session pools had those
+            // inferences contending for every core. The options are native memory and are
+            // released once the session exists.
+            try (OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+                options.setIntraOpNumThreads(1);
+                options.setInterOpNumThreads(1);
+                candidate = env.createSession(path, options);
+            }
             if (!accept(candidate)) {
                 candidate.close();
                 return;

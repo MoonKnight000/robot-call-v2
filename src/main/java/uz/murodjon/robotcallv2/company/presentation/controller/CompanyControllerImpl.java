@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 
 @RestController
 public class CompanyControllerImpl implements CompanyController {
@@ -54,7 +55,7 @@ public class CompanyControllerImpl implements CompanyController {
 
     @Override
     public ResponseEntity<ResponseData<Company>> uploadLogo(long callerCompanyId, long id, MultipartFile file) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.uploadLogo(callerCompanyId, id, file)));
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.uploadLogo(callerCompanyId, id, UploadedFile.from(file))));
     }
 
     @Override

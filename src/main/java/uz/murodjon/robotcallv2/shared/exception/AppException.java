@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.shared.exception;
 
 import org.springframework.http.HttpStatus;
 
+import java.util.List;
+
 /**
  * Base of every exception this application throws on purpose.
  *
@@ -46,5 +48,13 @@ public abstract class AppException extends RuntimeException {
      */
     public ErrorCode code() {
         return code;
+    }
+
+    /**
+     * Per-problem details sent in {@code ResponseData.errors}, or {@code null} when the
+     * message alone says it all — only {@link ValidationException#withErrors} fills it.
+     */
+    public List<String> errors() {
+        return null;
     }
 }

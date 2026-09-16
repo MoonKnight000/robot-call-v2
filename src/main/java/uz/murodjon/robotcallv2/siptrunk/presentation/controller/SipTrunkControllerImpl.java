@@ -36,12 +36,12 @@ public class SipTrunkControllerImpl implements SipTrunkController {
 
     @Override
     public ResponseEntity<ResponseData<SipTrunkStatus>> getStatus(long companyId, long id) {
-        return ResponseEntity.ok(ResponseData.ok(sipTrunkUseCase.getStatus(companyId, id)));
+        return ResponseEntity.ok(ResponseData.ok(sipTrunkUseCase.findStatus(companyId, id)));
     }
 
     @Override
     public ResponseEntity<ResponseData<List<SipTrunkStatus>>> getAllStatuses(long companyId) {
-        return ResponseEntity.ok(ResponseData.ok(sipTrunkUseCase.getAllStatuses(companyId)));
+        return ResponseEntity.ok(ResponseData.ok(sipTrunkUseCase.findAllStatuses(companyId)));
     }
 
     @Override
@@ -56,7 +56,6 @@ public class SipTrunkControllerImpl implements SipTrunkController {
 
     @Override
     public ResponseEntity<ResponseData<SipTrunkDeleteResponse>> delete(long companyId, long id) {
-        sipTrunkUseCase.delete(companyId, id);
-        return ResponseEntity.ok(ResponseData.ok(new SipTrunkDeleteResponse(id, true)));
+        return ResponseEntity.ok(ResponseData.ok(sipTrunkUseCase.delete(companyId, id)));
     }
 }

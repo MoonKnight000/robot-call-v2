@@ -2,32 +2,51 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.ai.tool.ToolCallback;
 
+import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
+import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * State for one call running on a speech-to-speech engine — the realtime counterpart to
  * {@link DialogSession}.
  *
  * <p>Much smaller than that class, and deliberately so: message history, prompt caching,
- * token accounting, turn latency, filler lines, interrupted/unspoken text and the
- * no-input watchdog are all bookkeeping the cascade pipeline needs because <em>it</em>
- * runs the conversation. Here the engine runs it. What is left is what the platform still
- * owns regardless of who does the talking: the FSM state, the outcome the call produced,
- * and the transcript.
+ * filler lines and speculation are all bookkeeping the cascade pipeline needs because
+ * <em>it</em> runs the conversation. Here the engine runs it. What is left is what the
+ * platform still owns regardless of who does the talking: the FSM state, the outcome the
+ * call produced, the transcript — and the measurements that let a realtime call be
+ * compared with a cascade one (tokens, turn latency), the silence watchdog, and the
+ * playback bookkeeping that decides how much of an interrupted reply was heard.
  */
 public class RealtimeDialogSession implements DialogOutcomeSink {
+
+    /**
+     * How long after the caller stops talking the engine is presumed to be composing an
+     * answer. Past this an unanswered utterance no longer holds off the silence watchdog,
+     * and the eventual audio is no longer counted as that utterance's turnaround.
+     */
+    private static final Duration MAX_TURNAROUND = Duration.ofSeconds(10);
 
     private final String channelId;
     private final String language;
@@ -45,7 +64,19 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     /** {@code ROLE: text} lines, for the operator handover screen (§11.6). */
     private final List<String> transcript = new ArrayList<>();
     private final Map<String, Object> outcome = new ConcurrentHashMap<>();
-    private final AtomicInteger factViolations = new AtomicInteger();
+    /** Figures company tools answered with on this call — the fact guard's second source ({@link FactGuard}). */
+    private final Set<BigDecimal> toolFigures = ConcurrentHashMap.newKeySet();
+    /** Tokens, turn latency and fact violations — the same ledger the cascade session keeps. */
+    private final UsageLedger usageLedger = new UsageLedger();
+
+    /** Tool calls the engine is waiting on right now — an answer is still coming. */
+    private final AtomicInteger toolsInFlight = new AtomicInteger();
+    /** The engine says it is still reasoning or waiting on a tool — an answer is still coming. */
+    private volatile boolean engineWorking;
+    /** How often each company tool has been called on this conversation ({@code Tool.maxCallsPerCall}). */
+    private final Map<String, AtomicInteger> toolCallCounts = new ConcurrentHashMap<>();
+    /** Set by whoever starts hanging the call up, so it happens once. */
+    private final AtomicBoolean closing = new AtomicBoolean();
 
     /**
      * The tools declared to the engine, built once. Kept because a tool call names the
@@ -56,18 +87,64 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     /** Set once the engine is connected; null while the session is still being opened. */
     private volatile RealtimeSession engine;
+    /** The caller's side of the line; read at the end for how much echo it withheld. */
+    private volatile RealtimeAudioBridge audioBridge;
     private volatile String state;
     private volatile Disposition disposition;
     private volatile String doNotCallReason;
     /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
     private volatile Consumer<String> dtmfSender;
+    /** Set when the agent allows a mid-call SMS ({@link MidCallSmsSender}); null otherwise. */
+    private volatile Predicate<String> midCallSmsSender;
     private volatile boolean ended;
     /** Turns the engine completed — the closest realtime equivalent of an LLM turn count. */
     private volatile int turnCount;
+    /** Of {@link #turnCount}, the ones in which the caller actually heard the engine speak. */
+    private volatile int spokenTurnCount;
+    /**
+     * {@link #turnCount} when the FSM stepped into {@link #state}. Starts at zero for the
+     * opening stage, which the call begins in rather than transitions into.
+     */
+    private volatile int stageEnteredTurn;
     /** What the call actually ran on, recorded at connect — see {@link #setEngineIdentity}. */
     private volatile String engineName;
     private volatile String llmModel;
     private volatile String ttsVoice;
+
+    /** {@code System.nanoTime()} the opening line was requested; 0 once its audio was measured. */
+    private volatile long openingRequestedAtNanos;
+    /**
+     * {@code System.nanoTime()} the caller finished an utterance on a free line, or 0 while
+     * no answer is owed. Measured by our own VAD, so every engine is timed the same way.
+     */
+    private volatile long callerStoppedAtNanos;
+    /**
+     * Sample of the endpoint's playback stream at which the latest reply began, or -1 when
+     * there is none to measure against. Outlives the engine finishing the reply: the engine
+     * generates faster than the line plays, so the caller can still cut into a reply the
+     * engine considers done.
+     */
+    private volatile long replyStartSample = -1;
+    /** Whether the engine is still producing the current reply; its next audio belongs to it. */
+    private volatile boolean replyOpen;
+    /** Share of the reply just interrupted that the caller heard, until its transcript arrives. */
+    private volatile Double heardShare;
+    /** A supervisor's whisper that came in while a reply was being generated; sent once it ends. */
+    private final AtomicReference<String> heldWhisper = new AtomicReference<>();
+
+    private volatile NoInputWatchdog watchdog;
+    private volatile int maxCallSeconds;
+    /** Prompt + completion tokens after which the call is closed (§C14); 0 for no limit. */
+    private volatile long maxTokensPerCall;
+    private volatile ScheduledFuture<?> watchdogTask;
+
+    /**
+     * The §11.1 line the engine was told to open with, or null when none was required;
+     * cleared once it has been confirmed spoken or re-requested.
+     */
+    private volatile String pendingDisclosure;
+    /** What the engine said before the disclosure was checked. Guarded by {@code this}. */
+    private final StringBuilder openingSpeech = new StringBuilder();
 
     public RealtimeDialogSession(String channelId, String language, long callAttemptId, long companyId,
                                  AiAgent agent, ScenarioDefinition scenario, CallContext context,
@@ -100,7 +177,23 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     @Override
     public void setState(String state) {
+        if (!Objects.equals(this.state, state)) {
+            this.stageEnteredTurn = turnCount;
+        }
         this.state = state;
+    }
+
+    /**
+     * Whether the FSM stepped into the current stage on the turn that is running right
+     * now — so this stage's own line has not been spoken yet, and the caller has had no
+     * chance to answer it.
+     *
+     * <p>What it is for: the engine calls its tools in one batch, and a batch that both
+     * enters a stage and records that stage's outcome has produced an outcome out of
+     * nothing (see {@code RealtimeToolRunner#refuse}).
+     */
+    public boolean stageJustEntered() {
+        return stageEnteredTurn == turnCount;
     }
 
     @Override
@@ -127,6 +220,16 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     }
 
     /** See {@link DialogSession#setDtmfSender} — same wiring, speech-to-speech engine. */
+    public void setMidCallSmsSender(Predicate<String> midCallSmsSender) {
+        this.midCallSmsSender = midCallSmsSender;
+    }
+
+    @Override
+    public boolean triggerMidCallSms(String text) {
+        Predicate<String> sender = midCallSmsSender;
+        return sender != null && text != null && !text.isBlank() && sender.test(text.trim());
+    }
+
     public void setDtmfSender(Consumer<String> sender) {
         this.dtmfSender = sender;
     }
@@ -197,6 +300,16 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         return outcome;
     }
 
+    @Override
+    public void recordToolFigures(Collection<BigDecimal> figures) {
+        toolFigures.addAll(figures);
+    }
+
+    /** Every figure a company tool has answered with so far this call; never null. */
+    public Set<BigDecimal> toolFigures() {
+        return Collections.unmodifiableSet(toolFigures);
+    }
+
     public boolean isEnded() {
         return ended;
     }
@@ -215,6 +328,14 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     public void setEngine(RealtimeSession engine) {
         this.engine = engine;
+    }
+
+    public RealtimeAudioBridge audioBridge() {
+        return audioBridge;
+    }
+
+    public void setAudioBridge(RealtimeAudioBridge audioBridge) {
+        this.audioBridge = audioBridge;
     }
 
     /**
@@ -248,12 +369,251 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         turnCount++;
     }
 
+    public int spokenTurnCount() {
+        return spokenTurnCount;
+    }
+
+    public void countSpokenTurn() {
+        spokenTurnCount++;
+    }
+
+    public void recordBargeIn() {
+        usageLedger.recordBargeIn();
+    }
+
+    public int bargeIns() {
+        return usageLedger.bargeIns();
+    }
+
     public int recordFactViolation() {
-        return factViolations.incrementAndGet();
+        return usageLedger.recordFactViolation();
     }
 
     public int factViolations() {
-        return factViolations.get();
+        return usageLedger.factViolations();
+    }
+
+    /** Add one engine response's reported usage; a negative count adds nothing. */
+    public void addUsage(long prompt, long completion, long cached) {
+        usageLedger.addTokenBreakdown(prompt, completion, cached);
+    }
+
+    public long promptTokens() {
+        return usageLedger.promptTokens();
+    }
+
+    public long completionTokens() {
+        return usageLedger.completionTokens();
+    }
+
+    public long cachedTokens() {
+        return usageLedger.cachedTokens();
+    }
+
+    /** The opening line has just been asked for; its first audio is timed from now. */
+    public void markOpeningRequested() {
+        openingRequestedAtNanos = System.nanoTime();
+    }
+
+    /**
+     * How long the opening line took to start playing, once — null on every later call,
+     * and null if it was never requested.
+     */
+    public Duration takeOpeningLatency(long nowNanos) {
+        long requested = openingRequestedAtNanos;
+        if (requested == 0) {
+            return null;
+        }
+        openingRequestedAtNanos = 0;
+        return Duration.ofNanos(nowNanos - requested);
+    }
+
+    /** The caller finished an utterance with the line free: an answer is owed from now. */
+    public void markCallerStopped(long atNanos) {
+        callerStoppedAtNanos = atNanos;
+    }
+
+    /** The caller is talking again, so whatever was owed is owed from a later moment. */
+    public void clearCallerStopped() {
+        callerStoppedAtNanos = 0;
+    }
+
+    /**
+     * The wait the engine's answer just ended, in ms, once — or null when no answer was
+     * owed, or when it has been owed for so long that this audio is not really its answer.
+     */
+    public Long takeTurnaroundMs(long nowNanos) {
+        long stopped = callerStoppedAtNanos;
+        if (stopped == 0) {
+            return null;
+        }
+        callerStoppedAtNanos = 0;
+        long elapsed = nowNanos - stopped;
+        if (elapsed < 0 || elapsed > MAX_TURNAROUND.toNanos()) {
+            return null;
+        }
+        return elapsed / 1_000_000;
+    }
+
+    /** Whether the caller finished recently enough that the engine is presumably still answering. */
+    public boolean awaitingAnswer(long nowNanos) {
+        long stopped = callerStoppedAtNanos;
+        return stopped != 0 && nowNanos - stopped < MAX_TURNAROUND.toNanos();
+    }
+
+    public void recordTurnLatency(long ms) {
+        usageLedger.recordTurnLatency(ms);
+    }
+
+    public Integer avgTurnLatencyMs() {
+        return usageLedger.avgTurnLatencyMs();
+    }
+
+    public Integer maxTurnLatencyMs() {
+        return usageLedger.maxTurnLatencyMs();
+    }
+
+    public long replyStartSample() {
+        return replyStartSample;
+    }
+
+    public boolean replyOpen() {
+        return replyOpen;
+    }
+
+    /** The engine began a reply whose first audio goes out at {@code sample} of the playback stream. */
+    public void startReply(long sample) {
+        replyStartSample = sample;
+        replyOpen = true;
+        heardShare = null;
+    }
+
+    /** The engine finished producing the reply; it may still be playing. */
+    public void closeReply() {
+        replyOpen = false;
+    }
+
+    /** The reply is gone — cut off, or superseded. */
+    public void endReply() {
+        replyStartSample = -1;
+        replyOpen = false;
+    }
+
+    public void setHeardShare(Double share) {
+        heardShare = share;
+    }
+
+    /** Keep a supervisor's whisper until the reply being generated ends; a newer one replaces it. */
+    public void holdWhisper(String instruction) {
+        heldWhisper.set(instruction);
+    }
+
+    /** The held whisper, once; null when none is waiting. */
+    public String takeHeldWhisper() {
+        return heldWhisper.getAndSet(null);
+    }
+
+    /** The share of the interrupted reply the caller heard, once; null when nothing was cut off. */
+    public Double takeHeardShare() {
+        Double share = heardShare;
+        heardShare = null;
+        return share;
+    }
+
+    public AtomicInteger toolsInFlight() {
+        return toolsInFlight;
+    }
+
+    public boolean isEngineWorking() {
+        return engineWorking;
+    }
+
+    public void setEngineWorking(boolean engineWorking) {
+        this.engineWorking = engineWorking;
+    }
+
+    /** Claim the hang-up; true for exactly one caller. */
+    public boolean beginClosing() {
+        return closing.compareAndSet(false, true);
+    }
+
+    public NoInputWatchdog watchdog() {
+        return watchdog;
+    }
+
+    public void setWatchdog(NoInputWatchdog watchdog) {
+        this.watchdog = watchdog;
+    }
+
+    /** Seconds after which the call is closed ({@code CallLimits}); 0 for no limit. */
+    public int maxCallSeconds() {
+        return maxCallSeconds;
+    }
+
+    public void setMaxCallSeconds(int maxCallSeconds) {
+        this.maxCallSeconds = maxCallSeconds;
+    }
+
+    public long maxTokensPerCall() {
+        return maxTokensPerCall;
+    }
+
+    public void setMaxTokensPerCall(long maxTokensPerCall) {
+        this.maxTokensPerCall = maxTokensPerCall;
+    }
+
+    @Override
+    public int countToolCall(String toolName) {
+        return toolCallCounts.computeIfAbsent(toolName, name -> new AtomicInteger()).incrementAndGet();
+    }
+
+    /** What the budget counts: the same prompt + completion sum the cascade pipeline uses. */
+    public long tokensUsed() {
+        return usageLedger.promptTokens() + usageLedger.completionTokens();
+    }
+
+    public ScheduledFuture<?> watchdogTask() {
+        return watchdogTask;
+    }
+
+    public void setWatchdogTask(ScheduledFuture<?> watchdogTask) {
+        this.watchdogTask = watchdogTask;
+    }
+
+    /** Record activity on the line for the silence watchdog; a no-op when it is off. */
+    public void touch() {
+        NoInputWatchdog current = watchdog;
+        if (current != null) {
+            current.touch(Instant.now());
+        }
+    }
+
+    public void setPendingDisclosure(String disclosure) {
+        this.pendingDisclosure = disclosure == null || disclosure.isBlank() ? null : disclosure;
+    }
+
+    /** The disclosure still waiting to be confirmed, or null when there is none or it was settled. */
+    public String pendingDisclosure() {
+        return pendingDisclosure;
+    }
+
+    /** Settle the disclosure check: it happens once per call, whatever it found. */
+    public void clearPendingDisclosure() {
+        pendingDisclosure = null;
+    }
+
+    public synchronized void appendOpeningSpeech(String text) {
+        if (pendingDisclosure == null || text == null || text.isBlank()) {
+            return;
+        }
+        if (!openingSpeech.isEmpty()) {
+            openingSpeech.append(' ');
+        }
+        openingSpeech.append(text.trim());
+    }
+
+    public synchronized String openingSpeech() {
+        return openingSpeech.toString();
     }
 
     /** Append one line to the operator handover transcript. */

@@ -6,13 +6,14 @@ import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioRow;
+import uz.murodjon.robotcallv2.scenario.application.dto.UpdateScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
-import uz.murodjon.robotcallv2.user.application.service.UserService;
+import uz.murodjon.robotcallv2.security.CurrentUser;
+import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,7 +30,7 @@ class ScenarioServiceTest {
 
     private ScenarioRepository repo;
     private CurrentUser currentUser;
-    private UserService users;
+    private UserUseCase users;
     private AuditService audit;
     private ScenarioService scenarioService;
 
@@ -37,7 +38,7 @@ class ScenarioServiceTest {
     void setUp() {
         repo = mock(ScenarioRepository.class);
         currentUser = mock(CurrentUser.class);
-        users = mock(UserService.class);
+        users = mock(UserUseCase.class);
         audit = mock(AuditService.class);
 
         when(currentUser.id()).thenReturn(Optional.of(1L));
@@ -76,14 +77,14 @@ class ScenarioServiceTest {
         when(repo.create(eq(1L), eq("custom-key"), eq("My Scenario"), eq("Desc"), eq(false), any(), eq(1L)))
                 .thenReturn(10L);
         when(repo.find(1L, 10L)).thenReturn(sampleScenario(10L, "custom-key", false));
-        when(users.namesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin User"));
+        when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin User"));
 
         ScenarioRow created = scenarioService.create(1L, req);
 
         assertThat(created).isNotNull();
         assertThat(created.id()).isEqualTo(10L);
         assertThat(created.scenarioKey()).isEqualTo("custom-key");
-        verify(audit).record(eq("SCENARIO_CREATE"), eq("scenario"), eq("10"), eq("custom-key"));
+        verify(audit).record(eq(1L), eq("SCENARIO_CREATE"), eq("scenario"), eq("10"), eq("custom-key"));
     }
 
     @Test
@@ -105,6 +106,36 @@ class ScenarioServiceTest {
                 .isInstanceOf(ForbiddenException.class);
     }
 
+    /** The editor read version 1, but version 2 has been saved since: nothing is retired or inserted. */
+    @Test
+    void updateAnswers409WhenTheScenarioWasSavedAfterItWasRead() {
+        when(repo.find(1L, 5L)).thenReturn(sampleScenario(5L, "custom-key", false));
+        when(repo.findMaxVersion("custom-key")).thenReturn(2);
+        when(repo.deactivate("custom-key", 1)).thenReturn(false);
+
+        assertThatThrownBy(() -> scenarioService.update(1L, 5L,
+                new UpdateScenarioRequest("New", "D", validDefinition(), 1)))
+                .isInstanceOf(ConflictException.class);
+        verify(repo, never()).insertVersion(anyLong(), anyString(), anyInt(), any(), any(), anyBoolean(), any(), any());
+    }
+
+    /** A client that predates the version field replaces whatever version is the latest, as before. */
+    @Test
+    void updateWithoutVersionReplacesTheLatestVersion() {
+        when(repo.find(1L, 5L)).thenReturn(sampleScenario(5L, "custom-key", false));
+        when(repo.findMaxVersion("custom-key")).thenReturn(2);
+        when(repo.deactivate("custom-key", 2)).thenReturn(true);
+        when(repo.insertVersion(eq(1L), eq("custom-key"), eq(3), eq("New"), eq("D"), eq(false), any(), eq(1L)))
+                .thenReturn(9L);
+        when(repo.find(1L, 9L)).thenReturn(sampleScenario(9L, "custom-key", false));
+        when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
+
+        ScenarioRow updated = scenarioService.update(1L, 5L, new UpdateScenarioRequest("New", "D", validDefinition(), null));
+
+        assertThat(updated.id()).isEqualTo(9L);
+        verify(repo).deactivate("custom-key", 2);
+    }
+
     @Test
     void cloneSuccess() {
         Scenario source = sampleScenario(5L, "source-scenario", false);
@@ -113,13 +144,13 @@ class ScenarioServiceTest {
         when(repo.create(eq(1L), eq("cloned-scenario"), eq("Cloned"), eq("Description"), eq(false), any(), eq(1L)))
                 .thenReturn(6L);
         when(repo.find(1L, 6L)).thenReturn(sampleScenario(6L, "cloned-scenario", false));
-        when(users.namesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
+        when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
 
         ScenarioRow cloned = scenarioService.clone(1L, 5L, new CloneScenarioRequest("cloned-scenario", "Cloned"));
 
         assertThat(cloned).isNotNull();
         assertThat(cloned.id()).isEqualTo(6L);
-        verify(audit).record(eq("SCENARIO_CLONE"), eq("scenario"), eq("6"), anyString());
+        verify(audit).record(eq(1L), eq("SCENARIO_CLONE"), eq("scenario"), eq("6"), anyString());
     }
 
     @Test

@@ -24,7 +24,7 @@ public record ReportSummary(
         DashboardTotals totals,
         List<DashboardOutcome> outcomes,
         List<FunnelStage> funnel,
-        List<CampaignComparisonRow> campaigns
+        List<CampaignComparison> campaigns
 ) {
 }
 

@@ -31,10 +31,21 @@ class AmbientSoundGeneratorTest {
             }
         }
         assertTrue(nonZero > 150, "Call center ambiance should produce continuous audio energy");
+        assertTrue(Math.sqrt(sumSq / mixed.length) > 0, "Ambiance must not be silent");
 
-        double rms = Math.sqrt(sumSq / mixed.length);
-        // Target is around 1100 (~ -29.5 dBFS), single 20ms frame should be clearly audible (> 500 RMS)
-        assertTrue(rms > 500, "Ambiance must be audible (RMS > 500), actual: " + rms);
+        // Calibrated to ~420 RMS (~ -38 dBFS): heard as a room, ~20 dB under the bot's
+        // -20 dBFS voice. Measured over five seconds, because one 20 ms frame of gated
+        // babble can sit well above or below the loop's level.
+        double longSumSq = 0;
+        int samples = 0;
+        for (long position = 0; position < 8000L * 5; position += 160) {
+            for (short s : AmbientSoundGenerator.mix(new short[160], AmbientSound.CALL_CENTER, position)) {
+                longSumSq += (double) s * s;
+                samples++;
+            }
+        }
+        double rms = Math.sqrt(longSumSq / samples);
+        assertTrue(rms > 250 && rms < 700, "Ambiance should sit near its calibrated ~420 RMS, actual: " + rms);
     }
 
     @Test

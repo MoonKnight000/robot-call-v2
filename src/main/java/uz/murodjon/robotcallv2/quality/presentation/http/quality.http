@@ -1,0 +1,47 @@
+### Review inbox — calls waiting for a verdict
+POST http://localhost:8080/api/call-reviews/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "status": "PENDING",
+  "page": 0,
+  "size": 20
+}
+
+### One call's quality row (transcript and recording: GET /api/reports/calls/{callId})
+GET http://localhost:8080/api/call-reviews/55
+Authorization: Bearer {{auth_token}}
+
+### The agent was wrong
+PUT http://localhost:8080/api/call-reviews/55
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "status": "AGENT_WRONG",
+  "reason": "Yetkazib berish narxini to'qidi"
+}
+
+### Add the answer the call lacked to the agent's knowledge base
+POST http://localhost:8080/api/call-reviews/55/knowledge-item
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "key": "delivery_price",
+  "topic": "delivery",
+  "title": "Yetkazib berish narxi",
+  "answerUz": "Toshkent bo'ylab yetkazib berish 30 ming so'm."
+}
+
+### Turn the call into a test case
+POST http://localhost:8080/api/call-reviews/55/test-case
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Yetkazib berish narxini so'raydi",
+  "personaPrompt": "Siz Samarqandga yetkazib berish narxini so'raysiz va aniq raqam talab qilasiz.",
+  "mustNotSay": ["bepul yetkazib beramiz"]
+}

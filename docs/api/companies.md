@@ -126,6 +126,13 @@ endpointga umuman kira olmaydi (`403`, `SecurityConfig`).
 
 Javob — yangilangan `Company`.
 
+**`SUSPENDED` nima qiladi:**
+- kompaniya foydalanuvchilarining barcha ochiq sessiyalari va access tokenlari darhol bekor qilinadi;
+- `POST /api/auth/login` (to'g'ri parol bilan ham) va `POST /api/auth/refresh` → `403 COMPANY_SUSPENDED`;
+- kompaniyaning `X-Api-Key` kalitlari ishlamaydi (`401`);
+- dialer uning `ACTIVE` kampaniyalarini terishni to'xtatadi (kampaniyalar statusi o'zgarmaydi —
+  `ACTIVE`ga qaytarilganda davom etadi).
+
 ---
 
 ## `POST /api/companies/{id}/logo` — logotip yuklash
@@ -153,15 +160,56 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
 {
   "id": 5,
   "companyId": 2,
-  "dialWindowStart": "07:00",
-  "dialWindowEnd": "23:00",
+  "dialWindowStart": "09:00",
+  "dialWindowEnd": "20:00",
   "timezone": "Asia/Tashkent",
   "defaultLanguage": "uz-UZ",
   "supportedLanguages": ["uz-UZ", "ru-RU"],
   "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.",
+  "maxAttemptsPerPhonePerWeek": 3,
+  "quietDaysAfterConversation": 1,
+  "respectPromisedDate": true,
+  "humanLikePersonaAllowed": false,
+  "holidays": ["2026-03-21", "2026-09-01"],
   "createdAt": "2026-08-01T09:00:00Z"
 }
 ```
+
+**Kontakt siyosati** — bitta telefon raqamiga kompaniyaning **barcha** kampaniyalari
+bo'ylab qo'ng'iroq chastotasi (kampaniyaning `dailyCallCap` i faqat o'z kampaniyasini
+ko'radi). Yangi kompaniyada `respectPromisedDate: true` (to'lashga va'da berib qo'ygan odamga
+qo'ng'iroq qilish — raqamlardan qat'i nazar shikoyat sababi), `maxAttemptsPerPhonePerWeek: 3` va
+`quietDaysAfterConversation: 1`; kompaniya ularni O'zbekiston qonunchiligiga qarab o'zgartiradi
+(taqqoslash uchun: AQSh Regulation F — 7 kunda 7 urinish, suhbatdan keyin 7 kun tinch). `V2`
+migratsiyasigacha yaratilgan kompaniyalarning bu ikki qiymati o'zgartirilmagan.
+
+Yangi kompaniya `dialWindowStart`/`dialWindowEnd` = `09:00`–`20:00` bilan yaratiladi (ilgari
+`07:00`–`23:00`). `V39` migratsiyasigacha mavjud bo'lgan kompaniyalarning qiymatlari
+o'zgartirilmagan.
+
+| Maydon | Ma'nosi |
+|---|---|
+| `maxAttemptsPerPhonePerWeek` | Istalgan 7 kunda bitta raqamga ko'pi bilan shuncha **terilgan** outbound urinish. `0` — cheklov yo'q. Kiruvchi qo'ng'iroqlar va terilmay qolgan urinishlar sanalmaydi |
+| `quietDaysAfterConversation` | Haqiqiy suhbatdan (javob berilgan; avtojavob, noto'g'ri raqam emas) keyin shuncha kun hech bir kampaniya qo'ng'iroq qilmaydi. `0` — yo'q. Disposition'i `CALLBACK_REQUESTED` bo'lgan suhbat (mijozning o'zi qayta qo'ng'iroq so'ragan) tinch davrni boshlamaydi |
+| `respectPromisedDate` | `true` — raqam to'lashga va'da bergan sana o'tmaguncha unga qo'ng'iroq qilinmaydi (keyingi kun ertalabdan) |
+
+Siyosat nishonni **o'tkazib yubormaydi**: raqam terilmaydi, nishon ruxsat etilgan
+vaqtga qayta rejalashtiriladi va urinish sarflanmaydi (`attempts` qaytariladi, chunki
+qo'ng'iroq bo'lmagan). Log: `held until ... by the contact policy`.
+
+**`humanLikePersonaAllowed`** — kompaniya agentlari o'zini inson sifatida tanishtirishi
+(`persona: HUMAN_LIKE`) va §11.1 "avtomatik qo'ng'iroq" ogohlantirishini aytmasligiga
+ruxsat. Bu **huquqiy qaror**: `false` bo'lsa `HUMAN_LIKE` agentni saqlab bo'lmaydi
+(`409 AI_AGENT_HUMAN_LIKE_NOT_ALLOWED`), avval saqlanganlari esa qo'ng'iroqda
+`AI_ASSISTANT` bo'lib, ogohlantirish bilan gapiradi. Har o'zgarishi audit log'ga
+(`COMPANY_CONFIG_UPDATE`) yoziladi. Yangi kompaniyada `false`; V15 migratsiyasigacha
+mavjud bo'lgan kompaniyalarda `true` (xatti-harakat o'zgarmasligi uchun).
+
+- **Faqat platform admin o'zgartiradi.** Kompaniya admini qiymatni o'zgartirmoqchi bo'lsa —
+  `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY` (o'zgarmagan qiymatni qayta yuborish mumkin): aks
+  holda kompaniya §11.1 ogohlantirishini o'zi o'chira olardi.
+- Ruxsat bo'lsa ham `HUMAN_LIKE` agent **yozib olish ogohlantirishini** aytadi ("Suhbat sifat
+  nazorati uchun yozib olinmoqda.") — faqat "avtomatik qo'ng'iroq" qismi tushib qoladi.
 
 `defaultLanguage`/`supportedLanguages` — yopiq to'plam (report #6, `company.enums.Language`):
 faqat `"uz-UZ"`, `"ru-RU"`, `"en-US"`. Boshqa qiymat JSON darajasida
@@ -207,5 +255,10 @@ yaratilganda avtomatik config oladi.
 | `defaultLanguage` | ✅ | Aniq maydon (backend-uchun-talablar.md §13) — `supportedLanguages` ro'yxatining a'zosi bo'lishi shart, aks holda `400`. Kampaniya yaratish/tahrirlashda (`CreateCampaignRequest.defaultLanguage`/`UpdateCampaignRequest.defaultLanguage`) til berilmasa shu qiymatga tushadi. Yopiq to'plam — `"uz-UZ"`/`"ru-RU"`/`"en-US"` (report #6), boshqa qiymat `400`. |
 | `supportedLanguages` | ✅ (bo'sh bo'lmasin) | Kampaniya/marshrut e'lon qilishi mumkin bo'lgan barcha tillar, `defaultLanguage`ni ham o'z ichiga olgan holda; berilgan til shu ro'yxatda bo'lishi shart, aks holda `400`. Yopiq to'plam, xuddi `defaultLanguage` kabi. |
 | `disclosureText` | ❌ | §11.1 ochiqlik matni (yuqoridagi `GET` izohiga qarang). Matn qo'ng'iroq avtomatik ekanini va yozib olinayotganini aytmasa — `400` (`COMPANY_CONFIG_DISCLOSURE_INCOMPLETE`). `null`/bo'sh — platforma matniga qaytadi, ochiqlik o'chmaydi. |
+| `maxAttemptsPerPhonePerWeek` | ❌ | `0..100`; `null` — o'zgarmaydi. Yuqoridagi "Kontakt siyosati" |
+| `quietDaysAfterConversation` | ❌ | `0..90`; `null` — o'zgarmaydi |
+| `respectPromisedDate` | ❌ | `null` — o'zgarmaydi |
+| `humanLikePersonaAllowed` | ❌ | `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY`. O'zgarishi audit log'ga yoziladi |
+| `holidays` | ❌ | Sanalar (`YYYY-MM-DD`, ko'pi bilan 366 ta). Shu kunlari kampaniyalar umuman termaydi, retry va callback esa keyingi ruxsat etilgan kunga suriladi. Kun kompaniyaning `timezone`ida hisoblanadi. `null` — o'zgarmaydi, `[]` — tozalaydi |
 
 **Response** — yangilangan `CompanyConfig`.

@@ -11,14 +11,16 @@ public record SecretRow(
         Instant createdAt,
         Instant updatedAt
 ) {
+    /**
+     * Enough to tell two secrets apart, never enough to guess one: at most the last two
+     * characters, and never more than a quarter of the value. The old first-three-and-
+     * last-three showed six characters of an eight-character secret.
+     */
     public static String mask(String plaintext) {
         if (plaintext == null || plaintext.isBlank()) {
             return "******";
         }
-        int len = plaintext.length();
-        if (len <= 6) {
-            return "******";
-        }
-        return plaintext.substring(0, 3) + "..." + plaintext.substring(len - 3);
+        int shown = Math.min(2, plaintext.length() / 4);
+        return shown == 0 ? "******" : "******" + plaintext.substring(plaintext.length() - shown);
     }
 }

@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.mcp.application.dto.McpConnectionRequest;
 import uz.murodjon.robotcallv2.mcp.application.dto.McpConnectionRow;
 import uz.murodjon.robotcallv2.mcp.application.mapper.McpMapper;
@@ -45,17 +46,20 @@ public class McpService implements McpUseCase {
     private final McpClientPort client;
     private final McpMapper mapper;
     private final SecretUseCase secretUseCase;
+    private final AiAgentUseCase aiAgentUseCase;
 
     public McpService(McpConnectionRepository connectionRepository,
                       McpToolExecutionRepository executionRepository,
                       McpClientPort client,
                       McpMapper mapper,
-                      SecretUseCase secretUseCase) {
+                      SecretUseCase secretUseCase,
+                      AiAgentUseCase aiAgentUseCase) {
         this.connectionRepository = connectionRepository;
         this.executionRepository = executionRepository;
         this.client = client;
         this.mapper = mapper;
         this.secretUseCase = secretUseCase;
+        this.aiAgentUseCase = aiAgentUseCase;
     }
 
     @Override
@@ -112,6 +116,9 @@ public class McpService implements McpUseCase {
     @Override
     @Transactional
     public void attachToAgent(long companyId, long agentId, long connectionId) {
+        // Both ends must be the caller's: checking only the connection let a company write a
+        // link row onto another tenant's agent.
+        aiAgentUseCase.requireAgent(companyId, agentId);
         requireConnection(companyId, connectionId);
         connectionRepository.attachToAgent(agentId, connectionId);
     }
@@ -119,6 +126,7 @@ public class McpService implements McpUseCase {
     @Override
     @Transactional
     public void detachFromAgent(long companyId, long agentId, long connectionId) {
+        aiAgentUseCase.requireAgent(companyId, agentId);
         requireConnection(companyId, connectionId);
         connectionRepository.detachFromAgent(agentId, connectionId);
     }

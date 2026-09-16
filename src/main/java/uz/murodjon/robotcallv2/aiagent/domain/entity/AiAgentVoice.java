@@ -15,6 +15,8 @@ import java.util.Map;
  * @param stability       how little the delivery varies between renderings
  * @param similarityBoost how closely the synthesis is held to the reference voice
  * @param perLanguage     language code → tts_voice id; never null
+ * @param perLanguageSpeed language code → speed for calls in that language; never null.
+ *                        A language without an entry speaks at {@code speed}
  * @param emotionAdaptive whether the delivery follows the detected sentiment of the call
  */
 public record AiAgentVoice(
@@ -23,6 +25,7 @@ public record AiAgentVoice(
         Double stability,
         Double similarityBoost,
         Map<String, String> perLanguage,
+        Map<String, Double> perLanguageSpeed,
         boolean emotionAdaptive
 ) {
     public AiAgentVoice {
@@ -36,11 +39,12 @@ public record AiAgentVoice(
             similarityBoost = 0.75;
         }
         perLanguage = perLanguage == null ? Map.of() : Map.copyOf(perLanguage);
+        perLanguageSpeed = perLanguageSpeed == null ? Map.of() : Map.copyOf(perLanguageSpeed);
     }
 
     /** The same voice, following the call's sentiment or not. */
     public AiAgentVoice withEmotionAdaptive(boolean newEmotionAdaptive) {
-        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, newEmotionAdaptive);
+        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed, newEmotionAdaptive);
     }
 
     /** The voice a call in {@code language} speaks with; the agent's default otherwise. */
@@ -52,5 +56,16 @@ public record AiAgentVoice(
             }
         }
         return defaultVoice;
+    }
+
+    /** The pace a call in {@code language} speaks at; the agent's own {@code speed} otherwise. */
+    public double speedFor(String language) {
+        if (language != null) {
+            Double own = perLanguageSpeed.get(language);
+            if (own != null) {
+                return own;
+            }
+        }
+        return speed;
     }
 }

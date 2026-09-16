@@ -2,14 +2,14 @@ package uz.murodjon.robotcallv2.profile.application.service;
 
 import org.springframework.stereotype.Service;
 
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdatePersonalNotificationSettingsRequest;
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileNotificationUseCase;
 import uz.murodjon.robotcallv2.profile.application.port.output.PersonalNotificationMatrixRepository;
 import uz.murodjon.robotcallv2.profile.domain.entity.PersonalNotificationMatrixEntry;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.List;
 
@@ -18,10 +18,10 @@ public class ProfileNotificationService implements ProfileNotificationUseCase {
 
     private final PersonalNotificationMatrixRepository repository;
     private final CurrentUser currentUser;
-    private final AuditService audit;
+    private final AuditUseCase audit;
 
     public ProfileNotificationService(PersonalNotificationMatrixRepository repository, CurrentUser currentUser,
-                                      AuditService audit) {
+                                      AuditUseCase audit) {
         this.repository = repository;
         this.currentUser = currentUser;
         this.audit = audit;
@@ -33,9 +33,9 @@ public class ProfileNotificationService implements ProfileNotificationUseCase {
     }
 
     @Override
-    public List<PersonalNotificationMatrixEntry> update(long companyId, UpdatePersonalNotificationSettingsRequest r) {
+    public List<PersonalNotificationMatrixEntry> update(long companyId, UpdatePersonalNotificationSettingsRequest request) {
         long userId = requireUserId();
-        List<PersonalNotificationMatrixEntry> saved = repository.save(companyId, userId, r.matrix());
+        List<PersonalNotificationMatrixEntry> saved = repository.save(companyId, userId, request.matrix());
         audit.record(companyId, "PROFILE_NOTIFICATIONS_UPDATE", "app_user", String.valueOf(userId),
                 saved.size() + " matrix cell(s)");
         return saved;

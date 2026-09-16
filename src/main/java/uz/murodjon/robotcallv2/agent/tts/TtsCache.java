@@ -7,13 +7,11 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.shared.util.Tokens;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.*;
 
@@ -57,7 +55,7 @@ public class TtsCache {
     private final Map<String, short[]> memory;
 
     /** Null when Redis is not configured or the persistent layer is switched off. */
-    private final RedisTemplate<String, byte[]> redis;
+    private final RedisTemplate<String, byte[]> redisTemplate;
 
     /** Set after the first Redis failure so an outage is reported once, not per turn. */
     private volatile boolean redisFailureLogged;
@@ -75,15 +73,15 @@ public class TtsCache {
                 : null;
         this.maxChars = ttsCacheProperties.maxChars() > 0 ? ttsCacheProperties.maxChars() : DEFAULT_MAX_CHARS;
         this.voiceFingerprint = fingerprint(ttsProperties);
-        this.redis = ttsCacheProperties.redis() ? buildTemplate(connectionFactory.getIfAvailable()) : null;
+        this.redisTemplate = ttsCacheProperties.redis() ? buildTemplate(connectionFactory.getIfAvailable()) : null;
         log.info("TTS cache: memory={}, redis={}, maxChars={}, voices={}",
                 capacity > 0 ? capacity + " entries" : "off",
-                redis != null ? "on (ttl " + ttsCacheProperties.ttlDays() + "d)" : "off",
+                redisTemplate != null ? "on (ttl " + ttsCacheProperties.ttlDays() + "d)" : "off",
                 maxChars, voiceFingerprint);
     }
 
     public boolean prewarmEnabled() {
-        return ttsCacheProperties.prewarm() && (memory != null || redis != null);
+        return ttsCacheProperties.prewarm() && (memory != null || redisTemplate != null);
     }
 
     /**
@@ -145,7 +143,7 @@ public class TtsCache {
      * shares the default-routing cache instead of never hitting it.
      */
     private String key(String provider, String language, String voice, String text, EffectiveVoiceSettings style) {
-        if ((memory == null && redis == null) || text == null) {
+        if ((memory == null && redisTemplate == null) || text == null) {
             return null;
         }
         String normalized = normalize(text);
@@ -156,7 +154,7 @@ public class TtsCache {
         }
         String voiceSegment = (voice == null || voice.isBlank()) ? "-" : voice;
         return KEY_PREFIX + voiceFingerprint + ':' + provider + ':' + language + ':'
-                + voiceSegment + styleSegment(style) + ':' + sha256(normalized);
+                + voiceSegment + styleSegment(style) + ':' + Tokens.hash(normalized);
     }
 
     /**
@@ -202,7 +200,7 @@ public class TtsCache {
             sb.append(sorted(google.voices())).append('|').append(google.speakingRate())
                     .append('|').append(google.pitch()).append('|').append(google.sampleRate());
         }
-        return sha256(sb.toString()).substring(0, 8);
+        return Tokens.hash(sb.toString()).substring(0, 8);
     }
 
     /** Sorted so the fingerprint depends on the voices, not on map iteration order. */
@@ -215,11 +213,11 @@ public class TtsCache {
     }
 
     private byte[] readRedis(String key) {
-        if (redis == null) {
+        if (redisTemplate == null) {
             return null;
         }
         try {
-            return redis.opsForValue().get(key);
+            return redisTemplate.opsForValue().get(key);
         } catch (Exception e) {
             reportRedisFailure("read", e);
             return null;
@@ -227,13 +225,13 @@ public class TtsCache {
     }
 
     private void writeRedis(String key, short[] pcm) {
-        if (redis == null) {
+        if (redisTemplate == null) {
             return;
         }
         try {
             // Redis rejects a zero expiry, and a misconfigured 0 must not take the
             // whole persistent layer down with it.
-            redis.opsForValue().set(key, toBytes(pcm), Duration.ofDays(Math.max(1, ttsCacheProperties.ttlDays())));
+            redisTemplate.opsForValue().set(key, toBytes(pcm), Duration.ofDays(Math.max(1, ttsCacheProperties.ttlDays())));
         } catch (Exception e) {
             reportRedisFailure("write", e);
         }
@@ -273,14 +271,5 @@ public class TtsCache {
         short[] pcm = new short[bytes.length / 2];
         ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm);
         return pcm;
-    }
-
-    private static String sha256(String text) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required for TTS cache keys", e);
-        }
     }
 }

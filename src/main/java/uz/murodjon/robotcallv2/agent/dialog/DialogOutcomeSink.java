@@ -5,6 +5,9 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
+import java.math.BigDecimal;
+import java.util.Collection;
+
 /**
  * What a tool does to the call it was called on: move the FSM, record an outcome, settle
  * a disposition, end the conversation.
@@ -65,10 +68,69 @@ public interface DialogOutcomeSink {
      */
     boolean sendDtmf(String digits);
 
+    /**
+     * Counts one more call of a company tool on this conversation and returns the new count,
+     * which is what {@code Tool.maxCallsPerCall} is checked against. A sink that keeps no
+     * count (a dry run from the panel) answers 1: every call is its first.
+     */
+    default int countToolCall(String toolName) {
+        return 1;
+    }
+
     default AiAgent agent() {
         return null;
     }
 
-    default void triggerMidCallSms(String text) {
+    /** The facts this call started with; {@code null} for a sink that has none (a dry run from the panel). */
+    default CallContext context() {
+        return null;
+    }
+
+    /**
+     * Figures a company tool's answer showed the model — prices, totals, order numbers —
+     * which the fact guard then lets it say (UNIVERSAL-OPERATOR-PLAN A.3). A sink with no
+     * guard behind it (a dry run from the panel) drops them.
+     */
+    default void recordToolFigures(Collection<BigDecimal> figures) {
+    }
+
+    /**
+     * The write-tool call read back to the caller and waiting for their yes, or null
+     * (UNIVERSAL-OPERATOR-PLAN B.3, {@link HttpToolExecutor}).
+     */
+    default PendingToolConfirmation findPendingConfirmation(String toolName) {
+        return null;
+    }
+
+    /** Hold {@code pending} for {@code toolName}'s next call; null lets it go. */
+    default void setPendingConfirmation(String toolName, PendingToolConfirmation pending) {
+    }
+
+    /** How many times the caller has spoken so far — what tells a later answer from the same breath. */
+    default int countCallerUtterances() {
+        return 0;
+    }
+
+    /** What the caller said last, or null before they have said anything. */
+    default String findLastCallerText() {
+        return null;
+    }
+
+    /**
+     * Keep the last catalog search's answer where the model will see it again
+     * ({@link CatalogTools}). A pipeline whose engine keeps its own tool results drops it.
+     */
+    default void rememberCatalogResult(String result) {
+    }
+
+    /**
+     * Sends {@code text} by SMS to the number this call is with.
+     *
+     * @return whether the gateway took it — {@code false} when this call has no way to send
+     *         one (mid-call SMS is off for its agent, or its pipeline wires no sender) or the
+     *         send failed, which the tool reports back instead of claiming the SMS went
+     */
+    default boolean triggerMidCallSms(String text) {
+        return false;
     }
 }

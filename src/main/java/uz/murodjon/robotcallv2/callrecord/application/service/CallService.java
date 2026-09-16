@@ -1,17 +1,23 @@
 package uz.murodjon.robotcallv2.callrecord.application.service;
 
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.ari.WebTestProperties;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.agent.queue.OperatorCallControl;
+import uz.murodjon.robotcallv2.agent.queue.OperatorFirstDialer;
+import uz.murodjon.robotcallv2.agent.queue.SupervisorMonitor;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.dto.*;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallControlUseCase;
-import uz.murodjon.robotcallv2.scenario.application.service.ScenarioService;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTransferTarget;
+import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.api.AudioStreamWriter;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.List;
 
@@ -30,21 +36,42 @@ public class CallService implements CallControlUseCase {
     private static final String WEB_TEST_SESSION_HEADER = "X-Web-Test";
 
     private final AriService ari;
-    private final ScenarioService scenarios;
-    private final AuditService audit;
+    private final ScenarioUseCase scenarioUseCase;
+    private final AuditUseCase auditUseCase;
     private final WebTestProperties webTestProperties;
+    private final OperatorCallControl operatorCallControl;
+    private final SupervisorMonitor supervisorMonitor;
+    private final OperatorFirstDialer operatorFirstDialer;
+    private final CurrentUser currentUser;
 
-    public CallService(AriService ari, ScenarioService scenarios, AuditService audit,
-                       WebTestProperties webTestProperties) {
+    public CallService(AriService ari, ScenarioUseCase scenarioUseCase, AuditUseCase auditUseCase,
+                       WebTestProperties webTestProperties, OperatorCallControl operatorCallControl,
+                       SupervisorMonitor supervisorMonitor, OperatorFirstDialer operatorFirstDialer,
+                       CurrentUser currentUser) {
         this.ari = ari;
-        this.scenarios = scenarios;
-        this.audit = audit;
+        this.scenarioUseCase = scenarioUseCase;
+        this.auditUseCase = auditUseCase;
         this.webTestProperties = webTestProperties;
+        this.operatorCallControl = operatorCallControl;
+        this.supervisorMonitor = supervisorMonitor;
+        this.operatorFirstDialer = operatorFirstDialer;
+        this.currentUser = currentUser;
     }
 
     @Override
-    public List<LiveCallRow> liveCalls() {
-        return ari.liveCalls();
+    public List<LiveCallRow> findLiveCalls(long companyId) {
+        return ari.findLiveCalls(companyId);
+    }
+
+    /**
+     * Every per-channel action starts here: a channel that is not a live call of the
+     * caller's company does not exist as far as that caller is concerned, whether it is
+     * another tenant's or already gone.
+     */
+    private void requireOwned(long companyId, String channelId) {
+        if (!ari.isActiveCallOf(companyId, channelId)) {
+            throw new ConflictException(ErrorCode.CALL_NOT_ACTIVE, channelId);
+        }
     }
 
     @Override
@@ -66,53 +93,120 @@ public class CallService implements CallControlUseCase {
         }
         int sources = (request.campaignId() != null ? 1 : 0) + (request.scenarioId() != null ? 1 : 0)
                 + (request.definition() != null ? 1 : 0);
-        if (sources > 1 || (request.targetId() != null && request.campaignId() == null)) {
+        if (sources > 1 || ((request.targetId() != null || request.agentVersion() != null) && request.campaignId() == null)) {
             throw new ValidationException(ErrorCode.WEB_TEST_SOURCE_INVALID);
         }
         if (request.definition() != null) {
             requireValid(request.definition());
         }
         String sessionId = ari.prepareWebTest(companyId, request.campaignId(), request.targetId(),
-                request.scenarioId(), request.definition());
+                request.agentVersion(), request.scenarioId(), request.definition());
         return new WebTestCallResponse(sessionId, webTestProperties.wsUrl(), webTestProperties.sipUser(),
                 webTestProperties.sipPassword(), webTestProperties.dialNumber(), WEB_TEST_SESSION_HEADER);
     }
 
     private void requireValid(ScenarioDefinition definition) {
-        var result = scenarios.validate(definition);
+        var result = scenarioUseCase.validate(definition);
         if (!result.valid()) {
-            throw new ValidationException(ErrorCode.SCENARIO_DEFINITION_INVALID, String.join("; ", result.errors()));
+            throw ValidationException.withErrors(ErrorCode.SCENARIO_DEFINITION_INVALID, result.errors(), result.errors().size());
         }
     }
 
     @Override
-    public PlayResponse play(String channelId, String file) {
+    public PlayResponse play(long companyId, String channelId, String file) {
+        requireOwned(companyId, channelId);
         return ari.playRecording(channelId, file);
     }
 
     @Override
-    public SayResponse say(String channelId, String text, String language, String voice) {
+    public SayResponse say(long companyId, String channelId, String text, String language, String voice) {
+        requireOwned(companyId, channelId);
         return ari.say(channelId, text, language, voice);
     }
 
     @Override
     public HangupResponse hangup(long companyId, String channelId) {
+        requireOwned(companyId, channelId);
         ari.hangupChannel(channelId);
-        audit.record(companyId, "CALL_HANGUP_MANUAL", "call", channelId, null);
+        auditUseCase.record(companyId, "CALL_HANGUP_MANUAL", "call", channelId, null);
         return new HangupResponse(channelId, "HUNG_UP");
     }
 
     @Override
-    public TransferResponse transfer(long companyId, String channelId) {
-        ari.transferToOperator(channelId);
-        audit.record(companyId, "CALL_TRANSFER_MANUAL", "call", channelId, null);
+    public TransferResponse transfer(long companyId, String channelId, TransferCallRequest request) {
+        if (request == null || request.type() == null) {
+            requireOwned(companyId, channelId);
+            ari.transferToOperator(channelId);
+            auditUseCase.record(companyId, "CALL_TRANSFER_MANUAL", "call", channelId, null);
+            return new TransferResponse(channelId, "TRANSFERRING");
+        }
+        operatorCallControl.transfer(companyId, channelId, toTarget(request));
+        auditUseCase.record(companyId, "CALL_TRANSFER", "call", channelId, request.type().name());
         return new TransferResponse(channelId, "TRANSFERRING");
     }
 
     @Override
-    public StreamingResponseBody listen(long companyId, String channelId) {
-        StreamingResponseBody body = ari.listen(channelId);
-        audit.record(companyId, "CALL_LISTEN", "call", channelId, null);
+    public TransferResponse hold(long companyId, String channelId) {
+        operatorCallControl.hold(companyId, channelId);
+        return new TransferResponse(channelId, "ON_HOLD");
+    }
+
+    @Override
+    public TransferResponse unhold(long companyId, String channelId) {
+        operatorCallControl.unhold(companyId, channelId);
+        return new TransferResponse(channelId, "RESUMED");
+    }
+
+    @Override
+    public TransferResponse startConsult(long companyId, String channelId, TransferCallRequest request) {
+        if (request == null || request.type() == null) {
+            throw new ValidationException(ErrorCode.CALL_TRANSFER_TYPE_REQUIRED);
+        }
+        operatorCallControl.startConsult(companyId, channelId, toTarget(request));
+        auditUseCase.record(companyId, "CALL_CONSULT", "call", channelId, request.type().name());
+        return new TransferResponse(channelId, "CONSULTING");
+    }
+
+    @Override
+    public TransferResponse completeConsult(long companyId, String channelId) {
+        operatorCallControl.completeConsult(companyId, channelId);
+        auditUseCase.record(companyId, "CALL_CONSULT_COMPLETE", "call", channelId, null);
+        return new TransferResponse(channelId, "TRANSFERRED");
+    }
+
+    @Override
+    public TransferResponse cancelConsult(long companyId, String channelId) {
+        operatorCallControl.cancelConsult(companyId, channelId);
+        return new TransferResponse(channelId, "RESUMED");
+    }
+
+    @Override
+    public MonitorCallResponse monitor(long companyId, String channelId, MonitorCallRequest request) {
+        String supervisorChannel = supervisorMonitor.start(companyId, requireUserId(), channelId, request.mode());
+        auditUseCase.record(companyId, "CALL_MONITOR", "call", channelId, request.mode().name());
+        return new MonitorCallResponse(channelId, supervisorChannel, request.mode());
+    }
+
+    @Override
+    public ClickToCallResponse clickToCall(long companyId, ClickToCallRequest request) {
+        String operatorChannel = operatorFirstDialer.dial(companyId, requireUserId(), request.phone(), null, false);
+        auditUseCase.record(companyId, "CALL_CLICK_TO_CALL", "call", operatorChannel, request.phone());
+        return new ClickToCallResponse(operatorChannel, request.phone());
+    }
+
+    private long requireUserId() {
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
+    }
+
+    private static CallTransferTarget toTarget(TransferCallRequest request) {
+        return new CallTransferTarget(request.type(), request.targetId(), request.number());
+    }
+
+    @Override
+    public AudioStreamWriter listen(long companyId, String channelId) {
+        requireOwned(companyId, channelId);
+        AudioStreamWriter body = ari.listen(channelId);
+        auditUseCase.record(companyId, "CALL_LISTEN", "call", channelId, null);
         return body;
     }
 }

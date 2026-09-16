@@ -1,0 +1,27 @@
+### Block a spam number with a busy tone
+POST http://localhost:8080/api/inbound-caller-rules
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "phonePrefix": "998901112233", "action": "BLOCK_BUSY", "note": "spam" }
+
+### Refuse callers who hide their number, with a message
+POST http://localhost:8080/api/inbound-caller-rules
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "phonePrefix": "ANONYMOUS", "action": "BLOCK_MESSAGE", "message": "Iltimos, raqamingizni yashirmasdan qayta qo'ng'iroq qiling." }
+
+### A VIP client goes first in every queue
+POST http://localhost:8080/api/inbound-caller-rules
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "phonePrefix": "998935550000", "action": "VIP", "note": "Katta investor" }
+
+### List
+POST http://localhost:8080/api/inbound-caller-rules/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{}

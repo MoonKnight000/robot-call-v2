@@ -1,8 +1,9 @@
 package uz.murodjon.robotcallv2.apikey.domain.service;
 
+import uz.murodjon.robotcallv2.shared.util.Tokens;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -63,14 +64,9 @@ public final class ApiKeySecret {
         return presentedKey.substring(0, PREFIX_LENGTH);
     }
 
+    /** Lower-case hex SHA-256 of the UTF-8 key — the same digest {@link Tokens#hash} gives, so stored hashes still match. */
     public static String hash(String key) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(key.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            // Every JVM ships SHA-256; reaching here means the platform is broken.
-            throw new IllegalStateException("SHA-256 is unavailable", e);
-        }
+        return Tokens.hash(key);
     }
 
     /**

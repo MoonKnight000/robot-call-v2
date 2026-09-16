@@ -7,12 +7,18 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
+import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.Set;
+import java.util.Map;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 /**
  * A new calling job ({@code POST /api/campaigns}).
@@ -57,7 +63,13 @@ public record CreateCampaignRequest(
         RecurrenceType recurrenceType,
         @Min(1) @Max(31) Integer recurringDayOfMonth,
         String cronExpression,
-        Boolean autoResetTargets) {
+        Boolean autoResetTargets,
+        @Min(Campaign.MIN_PRIORITY) @Max(Campaign.MAX_PRIORITY) Integer priority,
+        Map<Disposition, RetryRule> retryPolicy,
+        Instant startAt,
+        Instant endAt,
+        @Min(1) Long budgetUzs,
+        @Min(1) Long dailyBudgetUzs) {
 
     public RecurrenceType recurrenceTypeOrDefault() {
         return recurrenceType != null ? recurrenceType : RecurrenceType.ONCE;
@@ -65,5 +77,13 @@ public record CreateCampaignRequest(
 
     public boolean autoResetTargetsOrDefault() {
         return autoResetTargets != null && autoResetTargets;
+    }
+
+    public int priorityOrDefault() {
+        return priority != null ? priority : Campaign.DEFAULT_PRIORITY;
+    }
+
+    public RetryPolicy retryPolicyOrNone() {
+        return retryPolicy == null ? RetryPolicy.NONE : new RetryPolicy(retryPolicy);
     }
 }

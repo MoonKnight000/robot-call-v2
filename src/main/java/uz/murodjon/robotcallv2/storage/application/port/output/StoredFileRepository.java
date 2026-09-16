@@ -14,7 +14,8 @@ public interface StoredFileRepository {
 
     StoredFile find(long id);
 
-    List<StoredFile> findOlderThan(FileCategory category, Instant cutoff);
+    /** Up to {@code batchSize} files written before {@code cutoff} that are no call's recording. */
+    List<StoredFile> findOlderThanExceptCallRecordings(FileCategory category, Instant cutoff, int batchSize);
 
     void delete(long id);
 }

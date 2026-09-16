@@ -5,7 +5,13 @@ import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsResponse;
+import uz.murodjon.robotcallv2.tool.application.dto.OpenApiOperationRow;
+import uz.murodjon.robotcallv2.tool.application.port.input.ToolImportUseCase;
+import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
 import uz.murodjon.robotcallv2.tool.application.dto.UpdateToolRequest;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
@@ -16,9 +22,11 @@ import java.util.List;
 public class ToolControllerImpl implements ToolController {
 
     private final ToolUseCase toolUseCase;
+    private final ToolImportUseCase toolImportUseCase;
 
-    public ToolControllerImpl(ToolUseCase toolUseCase) {
+    public ToolControllerImpl(ToolUseCase toolUseCase, ToolImportUseCase toolImportUseCase) {
         this.toolUseCase = toolUseCase;
+        this.toolImportUseCase = toolImportUseCase;
     }
 
     @Override
@@ -50,5 +58,20 @@ public class ToolControllerImpl implements ToolController {
     public ResponseEntity<ResponseData<Void>> delete(long companyId, long id) {
         toolUseCase.deleteTool(companyId, id);
         return ResponseEntity.ok(ResponseData.ok(null));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ToolTestResponse>> test(long companyId, long id, TestToolRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(toolUseCase.testTool(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<OpenApiOperationRow>>> importOperations(ImportToolsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(toolImportUseCase.findOperations(request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ImportToolsResponse>> importTools(long companyId, ImportToolsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(toolImportUseCase.importTools(companyId, request)));
     }
 }

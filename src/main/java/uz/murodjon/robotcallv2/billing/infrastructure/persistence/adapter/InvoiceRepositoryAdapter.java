@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.billing.infrastructure.persistence.adapter;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.billing.application.mapper.InvoiceMapper;
+import uz.murodjon.robotcallv2.billing.infrastructure.persistence.mapper.InvoiceEntityMapper;
 import uz.murodjon.robotcallv2.billing.application.port.output.InvoiceRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.Invoice;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.entity.InvoiceEntity;
@@ -20,11 +20,11 @@ public class InvoiceRepositoryAdapter implements InvoiceRepository {
 
     private final InvoiceJpaRepository jpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final InvoiceMapper mapper;
+    private final InvoiceEntityMapper mapper;
 
     public InvoiceRepositoryAdapter(InvoiceJpaRepository jpaRepository,
                                     CompanyJpaRepository companyJpaRepository,
-                                    InvoiceMapper mapper) {
+                                    InvoiceEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -45,7 +45,7 @@ public class InvoiceRepositoryAdapter implements InvoiceRepository {
     @Override
     public Invoice save(Invoice invoice) {
         CompanyEntity company = companyJpaRepository.getReferenceById(invoice.companyId());
-        InvoiceEntity entity = mapper.toEntity(invoice, company);
+        InvoiceEntity entity = mapper.toInvoiceEntity(invoice, company);
         return mapper.toInvoice(jpaRepository.save(entity));
     }
 }

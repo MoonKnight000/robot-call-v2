@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeBaseUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
 
 import java.util.List;
@@ -20,10 +20,10 @@ public class KnowledgeBaseLookup {
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseLookup.class);
 
-    private final KnowledgeBaseRepository repository;
+    private final KnowledgeBaseUseCase knowledgeBaseUseCase;
 
-    public KnowledgeBaseLookup(KnowledgeBaseRepository repository) {
-        this.repository = repository;
+    public KnowledgeBaseLookup(KnowledgeBaseUseCase knowledgeBaseUseCase) {
+        this.knowledgeBaseUseCase = knowledgeBaseUseCase;
     }
 
     private record BuiltInAnswer(String key, String topic, String answerUz, String answerRu, String answerEn) {
@@ -74,7 +74,7 @@ public class KnowledgeBaseLookup {
 
         // 1. Dynamic database lookup for the company
         try {
-            List<KnowledgeItem> dbItems = repository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
+            List<KnowledgeItem> dbItems = knowledgeBaseUseCase.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
             for (var item : dbItems) {
                 if (matchesDbItem(lower, item)) {
                     log.debug("Knowledge base matched company DB item '{}'", item.key());

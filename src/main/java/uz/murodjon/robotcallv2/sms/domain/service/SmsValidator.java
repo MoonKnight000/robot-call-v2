@@ -10,7 +10,7 @@ public final class SmsValidator {
 
     public static void validate(String phone, String message) {
         if (phone == null || phone.isBlank()) {
-            throw new ValidationException(ErrorCode.PHONE_INVALID, "phone is required");
+            throw new ValidationException(ErrorCode.SMS_PHONE_REQUIRED);
         }
         if (message == null || message.isBlank()) {
             throw new ValidationException(ErrorCode.SAY_TEXT_BLANK);

@@ -19,7 +19,7 @@ public interface ToolJpaRepository extends JpaRepository<ToolEntity, Long> {
     Page<ToolEntity> findAllByCompanyId(long companyId, Pageable pageable);
 
     @Query("SELECT t FROM ToolEntity t WHERE t.company.id = :companyId " +
-            "AND (:search IS NULL OR LOWER(t.name) LIKE :search OR LOWER(t.description) LIKE :search)")
+            "AND (:search IS NULL OR LOWER(t.name) LIKE :search ESCAPE '!' OR LOWER(t.description) LIKE :search ESCAPE '!')")
     Page<ToolEntity> searchTools(@Param("companyId") long companyId,
                                  @Param("search") String search,
                                  Pageable pageable);

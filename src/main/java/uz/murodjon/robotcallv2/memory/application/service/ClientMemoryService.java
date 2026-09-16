@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.memory.application.dto.UpdateClientMemoryRequest;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
@@ -30,9 +30,9 @@ public class ClientMemoryService implements ClientMemoryUseCase {
     private static final Logger log = LoggerFactory.getLogger(ClientMemoryService.class);
 
     private final ClientMemoryRepository repository;
-    private final AuditService audit;
+    private final AuditUseCase audit;
 
-    public ClientMemoryService(ClientMemoryRepository repository, AuditService audit) {
+    public ClientMemoryService(ClientMemoryRepository repository, AuditUseCase audit) {
         this.repository = repository;
         this.audit = audit;
     }
@@ -98,6 +98,11 @@ public class ClientMemoryService implements ClientMemoryUseCase {
                 current.id(), companyId, normalized,
                 current.preferredName(), current.preferredLanguage(), current.operatorNotes(),
                 recent, mergedFacts, Instant.now()));
+    }
+
+    @Override
+    public int deleteNotUpdatedSince(Instant cutoff, int batchSize) {
+        return repository.deleteNotUpdatedSince(cutoff, batchSize);
     }
 
     private static ClientMemory orEmpty(ClientMemory memory, long companyId, String phone) {

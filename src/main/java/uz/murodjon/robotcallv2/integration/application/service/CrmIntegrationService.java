@@ -6,31 +6,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.config.EncryptionProperties;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
+import uz.murodjon.robotcallv2.integration.application.port.output.OAuthStateStorePort;
+import uz.murodjon.robotcallv2.integration.application.port.output.UysotOAuthPort;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
+import uz.murodjon.robotcallv2.integration.domain.entity.OAuthTokenReply;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmAuthMethod;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
+import uz.murodjon.robotcallv2.integration.domain.service.CrmIntegrationValidator;
 import uz.murodjon.robotcallv2.integration.infrastructure.config.UysotOAuthProperties;
 import uz.murodjon.robotcallv2.shared.exception.*;
+import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
+import uz.murodjon.robotcallv2.shared.util.Tokens;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -43,54 +42,82 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CrmIntegrationService.class);
     private static final Duration REFRESH_SKEW = Duration.ofMinutes(2);
+    /** How long a person has to get through the consent screen. */
+    private static final Duration STATE_TTL = Duration.ofHours(1);
 
     private final CrmIntegrationRepository repository;
     private final SecretCipher cipher;
-    private final UysotOAuthProperties oauth;
-    private final EncryptionProperties encryption;
-    private final AuditService audit;
+    private final UysotOAuthProperties uysotOAuthProperties;
+    private final OAuthStateStorePort oauthStateStorePort;
+    private final AuditUseCase audit;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    private final UysotOAuthPort uysotOAuthPort;
 
-    public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties oauth,
-                                 EncryptionProperties encryption, AuditService audit) {
+    public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
+                                 OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, UysotOAuthPort uysotOAuthPort) {
         this.repository = repository;
         this.cipher = cipher;
-        this.oauth = oauth;
-        this.encryption = encryption;
+        this.uysotOAuthProperties = uysotOAuthProperties;
+        this.oauthStateStorePort = oauthStateStorePort;
         this.audit = audit;
+        this.uysotOAuthPort = uysotOAuthPort;
     }
 
     @Override
-    public List<CrmCatalogEntry> catalog() {
+    public List<CrmCatalogEntry> findCatalog() {
         return List.of(
                 new CrmCatalogEntry(CrmProvider.UYSOT, "Uysot CRM", CrmAuthMethod.OAUTH, true),
-                new CrmCatalogEntry(CrmProvider.AMOCRM, "amoCRM", CrmAuthMethod.OAUTH, true),
-                new CrmCatalogEntry(CrmProvider.KOMMO, "Kommo CRM (Global amoCRM)", CrmAuthMethod.OAUTH, true),
-                new CrmCatalogEntry(CrmProvider.BITRIX24, "Bitrix24", CrmAuthMethod.OAUTH, true)
+                new CrmCatalogEntry(CrmProvider.AMOCRM, "amoCRM", CrmAuthMethod.API_TOKEN, true),
+                new CrmCatalogEntry(CrmProvider.KOMMO, "Kommo CRM (Global amoCRM)", CrmAuthMethod.API_TOKEN, true),
+                new CrmCatalogEntry(CrmProvider.BITRIX24, "Bitrix24", CrmAuthMethod.API_TOKEN, true)
         );
     }
 
     @Override
     public CrmIntegrationRow findByCompanyId(long companyId) {
         return repository.find(companyId)
-                .map(c -> CrmIntegrationRow.of(c, readGrants(c.grantsJson())))
+                .map(c -> CrmIntegrationRow.of(c, readGrants(c.grantsJson()), accountHostOf(c)))
                 .orElseGet(() -> new CrmIntegrationRow(companyId, CrmProvider.UYSOT,
-                        null, List.of(), CrmIntegrationStatus.NOT_CONNECTED, null));
+                        null, List.of(), CrmIntegrationStatus.NOT_CONNECTED, null, null));
     }
 
     @Override
-    public CrmIntegrationRow connect(long companyId, ConnectIntegrationRequest r) {
-        CrmIntegration saved = repository.saveAppInfo(companyId, r.appName(), writeGrants(r.grants()));
-        audit.record(companyId, "CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId), r.appName());
-        return CrmIntegrationRow.of(saved, readGrants(saved.grantsJson()));
+    public CrmIntegrationRow connect(long companyId, ConnectIntegrationRequest request) {
+        CrmIntegrationValidator.validateAppName(request.appName());
+        CrmIntegration saved = repository.saveAppInfo(companyId, request.appName(), writeGrants(request.grants()));
+        audit.record(companyId, "CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId), request.appName());
+        return CrmIntegrationRow.of(saved, readGrants(saved.grantsJson()), null);
+    }
+
+    @Override
+    public CrmIntegrationRow connectAccount(long companyId, ConnectCrmAccountRequest request) {
+        CrmIntegrationValidator.validateAccount(request.provider(), request.accessToken());
+        String baseUrl = CrmIntegrationValidator.normalizeBaseUrl(request.baseUrl());
+        // Screened here so a bad address is a 400 now — and again by the connector before
+        // every request, because what a host resolves to can change after it was saved.
+        URI address = PublicUrlGuard.parsePublic(baseUrl);
+        if (address == null || !"https".equalsIgnoreCase(address.getScheme())) {
+            throw new ValidationException(ErrorCode.CRM_BASE_URL_INVALID);
+        }
+        if (!cipher.available()) {
+            throw new ConflictException(ErrorCode.ENCRYPTION_KEY_NOT_SET);
+        }
+        String accessToken = request.accessToken() == null || request.accessToken().isBlank()
+                ? null
+                : request.accessToken().trim();
+        CrmIntegration saved = repository.saveCredentials(companyId, CrmIntegration.credentials(request.provider(),
+                cipher.encrypt(baseUrl), accessToken != null ? cipher.encrypt(accessToken) : null));
+        // The host only: for Bitrix24 the full address is the credential.
+        audit.record(companyId, "CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId),
+                request.provider().name() + " " + address.getHost());
+        return CrmIntegrationRow.of(saved, List.of(), address.getHost());
     }
 
     @Override
     public AuthorizeUrlResponse buildAuthorizeUrl(long companyId) {
-        if (!oauth.configured()) {
+        // The tokens this flow ends with are stored encrypted — no key, no point starting it.
+        requireCipher();
+        if (!uysotOAuthProperties.configured()) {
             throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_NOT_CONFIGURED, "uysot-oauth");
         }
         CrmIntegration integration = repository.find(companyId)
@@ -99,14 +126,14 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         if (grants.isEmpty()) {
             throw new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED);
         }
-        String state = signState(companyId);
+        String state = issueState(companyId);
         // RFC 6749 authorization-code parameters, as Uysot's OAuth guide documents them.
         // The app's own name is not sent: the consent screen shows it from the registered
         // application, not from this link.
-        String url = oauth.authorizeUrl()
+        String url = uysotOAuthProperties.authorizeUrl()
                 + "?response_type=code"
-                + "&client_id=" + encode(oauth.clientId())
-                + "&redirect_uri=" + encode(oauth.redirectUri())
+                + "&client_id=" + encode(uysotOAuthProperties.clientId())
+                + "&redirect_uri=" + encode(uysotOAuthProperties.redirectUri())
                 + "&scope=" + encodeQueryValue(scopeParam(grants))
                 + "&state=" + encode(state);
         return new AuthorizeUrlResponse(url);
@@ -135,34 +162,25 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
      * 302 with no location is a dead end.
      */
     private URI returnUrl(String query) {
-        String base = oauth.callbackRedirectUrl() != null && !oauth.callbackRedirectUrl().isBlank()
-                ? oauth.callbackRedirectUrl().trim()
+        String base = uysotOAuthProperties.callbackRedirectUrl() != null && !uysotOAuthProperties.callbackRedirectUrl().isBlank()
+                ? uysotOAuthProperties.callbackRedirectUrl().trim()
                 : "/";
         return URI.create(base + (base.contains("?") ? "&" : "?") + query);
     }
 
     private void exchangeCode(String code, String state) {
         requireCipher();
-        if (!oauth.configured()) {
+        if (!uysotOAuthProperties.configured()) {
             throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_NOT_CONFIGURED, "uysot-oauth");
         }
-        long companyId = verifyState(state);
+        long companyId = consumeState(state);
         repository.find(companyId).orElseThrow(() -> new NotFoundException(ErrorCode.CRM_INTEGRATION_NOT_FOUND, companyId));
         try {
-            String body = "grant_type=authorization_code"
-                    + "&code=" + encode(code)
-                    + "&redirect_uri=" + encode(oauth.redirectUri())
-                    + "&client_id=" + encode(oauth.clientId())
-                    + "&client_secret=" + encode(oauth.clientSecret());
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(oauth.tokenUrl()))
-                    .timeout(Duration.ofSeconds(10))
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
+            OAuthTokenReply resp = uysotOAuthPort.exchangeCode(code);
             if (resp.statusCode() / 100 != 2) {
-                log.warn("Uysot token exchange failed HTTP {}: {}", resp.statusCode(), resp.body());
+                // Status only: the body of a failed token exchange can still carry a token
+                // or the error's echo of our credentials, and this line goes to disk.
+                log.warn("Uysot token exchange failed HTTP {} for company {}", resp.statusCode(), companyId);
                 repository.markError(companyId);
                 throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_TOKEN_EXCHANGE_HTTP_ERROR, "uysot-oauth", String.valueOf(resp.statusCode()));
             }
@@ -193,14 +211,49 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         if (current.isEmpty()) {
             return;
         }
-        currentAccessToken(companyId).ifPresent(this::revokeTokenSafely);
+        findCurrentAccessToken(companyId).ifPresent(this::revokeTokenSafely);
         repository.disconnect(companyId);
         audit.record(companyId, "CRM_INTEGRATION_DISCONNECT", "crm_integration", String.valueOf(companyId), null);
     }
 
-    public Optional<String> currentAccessToken(long companyId) {
+    @Override
+    public Optional<CrmConnection> findConnection(long companyId) {
+        return repository.find(companyId).map(integration -> {
+            if (integration.provider() == CrmProvider.UYSOT) {
+                // Uysot's address is platform configuration; only the token is the company's.
+                return new CrmConnection(CrmProvider.UYSOT, null, findCurrentAccessToken(companyId).orElse(null));
+            }
+            if (integration.status() != CrmIntegrationStatus.CONNECTED || integration.baseUrlEnc() == null) {
+                return new CrmConnection(integration.provider(), null, null);
+            }
+            return new CrmConnection(integration.provider(), cipher.decrypt(integration.baseUrlEnc()),
+                    integration.accessTokenEnc() != null ? cipher.decrypt(integration.accessTokenEnc()) : null);
+        });
+    }
+
+    /**
+     * The host of a connected amoCRM, Kommo or Bitrix24 account, for the settings screen —
+     * never the address itself, which for Bitrix24 is the credential.
+     */
+    private String accountHostOf(CrmIntegration integration) {
+        if (integration.baseUrlEnc() == null || !cipher.available()) {
+            return null;
+        }
+        try {
+            return URI.create(cipher.decrypt(integration.baseUrlEnc())).getHost();
+        } catch (RuntimeException e) {
+            log.warn("Stored CRM address of company {} could not be read", integration.companyId());
+            return null;
+        }
+    }
+
+    @Override
+    public Optional<String> findCurrentAccessToken(long companyId) {
         return repository.find(companyId).flatMap(c -> {
-            if (c.status() != CrmIntegrationStatus.CONNECTED || c.accessTokenEnc() == null) {
+            // Uysot's token only: an amoCRM or Bitrix24 credential must never reach Uysot's
+            // API, its debtor import or its revoke endpoint.
+            if (c.provider() != CrmProvider.UYSOT
+                    || c.status() != CrmIntegrationStatus.CONNECTED || c.accessTokenEnc() == null) {
                 return Optional.empty();
             }
             if (c.tokenExpiresAt() != null && c.tokenExpiresAt().isBefore(Instant.now().plus(REFRESH_SKEW))) {
@@ -211,24 +264,13 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     }
 
     private Optional<String> refresh(long companyId, CrmIntegration c) {
-        if (cipher == null || c.refreshTokenEnc() == null || !oauth.configured()) {
+        if (!cipher.available() || c.refreshTokenEnc() == null || !uysotOAuthProperties.configured()) {
             return Optional.empty();
         }
         try {
-            String refresh = cipher.decrypt(c.refreshTokenEnc());
-            String body = "grant_type=refresh_token"
-                    + "&refresh_token=" + encode(refresh)
-                    + "&client_id=" + encode(oauth.clientId())
-                    + "&client_secret=" + encode(oauth.clientSecret());
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(oauth.tokenUrl()))
-                    .timeout(Duration.ofSeconds(10))
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            HttpResponse<String> resp = http.send(request, HttpResponse.BodyHandlers.ofString());
+            OAuthTokenReply resp = uysotOAuthPort.refreshToken(cipher.decrypt(c.refreshTokenEnc()));
             if (resp.statusCode() / 100 != 2) {
-                log.warn("Uysot token refresh HTTP {} for company {}: {}", resp.statusCode(), companyId, resp.body());
+                log.warn("Uysot token refresh HTTP {} for company {}", resp.statusCode(), companyId);
                 repository.markError(companyId);
                 return Optional.empty();
             }
@@ -252,73 +294,39 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     }
 
     private void revokeTokenSafely(String token) {
-        if (oauth.revokeUrl() == null || oauth.revokeUrl().isBlank()) {
+        if (uysotOAuthProperties.revokeUrl() == null || uysotOAuthProperties.revokeUrl().isBlank()) {
             return;
         }
         try {
-            String body = "token=" + encode(token)
-                    + "&client_id=" + encode(oauth.clientId())
-                    + "&client_secret=" + encode(oauth.clientSecret());
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(oauth.revokeUrl()))
-                    .timeout(Duration.ofSeconds(5))
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            http.send(request, HttpResponse.BodyHandlers.discarding());
+            uysotOAuthPort.revokeToken(token);
         } catch (Exception e) {
             log.debug("Token revoke ignored: {}", e.getMessage());
         }
     }
 
-    private String signState(long companyId) {
-        String secret = encryption.secretKey();
-        if (secret == null || secret.isBlank()) {
-            return companyId + ":" + System.currentTimeMillis() + ":plain";
+    /**
+     * A random, one-time state remembered server-side against the company. The callback
+     * is public and takes the company from the state, so the state must be impossible to
+     * forge and good for one callback only — the old signed {@code companyId:time} value
+     * could be replayed for an hour.
+     */
+    private String issueState(long companyId) {
+        String state = Tokens.generate();
+        if (!oauthStateStorePort.save(state, companyId, STATE_TTL)) {
+            throw new ExternalServiceException(ErrorCode.OAUTH_STATE_STORE_UNAVAILABLE, "redis");
         }
-        long ts = System.currentTimeMillis();
-        String payload = companyId + ":" + ts;
-        String sig = hmac(secret, payload);
-        return payload + ":" + sig;
+        return state;
     }
 
-    private long verifyState(String state) {
+    private long consumeState(String state) {
         if (state == null || state.isBlank()) {
             throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
         }
-        String[] parts = state.split(":", 3);
-        if (parts.length != 3) {
+        Long companyId = oauthStateStorePort.consume(state);
+        if (companyId == null) {
             throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
-        }
-        long companyId;
-        long ts;
-        try {
-            companyId = Long.parseLong(parts[0]);
-            ts = Long.parseLong(parts[1]);
-        } catch (NumberFormatException e) {
-            throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
-        }
-        if (Math.abs(System.currentTimeMillis() - ts) > Duration.ofHours(1).toMillis()) {
-            throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
-        }
-        String secret = encryption.secretKey();
-        if (secret != null && !secret.isBlank()) {
-            String expected = hmac(secret, parts[0] + ":" + parts[1]);
-            if (!MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), parts[2].getBytes(StandardCharsets.UTF_8))) {
-                throw new ValidationException(ErrorCode.OAUTH_STATE_INVALID);
-            }
         }
         return companyId;
-    }
-
-    private String hmac(String secret, String data) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            return HexFormat.of().formatHex(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            throw new IllegalStateException("HmacSHA256 unavailable", e);
-        }
     }
 
     /**
@@ -358,9 +366,14 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         }
     }
 
+    /**
+     * The injected cipher is never null — a missing key shows as {@code !available()}. Checked
+     * before the consent flow starts and before its callback spends the one-time state, so a
+     * server without a key answers ENCRYPTION_KEY_NOT_SET instead of failing at the encrypt.
+     */
     private void requireCipher() {
-        if (cipher == null) {
-            throw new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED);
+        if (!cipher.available()) {
+            throw new ConflictException(ErrorCode.ENCRYPTION_KEY_NOT_SET);
         }
     }
 

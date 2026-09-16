@@ -1,20 +1,22 @@
 package uz.murodjon.robotcallv2.contact.infrastructure.persistence.adapter;
 
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
+import uz.murodjon.robotcallv2.contact.infrastructure.persistence.mapper.ContactEntityMapper;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.infrastructure.persistence.entity.ContactEntity;
 import uz.murodjon.robotcallv2.contact.infrastructure.persistence.repository.ContactJpaRepository;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -23,11 +25,11 @@ public class ContactRepositoryAdapter implements ContactRepository {
 
     private final ContactJpaRepository contactJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
-    private final ContactMapper mapper;
+    private final ContactEntityMapper mapper;
 
     public ContactRepositoryAdapter(ContactJpaRepository contactJpaRepository,
                                   CompanyJpaRepository companyJpaRepository,
-                                  ContactMapper mapper) {
+                                  ContactEntityMapper mapper) {
         this.contactJpaRepository = contactJpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.mapper = mapper;
@@ -35,8 +37,7 @@ public class ContactRepositoryAdapter implements ContactRepository {
 
     @Override
     public long create(long companyId, Contact contact) {
-        CompanyEntity comp = companyJpaRepository.findById(companyId)
-                .orElseThrow(() -> new NotFoundException(ErrorCode.COMPANY_NOT_FOUND, companyId));
+        CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         ContactEntity entity = new ContactEntity();
         entity.setCompany(comp);
@@ -51,7 +52,7 @@ public class ContactRepositoryAdapter implements ContactRepository {
 
     @Override
     public Contact find(long companyId, long id) {
-        return contactJpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::entityToDomain).orElse(null);
+        return contactJpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::toContact).orElse(null);
     }
 
     @Override
@@ -60,7 +61,12 @@ public class ContactRepositoryAdapter implements ContactRepository {
     }
 
     @Override
-    public Map<String, String> namesByPhones(long companyId, Collection<String> phones) {
+    public Contact findByPhone(long companyId, String phone) {
+        return contactJpaRepository.findByCompanyIdAndPhone(companyId, phone).map(mapper::toContact).orElse(null);
+    }
+
+    @Override
+    public Map<String, String> findNamesByPhones(long companyId, Collection<String> phones) {
         if (phones.isEmpty()) {
             return Map.of();
         }
@@ -85,18 +91,25 @@ public class ContactRepositoryAdapter implements ContactRepository {
     }
 
     @Override
-    public List<Contact> findAll(long companyId, ContactFilter filter) {
-        return contactJpaRepository.search(companyId, likePattern(filter.search()), filter.pageable()).stream()
-                .map(mapper::entityToDomain)
-                .toList();
+    public PageableData<Contact> findPage(long companyId, ContactFilter filter) {
+        // The page carries its total, so no second count query of our own.
+        Page<ContactEntity> page = contactJpaRepository.findAll(searchSpecification(companyId, filter.search()),
+                filter.pageable());
+        return PageableData.of(page.getContent().stream().map(mapper::toContact).toList(),
+                filter.pageOrDefault(), filter.sizeOrDefault(), page.getTotalElements());
     }
 
-    @Override
-    public long count(long companyId, ContactFilter filter) {
-        return contactJpaRepository.countSearch(companyId, likePattern(filter.search()));
-    }
-
-    private static String likePattern(String search) {
-        return search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase() + "%";
+    /** The company's contacts whose name or number contains the search text; a blank search does not narrow. */
+    private static Specification<ContactEntity> searchSpecification(long companyId, String search) {
+        String pattern = search == null ? null : LikePatterns.buildContainsPattern(search.toLowerCase());
+        return (root, query, cb) -> {
+            Predicate ownCompany = cb.equal(root.get("company").get("id"), companyId);
+            if (pattern == null) {
+                return ownCompany;
+            }
+            return cb.and(ownCompany, cb.or(
+                    cb.like(cb.lower(root.get("name")), pattern, LikePatterns.ESCAPE),
+                    cb.like(root.get("phone"), pattern, LikePatterns.ESCAPE)));
+        };
     }
 }

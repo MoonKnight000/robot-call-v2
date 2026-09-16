@@ -7,11 +7,14 @@ import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StyleExample;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -90,8 +93,13 @@ public class SystemPromptFactory {
     private static final int MAX_SOURCE_NAME_CHARS = 80;
 
     /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
-    /** Remembered calls are dated in the client's local day, the way the agent would say it. */
-    private static final ZoneId MEMORY_ZONE = ZoneId.of("Asia/Tashkent");
+    /**
+     * The caller's own zone: what day and hour it is where they are. The server may run
+     * anywhere — on a UTC container an evening call was being told the next day's date —
+     * and both the date the agent states and the remembered calls it dates are the
+     * caller's, not the machine's.
+     */
+    static final ZoneId CALLER_ZONE = ZoneId.of("Asia/Tashkent");
 
     /**
      * Cross-call memory: what earlier conversations with this phone established, plus the
@@ -113,7 +121,7 @@ public class SystemPromptFactory {
         for (RememberedCall call : memory.recentCalls()) {
             sb.append("- Avvalgi suhbat");
             if (call.at() != null) {
-                sb.append(" (").append(LocalDate.ofInstant(call.at(), MEMORY_ZONE)).append(')');
+                sb.append(" (").append(LocalDate.ofInstant(call.at(), CALLER_ZONE)).append(')');
             }
             if (call.disposition() != null) {
                 sb.append(", natija: ").append(call.disposition());
@@ -193,10 +201,12 @@ public class SystemPromptFactory {
                     .append(" kompaniyasining sun'iy intellekt yordamchisiman\" deb ochiq ayting.\n\n");
         }
 
-        LocalDate today = LocalDate.now();
+        ZonedDateTime now = ZonedDateTime.now(CALLER_ZONE);
+        LocalDate today = now.toLocalDate();
         sb.append("BUGUNGI SANA: ").append(today).append(" (").append(weekdayUz(today.getDayOfWeek()))
-                .append(").\n");
-        sb.append(dateAnchors(today)).append('\n');
+                .append("), HOZIRGI VAQT: ").append(now.toLocalTime().truncatedTo(ChronoUnit.MINUTES))
+                .append(".\n");
+        sb.append(dateAnchors(today)).append(TIME_ANCHORS).append('\n');
 
         List<FactField> factSchema = def.factSchema();
         if (factSchema != null && !factSchema.isEmpty()) {
@@ -253,8 +263,8 @@ public class SystemPromptFactory {
         sb.append('\n');
 
         sb.append("SSENARIY: bosqichma-bosqich boring. Bosqich maqsadi bajarilgach transitionTo bilan ")
-                .append("keyingi ruxsat etilgan bosqichga o'ting va o'sha bosqich talab qilgan gapni ayting ")
-                .append("(qarz miqdori, muddati, to'lov sanasini kelishish). Suhbatni sababsiz yakunlamang. ")
+                .append("keyingi ruxsat etilgan bosqichga o'ting va o'sha bosqich talab qilgan gapni ayting. ")
+                .append("Suhbatni sababsiz yakunlamang. ")
                 .append("Har bosqichning matni — umumiy MAQSAD, har bir javob uchun buyruq emas: maqsadni ")
                 .append("bajargan bo'lsangiz takrorlamang, keyingi bosqichga o'ting.\n\n");
 
@@ -266,7 +276,7 @@ public class SystemPromptFactory {
         for (String rule : speechRules(isRussian(s.language()))) {
             sb.append(n++).append(". ").append(rule).append('\n');
         }
-        sb.append('\n').append(examples(isRussian(s.language()))).append('\n');
+        sb.append('\n').append(examples(def, s.language())).append('\n');
 
         return sb.toString();
     }
@@ -299,6 +309,26 @@ public class SystemPromptFactory {
     }
 
     /**
+     * The parts of the day a caller books by (UNIVERSAL-OPERATOR-PLAN B.7). Nobody asks for
+     * 14:00; they ask for "ertaga tushdan keyin", and a booking tool takes hours. Left to
+     * itself the model picks an hour of its own each time, so the same request lands on a
+     * different slot on two calls — and, without the hour it is now, it offers a slot that
+     * is already past.
+     *
+     * <p>Fixed text, unlike {@link #dateAnchors}: the boundaries are the same every day, so
+     * only the "HOZIRGI VAQT" line above it moves. Shared with {@link
+     * RealtimeSystemPromptFactory} so both pipelines mean the same hours by the same word.
+     */
+    static final String TIME_ANCHORS = """
+            VAQT (mijoz soat o'rniga kun qismini aytadi — shu oraliqdan tanlang):
+            - ertalab / утром: 09:00–12:00
+            - tushlik payti / в обед: 12:00–13:00
+            - tushdan keyin / после обеда: 13:00–17:00
+            - kechqurun / вечером: 17:00–20:00
+            O'tib ketgan vaqtni taklif qilmang: bugungi kun uchun faqat HOZIRGI VAQTdan keyingi soatlar.
+            """;
+
+    /**
      * The style rules, one line each. Numbered by the caller, so the uz-only entries can
      * drop out of a Russian call without leaving a hole in the list.
      */
@@ -307,12 +337,10 @@ public class SystemPromptFactory {
         rules.add("Hech qachon inglizcha texnik so'zlar, kodlar, o'zgaruvchi nomlari yoki placeholderlar "
                 + "(masalan: dynamic_thought_or_fallback, thought, undefined) ishlatmang. Faqat jonli "
                 + (russian ? "ruscha" : "o'zbekcha") + " gaplar bilan gapiring.");
-        rules.add("Ko'pi bilan ikki qisqa gap va bitta savol. Shartnoma, summa va muddatni bitta "
+        rules.add("Ko'pi bilan ikki qisqa gap va bitta savol. Bir nechta faktni (raqam, summa, sana) bitta "
                 + "uzun gapga tiqmang — alohida gaplarga bo'ling.");
         rules.add("Har bir javobingiz ALBATTA savol bilan tugasin, va u FAQAT ishni oldinga "
-                + "suradigan savol bo'lsin "
-                + (russian ? "(\"почему не оплачено?\", \"когда сможете оплатить?\")" : "(\"nima uchun to'lanmayapti?\", \"qachon to'lay olasiz?\")")
-                + " — ya'ni javobi sizga kerak bo'lgan savol. Bo'sh, tasdiqlovchi savollar "
+                + "suradigan savol bo'lsin — ya'ni javobi sizga kerak bo'lgan savol. Bo'sh, tasdiqlovchi savollar "
                 + "QAT'IYAN TAQIQLANADI: "
                 + (russian ? "\"вы в курсе?\", \"слышите меня?\", \"вы меня понимаете?\"" : "\"bu haqda xabaringiz bormidi?\", \"eshitib turibsizmi?\", \"tushundingizmi?\"")
                 + " — ular suhbatni bir qadam ham oldinga surmaydi, mijozga esa sun'iy "
@@ -329,20 +357,20 @@ public class SystemPromptFactory {
                 + "bildiruvchi alohida gap qo'shmang "
                 + (russian ? "(\"я вас прекрасно понимаю\", \"мне очень жаль\")" : "(\"vaziyatni to'g'ri tushunaman\", \"sizni juda yaxshi tushunib turibman\", \"juda afsusdaman\")")
                 + ": o'ynalgan hamdardlik samimiy emas, sun'iy eshitiladi.");
-        rules.add("Allaqachon aytgan faktingizni (shartnoma raqami, summa, muddat) qayta aytmang va "
+        rules.add("Allaqachon aytgan faktingizni (raqam, summa, sana) qayta aytmang va "
                 + "allaqachon bergan savolingizni boshqa so'z bilan qayta bermang. Mijoz eshitmagan "
                 + "bo'lsa — butun xabarni emas, faqat so'ralgan qismini qisqa ayting. Istisno: "
-                + "kelishilgan sana va summa yakunda bir marta tasdiqlanadi.");
+                + "kelishilgan natija yakunda bir marta tasdiqlanadi.");
         // A garbled answer used to cost the whole question: on a real call the caller's
         // reply came back as noise, the model said "Gapingizni to'liq tushunolmadim" and
         // then asked the next stage's question instead, so the reason it had just asked
         // for was never given. What pushed it forward was the rule above about not
         // repeating a question, which is why the exception has to sit next to that rule.
         rules.add("Mijozning javobi tushunarsiz chiqsa yoki bergan savolingizga javob bo'lmasa — "
-                + "keyingi bosqichga ham, boshqa savolga ham o'tmang: qisqa uzr bilan O'SHA savolni "
-                + "soddaroq qilib bir marta qayta bering "
-                + (russian ? "(\"Плохо слышно. Почему не оплачено?\")" : "(\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\")")
-                + ". Bu — yuqoridagi \"bergan savolingizni qayta bermang\" qoidasiga istisno. "
+                + "keyingi bosqichga ham, boshqa savolga ham o'tmang: qisqa uzr bilan "
+                + (russian ? "(\"Плохо слышно.\")" : "(\"Ovoz yaxshi kelmadi.\")")
+                + " O'SHA savolni soddaroq qilib bir marta qayta bering. "
+                + "Bu — yuqoridagi \"bergan savolingizni qayta bermang\" qoidasiga istisno. "
                 + "Ikkinchi urinishda ham tushunarsiz bo'lsa, uchinchi marta so'ramang: ssenariy "
                 + "bo'yicha davom eting. Javob grammatik jihatdan to'g'ri, lekin savolingizga aloqasi "
                 + "bo'lmasa ham (masalan "
@@ -358,9 +386,8 @@ public class SystemPromptFactory {
         } else {
             rules.add("Taqiqlangan yozma-rasmiy so'zlar: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
                     + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\".");
-            rules.add("Og'zaki shaklni tanlang: \"to'lovni amalga oshirasiz\" emas — \"to'laysiz\"; "
-                    + "\"qarzdorligingiz mavjud\" emas — \"qarzingiz bor\"; \"ma'lumot beraman\" "
-                    + "emas — \"aytaman\"; \"to'lanishi kerak bo'lgan summa\" emas — \"qarz\".");
+            rules.add("Og'zaki shaklni tanlang: \"amalga oshirasiz\" emas — oddiy fe'l (\"qilasiz\"); "
+                    + "\"ma'lumot beraman\" emas — \"aytaman\".");
             rules.add("Murojaat: faqat ismga \"aka\"/\"opa\" qo'shing (\"Murodjon aka\", \"Shahnoza opa\") — "
                     + "familiya yoki to'liq ism-sharifni hech qachon aytmang.");
             rules.add("QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\". Shaxsni "
@@ -371,8 +398,8 @@ public class SystemPromptFactory {
         }
         rules.add("FAKTLARni qat'iy ayting — ular tekshirilgan, siz ularga shubha qilmaysiz. "
                 + (russian ? "\"кажется\", \"вроде\", \"похоже\"" : "\"ekan\", \"shekilli\", \"bo'lsa kerak\", \"chiqibdi\"")
-                + " kabi noaniqlik qo'shimchalarini ishlatmang va mijozdan qarzini tasdiqlashini "
-                + "so'ramang: qarz bor-yo'qligi muhokama mavzusi emas, siz uni xabar qilyapsiz.");
+                + " kabi noaniqlik qo'shimchalarini ishlatmang va mijozdan faktni tasdiqlashini "
+                + "so'ramang: fakt muhokama mavzusi emas, siz uni xabar qilyapsiz.");
         rules.add("Summa va sanalarni FAKTLARdagidek raqam bilan yozing (\"1500000 so'm\", \"1-iyul\") — "
                 + "so'z bilan yozmang, ovozga aylantirilganda o'zi to'g'ri o'qiladi.");
         rules.add("Joriy yildagi sanada yilni aytmang — \"3-sentabr\" yetarli. Mijoz \"ertaga\" yoki "
@@ -395,14 +422,8 @@ public class SystemPromptFactory {
                 + (russian ? "\"20 октября\", \"завтра\", \"5-го\"" : "\"20-oktabr\", \"ertaga\", \"oyning 5-si\"")
                 + "). Faqat oy yoki noaniq muddat aytilsa ("
                 + (russian ? "\"в следующем месяце\", \"в октябре\", \"в конце месяца\"" : "\"keyingi oy\", \"oktabrda\", \"oy oxirida\"")
-                + ") bu ANIQ SANA EMAS: kun raqamini O'ZINGIZ TANLAMANG va recordPaymentPromise "
-                + "chaqirmang — qaysi kun ekanini bir marta so'rang.");
-        rules.add("Mijoz aniq to'lov sanasini aytgan zahoti SHU javobning o'zida recordPaymentPromise "
-                + "va endCall'ni birga chaqiring. Sanani qayta tasdiqlatuvchi savol bermang "
-                + (russian ? "(\"20 октября сможете оплатить 1500000?\")" : "(\"20-oktabrda 1500000 so'm to'lay olasizmi?\")")
-                + " — mijoz sanani allaqachon aytdi, uni qayta so'rash bitta ortiqcha savol-javob "
-                + "qo'shadi. Yakuniy gap savol emas, XABAR bo'lsin: sana va summani takrorlab, "
-                + "to'lovni kutayotganingizni ayting va xayrlashing.");
+                + ") bu ANIQ SANA EMAS: kun raqamini O'ZINGIZ TANLAMANG va sanani tool'ga "
+                + "yozmang — qaysi kun ekanini bir marta so'rang.");
         rules.add("O'zingizni va kompaniyani bir marta tanishtirasiz — keyingi javoblarda kompaniya "
                 + "nomini qayta aytmang.");
         rules.add("Mijoz viloyat shevalarida (Surxondaryo, Xorazm, Samarqand, Farg'ona va boshqalar) yoki "
@@ -415,39 +436,34 @@ public class SystemPromptFactory {
 
     /**
      * Contrast pairs, because a banned phrase is easier to avoid next to the sentence that
-     * should have replaced it. Every "wrong" line here was said on a real call.
+     * should have replaced it. The platform's own pair is the identity check every scenario
+     * makes; the rest are the scenario's ({@link #appendStyleExamples}), because a pair only
+     * teaches in the words of its own domain — the debt call's pairs used to sit here and
+     * went into every scenario's calls.
      */
-    private static String examples(boolean russian) {
-        if (russian) {
-            return """
-                    MISOL (✗ noto'g'ri → ✓ to'g'ri):
-                    ✗ "Когда ожидается осуществление данного платежа?" → ✓ "Когда сможете оплатить?"
-                    ✗ "Вы Мурод?" → ✓ "Я говорю с Мурод-ака?"
-                    ✗ (ответ клиента не разобран) "Я вас не совсем понял. Когда сможете оплатить?"
-                      → ✓ "Плохо слышно. Почему не оплачено?"
-                    """;
+    private static String examples(ScenarioDefinition scenario, String language) {
+        StringBuilder sb = new StringBuilder("MISOL (✗ noto'g'ri → ✓ to'g'ri):\n");
+        sb.append(isRussian(language)
+                ? "✗ \"Вы Мурод?\" → ✓ \"Я говорю с Мурод-ака?\"\n"
+                : "✗ \"Siz Murodjonmisiz?\" → ✓ \"Men Murodjon aka bilan gaplashayapmanmi?\"\n");
+        appendStyleExamples(sb, scenario, language);
+        return sb.toString();
+    }
+
+    /**
+     * The scenario's own ✗ → ✓ pairs for the language this call is held in
+     * (UNIVERSAL-OPERATOR-PLAN A.2). Shared with {@link RealtimeSystemPromptFactory}, so a
+     * scenario's examples reach the model whichever pipeline runs the call.
+     */
+    static void appendStyleExamples(StringBuilder sb, ScenarioDefinition scenario, String language) {
+        if (scenario == null || scenario.styleExamples() == null) {
+            return;
         }
-        return """
-                MISOL (✗ noto'g'ri → ✓ to'g'ri):
-                ✗ "Ushbu to'lov qachon amalga oshirilishi kutilmoqda?" → ✓ "Qachon to'lay olasiz?"
-                ✗ "Siz Murodjonmisiz?" → ✓ "Men Murodjon aka bilan gaplashayapmanmi?"
-                ✗ "Sizning A56 shartnomangiz bo'yicha 1500000 so'm qarzingiz bor ekan, to'lov muddati 1-iyulda o'tib ketgan."
-                  → ✓ "Murodjon aka, 1500000 so'm qarzingiz bor. To'lov muddati 1-iyulda o'tgan."
-                ✗ "Sizda qarzdorlik bor ekan, to'g'rimi?" → ✓ "1500000 so'm qarzingiz bor. Nima uchun to'lanmayapti?"
-                ✗ (bo'sh, tasdiqlovchi savol) "1500000 so'm qarzingiz bor, muddati 1-iyulda o'tgan — bu haqda xabaringiz bormidi?"
-                  → ✓ "1500000 so'm qarzingiz bor, muddati 1-iyulda o'tgan. Nima uchun to'lanmayapti?"
-                ✗ "Murodjon aka, eshitib turibsizmi, to'lovni bu hafta oxirigacha qila olasizmi?"
-                  → ✓ "Qachon to'lay olasiz?"
-                ✗ (o'tgan javobda "qachon to'laysiz?" so'ralgan) "Bu to'lovni qachon to'lab bera olasiz?"
-                  → ✓ "Tushunarli. Sabab nimada — vaqtinchalik qiyinchilikmi?"
-                ✗ (mijoz "20-sanada" dedi, endi tasdiqlatyapti) "Aha. 20-oktabrda 1500000 so'm to'lay olasizmi?"
-                  → ✓ "Kelishdik. 20-oktabr kuni 1500000 so'mni kutib qolamiz. Salomat bo'ling!"
-                ✗ (mijoz javobi tushunarsiz chiqdi) "Gapingizni to'liq tushunolmadim. Bu to'lovni qachon to'lay olasiz?"
-                  → ✓ "Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?"
-                ✗ (mijoz "aha o'zgartir" dedi — bu "nima uchun to'lanmayapti?" savoliga javob emas)
-                  "Pul bo'lmagani uchun to'lolmayapman deng. Xo'p, qachon to'lay olasiz?"
-                  → ✓ "Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?"
-                """;
+        for (StyleExample example : scenario.styleExamples()) {
+            if (example.appliesTo(language)) {
+                sb.append("✗ ").append(example.wrong()).append(" → ✓ ").append(example.right()).append('\n');
+            }
+        }
     }
 
     /**
@@ -486,9 +502,9 @@ public class SystemPromptFactory {
         // provider does not stream tool arguments), so synthesis cannot start until
         // generation ends: on a recorded call the caller's first audio came 59ms after the
         // first token, i.e. the whole 2.4-6.2s of generation was dead air. Plain text
-        // streams, and TurnRunner#consume speaks each sentence as it completes. A model
+        // streams, and LlmTurnClient#consume speaks each sentence as it completes. A model
         // that ignores this and fills "reply" anyway still works — that path is the
-        // fallback in TurnRunner#streamTurn, only slower.
+        // fallback in LlmTurnClient#streamTurn, only slower.
         //
         // EVERY tool, not just transitionTo. Naming only transitionTo is what this said
         // before, and on a measured call the model obeyed it exactly: it wrote text on
@@ -497,8 +513,8 @@ public class SystemPromptFactory {
         // REASON_INQUIRY", then a whole extra round trip (996ms) to ask for the sentence
         // the turn should already have had.
         sb.append("Mijozga aytadigan gapingizni AVVAL oddiy matn qilib yozing — u yozilishi bilanoq ")
-                .append("ovozga beriladi. HAR QANDAY tool — transitionTo, recordPaymentPromise, ")
-                .append("recordRefusalReason, scheduleCallback, endCall va boshqalari — SHU MATNDAN ")
+                .append("ovozga beriladi. HAR QANDAY tool — transitionTo, natija yozadigan tool'lar, ")
+                .append("scheduleCallback, endCall va boshqalari — SHU MATNDAN ")
                 .append("KEYIN chaqiriladi, va gap uning \"reply\" parametrida QAYTA YOZILMAYDI. ")
                 .append("Tool chaqirib, matn yozmaslik — eng qo'pol xato: mijoz jimlikni eshitadi ")
                 .append("va javobi bir necha soniyaga kechikadi. Natijani yozayotgan bo'lsangiz ham ")
@@ -533,6 +549,14 @@ public class SystemPromptFactory {
                     .append("savolingizga javob deb hisoblamang.]");
         }
         appendKnowledge(sb, s);
+        String catalog = s.catalogResult();
+        if (catalog != null) {
+            // Held here rather than left in a tool result: a cascade turn does not see its own
+            // tool results afterwards, and the order the caller is placing needs these SKUs
+            // (UNIVERSAL-OPERATOR-PLAN B.4). Replaced by the next search.
+            sb.append("\n[TIZIM: Oxirgi katalog qidiruvi natijasi — buyurtma tool'iga faqat shu ")
+                    .append("SKU'lardan birini bering:\n").append(catalog).append(']');
+        }
         if (s.isLowConfidenceInput()) {
             // The recognizer itself said it was unsure. Acting on a misheard date or sum is
             // how a promise gets recorded for a day the caller never named — a person in
@@ -568,6 +592,13 @@ public class SystemPromptFactory {
                     .append("Mijozning e'tirozi yoki savolini qisqa tan olib, zudlik bilan keyingi bosqichga o'ting ")
                     .append("(transitionTo tool'ini chaqiring) yoki agar mijoz rozi bo'lmasa/tushunmasa operatorga uzating (requestHumanTransfer).]");
         }
+        String whisper = s.operatorWhisper();
+        if (whisper != null) {
+            // A supervisor listening in (LiveCallControlHub): the guidance steers this turn
+            // and the ones after it until a newer whisper replaces it.
+            sb.append("\n[TIZIM: OPERATOR KO'RSATMASI — mijoz buni eshitmaydi, uni so'zma-so'z ")
+                    .append("o'qib bermang, faqat amal qiling: ").append(whisper).append(']');
+        }
         return sb.toString();
     }
 
@@ -600,8 +631,8 @@ public class SystemPromptFactory {
         sb.append("Qoidalar: (a) javobni O'Z SO'ZINGIZ bilan, bir-ikki qisqa gapda ayting — ")
                 .append("matnni o'qib bermang; (b) yuqoridagi parchalarda savolga javob YO'Q bo'lsa, ")
                 .append("o'zingizdan to'qimang — bilmasligingizni ayting yoki operatorga uzating; ")
-                .append("(c) bu parchalar mijozning shaxsiy qarzi, muddati yoki chegirmasi haqida ")
-                .append("emas — ular haqida baribir faqat sizga berilgan faktlardan gapiring.]");
+                .append("(c) bu parchalar umumiy ma'lumot — mijozning shaxsiy summasi, muddati yoki ")
+                .append("chegirmasi haqida emas, ular haqida baribir faqat sizga berilgan faktlardan gapiring.]");
     }
 
     /**

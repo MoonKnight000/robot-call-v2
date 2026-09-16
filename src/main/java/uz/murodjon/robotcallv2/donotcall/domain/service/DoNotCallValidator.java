@@ -11,7 +11,7 @@ public final class DoNotCallValidator {
 
     public static void validatePhone(String phone) {
         if (phone == null || phone.isBlank()) {
-            throw new ValidationException(ErrorCode.PHONE_INVALID, "phone is required");
+            throw new ValidationException(ErrorCode.PHONE_INVALID, phone);
         }
     }
 }

@@ -2,38 +2,39 @@ package uz.murodjon.robotcallv2.profile.application.service;
 
 import org.springframework.stereotype.Service;
 
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.auth.application.dto.UserSessionRow;
-import uz.murodjon.robotcallv2.auth.application.service.SessionService;
+import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileSessionUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
-import uz.murodjon.robotcallv2.user.application.service.CurrentUser;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.List;
 
 @Service
 public class ProfileSessionService implements ProfileSessionUseCase {
 
-    private final SessionService sessions;
+    private final SessionUseCase sessionUseCase;
     private final CurrentUser currentUser;
-    private final AuditService audit;
+    private final AuditUseCase audit;
 
-    public ProfileSessionService(SessionService sessions, CurrentUser currentUser, AuditService audit) {
-        this.sessions = sessions;
+    public ProfileSessionService(SessionUseCase sessionUseCase, CurrentUser currentUser, AuditUseCase audit) {
+        this.sessionUseCase = sessionUseCase;
         this.currentUser = currentUser;
         this.audit = audit;
     }
 
+    /** No refresh token reaches this endpoint, so no row is marked as the current one. */
     @Override
     public List<UserSessionRow> list() {
-        return sessions.listActive(requireUserId());
+        return sessionUseCase.listActiveSessions(requireUserId(), null);
     }
 
     @Override
     public void revoke(long companyId, long id) {
         long userId = requireUserId();
-        sessions.revoke(id, userId);
+        sessionUseCase.revoke(id, userId);
         audit.record(companyId, "PROFILE_SESSION_REVOKE", "user_session", String.valueOf(id), null);
     }
 

@@ -5,11 +5,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.ami.AmiClient;
-import uz.murodjon.robotcallv2.audit.application.service.AuditService;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.CreateSipTrunkRequest;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkDeleteResponse;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkStatus;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.UpdateSipTrunkRequest;
@@ -19,6 +21,7 @@ import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 import uz.murodjon.robotcallv2.siptrunk.domain.service.SipTrunkValidator;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -33,66 +36,78 @@ public class SipTrunkService implements SipTrunkUseCase {
     private static final Logger log = LoggerFactory.getLogger(SipTrunkService.class);
 
     private final SipTrunkRepository repository;
-    private final PjsipConfigWriter pjsipConfig;
+    private final PjsipConfigWriter pjsipConfigWriter;
     private final SecretCipher cipher;
-    private final AuditService audit;
+    private final AuditUseCase audit;
     private final AmiClient ami;
+    private final CurrentUser currentUser;
 
-    public SipTrunkService(SipTrunkRepository repository, PjsipConfigWriter pjsipConfig, SecretCipher cipher,
-                           AuditService audit, AmiClient ami) {
+    public SipTrunkService(SipTrunkRepository repository, PjsipConfigWriter pjsipConfigWriter, SecretCipher cipher,
+                           AuditUseCase audit, AmiClient ami, CurrentUser currentUser) {
         this.repository = repository;
-        this.pjsipConfig = pjsipConfig;
+        this.pjsipConfigWriter = pjsipConfigWriter;
         this.cipher = cipher;
         this.audit = audit;
         this.ami = ami;
+        this.currentUser = currentUser;
     }
 
     @Override
     @Transactional
-    public SipTrunkRow create(long companyId, CreateSipTrunkRequest r) {
+    public SipTrunkRow create(long companyId, CreateSipTrunkRequest request) {
+        SipTrunkValidator.requireValidCallerId(request.callerId());
+        SipTrunkValidator.requireSupportedCodecs(request.codecs());
         long id;
-        if (SipTrunkValidator.isManaged(r.pjsipEndpoint(), r.host())) {
-            SipTrunkValidator.requireUsername(r.sipUsername());
-            SipTrunkValidator.requireValidTransport(r.transport());
-            if (r.sipPassword() == null || r.sipPassword().isBlank()) {
+        if (SipTrunkValidator.isManaged(request.pjsipEndpoint(), request.host())) {
+            SipTrunkValidator.requireValidHost(request.host());
+            SipTrunkValidator.requireUsername(request.sipUsername());
+            SipTrunkValidator.requireValidTransport(request.transport());
+            if (request.sipPassword() == null || request.sipPassword().isBlank()) {
                 throw new ValidationException(ErrorCode.SIP_TRUNK_PASSWORD_REQUIRED);
             }
-            id = repository.create(companyId, r.name(), pendingEndpoint(), r.callerId(), false,
-                    r.host(), SipTrunkValidator.portOrDefault(r.port()), r.sipUsername(), encryptPassword(r.sipPassword()),
-                    SipTrunkValidator.transportOrDefault(r.transport()), r.codecs());
+            SipTrunkValidator.requireValidPassword(request.sipPassword());
+            id = repository.create(companyId, request.name(), pendingEndpoint(), request.callerId(), false,
+                    request.host(), SipTrunkValidator.portOrDefault(request.port()), request.sipUsername(), encryptPassword(request.sipPassword()),
+                    SipTrunkValidator.transportOrDefault(request.transport()), request.codecs());
             repository.updatePjsipEndpoint(companyId, id, generatedEndpoint(companyId, id));
         } else {
-            id = repository.create(companyId, r.name(), r.pjsipEndpoint(), r.callerId(), false,
-                    null, 5060, null, null, SipTrunkTransport.UDP, r.codecs());
+            requireManualEndpointAllowed(request.pjsipEndpoint(), null);
+            id = repository.create(companyId, request.name(), request.pjsipEndpoint(), request.callerId(), false,
+                    null, 5060, null, null, SipTrunkTransport.UDP, request.codecs());
         }
-        pjsipConfig.regenerateAndReload();
-        audit.record(companyId, "SIP_TRUNK_CREATE", "sip_trunk", String.valueOf(id), r.name());
+        pjsipConfigWriter.regenerateAndReload();
+        audit.record(companyId, "SIP_TRUNK_CREATE", "sip_trunk", String.valueOf(id), request.name());
         return requireTrunk(companyId, id);
     }
 
     @Override
-    public SipTrunkRow update(long companyId, long id, UpdateSipTrunkRequest r) {
+    public SipTrunkRow update(long companyId, long id, UpdateSipTrunkRequest request) {
         SipTrunk existing = requireSipTrunk(companyId, id);
-        if (SipTrunkValidator.isManaged(r.pjsipEndpoint(), r.host())) {
-            SipTrunkValidator.requireUsername(r.sipUsername());
-            SipTrunkValidator.requireValidTransport(r.transport());
+        SipTrunkValidator.requireValidCallerId(request.callerId());
+        SipTrunkValidator.requireSupportedCodecs(request.codecs());
+        if (SipTrunkValidator.isManaged(request.pjsipEndpoint(), request.host())) {
+            SipTrunkValidator.requireValidHost(request.host());
+            SipTrunkValidator.requireUsername(request.sipUsername());
+            SipTrunkValidator.requireValidTransport(request.transport());
             String passwordEnc;
-            if (r.sipPassword() != null && !r.sipPassword().isBlank()) {
-                passwordEnc = encryptPassword(r.sipPassword());
+            if (request.sipPassword() != null && !request.sipPassword().isBlank()) {
+                SipTrunkValidator.requireValidPassword(request.sipPassword());
+                passwordEnc = encryptPassword(request.sipPassword());
             } else if (existing.host() != null) {
                 passwordEnc = null; // repository.update keeps the trunk's current encrypted password
             } else {
                 throw new ValidationException(ErrorCode.SIP_TRUNK_PASSWORD_REQUIRED_ON_SWITCH);
             }
-            repository.update(companyId, id, r.name(), generatedEndpoint(companyId, id), r.callerId(), r.enabled(),
-                    r.host(), SipTrunkValidator.portOrDefault(r.port()), r.sipUsername(), passwordEnc,
-                    SipTrunkValidator.transportOrDefault(r.transport()), r.codecs());
+            repository.update(companyId, id, request.name(), generatedEndpoint(companyId, id), request.callerId(), request.enabled(),
+                    request.host(), SipTrunkValidator.portOrDefault(request.port()), request.sipUsername(), passwordEnc,
+                    SipTrunkValidator.transportOrDefault(request.transport()), request.codecs());
         } else {
-            repository.update(companyId, id, r.name(), r.pjsipEndpoint(), r.callerId(), r.enabled(),
-                    null, 5060, null, null, SipTrunkTransport.UDP, r.codecs());
+            requireManualEndpointAllowed(request.pjsipEndpoint(), existing.pjsipEndpoint());
+            repository.update(companyId, id, request.name(), request.pjsipEndpoint(), request.callerId(), request.enabled(),
+                    null, 5060, null, null, SipTrunkTransport.UDP, request.codecs());
         }
-        pjsipConfig.regenerateAndReload();
-        audit.record(companyId, "SIP_TRUNK_UPDATE", "sip_trunk", String.valueOf(id), r.name());
+        pjsipConfigWriter.regenerateAndReload();
+        audit.record(companyId, "SIP_TRUNK_UPDATE", "sip_trunk", String.valueOf(id), request.name());
         return requireTrunk(companyId, id);
     }
 
@@ -105,14 +120,15 @@ public class SipTrunkService implements SipTrunkUseCase {
     }
 
     @Override
-    public void delete(long companyId, long id) {
+    public SipTrunkDeleteResponse delete(long companyId, long id) {
         SipTrunk trunk = requireSipTrunk(companyId, id);
         if (trunk.isDefault()) {
             throw new ConflictException(ErrorCode.SIP_TRUNK_DEFAULT_DELETE_FORBIDDEN);
         }
         repository.delete(companyId, id);
-        pjsipConfig.regenerateAndReload();
+        pjsipConfigWriter.regenerateAndReload();
         audit.record(companyId, "SIP_TRUNK_DELETE", "sip_trunk", String.valueOf(id), trunk.name());
+        return new SipTrunkDeleteResponse(id, true);
     }
 
     @Override
@@ -181,13 +197,13 @@ public class SipTrunkService implements SipTrunkUseCase {
     }
 
     @Override
-    public SipTrunkStatus getStatus(long companyId, long id) {
+    public SipTrunkStatus findStatus(long companyId, long id) {
         SipTrunk trunk = requireSipTrunk(companyId, id);
         return evaluateTrunkStatus(trunk);
     }
 
     @Override
-    public List<SipTrunkStatus> getAllStatuses(long companyId) {
+    public List<SipTrunkStatus> findAllStatuses(long companyId) {
         List<SipTrunk> trunks = repository.findAll(companyId, new SipTrunkFilter(0, 100, null));
         return trunks.stream().map(this::evaluateTrunkStatus).toList();
     }
@@ -243,9 +259,23 @@ public class SipTrunkService implements SipTrunkUseCase {
                 "ACTIVE", true, "Trunk faol holatda", Instant.now());
     }
 
+    /**
+     * A manual endpoint is a name the dialer puts straight into {@code PJSIP/<number>@<name>},
+     * and it can name any endpoint Asterisk knows — the platform's own trunk or another
+     * company's generated {@code trunk_<companyId>_<id>}. Letting a tenant pick it meant
+     * dialling out on someone else's SIP account and bill, so only a platform admin may set
+     * or change one; a tenant can still edit the rest of a trunk an admin set up this way.
+     */
+    private void requireManualEndpointAllowed(String pjsipEndpoint, String currentEndpoint) {
+        SipTrunkValidator.requireValidEndpointName(pjsipEndpoint);
+        if (!pjsipEndpoint.equals(currentEndpoint) && !currentUser.hasPermission(Permission.PLATFORM_ADMIN)) {
+            throw new ForbiddenException(ErrorCode.SIP_TRUNK_MANUAL_ENDPOINT_FORBIDDEN);
+        }
+    }
+
     private String encryptPassword(String plaintext) {
         if (!cipher.available()) {
-            throw new ExternalServiceException(ErrorCode.ENCRYPTION_KEY_NOT_SET, "siptrunk");
+            throw new ConflictException(ErrorCode.ENCRYPTION_KEY_NOT_SET);
         }
         return cipher.encrypt(plaintext);
     }

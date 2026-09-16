@@ -2,7 +2,10 @@ package uz.murodjon.robotcallv2.shared.util;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.UnknownHostException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The guard exists so a URL a customer typed cannot turn this process into a request
@@ -56,6 +59,29 @@ class PublicUrlGuardTest {
     }
 
     @Test
+    void refusesRangesTheJdkHelpersMiss() {
+        assertThat(PublicUrlGuard.parsePublic("http://0.1.2.3/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://100.64.0.1/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://100.127.255.254/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://198.18.0.1/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://198.19.255.1/")).isNull();
+    }
+
+    @Test
+    void refusesIpv4HiddenInsideIpv6() {
+        assertThat(PublicUrlGuard.parsePublic("http://[::ffff:10.0.0.1]/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://[::ffff:169.254.169.254]/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://[64:ff9b::a00:1]/")).isNull();
+        assertThat(PublicUrlGuard.parsePublic("http://[2002:a00:1::1]/")).isNull();
+    }
+
+    @Test
+    void stillAllowsTheNeighboursOfTheNewRanges() {
+        assertThat(PublicUrlGuard.parsePublic("http://100.128.0.1/")).isNotNull();
+        assertThat(PublicUrlGuard.parsePublic("http://198.20.0.1/")).isNotNull();
+    }
+
+    @Test
     void allowsAPublicAddress() {
         assertThat(PublicUrlGuard.parsePublic("https://8.8.8.8/resolve?name=a")).isNotNull();
     }
@@ -64,5 +90,16 @@ class PublicUrlGuardTest {
     @Test
     void trimsBeforeParsing() {
         assertThat(PublicUrlGuard.parsePublic("  https://8.8.8.8/x  ")).isNotNull();
+    }
+
+    /** What the shared HTTP client connects to: only addresses judged here, never a second lookup. */
+    @Test
+    void resolvesOnlyToPublicAddresses() throws Exception {
+        assertThat(PublicUrlGuard.resolvePublic("8.8.8.8")[0].getHostAddress()).isEqualTo("8.8.8.8");
+        assertThatThrownBy(() -> PublicUrlGuard.resolvePublic("127.0.0.1")).isInstanceOf(UnknownHostException.class);
+        assertThatThrownBy(() -> PublicUrlGuard.resolvePublic("localhost")).isInstanceOf(UnknownHostException.class);
+        assertThatThrownBy(() -> PublicUrlGuard.resolvePublic("::ffff:10.0.0.1")).isInstanceOf(UnknownHostException.class);
+        // getAllByName("") would answer with the loopback address.
+        assertThatThrownBy(() -> PublicUrlGuard.resolvePublic("")).isInstanceOf(UnknownHostException.class);
     }
 }

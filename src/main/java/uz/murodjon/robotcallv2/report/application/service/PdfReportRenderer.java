@@ -5,7 +5,7 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.report.domain.entity.CampaignComparisonRow;
+import uz.murodjon.robotcallv2.report.domain.entity.CampaignComparison;
 import uz.murodjon.robotcallv2.report.domain.entity.DashboardOutcome;
 import uz.murodjon.robotcallv2.report.domain.entity.FunnelStage;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSummary;
@@ -76,7 +76,7 @@ public class PdfReportRenderer {
                 document.add(spacer());
                 document.add(new Paragraph("Kampaniyalar taqqoslash", HEADING));
                 PdfPTable campaigns = headerRow("Kampaniya", "Jami", "Javob %", "O'rtacha (sek)", "Va'dalar");
-                for (CampaignComparisonRow c : summary.campaigns()) {
+                for (CampaignComparison c : summary.campaigns()) {
                     campaigns.addCell(cell(c.campaignName()));
                     campaigns.addCell(cell(String.valueOf(c.totalCalls())));
                     campaigns.addCell(cell(String.format("%.1f%%", c.answerRate() * 100)));

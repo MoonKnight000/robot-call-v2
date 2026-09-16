@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -96,33 +97,37 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
         HttpClient current = client;
         QwenOmniRealtimeProperties q = realtimeProperties.qwenOmni();
         if (current == null || q == null) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "qwen-omni", "not initialized");
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_NOT_INITIALIZED, "qwen-omni", "qwen-omni");
         }
 
         AtomicBoolean alive = new AtomicBoolean(true);
         CountDownLatch ready = new CountDownLatch(1);
 
         try {
-            WebSocket ws = current.newWebSocketBuilder()
+            WebSocket webSocket = current.newWebSocketBuilder()
                     .header("Authorization", "Bearer " + q.apiKey())
                     .header("X-DashScope-DataInspection", "enable")
                     .connectTimeout(Duration.ofSeconds(q.connectTimeoutSeconds()))
                     .buildAsync(URI.create(q.url()), new QwenOmniResponseHandler(config.channelId(), listener, alive, ready))
                     .get(q.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
-            QwenOmniRealtimeSession session = new QwenOmniRealtimeSession(ws, alive);
+            QwenOmniRealtimeSession session = new QwenOmniRealtimeSession(webSocket, alive);
             session.send(initSessionMessage(config, q));
 
             if (!ready.await(q.connectTimeoutSeconds(), TimeUnit.SECONDS)) {
                 session.close();
-                throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_SETUP_FAILED, "qwen-omni", q.connectTimeoutSeconds());
+                throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_SETUP_FAILED, "qwen-omni", "qwen-omni",
+                        q.connectTimeoutSeconds());
             }
 
             log.info("[{}] Qwen-Omni Realtime session open (model={}, voice={})",
                     config.channelId(), q.model(), q.voice());
             return session;
+        } catch (ExternalServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.REALTIME_GEMINI_CONNECT_FAILED, "qwen-omni", e, e.getMessage());
+            throw new ExternalServiceException(ErrorCode.REALTIME_PROVIDER_CONNECT_FAILED, "qwen-omni", e, "qwen-omni",
+                    e.getMessage());
         }
     }
 
@@ -150,7 +155,9 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
                 t.put("description", tool.getToolDefinition().description());
                 try {
                     t.set("parameters", MAPPER.readTree(tool.getToolDefinition().inputSchema()));
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    // Still offered, only without a schema the engine can check arguments against.
+                    log.debug("Tool {} has an unreadable input schema: {}", tool.getToolDefinition().name(), e.getMessage());
                 }
             }
         }
@@ -199,7 +206,17 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             return null;
         }
 
+        /**
+         * Every message arrives on the WebSocket's own thread, which knows nothing about
+         * the call — so the id goes in here, once, and everything below it (this class's
+         * logs and the dialog engine's, reached through the listener) is filed under the
+         * call it belongs to instead of {@code [call:none]}.
+         */
         private void handle(String json) {
+            CallMdc.with(channelId, () -> dispatch(json));
+        }
+
+        private void dispatch(String json) {
             try {
                 JsonNode node = MAPPER.readTree(json);
                 String event = node.path("header").path("event").asText("");
@@ -268,13 +285,13 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
 
     private static final class QwenOmniRealtimeSession implements RealtimeSession {
 
-        private final WebSocket ws;
+        private final WebSocket webSocket;
         private final AtomicBoolean alive;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private boolean closed;
 
-        private QwenOmniRealtimeSession(WebSocket ws, AtomicBoolean alive) {
-            this.ws = ws;
+        private QwenOmniRealtimeSession(WebSocket webSocket, AtomicBoolean alive) {
+            this.webSocket = webSocket;
             this.alive = alive;
         }
 
@@ -320,7 +337,7 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
                 return;
             }
             sendChain = sendChain
-                    .thenCompose(ignored -> ws.sendText(json, true))
+                    .thenCompose(ignored -> webSocket.sendText(json, true))
                     .thenAccept(v -> {})
                     .exceptionally(e -> {
                         alive.set(false);
@@ -335,9 +352,9 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             }
             closed = true;
             alive.set(false);
-            ws.sendClose(WebSocket.NORMAL_CLOSURE, "call ended")
+            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "call ended")
                     .exceptionally(e -> {
-                        ws.abort();
+                        webSocket.abort();
                         return null;
                     });
         }

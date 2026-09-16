@@ -28,10 +28,15 @@ public final class Tokens {
 
     /** SHA-256 hex digest of {@code raw}, for storing/looking up a token without keeping it. */
     public static String hash(String raw) {
+        return HexFormat.of().formatHex(sha256(raw));
+    }
+
+    /** The raw SHA-256 digest of {@code raw}'s UTF-8 bytes — {@link #hash} before hex encoding. */
+    public static byte[] sha256(String raw) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(raw.getBytes(StandardCharsets.UTF_8)));
+            return MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException e) {
+            // Every JVM ships SHA-256; reaching here means the platform is broken.
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }

@@ -1,0 +1,40 @@
+### A real-estate company's inbound flow: greeting, hours, language, main menu, AI or operators.
+### Replace scheduleId / aiAgentId / queueId / voicemailBoxId with your own ids.
+POST http://localhost:8080/api/call-flows
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Asosiy kiruvchi oqim",
+  "graph": {
+    "entry": "greet",
+    "nodes": {
+      "greet": { "type": "PLAY", "prompt": { "uz-UZ": "Assalomu alaykum! Uysot kompaniyasiga xush kelibsiz.", "ru-RU": "Здравствуйте! Добро пожаловать в компанию Uysot." }, "exits": { "next": "hours" } },
+      "hours": { "type": "SCHEDULE", "scheduleId": 1, "exits": { "open": "lang", "closed": "closed", "holiday": "closed" } },
+      "lang": { "type": "LANGUAGE_SELECT", "prompt": { "uz-UZ": "O'zbek tili uchun 1 ni, rus tili uchun 2 ni bosing." }, "options": { "1": "uz-UZ", "2": "ru-RU" }, "timeoutSec": 5, "language": "uz-UZ", "skipWhenKnown": true, "exits": { "next": "main" } },
+      "main": { "type": "MENU", "prompt": { "uz-UZ": "Uylar haqida ma'lumot uchun 1 ni, to'lovlar bo'yicha 2 ni, operator bilan bog'lanish uchun 0 ni bosing. Qayta eshitish uchun yulduzchani bosing.", "ru-RU": "Информация о квартирах — нажмите 1, оплата — 2, оператор — 0. Повторить — звёздочка." }, "options": { "1": "ai", "2": "operators", "0": "operators", "*": "main" }, "keywords": { "1": ["uy", "kvartira", "квартира"], "2": ["to'lov", "оплат"], "0": ["operator", "оператор"] }, "timeoutSec": 6, "maxRetries": 2, "exits": { "timeout": "operators", "invalid": "main" } },
+      "ai": { "type": "AI_AGENT", "aiAgentId": 1, "exits": { "transfer": "operators", "completed": "bye" } },
+      "operators": { "type": "QUEUE", "queueId": 1, "exits": { "answered": "bye", "overflow": "vm", "callback": "bye" } },
+      "closed": { "type": "PLAY", "prompt": { "uz-UZ": "Afsuski, hozir ish vaqtimizdan tashqari." }, "exits": { "next": "cb" } },
+      "cb": { "type": "CALLBACK_OFFER", "exits": { "accepted": "bye", "declined": "vm" } },
+      "vm": { "type": "VOICEMAIL", "voicemailBoxId": 1, "exits": { "next": "bye" } },
+      "bye": { "type": "HANGUP" }
+    }
+  }
+}
+
+### Would it publish?
+POST http://localhost:8080/api/call-flows/1/validate
+Authorization: Bearer {{auth_token}}
+
+### Publish — from now on calls run this version
+POST http://localhost:8080/api/call-flows/1/publish
+Authorization: Bearer {{auth_token}}
+
+### Point a number at it (inbound route). PUT replaces the whole route: send every field you want
+### to keep — an omitted agent, schedule or fallback message is cleared.
+PUT http://localhost:8080/api/inbound-routes/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "didNumber": "600", "callFlowId": 1, "enabled": true }

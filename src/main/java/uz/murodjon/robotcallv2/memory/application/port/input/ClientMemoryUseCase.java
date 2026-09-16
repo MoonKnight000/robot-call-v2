@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.memory.application.dto.UpdateClientMemoryRequest;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 
+import java.time.Instant;
 import java.util.Map;
 
 public interface ClientMemoryUseCase {
@@ -22,4 +23,10 @@ public interface ClientMemoryUseCase {
      * ignored.
      */
     void rememberCall(long companyId, String phone, RememberedCall call, Map<String, Object> facts);
+
+    /**
+     * The retention sweep: deletes up to {@code batchSize} memories, across every company,
+     * that no call or operator has written since {@code cutoff}; returns how many went.
+     */
+    int deleteNotUpdatedSince(Instant cutoff, int batchSize);
 }

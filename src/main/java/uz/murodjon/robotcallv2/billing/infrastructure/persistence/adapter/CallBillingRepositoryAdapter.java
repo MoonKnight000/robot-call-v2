@@ -2,9 +2,10 @@ package uz.murodjon.robotcallv2.billing.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.billing.application.mapper.CallBillingMapper;
+import uz.murodjon.robotcallv2.billing.infrastructure.persistence.mapper.CallBillingEntityMapper;
 import uz.murodjon.robotcallv2.billing.application.port.output.CallBillingRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallBilling;
+import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 import uz.murodjon.robotcallv2.billing.domain.entity.MonthlySpend;
 import uz.murodjon.robotcallv2.billing.domain.entity.PeriodUsage;
 import uz.murodjon.robotcallv2.billing.domain.entity.VariantSpend;
@@ -29,13 +30,13 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
     private final CompanyJpaRepository companyJpaRepository;
     private final CallAttemptJpaRepository callAttemptJpaRepository;
     private final CampaignTargetJpaRepository campaignTargetJpaRepository;
-    private final CallBillingMapper mapper;
+    private final CallBillingEntityMapper mapper;
 
     public CallBillingRepositoryAdapter(CallBillingJpaRepository jpaRepository,
                                         CompanyJpaRepository companyJpaRepository,
                                         CallAttemptJpaRepository callAttemptJpaRepository,
                                         CampaignTargetJpaRepository campaignTargetJpaRepository,
-                                        CallBillingMapper mapper) {
+                                        CallBillingEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
         this.companyJpaRepository = companyJpaRepository;
         this.callAttemptJpaRepository = callAttemptJpaRepository;
@@ -46,7 +47,7 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
     @Override
     public CallBilling save(CallBilling callBilling) {
         CompanyEntity company = companyJpaRepository.getReferenceById(callBilling.companyId());
-        CallBillingEntity entity = mapper.toEntity(callBilling, company,
+        CallBillingEntity entity = mapper.toCallBillingEntity(callBilling, company,
                 callAttemptReference(callBilling.callAttemptId()), targetReference(callBilling.targetId()));
         return mapper.toCallBilling(jpaRepository.save(entity));
     }
@@ -54,6 +55,12 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
     @Override
     public Optional<CallBilling> findByCallAttemptId(long callAttemptId) {
         return jpaRepository.findByCallAttemptId(callAttemptId).map(mapper::toCallBilling);
+    }
+
+    @Override
+    public void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, long costUzs) {
+        jpaRepository.addSummaryCharge(callAttemptId, summaryUsage.promptTokens(), summaryUsage.completionTokens(),
+                summaryUsage.cachedTokens(), costUzs);
     }
 
     @Override
@@ -78,6 +85,11 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
                         number(row[1]),
                         number(row[2])))
                 .toList();
+    }
+
+    @Override
+    public long sumSpentUzsByCampaign(long companyId, long campaignId, Instant since) {
+        return jpaRepository.sumSpentUzsByCampaign(companyId, campaignId, since);
     }
 
     @Override

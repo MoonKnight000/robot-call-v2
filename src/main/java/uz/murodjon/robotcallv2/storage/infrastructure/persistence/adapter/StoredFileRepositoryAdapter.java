@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.storage.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.storage.application.mapper.StoredFileMapper;
+import uz.murodjon.robotcallv2.storage.infrastructure.persistence.mapper.StoredFileEntityMapper;
 import uz.murodjon.robotcallv2.storage.application.port.output.StoredFileRepository;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
 import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
@@ -17,10 +17,10 @@ import java.util.List;
 public class StoredFileRepositoryAdapter implements StoredFileRepository {
 
     private final StoredFileJpaRepository jpaRepository;
-    private final StoredFileMapper mapper;
+    private final StoredFileEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
 
-    public StoredFileRepositoryAdapter(StoredFileJpaRepository jpaRepository, StoredFileMapper mapper,
+    public StoredFileRepositoryAdapter(StoredFileJpaRepository jpaRepository, StoredFileEntityMapper mapper,
                                        CompanyJpaRepository companyJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
@@ -44,13 +44,13 @@ public class StoredFileRepositoryAdapter implements StoredFileRepository {
 
     @Override
     public StoredFile find(long id) {
-        return jpaRepository.findById(id).map(mapper::entityToDomain).orElse(null);
+        return jpaRepository.findById(id).map(mapper::toStoredFile).orElse(null);
     }
 
     @Override
-    public List<StoredFile> findOlderThan(FileCategory category, Instant cutoff) {
-        return jpaRepository.findByCategoryAndCreatedAtBefore(category, cutoff).stream()
-                .map(mapper::entityToDomain)
+    public List<StoredFile> findOlderThanExceptCallRecordings(FileCategory category, Instant cutoff, int batchSize) {
+        return jpaRepository.findOlderThanExceptCallRecordings(category.name(), cutoff, batchSize).stream()
+                .map(mapper::toStoredFile)
                 .toList();
     }
 

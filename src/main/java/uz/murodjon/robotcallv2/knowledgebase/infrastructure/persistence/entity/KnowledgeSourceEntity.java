@@ -69,6 +69,15 @@ public class KnowledgeSourceEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    @Column(name = "feed_items_path", length = 200)
+    private String feedItemsPath;
+
+    @Column(name = "feed_key_field", length = 100)
+    private String feedKeyField;
+
+    @Column(name = "refresh_minutes")
+    private Integer refreshMinutes;
+
     public Long getId() {
         return id;
     }
@@ -191,5 +200,29 @@ public class KnowledgeSourceEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getFeedItemsPath() {
+        return feedItemsPath;
+    }
+
+    public void setFeedItemsPath(String feedItemsPath) {
+        this.feedItemsPath = feedItemsPath;
+    }
+
+    public String getFeedKeyField() {
+        return feedKeyField;
+    }
+
+    public void setFeedKeyField(String feedKeyField) {
+        this.feedKeyField = feedKeyField;
+    }
+
+    public Integer getRefreshMinutes() {
+        return refreshMinutes;
+    }
+
+    public void setRefreshMinutes(Integer refreshMinutes) {
+        this.refreshMinutes = refreshMinutes;
     }
 }

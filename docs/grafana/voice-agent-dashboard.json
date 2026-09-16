@@ -1,0 +1,152 @@
+{
+  "title": "Voice agent — latency, quality, audio, providers",
+  "uid": "voice-agent",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "1m",
+  "tags": ["voice-agent"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Latency — cascade vs realtime (same clock: our VAD)", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "Turnaround p50 / p95", "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "legendFormat": "cascade p50", "expr": "histogram_quantile(0.5, sum(rate(voice_turnaround_latency_seconds_bucket[5m])) by (le))" },
+        { "legendFormat": "cascade p95", "expr": "histogram_quantile(0.95, sum(rate(voice_turnaround_latency_seconds_bucket[5m])) by (le))" },
+        { "legendFormat": "{{engine}} p50", "expr": "histogram_quantile(0.5, sum(rate(voice_realtime_turnaround_latency_seconds_bucket[5m])) by (le, engine))" },
+        { "legendFormat": "{{engine}} p95", "expr": "histogram_quantile(0.95, sum(rate(voice_realtime_turnaround_latency_seconds_bucket[5m])) by (le, engine))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Cascade stage p95 (where the wait is)", "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "legendFormat": "{{stage}}", "expr": "histogram_quantile(0.95, sum(rate(voice_turn_stage_latency_seconds_bucket[5m])) by (le, stage))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Realtime: first audio after pickup, tool latency p95", "gridPos": { "x": 0, "y": 9, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "legendFormat": "first audio {{engine}}", "expr": "histogram_quantile(0.95, sum(rate(voice_realtime_first_audio_latency_seconds_bucket[15m])) by (le, engine))" },
+        { "legendFormat": "tool {{tool}}", "expr": "histogram_quantile(0.95, sum(rate(voice_realtime_tool_latency_seconds_bucket[15m])) by (le, tool))" }
+      ]
+    },
+    {
+      "type": "stat", "title": "Speculation hit rate / TTS cache hit rate", "gridPos": { "x": 12, "y": 9, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [
+        { "legendFormat": "speculation hit", "expr": "sum(increase(voice_llm_speculation_hit_total[1h])) / sum(increase(voice_llm_speculation_started_total[1h]))" },
+        { "legendFormat": "tts cache hit", "expr": "sum(increase(voice_tts_cache_hits_total[1h])) / (sum(increase(voice_tts_cache_hits_total[1h])) + sum(increase(voice_tts_cache_misses_total[1h])))" }
+      ]
+    },
+
+    { "type": "row", "title": "Conversation quality", "gridPos": { "x": 0, "y": 16, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "QA score p10 / p50 (LLM judge)", "gridPos": { "x": 0, "y": 17, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "p10", "expr": "histogram_quantile(0.1, sum(rate(voice_qa_score_bucket[1h])) by (le))" },
+        { "legendFormat": "p50", "expr": "histogram_quantile(0.5, sum(rate(voice_qa_score_bucket[1h])) by (le))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "QA flags / fact-guard spoken", "gridPos": { "x": 8, "y": 17, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "{{flag}}", "expr": "sum(increase(voice_qa_flags_total[1h])) by (flag)" },
+        { "legendFormat": "fact guard spoken", "expr": "sum(increase(voice_dialog_fact_guard_spoken_total[1h]))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Interruptions & cut-offs", "gridPos": { "x": 16, "y": 17, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "cascade barge-in", "expr": "sum(increase(voice_dialog_barge_in_total[1h]))" },
+        { "legendFormat": "cascade false barge-in", "expr": "sum(increase(voice_dialog_barge_in_false_total[1h]))" },
+        { "legendFormat": "stitched (cut-off) turns", "expr": "sum(increase(voice_dialog_turn_stitched_total[1h]))" },
+        { "legendFormat": "realtime {{engine}}", "expr": "sum(increase(voice_realtime_interruptions_total[1h])) by (engine)" },
+        { "legendFormat": "no-input hangups", "expr": "sum(increase(voice_dialog_no_input_hangups_total[1h]))" }
+      ]
+    },
+
+    { "type": "row", "title": "Audio (per-call RTP)", "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "MOS p10 / p50", "gridPos": { "x": 0, "y": 25, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "min": 1, "max": 4.5 } },
+      "targets": [
+        { "legendFormat": "p10", "expr": "histogram_quantile(0.1, sum(rate(voice_rtp_mos_bucket[1h])) by (le))" },
+        { "legendFormat": "p50", "expr": "histogram_quantile(0.5, sum(rate(voice_rtp_mos_bucket[1h])) by (le))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Jitter p95 (ms) / loss p95 (%)", "gridPos": { "x": 8, "y": 25, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "jitter p95", "expr": "histogram_quantile(0.95, sum(rate(voice_rtp_jitter_milliseconds_bucket[1h])) by (le))" },
+        { "legendFormat": "loss p95", "expr": "histogram_quantile(0.95, sum(rate(voice_rtp_loss_percent_bucket[1h])) by (le))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Silent calls / echo suppressed (s)", "gridPos": { "x": 16, "y": 25, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "silent calls", "expr": "sum(increase(voice_rtp_calls_silent_total[1h]))" },
+        { "legendFormat": "echo suppressed s", "expr": "sum(increase(voice_realtime_echo_suppressed_seconds_total[1h]))" }
+      ]
+    },
+
+    { "type": "row", "title": "Providers & trunks", "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "Failovers / fallbacks / reconnects", "gridPos": { "x": 0, "y": 33, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "stt {{from}}->{{to}}", "expr": "sum(increase(voice_stt_failover_total[15m])) by (from, to)" },
+        { "legendFormat": "tts failover", "expr": "sum(increase(voice_tts_failovers_total[15m]))" },
+        { "legendFormat": "realtime fallback {{engine}}", "expr": "sum(increase(voice_realtime_fallbacks_total[15m])) by (engine)" },
+        { "legendFormat": "realtime reconnect {{engine}}", "expr": "sum(increase(voice_realtime_reconnects_total[15m])) by (engine)" }
+      ]
+    },
+    {
+      "type": "stat", "title": "SIP registrations", "gridPos": { "x": 12, "y": 33, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "legendFormat": "{{registration}}", "expr": "voice_trunk_registered" } ]
+    },
+
+    { "type": "row", "title": "Cost drivers", "gridPos": { "x": 0, "y": 40, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "Tokens per hour (cascade LLM vs realtime engines)", "gridPos": { "x": 0, "y": 41, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "cascade prompt", "expr": "sum(increase(voice_llm_tokens_prompt_total[1h]))" },
+        { "legendFormat": "cascade completion", "expr": "sum(increase(voice_llm_tokens_completion_total[1h]))" },
+        { "legendFormat": "{{engine}} {{kind}}", "expr": "sum(increase(voice_realtime_tokens_total[1h])) by (engine, kind)" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Realtime session minutes / TTS chars per hour", "gridPos": { "x": 12, "y": 41, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "{{engine}} minutes", "expr": "sum(increase(voice_realtime_session_seconds_total[1h])) by (engine) / 60" },
+        { "legendFormat": "tts chars synthesized", "expr": "sum(increase(voice_tts_chars_synthesized_total[1h]))" },
+        { "legendFormat": "tts chars saved", "expr": "sum(increase(voice_tts_chars_saved_total[1h]))" }
+      ]
+    }
+  ]
+}

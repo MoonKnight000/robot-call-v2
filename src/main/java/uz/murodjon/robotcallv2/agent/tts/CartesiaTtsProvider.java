@@ -72,7 +72,7 @@ public class CartesiaTtsProvider implements TtsProvider {
         CartesiaTtsProperties cartesia = ttsProperties.cartesia();
         HttpClient current = client;
         if (current == null || cartesia == null || cartesia.apiKey() == null || cartesia.apiKey().isBlank()) {
-            throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "cartesia", "not configured");
+            throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_CLIENT_UNAVAILABLE, "cartesia");
         }
 
         try {
@@ -105,16 +105,20 @@ public class CartesiaTtsProvider implements TtsProvider {
 
             HttpResponse<byte[]> response = current.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
-                throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "cartesia",
-                        "HTTP " + response.statusCode() + ": " + new String(response.body()));
+                // The vendor's body is for the log only; the caller gets the status.
+                log.warn("Cartesia TTS answered HTTP {}: {}", response.statusCode(), new String(response.body()));
+                throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_HTTP_STATUS, "cartesia",
+                        response.statusCode());
             }
 
             byte[] pcmBytes = response.body();
             short[] pcm = new short[pcmBytes.length / 2];
             ByteBuffer.wrap(pcmBytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm);
             return pcm;
+        } catch (ExternalServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "cartesia", e, e.getMessage());
+            throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_SYNTH_FAILED, "cartesia", e, e.getMessage());
         }
     }
 }

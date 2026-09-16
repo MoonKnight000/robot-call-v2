@@ -24,7 +24,7 @@ public interface CompanyController {
 
     @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PostMapping("/companies")
-    ResponseEntity<ResponseData<Company>> create(@Valid @RequestBody CreateCompanyRequest r);
+    ResponseEntity<ResponseData<Company>> create(@Valid @RequestBody CreateCompanyRequest request);
 
     @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PostMapping("/companies/list")
@@ -42,7 +42,7 @@ public interface CompanyController {
     @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PutMapping("/companies/{id}/status")
     ResponseEntity<ResponseData<Company>> updateStatus(@PathVariable long id,
-                                                       @Valid @RequestBody UpdateCompanyStatusRequest r);
+                                                       @Valid @RequestBody UpdateCompanyStatusRequest request);
 
     @PreAuthorize("hasAuthority('COMPANY_EDIT')")
     @PostMapping("/companies/{id}/logo")

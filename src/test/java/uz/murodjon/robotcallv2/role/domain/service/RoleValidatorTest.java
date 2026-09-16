@@ -82,6 +82,15 @@ class RoleValidatorTest {
                 .doesNotContain(Permission.PLATFORM_ADMIN);
     }
 
+    @Test
+    void nobodyGrantsAPermissionTheyDoNotHold() {
+        assertThatThrownBy(() -> RoleValidator.validateGrantable(
+                Set.of(Permission.CAMPAIGN_READ, Permission.USER_EDIT), permission -> permission == Permission.CAMPAIGN_READ))
+                .isInstanceOf(ForbiddenException.class);
+        assertThatCode(() -> RoleValidator.validateGrantable(SOME_PERMISSIONS, permission -> true))
+                .doesNotThrowAnyException();
+    }
+
     private static Role systemRole(SystemRole systemRole) {
         return new Role(1L, 1L, systemRole.name(), systemRole.label(), null, true, Set.of(), Instant.now());
     }

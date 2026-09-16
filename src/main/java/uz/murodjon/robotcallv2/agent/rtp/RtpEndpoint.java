@@ -15,8 +15,11 @@ import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.TelephonyNoiseCanceller;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
+import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.NoiseCancellationMode;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
@@ -46,7 +49,6 @@ public class RtpEndpoint implements Closeable {
 
     private static final int PT_PCMU = 0; // µ-law
     private static final int PT_PCMA = 8; // A-law
-    private static final int QUEUE_CAPACITY = 2000;
 
     /** RTP clock of G.711 telephony audio — the unit sequence/timestamp arithmetic uses. */
     private static final int CLOCK_RATE = 8000;
@@ -67,6 +69,9 @@ public class RtpEndpoint implements Closeable {
      * backwards, i.e. the packet is late rather than the stream having jumped forward.
      */
     private static final int SEQ_HALF = 0x8000;
+    private static final int SEQ_MODULUS = 0x10000;
+    /** How far behind a packet may be and still count as late rather than a new stream — RtpStats uses the same. */
+    private static final int MAX_MISORDER = 100;
 
     /** Full calibrated bed level — see {@code AmbientSoundGenerator} for what that is. */
     private static final double DEFAULT_AMBIENT_VOLUME = 1.0;
@@ -80,6 +85,12 @@ public class RtpEndpoint implements Closeable {
     /** Short, because a pause is short: typing that faded like the room bed would miss it. */
     private static final double THINKING_FADE_IN_SECONDS = 0.3;
 
+    /**
+     * The call this endpoint carries. Held only so its logs can name it ({@link CallMdc}):
+     * the port already identifies the endpoint, but nothing on the audio path runs on the
+     * thread that set up the call, so a reader had to map port back to call by hand.
+     */
+    private final String channelId;
     private final int port;
     private final RtpCodec codec;
     private final WavRecorder recorder;
@@ -90,7 +101,10 @@ public class RtpEndpoint implements Closeable {
     private volatile List<AudioListener> listeners;
     /** Tap for the bot's own outgoing frames (live "listen in", §10.3); null if nobody taps it. */
     private final AudioListener outboundTap;
-    private final BlockingQueue<ReceivedPacket> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+    /** Inbound packets waiting for the worker; sized by {@code rtp.receive-queue-capacity}. */
+    private final BlockingQueue<ReceivedPacket> queue;
+    /** The most playback audio held unsent, in samples — {@code rtp.max-queued-playback-seconds}. */
+    private final long maxQueuedSamples;
     private final RtpStats stats = new RtpStats(CLOCK_RATE);
     private final long ssrc = Integer.toUnsignedLong(new Random().nextInt());
 
@@ -124,12 +138,30 @@ public class RtpEndpoint implements Closeable {
     private final AtomicBoolean thinkingActive = new AtomicBoolean(false);
     private long thinkingStartSample;
 
+    /**
+     * How far back {@link #recentOutboundLevel()} looks: long enough to cover the echo
+     * path of a PSTN call (the bot's voice comes back 50–400 ms after it was sent).
+     */
+    private static final int OUTBOUND_LEVEL_FRAMES = 25;
+    /**
+     * RMS of the last frames sent, and when each went out — a ring written by the pacer
+     * and read by the RTP consumer. Racy on purpose: it feeds an echo heuristic, and a
+     * frame's worth of staleness changes nothing there.
+     */
+    private final double[] outboundLevels = new double[OUTBOUND_LEVEL_FRAMES];
+    private final long[] outboundLevelNanos = new long[OUTBOUND_LEVEL_FRAMES];
+    private int outboundLevelIndex;
+
     private final AtomicBoolean pacerRunning = new AtomicBoolean(false);
     private volatile ScheduledFuture<?> pacer;
 
     private volatile boolean running = true;
     private volatile InetSocketAddress remoteAddress;
     private volatile boolean remoteLatched;
+    /** Whether {@link #remoteAddress} is the one Asterisk reported for this leg. */
+    private volatile boolean remoteFromAsterisk;
+    /** Set after the first failed write: the call goes on unrecorded rather than unheard. RTP thread only. */
+    private boolean recorderFailed;
     private io.netty.channel.Channel channel;
     private Thread consumer;
 
@@ -137,12 +169,17 @@ public class RtpEndpoint implements Closeable {
     private int sendSeq;
     private long sendTimestamp;
 
-    public RtpEndpoint(int port, RtpCodec codec, WavRecorder recorder, List<AudioListener> listeners) {
-        this(port, codec, recorder, listeners, null);
+    public RtpEndpoint(String channelId, int port, RtpCodec codec, WavRecorder recorder,
+                       List<AudioListener> listeners, int receiveQueueCapacity, int maxQueuedPlaybackSeconds) {
+        this(channelId, port, codec, recorder, listeners, null, receiveQueueCapacity, maxQueuedPlaybackSeconds);
     }
 
-    public RtpEndpoint(int port, RtpCodec codec, WavRecorder recorder, List<AudioListener> listeners,
-                       AudioListener outboundTap) {
+    public RtpEndpoint(String channelId, int port, RtpCodec codec, WavRecorder recorder,
+                       List<AudioListener> listeners, AudioListener outboundTap, int receiveQueueCapacity,
+                       int maxQueuedPlaybackSeconds) {
+        this.queue = new LinkedBlockingQueue<>(receiveQueueCapacity);
+        this.maxQueuedSamples = (long) maxQueuedPlaybackSeconds * CLOCK_RATE;
+        this.channelId = channelId;
         this.port = port;
         this.codec = codec;
         this.recorder = recorder;
@@ -214,11 +251,24 @@ public class RtpEndpoint implements Closeable {
                 .handler(new SimpleChannelInboundHandler<DatagramPacket>() {
                     @Override
                     protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) {
+                        // The call goes into the logging context around the branches that
+                        // log, not around the whole callback: this runs on the shared
+                        // Netty loop fifty times a second per call, and both branches
+                        // below are already off the steady path — the first fires once,
+                        // the second only when the queue has backed up.
                         if (!remoteLatched) {
-                            remoteAddress = msg.sender();
+                            // Asterisk's own report of the leg (setRemote) wins over whoever
+                            // sent first: a port is reused as soon as it is freed, and the
+                            // first packet can come from the previous call's leg still
+                            // dying — latched to that, this call's caller never heard the bot.
+                            if (!remoteFromAsterisk) {
+                                remoteAddress = msg.sender();
+                            }
                             remoteLatched = true;
-                            log.info("RTP peer for port {} latched to {} (from inbound traffic)", port, remoteAddress);
-                            if (ambientSound != AmbientSound.OFF || thinkingActive.get()) {
+                            CallMdc.with(channelId, () -> log.info(
+                                    "RTP peer for port {} latched to {} (first packet from {})",
+                                    port, remoteAddress, msg.sender()));
+                            if (ambientSound != AmbientSound.OFF || thinkingActive.get() || hasQueuedAudio()) {
                                 startPacer();
                             }
                         }
@@ -227,13 +277,15 @@ public class RtpEndpoint implements Closeable {
                         content.readBytes(bytes);
                         long arrivalNanos = System.nanoTime();
                         if (!queue.offer(new ReceivedPacket(bytes, arrivalNanos))) {
-                            log.warn("RTP receive queue on port {} full; packet dropped", port);
+                            CallMdc.with(channelId, () -> log.warn(
+                                    "RTP receive queue on port {} full; packet dropped", port));
                         }
                     }
 
                     @Override
                     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-                        log.warn("RTP channel error on port {}: {}", port, cause.getMessage());
+                        CallMdc.with(channelId, () -> log.warn(
+                                "RTP channel error on port {}: {}", port, cause.getMessage()));
                     }
                 });
 
@@ -244,10 +296,13 @@ public class RtpEndpoint implements Closeable {
                 startPacer();
             }
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to bind RTP port " + port, e);
+            throw new ExternalServiceException(ErrorCode.RTP_BIND_FAILED, "rtp", e, port);
         }
 
-        consumer = Thread.ofVirtual().name("rtp-in-" + port).start(this::consume);
+        // Set once for the whole thread rather than per packet: this one belongs to this
+        // call and to nothing else, for as long as the call lasts.
+        consumer = Thread.ofVirtual().name("rtp-in-" + port)
+                .start(() -> CallMdc.with(channelId, this::consume));
     }
 
     public RtpStats stats() {
@@ -255,15 +310,21 @@ public class RtpEndpoint implements Closeable {
     }
 
     public void setRemote(InetSocketAddress remote) {
-        if (remote == null || remote.getAddress() == null || remote.getPort() <= 0) {
+        if (remote == null || remote.getAddress() == null || remote.getPort() <= 0
+                || remote.getAddress().isAnyLocalAddress()) {
             return;
         }
-        if (remoteLatched) {
-            return;
-        }
+        // Taken even after a latch: what Asterisk reports is the leg it set up for this
+        // call, while the latch only knows who sent first.
+        InetSocketAddress previous = remoteAddress;
         remoteAddress = remote;
-        log.info("RTP peer for port {} set to {} (from Asterisk)", port, remote);
-        if (ambientSound != AmbientSound.OFF || thinkingActive.get()) {
+        remoteFromAsterisk = true;
+        if (previous != null && !previous.equals(remote)) {
+            log.warn("RTP peer for port {} moved from {} to {} (from Asterisk)", port, previous, remote);
+        } else {
+            log.info("RTP peer for port {} set to {} (from Asterisk)", port, remote);
+        }
+        if (ambientSound != AmbientSound.OFF || thinkingActive.get() || hasQueuedAudio()) {
             startPacer();
         }
     }
@@ -284,20 +345,37 @@ public class RtpEndpoint implements Closeable {
         enqueuePcm(pcm);
     }
 
+    /**
+     * Queues audio for the pacer. Never blocks: this is called from a provider's WebSocket
+     * thread and from turn workers, and neither may wait on the far end. Audio queued
+     * before the RTP peer is known simply waits in the queue — the pacer starts the moment
+     * the peer latches. The queue is capped so a producer that runs away from the line
+     * (an engine streaming minutes of audio into a dead call) cannot grow the heap: past
+     * the cap the newest audio is dropped and counted.
+     */
     public void enqueuePcm(short[] pcm) {
         if (pcm == null || pcm.length == 0) {
             return;
         }
-        if (awaitRemote() == null) {
-            log.warn("No RTP peer on port {} yet; dropping {} samples", port, pcm.length);
-            return;
-        }
         synchronized (playLock) {
+            if (queuedSamples - playedSamples + pcm.length > maxQueuedSamples) {
+                log.warn("Playback queue on port {} is {} s deep; dropping {} samples", port,
+                        (queuedSamples - playedSamples) / CLOCK_RATE, pcm.length);
+                return;
+            }
             playQueue.addLast(pcm);
             queuedSamples += pcm.length;
             idleFrames = 0;
         }
-        startPacer();
+        if (remoteAddress != null) {
+            startPacer();
+        }
+    }
+
+    private boolean hasQueuedAudio() {
+        synchronized (playLock) {
+            return !playQueue.isEmpty() || (currentChunk != null && currentOffset < currentChunk.length);
+        }
     }
 
     public void flushPlayback() {
@@ -334,17 +412,30 @@ public class RtpEndpoint implements Closeable {
         }
     }
 
-    private InetSocketAddress awaitRemote() {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-        while (remoteAddress == null && System.nanoTime() < deadline) {
-            try {
-                Thread.sleep(20);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+    /**
+     * The loudest the bot has been on the wire within the echo window, as frame RMS — 0 when
+     * it has sent nothing lately. What an echo of it arriving now could at most be.
+     */
+    public double recentOutboundLevel() {
+        long horizon = System.nanoTime() - (long) OUTBOUND_LEVEL_FRAMES * FRAME_MS * 1_000_000L;
+        double peak = 0;
+        for (int i = 0; i < OUTBOUND_LEVEL_FRAMES; i++) {
+            if (outboundLevelNanos[i] >= horizon && outboundLevels[i] > peak) {
+                peak = outboundLevels[i];
             }
         }
-        return remoteAddress;
+        return peak;
+    }
+
+    private void recordOutboundLevel(short[] frame) {
+        double sumSq = 0;
+        for (short sample : frame) {
+            sumSq += (double) sample * sample;
+        }
+        int slot = outboundLevelIndex;
+        outboundLevels[slot] = Math.sqrt(sumSq / frame.length);
+        outboundLevelNanos[slot] = System.nanoTime();
+        outboundLevelIndex = (slot + 1) % OUTBOUND_LEVEL_FRAMES;
     }
 
     private void startPacer() {
@@ -436,6 +527,7 @@ public class RtpEndpoint implements Closeable {
             }
         }
 
+        recordOutboundLevel(pcmFrame);
         recorder.writeBot(pcmFrame, SAMPLES_PER_FRAME);
         if (outboundTap != null) {
             outboundTap.onAudio(pcmFrame, SAMPLES_PER_FRAME);
@@ -447,7 +539,9 @@ public class RtpEndpoint implements Closeable {
             sendSeq++;
             sendTimestamp += SAMPLES_PER_FRAME;
         } catch (Exception e) {
-            log.warn("RTP send error on port {}: {}", port, e.getMessage());
+            // Also on the Netty loop (the pacer runs there), so the context goes on here
+            // rather than around every frame sent.
+            CallMdc.with(channelId, () -> log.warn("RTP send error on port {}: {}", port, e.getMessage()));
             flushPlayback();
         }
     }
@@ -470,7 +564,12 @@ public class RtpEndpoint implements Closeable {
             }
             try {
                 byte[] raw = received.data();
-                RtpPacket p = RtpPacket.parse(raw, raw.length);
+                RtpPacket p = RtpPacket.tryParse(raw, raw.length);
+                if (p == null) {
+                    // Malformed input off the network, not a fault of ours: dropped like a lost packet.
+                    log.debug("Dropped a malformed RTP packet ({} bytes) on port {}", raw.length, port);
+                    continue;
+                }
                 int seq = p.sequenceNumber();
                 stats.onPacket(seq, p.timestamp(), received.arrivalNanos());
 
@@ -482,6 +581,14 @@ public class RtpEndpoint implements Closeable {
                 // measured modulo the sequence space instead, and only a genuine forward
                 // gap can conceal anything.
                 int gap = lastSeq < 0 ? 1 : (seq - lastSeq) & 0xFFFF;
+                if (lastSeq >= 0 && gap > SEQ_HALF && SEQ_MODULUS - gap > MAX_MISORDER) {
+                    // Far behind, not just late: a new stream (a re-INVITE, a new SSRC)
+                    // restarting its sequence below the old one. Treated as reordering, every
+                    // packet of it was dropped until the numbers caught up — up to 32 000
+                    // packets, eleven minutes of a deaf call. Resync instead, as RtpStats does.
+                    lastSeq = -1;
+                    gap = 1;
+                }
                 if (lastSeq >= 0 && (gap == 0 || gap > SEQ_HALF)) {
                     // A duplicate, or a packet whose successor already went through. There
                     // is no jitter buffer to re-order it into, and inserting it now would
@@ -500,7 +607,7 @@ public class RtpEndpoint implements Closeable {
                         for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
                             plcFrame[i] = (short) Math.round(lastGoodFrame[i] * decay);
                         }
-                        recorder.writeCaller(plcFrame, SAMPLES_PER_FRAME);
+                        recordCaller(plcFrame, SAMPLES_PER_FRAME);
                         short[] cleanPlcFrame = noiseCancellationEnabled
                                 ? noiseCanceller.process(plcFrame, SAMPLES_PER_FRAME) : plcFrame;
                         for (AudioListener listener : listeners) {
@@ -528,7 +635,7 @@ public class RtpEndpoint implements Closeable {
                 // The recording keeps what the caller actually sent: it is evidence of the
                 // call, and a filter that guesses wrong would have erased the proof of it.
                 // Only the recognizer's copy is cleaned.
-                recorder.writeCaller(pcm, payload.length);
+                recordCaller(pcm, payload.length);
                 short[] cleanPcm = noiseCancellationEnabled
                         ? noiseCanceller.process(pcm, payload.length) : pcm;
                 for (AudioListener listener : listeners) {
@@ -537,6 +644,25 @@ public class RtpEndpoint implements Closeable {
             } catch (Exception e) {
                 log.warn("RTP processing error on port {}: {}", port, e.getMessage());
             }
+        }
+    }
+
+    /**
+     * The caller's side of the recording. A write failure — a full disk — used to throw out
+     * of the packet's processing before the listeners ran, so STT and VAD lost every packet
+     * of every call, with a warning logged fifty times a second each. Now the first failure
+     * stops the recording for this call and is logged once; the call itself carries on.
+     */
+    private void recordCaller(short[] pcm, int length) {
+        if (recorderFailed) {
+            return;
+        }
+        try {
+            recorder.writeCaller(pcm, length);
+        } catch (Exception e) {
+            recorderFailed = true;
+            log.error("Caller recording on port {} failed — not recording the rest of this call: {}",
+                    port, e.getMessage());
         }
     }
 

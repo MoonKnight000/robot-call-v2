@@ -65,6 +65,18 @@ public class CallTechnicalEntity {
     @Column(name = "max_llm_latency_ms")
     private Integer maxLlmLatencyMs;
 
+    @Column(name = "rtp_packets_received")
+    private Integer rtpPacketsReceived;
+
+    @Column(name = "rtp_packets_lost")
+    private Integer rtpPacketsLost;
+
+    @Column(name = "rtp_jitter_ms")
+    private Integer rtpJitterMs;
+
+    @Column(name = "rtp_mos")
+    private Double rtpMos;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -202,6 +214,38 @@ public class CallTechnicalEntity {
 
     public void setMaxLlmLatencyMs(Integer maxLlmLatencyMs) {
         this.maxLlmLatencyMs = maxLlmLatencyMs;
+    }
+
+    public Integer getRtpPacketsReceived() {
+        return rtpPacketsReceived;
+    }
+
+    public void setRtpPacketsReceived(Integer rtpPacketsReceived) {
+        this.rtpPacketsReceived = rtpPacketsReceived;
+    }
+
+    public Integer getRtpPacketsLost() {
+        return rtpPacketsLost;
+    }
+
+    public void setRtpPacketsLost(Integer rtpPacketsLost) {
+        this.rtpPacketsLost = rtpPacketsLost;
+    }
+
+    public Integer getRtpJitterMs() {
+        return rtpJitterMs;
+    }
+
+    public void setRtpJitterMs(Integer rtpJitterMs) {
+        this.rtpJitterMs = rtpJitterMs;
+    }
+
+    public Double getRtpMos() {
+        return rtpMos;
+    }
+
+    public void setRtpMos(Double rtpMos) {
+        this.rtpMos = rtpMos;
     }
 
     public Instant getCreatedAt() {

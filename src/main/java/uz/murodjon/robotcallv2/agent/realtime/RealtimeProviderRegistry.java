@@ -18,8 +18,8 @@ import java.util.Map;
  * <p>Empty is a valid state, and the reason this is a registry rather than a selector
  * like {@code SttProviderSelector}: a deployment with no realtime engine wired is
  * expected, and must boot. What it must <em>not</em> do is let a company select a mode
- * its calls cannot run — {@code AiAgentService} reads {@link #names()} for exactly
- * that check.
+ * its calls cannot run — {@code AiAgentCatalogService} (the engine options) and
+ * {@code AiAgentEngineGuard} (agent validation) read {@link #names()} for exactly that check.
  */
 @Component
 public class RealtimeProviderRegistry {
@@ -82,6 +82,18 @@ public class RealtimeProviderRegistry {
     /** Whether {@code providerName} is implemented and enabled in this build. */
     public boolean exists(String providerName) {
         return providerName != null && byName.containsKey(providerName.toLowerCase());
+    }
+
+    /**
+     * Whether the engine {@code providerName} resolves to — blank meaning the configured
+     * default, as in {@link #findForCall} — cannot call tools
+     * ({@link RealtimeProvider#lacksToolCalling}). False when nothing resolves.
+     */
+    public boolean lacksToolCalling(String providerName) {
+        RealtimeProvider provider = providerName == null || providerName.isBlank()
+                ? defaultProvider
+                : byName.get(providerName.toLowerCase());
+        return provider != null && provider.lacksToolCalling();
     }
 
     /** Whether any engine could serve a call at all — what gates selecting the mode. */

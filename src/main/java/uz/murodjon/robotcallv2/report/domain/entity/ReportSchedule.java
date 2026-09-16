@@ -27,5 +27,10 @@ public record ReportSchedule(
         Instant lastSentAt,
         Instant createdAt
 ) {
+
+    /** A schedule to create — id, company, enabled, lastSentAt and createdAt are the adapter's to fill in. */
+    public static ReportSchedule requested(String email, ReportPeriodicity periodicity, String format, Long campaignId) {
+        return new ReportSchedule(0, 0, email, periodicity, format, campaignId, true, null, null);
+    }
 }
 

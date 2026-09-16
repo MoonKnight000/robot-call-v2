@@ -9,5 +9,8 @@ public interface ProfileScheduleUseCase {
 
     List<ScheduleSlot> find();
 
+    /** One user's working hours — what the operator queue reads to know who is on shift. */
+    List<ScheduleSlot> findByUserId(long userId);
+
     List<ScheduleSlot> update(long companyId, UpdateScheduleRequest request);
 }

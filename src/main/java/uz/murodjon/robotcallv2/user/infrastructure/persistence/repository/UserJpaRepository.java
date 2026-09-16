@@ -31,6 +31,8 @@ public interface UserJpaRepository extends JpaRepository<UserEntity, Long> {
 
     boolean existsByUsername(String username);
 
+    boolean existsByPasswordHash(String passwordHash);
+
     @Query("SELECT COUNT(u) > 0 FROM UserEntity u WHERE u.company.id = :companyId")
     boolean existsByCompanyId(@Param("companyId") long companyId);
 
@@ -50,6 +52,13 @@ public interface UserJpaRepository extends JpaRepository<UserEntity, Long> {
 
     @Query("SELECT u.id, u.name FROM UserEntity u WHERE u.id IN :ids AND u.company.id = :companyId")
     List<Object[]> findNamesByIds(@Param("ids") Collection<Long> ids, @Param("companyId") long companyId);
+
+    /** Rows of (role id, user count) for the company's users. */
+    @Query("SELECT u.role.id, COUNT(u) FROM UserEntity u WHERE u.company.id = :companyId GROUP BY u.role.id")
+    List<Object[]> countByCompanyIdGroupedByRoleId(@Param("companyId") long companyId);
+
+    @Query("SELECT u.id FROM UserEntity u WHERE u.company.id = :companyId AND u.role.id = :roleId")
+    List<Long> findIdsByCompanyIdAndRoleId(@Param("companyId") long companyId, @Param("roleId") long roleId);
 
     @Modifying
     @Query("UPDATE UserEntity u SET u.lastLoginAt = :now WHERE u.id = :id")

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -17,13 +18,20 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 import uz.murodjon.robotcallv2.apikey.application.port.input.ApiKeyUseCase;
-import uz.murodjon.robotcallv2.auth.application.service.JwtTokenService;
+import uz.murodjon.robotcallv2.auth.application.port.input.AccessTokenUseCase;
+import uz.murodjon.robotcallv2.auth.application.port.input.StreamTicketUseCase;
 import uz.murodjon.robotcallv2.auth.infrastructure.config.JwtProperties;
+import uz.murodjon.robotcallv2.shared.ratelimit.RateLimiter;
 
 import java.util.List;
 
@@ -53,36 +61,44 @@ public class SecurityConfig {
 
     private final SecurityProperties securityProperties;
     private final JwtProperties jwtProperties;
-    private final JwtTokenService jwtTokenService;
+    private final AccessTokenUseCase accessTokenUseCase;
 
-    public SecurityConfig(SecurityProperties securityProperties, JwtProperties jwtProperties, JwtTokenService jwtTokenService) {
+    public SecurityConfig(SecurityProperties securityProperties, JwtProperties jwtProperties,
+                          AccessTokenUseCase accessTokenUseCase) {
         this.securityProperties = securityProperties;
         this.jwtProperties = jwtProperties;
-        this.jwtTokenService = jwtTokenService;
+        this.accessTokenUseCase = accessTokenUseCase;
     }
 
     @PostConstruct
     public void warnIfUnconfigured() {
         if (!jwtProperties.configured()) {
-            log.error("voice-agent.security.jwt.secret (env JWT_SECRET) is not set — nobody "
-                    + "can log in and every /api/** request will be rejected with 401.");
+            log.error("voice-agent.security.jwt.secret (env JWT_SECRET) is blank, shorter than 32 characters "
+                    + "or still a CHANGE_ME placeholder — nobody can log in and every /api/** request "
+                    + "will be rejected with 401.");
         }
     }
 
-    /** Used to hash {@code app_user.password_hash} (ROADMAP E.1) — never store plaintext. */
+    /**
+     * Used to hash {@code app_user.password_hash} (ROADMAP E.1) — never store plaintext.
+     * Cost 12: ~250 ms per check on current hardware, which a login never notices and an
+     * offline crack of a leaked table feels for every guess.
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(12);
     }
 
     /**
-     * {@code apiKeyUseCase} is a method parameter rather than a constructor dependency on
-     * purpose: this class also defines the {@link PasswordEncoder} half the application
-     * needs, and asking for a service in the constructor makes that encoder unavailable
-     * until the whole service graph is built.
+     * The services are method parameters rather than constructor dependencies on purpose:
+     * this class also defines the {@link PasswordEncoder} half the application needs, and
+     * asking for a service in the constructor makes that encoder unavailable until the
+     * whole service graph is built.
      */
     @Bean
-    public SecurityFilterChain apiSecurity(HttpSecurity http, ApiKeyUseCase apiKeyUseCase) throws Exception {
+    public SecurityFilterChain apiSecurity(HttpSecurity http, ApiKeyUseCase apiKeyUseCase, RateLimiter rateLimiter,
+                                           RateLimitProperties rateLimitProperties,
+                                           StreamTicketUseCase streamTicketUseCase) throws Exception {
         http
                 // Stateless header auth: no session to fix, no form to forge.
                 .csrf(csrf -> csrf.disable())
@@ -92,9 +108,30 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 // 401 instead of a redirect to a login page that does not exist.
                 .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .headers(headers -> headers
+                        // The API serves JSON, audio and files, never a page: nothing under
+                        // /api may load a script, a frame or a sub-resource. Scoped to /api so
+                        // the static test panel, the widget script and the springdoc UI still
+                        // render.
+                        .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
+                                PathPatternRequestMatcher.withDefaults().matcher("/api/**"),
+                                new StaticHeadersWriter("Content-Security-Policy",
+                                        "default-src 'none'; frame-ancestors 'none'")))
+                        // Always, not only on a request Spring can see was TLS: behind a
+                        // reverse proxy every request arrives as plain HTTP.
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000)
+                                .requestMatcher(AnyRequestMatcher.INSTANCE))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
+                // Before any credential is looked at: a flood on login or the public widget
+                // is answered 429 without touching the password hash or the database.
+                .addFilterBefore(new RateLimitFilter(rateLimiter, rateLimitProperties),
+                        UsernamePasswordAuthenticationFilter.class)
                 // The filter never rejects on its own, it only populates the context (see its
                 // javadoc); an unauthenticated request is stopped by authorizeHttpRequests below.
-                .addFilterBefore(new JwtAuthFilter(jwtTokenService), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new JwtAuthFilter(accessTokenUseCase, streamTicketUseCase), RateLimitFilter.class)
                 // After the JWT filter, and it steps aside when that one has already
                 // decided: a request carrying both a Bearer token and a key is the person,
                 // not the key.
@@ -105,6 +142,11 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // Probes carry no data and must work without a secret.
                     auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
+                    // Metrics describe the whole platform — every tenant's calls, the providers,
+                    // the tool tags — so they are for platform staff. Any logged-in user or
+                    // tenant API key used to be able to read them (an API key can never hold
+                    // PLATFORM_ADMIN: ApiKeyScopes).
+                    auth.requestMatchers("/actuator/**").hasAuthority("PLATFORM_ADMIN");
                     // Logging in, activating an invite, refreshing an expired access token, or
                     // recovering a forgotten password all happen without a currently-valid
                     // Bearer token.
@@ -112,9 +154,9 @@ public class SecurityConfig {
                             "/api/auth/refresh", "/api/auth/uysot/callback", "/api/auth/forgot-password",
                             "/api/auth/reset-password").permitAll();
                     // The Uysot CRM OAuth redirect (§11 integrations) lands here straight from
-                    // the Uysot server, carrying no Bearer token — the signed `state`
+                    // the Uysot server, carrying no Bearer token — the one-time `state`
                     // param authenticates it instead (CrmIntegrationService
-                    // #verifyState).
+                    // #consumeState).
                     auth.requestMatchers(HttpMethod.GET, "/api/settings/integrations/uysot/callback").permitAll();
                     // The embed script on a customer's own website reads its widget's
                     // configuration and books its calls before anyone has logged into
@@ -124,13 +166,29 @@ public class SecurityConfig {
                     // cap what a leaked key can spend (AgentWidgetService, WidgetCallGate).
                     auth.requestMatchers(HttpMethod.GET, "/api/public/widgets/*/config").permitAll();
                     auth.requestMatchers(HttpMethod.POST, "/api/public/widgets/*/session").permitAll();
+                    // The same widget's text channel (UNIVERSAL-OPERATOR-PLAN E.4). Open for the
+                    // same reason and capped the same way: the origin list, and the agent's
+                    // chats of the day counted in Redis (ChatService, RedisChatQuotaAdapter).
+                    auth.requestMatchers(HttpMethod.POST, "/api/public/widgets/*/chat",
+                            "/api/public/widgets/*/chat/*").permitAll();
+                    // Telegram posts a bot's updates here. It has no account on this platform,
+                    // so what makes an update genuine is the secret it carries in
+                    // X-Telegram-Bot-Api-Secret-Token — checked in TelegramService, in constant
+                    // time, against the one this bot was registered with.
+                    auth.requestMatchers(HttpMethod.POST, "/api/public/telegram/*").permitAll();
                     // The embed script itself, served from static resources — it is what a
                     // visitor's browser fetches first, before it knows anything at all.
                     auth.requestMatchers(HttpMethod.GET, "/widgets/**").permitAll();
+                    // Payment providers' servers post here with no Bearer token. Each call is
+                    // authenticated by the billing use case instead: Payme by HTTP Basic
+                    // Paycom:<key> (PaymeMerchantService), Click by the md5 sign_string over
+                    // its secret key (ClickMerchantService).
+                    auth.requestMatchers(HttpMethod.POST, "/api/billing/payme/callback",
+                            "/api/billing/click/prepare", "/api/billing/click/complete").permitAll();
                     // Everything else needs an identity; which permission that identity has to
                     // hold is declared on the endpoint itself (@PreAuthorize). Routes with no
                     // annotation — /api/auth/me, /api/profile/**, /api/notifications/**,
-                    // /api/files/**, /api/search — are open to any logged-in user on purpose:
+                    // /api/files/** — are open to any logged-in user on purpose:
                     // they act on the row of the caller or on data the company already shares.
                     auth.anyRequest().authenticated();
                 });
@@ -138,23 +196,41 @@ public class SecurityConfig {
     }
 
     /**
-     * Permissive CORS configuration supporting localhost frontend dev servers and configured domains.
+     * Request headers the console may send cross-origin: what the backend reads, plus what
+     * the console's fetch-based SSE client adds ({@code Last-Event-ID} on a reconnect).
+     */
+    private static final List<String> CONSOLE_REQUEST_HEADERS = List.of(
+            HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE, "X-Api-Key", HttpHeaders.RANGE,
+            HttpHeaders.ACCEPT, HttpHeaders.ACCEPT_LANGUAGE, "Last-Event-ID");
+
+    /** Response headers the console's script may read: downloads, ranged audio and 429 back-off. */
+    private static final List<String> CONSOLE_EXPOSED_HEADERS = List.of(
+            HttpHeaders.CONTENT_DISPOSITION, HttpHeaders.CONTENT_RANGE, HttpHeaders.ACCEPT_RANGES,
+            HttpHeaders.CONTENT_LENGTH, HttpHeaders.RETRY_AFTER);
+
+    /**
+     * CORS for the console: the configured origins, with credentials (the refresh token is
+     * an HttpOnly cookie). An empty list means no cross-origin caller at all — never
+     * "everyone": a wildcard with credentials would let any page a logged-in operator visits
+     * call this API as them. The header lists are explicit for the same reason — a new
+     * header crossing origins is a decision, not a default.
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        List<String> origins = securityProperties.allowedOrigins();
-        if (origins == null || origins.isEmpty()) {
-            configuration.setAllowedOriginPatterns(List.of("*"));
-        } else {
-            configuration.setAllowedOriginPatterns(origins);
-        }
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
+        List<String> origins = securityProperties.allowedOrigins();
+        if (origins != null && !origins.isEmpty()) {
+            CorsConfiguration configuration = new CorsConfiguration();
+            configuration.setAllowedOriginPatterns(origins);
+            configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
+            configuration.setAllowedHeaders(CONSOLE_REQUEST_HEADERS);
+            configuration.setExposedHeaders(CONSOLE_EXPOSED_HEADERS);
+            configuration.setAllowCredentials(true);
+            source.registerCorsConfiguration("/**", configuration);
+        } else {
+            log.warn("voice-agent.security.allowed-origins (CORS_ALLOWED_ORIGINS) is empty — no browser "
+                    + "origin other than this app's own may call the API");
+        }
 
         // The embed script runs on the customer's own website, which is by definition not
         // one of our configured origins — locking `allowed-origins` down for the console

@@ -66,6 +66,7 @@ Authorization: Bearer {{auth_token}}
   "zeroPiiRetention": false,
   "storeCallAudio": true,
   "conversationRetentionDays": 90,
+  "realtimeFactsDelivery": "TOOL",
   "maxConversationDurationSeconds": 600,
   "silenceEndCallTimeoutSeconds": 25,
   "turnTimeoutSeconds": 15,
@@ -258,6 +259,7 @@ Authorization: Bearer {{auth_token}}
   "storeCallAudio": true,
   "zeroPiiRetention": false,
   "conversationRetentionDays": 60,
+  "realtimeFactsDelivery": "TOOL",
   "initiationWebhook": {
     "url": "https://api.example.com/webhooks/call-started",
     "headers": { "Authorization": "Bearer secret_token" },

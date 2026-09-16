@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
@@ -22,6 +25,10 @@ import java.util.Set;
  */
 @Entity
 @Table(name = "campaign")
+// An edit loads the row, changes the editable fields and saves it. Written in full, that
+// save put back the status and last_run_at it had loaded — undoing a dialer's
+// completeIfFinished or a platform pause that landed in between. Only changed columns now.
+@DynamicUpdate
 public class CampaignEntity {
 
     @Id
@@ -65,7 +72,10 @@ public class CampaignEntity {
     @JoinColumn(name = "created_by")
     private UserEntity createdBy;
 
+    // Eager (the mapper reads it outside any transaction); SUBSELECT: the dialer's
+    // every-tick findActive loads all active campaigns' days in one query, not one each.
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
     @CollectionTable(name = "campaign_dial_day", joinColumns = @JoinColumn(name = "campaign_id"))
     @Enumerated(EnumType.STRING)
     @Column(name = "day", nullable = false)
@@ -97,6 +107,38 @@ public class CampaignEntity {
 
     @Column(name = "last_run_at")
     private Instant lastRunAt;
+
+    @Column(name = "priority", nullable = false)
+    private int priority = 3;
+
+    /** Per-disposition retry rules as JSON; null when the campaign uses the defaults. */
+    @Column(name = "retry_policy")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String retryPolicy;
+
+    /** When a SCHEDULED campaign goes ACTIVE; null starts on the operator's command. */
+    @Column(name = "start_at")
+    private Instant startAt;
+
+    /** When an ACTIVE campaign is closed as COMPLETED regardless of targets left; null never. */
+    @Column(name = "end_at")
+    private Instant endAt;
+
+    @Column(name = "budget_uzs")
+    private Long budgetUzs;
+
+    @Column(name = "daily_budget_uzs")
+    private Long dailyBudgetUzs;
+
+    /**
+     * Bumped by an edit only. The dialer's status / last_run_at statements in
+     * CampaignJpaRepository neither check nor bump it: an edit never writes those columns
+     * (see @DynamicUpdate above), and a dialer tick must never fail because someone had the
+     * form open.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     public Long getId() {
         return id;
@@ -283,5 +325,57 @@ public class CampaignEntity {
 
     public void setLastRunAt(Instant lastRunAt) {
         this.lastRunAt = lastRunAt;
+    }
+
+    public int getPriority() {
+        return priority;
+    }
+
+    public void setPriority(int priority) {
+        this.priority = priority;
+    }
+
+    public String getRetryPolicy() {
+        return retryPolicy;
+    }
+
+    public void setRetryPolicy(String retryPolicy) {
+        this.retryPolicy = retryPolicy;
+    }
+
+    public Instant getStartAt() {
+        return startAt;
+    }
+
+    public void setStartAt(Instant startAt) {
+        this.startAt = startAt;
+    }
+
+    public Instant getEndAt() {
+        return endAt;
+    }
+
+    public void setEndAt(Instant endAt) {
+        this.endAt = endAt;
+    }
+
+    public Long getBudgetUzs() {
+        return budgetUzs;
+    }
+
+    public void setBudgetUzs(Long budgetUzs) {
+        this.budgetUzs = budgetUzs;
+    }
+
+    public Long getDailyBudgetUzs() {
+        return dailyBudgetUzs;
+    }
+
+    public void setDailyBudgetUzs(Long dailyBudgetUzs) {
+        this.dailyBudgetUzs = dailyBudgetUzs;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

@@ -1,0 +1,217 @@
+package uz.murodjon.robotcallv2.campaign.application.service;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
+import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.campaign.application.dto.TargetImportResult;
+import uz.murodjon.robotcallv2.campaign.application.dto.UpdateCampaignRequest;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort;
+import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
+import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
+import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
+import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.util.SecretCipher;
+import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
+
+import java.time.Clock;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.*;
+
+class CampaignServiceTest {
+
+    private static final long CAMPAIGN_ID = 3L;
+    private static final long AI_AGENT_ID = 7L;
+    private static final long TARGET_ID = 42L;
+
+    private CampaignRepository campaigns;
+    private CampaignTargetRepository targets;
+    private DoNotCallUseCase doNotCallUseCase;
+    private AiAgentUseCase aiAgents;
+    private UserUseCase users;
+    private CompanyConfigUseCase companyConfig;
+    private RetryProperties retryProperties;
+    private AuditUseCase audit;
+    private NotificationUseCase notifications;
+    private TtsWarmup ttsWarmup;
+    private TargetSourceRepository targetSources;
+    private Clock clock;
+    private CampaignService service;
+
+    @BeforeEach
+    void setUp() {
+        campaigns = mock(CampaignRepository.class);
+        targets = mock(CampaignTargetRepository.class);
+        doNotCallUseCase = mock(DoNotCallUseCase.class);
+        aiAgents = mock(AiAgentUseCase.class);
+        targetSources = mock(TargetSourceRepository.class);
+        users = mock(UserUseCase.class);
+        companyConfig = mock(CompanyConfigUseCase.class);
+        retryProperties = new RetryProperties(180, 15, 1200, true);
+        audit = mock(AuditUseCase.class);
+        notifications = mock(NotificationUseCase.class);
+        ttsWarmup = mock(TtsWarmup.class);
+        clock = Clock.systemDefaultZone();
+
+        service = new CampaignService(campaigns, targets, doNotCallUseCase, aiAgents,
+                users, companyConfig, retryProperties, audit, notifications, ttsWarmup,
+                targetSources, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
+                mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), clock);
+    }
+
+    private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
+        return new Campaign(
+                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
+                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(DayOfWeek.MONDAY), maxAttempts,
+                retryIntervalMinutes, 5, 0, AI_AGENT_ID, 1L, null,
+                RecurrenceType.ONCE, null, null, false, null);
+    }
+
+    @Test
+    void filterCampaignsDelegatesToRepositoryWithConsistentPagingAndEnrichesTargetStats() {
+        Campaign c = campaign(3, 0);
+        CampaignFilter filter = new CampaignFilter(0, 10, null, "test", CampaignStatus.ACTIVE,
+                CampaignType.DEBT_COLLECTION, 1L, null, null, null, null);
+        when(campaigns.findAll(1L, filter)).thenReturn(List.of(c));
+        when(campaigns.countByFilter(1L, filter)).thenReturn(1L);
+        when(targets.findStatsByCampaignIds(1L, Set.of(CAMPAIGN_ID))).thenReturn(
+                Map.of(CAMPAIGN_ID, new CampaignTargetStats(50, 20, 30, 15)));
+
+        var result = service.filterCampaigns(1L, filter);
+
+        assertThat(result.data()).hasSize(1);
+        var row = result.data().getFirst();
+        assertThat(row.id()).isEqualTo(CAMPAIGN_ID);
+        assertThat(row.totalTargets()).isEqualTo(50L);
+        assertThat(row.calledTargets()).isEqualTo(20L);
+        assertThat(row.pendingTargets()).isEqualTo(30L);
+        assertThat(row.completedTargets()).isEqualTo(15L);
+        assertThat(result.totalElements()).isEqualTo(1L);
+        assertThat(result.currentPage()).isZero();
+    }
+
+    @Test
+    void requireCampaignRowEnrichesTargetStats() {
+        Campaign c = campaign(3, 0);
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(c);
+        when(targets.findStatsByCampaignId(1L, CAMPAIGN_ID)).thenReturn(
+                new CampaignTargetStats(100, 45, 55, 30));
+
+        var row = service.requireCampaignRow(1L, CAMPAIGN_ID);
+
+        assertThat(row.id()).isEqualTo(CAMPAIGN_ID);
+        assertThat(row.totalTargets()).isEqualTo(100L);
+        assertThat(row.calledTargets()).isEqualTo(45L);
+        assertThat(row.pendingTargets()).isEqualTo(55L);
+        assertThat(row.completedTargets()).isEqualTo(30L);
+    }
+
+    @Test
+    void isNullSafeAboutMissingCampaign() {
+        when(targets.find(1L, TARGET_ID)).thenReturn(new CampaignTarget(
+                TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 5, false));
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(null);
+
+        service.applyOutcome(1L, TARGET_ID, Disposition.NO_ANSWER);
+
+        // Falls back to maxAttempts=3, and 5 attempts is already past it.
+        verify(targets).updateStatus(eq(TARGET_ID), eq(TargetStatus.EXHAUSTED), isNull());
+    }
+
+    /** One do-not-call lookup and one batched insert for the whole file; the counters stay what they were per row. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void importTargetsCsvLooksUpDoNotCallOnceAndInsertsInOneBatch() {
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
+        when(targets.findQueuedPhones(1L, CAMPAIGN_ID)).thenReturn(Set.of("+998901110002"));
+        when(doNotCallUseCase.findBlockedPhones(1L, List.of("+998901110001", "+998901110003", "+998901110004")))
+                .thenReturn(Set.of("+998901110003"));
+        // +998901110004 was queued by someone else after the queued numbers were read.
+        when(targets.insertAllQueued(eq(1L), anyList()))
+                .thenReturn(Map.of("+998901110001", 100L, "+998901110003", 101L));
+        String csv = "phone\n+998901110001\n+998901110002\n+998901110001\n+998901110003\n+998901110004\n";
+
+        TargetImportResult result = service.importTargetsCsv(1L, CAMPAIGN_ID, csv);
+
+        assertThat(result.added()).isEqualTo(2);
+        assertThat(result.targetIds()).containsExactly(100L, 101L);
+        assertThat(result.skippedDuplicates()).isEqualTo(3);
+        assertThat(result.skippedDoNotCall()).isEqualTo(1);
+        verify(doNotCallUseCase, never()).contains(anyLong(), anyString());
+        ArgumentCaptor<List<CampaignTarget>> rows = ArgumentCaptor.forClass(List.class);
+        verify(targets, times(1)).insertAllQueued(eq(1L), rows.capture());
+        assertThat(rows.getValue()).extracting(CampaignTarget::phone, CampaignTarget::doNotCall).containsExactly(
+                tuple("+998901110001", false), tuple("+998901110003", true), tuple("+998901110004", false));
+    }
+
+    /** The rows are written by campaign id alone, so another company's campaign must not take them. */
+    @Test
+    void importTargetsCsvIntoACampaignTheCompanyDoesNotHaveIsNotFound() {
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.importTargetsCsv(1L, CAMPAIGN_ID, "phone\n+998901110001\n"))
+                .isInstanceOf(NotFoundException.class);
+        verify(targets, never()).insertAllQueued(anyLong(), anyList());
+    }
+
+    @Test
+    void updateCampaignAnswers409WhenTheCampaignWasSavedAfterItWasRead() {
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.updateCampaign(1L, CAMPAIGN_ID, updateRequest(5L)))
+                .isInstanceOf(ConflictException.class);
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).update(eq(1L), eq(CAMPAIGN_ID), written.capture());
+        assertThat(written.getValue().version()).isEqualTo(5L);
+    }
+
+    /** A client that predates the version field edits against the version just read. */
+    @Test
+    void updateCampaignWithoutVersionUsesTheOneJustRead() {
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
+
+        service.updateCampaign(1L, CAMPAIGN_ID, updateRequest(null));
+
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).update(eq(1L), eq(CAMPAIGN_ID), written.capture());
+        assertThat(written.getValue().version()).isZero();
+    }
+
+    private static UpdateCampaignRequest updateRequest(Long version) {
+        return new UpdateCampaignRequest("c", AI_AGENT_ID, LocalTime.of(9, 0), LocalTime.of(20, 0),
+                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
+                null, null, null, null, version);
+    }
+}

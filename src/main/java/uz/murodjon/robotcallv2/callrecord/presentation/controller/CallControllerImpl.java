@@ -20,8 +20,8 @@ public class CallControllerImpl implements CallController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<LiveCallRow>>> live() {
-        return ResponseEntity.ok(ResponseData.ok(useCase.liveCalls()));
+    public ResponseEntity<ResponseData<List<LiveCallRow>>> live(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.findLiveCalls(companyId)));
     }
 
     @Override
@@ -41,13 +41,14 @@ public class CallControllerImpl implements CallController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<PlayResponse>> play(String channelId, String file) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.play(channelId, file)));
+    public ResponseEntity<ResponseData<PlayResponse>> play(long companyId, String channelId, String file) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.play(companyId, channelId, file)));
     }
 
     @Override
-    public ResponseEntity<ResponseData<SayResponse>> say(String channelId, String text, String language, String voice) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.say(channelId, text, language, voice)));
+    public ResponseEntity<ResponseData<SayResponse>> say(long companyId, String channelId, String text, String language,
+                                                         String voice) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.say(companyId, channelId, text, language, voice)));
     }
 
     @Override
@@ -56,12 +57,50 @@ public class CallControllerImpl implements CallController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<TransferResponse>> transfer(long companyId, String channelId) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.transfer(companyId, channelId)));
+    public ResponseEntity<ResponseData<TransferResponse>> transfer(long companyId, String channelId,
+                                                                   TransferCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.transfer(companyId, channelId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TransferResponse>> hold(long companyId, String channelId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.hold(companyId, channelId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TransferResponse>> unhold(long companyId, String channelId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.unhold(companyId, channelId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TransferResponse>> consult(long companyId, String channelId,
+                                                                  TransferCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.startConsult(companyId, channelId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TransferResponse>> completeConsult(long companyId, String channelId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.completeConsult(companyId, channelId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TransferResponse>> cancelConsult(long companyId, String channelId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.cancelConsult(companyId, channelId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<MonitorCallResponse>> monitor(long companyId, String channelId,
+                                                                     MonitorCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.monitor(companyId, channelId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ClickToCallResponse>> clickToCall(long companyId, ClickToCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.clickToCall(companyId, request)));
     }
 
     @Override
     public ResponseEntity<StreamingResponseBody> listen(long companyId, String channelId) {
-        return ResponseEntity.ok(useCase.listen(companyId, channelId));
+        return ResponseEntity.<StreamingResponseBody>ok(useCase.listen(companyId, channelId)::writeTo);
     }
 }

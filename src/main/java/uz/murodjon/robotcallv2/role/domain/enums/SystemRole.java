@@ -19,7 +19,9 @@ public enum SystemRole {
     ADMIN("Administrator", true),
     OPERATOR("Operator", true),
     VIEWER("Viewer", true),
-    SUPERADMIN("Superadmin", false);
+    SUPERADMIN("Superadmin", false),
+    /** Runs the operator floor: everything an operator does, plus monitoring, queue membership and the call review inbox. */
+    SUPERVISOR("Supervisor", true);
 
     private final String label;
     private final boolean assignableByCompany;
@@ -57,7 +59,27 @@ public enum SystemRole {
                     Permission.REPORT_READ,
                     Permission.DO_NOT_CALL_READ, Permission.DO_NOT_CALL_EDIT,
                     Permission.INBOUND_ROUTE_READ,
+                    Permission.CALL_QUEUE_READ,
+                    Permission.MISSED_CALL_READ, Permission.MISSED_CALL_EDIT,
                     Permission.VOICE_READ);
+            case SUPERVISOR -> EnumSet.of(
+                    Permission.DASHBOARD_READ,
+                    Permission.CAMPAIGN_READ, Permission.CAMPAIGN_EDIT,
+                    Permission.CALL_READ, Permission.CALL_EDIT,
+                    Permission.LIVE_READ, Permission.LIVE_EDIT, Permission.CALL_MONITOR,
+                    Permission.OPERATOR_READ, Permission.OPERATOR_EDIT,
+                    Permission.CONTACT_READ, Permission.CONTACT_EDIT,
+                    Permission.AI_AGENT_READ,
+                    Permission.SCENARIO_READ, Permission.KNOWLEDGE_BASE_READ,
+                    Permission.REPORT_READ,
+                    Permission.DO_NOT_CALL_READ, Permission.DO_NOT_CALL_EDIT,
+                    Permission.INBOUND_ROUTE_READ,
+                    Permission.CALL_FLOW_READ,
+                    Permission.CALL_QUEUE_READ, Permission.CALL_QUEUE_EDIT,
+                    Permission.MISSED_CALL_READ, Permission.MISSED_CALL_EDIT,
+                    Permission.USER_READ,
+                    Permission.VOICE_READ,
+                    Permission.QUALITY_REVIEW_READ, Permission.QUALITY_REVIEW_EDIT);
             case VIEWER -> EnumSet.of(
                     Permission.DASHBOARD_READ,
                     Permission.CAMPAIGN_READ,
@@ -68,7 +90,8 @@ public enum SystemRole {
                     Permission.SCENARIO_READ, Permission.KNOWLEDGE_BASE_READ,
                     Permission.REPORT_READ,
                     Permission.DO_NOT_CALL_READ,
-                    Permission.INBOUND_ROUTE_READ);
+                    Permission.INBOUND_ROUTE_READ,
+                    Permission.CALL_QUEUE_READ);
         };
     }
 

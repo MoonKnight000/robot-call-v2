@@ -18,7 +18,7 @@ import java.util.List;
  * has to be provisioned.
  *
  * <p>The model is optional. A build with no embedding model wired must still accept
- * uploads and still run calls: {@link #available()} is false, chunks are stored with no
+ * uploads and still run calls: {@link #isAvailable()} is false, chunks are stored with no
  * vector, and search falls back to keywords. That is worse retrieval, not a broken agent.
  */
 @Component
@@ -42,7 +42,7 @@ public class SpringAiTextEmbedderAdapter implements TextEmbedderPort {
     }
 
     @Override
-    public boolean available() {
+    public boolean isAvailable() {
         return embeddingModelProvider.getIfAvailable() != null;
     }
 

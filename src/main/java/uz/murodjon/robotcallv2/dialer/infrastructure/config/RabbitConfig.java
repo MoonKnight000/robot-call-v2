@@ -18,11 +18,11 @@ import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 @EnableRabbit
 public class RabbitConfig {
 
-    public static final String CALL_TASK_QUEUE = "call.tasks";
+
 
     @Bean
     public Queue callTaskQueue() {
-        return new Queue(CALL_TASK_QUEUE, true);
+        return new Queue(CallTask.QUEUE, true);
     }
 
     @Bean

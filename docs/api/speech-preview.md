@@ -141,6 +141,7 @@ async function stopAndTranscribe(provider, language) {
 |---|---|---|---|
 | 400 | `AUDIO_UPLOAD_FILE_MISSING` | `file` yo'q yoki 0 bayt | "Yozuv bo'sh" |
 | 400 | `AUDIO_UPLOAD_INVALID` | fayl audio deb tanilmadi (xabarda dekoder xatosi) | "Fayl formati noto'g'ri" |
+| 400 | `IMAGE_UPLOAD_READ_FAILED` | yuklangan faylni serverda o'qib bo'lmadi (ilgari bu holat ham `AUDIO_UPLOAD_INVALID` edi) | "Qayta yuboring" |
 | 400 | `AUDIO_UPLOAD_TOO_LONG` | 30 soniyadan uzun | yozishni 30 s da avtomatik to'xtatish tavsiya etiladi |
 | 400 | `ENGINE_STT_PROVIDER_UNKNOWN` | `provider` bu serverda yo'q (`message` da mavjudlar ro'yxati) | ro'yxatni `engine/options` dan yangilash |
 | 409 | `STT_PROVIDER_UNAVAILABLE` | serverda birorta STT provayder yoqilmagan | "STT sozlanmagan" |

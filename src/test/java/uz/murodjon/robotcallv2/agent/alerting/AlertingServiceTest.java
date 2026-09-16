@@ -3,9 +3,9 @@ package uz.murodjon.robotcallv2.agent.alerting;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
-import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
-import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
+import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -16,8 +16,8 @@ import static org.mockito.Mockito.*;
 
 class AlertingServiceTest {
 
-    private CallAttemptJpaRepository callAttemptJpaRepository;
-    private NotificationService notificationService;
+    private CallAttemptUseCase callAttemptUseCase;
+    private NotificationUseCase notificationService;
     private CompanyProperties companyProperties;
     private VoiceMetrics voiceMetrics;
     private AlertingProperties alertingProperties;
@@ -25,8 +25,8 @@ class AlertingServiceTest {
 
     @BeforeEach
     void setUp() {
-        callAttemptJpaRepository = mock(CallAttemptJpaRepository.class);
-        notificationService = mock(NotificationService.class);
+        callAttemptUseCase = mock(CallAttemptUseCase.class);
+        notificationService = mock(NotificationUseCase.class);
         companyProperties = new CompanyProperties();
         companyProperties.setDefaultId(1L);
         voiceMetrics = mock(VoiceMetrics.class);
@@ -39,46 +39,55 @@ class AlertingServiceTest {
                 5,    // checkMinutes
                 1000, // turnaroundBudgetMs
                 30,   // turnaroundMinTurns
-                0.4   // speculationMinHitRate
+                0.4,  // speculationMinHitRate
+                5,    // providerFailoverThreshold
+                3.5   // minMeanMos
         );
 
         alertingService = new AlertingService(
-                callAttemptJpaRepository,
+                callAttemptUseCase,
                 notificationService,
                 companyProperties,
                 voiceMetrics,
-                alertingProperties
+                alertingProperties,
+                AlertingServiceTest::runHere
         );
+    }
+
+    private static boolean runHere(String jobName, Runnable job) {
+        job.run();
+        return true;
     }
 
     @Test
     void checkSuccessRateDoesNothingWhenDisabled() {
         AlertingProperties disabledProperties = new AlertingProperties(
-                false, 30, 20, 0.3, 5, 1000, 30, 0.4);
+                false, 30, 20, 0.3, 5, 1000, 30, 0.4, 5, 3.5);
         AlertingService disabledService = new AlertingService(
-                callAttemptJpaRepository, notificationService, companyProperties, voiceMetrics, disabledProperties);
+                callAttemptUseCase, notificationService, companyProperties, voiceMetrics, disabledProperties,
+                AlertingServiceTest::runHere);
 
         disabledService.checkSuccessRate();
 
-        verifyNoInteractions(callAttemptJpaRepository);
+        verifyNoInteractions(callAttemptUseCase);
         verifyNoInteractions(notificationService);
     }
 
     @Test
     void checkSuccessRateSkipsWhenSampleTooSmall() {
-        when(callAttemptJpaRepository.countByEndedAtGreaterThanEqual(any(Instant.class))).thenReturn(10L);
+        when(callAttemptUseCase.countEndedSince(any(Instant.class))).thenReturn(10L);
 
         alertingService.checkSuccessRate();
 
-        verify(callAttemptJpaRepository).countByEndedAtGreaterThanEqual(any(Instant.class));
-        verifyNoMoreInteractions(callAttemptJpaRepository);
+        verify(callAttemptUseCase).countEndedSince(any(Instant.class));
+        verifyNoMoreInteractions(callAttemptUseCase);
         verifyNoInteractions(notificationService);
     }
 
     @Test
     void checkSuccessRateSkipsWhenRateAboveThreshold() {
-        when(callAttemptJpaRepository.countByEndedAtGreaterThanEqual(any(Instant.class))).thenReturn(100L);
-        when(callAttemptJpaRepository.countByEndedAtGreaterThanEqualAndDisposition(any(Instant.class), eq(Disposition.PROMISE_TO_PAY))).thenReturn(80L);
+        when(callAttemptUseCase.countEndedSince(any(Instant.class))).thenReturn(100L);
+        when(callAttemptUseCase.countEndedSinceWithDisposition(any(Instant.class), eq(Disposition.PROMISE_TO_PAY))).thenReturn(80L);
 
         alertingService.checkSuccessRate();
 
@@ -87,9 +96,9 @@ class AlertingServiceTest {
 
     @Test
     void checkSuccessRateFiresAlertWhenRateBelowThreshold() {
-        when(callAttemptJpaRepository.countByEndedAtGreaterThanEqual(any(Instant.class))).thenReturn(100L);
+        when(callAttemptUseCase.countEndedSince(any(Instant.class))).thenReturn(100L);
         // Only 20 answered out of 100 -> 20% < 30% threshold
-        when(callAttemptJpaRepository.countByEndedAtGreaterThanEqualAndDisposition(any(Instant.class), eq(Disposition.PROMISE_TO_PAY))).thenReturn(20L);
+        when(callAttemptUseCase.countEndedSinceWithDisposition(any(Instant.class), eq(Disposition.PROMISE_TO_PAY))).thenReturn(20L);
 
         alertingService.checkSuccessRate();
 
@@ -103,8 +112,45 @@ class AlertingServiceTest {
     }
 
     @Test
+    void checkSuccessRateCountsACompletedScenarioAsSuccess() {
+        when(callAttemptUseCase.countEndedSince(any(Instant.class))).thenReturn(100L);
+        // 10 promises + 30 completed = 40%, above the 30% threshold; the promises alone would alert.
+        when(callAttemptUseCase.countEndedSinceWithDisposition(any(Instant.class), eq(Disposition.PROMISE_TO_PAY))).thenReturn(10L);
+        when(callAttemptUseCase.countEndedSinceWithDisposition(any(Instant.class), eq(Disposition.COMPLETED))).thenReturn(30L);
+
+        alertingService.checkSuccessRate();
+
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void providerHealthAlertsOnABurstOfFailovers() {
+        when(voiceMetrics.mosTotals()).thenReturn(new double[]{0, 0});
+        when(voiceMetrics.counterTotal(anyString())).thenReturn(0.0);
+        alertingService.checkProviderHealth(); // baseline
+
+        when(voiceMetrics.counterTotal("voice.stt.failover")).thenReturn(4.0);
+        when(voiceMetrics.counterTotal("voice.realtime.fallbacks")).thenReturn(3.0);
+        alertingService.checkProviderHealth();
+
+        verify(notificationService).notify(eq(1L), eq(NotificationType.ERROR_OCCURRED), anyString(), anyString(), isNull());
+    }
+
+    @Test
+    void providerHealthAlertsOnPoorAudio() {
+        when(voiceMetrics.counterTotal(anyString())).thenReturn(0.0);
+        when(voiceMetrics.mosTotals()).thenReturn(new double[]{0, 0});
+        alertingService.checkProviderHealth(); // baseline
+
+        when(voiceMetrics.mosTotals()).thenReturn(new double[]{40, 40 * 3.1});
+        alertingService.checkProviderHealth();
+
+        verify(notificationService).notify(eq(1L), eq(NotificationType.ERROR_OCCURRED), anyString(), anyString(), isNull());
+    }
+
+    @Test
     void checkSuccessRateHandlesZeroTotalGracefully() {
-        when(callAttemptJpaRepository.countByEndedAtGreaterThanEqual(any(Instant.class))).thenReturn(0L);
+        when(callAttemptUseCase.countEndedSince(any(Instant.class))).thenReturn(0L);
 
         alertingService.checkSuccessRate();
 

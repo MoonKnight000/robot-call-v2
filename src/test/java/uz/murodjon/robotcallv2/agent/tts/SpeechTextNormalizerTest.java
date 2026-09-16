@@ -30,7 +30,14 @@ class SpeechTextNormalizerTest {
             // a reference number is a label, not a quantity: digit by digit, no hyphens
             "UY-2026-00123-sonli|UY ikki nol ikki olti nol nol bir ikki uch sonli",
             // too long to be a sum — a card or account number, read out digit by digit
-            "8600123456789012|sakkiz olti nol nol bir ikki uch to'rt besh olti yetti sakkiz to'qqiz nol bir ikki"
+            "8600123456789012|sakkiz olti nol nol bir ikki uch to'rt besh olti yetti sakkiz to'qqiz nol bir ikki",
+            // a phone number is twelve digits, i.e. inside the sum rule: read in the groups
+            // it is said in, so the caller can check it against the number they know
+            "+998901234567|to'qqiz yuz to'qson sakkiz, to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti",
+            "90 123 45 67|to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti",
+            // the hour a slot is booked for, not two figures either side of a colon
+            "soat 14:30 da|soat o'n to'rt o'ttiz da",
+            "9:00|to'qqiz"
     })
     void writesDigitsOutInUzbek(String written, String spoken) {
         assertThat(SpeechTextNormalizer.normalize(written, "uz-UZ")).isEqualTo(spoken);

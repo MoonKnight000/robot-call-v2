@@ -20,7 +20,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 Ssenariy `scenario_key` bo'yicha versiyalanadi: bir vaqtda bitta `is_active` versiya
 bo'ladi (`idx_scenario_active_key`), eski versiyalar tarixda qoladi. `ScenarioRow` da
-`scenarioKey` va `version` shuning uchun bor.
+`scenarioKey` va `version` shuning uchun bor. `version` optimistik qulf vazifasini ham
+bajaradi — pastdagi `PUT` ga qarang.
 
 ---
 
@@ -101,6 +102,10 @@ Huquq: **SCENARIO_EDIT**. Body (`CreateScenarioRequest`):
 `scenarioKey` ixtiyoriy (berilmasa generatsiya qilinadi), `name` va `definition` —
 majburiy. Javob — `ScenarioRow`.
 
+`definition` tekshiruvdan o'tmasa (`POST` ham, `PUT` ham) — `400 SCENARIO_DEFINITION_INVALID`;
+topilgan har bir muammo `errors[]` da alohida qator bo'ladi — `/validate` javobidagi
+`errors` bilan bir xil matnlar. `message` faqat muammolar sonini aytadi.
+
 ### `GET /api/scenarios/{id}` — Bitta ssenariy
 
 Huquq: **SCENARIO_READ**. Javob — `ScenarioRow`. Topilmasa — `404`.
@@ -108,7 +113,15 @@ Huquq: **SCENARIO_READ**. Javob — `ScenarioRow`. Topilmasa — `404`.
 ### `PUT /api/scenarios/{id}` — Tahrirlash
 
 Huquq: **SCENARIO_EDIT**. Body (`UpdateScenarioRequest`): `name`, `description`,
-`definition` (`name` va `definition` majburiy). `scenarioKey` o'zgarmaydi.
+`definition` (`name` va `definition` majburiy), ixtiyoriy `version` (`int`). `scenarioKey`
+o'zgarmaydi. Qator joyida yozilmaydi: joriy versiya `active=false` bo'ladi va `oxirgi + 1`
+versiya yangi `id` bilan yaratiladi — javobdagi `ScenarioRow` shu yangi qator.
+
+**Optimistik qulf.** Frontend o'qigan `ScenarioRow.version` ni `version` sifatida qaytaradi.
+Shu kalit bo'yicha orada yangiroq versiya saqlangan bo'lsa (yuborilgan `version` eng oxirgisi
+emas) — `409 ENTITY_VERSION_CONFLICT`, hech narsa yozilmaydi. `version` yuborilmasa — oxirgi
+versiya almashtiriladi (avvalgidek); ikki tahrir aynan bir vaqtga to'g'ri kelsa ikkinchisi
+`409` oladi (avval unique indeks tufayli `500` edi).
 
 ### `POST /api/scenarios/{id}/clone` — Nusxa olish
 
@@ -139,9 +152,10 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 | `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)) |
 | `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required" }` |
 | `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params`, `preToolSpeech` (tool ishlayotganda aytiladigan gap). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang |
-| `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description" }` |
+| `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description", "goal" }`. `goal: true` (ixtiyoriy, standart `false`) — ssenariy shu maydonni yozish uchun mavjud: qo'ng'iroq uni yozsa `GOAL_REACHED`, yozmasa `GOAL_NOT_REACHED` ([calls.md](calls.md)). Qiymat ssenariy tool'ining shu nomli argumentidan yoki kompaniya tool'ining `responseMapping` dagi shu nomli maydonidan keladi ([tools.md](tools.md)). Ko'pi bilan bitta maydon — aks holda `only one outcome field may be the goal` |
 | `rolePrompt` | string | Agentning roli va ohangi |
 | `guardrails` | `string[]` | Taqiqlar (§4.4) |
+| `styleExamples` | `StyleExample[]` | Ixtiyoriy. Promptdagi "✗ noto'g'ri → ✓ to'g'ri" misollari: `{ "language": "uz" \| "ru" \| null, "wrong", "right" }`. `language` qo'ng'iroq tilining prefiksi bilan solishtiriladi, `null` — hamma tillar. Ikkala pipeline'da (cascade va realtime) promptga qo'shiladi. `wrong` yoki `right` bo'sh bo'lsa — `a style example needs both 'wrong' and 'right'` |
 | `disclosureText` | string | Shu ssenariy uchun §11.1 ochiqlik matni — kompaniya matnidan ustun turadi |
 | `factWebhook` | `FactWebhook` | Qo'ng'iroqdan oldin faktlarni yangilash — pastga qarang |
 | — | — | Ovoz, persona va AI model sozlamalari ssenariyda **emas** — ular [AI agent](ai-agents.md)da. Bitta senariyni bir nechta agent turli ovoz va personada gapirishi mumkin |

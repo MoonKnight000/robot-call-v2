@@ -38,7 +38,7 @@ public class SentimentDetector {
             return CustomerSentiment.NEUTRAL;
         }
         if (ANGER_FRUSTRATION_UZ.matcher(text).find() || ANGER_FRUSTRATION_RU.matcher(text).find()) {
-            log.info("Detected FRUSTRATED customer sentiment: {}", text);
+            log.info("Detected FRUSTRATED customer sentiment");
             return CustomerSentiment.FRUSTRATED;
         }
         if (CONFUSION.matcher(text).find()) {

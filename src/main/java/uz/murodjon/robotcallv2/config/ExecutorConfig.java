@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -18,11 +17,6 @@ public class ExecutorConfig {
 
     @Bean(destroyMethod = "close")
     public ExecutorService callExecutor() {
-        return Executors.newVirtualThreadPerTaskExecutor();
-    }
-
-    @Bean(destroyMethod = "close", name = "webhookExecutor")
-    public Executor webhookExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
     }
 

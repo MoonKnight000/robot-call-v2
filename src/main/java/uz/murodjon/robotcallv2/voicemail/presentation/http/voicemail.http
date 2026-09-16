@@ -1,0 +1,29 @@
+### Create a voicemail box
+POST http://localhost:8080/api/voicemail-boxes
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Sotuv bo'limi",
+  "greetingText": "Assalomu alaykum. Hozir hech kim javob bera olmaydi. Signaldan keyin xabaringizni qoldiring, biz sizga qayta qo'ng'iroq qilamiz.",
+  "maxSeconds": 120,
+  "transcribe": true
+}
+
+### New voicemails
+POST http://localhost:8080/api/voicemails/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "status": "NEW" }
+
+### Mark one as heard
+PUT http://localhost:8080/api/voicemails/1/status
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "status": "HEARD" }
+
+### Listen
+GET http://localhost:8080/api/voicemails/1/audio
+Authorization: Bearer {{auth_token}}

@@ -15,7 +15,7 @@ public final class ContactValidator {
 
     public static void validatePhone(String phone) {
         if (phone == null || phone.isBlank()) {
-            throw new ValidationException(ErrorCode.PHONE_INVALID, "phone is required");
+            throw new ValidationException(ErrorCode.PHONE_INVALID, phone);
         }
         String normalized = phone.trim();
         if (!PHONE_PATTERN.matcher(normalized).matches()) {
