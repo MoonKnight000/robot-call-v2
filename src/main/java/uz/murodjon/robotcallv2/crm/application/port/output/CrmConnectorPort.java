@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.crm.application.port.output;
 
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
@@ -32,4 +34,18 @@ public interface CrmConnectorPort {
 
     /** @return whether the CRM accepted the call-log entry */
     boolean postCallHistory(CrmConnection connection, CrmCallHistoryEntry entry);
+
+    /**
+     * Creates a scheduled task/meeting in the CRM for a qualified lead.
+     *
+     * @return async request id or task id, or {@code null} when skipped/refused
+     */
+    String createTask(CrmConnection connection, CreateCrmTaskRequest request);
+
+    /**
+     * Updates the lead's status/stage in the CRM pipeline.
+     *
+     * @return whether the status update was accepted
+     */
+    boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request);
 }

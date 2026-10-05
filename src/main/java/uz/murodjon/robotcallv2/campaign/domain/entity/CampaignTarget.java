@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.campaign.domain.entity;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 
+import java.time.Instant;
+
 public record CampaignTarget(
         long id,
         long campaignId,
@@ -11,8 +13,14 @@ public record CampaignTarget(
         String contextData,
         TargetStatus status,
         int attempts,
-        boolean doNotCall
+        boolean doNotCall,
+        Instant nextAttemptAt
 ) {
+
+    public CampaignTarget(long id, long campaignId, long clientId, String phone, String language,
+                          String contextData, TargetStatus status, int attempts, boolean doNotCall) {
+        this(id, campaignId, clientId, phone, language, contextData, status, attempts, doNotCall, null);
+    }
 
     /**
      * A target queued for dialling. Identity is the storage layer's, and a new target

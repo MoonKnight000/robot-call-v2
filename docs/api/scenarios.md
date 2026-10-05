@@ -150,8 +150,8 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 | Maydon | Turi | Izoh |
 |---|---|---|
 | `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)) |
-| `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required" }` |
-| `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params`, `preToolSpeech` (tool ishlayotganda aytiladigan gap). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang |
+| `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required", "description" }` |
+| `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params` (`{ "name", "type", "required", "constraint" }[]`), `preToolSpeech` (tool ishlayotganda aytiladigan gap). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang |
 | `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description", "goal" }`. `goal: true` (ixtiyoriy, standart `false`) — ssenariy shu maydonni yozish uchun mavjud: qo'ng'iroq uni yozsa `GOAL_REACHED`, yozmasa `GOAL_NOT_REACHED` ([calls.md](calls.md)). Qiymat ssenariy tool'ining shu nomli argumentidan yoki kompaniya tool'ining `responseMapping` dagi shu nomli maydonidan keladi ([tools.md](tools.md)). Ko'pi bilan bitta maydon — aks holda `only one outcome field may be the goal` |
 | `rolePrompt` | string | Agentning roli va ohangi |
 | `guardrails` | `string[]` | Taqiqlar (§4.4) |
@@ -159,6 +159,32 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 | `disclosureText` | string | Shu ssenariy uchun §11.1 ochiqlik matni — kompaniya matnidan ustun turadi |
 | `factWebhook` | `FactWebhook` | Qo'ng'iroqdan oldin faktlarni yangilash — pastga qarang |
 | — | — | Ovoz, persona va AI model sozlamalari ssenariyda **emas** — ular [AI agent](ai-agents.md)da. Bitta senariyni bir nechta agent turli ovoz va personada gapirishi mumkin |
+
+Ssenariy yozuvida (`GET /api/scenarios/{id}`, `CreateScenarioRequest`, `UpdateScenarioRequest`) bu obyekt
+`definition` maydoni ichida turadi. `POST /api/scenarios/validate`, `POST /api/calls/test` va
+`/api/calls/web-test` ning `definition` maydoni esa **shu obyektning o'zini** kutadi — o'ralmagan holda.
+
+#### Tekshiruv qoidalari (`SCENARIO_DEFINITION_INVALID`)
+
+Saqlash, `validate`, `calls/test` — hammasi bir xil qoidalar bilan tekshiradi. Saqlash va `calls/test`
+buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `errors` da); `validate` esa
+`200` bilan `data.valid: false` va `data.errors` qaytaradi. Matnlar (inglizcha):
+
+| Qoida | `errors` dagi matn |
+|---|---|
+| `stages` kamida bitta bosqich | `stages must not be empty` |
+| Har bosqichning `id` si bo'sh emas va takrorlanmaydi | `a stage has a blank id`, `duplicate stage id: X` |
+| `allowedTransitions` faqat mavjud bosqichlarga | `stage X transitions to unknown stage Y` |
+| Kamida bitta yakuniy bosqich (`allowedTransitions` bo'sh) | `no terminal stage (…)` |
+| Har bosqichdan yakuniy bosqichga yo'l bor | `stage X cannot reach any terminal stage (deadlock)` |
+| `allowedTools` dagi nom — `tools` dan yoki universal tool'lardan biri | `stage X allows unknown tool Y` |
+| `tools[].name` universal nomlardan biri bo'lmaydi: `transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall` | `tool name 'X' is reserved …` |
+| Fakt / tool / tool parametri / outcome nomlari bo'sh emas va takrorlanmaydi | `a fact has a blank name`, `duplicate tool name: X`, … |
+| `outcomeSchema` kamida bitta maydon | `outcomeSchema must not be empty — …` |
+| `goal: true` ko'pi bilan bitta maydonda | `only one outcome field may be the goal — …` |
+| `styleExamples[]` da `wrong` va `right` ikkalasi ham bor | `a style example needs both 'wrong' and 'right'` |
+| `disclosureText` berilsa — avtomatik qo'ng'iroq va yozib olinishini aytadi (yoki bo'sh qoldiring) | `disclosureText must state …` |
+| `factWebhook`: `url` `http(s)://` bilan, `method` `GET`/`POST`, `timeoutMs` ≤ 2000, `factSchema` bo'sh emas | `factWebhook.url must …`, `factWebhook.method must be GET or POST`, … |
 
 ---
 

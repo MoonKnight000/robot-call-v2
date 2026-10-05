@@ -25,9 +25,10 @@ public interface LiveControlController {
 
     @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/{channelId}/whisper")
-    ResponseEntity<ResponseData<LiveControlResponse>> whisper(@CurrentCompanyId long companyId,
-                                                             @PathVariable String channelId,
-                                                             @Valid @RequestBody WhisperRequest request);
+    ResponseEntity<ResponseData<LiveControlResponse>> whisper(
+            @CurrentCompanyId long companyId,
+            @PathVariable String channelId,
+            @Valid @RequestBody WhisperRequest request);
 
     @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/{channelId}/takeover")
@@ -39,7 +40,8 @@ public interface LiveControlController {
     /** The rest of the call runs under {@code scenarioId}, from its first stage; transcript and facts stay. */
     @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/{channelId}/scenario")
-    ResponseEntity<ResponseData<LiveControlResponse>> switchScenario(@CurrentCompanyId long companyId,
-                                                                    @PathVariable String channelId,
-                                                                    @Valid @RequestBody SwitchScenarioRequest request);
+    ResponseEntity<ResponseData<LiveControlResponse>> switchScenario(
+            @CurrentCompanyId long companyId,
+            @PathVariable String channelId,
+            @Valid @RequestBody SwitchScenarioRequest request);
 }

@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.AdvisorParams;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -94,6 +96,9 @@ public class TurnTools {
                     callbacks.add(fixed);
                 }
                 continue;
+            }
+            if ("switchLanguage".equals(name) && s.detectLanguages().size() < 2) {
+                continue; // a single-language company has nothing to switch to
             }
             // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
             // are universal and always included; recordPaymentPromise/recordRefusalReason
@@ -238,8 +243,19 @@ public class TurnTools {
     }
 
     /**
+     * A ChatClient for requests that carry these tool callbacks. Since Spring AI 2.0 the
+     * tool-calling loop is an advisor the ChatClient registers by itself, so it is switched
+     * off here, on the client, instead of in the options — see {@link #buildOptions}.
+     */
+    public static ChatClient chatClient(ChatModel chatModel) {
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(AdvisorParams.toolCallingAdvisorAutoRegister(false))
+                .build();
+    }
+
+    /**
      * This turn's request options: the tools, the call's company AI-model overrides, and
-     * Spring AI's built-in tool-calling loop switched off — {@link #run} executes the
+     * Spring AI's built-in tool-calling loop switched off ({@link #chatClient}) — {@link #run} executes the
      * calls here instead.
      *
      * <p>That loop answers a tool call by replaying the model's own {@code functionCall}
@@ -298,7 +314,6 @@ public class TurnTools {
         if (isOpenAi) {
             var builder = OpenAiChatOptions.builder()
                     .toolCallbacks(tools)
-                    .internalToolExecutionEnabled(false)
                     .model(selectedModel);
             if (aiModel.maxOutputTokens() != null) {
                 builder.maxTokens(aiModel.maxOutputTokens());
@@ -311,14 +326,13 @@ public class TurnTools {
 
         var builder = GoogleGenAiChatOptions.builder()
                 .toolCallbacks(tools)
-                // Declarations only (see above). Left at Spring AI's default of true, a
+                // Declarations only (see chatClient). With the framework loop left on, a
                 // real call ran every tool twice — once in the framework's loop, once in
                 // run() — and paid an LLM round trip for each: 35 tool executions and an
                 // 11s reply on a seven-line call. Worse, a speculative request
                 // (SpeculationManager#startSpeculation) carries these same live callbacks, so the
                 // framework was moving the FSM and recording payment promises from a guess
                 // at what the caller was still in the middle of saying.
-                .internalToolExecutionEnabled(false)
                 .model(selectedModel)
                 .maxOutputTokens(aiModel.maxOutputTokens())
                 .thinkingLevel(GoogleGenAiThinkingLevel.LOW);

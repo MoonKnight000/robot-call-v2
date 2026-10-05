@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallRetentionUseCase;
+import uz.murodjon.robotcallv2.chat.application.port.input.ChatUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort;
@@ -38,6 +39,7 @@ class RetentionServiceTest {
     private final ObjectStoragePort objectStorage = mock(ObjectStoragePort.class);
     private final CallRetentionUseCase callRetention = mock(CallRetentionUseCase.class);
     private final ClientMemoryUseCase clientMemory = mock(ClientMemoryUseCase.class);
+    private final ChatUseCase chatUseCase = mock(ChatUseCase.class);
     private final AuditUseCase audit = mock(AuditUseCase.class);
     private final ClusterJobLock clusterJobLock = mock(ClusterJobLock.class);
 
@@ -49,7 +51,7 @@ class RetentionServiceTest {
         RetentionProperties retentionProperties = new RetentionProperties("0 30 3 * * *", conversationDays,
                 Duration.ofHours(1), summaryDays, clientMemoryDays, auditDays, 30, batchSize);
         return new RetentionService(storedFileRepository, objectStorage, retentionProperties, callRetention,
-                clientMemory, audit, rtpProperties, clusterJobLock);
+                clientMemory, chatUseCase, audit, rtpProperties, clusterJobLock);
     }
 
     private void lockIsFree() {

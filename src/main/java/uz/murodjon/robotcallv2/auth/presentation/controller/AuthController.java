@@ -2,11 +2,7 @@ package uz.murodjon.robotcallv2.auth.presentation.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.auth.application.dto.*;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.security.ClientAddress;
@@ -39,20 +35,17 @@ public interface AuthController {
     @PostMapping("/auth/reset-password")
     ResponseEntity<ResponseData<LoginResponse>> resetPassword(@Valid @RequestBody ResetPasswordRequest request);
 
-    /** The token comes from the body when it has one, otherwise from the {@code refresh_token} cookie. */
     @PostMapping("/auth/refresh")
     ResponseEntity<ResponseData<LoginResponse>> refresh(
             @RequestBody(required = false) RefreshTokenRequest request,
             @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshTokenCookie);
 
-    /** Also clears the {@code refresh_token} cookie. */
     @PostMapping("/auth/logout")
     ResponseEntity<ResponseData<Void>> logout();
 
     @GetMapping("/auth/me")
     ResponseEntity<ResponseData<CurrentUserResponse>> me(@CurrentCompanyId long companyId);
 
-    /** A 60-second, single-use {@code ?ticket=} for the stream URLs (SSE, live audio). */
     @PostMapping("/auth/stream-ticket")
     ResponseEntity<ResponseData<StreamTicketResponse>> streamTicket(@CurrentCompanyId long companyId);
 

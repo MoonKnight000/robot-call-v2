@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.crm.infrastructure.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -28,7 +29,7 @@ class Bitrix24ConnectorAdapterTest {
     @BeforeEach
     void setUp() {
         httpClient = mock(PublicHttpClient.class);
-        adapter = new Bitrix24ConnectorAdapter(httpClient);
+        adapter = new Bitrix24ConnectorAdapter(httpClient, new ObjectMapper());
     }
 
     @Test

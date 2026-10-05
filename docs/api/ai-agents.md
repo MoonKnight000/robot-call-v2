@@ -143,7 +143,7 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
   "sttProvider": "gemini",
   "sttModel": "gemini-3.5-transcribe-live",
   "ttsProvider": "gemini",
-  "ttsModel": "gemini-3.1-flash-tts-preview",
+  "ttsModel": "gemini-3.8-flash-tts",
   "ttsVoice": "gemini-tts-aoede-uz",
   "voiceSpeed": 1.05,
   "voiceStability": 0.8,
@@ -219,7 +219,13 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 >   egasi bo'lishi shart (`nova-3` → `deepgram`), aks holda `400 STT_MODEL_PROVIDER_MISMATCH`
 >   (TTS uchun `TTS_MODEL_PROVIDER_MISMATCH`). Sababi — ikkala maydon qo'ng'iroqda birga
 >   o'qiladi, va mos kelmagan juft vendorga u bilmaydigan id bo'lib boradi.
-> - `realtimeProvider` — `pipelineMode=REALTIME` agentning speech-to-speech engine'i
+> - `pipelineMode` — `CASCADE` (bizning STT + LLM + TTS), `REALTIME` (engine eshitadi,
+>   o'ylaydi va o'z ovozida gapiradi) yoki `HALF_CASCADE` (engine eshitadi va o'ylaydi,
+>   javob matni FactGuard'dan o'tib **bizning TTS ovozimizda** — `ttsVoice` — aytiladi).
+>   `HALF_CASCADE` uchun `ttsVoice` `CASCADE` ovozlaridan, `llmModel` `REALTIME` modellaridan
+>   tanlanadi. Hozircha faqat `gemini-live` qo'llab-quvvatlaydi; boshqa engine tanlansa
+>   qo'ng'iroq `CASCADE`da ketadi (logda ERROR).
+> - `realtimeProvider` — `pipelineMode=REALTIME` (yoki `HALF_CASCADE`) agentning speech-to-speech engine'i
 >   (`GET /api/ai-agents/engine-options` dagi `realtime` ro'yxati: `gemini-live`,
 >   `openai-realtime`, `pipecat`, …). `REALTIME` saqlanayotganda (yoki rejim/engine
 >   o'zgarganda) tekshiriladi: ro'yxatda yo'q id — `400 ENGINE_REALTIME_PROVIDER_UNKNOWN`;
@@ -239,13 +245,13 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 >   `provider` i `realtimeProvider` bilan bir xil bo'lishi shart, aks holda
 >   `400 REALTIME_MODEL_PROVIDER_MISMATCH`. Shuning uchun formada avval engine, keyin model
 >   tanlanadi va model ro'yxati `provider` bo'yicha filtrlanadi.
->   Gemini Live uchun modellar: **`gemini-3.8-live` (standart)**,
->   `gemini-3.8-live-extended-thinking` (murakkab suhbatlar uchun, sekinroq),
+>   Gemini Live uchun modellar: **`gemini-3.8-live-extended-thinking` (standart)** —
+>   murakkab suhbatlar uchun, sekinroq; `gemini-3.8-live` (tezroq),
 >   `gemini-3.1-flash-live-preview` (oldingi avlod) va
 >   `gemini-2.5-flash-native-audio-latest`. 3.8 modellarida tool'lar fonda ishlaydi — bot
 >   natijani kutib jim turmaydi.
 >   `llmModel` bo'sh qoldirilsa engine deployment sozlamasidagi modelda ishlaydi — Gemini
->   Live uchun bu `GEMINI_LIVE_MODEL`, ya'ni o'sha `gemini-3.8-live`. Shuning
+>   Live uchun bu `GEMINI_LIVE_MODEL`, ya'ni o'sha `gemini-3.8-live-extended-thinking`. Shuning
 >   uchun forma yangi agentda shu qatorni oldindan tanlangan qilib ko'rsatishi mumkin.
 > - `fastLlmModel` — mijoz juda qisqa javob bergan turn (`ha`, `xo'p`, `tushunarli`) shu
 >   arzonroq modelda javoblanadi; qolgan hamma turn `llmModel` da qoladi. Faqat
@@ -871,7 +877,7 @@ bilan farq qiladi):
 |---|---|---|---|---|
 | `Kiruvchi qabulxona` | kiruvchi | `CASCADE` | `reception` | Yandex STT/TTS + `gemini-3.8-flash` |
 | `Qarzdorlik (cascade)` | chiquvchi | `CASCADE` | `debt-collection` | Yandex STT/TTS + `gemini-3.8-flash` |
-| `Qarzdorlik (realtime)` | chiquvchi | `REALTIME` | `debt-collection` | `gemini-live` · `gemini-3.8-live` |
+| `Qarzdorlik (realtime)` | chiquvchi | `REALTIME` | `debt-collection` | `gemini-live` · `gemini-3.8-live-extended-thinking` |
 
 Ikkala qarzdorlik agenti bir xil senariy, bir xil guardrail va bir xil matn bilan ishlaydi
 — farqi faqat pipeline'da, shuning uchun ularni yonma-yon solishtirish mumkin.

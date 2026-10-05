@@ -6,11 +6,7 @@ import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionResult;
 import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
 import uz.murodjon.robotcallv2.report.application.dto.CallRow;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
-import uz.murodjon.robotcallv2.report.domain.entity.CampaignStats;
-import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
-import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallHistoryEntry;
-import uz.murodjon.robotcallv2.report.domain.entity.ReportedCall;
+import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
 

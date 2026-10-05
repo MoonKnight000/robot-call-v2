@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.integration.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -66,7 +67,7 @@ class CrmIntegrationServiceTest {
         when(cipher.available()).thenReturn(true);
         when(cipher.encrypt(anyString())).thenAnswer(invocation -> "enc:" + invocation.getArgument(0));
         when(cipher.decrypt(anyString())).thenAnswer(invocation -> invocation.<String>getArgument(0).substring(4));
-        service = new CrmIntegrationService(repository, cipher, UYSOT_OAUTH, stateStore, audit, uysotOAuthPort);
+        service = new CrmIntegrationService(repository, cipher, UYSOT_OAUTH, stateStore, audit, uysotOAuthPort, new ObjectMapper());
     }
 
     @Test

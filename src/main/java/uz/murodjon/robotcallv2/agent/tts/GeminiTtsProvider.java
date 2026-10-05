@@ -17,21 +17,20 @@ import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.net.ConnectException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
- * Gemini Text-to-Speech provider ({@code gemini-3.1-flash-tts-preview}).
+ * Gemini Text-to-Speech provider ({@code gemini-3.8-flash-tts}).
  *
  * <p>Synthesizes expressive, controllable speech streaming chunk-by-chunk via SSE
  * ({@code streamGenerateContent?alt=sse}) and resamples audio to 8 kHz mono linear PCM
@@ -42,9 +41,9 @@ import java.util.stream.Stream;
 public class GeminiTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiTtsProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    private static final String DEFAULT_MODEL = "gemini-3.1-flash-tts-preview";
+    private static final String DEFAULT_MODEL = "gemini-3.8-flash-tts";
     private static final String DEFAULT_VOICE = "Aoede";
     private static final int DEFAULT_SAMPLE_RATE = 24000;
 
@@ -59,7 +58,8 @@ public class GeminiTtsProvider implements TtsProvider {
     private final TtsProperties ttsProperties;
     private volatile HttpClient client;
 
-    public GeminiTtsProvider(TtsProperties ttsProperties) {
+    public GeminiTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.ttsProperties = ttsProperties;
     }
 
@@ -165,7 +165,7 @@ public class GeminiTtsProvider implements TtsProvider {
                         return;
                     }
                     try {
-                        JsonNode root = MAPPER.readTree(json);
+                        JsonNode root = objectMapper.readTree(json);
                         JsonNode candidates = root.path("candidates");
                         if (!candidates.isArray() || candidates.isEmpty()) {
                             return;
@@ -214,6 +214,84 @@ public class GeminiTtsProvider implements TtsProvider {
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.TTS_GEMINI_SYNTH_FAILED, "gemini-tts", e, e.getMessage());
         }
+    }
+
+    /**
+     * The voices {@code GET /v1beta/voices} lists: the account's stored voices, then the
+     * prebuilt catalog. A voice that names its languages is offered for those; one that
+     * names none speaks every language, as the prebuilt ones do.
+     */
+    @Override
+    public List<ProviderVoice> listVoices() {
+        HttpClient current = client;
+        String apiKey = resolveApiKey();
+        if (current == null || apiKey.isBlank()) {
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_CLIENT_UNAVAILABLE, "gemini-tts");
+        }
+        String base = (ttsProperties.gemini() != null && ttsProperties.gemini().url() != null && !ttsProperties.gemini().url().isBlank())
+                ? ttsProperties.gemini().url().trim()
+                : "https://generativelanguage.googleapis.com/v1beta/models";
+        URI voicesUri = URI.create(base).resolve("/v1beta/voices?page_size=1000");
+        List<ProviderVoice> voices = new ArrayList<>();
+        String pageToken = null;
+        try {
+            do {
+                URI page = pageToken == null ? voicesUri
+                        : URI.create(voicesUri + "&page_token=" + URLEncoder.encode(pageToken, StandardCharsets.UTF_8));
+                HttpRequest request = HttpRequest.newBuilder(page)
+                        .header("x-goog-api-key", apiKey)
+                        .timeout(Duration.ofSeconds(ttsProperties.gemini() != null ? ttsProperties.gemini().connectTimeoutSeconds() : 10))
+                        .GET()
+                        .build();
+                HttpResponse<String> response = current.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    throw new ExternalServiceException(ErrorCode.TTS_GEMINI_HTTP_STATUS, "gemini-tts", response.statusCode());
+                }
+                JsonNode root = objectMapper.readTree(response.body());
+                for (JsonNode voice : root.path("voices")) {
+                    String id = voice.path("id").asText("");
+                    if (!id.isBlank()) {
+                        voices.add(new ProviderVoice(id, voiceLabel(voice, id), voiceLanguages(voice)));
+                    }
+                }
+                // REST spells the fields in camelCase; the SDK docs show snake_case. Accept either.
+                pageToken = field(root, "nextPageToken", "next_page_token").asText("");
+            } while (!pageToken.isBlank());
+        } catch (ExternalServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_VOICES_FAILED, "gemini-tts", e, e.getMessage());
+        }
+        return voices;
+    }
+
+    /** "Kore (female)" — the vendor's display name and gender. */
+    private static String voiceLabel(JsonNode voice, String id) {
+        String name = field(voice, "displayName", "display_name").asText(id);
+        String gender = voice.path("gender").asText("");
+        return (name.isBlank() ? id : name) + (gender.isBlank() ? "" : " (" + gender.toLowerCase(Locale.ROOT) + ")");
+    }
+
+    /** ISO 639-1 prefixes of the voice's language code(s), one value or a list. */
+    private static Set<String> voiceLanguages(JsonNode voice) {
+        JsonNode codes = field(voice, "languageCode", "language_code");
+        List<String> raw = new ArrayList<>();
+        if (codes.isArray()) {
+            codes.forEach(code -> raw.add(code.asText("")));
+        } else {
+            raw.add(codes.asText(""));
+        }
+        Set<String> languages = new HashSet<>();
+        for (String text : raw) {
+            if (!text.isBlank()) {
+                languages.add(text.split("-")[0].toLowerCase(Locale.ROOT));
+            }
+        }
+        return languages;
+    }
+
+    private static JsonNode field(JsonNode node, String camel, String snake) {
+        return node.has(camel) ? node.path(camel) : node.path(snake);
     }
 
     private String resolveApiKey() {
@@ -271,7 +349,7 @@ public class GeminiTtsProvider implements TtsProvider {
     }
 
     private String buildRequestBody(String text, String voiceName) {
-        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode root = objectMapper.createObjectNode();
         root.putArray("contents")
                 .addObject()
                 .put("role", "user")

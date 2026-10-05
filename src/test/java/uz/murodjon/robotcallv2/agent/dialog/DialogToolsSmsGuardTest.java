@@ -7,8 +7,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
-import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -158,11 +156,18 @@ class DialogToolsSmsGuardTest {
     }
 
     private static DialogSession session(Map<String, Object> facts, Predicate<String> smsSender) {
-        DialogSession session = new DialogSession("chan-1", "uz-UZ", null, new CallContext(facts, "goal"),
-                ScenarioFixtures.debtCollection(), null, null, null, 42L, 1L, null, true, "Uysot", null, null,
-                EffectiveVoiceSettings.NONE);
+        DialogSession session = baseSession(facts).build();
         session.setMidCallSmsSender(smsSender);
         return session;
+    }
+
+    private static DialogSessionBuilder baseSession(Map<String, Object> facts) {
+        return DialogSession.builder("chan-1", "uz-UZ")
+                .context(new CallContext(facts, "goal"))
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(42L)
+                .companyId(1L)
+                .companyName("Uysot");
     }
 
     private static DialogSession sessionWithTemplate(String template, Map<String, Object> facts,
@@ -173,10 +178,7 @@ class DialogToolsSmsGuardTest {
         AiAgent agent = base.withAdvanced(base.ambience(), behaviour, base.dataPolicy(), base.voice(),
                 base.preemptiveGeneration(), base.ivrNavigationEnabled(), base.useRag(),
                 base.initiationWebhook(), base.postCallWebhook());
-        DialogSession session = new DialogSession("chan-1", "uz-UZ", null, new CallContext(facts, "goal"),
-                ScenarioFixtures.debtCollection(), null, null, null, 42L, 1L, null, true, "Uysot", null, null,
-                EffectiveVoiceSettings.NONE, true, AgentPersona.AI_ASSISTANT, Map.of(), null, List.of(), List.of(),
-                agent);
+        DialogSession session = baseSession(facts).agent(agent).build();
         session.setMidCallSmsSender(smsSender);
         return session;
     }

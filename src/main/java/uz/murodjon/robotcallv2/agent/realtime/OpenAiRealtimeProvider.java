@@ -7,10 +7,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -20,10 +20,8 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -52,7 +50,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class OpenAiRealtimeProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiRealtimeProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private static final int TELEPHONE_RATE = 8000;
     /** Mean token probability below which a caller transcript is flagged as barely heard. */
@@ -62,7 +60,8 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public OpenAiRealtimeProvider(RealtimeProperties realtimeProperties) {
+    public OpenAiRealtimeProvider(RealtimeProperties realtimeProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.realtimeProperties = realtimeProperties;
     }
 
@@ -162,8 +161,8 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
         }
     }
 
-    private static String sessionUpdateMessage(RealtimeCallConfig config, OpenAiRealtimeProperties openAi) {
-        ObjectNode root = MAPPER.createObjectNode();
+    private String sessionUpdateMessage(RealtimeCallConfig config, OpenAiRealtimeProperties openAi) {
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("type", "session.update");
         ObjectNode session = root.putObject("session");
 
@@ -206,22 +205,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             inputTrans.put("language", language);
         }
 
-        List<ToolCallback> tools = config.tools();
-        if (tools != null && !tools.isEmpty()) {
-            ArrayNode toolArray = session.putArray("tools");
-            for (ToolCallback tool : tools) {
-                ObjectNode t = toolArray.addObject();
-                t.put("type", "function");
-                t.put("name", tool.getToolDefinition().name());
-                t.put("description", tool.getToolDefinition().description());
-                try {
-                    t.set("parameters", MAPPER.readTree(tool.getToolDefinition().inputSchema()));
-                } catch (Exception e) {
-                    // Still offered, only without a schema the engine can check arguments against.
-                    log.debug("Tool {} has an unreadable input schema: {}", tool.getToolDefinition().name(), e.getMessage());
-                }
-            }
-        }
+        RealtimeFunctionTools.putFunctionTools(objectMapper, session, config.tools());
 
         return root.toString();
     }
@@ -250,7 +234,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
         return primary.length() == 2 ? primary : null;
     }
 
-    private static final class OpenAiResponseHandler implements WebSocket.Listener {
+    private final class OpenAiResponseHandler extends JsonWebSocketListener {
 
         private final String channelId;
         private final RealtimeListener listener;
@@ -259,7 +243,6 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
         private final boolean telephone;
         private final AtomicReference<String> speakingItem;
         private final ToolBatch toolBatch;
-        private final StringBuilder message = new StringBuilder();
         private final StringBuilder botTranscript = new StringBuilder();
 
         private OpenAiResponseHandler(String channelId, RealtimeListener listener,
@@ -274,43 +257,20 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             this.toolBatch = toolBatch;
         }
 
-        @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-            message.append(StandardCharsets.UTF_8.decode(data));
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
         /**
          * Every message arrives on the WebSocket's own thread, which knows nothing about
          * the call — so the id goes in here, once, and everything below it (this class's
          * logs and the dialog engine's, reached through the listener) is filed under the
          * call it belongs to instead of {@code [call:none]}.
          */
-        private void handle(String json) {
+        @Override
+        protected void onMessage(String json) {
             CallMdc.with(channelId, () -> dispatch(json));
         }
 
         private void dispatch(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 String type = node.path("type").asText("");
 
                 switch (type) {
@@ -454,7 +414,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
         }
     }
 
-    private static final class OpenAiRealtimeSession implements RealtimeSession {
+    private final class OpenAiRealtimeSession implements RealtimeSession {
 
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
@@ -495,7 +455,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
                 buffer.asShortBuffer().put(pcm);
                 bytes = buffer.array();
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "input_audio_buffer.append");
             root.put("audio", Base64.getEncoder().encodeToString(bytes));
             send(root.toString());
@@ -506,7 +466,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             if (!sendUserItem(text)) {
                 return;
             }
-            ObjectNode createResp = MAPPER.createObjectNode();
+            ObjectNode createResp = objectMapper.createObjectNode();
             createResp.put("type", "response.create");
             send(createResp.toString());
         }
@@ -523,7 +483,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             if (text == null || text.isBlank() || closed || !alive.get()) {
                 return false;
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "conversation.item.create");
             ObjectNode item = root.putObject("item");
             item.put("type", "message");
@@ -541,7 +501,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             if (closed || !alive.get()) {
                 return;
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "conversation.item.create");
             ObjectNode item = root.putObject("item");
             item.put("type", "function_call_output");
@@ -558,7 +518,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             if (closed || !alive.get()) {
                 return;
             }
-            ObjectNode createResp = MAPPER.createObjectNode();
+            ObjectNode createResp = objectMapper.createObjectNode();
             createResp.put("type", "response.create");
             send(createResp.toString());
         }
@@ -574,7 +534,7 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             if (itemId == null || closed || !alive.get()) {
                 return;
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "conversation.item.truncate");
             root.put("item_id", itemId);
             root.put("content_index", 0);

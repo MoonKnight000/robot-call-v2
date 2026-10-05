@@ -6,34 +6,30 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.OutboxMessageUseCase;
-import uz.murodjon.robotcallv2.contact.application.port.output.ContactPrivacyRepository;
-import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
-import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
-import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.contact.application.dto.*;
 import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
 import uz.murodjon.robotcallv2.contact.application.port.input.ContactUseCase;
+import uz.murodjon.robotcallv2.contact.application.port.output.ContactPrivacyRepository;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.domain.event.ContactOptOutEvent;
 import uz.murodjon.robotcallv2.contact.domain.service.ContactValidator;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
+import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Contact CRUD, CSV import, and the DNC hand-off (§10.8).

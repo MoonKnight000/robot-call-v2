@@ -14,9 +14,9 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioValidationResult;
 import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.*;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.util.*;

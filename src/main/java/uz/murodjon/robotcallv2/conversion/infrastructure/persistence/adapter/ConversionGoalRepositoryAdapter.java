@@ -1,13 +1,11 @@
 package uz.murodjon.robotcallv2.conversion.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionGoalEntityMapper;
 import uz.murodjon.robotcallv2.conversion.application.port.output.ConversionGoalRepository;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionGoal;
-import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.entity.ConversionGoalEntity;
+import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionGoalEntityMapper;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.repository.ConversionGoalJpaRepository;
 
 import java.util.List;

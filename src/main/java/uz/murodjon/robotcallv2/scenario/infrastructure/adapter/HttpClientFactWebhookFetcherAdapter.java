@@ -33,7 +33,7 @@ public class HttpClientFactWebhookFetcherAdapter implements FactWebhookFetcherPo
      */
     private static final int MAX_RESPONSE_BYTES = 64 * 1024;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     /**
      * DNS pinned to public addresses, and redirects never followed. PublicUrlGuard screens
@@ -41,6 +41,10 @@ public class HttpClientFactWebhookFetcherAdapter implements FactWebhookFetcherPo
      * that check has already passed — which is exactly how an SSRF filter is walked around.
      */
     private final PublicHttpClient httpClient = PublicHttpClient.create(CONNECT_TIMEOUT, CONNECT_TIMEOUT);
+
+    public HttpClientFactWebhookFetcherAdapter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public String fetch(FactWebhook webhook, URI uri, FactWebhookRequest call, Duration timeout) {

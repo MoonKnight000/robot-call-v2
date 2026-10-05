@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
@@ -34,35 +34,43 @@ public class ClientInputGate {
     private static final Logger log = LoggerFactory.getLogger(ClientInputGate.class);
 
     /**
-     * Common Uzbek and Russian carrier voicemail/answering machine phrases.
+     * Carrier voicemail/answering machine phrases. Only automated operator/machine greetings,
+     * not conversational phrases that a real human might say (e.g. "keyinroq qiling").
      */
     private static final List<String> VOICEMAIL_PHRASES = List.of(
-            "apparati o'chirilgan", "xizmat doirasidan tashqarida", "ovozli xabar",
-            "ovozli xabar qoldiring", "signal ovozidan so'ng", "signal ovozidan keyin",
-            "telefon o'chirilgan", "boshqa raqamga yo'naltirilgan", "chaqirilayotgan abonent",
-            "vaqtincha javob bermayapti", "iltimos, keyinroq qo'ng'iroq qiling",
-            "keyinroq qo'ng'iroq qiling", "javob bermayapti",
+            "apparati o'chirilgan", "xizmat doirasidan tashqarida", "ovozli xabar qoldiring",
+            "signal ovozidan so'ng", "signal ovozidan keyin", "telefon o'chirilgan",
+            "boshqa raqamga yo'naltirilgan", "chaqirilayotgan abonent apparati",
             "абонент недоступен", "аппарат абонента выключен", "находится вне зоны",
             "оставьте сообщение", "после сигнала", "после звукового сигнала",
-            "автоответчик", "перезвоните позже", "линия занята", "номер не существует",
-            "вызываемый абонент занят", "данный вид связи недоступен", "номер временно заблокирован",
-            "not in service", "currently unavailable", "switched off"
+            "автоответчик", "номер не существует", "данный вид связи недоступен",
+            "номер временно заблокирован", "not in service", "currently unavailable",
+            "switched off", "leave a message after the tone"
     );
+
+    /**
+     * How long a paused bot waits for the caller's words before deciding it was a cough
+     * or a breath. Long enough for the recognizer's first interim, short enough that the
+     * pause reads as the bot letting someone in rather than as a dropped line.
+     */
+    private static final long BARGE_IN_CONFIRM_MS = 1200;
 
     private final DialogProperties dialogProperties;
     private final SttProperties sttProperties;
     private final LanguageDetector languageDetector;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
     private final DialogTranscript transcript;
     private final TurnRunner turnRunner;
     private final DialogExecutors executors;
     private final DialogTuningProperties dialogTuning;
+    private final LlmTurnClient llmTurnClient;
 
     public ClientInputGate(DialogProperties dialogProperties, SttProperties sttProperties, LanguageDetector languageDetector,
-                           VoiceMetrics metrics, DialogTranscript transcript,
+                           DialogMetrics metrics, DialogTranscript transcript,
                            TurnRunner turnRunner, DialogExecutors executors,
-                           DialogTuningProperties dialogTuning) {
+                           DialogTuningProperties dialogTuning, LlmTurnClient llmTurnClient) {
         this.dialogTuning = dialogTuning;
+        this.llmTurnClient = llmTurnClient;
         this.dialogProperties = dialogProperties;
         this.sttProperties = sttProperties;
         this.languageDetector = languageDetector;
@@ -74,6 +82,46 @@ public class ClientInputGate {
 
     /** Feeds a final client transcript into the conversation as the next turn. */
     public void onFinal(DialogSession s, String text) {
+        // Settled here, before anything is decided, so the no-words timer cannot resume
+        // the bot underneath the decision.
+        if (s.isBargeInPending() && s.settleBargeIn()) {
+            if (isEchoOfBot(s, text)) {
+                resumeBot(s, "echo of the bot");
+            } else if (saidEnoughToInterrupt(s, text)) {
+                confirmBargeIn(s, true);
+                handleFinal(s, text, true);
+                return;
+            } else {
+                // A word or two over the bot: "ha" is agreement over one line and the
+                // answer to another. The model reads it against the line it was said over.
+                executors.submit(() -> decidePausedBargeIn(s, text));
+                return;
+            }
+        }
+        handleFinal(s, text, false);
+    }
+
+    /** The bot is paused on a short caller utterance; the model says whether it yields. */
+    private void decidePausedBargeIn(DialogSession s, String text) {
+        if (s.isEnded()) {
+            return;
+        }
+        if (llmTurnClient.isTakingTheFloor(s, currentBotLine(s), text)) {
+            confirmBargeIn(s, true);
+            handleFinal(s, text, true);
+            return;
+        }
+        transcript.publishClientLine(s, text);
+        metrics.backchannelIgnored();
+        resumeBot(s, "the caller let the bot carry on");
+        log.debug("[{}] carried on over: {}", s.channelId(), text);
+    }
+
+    /**
+     * @param floorDecided whether this utterance has already been judged an interruption,
+     *                     so it is not put to the model a second time
+     */
+    private void handleFinal(DialogSession s, String text, boolean floorDecided) {
         if (isEchoOfBot(s, text)) {
             // The far end has no echo cancellation and the recognizer has just handed us
             // the bot's own sentence back. Answering it starts a loop the caller cannot
@@ -89,8 +137,8 @@ public class ClientInputGate {
         transcript.publishClientLine(s, text);
         s.touchActivity();
 
-        // Check for Voicemail / Answering machine transcript in early turns (turn <= 2)
-        if (s.turnCount() <= 2 && isVoicemailTranscript(text)) {
+        // Check for Voicemail / Answering machine transcript in early turns (turn <= 2) on outbound calls only
+        if (!s.isInbound() && s.turnCount() <= 2 && isVoicemailTranscript(text)) {
             log.info("[{}] Voicemail phrase detected in client transcript", s.channelId());
             log.debug("[{}] voicemail transcript: '{}'", s.channelId(), text);
             AiAgent agent = s.agent();
@@ -119,40 +167,50 @@ public class ClientInputGate {
 
         adaptLanguage(s, text);
 
-        if (s.disposition() != null && Farewells.saidByCaller(text)) {
-            // The outcome is already on the record and the caller is closing, not asking.
-            // A turn here would open with "Bir lahza" over a two-syllable
-            // "rahmat" and end with a goodbye the caller has already been given.
-            log.info("[{}] caller signed off — answering with a goodbye, not a turn", s.channelId());
-            log.debug("[{}] farewell transcript: {}", s.channelId(), text);
-            executors.submit(() -> turnRunner.closeOnCallerFarewell(s));
-            return;
-        }
+        // A "rahmat" once the outcome is recorded is not matched against a word list here:
+        // "rahmat, lekin bir savolim bor" is not a goodbye. The model reads it and closes
+        // with endCall (SystemPromptFactory's closing rule).
 
-        if (isBackchannelOverTheBot(s, text)) {
-            metrics.backchannelIgnored();
-            log.info("[{}] caller agreed over the bot rather than answering it — "
-                    + "leaving the cut-off reply to resume", s.channelId());
-            log.debug("[{}] backchannel transcript: {}", s.channelId(), text);
-            // Deliberately not resumed from here. The barge-in that silenced the bot armed
-            // TurnRunner's false-interruption check already, and not starting a turn is
-            // exactly what lets it find the call where it left it and speak the rest.
+        if (!floorDecided && s.isInterrupted() && s.hasUnspokenText() && !saidEnoughToInterrupt(s, text)) {
+            // The bot was silenced at once (HIGH sensitivity) and the caller said only a
+            // word or two. Whether that was agreement — leave the cut-off reply to resume —
+            // or an answer is the model's call, off the recognizer's thread.
+            executors.submit(() -> {
+                if (llmTurnClient.isTakingTheFloor(s, currentBotLine(s), text)) {
+                    turnRunner.advance(s, text, true);
+                    return;
+                }
+                metrics.backchannelIgnored();
+                log.info("[{}] caller agreed over the bot rather than answering it — "
+                        + "leaving the cut-off reply to resume", s.channelId());
+                log.debug("[{}] backchannel transcript: {}", s.channelId(), text);
+                // Deliberately not resumed from here. The barge-in that silenced the bot armed
+                // TurnRunner's false-interruption check already, and not starting a turn is
+                // exactly what lets it find the call where it left it and speak the rest.
+            });
             return;
         }
         executors.submit(() -> turnRunner.advance(s, text, true));
     }
 
     /**
-     * Barge-in (PROJECT.md §7.2): the client started speaking. Silence the bot at once
-     * (flush the RTP playback) and cancel the turn still producing the reply, so the
-     * sentences the client talked over are never synthesized.
+     * Barge-in (PROJECT.md §7.2): the client started speaking.
+     *
+     * <p>On {@code HIGH} sensitivity the bot is silenced at once (the playback flushed and
+     * the turn cancelled). Otherwise it is only <em>paused</em>: listeners say "aha", cough
+     * and breathe over a speaker far more often than they take the floor, and the VAD
+     * hears all of it as speech. What the caller says decides: enough words confirm the
+     * interruption outright ({@link #onInterim}); a word or two is put to the model against
+     * the line it was said over ({@link #onFinal}); and {@link #BARGE_IN_CONFIRM_MS} of no
+     * words at all resumes the bot exactly where it stopped.
      */
     public boolean onBargeIn(DialogSession s) {
         // Someone is talking, so the line is not silent — even if the recognizer never
         // turns it into a final. Without this the watchdog would prompt over a caller
         // whose speech simply failed to transcribe.
         s.touchActivity();
-        if (s.agent() != null && s.agent().callBehaviour().interruptionSensitivity() == InterruptionSensitivity.OFF) {
+        InterruptionSensitivity sensitivity = sensitivity(s);
+        if (sensitivity == InterruptionSensitivity.OFF) {
             log.debug("[{}] barge-in ignored because agent interruption sensitivity is OFF", s.channelId());
             return false;
         }
@@ -161,6 +219,28 @@ public class ClientInputGate {
             log.debug("[{}] barge-in ignored — the bot owed the caller nothing", s.channelId());
             return false;
         }
+        if (sensitivity == InterruptionSensitivity.HIGH) {
+            confirmBargeIn(s, playing);
+            return true;
+        }
+        s.endpoint().pausePlayback();
+        long token = s.markBargeInPending();
+        log.info("[{}] caller speech over the bot — paused, waiting for words", s.channelId());
+        executors.scheduleOnWorker(() -> resumeIfNoWords(s, token), BARGE_IN_CONFIRM_MS);
+        return true;
+    }
+
+    /**
+     * A caller interim while the bot is paused on a barge-in: enough words confirm it on
+     * the spot. Anything shorter waits for its final, where the model decides.
+     */
+    public void onInterim(DialogSession s, String text) {
+        if (s.isBargeInPending() && saidEnoughToInterrupt(s, text) && s.settleBargeIn()) {
+            confirmBargeIn(s, true);
+        }
+    }
+
+    private void confirmBargeIn(DialogSession s, boolean playing) {
         s.endpoint().flushPlayback();
         s.setCancelled(true);
         s.setInterrupted(true);
@@ -171,7 +251,51 @@ public class ClientInputGate {
         s.recordBargeIn();
         log.info("[{}] barge-in: bot silenced ({})", s.channelId(),
                 playing ? "mid-utterance" : "before its reply was spoken");
-        return true;
+    }
+
+    private void resumeBot(DialogSession s, String why) {
+        s.endpoint().resumePlayback();
+        log.info("[{}] barge-in not confirmed ({}) — bot carries on", s.channelId(), why);
+    }
+
+    /** The pause ran out with no words, or only words that keep it a pause. */
+    private void resumeIfNoWords(DialogSession s, long token) {
+        if (s.isEnded() || !s.isBargeInPending()) {
+            return;
+        }
+        if (s.heardCallerWithin(BARGE_IN_CONFIRM_MS)) {
+            // Words are arriving; their final decides. Look again in case it never comes.
+            executors.scheduleOnWorker(() -> resumeIfNoWords(s, token), BARGE_IN_CONFIRM_MS);
+            return;
+        }
+        if (s.settleBargeIn(token)) {
+            metrics.falseBargeIn();
+            resumeBot(s, "no words");
+        }
+    }
+
+    /**
+     * Whether the caller has said enough over the bot that it can only be them taking the
+     * floor — a listener's "aha" is a word or two in any language, never a sentence. LOW
+     * sensitivity wants twice as much before it yields.
+     */
+    private boolean saidEnoughToInterrupt(DialogSession s, String text) {
+        int words = text == null || text.isBlank() ? 0 : Backchannels.words(text).length;
+        int needed = Math.max(1, dialogProperties.minInterruptionWords());
+        if (sensitivity(s) == InterruptionSensitivity.LOW) {
+            needed *= 2;
+        }
+        return words >= needed;
+    }
+
+    /** What the bot was saying when it was talked over — this turn's, else the last line. */
+    private static String currentBotLine(DialogSession s) {
+        String heard = s.spokenText();
+        return heard != null && !heard.isBlank() ? heard : s.lastAgentText();
+    }
+
+    private static InterruptionSensitivity sensitivity(DialogSession s) {
+        return s.agent() != null ? s.agent().callBehaviour().interruptionSensitivity() : InterruptionSensitivity.MEDIUM;
     }
 
     /**
@@ -182,8 +306,8 @@ public class ClientInputGate {
      * anyone would like. Two ways out of it, with deliberately different bars:
      *
      * <ul>
-     *   <li><b>Asked for</b> ("ruscha gapiring") — switched on the spot. The caller said
-     *       what they want; making them say it twice is worse than a misrecognition.
+     *   <li><b>Asked for</b> ("ruscha gapiring") — not here: the model hears the request
+     *       however it is worded and switches on the spot with its switchLanguage tool.
      *   <li><b>Answered in</b> — the detector has to say the same thing on
      *       {@code language-switch-finals} finals in a row. One sentence can be
      *       misrecognized, and switching on it answers an Uzbek caller in Russian.
@@ -197,13 +321,6 @@ public class ClientInputGate {
         List<String> candidates = !s.detectLanguages().isEmpty() ? s.detectLanguages() : sttProperties.detectLanguages();
         if (candidates == null || candidates.size() < 2) {
             return; // a single-language deployment has nothing to switch to
-        }
-        String requested = DialogLanguageSwitcher.detectLanguageSwitch(text, s.language()).orElse(null);
-        if (requested != null) {
-            log.info("[{}] caller asked to be spoken to in {} — switching from {}",
-                    s.channelId(), requested, s.language());
-            s.switchLanguage(requested);
-            return;
         }
         String spoken = languageDetector.detect(text, candidates);
         if (spoken == null) {
@@ -235,16 +352,6 @@ public class ClientInputGate {
             }
         }
         return false;
-    }
-
-    /**
-     * Whether a caller transcript is agreement over the top of the bot rather than an
-     * answer to it (see {@link Backchannels}).
-     */
-    private boolean isBackchannelOverTheBot(DialogSession s, String text) {
-        return s.isInterrupted()
-                && s.hasUnspokenText()
-                && Backchannels.matches(text, dialogProperties.minInterruptionWords());
     }
 
     /**

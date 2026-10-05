@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.agent.tts;
 
+import uz.murodjon.robotcallv2.agent.provider.NamedProvider;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
+
+import java.util.List;
 
 /**
  * Text-to-speech provider (PROJECT.md §2.5). TTS is stateless — text in, audio
@@ -8,10 +11,7 @@ import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
  * peer happens in {@code RtpEndpoint.playPcm}. Providers are language-scoped and
  * selected by {@link TtsRouter}.
  */
-public interface TtsProvider {
-
-    /** Stable id for logging (e.g. {@code google}, {@code yandex}). */
-    String name();
+public interface TtsProvider extends NamedProvider {
 
     /** Whether this provider can synthesize the given BCP-47 language (e.g. {@code uz-UZ}). */
     boolean supports(String language);
@@ -59,5 +59,16 @@ public interface TtsProvider {
     default void synthesizeStreaming(String text, String language, String voice, EffectiveVoiceSettings style,
                                       PcmChunkListener onChunk) {
         onChunk.onChunk(synthesize(text, language, voice, style));
+    }
+
+    /**
+     * The voices the provider's own API lists right now — what the daily voice sync
+     * ({@code TtsVoiceSyncScheduler}) files into the catalog. Empty for a provider with no
+     * such API: its voices stay seeded by hand.
+     *
+     * @throws RuntimeException if the list cannot be fetched; the sync then keeps what it has
+     */
+    default List<ProviderVoice> listVoices() {
+        return List.of();
     }
 }

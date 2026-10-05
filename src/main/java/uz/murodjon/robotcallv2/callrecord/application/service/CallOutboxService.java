@@ -4,15 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
-import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.agent.summary.SummarizedCall;
 import uz.murodjon.robotcallv2.agent.summary.SummaryService;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.callrecord.application.port.output.CallOutboxRepository;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.PendingSummary;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.CallOutboxRepository;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.config.OutboxProperties;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;

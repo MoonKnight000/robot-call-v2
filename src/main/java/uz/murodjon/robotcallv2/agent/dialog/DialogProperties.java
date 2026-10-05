@@ -110,16 +110,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       syllables of an utterance are revised constantly and are almost
  *                       never what the final says, so guessing there buys a cancelled
  *                       request every time
- * @param minInterruptionWords how many words a caller has to say over the bot before it
- *                       counts as having been interrupted, rather than agreed with. A
- *                       person says "aha" while the other one is talking and expects them
- *                       to carry on; the recognizer turns it into a final, and a final
- *                       otherwise starts a turn — so the caller gets a fresh question
- *                       instead of the rest of the sentence they were agreeing with. Only
- *                       ever applies to a reply that was cut off mid-way and can therefore
- *                       be resumed, and only to the words in {@code Backchannels}: a
- *                       one-word answer ("yo'q", "to'ladim") is still an answer. 0 or 1
- *                       disables the filter
+ * @param minInterruptionWords how many words a caller has to say over the bot for it to
+ *                       count as an interruption outright (doubled on LOW sensitivity). A
+ *                       listener's "aha" is a word or two in any language, never a
+ *                       sentence. Anything shorter is put to the model against the line it
+ *                       was said over, since "ha" is agreement over one line and an answer
+ *                       to another ({@code LlmTurnClient#isTakingTheFloor}). 0 or 1 makes
+ *                       every word an interruption without asking
  * @param mandatoryDisclosure speak the §11.1 notice ("this is an automated system, the
  *                       call is recorded") from code before the model's first turn.
  *                       The requirement is legal; leaving it to the prompt means a

@@ -68,6 +68,27 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('filipp',           'yandex',      'ru-RU', 'filipp',   'Filipp — rus, erkak', NULL),
     ('ermil',            'yandex',      'ru-RU', 'ermil',    'Ermil — rus, erkak', NULL),
     ('zahar',            'yandex',      'ru-RU', 'zahar',    'Zahar — rus, erkak', NULL),
+    -- The rest of SpeechKit's v3 list for the synced languages (speechkit/tts/voices).
+    -- SpeechKit has no API that lists its voices, so unlike ElevenLabs, Gemini and Cartesia
+    -- (TtsVoiceSyncScheduler) these are kept by hand.
+    ('dasha',            'yandex',      'ru-RU', 'dasha',     'Dasha — rus, ayol', NULL),
+    ('julia',            'yandex',      'ru-RU', 'julia',     'Julia — rus, ayol', NULL),
+    ('lera',             'yandex',      'ru-RU', 'lera',      'Lera — rus, ayol', NULL),
+    ('masha',            'yandex',      'ru-RU', 'masha',     'Masha — rus, ayol', NULL),
+    ('marina',           'yandex',      'ru-RU', 'marina',    'Marina — rus, ayol', NULL),
+    ('alexander',        'yandex',      'ru-RU', 'alexander', 'Alexander — rus, erkak', NULL),
+    ('kirill',           'yandex',      'ru-RU', 'kirill',    'Kirill — rus, erkak', NULL),
+    ('anton',            'yandex',      'ru-RU', 'anton',     'Anton — rus, erkak', NULL),
+    ('madi_ru',          'yandex',      'ru-RU', 'madi_ru',   'Madi — rus, erkak (qozoq aksenti)', NULL),
+    ('saule_ru',         'yandex',      'ru-RU', 'saule_ru',  'Saule — rus, ayol (qozoq aksenti)', NULL),
+    ('zhanar_ru',        'yandex',      'ru-RU', 'zhanar_ru', 'Zhanar — rus, ayol (qozoq aksenti)', NULL),
+    ('zamira_ru',        'yandex',      'ru-RU', 'zamira_ru', 'Zamira — rus, ayol (o''zbek aksenti)', NULL),
+    ('yulduz_ru',        'yandex',      'ru-RU', 'yulduz_ru', 'Yulduz — rus, ayol (o''zbek aksenti)', NULL),
+    ('amira',            'yandex',      'kk-KZ', 'amira',     'Amira — qozoq, ayol', NULL),
+    ('madi',             'yandex',      'kk-KZ', 'madi',      'Madi — qozoq, erkak', NULL),
+    ('saule',            'yandex',      'kk-KZ', 'saule',     'Saule — qozoq, ayol', NULL),
+    ('zhanar',           'yandex',      'kk-KZ', 'zhanar',    'Zhanar — qozoq, ayol', NULL),
+    ('john',             'yandex',      'en-US', 'john',      'John — ingliz, erkak', NULL),
     -- Aisha (Toshkent)
     ('gulnoza',          'aisha',       'uz-UZ', 'neutral',  'Gulnoza — o''zbek, moslashuvchan (avto-hissiyot)', NULL),
     ('gulnoza-neutral',  'aisha',       'uz-UZ', 'neutral',  'Gulnoza — o''zbek, neytral', NULL),
@@ -85,7 +106,7 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('gemini-puck-ru',   'gemini-live', 'ru-RU', 'Puck',     'Puck (мужской)', NULL),
     ('gemini-charon-ru', 'gemini-live', 'ru-RU', 'Charon',   'Charon (мужской)', NULL),
     ('gemini-fenrir-ru', 'gemini-live', 'ru-RU', 'Fenrir',   'Fenrir (женский)', NULL),
-    -- Gemini TTS (Cascade mode: gemini-3.1-flash-tts-preview)
+    -- Gemini TTS (Cascade mode: gemini-3.8-flash-tts, gemini-3.1-flash-tts-preview)
     ('gemini-tts-aoede-uz',  'gemini',   'uz-UZ', 'Aoede',    'Aoede (ayol, Gemini TTS)', NULL),
     ('gemini-tts-kore-uz',   'gemini',   'uz-UZ', 'Kore',     'Kore (ayol, Gemini TTS)', NULL),
     ('gemini-tts-puck-uz',   'gemini',   'uz-UZ', 'Puck',     'Puck (erkak, Gemini TTS)', NULL),
@@ -135,8 +156,8 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     ('gpt-5.4-mini',                'LLM', 'openai',          'CASCADE',  'GPT-5.4 mini — oldingi avlod, arzon'),
     -- REALTIME: the speech-to-speech engine's own model. Only rows whose provider is
     -- registered in this build are offered.
-    ('gemini-3.8-live',             'LLM', 'gemini-live',     'REALTIME', 'Gemini 3.8 Live — standart, tool''lar fonda ishlaydi'),
-    ('gemini-3.8-live-extended-thinking', 'LLM', 'gemini-live', 'REALTIME', 'Gemini 3.8 Live Extended Thinking — murakkab suhbatlar uchun, sekinroq'),
+    ('gemini-3.8-live',             'LLM', 'gemini-live',     'REALTIME', 'Gemini 3.8 Live — tezroq, tool''lar fonda ishlaydi'),
+    ('gemini-3.8-live-extended-thinking', 'LLM', 'gemini-live', 'REALTIME', 'Gemini 3.8 Live Extended Thinking — standart, murakkab suhbatlar uchun, sekinroq'),
     ('gemini-3.1-flash-live-preview', 'LLM', 'gemini-live',   'REALTIME', 'Gemini 3.1 Flash Live — oldingi avlod, preview'),
     ('gemini-2.5-flash-native-audio-latest', 'LLM', 'gemini-live', 'REALTIME', 'Gemini 2.5 Flash Native Audio — barqarorroq, tool chaqirish ishonchli'),
     ('gpt-realtime-2.1',            'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 — standart, tool chaqirish bilan'),
@@ -154,9 +175,11 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     ('general',                     'STT', 'yandex',          'CASCADE',  'Yandex SpeechKit general'),
     ('gpt-live-transcribe',         'STT', 'openai',          'CASCADE',  'OpenAI Live Transcribe — past kechikish, oraliq natijalar bilan'),
     ('gpt-transcribe',              'STT', 'openai',          'CASCADE',  'OpenAI Transcribe — aniqroq, lekin faqat gap tugagach javob beradi'),
-    ('gemini-3.1-flash-tts-preview','TTS', 'gemini',          'CASCADE',  'Gemini 3.1 Flash TTS — Aoede/Kore ovozlari'),
+    ('gemini-3.8-flash-tts',        'TTS', 'gemini',          'CASCADE',  'Gemini 3.8 Flash TTS — standart, 30 ta ovoz'),
+    ('gemini-3.1-flash-tts-preview','TTS', 'gemini',          'CASCADE',  'Gemini 3.1 Flash TTS — oldingi avlod, preview'),
     ('sonic-multilingual',          'TTS', 'cartesia',        'CASCADE',  'Cartesia Sonic Multilingual'),
-    ('gpt-4o-mini-tts',             'TTS', 'openai',          'CASCADE',  'OpenAI TTS — 13 ta ovoz, uslub ko''rsatmasi bilan')
+    ('gpt-4o-mini-tts',             'TTS', 'openai',          'CASCADE',  'OpenAI TTS — 13 ta ovoz, uslub ko''rsatmasi bilan'),
+    ('eleven_v4_turbo',             'TTS', 'elevenlabs',      'CASCADE',  'ElevenLabs v4 Turbo — o''zbek tili, ~100 ms')
 ON CONFLICT (id) DO UPDATE SET kind     = EXCLUDED.kind,
                                provider = EXCLUDED.provider,
                                mode     = EXCLUDED.mode,
@@ -703,7 +726,7 @@ SELECT 1, 'Qarzdorlik (realtime)',
        'Chiquvchi qarzdorlik qo''ng''irog''i: Gemini Live nativ audio (speech-to-speech).',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
-       'REALTIME', 'gemini-live', 'gemini-3.8-live', 'gemini-aoede-uz',
+       'REALTIME', 'gemini-live', 'gemini-3.8-live-extended-thinking', 'gemini-aoede-uz',
        'OFFICE', false, 'LEAVE_MESSAGE',
        'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
        'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
@@ -1250,7 +1273,7 @@ BEGIN
     VALUES (1, 'Sotuv menejeri', 'Chiquvchi sotuv: qiziqish, byudjet va uchrashuv vaqtini aniqlaydi (Gemini STT/LLM/TTS).',
             (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification' AND is_active),
             'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
-            'CASCADE', 'gemini', 'gemini-3.5-transcribe-live', 'gemini', 'gemini-3.1-flash-tts-preview', 'gemini-tts-kore-uz',
+            'CASCADE', 'gemini', 'gemini-3.5-transcribe-live', 'gemini', 'gemini-3.8-flash-tts', 'gemini-tts-kore-uz',
             'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.4, 250,
             'CALL_CENTER', 0.8, 'KEYBOARD_TYPING', 0.6,
             'HIGH', 600, 'LEAVE_MESSAGE',
@@ -2045,7 +2068,7 @@ BEGIN
            CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-live' ELSE coalesce(a.stt_provider, 'yandex') END,
            CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-live' ELSE coalesce(a.tts_provider, 'yandex') END,
            CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'Aoede' ELSE coalesce(a.tts_voice, 'nigora') END,
-           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-3.1-flash-live-preview' ELSE coalesce(a.llm_model, 'gemini-3.8-flash') END,
+           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-3.8-live-extended-thinking' ELSE coalesce(a.llm_model, 'gemini-3.8-flash') END,
            c.duration_sec * 42, c.duration_sec * 7, c.duration_sec * 25, greatest(2, c.duration_sec / 12),
            850 + (c.id % 7) * 70, 1600 + (c.id % 5) * 180, 420 + (c.id % 6) * 45, 900 + (c.id % 4) * 150,
            c.duration_sec * 50, (c.id % 4) * c.duration_sec / 20, 8 + (c.id % 5) * 3,

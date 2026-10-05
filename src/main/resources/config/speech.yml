@@ -29,7 +29,7 @@ voice-agent:
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
       url: ${REALTIME_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
-      model: ${GEMINI_LIVE_MODEL:gemini-3.8-live}
+      model: ${GEMINI_LIVE_MODEL:gemini-3.8-live-extended-thinking}
       voice: ${GEMINI_LIVE_VOICE:Aoede}
       connect-timeout-seconds: ${REALTIME_GEMINI_CONNECT_TIMEOUT_SECONDS:15}
       start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:LOW}
@@ -37,6 +37,10 @@ voice-agent:
       prefix-padding-ms: ${REALTIME_GEMINI_PREFIX_PADDING_MS:0}
       silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:0}
       context-compression-trigger-tokens: ${REALTIME_GEMINI_CONTEXT_COMPRESSION_TOKENS:25600}
+      # Tone-aware replies and ignoring audio not meant for the bot — GeminiLiveProperties.
+      # Off until a call confirms the model accepts them: an unknown field fails the setup.
+      affective-dialog: ${REALTIME_GEMINI_AFFECTIVE_DIALOG:false}
+      proactive-audio: ${REALTIME_GEMINI_PROACTIVE_AUDIO:false}
     open-ai:
       api-key: ${OPENAI_API_KEY:}
       url: ${REALTIME_OPENAI_URL:wss://api.openai.com/v1/realtime}
@@ -121,6 +125,9 @@ voice-agent:
       # Not read while vad-gating + endpointing are on — YandexSttProperties.
       eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:900}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
+      # Digits for spoken numbers, and punctuation ("A?" vs "A") — YandexSttProperties.
+      text-normalization: ${STT_YANDEX_TEXT_NORMALIZATION:true}
+      literature-text: ${STT_YANDEX_LITERATURE_TEXT:true}
     aisha:
       api-key: ${STT_AISHA_API_KEY:}
       url: ${STT_AISHA_URL:wss://back.aisha.group/api/v1/stt/realtime}
@@ -154,6 +161,20 @@ voice-agent:
     mels: ${TURN_MELS:128}
     frames: ${TURN_FRAMES:500}
 
+  # End of turn from the words (TextTurnProperties, NAMO Turn Detector v1 Multilingual).
+  # Used only where Smart Turn is not installed for the call. uz-UZ is not among the
+  # model's fine-tuned languages — add it to TEXT_TURN_LANGUAGES only after a replay run.
+  text-turn:
+    enabled: ${TEXT_TURN_DETECTOR:false}
+    model-path: ${TEXT_TURN_MODEL_PATH:}
+    tokenizer-path: ${TEXT_TURN_TOKENIZER_PATH:}
+    languages: ${TEXT_TURN_LANGUAGES:ru-RU}
+    threshold: ${TEXT_TURN_THRESHOLD:0.5}
+    max-extend-ms: ${TEXT_TURN_MAX_EXTEND_MS:600}
+    early-wait-ms: ${TEXT_TURN_EARLY_WAIT_MS:0}
+    early-threshold: ${TEXT_TURN_EARLY_THRESHOLD:0.9}
+    max-tokens: ${TEXT_TURN_MAX_TOKENS:128}
+
   # Synthesis — TtsProperties. The selectable voice catalog is in the tts_voice table
   # (§2.5); these are the deployment defaults behind it.
   tts:
@@ -169,7 +190,7 @@ voice-agent:
     gemini:
       api-key: ${GEMINI_API_KEY:}
       url: ${TTS_GEMINI_URL:https://generativelanguage.googleapis.com/v1beta/models}
-      model: ${TTS_GEMINI_MODEL:gemini-3.1-flash-tts-preview}
+      model: ${TTS_GEMINI_MODEL:gemini-3.8-flash-tts}
       voice: ${TTS_GEMINI_VOICE:Aoede}
       voices:
         uz-UZ: ${TTS_GEMINI_VOICE_UZ:Aoede}
@@ -218,6 +239,15 @@ voice-agent:
       instructions: ${TTS_OPENAI_INSTRUCTIONS:}
       sample-rate: 24000
       connect-timeout-seconds: ${TTS_OPENAI_TIMEOUT_SECONDS:10}
+    eleven-labs:
+      api-key: ${ELEVENLABS_API_KEY:}
+      url: ${TTS_ELEVENLABS_URL:https://api.elevenlabs.io/v1/text-to-speech}
+      model: ${TTS_ELEVENLABS_MODEL:eleven_v4_turbo}
+      voice: ${TTS_ELEVENLABS_VOICE:}
+      voices:
+        uz-UZ: ${TTS_ELEVENLABS_VOICE_UZ:}
+        ru-RU: ${TTS_ELEVENLABS_VOICE_RU:}
+      connect-timeout-seconds: ${TTS_ELEVENLABS_TIMEOUT_SECONDS:10}
 
   # Barge-in and answering-machine detection — VadProperties, AmdProperties.
   # Without model-path there is no barge-in, no STT gating and no endpointing.
@@ -232,6 +262,8 @@ voice-agent:
     noise-floor-margin: ${VAD_NOISE_FLOOR_MARGIN:2.5}
     min-speech-ms: ${VAD_MIN_SPEECH_MS:400}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
+    echo-gate-ratio: ${VAD_ECHO_GATE_RATIO:0.15}
+    echo-min-bot-level: ${VAD_ECHO_MIN_BOT_LEVEL:300.0}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}

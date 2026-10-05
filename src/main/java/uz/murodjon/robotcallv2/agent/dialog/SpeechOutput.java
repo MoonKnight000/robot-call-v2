@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.tts.PcmChunkListener;
 import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsRouter;
@@ -47,13 +47,13 @@ public class SpeechOutput {
     private final DialogProperties dialogProperties;
     private final TtsProperties ttsProperties;
     private final TtsRouter ttsRouter;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
     private final DialogExecutors executors;
     private final VoiceEmotionResolver emotionResolver;
     private final DialogPolicy dialogPolicy;
 
     public SpeechOutput(DialogProperties dialogProperties, TtsProperties ttsProperties, TtsRouter ttsRouter,
-                        VoiceMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver,
+                        DialogMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver,
                         DialogPolicy dialogPolicy) {
         this.dialogPolicy = dialogPolicy;
         this.dialogProperties = dialogProperties;
@@ -88,7 +88,7 @@ public class SpeechOutput {
                 return speakStreaming(s, spoken, dynamicSettings);
             }
             s.addTtsChars(spoken);
-            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings);
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), dynamicSettings, s.pronunciationRules());
             s.clearTtsFailures();
             return deliver(s, new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN));
         } catch (Exception e) {
@@ -212,7 +212,7 @@ public class SpeechOutput {
         };
         try {
             s.addTtsChars(text);
-            ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), dynamicSettings, onChunk);
+            ttsRouter.synthesizeStreaming(text, s.language(), s.ttsVoice(), dynamicSettings, s.pronunciationRules(), onChunk);
             s.clearTtsFailures();
         } catch (Exception e) {
             onTtsFailure(s, e);
@@ -282,7 +282,7 @@ public class SpeechOutput {
             // speak() asks for the same line and counts it there, and counting it here
             // too would bill the sentence twice. A guess that misses was never spoken, so
             // it is this platform's cost, not the company's.
-            ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
             log.debug("[{}] pre-synthesized a speculative first sentence: {}", s.channelId(), spoken);
         } catch (Exception e) {
             log.debug("[{}] speculative synthesis failed: {}", s.channelId(), e.getMessage());
@@ -314,7 +314,7 @@ public class SpeechOutput {
             List<String> options = DialogPhrases.backchannels(s.language());
             String line = options.get(Math.floorMod(turn, options.size()));
             s.addTtsChars(line);
-            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
             if (!backchannelStillWanted(s)) {
                 return; // the caller finished while this was being synthesized
             }
@@ -345,7 +345,7 @@ public class SpeechOutput {
         try {
             String line = DialogPhrases.interjection(s.language());
             s.addTtsChars(line);
-            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s));
+            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
             if (!backchannelStillWanted(s)) {
                 return;
             }
@@ -430,7 +430,7 @@ public class SpeechOutput {
             String line = options.get(Math.floorMod(turn, options.size()));
             EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
             s.addTtsChars(line);
-            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), dynamicSettings);
+            short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), dynamicSettings, s.pronunciationRules());
             if (!fillerStillWanted(s)) {
                 return;
             }

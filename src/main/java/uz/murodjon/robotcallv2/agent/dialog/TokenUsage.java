@@ -6,7 +6,7 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.google.genai.metadata.GoogleGenAiUsage;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 
 /**
  * Token accounting for one LLM turn (PROJECT.md §2.6).
@@ -79,7 +79,7 @@ public class TokenUsage {
         return cached;
     }
 
-    void publish(DialogSession s, VoiceMetrics metrics) {
+    void publish(DialogSession s, LlmMetrics metrics) {
         if (prompt == 0 && completion == 0) {
             return;
         }

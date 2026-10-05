@@ -12,12 +12,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param provider        active provider id ({@code gemini}, {@code yandex}, {@code aisha}, {@code cartesia})
  * @param defaultLanguage BCP-47 language used when a call/turn does not specify one
  * @param cache           synthesized-audio cache settings
- * @param gemini          Gemini TTS settings (gemini-3.1-flash-tts-preview)
+ * @param gemini          Gemini TTS settings (gemini-3.8-flash-tts)
  * @param google          Google TTS settings (legacy)
  * @param yandex          Yandex SpeechKit settings
  * @param aisha           Aisha settings
  * @param cartesia        Cartesia Sonic ultra-low latency TTS settings
  * @param openAi          OpenAI speech settings (gpt-4o-mini-tts)
+ * @param elevenLabs      ElevenLabs speech settings (eleven_v4_turbo)
  */
 @ConfigurationProperties(prefix = "voice-agent.tts")
 public record TtsProperties(
@@ -30,6 +31,7 @@ public record TtsProperties(
         YandexTtsProperties yandex,
         AishaTtsProperties aisha,
         CartesiaTtsProperties cartesia,
-        OpenAiTtsProperties openAi
+        OpenAiTtsProperties openAi,
+        ElevenLabsTtsProperties elevenLabs
 ) {
 }

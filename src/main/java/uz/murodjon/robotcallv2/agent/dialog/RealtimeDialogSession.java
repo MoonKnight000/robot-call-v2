@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.ai.tool.ToolCallback;
-
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
@@ -12,14 +11,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,9 +55,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     /** {@code ROLE: text} lines, for the operator handover screen (§11.6). */
     private final List<String> transcript = new ArrayList<>();
-    private final Map<String, Object> outcome = new ConcurrentHashMap<>();
-    /** Figures company tools answered with on this call — the fact guard's second source ({@link FactGuard}). */
-    private final Set<BigDecimal> toolFigures = ConcurrentHashMap.newKeySet();
+    private final CallOutcomeLedger outcomeLedger = new CallOutcomeLedger();
     /** Tokens, turn latency and fact violations — the same ledger the cascade session keeps. */
     private final UsageLedger usageLedger = new UsageLedger();
 
@@ -73,8 +63,6 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private final AtomicInteger toolsInFlight = new AtomicInteger();
     /** The engine says it is still reasoning or waiting on a tool — an answer is still coming. */
     private volatile boolean engineWorking;
-    /** How often each company tool has been called on this conversation ({@code Tool.maxCallsPerCall}). */
-    private final Map<String, AtomicInteger> toolCallCounts = new ConcurrentHashMap<>();
     /** Set by whoever starts hanging the call up, so it happens once. */
     private final AtomicBoolean closing = new AtomicBoolean();
 
@@ -89,9 +77,9 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile RealtimeSession engine;
     /** The caller's side of the line; read at the end for how much echo it withheld. */
     private volatile RealtimeAudioBridge audioBridge;
+    /** Speaks the engine's answer with our TTS on a HALF_CASCADE call; null on a REALTIME one. */
+    private volatile HalfCascadeVoice halfCascadeVoice;
     private volatile String state;
-    private volatile Disposition disposition;
-    private volatile String doNotCallReason;
     /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
     private volatile Consumer<String> dtmfSender;
     /** Set when the agent allows a mid-call SMS ({@link MidCallSmsSender}); null otherwise. */
@@ -198,25 +186,23 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     @Override
     public void recordOutcome(String key, Object value) {
-        if (value != null) {
-            outcome.put(key, value);
-        }
+        outcomeLedger.recordOutcome(key, value);
     }
 
     @Override
     public void setDisposition(Disposition disposition) {
-        this.disposition = disposition;
+        outcomeLedger.setDisposition(disposition);
     }
 
     @Override
     public void end(Disposition disposition) {
-        this.disposition = disposition;
+        outcomeLedger.setDisposition(disposition);
         this.ended = true;
     }
 
     @Override
     public void setDoNotCallReason(String reason) {
-        this.doNotCallReason = reason;
+        outcomeLedger.setDoNotCallReason(reason);
     }
 
     /** See {@link DialogSession#setDtmfSender} — same wiring, speech-to-speech engine. */
@@ -242,6 +228,54 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         }
         sender.accept(digits);
         return true;
+    }
+
+    /** No-op: the engine does its own turn-taking and is already listening. */
+    @Override
+    public void waitForCaller() {
+    }
+
+    /** Always {@code false}: the engine's language is set when it connects and is not switched mid-call. */
+    @Override
+    public boolean switchCallLanguage(String language) {
+        return false;
+    }
+
+    /** No-op: nothing on this pipeline adjusts its voice or prompt per reply. */
+    @Override
+    public void noteCallerMood(CustomerSentiment mood) {
+    }
+
+    /** No-op: the engine keeps its own tool results in its context. */
+    @Override
+    public void rememberCatalogResult(String result) {
+    }
+
+    /*
+     * The four below serve only the write-tool confirmation in HttpToolExecutor, and company
+     * HTTP tools are offered on cascade calls only (TurnTools). Failing loudly here is the
+     * point: answering "nothing pending, caller said nothing" would hold every write tool
+     * for a yes that could never be counted.
+     */
+
+    @Override
+    public PendingToolConfirmation findPendingConfirmation(String toolName) {
+        throw new IllegalStateException("company HTTP tools do not run on realtime calls");
+    }
+
+    @Override
+    public void setPendingConfirmation(String toolName, PendingToolConfirmation pending) {
+        throw new IllegalStateException("company HTTP tools do not run on realtime calls");
+    }
+
+    @Override
+    public int countCallerUtterances() {
+        throw new IllegalStateException("company HTTP tools do not run on realtime calls");
+    }
+
+    @Override
+    public String findLastCallerText() {
+        throw new IllegalStateException("company HTTP tools do not run on realtime calls");
     }
 
     public String language() {
@@ -289,25 +323,25 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     }
 
     public Disposition disposition() {
-        return disposition;
+        return outcomeLedger.disposition();
     }
 
     public String doNotCallReason() {
-        return doNotCallReason;
+        return outcomeLedger.doNotCallReason();
     }
 
     public Map<String, Object> outcome() {
-        return outcome;
+        return outcomeLedger.outcome();
     }
 
     @Override
     public void recordToolFigures(Collection<BigDecimal> figures) {
-        toolFigures.addAll(figures);
+        outcomeLedger.recordToolFigures(figures);
     }
 
     /** Every figure a company tool has answered with so far this call; never null. */
     public Set<BigDecimal> toolFigures() {
-        return Collections.unmodifiableSet(toolFigures);
+        return outcomeLedger.toolFigures();
     }
 
     public boolean isEnded() {
@@ -336,6 +370,14 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     public void setAudioBridge(RealtimeAudioBridge audioBridge) {
         this.audioBridge = audioBridge;
+    }
+
+    HalfCascadeVoice halfCascadeVoice() {
+        return halfCascadeVoice;
+    }
+
+    void setHalfCascadeVoice(HalfCascadeVoice halfCascadeVoice) {
+        this.halfCascadeVoice = halfCascadeVoice;
     }
 
     /**
@@ -564,7 +606,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     @Override
     public int countToolCall(String toolName) {
-        return toolCallCounts.computeIfAbsent(toolName, name -> new AtomicInteger()).incrementAndGet();
+        return outcomeLedger.countToolCall(toolName);
     }
 
     /** What the budget counts: the same prompt + completion sum the cascade pipeline uses. */

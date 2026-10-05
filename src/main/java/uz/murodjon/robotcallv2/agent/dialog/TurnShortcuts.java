@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 /**
@@ -21,11 +21,11 @@ class TurnShortcuts {
     private final KnowledgeBaseLookup knowledgeBase;
     private final SpeechOutput speech;
     private final DialogTranscript transcript;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
 
     TurnShortcuts(DialogProperties dialogProperties, FastPathRouter fastPathRouter,
                   KnowledgeBaseLookup knowledgeBase, SpeechOutput speech, DialogTranscript transcript,
-                  VoiceMetrics metrics) {
+                  DialogMetrics metrics) {
         this.dialogProperties = dialogProperties;
         this.fastPathRouter = fastPathRouter;
         this.knowledgeBase = knowledgeBase;

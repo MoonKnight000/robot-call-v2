@@ -7,7 +7,7 @@ public enum CampaignStatus {
     SCHEDULED,
     ACTIVE,
     PAUSED,
-    /** Every target reached a terminal state while the campaign was ACTIVE — see {@code CampaignService#checkCompletion}. */
+    /** Every target reached a terminal state while the campaign was ACTIVE — see {@code CampaignOutcomeService#checkCompletion}. */
     COMPLETED,
     ARCHIVED
 }

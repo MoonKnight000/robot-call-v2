@@ -74,7 +74,7 @@ class AiAgentEngineGuard {
      */
     String requireKnownRealtimeProvider(PipelineMode pipelineMode, String realtimeProvider) {
         String trimmed = trimmed(realtimeProvider);
-        if (pipelineMode != PipelineMode.REALTIME) {
+        if (!pipelineMode.usesRealtimeEngine()) {
             return trimmed;
         }
         if (realtimeProviderRegistry.isEmpty()) {
@@ -155,7 +155,7 @@ class AiAgentEngineGuard {
             throw new ValidationException(ErrorCode.AI_MODEL_UNKNOWN, trimmed,
                     aiModelUseCase.findSelectableIds(AiModelKind.LLM, pipelineMode));
         }
-        if (pipelineMode == PipelineMode.REALTIME && realtimeProvider != null && !realtimeProvider.isBlank()) {
+        if (pipelineMode.usesRealtimeEngine() && realtimeProvider != null && !realtimeProvider.isBlank()) {
             AiModel catalogued = aiModelUseCase.find(trimmed);
             if (catalogued != null && !catalogued.provider().equalsIgnoreCase(realtimeProvider.trim())) {
                 throw new ValidationException(ErrorCode.REALTIME_MODEL_PROVIDER_MISMATCH,

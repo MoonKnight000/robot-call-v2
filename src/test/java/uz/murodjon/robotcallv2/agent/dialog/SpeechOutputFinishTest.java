@@ -4,7 +4,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -30,9 +29,16 @@ class SpeechOutputFinishTest {
         DialogPolicy dialogPolicy = new DialogPolicy(null, new DialogTuningProperties(0, 0, 0, 0, 0, 1, 0));
         // Only the closing path runs here: synthesis, metrics and executors are never reached.
         speech = new SpeechOutput(null, null, null, null, null, null, dialogPolicy);
-        session = new DialogSession("chan-1", "uz-UZ", null, ScenarioFixtures.fullContext(),
-                ScenarioFixtures.debtCollection(), endpoint, hangups::incrementAndGet, transfers::incrementAndGet,
-                42L, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
+        session = DialogSession.builder("chan-1", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .endpoint(endpoint)
+                .hangup(hangups::incrementAndGet)
+                .transfer(transfers::incrementAndGet)
+                .callAttemptId(42L)
+                .companyId(1L)
+                .companyName("Uysot")
+                .build();
     }
 
     @Test

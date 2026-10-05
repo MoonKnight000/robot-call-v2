@@ -1,14 +1,13 @@
 package uz.murodjon.robotcallv2.integration.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.integration.infrastructure.persistence.mapper.CrmIntegrationEntityMapper;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.integration.infrastructure.persistence.entity.CrmIntegrationEntity;
+import uz.murodjon.robotcallv2.integration.infrastructure.persistence.mapper.CrmIntegrationEntityMapper;
 import uz.murodjon.robotcallv2.integration.infrastructure.persistence.repository.CrmIntegrationJpaRepository;
 
 import java.time.Instant;

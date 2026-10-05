@@ -98,6 +98,8 @@ public class SpeechGate {
     private volatile boolean completeCue;
     /** Hangover for a finished-sounding utterance; 0 leaves the words unable to shorten it. */
     private int completeHangoverSamples;
+    /** The latest interim as said, for a detector that judges the words themselves. */
+    private volatile String lastInterim = "";
 
     public SpeechGate(int sampleRate, int preRollMs, int postRollMs, int minSpeechMs,
                       int shortUtteranceMs, int shortPostRollMs,
@@ -138,10 +140,16 @@ public class SpeechGate {
         if (transcript == null || transcript.isBlank()) {
             return;
         }
+        lastInterim = transcript;
         TurnCue cue = TranscriptTurnCues.judge(transcript);
         continuationClause = cue == TurnCue.INCOMPLETE;
         completeCue = cue == TurnCue.COMPLETE;
         confirmedQuickAnswer = completeCue && TranscriptTurnCues.wordCount(transcript) <= QUICK_ANSWER_WORDS;
+    }
+
+    /** The recognizer's latest hypothesis for the utterance in progress; empty before the first. */
+    public String lastInterimTranscript() {
+        return lastInterim;
     }
 
     /**
@@ -218,6 +226,7 @@ public class SpeechGate {
         continuationClause = false;
         confirmedQuickAnswer = false;
         completeCue = false;
+        lastInterim = "";
         // Start judging this close: whether the caller carries on is what says the
         // wait that produced it was too short.
         sinceCloseSamples = dynamic ? 0 : -1;
@@ -319,7 +328,10 @@ public class SpeechGate {
         if (confirmedQuickAnswer && shortHangoverSamples > 0) {
             return shortHangoverSamples;
         }
-        boolean shortAnswer = shortHangoverSamples > 0 && speechSamples <= shortUtteranceSamples;
+        // A short run that reads as unfinished ("men…") is the start of an answer, not one:
+        // the short wait answered half a sentence instead of the caller.
+        boolean shortAnswer = shortHangoverSamples > 0 && speechSamples <= shortUtteranceSamples
+                && !continuationClause;
         if (shortAnswer) {
             return shortHangoverSamples;
         }

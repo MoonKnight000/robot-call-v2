@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.crm.infrastructure.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Uysot Open API v1 settings. Bound from {@code voice-agent.crm.*} (Stage 9,
@@ -32,6 +33,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                              leaving this unset switches call-history write-back off and
  *                              leaves the lead note — the part that matters — working on
  *                              its own. An id from {@code POST /v1/open-api/employee/filter}
+ * @param taskPath              {@code POST /v1/open-api/task} endpoint to schedule tasks/meetings
+ * @param leadStatusPath        {@code POST /v1/open-api/lead/{id}/status} endpoint for pipeline stage update
+ * @param meetingBookedStatusId CRM status ID to move the lead to when a showroom visit is booked
+ * @param notInterestedStatusId CRM status ID to move the lead to when the client is not interested/refuses
+ * @param callbackStatusId      CRM status ID when the call could not reach the client (no answer / busy)
+ * @param promiseToPayStatusId  CRM status ID when an installment payment promise is made
  */
 @ConfigurationProperties(prefix = "voice-agent.crm")
 public record CrmProperties(
@@ -44,6 +51,32 @@ public record CrmProperties(
         String contractPath,
         String contractFilterPath,
         String callHistoryPath,
-        Integer callHistoryEmployeeId
+        Integer callHistoryEmployeeId,
+        String taskPath,
+        String leadStatusPath,
+        Integer meetingBookedStatusId,
+        Integer notInterestedStatusId,
+        Integer callbackStatusId,
+        Integer promiseToPayStatusId
 ) {
+    @ConstructorBinding
+    public CrmProperties {
+    }
+
+    public CrmProperties(boolean enabled, String baseUrl, String apiToken, String leadPath,
+                         String leadFilterPath, String leadNotePath, String contractPath,
+                         String contractFilterPath, String callHistoryPath, Integer callHistoryEmployeeId) {
+        this(enabled, baseUrl, apiToken, leadPath, leadFilterPath, leadNotePath, contractPath,
+                contractFilterPath, callHistoryPath, callHistoryEmployeeId,
+                "/v1/open-api/task", "/v1/open-api/lead/{id}/status", null, null, null, null);
+    }
+
+    public CrmProperties(boolean enabled, String baseUrl, String apiToken, String leadPath,
+                         String leadFilterPath, String leadNotePath, String contractPath,
+                         String contractFilterPath, String callHistoryPath, Integer callHistoryEmployeeId,
+                         String taskPath, String leadStatusPath) {
+        this(enabled, baseUrl, apiToken, leadPath, leadFilterPath, leadNotePath, contractPath,
+                contractFilterPath, callHistoryPath, callHistoryEmployeeId,
+                taskPath, leadStatusPath, null, null, null, null);
+    }
 }

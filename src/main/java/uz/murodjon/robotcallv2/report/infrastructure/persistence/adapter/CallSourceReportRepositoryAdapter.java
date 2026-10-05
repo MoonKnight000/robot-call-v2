@@ -15,11 +15,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.doubleOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.enumOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.firstOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.instantOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.rate;
+import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
 
 /** A campaign's and an inbound route's all-time figures. Native SQL through {@link JdbcClient}. */
 @Component

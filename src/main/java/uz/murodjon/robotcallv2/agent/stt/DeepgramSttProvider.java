@@ -7,7 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -36,13 +37,14 @@ import java.util.function.Function;
 public class DeepgramSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(DeepgramSttProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final SttProperties sttProperties;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     private volatile HttpClient client;
 
-    public DeepgramSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+    public DeepgramSttProvider(SttProperties sttProperties, SttMetrics metrics, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
@@ -127,20 +129,19 @@ public class DeepgramSttProvider implements SttProvider {
      * on {@code speech_final}, on an {@code UtteranceEnd} message, or on the result of a
      * {@code Finalize} request ({@code from_finalize}).
      */
-    private static final class DeepgramResponseHandler implements WebSocket.Listener {
+    private final class DeepgramResponseHandler extends JsonWebSocketListener {
 
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch connected;
-        private final VoiceMetrics metrics;
+        private final SttMetrics metrics;
         private final boolean interimResults;
-        private final StringBuilder message = new StringBuilder();
-        /** Finalized stretches of the utterance in progress. Only touched from onText, which is sequential. */
+        /** Finalized stretches of the utterance in progress. Only touched from onMessage, which is sequential. */
         private final StringBuilder utterance = new StringBuilder();
         private float utteranceConfidence = 1.0f;
 
         private DeepgramResponseHandler(TranscriptListener listener, AtomicBoolean alive,
-                                        CountDownLatch connected, VoiceMetrics metrics, boolean interimResults) {
+                                        CountDownLatch connected, SttMetrics metrics, boolean interimResults) {
             this.listener = listener;
             this.alive = alive;
             this.connected = connected;
@@ -151,23 +152,18 @@ public class DeepgramSttProvider implements SttProvider {
         @Override
         public void onOpen(WebSocket webSocket) {
             connected.countDown();
-            WebSocket.Listener.super.onOpen(webSocket);
+            super.onOpen(webSocket);
         }
 
         @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String complete = message.toString();
-                message.setLength(0);
-                parseAndDispatch(complete);
-            }
-            return WebSocket.Listener.super.onText(webSocket, data, last);
+        protected void onBinaryFrame(ByteBuffer data, boolean last) {
+            // Deepgram answers in text frames only.
         }
 
-        private void parseAndDispatch(String json) {
+        @Override
+        protected void onMessage(String json) {
             try {
-                JsonNode root = MAPPER.readTree(json);
+                JsonNode root = objectMapper.readTree(json);
                 if ("UtteranceEnd".equals(root.path("type").asText(""))) {
                     emitUtterance();
                     return;
@@ -213,7 +209,7 @@ public class DeepgramSttProvider implements SttProvider {
         @Override
         public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
             alive.set(false);
-            return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
+            return super.onClose(webSocket, statusCode, reason);
         }
 
         @Override

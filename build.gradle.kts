@@ -31,7 +31,7 @@ extra["flyway.version"] = "13.4.0"
 // older netty-handler does not have, and the client blew up with NoSuchFieldError at the
 // first HTTPS call. The pin dated from when Boot's default was still Netty 4.1 and
 // ari4java 0.18.0 needed 4.2; the default is 4.2 now, so it only dragged Netty backwards.
-extra["springAiVersion"] = "2.0.0-M2"
+extra["springAiVersion"] = "2.1.0-M1"
 
 dependencyManagement {
     imports {
@@ -106,6 +106,8 @@ dependencies {
     // VAD — Silero voice-activity model (ONNX) for barge-in (PROJECT.md §2.3, §7.2).
     // The silero_vad.onnx model file is supplied at runtime (voice-agent.vad.model-path).
     implementation("com.microsoft.onnxruntime:onnxruntime:1.17.3")
+    // Tokenizer for the text end-of-turn model (NAMO, voice-agent.text-turn); reads its tokenizer.json.
+    implementation("ai.djl.huggingface:tokenizers:0.33.0")
 
     // Object storage — upload call recordings to MinIO/S3 (PROJECT.md §2.3, Stage 9).
     implementation("io.minio:minio:8.6.0")

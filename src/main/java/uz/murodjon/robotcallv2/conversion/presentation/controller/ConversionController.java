@@ -37,8 +37,9 @@ public interface ConversionController {
     /** Creates the goal, or updates the one already under that {@code goalKey}. */
     @PutMapping("/goals")
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
-    ResponseEntity<ResponseData<ConversionGoal>> upsertGoal(@CurrentCompanyId long companyId,
-                                                           @Valid @RequestBody ConversionGoalRequest request);
+    ResponseEntity<ResponseData<ConversionGoal>> upsertGoal(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ConversionGoalRequest request);
 
     /**
      * Switches a goal off. The row and everything attributed under it are kept — a report
@@ -46,7 +47,9 @@ public interface ConversionController {
      */
     @DeleteMapping("/goals/{id}")
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
-    ResponseEntity<ResponseData<Void>> deleteGoal(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> deleteGoal(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     /**
      * Reports one thing that happened, and answers which call was credited for it.

@@ -20,9 +20,13 @@ import java.util.List;
 public class AgentWidgetEntityMapper {
 
     private static final Logger log = LoggerFactory.getLogger(AgentWidgetEntityMapper.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<List<String>> ORIGINS_TYPE = new TypeReference<>() {};
     private static final TypeReference<WidgetTheme> THEME_TYPE = new TypeReference<>() {};
+
+    public AgentWidgetEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public AgentWidget toAgentWidget(AgentWidgetEntity entity) {
         return new AgentWidget(
@@ -52,20 +56,20 @@ public class AgentWidgetEntityMapper {
         entity.setConsentText(widget.consentText());
     }
 
-    private static String writeJson(Object obj) {
+    private String writeJson(Object obj) {
         try {
-            return JSON.writeValueAsString(obj);
+            return objectMapper.writeValueAsString(obj);
         } catch (Exception e) {
             return "{}";
         }
     }
 
-    private static <T> T readJson(String json, TypeReference<T> type, T fallback) {
+    private <T> T readJson(String json, TypeReference<T> type, T fallback) {
         if (json == null || json.isBlank()) return fallback;
         try {
-            return JSON.readValue(json, type);
+            return objectMapper.readValue(json, type);
         } catch (Exception e) {
-            log.warn("Failed to parse widget JSON, using fallback: {}", e.getMessage());
+            log.warn("Failed to parse widget objectMapper, using fallback: {}", e.getMessage());
             return fallback;
         }
     }

@@ -23,9 +23,13 @@ public class CampaignEntityMapper {
     private static final Logger log = LoggerFactory.getLogger(CampaignEntityMapper.class);
 
     /** Only for the {@code retry_policy} column; no configuration of its own. */
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<Disposition, RetryRule>> RULES = new TypeReference<>() {
     };
+
+    public CampaignEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public Campaign toCampaign(CampaignEntity entity) {
         if (entity == null) {
@@ -100,12 +104,12 @@ public class CampaignEntityMapper {
         entity.setDailyBudgetUzs(campaign.dailyBudgetUzs());
     }
 
-    private static RetryPolicy toRetryPolicy(String json) {
+    private RetryPolicy toRetryPolicy(String json) {
         if (json == null || json.isBlank()) {
             return RetryPolicy.NONE;
         }
         try {
-            return new RetryPolicy(JSON.readValue(json, RULES));
+            return new RetryPolicy(objectMapper.readValue(json, RULES));
         } catch (Exception e) {
             // A corrupted column must not take the campaign down with it: the defaults apply.
             log.warn("campaign.retry_policy could not be read, using defaults: {}", e.getMessage());
@@ -113,12 +117,12 @@ public class CampaignEntityMapper {
         }
     }
 
-    private static String toJson(RetryPolicy policy) {
+    private String toJson(RetryPolicy policy) {
         if (policy == null || policy.isEmpty()) {
             return null;
         }
         try {
-            return JSON.writeValueAsString(policy.rules());
+            return objectMapper.writeValueAsString(policy.rules());
         } catch (Exception e) {
             // A map of plain records always serialises; reaching this is a bug, not an input error.
             throw new IllegalStateException("retry policy could not be serialised", e);

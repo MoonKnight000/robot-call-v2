@@ -2,11 +2,11 @@ package uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.mapper.CallQueueEntityMapper;
 import uz.murodjon.robotcallv2.callqueue.application.port.output.CallQueueRepository;
 import uz.murodjon.robotcallv2.callqueue.domain.entity.CallQueue;
 import uz.murodjon.robotcallv2.callqueue.domain.entity.CallQueueFilter;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.entity.CallQueueEntity;
+import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.mapper.CallQueueEntityMapper;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.repository.CallQueueJpaRepository;
 
 import java.time.Instant;

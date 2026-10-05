@@ -1,7 +1,10 @@
 package uz.murodjon.robotcallv2.crm.application.port.input;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
 
@@ -38,6 +41,31 @@ public interface CrmUseCase {
                             int durationSeconds, boolean inbound, boolean answered,
                             String clientPhone, String recordingUrl);
 
+    /**
+     * Schedules a task or showroom meeting on the lead in the CRM.
+     *
+     * @return async request id or task id, or {@code null} if failed/unsupported
+     */
+    String createTask(long companyId, CreateCrmTaskRequest request);
+
+    /**
+     * Updates the lead's status/stage in the CRM pipeline.
+     *
+     * @return whether the status update was accepted
+     */
+    boolean updateLeadStage(long companyId, UpdateLeadStageRequest request);
+
+    /**
+     * Automatically updates the CRM pipeline stage of the lead based on the call
+     * outcome (e.g. showroom booked, payment promise, refused, or callback needed).
+     *
+     * @return whether the stage sync was executed successfully
+     */
+    boolean syncLeadStage(long companyId, long leadId, CallSummary summary, Disposition disposition);
+
     /** The note as a person reads it in the CRM. */
     String composeNoteText(CallSummary summary);
+
+    /** The note as a person reads it in the CRM, optionally including direct audio recording link. */
+    String composeNoteText(CallSummary summary, Long recordingFileId);
 }

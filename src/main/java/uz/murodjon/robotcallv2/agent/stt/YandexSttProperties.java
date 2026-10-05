@@ -47,6 +47,12 @@ package uz.murodjon.robotcallv2.agent.stt;
  *                          {@code INVALID_ARGUMENT} on every call
  * @param keepAliveSeconds  how often to ping an idle gRPC connection so the far side
  *                          does not drop it; 0 = no keepalive
+ * @param textNormalization turn spoken numbers, dates and times into digits ("bir million
+ *                          besh yuz ming" → "1500000"). The model reads an amount far more
+ *                          reliably as digits, and so does the fact guard that checks it
+ * @param literatureText    punctuate the transcript. Without it "A?" and "A" arrive as the
+ *                          same letter, and whether the caller asked or answered is the
+ *                          first thing the model needs to know
  */
 public record YandexSttProperties(
         String apiKey,
@@ -59,6 +65,8 @@ public record YandexSttProperties(
         boolean interimResults,
         EouSensitivity eouSensitivity,
         int eouMaxPauseHintMs,
-        int keepAliveSeconds
+        int keepAliveSeconds,
+        boolean textNormalization,
+        boolean literatureText
 ) {
 }

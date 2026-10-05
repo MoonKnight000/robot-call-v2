@@ -43,7 +43,7 @@ class PipecatRealtimeProviderTest {
                 null,
                 pipecatProps
         );
-        provider = new PipecatRealtimeProvider(properties);
+        provider = new PipecatRealtimeProvider(properties, new ObjectMapper());
         provider.init();
     }
 
@@ -96,7 +96,7 @@ class PipecatRealtimeProviderTest {
         RealtimeCallConfig config = new RealtimeCallConfig("chan-1", "uz-UZ", "Prompt", null, List.of(tool));
 
         JsonNode handshake = new ObjectMapper().readTree(
-                PipecatRealtimeProvider.handshakeMessage(config, properties.pipecat()));
+                provider.handshakeMessage(config, properties.pipecat()));
 
         assertThat(handshake.path("tools").size()).isEqualTo(1);
         JsonNode declared = handshake.path("tools").get(0);
@@ -111,7 +111,7 @@ class PipecatRealtimeProviderTest {
         RealtimeCallConfig config = new RealtimeCallConfig("chan-1", "uz-UZ", "Prompt", null, List.of());
 
         JsonNode handshake = new ObjectMapper().readTree(
-                PipecatRealtimeProvider.handshakeMessage(config, properties.pipecat()));
+                provider.handshakeMessage(config, properties.pipecat()));
 
         assertThat(handshake.has("tools")).isFalse();
         assertThat(handshake.path("type").asText()).isEqualTo("session_init");

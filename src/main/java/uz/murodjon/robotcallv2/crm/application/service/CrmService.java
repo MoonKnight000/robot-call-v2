@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
@@ -13,6 +15,7 @@ import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
 import java.util.List;
@@ -50,12 +53,57 @@ public class CrmService implements CrmUseCase {
         this.connectors = connectors;
     }
 
+    @Override
+    public boolean syncLeadStage(long companyId, long leadId, CallSummary summary, Disposition disposition) {
+        if (leadId <= 0 || !isConnected(companyId)) {
+            return false;
+        }
+        Integer targetStatusId = null;
+        String reason = null;
+
+        if (summary != null && summary.outcome() != null) {
+            Object explicitStatus = summary.outcome().get("targetStatusId");
+            if (explicitStatus instanceof Number n) {
+                targetStatusId = n.intValue();
+                reason = "AI bot outcome stage update";
+            }
+        }
+
+        if (targetStatusId == null && summary != null && Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
+            targetStatusId = crmProperties.meetingBookedStatusId();
+            reason = "Sotuv ofisiga uchrashuv belgilandi";
+        } else if (targetStatusId == null && (disposition == Disposition.PROMISE_TO_PAY || (summary != null && summary.outcome().containsKey("promisedDate")))) {
+            targetStatusId = crmProperties.promiseToPayStatusId();
+            reason = "To'lov va'dasi olindi";
+        } else if (targetStatusId == null && (disposition == Disposition.REFUSED || disposition == Disposition.DO_NOT_CALL)) {
+            targetStatusId = crmProperties.notInterestedStatusId();
+            reason = "Mijoz rad etdi (" + disposition + ")";
+        } else if (targetStatusId == null && (disposition == Disposition.NO_ANSWER || disposition == Disposition.CALLBACK_REQUESTED || disposition == Disposition.CARRIER_REJECTED)) {
+            targetStatusId = crmProperties.callbackStatusId();
+            reason = "Bog'lanib bo'lmadi (" + disposition + ")";
+        }
+
+        if (targetStatusId != null && targetStatusId > 0) {
+            return updateLeadStage(companyId, new UpdateLeadStageRequest(leadId, targetStatusId, reason));
+        }
+        return false;
+    }
+
     /**
      * Whether the platform's Uysot connection is configured. A company's own amoCRM, Kommo
      * or Bitrix24 connection does not depend on it.
      */
     private boolean isPlatformUysotConfigured() {
         return crmProperties.enabled() && crmProperties.baseUrl() != null && !crmProperties.baseUrl().isBlank();
+    }
+
+    @Override
+    public String composeNoteText(CallSummary summary, Long recordingFileId) {
+        String base = composeNoteText(summary);
+        if (recordingFileId != null && recordingFileId > 0) {
+            return base + "\nAudio yozuv: /api/files/" + recordingFileId;
+        }
+        return base;
     }
 
     /**
@@ -95,7 +143,7 @@ public class CrmService implements CrmUseCase {
      *
      * <p>Uysot's note endpoint takes no idempotency key: a write it accepted but whose answer
      * was lost comes back as {@code null}, and the outbox posting it again leaves a second
-     * copy of the note on the lead.
+     * copy of the note on the lead.</p>
      *
      * @param noteText the note as {@link #composeNoteText} wrote it
      * @return what the CRM accepted the write under — Uysot's async request id, or the id
@@ -141,6 +189,30 @@ public class CrmService implements CrmUseCase {
         Route route = routeFor(companyId);
         return route != null && route.connector().postCallHistory(route.connection(), new CrmCallHistoryEntry(
                 leadId, callUuid, startedAt, durationSeconds, inbound, answered, clientPhone, recordingUrl));
+    }
+
+    @Override
+    public String createTask(long companyId, CreateCrmTaskRequest request) {
+        if (request == null || request.leadId() == 0) {
+            return null;
+        }
+        Route route = routeFor(companyId);
+        if (route == null) {
+            return null;
+        }
+        return route.connector().createTask(route.connection(), request);
+    }
+
+    @Override
+    public boolean updateLeadStage(long companyId, UpdateLeadStageRequest request) {
+        if (request == null || request.leadId() == 0) {
+            return false;
+        }
+        Route route = routeFor(companyId);
+        if (route == null) {
+            return false;
+        }
+        return route.connector().updateLeadStage(route.connection(), request);
     }
 
     /**
@@ -199,6 +271,14 @@ public class CrmService implements CrmUseCase {
         appendOutcome(text, "Sabab", summary.outcome().get("reasonCode"));
         appendOutcome(text, "Va'da qilingan summa", summary.outcome().get("promisedAmount"));
         appendOutcome(text, "Va'da qilingan sana", summary.outcome().get("promisedDate"));
+        appendOutcome(text, "Kerakli xonalar", summary.outcome().get("roomsNeeded"));
+        appendOutcome(text, "To'lov shakli", summary.outcome().get("paymentMethod"));
+        appendOutcome(text, "Byudjet", summary.outcome().get("budgetRange"));
+        appendOutcome(text, "Uchrashuv vaqti", summary.outcome().get("meetingTime"));
+        if (Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
+            append(text, "Uchrashuv", "Sotuv ofisiga belgilandi");
+        }
+        appendOutcome(text, "Shartnoma raqami", summary.outcome().get("contractNumber"));
         if (summary.sentiment() != null) {
             append(text, "Kayfiyat", summary.sentiment().name());
         }

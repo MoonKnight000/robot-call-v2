@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.agent.flow;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Timings of the operator-queue wait in {@link CallFlowRunner}. Bound from
+ * Timings of the operator-queue wait in {@link FlowQueueRunner}. Bound from
  * {@code voice-agent.flow.*}; no YAML key is needed — 0 (absent) means the value these had
  * as constants.
  *

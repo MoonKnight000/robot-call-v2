@@ -22,14 +22,16 @@ import java.util.List;
 public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TargetSourceRepositoryAdapter.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<List<TargetSourceStep>> STEP_LIST_TYPE = new TypeReference<>() {};
 
     private final TargetSourceJpaRepository jpaRepository;
     private final CampaignJpaRepository campaignJpaRepository;
 
     public TargetSourceRepositoryAdapter(TargetSourceJpaRepository jpaRepository,
-                                         CampaignJpaRepository campaignJpaRepository) {
+                                         CampaignJpaRepository campaignJpaRepository,
+                                         ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.jpaRepository = jpaRepository;
         this.campaignJpaRepository = campaignJpaRepository;
     }
@@ -37,7 +39,7 @@ public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
     @Override
     public TargetSource findByCampaignId(long campaignId) {
         return jpaRepository.findById(campaignId)
-                .map(TargetSourceRepositoryAdapter::toTargetSource)
+                .map(this::toTargetSource)
                 .orElse(null);
     }
 
@@ -90,31 +92,31 @@ public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
      * retrievable through the API so somebody can fix it, and the sync itself already
      * refuses a chained source with no steps.
      */
-    private static List<TargetSourceStep> readSteps(String json) {
+    private List<TargetSourceStep> readSteps(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
         }
         try {
-            return JSON.readValue(json, STEP_LIST_TYPE);
+            return objectMapper.readValue(json, STEP_LIST_TYPE);
         } catch (Exception e) {
             log.warn("target source steps are not readable, treating as none: {}", e.getMessage());
             return List.of();
         }
     }
 
-    private static String writeSteps(List<TargetSourceStep> steps) {
+    private String writeSteps(List<TargetSourceStep> steps) {
         if (steps == null || steps.isEmpty()) {
             return null;
         }
         try {
-            return JSON.writeValueAsString(steps);
+            return objectMapper.writeValueAsString(steps);
         } catch (Exception e) {
             log.warn("target source steps could not be stored: {}", e.getMessage());
             return null;
         }
     }
 
-    private static TargetSource toTargetSource(TargetSourceEntity entity) {
+    private TargetSource toTargetSource(TargetSourceEntity entity) {
         return new TargetSource(
                 entity.getCampaignId(),
                 entity.getProvider(),

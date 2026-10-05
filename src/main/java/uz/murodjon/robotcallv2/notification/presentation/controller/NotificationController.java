@@ -17,8 +17,10 @@ public interface NotificationController {
     ResponseEntity<ResponseData<List<Notification>>> list();
 
     @PostMapping("/{id}/read")
-    ResponseEntity<ResponseData<Void>> markRead(@PathVariable long id);
+    ResponseEntity<ResponseData<Void>> markRead(
+            @PathVariable long id);
 
     @PutMapping("/preferences")
-    ResponseEntity<ResponseData<Void>> updatePreference(@Valid @RequestBody UpdatePreferenceRequest request);
+    ResponseEntity<ResponseData<Void>> updatePreference(
+            @Valid @RequestBody UpdatePreferenceRequest request);
 }

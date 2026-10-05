@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "tts_voice")
 public class TtsVoiceEntity {
@@ -26,6 +28,12 @@ public class TtsVoiceEntity {
 
     @Column(name = "role")
     private String role;
+
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @Column(name = "synced_at")
+    private Instant syncedAt;
 
     public String getId() {
         return id;
@@ -73,5 +81,21 @@ public class TtsVoiceEntity {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    public Instant getSyncedAt() {
+        return syncedAt;
+    }
+
+    public void setSyncedAt(Instant syncedAt) {
+        this.syncedAt = syncedAt;
     }
 }

@@ -7,15 +7,9 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeIndexingTask;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.CatalogFeedReaderPort;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.CatalogItemRepository;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.DocumentTextExtractorPort;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeSourceRepository;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.*;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.CatalogItem;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeChunk;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeSource;

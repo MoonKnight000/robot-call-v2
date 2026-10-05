@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.crm.infrastructure.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -145,7 +146,7 @@ class UysotConnectorAdapterTest {
     private static UysotConnectorAdapter adapter(Integer callHistoryEmployeeId) {
         return new UysotConnectorAdapter(new CrmProperties(true, "https://unused.example", "platform-token",
                 "/lead/{id}", "/lead/filter", "/lead/{id}/note", "/contract/{id}", "/contract/filter",
-                "/call-history", callHistoryEmployeeId));
+                "/call-history", callHistoryEmployeeId), new ObjectMapper());
     }
 
     private static CrmCallHistoryEntry entry(int durationSeconds) {

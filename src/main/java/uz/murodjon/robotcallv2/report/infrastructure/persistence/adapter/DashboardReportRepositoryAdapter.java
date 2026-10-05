@@ -10,17 +10,9 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.doubleOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.instantOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.names;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.rate;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.toTimestamptz;
+import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
 
 /**
  * Period analytics. Native because it is analytical — FILTER aggregates, date_trunc

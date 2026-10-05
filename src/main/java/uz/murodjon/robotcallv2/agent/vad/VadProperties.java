@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.vad;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Voice-activity-detection settings for barge-in. Bound from
@@ -35,7 +36,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                           over the measured floor, and the floor can only push the
  *                           threshold to 6× {@code minEnergyRms} so a loud line never
  *                           becomes one the caller cannot interrupt at all. 0 or less
- *                           keeps the fixed threshold only.
+ * @param echoGateRatio      caller audio quieter than this share of the bot's own recent output
+ *                           level is treated as the bot's voice coming back down the line and
+ *                           ignored for barge-in (e.g. 0.15 is -16 dB). 0 disables echo gate.
+ * @param echoMinBotLevel    bot output level (RMS) below which the echo gate stays open (e.g. 300.0).
  */
 @ConfigurationProperties(prefix = "voice-agent.vad")
 public record VadProperties(
@@ -49,6 +53,18 @@ public record VadProperties(
         AmdProperties amd,
         float listeningThreshold,
         double minEnergyRms,
-        double noiseFloorMargin
+        double noiseFloorMargin,
+        double echoGateRatio,
+        double echoMinBotLevel
 ) {
+    @ConstructorBinding
+    public VadProperties {
+    }
+
+    public VadProperties(boolean enabled, String modelPath, int sampleRate, int windowSamples,
+                         float threshold, int minSpeechMs, int silenceResetMs, AmdProperties amd,
+                         float listeningThreshold, double minEnergyRms, double noiseFloorMargin) {
+        this(enabled, modelPath, sampleRate, windowSamples, threshold, minSpeechMs, silenceResetMs, amd,
+                listeningThreshold, minEnergyRms, noiseFloorMargin, 0.15, 300.0);
+    }
 }

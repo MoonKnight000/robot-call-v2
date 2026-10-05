@@ -1,10 +1,10 @@
 package uz.murodjon.robotcallv2.knowledgebase.infrastructure.config;
 
-import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeIndexingTask;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeIndexingTask;
 
 /**
  * The queue that carries a knowledge source from "uploaded" to "indexed".

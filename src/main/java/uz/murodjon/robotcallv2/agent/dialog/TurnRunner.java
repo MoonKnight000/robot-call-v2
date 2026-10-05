@@ -11,7 +11,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
@@ -63,12 +63,11 @@ public class TurnRunner {
 
     private final DialogProperties dialogProperties;
     private final SystemPromptFactory promptFactory;
-    private final VoiceMetrics metrics;
+    private final LlmMetrics metrics;
     private final TurnTools turnTools;
     private final SpeechOutput speech;
     private final DialogTranscript transcript;
     private final DialogExecutors executors;
-    private final SentimentDetector sentimentDetector;
     private final KnowledgeRetrievalUseCase knowledgeRetrieval;
     private final DialogTuningProperties dialogTuning;
     private final DialogPolicy dialogPolicy;
@@ -80,12 +79,11 @@ public class TurnRunner {
 
     public TurnRunner(DialogProperties dialogProperties,
                       SystemPromptFactory promptFactory,
-                      VoiceMetrics metrics,
+                      LlmMetrics metrics,
                       TurnTools turnTools,
                       SpeechOutput speech,
                       DialogTranscript transcript,
                       DialogExecutors executors,
-                      SentimentDetector sentimentDetector,
                       KnowledgeRetrievalUseCase knowledgeRetrieval,
                       DialogTuningProperties dialogTuning,
                       DialogPolicy dialogPolicy,
@@ -101,7 +99,6 @@ public class TurnRunner {
         this.speech = speech;
         this.transcript = transcript;
         this.executors = executors;
-        this.sentimentDetector = sentimentDetector;
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.dialogTuning = dialogTuning;
         this.dialogPolicy = dialogPolicy;
@@ -162,9 +159,6 @@ public class TurnRunner {
                 // clock from there used to reset the running turn's own measurement and
                 // hand the rest of its sentences to the streaming path meant for the first.
                 s.startTurnClock();
-                if (clientText != null && !clientText.isBlank()) {
-                    s.setLastCustomerSentiment(sentimentDetector.analyze(clientText));
-                }
             }
             // Cleared before the caps below, not after they have been checked: those close
             // the call with a spoken farewell, and a previous turn's barge-in flag left
@@ -232,6 +226,7 @@ public class TurnRunner {
 
             List<ToolCallback> tools = turnTools.build(s);
             s.clearToolReplies(); // the last turn's lines have been spoken or dropped
+            s.clearWaitForCaller();
             s.clearSpokenText();  // this turn's own account of what the caller hears
             s.setUnspokenText(null); // a previous turn's cut-off tail is stale now
 
@@ -294,6 +289,12 @@ public class TurnRunner {
                 log.debug("[{}] AGENT ({}{}): {}", s.channelId(), s.state(),
                         cutOff ? ", cut off by the caller" : "", reply);
                 transcript.recordAgentLine(s, reply);
+            } else if (s.isWaitingForCaller() && fromClient) {
+                // The model heard an unfinished thought and chose to keep listening. The
+                // words are kept for the next final to be stitched onto, so the model sees
+                // the whole sentence then rather than its two halves as separate turns.
+                log.info("[{}] model is waiting for the caller to finish", s.channelId());
+                s.setUnansweredClientText(clientText);
             } else if (cutOff && fromClient) {
                 // Silenced before the first word: the caller heard nothing, so as far as they
                 // know their sentence is still being listened to — and the next final is
@@ -302,7 +303,7 @@ public class TurnRunner {
                 s.setUnansweredClientText(clientText);
             }
             if (result.toolNote() != null && (result.toolNote().contains("XATO")
-                    || result.toolNote().contains(HttpToolExecutor.CONFIRMATION_REQUIRED))) {
+                    || result.toolNote().contains(ToolConfirmation.CONFIRMATION_REQUIRED))) {
                 // The model spoke and called a tool in the same breath, and the tool
                 // refused it (§4.4 — a promise dated in the past, say). There was no
                 // retry to show it the rejection, so the next turn carries it instead;
@@ -320,7 +321,7 @@ public class TurnRunner {
                 // The whole reply was a figure the caller must not be told. Correct it
                 // once, then hand over to a person — never guess a sum aloud (§4.4).
                 factBlockRecovery.recover(s, system, messages);
-            } else if (!result.spoken() && !s.isEnded()) {
+            } else if (!result.spoken() && !s.isEnded() && !s.isWaitingForCaller()) {
                 // Nothing reached the caller and the call is not over: speak a neutral
                 // line rather than hand them silence.
                 if (!haveText) {
@@ -357,33 +358,6 @@ public class TurnRunner {
                 // to arrive before deciding the interruption was real.
                 bargeInRecovery.scheduleResume(s, turn);
             }
-        }
-    }
-
-    /**
-     * Answer a caller who is signing off with a goodbye and hang up, instead of running a
-     * turn on it.
-     *
-     * <p>"Rahmat" after the outcome is recorded asks for nothing. Put through {@link
-     * #advance} it buys a "bir soniya" filler over the LLM's own thinking time, a fresh
-     * model turn that has no question to answer, and a second farewell — and on the call
-     * this came from, a duplicate payment promise, because the model reached for a
-     * recording tool as the only way to say goodbye again.
-     */
-    public void closeOnCallerFarewell(DialogSession s) {
-        if (s.isEnded() || !s.busy().compareAndSet(false, true)) {
-            return;
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            s.end(null);
-            String farewell = DialogLines.farewell(s);
-            transcript.recordAgentLine(s, farewell);
-            speech.speakChunk(s, farewell);
-            speech.finishWhenSpoken(s);
-        } finally {
-            s.busy().set(false);
-            MDC.remove("channelId");
         }
     }
 

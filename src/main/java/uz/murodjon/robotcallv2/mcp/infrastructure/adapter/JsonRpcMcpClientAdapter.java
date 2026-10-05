@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class JsonRpcMcpClientAdapter implements McpClientPort {
 
     private static final Logger log = LoggerFactory.getLogger(JsonRpcMcpClientAdapter.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private static final String SERVICE = "mcp";
     private static final String PROTOCOL_VERSION = "2025-06-18";
@@ -68,9 +68,13 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
     // a second one after that check has passed.
     private final PublicHttpClient httpClient = PublicHttpClient.create(Duration.ofSeconds(5), LIST_TIMEOUT);
 
+    public JsonRpcMcpClientAdapter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     @Override
     public List<McpTool> listTools(McpConnection connection, String bearerToken) {
-        JsonNode result = rpc(connection, bearerToken, "tools/list", MAPPER.createObjectNode(), LIST_TIMEOUT);
+        JsonNode result = rpc(connection, bearerToken, "tools/list", objectMapper.createObjectNode(), LIST_TIMEOUT);
         JsonNode tools = result.path("tools");
         if (!tools.isArray()) {
             throw new ExternalServiceException(ErrorCode.MCP_RESPONSE_INVALID, SERVICE, connection.name());
@@ -95,9 +99,9 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
     @Override
     public String callTool(McpConnection connection, String bearerToken, String toolName,
                            Map<String, Object> arguments) {
-        ObjectNode params = MAPPER.createObjectNode();
+        ObjectNode params = objectMapper.createObjectNode();
         params.put("name", toolName);
-        params.set("arguments", MAPPER.valueToTree(arguments == null ? Map.of() : arguments));
+        params.set("arguments", objectMapper.valueToTree(arguments == null ? Map.of() : arguments));
 
         JsonNode result = rpc(connection, bearerToken, "tools/call", params, CALL_TIMEOUT);
         String text = readContent(result);
@@ -133,7 +137,7 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
             throw new ExternalServiceException(ErrorCode.MCP_URL_INVALID, SERVICE, connection.name());
         }
 
-        ObjectNode envelope = MAPPER.createObjectNode();
+        ObjectNode envelope = objectMapper.createObjectNode();
         envelope.put("jsonrpc", "2.0");
         envelope.put("id", requestIds.incrementAndGet());
         envelope.put("method", method);
@@ -166,7 +170,7 @@ public class JsonRpcMcpClientAdapter implements McpClientPort {
                         connection.name(), status);
             }
 
-            JsonNode envelopeNode = MAPPER.readTree(stripEventStream(body));
+            JsonNode envelopeNode = objectMapper.readTree(stripEventStream(body));
             if (envelopeNode.has("error")) {
                 JsonNode error = envelopeNode.path("error");
                 // The server's own wording is vendor text: it goes to the log, the message

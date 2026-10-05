@@ -28,22 +28,27 @@ public interface ProfileController {
     ResponseEntity<ResponseData<Profile>> get(@CurrentCompanyId long companyId);
 
     @PutMapping
-    ResponseEntity<ResponseData<Profile>> update(@CurrentCompanyId long companyId,
-                                                 @Valid @RequestBody UpdateProfileRequest request);
+    ResponseEntity<ResponseData<Profile>> update(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody UpdateProfileRequest request);
 
     @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    ResponseEntity<ResponseData<Profile>> uploadAvatar(@CurrentCompanyId long companyId,
-                                                       @RequestParam("file") MultipartFile file);
+    ResponseEntity<ResponseData<Profile>> uploadAvatar(
+            @CurrentCompanyId long companyId,
+            @RequestParam("file") MultipartFile file);
 
     @PutMapping("/password")
-    ResponseEntity<ResponseData<Void>> changePassword(@CurrentCompanyId long companyId,
-                                                      @Valid @RequestBody ChangePasswordRequest request);
+    ResponseEntity<ResponseData<Void>> changePassword(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ChangePasswordRequest request);
 
     @GetMapping("/sessions")
     ResponseEntity<ResponseData<List<UserSessionRow>>> sessions();
 
     @DeleteMapping("/sessions/{id}")
-    ResponseEntity<ResponseData<Void>> revokeSession(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> revokeSession(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @GetMapping("/notifications")
     ResponseEntity<ResponseData<List<PersonalNotificationMatrixEntry>>> notifications();
@@ -57,22 +62,27 @@ public interface ProfileController {
     ResponseEntity<ResponseData<List<ScheduleSlot>>> schedule();
 
     @PutMapping("/schedule")
-    ResponseEntity<ResponseData<List<ScheduleSlot>>> updateSchedule(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<List<ScheduleSlot>>> updateSchedule(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody UpdateScheduleRequest request);
 
     @GetMapping("/today-stats")
     ResponseEntity<ResponseData<TodayStats>> todayStats(@CurrentCompanyId long companyId);
 
     @PutMapping("/call-columns")
-    ResponseEntity<ResponseData<List<String>>> updateCallColumns(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<List<String>>> updateCallColumns(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody UpdateCallColumnsRequest request);
 
     @GetMapping("/table-config/{key}")
-    ResponseEntity<ResponseData<JsonNode>> tableConfig(@PathVariable String key);
+    ResponseEntity<ResponseData<JsonNode>> tableConfig(
+            @PathVariable String key);
 
     @PutMapping("/table-config/{key}")
-    ResponseEntity<ResponseData<JsonNode>> updateTableConfig(@CurrentCompanyId long companyId,
-            @PathVariable String key, @RequestBody(required = false) JsonNode value);
+    ResponseEntity<ResponseData<JsonNode>> updateTableConfig(
+            @CurrentCompanyId long companyId,
+            @PathVariable String key,
+            @RequestBody(required = false) JsonNode value);
 
     /**
      * Starts two-factor setup: a new secret and its {@code otpauth://} link for the QR code.
@@ -83,11 +93,13 @@ public interface ProfileController {
 
     /** Switches two-factor login on with the first code from the new secret. */
     @PostMapping("/2fa/enable")
-    ResponseEntity<ResponseData<Void>> enableTwoFactor(@CurrentCompanyId long companyId,
-                                                       @Valid @RequestBody TwoFactorCodeRequest request);
+    ResponseEntity<ResponseData<Void>> enableTwoFactor(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody TwoFactorCodeRequest request);
 
     /** Switches it off; takes the current password and a code. */
     @PostMapping("/2fa/disable")
-    ResponseEntity<ResponseData<Void>> disableTwoFactor(@CurrentCompanyId long companyId,
-                                                        @Valid @RequestBody DisableTwoFactorRequest request);
+    ResponseEntity<ResponseData<Void>> disableTwoFactor(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody DisableTwoFactorRequest request);
 }

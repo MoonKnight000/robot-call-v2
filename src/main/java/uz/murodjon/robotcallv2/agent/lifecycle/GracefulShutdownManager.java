@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -23,12 +23,12 @@ public class GracefulShutdownManager {
 
     private static final Logger log = LoggerFactory.getLogger(GracefulShutdownManager.class);
 
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final ShutdownProperties shutdownProperties;
     private final AtomicBoolean drained = new AtomicBoolean();
     private volatile boolean draining = false;
 
-    public GracefulShutdownManager(VoiceMetrics metrics, ShutdownProperties shutdownProperties) {
+    public GracefulShutdownManager(CallMetrics metrics, ShutdownProperties shutdownProperties) {
         this.metrics = metrics;
         this.shutdownProperties = shutdownProperties;
     }

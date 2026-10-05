@@ -6,6 +6,10 @@ public record InstantCallRequest(
         Long campaignId,
         String phone,
         String clientName,
-        Map<String, Object> contextData
+        Map<String, Object> contextData,
+        Long clientId
 ) {
+    public InstantCallRequest(Long campaignId, String phone, String clientName, Map<String, Object> contextData) {
+        this(campaignId, phone, clientName, contextData, null);
+    }
 }

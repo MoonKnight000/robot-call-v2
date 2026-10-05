@@ -2,15 +2,14 @@ package uz.murodjon.robotcallv2.aimodel.application.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 import java.util.List;
 
@@ -48,7 +47,7 @@ public class AiModelService implements AiModelUseCase {
 
     @Override
     public List<AiModel> findSelectableByKindAndMode(AiModelKind kind, PipelineMode mode) {
-        return repository.findByKindAndMode(kind, mode).stream().filter(this::reachable).toList();
+        return repository.findByKindAndMode(kind, catalogMode(kind, mode)).stream().filter(this::reachable).toList();
     }
 
     @Override
@@ -60,13 +59,25 @@ public class AiModelService implements AiModelUseCase {
     public boolean isSelectable(AiModelKind kind, PipelineMode mode, String id) {
         AiModel model = repository.findById(id);
         return model != null && model.kind() == kind
-                && (mode == null || model.mode() == mode)
+                && (mode == null || model.mode() == catalogMode(kind, mode))
                 && reachable(model);
     }
 
     @Override
     public List<String> findSelectableIds(AiModelKind kind, PipelineMode mode) {
         return findSelectableByKindAndMode(kind, mode).stream().map(AiModel::id).toList();
+    }
+
+    /**
+     * The mode the catalog files this agent's models under. A HALF_CASCADE agent thinks on a
+     * realtime engine and speaks with our TTS, so its chat models are the REALTIME ones and
+     * everything else is CASCADE's.
+     */
+    private static PipelineMode catalogMode(AiModelKind kind, PipelineMode mode) {
+        if (mode != PipelineMode.HALF_CASCADE) {
+            return mode;
+        }
+        return kind == AiModelKind.LLM ? PipelineMode.REALTIME : PipelineMode.CASCADE;
     }
 
     /**

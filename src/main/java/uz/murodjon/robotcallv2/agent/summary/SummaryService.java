@@ -26,19 +26,8 @@ import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Produces the structured {@link CallSummary} from a finished call's transcript
@@ -168,7 +157,7 @@ public class SummaryService {
             throws Exception {
         CompletableFuture<ResponseEntity<ChatResponse, Map<String, Object>>> pending =
                 CompletableFuture.supplyAsync(() -> chatClient.prompt()
-                        .options(options)
+                        .options(options.mutate())
                         .system(system)
                         .user(transcript)
                         .call()

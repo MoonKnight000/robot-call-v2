@@ -2,11 +2,9 @@ package uz.murodjon.robotcallv2.apikey.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
-import uz.murodjon.robotcallv2.apikey.infrastructure.persistence.mapper.ApiKeyEntityMapper;
 import uz.murodjon.robotcallv2.apikey.application.port.output.ApiKeyRepository;
 import uz.murodjon.robotcallv2.apikey.domain.entity.ApiKey;
-import uz.murodjon.robotcallv2.apikey.infrastructure.persistence.entity.ApiKeyEntity;
+import uz.murodjon.robotcallv2.apikey.infrastructure.persistence.mapper.ApiKeyEntityMapper;
 import uz.murodjon.robotcallv2.apikey.infrastructure.persistence.repository.ApiKeyJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;

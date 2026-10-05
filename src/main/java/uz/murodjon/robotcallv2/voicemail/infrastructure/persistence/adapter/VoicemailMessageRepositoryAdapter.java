@@ -3,12 +3,12 @@ package uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.adapter;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.mapper.VoicemailEntityMapper;
 import uz.murodjon.robotcallv2.voicemail.application.port.output.VoicemailMessageRepository;
 import uz.murodjon.robotcallv2.voicemail.domain.entity.VoicemailMessage;
 import uz.murodjon.robotcallv2.voicemail.domain.entity.VoicemailMessageFilter;
 import uz.murodjon.robotcallv2.voicemail.domain.enums.VoicemailStatus;
 import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.entity.VoicemailMessageEntity;
+import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.mapper.VoicemailEntityMapper;
 import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.repository.VoicemailMessageJpaRepository;
 
 import java.time.Instant;

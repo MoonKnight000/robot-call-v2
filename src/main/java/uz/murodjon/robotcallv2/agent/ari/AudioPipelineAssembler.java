@@ -6,32 +6,15 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
-import uz.murodjon.robotcallv2.agent.audio.AnsweringMachineDetector;
-import uz.murodjon.robotcallv2.agent.audio.AudioLevelListener;
-import uz.murodjon.robotcallv2.agent.audio.AudioListener;
-import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
-import uz.murodjon.robotcallv2.agent.dialog.CallContext;
-import uz.murodjon.robotcallv2.agent.dialog.DialogEngine;
-import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
-import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
-import uz.murodjon.robotcallv2.agent.dialog.RealtimeDialogEngine;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.audio.*;
+import uz.murodjon.robotcallv2.agent.dialog.*;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
-import uz.murodjon.robotcallv2.agent.stt.DynamicEndpointingProperties;
-import uz.murodjon.robotcallv2.agent.stt.EndpointingProperties;
-import uz.murodjon.robotcallv2.agent.stt.SttHints;
-import uz.murodjon.robotcallv2.agent.stt.SttProperties;
-import uz.murodjon.robotcallv2.agent.stt.SttProvider;
-import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
-import uz.murodjon.robotcallv2.agent.stt.SttStreamBridge;
-import uz.murodjon.robotcallv2.agent.stt.TranscriptListener;
-import uz.murodjon.robotcallv2.agent.stt.VadGatingProperties;
-import uz.murodjon.robotcallv2.agent.turn.SmartTurnDetector;
-import uz.murodjon.robotcallv2.agent.turn.SmartTurnProperties;
-import uz.murodjon.robotcallv2.agent.turn.UtteranceBuffer;
+import uz.murodjon.robotcallv2.agent.stt.*;
+import uz.murodjon.robotcallv2.agent.turn.*;
 import uz.murodjon.robotcallv2.agent.vad.AmdProperties;
 import uz.murodjon.robotcallv2.agent.vad.SileroVad;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
@@ -49,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.function.DoubleSupplier;
 import java.util.function.IntConsumer;
 
 /**
@@ -67,6 +51,8 @@ class AudioPipelineAssembler {
     private final SttProviderSelector sttProviderSelector;
     private final SmartTurnProperties smartTurnProperties;
     private final ObjectProvider<SmartTurnDetector> turnDetectorProvider;
+    private final TextTurnProperties textTurnProperties;
+    private final ObjectProvider<TextTurnDetector> textTurnDetectorProvider;
     private final LiveProperties liveProperties;
     private final LiveUseCase liveUseCase;
     private final DialogProperties dialogProperties;
@@ -76,7 +62,8 @@ class AudioPipelineAssembler {
     /** The company's own languages, for the recogniser's detect list. */
     private final CompanyConfigUseCase companyConfigService;
     private final CallTranscriptUseCase callTranscriptUseCase;
-    private final VoiceMetrics metrics;
+    private final SttMetrics sttMetrics;
+    private final CallMetrics callMetrics;
     private final AriEventLanes ariEventLanes;
     private final CallSessionRegistry callSessionRegistry;
     private final AriClient ariClient;
@@ -88,6 +75,8 @@ class AudioPipelineAssembler {
                            SttProviderSelector sttProviderSelector,
                            SmartTurnProperties smartTurnProperties,
                            ObjectProvider<SmartTurnDetector> turnDetectorProvider,
+                           TextTurnProperties textTurnProperties,
+                           ObjectProvider<TextTurnDetector> textTurnDetectorProvider,
                            LiveProperties liveProperties,
                            LiveUseCase liveUseCase,
                            DialogProperties dialogProperties,
@@ -96,7 +85,8 @@ class AudioPipelineAssembler {
                            DialogRouter dialogRouter,
                            CompanyConfigUseCase companyConfigService,
                            CallTranscriptUseCase callTranscriptUseCase,
-                           VoiceMetrics metrics,
+                           SttMetrics sttMetrics,
+                           CallMetrics callMetrics,
                            AriEventLanes ariEventLanes,
                            CallSessionRegistry callSessionRegistry,
                            AriClient ariClient,
@@ -107,6 +97,8 @@ class AudioPipelineAssembler {
         this.sttProviderSelector = sttProviderSelector;
         this.smartTurnProperties = smartTurnProperties;
         this.turnDetectorProvider = turnDetectorProvider;
+        this.textTurnProperties = textTurnProperties;
+        this.textTurnDetectorProvider = textTurnDetectorProvider;
         this.liveProperties = liveProperties;
         this.liveUseCase = liveUseCase;
         this.dialogProperties = dialogProperties;
@@ -115,7 +107,8 @@ class AudioPipelineAssembler {
         this.dialogRouter = dialogRouter;
         this.companyConfigService = companyConfigService;
         this.callTranscriptUseCase = callTranscriptUseCase;
-        this.metrics = metrics;
+        this.sttMetrics = sttMetrics;
+        this.callMetrics = callMetrics;
         this.ariEventLanes = ariEventLanes;
         this.callSessionRegistry = callSessionRegistry;
         this.ariClient = ariClient;
@@ -142,6 +135,10 @@ class AudioPipelineAssembler {
         if (smartTurnProperties.enabled()) {
             log.warn("voice-agent.turn.enabled is on but no speech gate is installed — Smart Turn "
                     + "(extend and early close) will not run. It needs voice-agent.stt.vad-gating.enabled=true.");
+        }
+        if (textTurnProperties.enabled()) {
+            log.warn("voice-agent.text-turn.enabled is on but no speech gate is installed — the text "
+                    + "turn detector will not run. It needs voice-agent.stt.vad-gating.enabled=true.");
         }
         EndpointingProperties endpointing = sttProperties.endpointing();
         if (endpointing != null && endpointing.enabled()) {
@@ -174,7 +171,7 @@ class AudioPipelineAssembler {
     List<AudioListener> buildAudioListeners(String channelId, long companyId, long callAttemptId,
                                             Instant startedAt, String language,
                                             RealtimeAudioBridge realtimeBridge, CallContext context,
-                                            AiAgent agent) {
+                                            AiAgent agent, DoubleSupplier botLevelSupplier) {
         List<AudioListener> listeners = new ArrayList<>();
         boolean realtime = realtimeBridge != null;
 
@@ -200,7 +197,9 @@ class AudioPipelineAssembler {
                             learning ? dynamic.emaAlpha() : 0d,
                             learning ? dynamic.reopenGraceMs() : 0);
                     speechGate.setTranscriptCues(adaptive ? endpointing.completeSilenceMs() : 0);
-                    installTurnDetector(listeners, speechGate, language);
+                    if (!installTurnDetector(listeners, speechGate, language)) {
+                        installTextTurnDetector(speechGate, language);
+                    }
                 }
                 // Who knows the caller stopped talking. With a gate installed it is the
                 // gate's close, and SttStreamBridge reports that. Without one — the
@@ -218,7 +217,7 @@ class AudioPipelineAssembler {
                 listeners.add(new VadStream(vad, vadProperties, channelId,
                         realtime ? () -> realtimeDialogEngine.notifyCallerSpeaking(channelId)
                                 : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
-                        buildAmd(channelId), onSpeechEnd));
+                        buildAmd(channelId), onSpeechEnd, botLevelSupplier));
             } else if (!realtime && sttProperties.vadGating() != null && sttProperties.vadGating().enabled()) {
                 log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }
@@ -270,7 +269,7 @@ class AudioPipelineAssembler {
                         detectLangs = sttProperties.detectLanguages();
                     }
                     listeners.add(new SttStreamBridge(stt, stt.sampleRate(), CallMediaFactory.SAMPLE_RATE,
-                            channelId, sttLanguage, detectLangs, listener, speechGate, metrics,
+                            channelId, sttLanguage, detectLangs, listener, speechGate, sttMetrics,
                             sttProperties.endpointing(), sttProperties.responseTimeoutMs(),
                             dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null,
                             SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()),
@@ -289,35 +288,71 @@ class AudioPipelineAssembler {
         return listeners;
     }
 
-    private void installTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language) {
+    /** @return whether Smart Turn now decides this call's turn ends */
+    private boolean installTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language) {
         if (!smartTurnProperties.enabled()) {
-            return;
+            return false;
         }
         SmartTurnDetector detector = turnDetectorProvider.getIfAvailable();
         if (detector == null || !detector.available()) {
-            return;
+            return false;
         }
         String callLanguage = (language == null || language.isBlank())
                 ? sttProperties.defaultLanguage() : language;
         if (!smartTurnProperties.supports(callLanguage)) {
             log.debug("Smart Turn skipped for {} — not a language the model was trained for", callLanguage);
-            return;
+            return false;
         }
         UtteranceBuffer buffer = new UtteranceBuffer(detector.samples());
         listeners.add(buffer);
         gate.setTurnDetector(() -> {
             boolean complete = detector.isComplete(buffer.recent(), buffer.length());
-            metrics.turnScored(complete);
+            sttMetrics.turnScored(complete);
             return complete;
         }, smartTurnProperties.maxExtendMs());
         if (smartTurnProperties.earlyWaitMs() > 0) {
             gate.setEarlyClose(() -> {
                 boolean confident = detector.isConfidentlyComplete(buffer.recent(), buffer.length());
                 if (confident) {
-                    metrics.turnClosedEarly();
+                    sttMetrics.turnClosedEarly();
                 }
                 return confident;
             }, smartTurnProperties.earlyWaitMs());
+        }
+        return true;
+    }
+
+    /**
+     * The same two hooks as Smart Turn, judged from the words instead of the audio
+     * ({@link TextTurnDetector}): the recognizer's latest interim is what gets scored.
+     */
+    private void installTextTurnDetector(SpeechGate gate, String language) {
+        if (!textTurnProperties.enabled()) {
+            return;
+        }
+        TextTurnDetector detector = textTurnDetectorProvider.getIfAvailable();
+        if (detector == null || !detector.available()) {
+            return;
+        }
+        String callLanguage = (language == null || language.isBlank())
+                ? sttProperties.defaultLanguage() : language;
+        if (!textTurnProperties.supports(callLanguage)) {
+            log.debug("Text turn skipped for {} — not a language the model is trusted for", callLanguage);
+            return;
+        }
+        gate.setTurnDetector(() -> {
+            boolean complete = detector.isComplete(gate.lastInterimTranscript());
+            sttMetrics.turnScored(complete);
+            return complete;
+        }, textTurnProperties.maxExtendMs());
+        if (textTurnProperties.earlyWaitMs() > 0) {
+            gate.setEarlyClose(() -> {
+                boolean confident = detector.isConfidentlyComplete(gate.lastInterimTranscript());
+                if (confident) {
+                    sttMetrics.turnClosedEarly();
+                }
+                return confident;
+            }, textTurnProperties.earlyWaitMs());
         }
     }
 
@@ -332,7 +367,7 @@ class AudioPipelineAssembler {
     }
 
     private void handleVoicemail(String channelId) {
-        metrics.voicemailDetected();
+        callMetrics.voicemailDetected();
         CallSession session = callSessionRegistry.find(channelId);
         AiAgent agent = session != null ? session.agent() : null;
         // HANGUP only for a call with no agent behind it at all — there is no message to

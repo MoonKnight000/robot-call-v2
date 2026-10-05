@@ -306,6 +306,14 @@ public final class PbxPhrases {
         return language != null && language.toLowerCase().startsWith("en");
     }
 
+    /** For a suspended company and for one out of balance alike: the caller is told neither. */
+    public static String companyUnavailable(String language) {
+        return pick(language,
+                "Kechirasiz, xizmat ko'rsatish vaqtincha to'xtatilgan.",
+                "Извините, обслуживание временно приостановлено.",
+                "Sorry, the service is temporarily unavailable.");
+    }
+
     private static String capitalize(String text) {
         return text == null || text.isEmpty() ? text : Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }

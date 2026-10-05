@@ -1,12 +1,12 @@
 package uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import java.time.Instant;
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
-import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "campaign_variant")

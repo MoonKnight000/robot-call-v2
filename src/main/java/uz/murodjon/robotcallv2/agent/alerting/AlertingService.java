@@ -4,7 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.RtpMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TtsMetrics;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -32,7 +37,12 @@ public class AlertingService {
     private final CallAttemptUseCase callAttemptUseCase;
     private final NotificationUseCase notificationService;
     private final CompanyProperties companyProperties;
-    private final VoiceMetrics voiceMetrics;
+    private final DialogMetrics dialogMetrics;
+    private final LlmMetrics llmMetrics;
+    private final SttMetrics sttMetrics;
+    private final TtsMetrics ttsMetrics;
+    private final RealtimeMetrics realtimeMetrics;
+    private final RtpMetrics rtpMetrics;
     private final AlertingProperties alertingProperties;
     /**
      * Held by {@link #checkSuccessRate} only: it is the one check that reads shared data. The
@@ -59,14 +69,24 @@ public class AlertingService {
     public AlertingService(CallAttemptUseCase callAttemptUseCase,
                            NotificationUseCase notificationService,
                            CompanyProperties companyProperties,
-                           VoiceMetrics voiceMetrics,
+                           DialogMetrics dialogMetrics,
+                           LlmMetrics llmMetrics,
+                           SttMetrics sttMetrics,
+                           TtsMetrics ttsMetrics,
+                           RealtimeMetrics realtimeMetrics,
+                           RtpMetrics rtpMetrics,
                            AlertingProperties alertingProperties,
                            ClusterJobLock clusterJobLock) {
         this.clusterJobLock = clusterJobLock;
         this.callAttemptUseCase = callAttemptUseCase;
         this.notificationService = notificationService;
         this.companyProperties = companyProperties;
-        this.voiceMetrics = voiceMetrics;
+        this.dialogMetrics = dialogMetrics;
+        this.llmMetrics = llmMetrics;
+        this.sttMetrics = sttMetrics;
+        this.ttsMetrics = ttsMetrics;
+        this.realtimeMetrics = realtimeMetrics;
+        this.rtpMetrics = rtpMetrics;
         this.alertingProperties = alertingProperties;
     }
 
@@ -125,13 +145,13 @@ public class AlertingService {
             return;
         }
         try {
-            long count = voiceMetrics.turnaroundCount();
+            long count = dialogMetrics.turnaroundCount();
             long turns = count - lastTurnaroundCount;
             lastTurnaroundCount = count;
             if (turns < alertingProperties.turnaroundMinTurns()) {
                 return;
             }
-            long p95 = Math.round(voiceMetrics.turnaroundP95Millis());
+            long p95 = Math.round(dialogMetrics.turnaroundP95Millis());
             if (p95 > alertingProperties.turnaroundBudgetMs()) {
                 log.error("ALERT: turnaround p95 {}ms over the last {} turns exceeds the {}ms budget (§1.3)",
                         p95, turns, alertingProperties.turnaroundBudgetMs());
@@ -164,12 +184,12 @@ public class AlertingService {
             return;
         }
         try {
-            long started = voiceMetrics.speculationStartedCount();
-            long hit = voiceMetrics.speculationHitCount();
-            long cacheHits = voiceMetrics.ttsCacheHitCount();
-            long cacheMisses = voiceMetrics.ttsCacheMissCount();
-            long promptTokens = voiceMetrics.llmPromptTokenCount();
-            long cachedTokens = voiceMetrics.llmCachedTokenCount();
+            long started = llmMetrics.speculationStartedCount();
+            long hit = llmMetrics.speculationHitCount();
+            long cacheHits = ttsMetrics.ttsCacheHitCount();
+            long cacheMisses = ttsMetrics.ttsCacheMissCount();
+            long promptTokens = llmMetrics.llmPromptTokenCount();
+            long cachedTokens = llmMetrics.llmCachedTokenCount();
 
             long speculations = started - lastSpeculationsStarted;
             long hits = hit - lastSpeculationsHit;
@@ -218,9 +238,9 @@ public class AlertingService {
             return;
         }
         try {
-            double failovers = voiceMetrics.counterTotal("voice.stt.failover")
-                    + voiceMetrics.counterTotal("voice.tts.failovers")
-                    + voiceMetrics.counterTotal("voice.realtime.fallbacks");
+            double failovers = sttMetrics.countFailovers()
+                    + ttsMetrics.countFailovers()
+                    + realtimeMetrics.countFallbacks();
             double window = failovers - lastFailovers;
             lastFailovers = failovers;
             if (window > alertingProperties.providerFailoverThreshold()) {
@@ -233,7 +253,7 @@ public class AlertingService {
                         null);
             }
 
-            double[] mos = voiceMetrics.mosTotals();
+            double[] mos = rtpMetrics.mosTotals();
             double calls = mos[0] - lastMosCount;
             double total = mos[1] - lastMosTotal;
             lastMosCount = mos[0];

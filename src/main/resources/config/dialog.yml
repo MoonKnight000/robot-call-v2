@@ -79,7 +79,8 @@ voice-agent:
       farewell-grace-ms: ${DIALOG_FAREWELL_GRACE_MS:15000}
       min-echo-chars: ${DIALOG_MIN_ECHO_CHARS:20}
       llm-retry-backoff-ms: ${DIALOG_LLM_RETRY_BACKOFF_MS:200}
-      max-stage-attempts: ${DIALOG_MAX_STAGE_ATTEMPTS:4}
+      # Was 4: a caller with two questions and an objection is not a loop, and 4 handed them to an operator.
+      max-stage-attempts: ${DIALOG_MAX_STAGE_ATTEMPTS:8}
       playback-poll-ms: 100
       hangup-tail-ms: ${DIALOG_HANGUP_TAIL_MS:500}
     preemptive: ${DIALOG_PREEMPTIVE:true}
@@ -93,7 +94,9 @@ voice-agent:
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
     no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
-    fast-path: ${DIALOG_FAST_PATH:true}
+    # Off: a phrase list cannot tell "adashdingiz" from "sizni tanimayman, kim bu?" — the
+    # model decides wrong-number / do-not-call / transfer from the whole conversation.
+    fast-path: ${DIALOG_FAST_PATH:false}
     knowledge-base: ${DIALOG_KNOWLEDGE_BASE:false}
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.55}
     fact-guard: ${DIALOG_FACT_GUARD:true}
@@ -101,3 +104,5 @@ voice-agent:
     fact-violation-escalate-after: ${DIALOG_FACT_VIOLATION_ESCALATE_AFTER:2}
     pre-tool-speech: ${DIALOG_PRE_TOOL_SPEECH:true}
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}
+    # Deployment-wide token budget of one call, when its AiModelConfig sets none; 0 = no budget.
+    max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:0}

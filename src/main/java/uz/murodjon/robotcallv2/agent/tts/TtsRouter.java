@@ -4,7 +4,7 @@ import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TtsMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -37,11 +37,11 @@ public class TtsRouter {
 
     private final TtsProviderSelector selector;
     private final TtsProperties ttsProperties;
-    private final VoiceMetrics metrics;
+    private final TtsMetrics metrics;
     private final TtsCache cache;
     private final TtsVoiceUseCase ttsVoiceUseCase;
 
-    public TtsRouter(TtsProviderSelector selector, TtsProperties ttsProperties, VoiceMetrics metrics,
+    public TtsRouter(TtsProviderSelector selector, TtsProperties ttsProperties, TtsMetrics metrics,
                      TtsCache cache, TtsVoiceUseCase ttsVoiceUseCase) {
         this.selector = selector;
         this.ttsProperties = ttsProperties;
@@ -144,9 +144,10 @@ public class TtsRouter {
      * repeated sentence still gets the cache's fast path next time.</p>
      */
     public void synthesizeStreaming(String text, String language, String voiceId, EffectiveVoiceSettings style,
+                                    List<PronunciationRule> rules,
                                     PcmChunkListener onChunk) {
         Routed r = route(language, voiceId, style);
-        String speech = SpeechTextNormalizer.normalize(text, r.lang());
+        String speech = SpeechTextNormalizer.normalize(text, r.lang(), rules);
         log.debug("TTS synth (streaming): lang={} voice={} -> provider={}", r.lang(), r.voiceName(), r.provider().name());
 
         short[] hit = cache.get(r.provider().name(), r.lang(), r.voiceName(), speech, r.style());

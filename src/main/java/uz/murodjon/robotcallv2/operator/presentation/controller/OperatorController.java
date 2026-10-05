@@ -12,16 +12,16 @@ import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 /**
- * REST API for the operator screen (PROJECT.md §11.6, Stage 11). Every endpoint answers
- * {@code 409 CALL_NOT_ACTIVE} for a channel that is not a live call of the caller's company.
+ * REST API for the operator screen (docs/api/operators.md, PROJECT.md §11.6, Stage 11).
  */
 @RequestMapping("/api/operator")
 public interface OperatorController {
 
     @PreAuthorize("hasAuthority('OPERATOR_READ')")
     @GetMapping("/calls/{channelId}")
-    ResponseEntity<ResponseData<OperatorContextResponse>> context(@CurrentCompanyId long companyId,
-                                                                  @PathVariable String channelId);
+    ResponseEntity<ResponseData<OperatorContextResponse>> context(
+            @CurrentCompanyId long companyId,
+            @PathVariable String channelId);
 
     @PreAuthorize("hasAuthority('OPERATOR_EDIT')")
     @PostMapping("/calls/{channelId}/takeover")

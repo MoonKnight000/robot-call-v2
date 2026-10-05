@@ -3,25 +3,25 @@ package uz.murodjon.robotcallv2.profile.application.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileTableConfigUseCase;
 import uz.murodjon.robotcallv2.profile.application.port.output.TableConfigRepository;
 import uz.murodjon.robotcallv2.profile.domain.entity.TableConfig;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 
 @Service
 public class ProfileTableConfigService implements ProfileTableConfigUseCase {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final TableConfigRepository repository;
     private final CurrentUser currentUser;
 
-    public ProfileTableConfigService(TableConfigRepository repository, CurrentUser currentUser) {
+    public ProfileTableConfigService(TableConfigRepository repository, CurrentUser currentUser, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.repository = repository;
         this.currentUser = currentUser;
     }
@@ -58,9 +58,9 @@ public class ProfileTableConfigService implements ProfileTableConfigUseCase {
         return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 
-    private static JsonNode readValue(String json) {
+    private JsonNode readValue(String json) {
         try {
-            return JSON.readTree(json);
+            return objectMapper.readTree(json);
         } catch (Exception e) {
             throw new ConflictException(ErrorCode.PROFILE_TABLE_CONFIG_CORRUPT, e);
         }

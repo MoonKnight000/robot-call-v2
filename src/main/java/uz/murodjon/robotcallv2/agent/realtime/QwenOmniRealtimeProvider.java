@@ -2,14 +2,13 @@ package uz.murodjon.robotcallv2.agent.realtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -19,10 +18,8 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
@@ -41,7 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class QwenOmniRealtimeProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(QwenOmniRealtimeProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private static final int INPUT_RATE = 16000;
     private static final int OUTPUT_RATE = 24000;
@@ -49,7 +46,8 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public QwenOmniRealtimeProvider(RealtimeProperties realtimeProperties) {
+    public QwenOmniRealtimeProvider(RealtimeProperties realtimeProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.realtimeProperties = realtimeProperties;
     }
 
@@ -131,9 +129,9 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
         }
     }
 
-    private static String initSessionMessage(RealtimeCallConfig config, QwenOmniRealtimeProperties q) {
-        ObjectNode root = MAPPER.createObjectNode();
-        root.put("header", MAPPER.createObjectNode().put("action", "session-update"));
+    private String initSessionMessage(RealtimeCallConfig config, QwenOmniRealtimeProperties q) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("header", objectMapper.createObjectNode().put("action", "session-update"));
         ObjectNode payload = root.putObject("payload");
         payload.put("model", config.modelOr(q.model()));
         // The call's own voice wins; the configured one is the deployment default.
@@ -145,33 +143,17 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             payload.put("instructions", config.systemPrompt());
         }
 
-        List<ToolCallback> tools = config.tools();
-        if (tools != null && !tools.isEmpty()) {
-            ArrayNode toolArray = payload.putArray("tools");
-            for (ToolCallback tool : tools) {
-                ObjectNode t = toolArray.addObject();
-                t.put("type", "function");
-                t.put("name", tool.getToolDefinition().name());
-                t.put("description", tool.getToolDefinition().description());
-                try {
-                    t.set("parameters", MAPPER.readTree(tool.getToolDefinition().inputSchema()));
-                } catch (Exception e) {
-                    // Still offered, only without a schema the engine can check arguments against.
-                    log.debug("Tool {} has an unreadable input schema: {}", tool.getToolDefinition().name(), e.getMessage());
-                }
-            }
-        }
+        RealtimeFunctionTools.putFunctionTools(objectMapper, payload, config.tools());
 
         return root.toString();
     }
 
-    private static final class QwenOmniResponseHandler implements WebSocket.Listener {
+    private final class QwenOmniResponseHandler extends JsonWebSocketListener {
 
         private final String channelId;
         private final RealtimeListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
-        private final StringBuilder message = new StringBuilder();
         private final StringBuilder botTranscript = new StringBuilder();
 
         private QwenOmniResponseHandler(String channelId, RealtimeListener listener,
@@ -182,43 +164,20 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             this.ready = ready;
         }
 
-        @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-            message.append(StandardCharsets.UTF_8.decode(data));
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
         /**
          * Every message arrives on the WebSocket's own thread, which knows nothing about
          * the call — so the id goes in here, once, and everything below it (this class's
          * logs and the dialog engine's, reached through the listener) is filed under the
          * call it belongs to instead of {@code [call:none]}.
          */
-        private void handle(String json) {
+        @Override
+        protected void onMessage(String json) {
             CallMdc.with(channelId, () -> dispatch(json));
         }
 
         private void dispatch(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 String event = node.path("header").path("event").asText("");
 
                 switch (event) {
@@ -283,7 +242,7 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
         }
     }
 
-    private static final class QwenOmniRealtimeSession implements RealtimeSession {
+    private final class QwenOmniRealtimeSession implements RealtimeSession {
 
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
@@ -302,8 +261,8 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             }
             ByteBuffer buffer = ByteBuffer.allocate(pcm.length * 2).order(ByteOrder.LITTLE_ENDIAN);
             buffer.asShortBuffer().put(pcm);
-            ObjectNode root = MAPPER.createObjectNode();
-            root.put("header", MAPPER.createObjectNode().put("action", "append-audio"));
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("header", objectMapper.createObjectNode().put("action", "append-audio"));
             root.putObject("payload").put("audio", Base64.getEncoder().encodeToString(buffer.array()));
             send(root.toString());
         }
@@ -313,8 +272,8 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             if (text == null || text.isBlank() || closed || !alive.get()) {
                 return;
             }
-            ObjectNode root = MAPPER.createObjectNode();
-            root.put("header", MAPPER.createObjectNode().put("action", "send-text"));
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("header", objectMapper.createObjectNode().put("action", "send-text"));
             root.putObject("payload").put("text", text);
             send(root.toString());
         }
@@ -324,8 +283,8 @@ public class QwenOmniRealtimeProvider implements RealtimeProvider {
             if (closed || !alive.get()) {
                 return;
             }
-            ObjectNode root = MAPPER.createObjectNode();
-            root.put("header", MAPPER.createObjectNode().put("action", "submit-tool-output"));
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("header", objectMapper.createObjectNode().put("action", "submit-tool-output"));
             ObjectNode payload = root.putObject("payload");
             payload.put("call_id", callId);
             payload.put("output", result != null ? result : "{}");

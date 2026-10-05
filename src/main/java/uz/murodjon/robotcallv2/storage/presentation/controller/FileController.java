@@ -23,8 +23,10 @@ public interface FileController {
      * that slice, which is how an audio player seeks.
      */
     @GetMapping("/files/{id}")
-    ResponseEntity<Resource> download(@CurrentCompanyId long callerCompanyId, @PathVariable long id,
-                                      @RequestHeader(value = HttpHeaders.RANGE, required = false) String range);
+    ResponseEntity<Resource> download(
+            @CurrentCompanyId long callerCompanyId,
+            @PathVariable long id,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String range);
 
     @PostMapping(value = {"/files/upload", "/v1/files/upload"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ResponseEntity<ResponseData<FileUploadResponse>> upload(

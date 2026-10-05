@@ -1,11 +1,11 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.company.infrastructure.persistence.mapper.CompanyConfigEntityMapper;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyConfigRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyConfigEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.mapper.CompanyConfigEntityMapper;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyConfigJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 

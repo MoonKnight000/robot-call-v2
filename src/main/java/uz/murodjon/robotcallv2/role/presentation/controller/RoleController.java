@@ -14,43 +14,41 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import java.util.List;
 
 /**
- * Roles and their permissions inside one company. The seeded system roles (DEVELOPER,
- * ADMIN, OPERATOR, VIEWER) are returned like any other but cannot be edited or deleted;
- * a company may define up to {@code RoleValidator.MAX_CUSTOM_ROLES} of its own.
+ * Roles and their permissions inside one company (docs/api/roles.md).
  */
 @RequestMapping("/api/roles")
 public interface RoleController {
 
-    /** Every role of the current company, each with how many users hold it. */
     @GetMapping
     @PreAuthorize("hasAuthority('ROLE_READ')")
     ResponseEntity<ResponseData<List<RoleRow>>> list(@CurrentCompanyId long companyId);
 
-    /** The permission catalog grouped by page — what the role editor renders. */
     @GetMapping("/permissions")
     @PreAuthorize("hasAuthority('ROLE_READ')")
     ResponseEntity<ResponseData<List<PermissionGroupRow>>> listPermissions();
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_READ')")
-    ResponseEntity<ResponseData<RoleRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<RoleRow>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_EDIT')")
-    ResponseEntity<ResponseData<RoleRow>> create(@CurrentCompanyId long companyId,
-                                                 @Valid @RequestBody CreateRoleRequest request);
+    ResponseEntity<ResponseData<RoleRow>> create(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CreateRoleRequest request);
 
-    /**
-     * Replaces the role name, description and permission set. Everyone holding the role is
-     * logged out, because their access token still carries the previous permissions.
-     */
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_EDIT')")
-    ResponseEntity<ResponseData<RoleRow>> update(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                 @Valid @RequestBody UpdateRoleRequest request);
+    ResponseEntity<ResponseData<RoleRow>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateRoleRequest request);
 
-    /** Refused with 409 while any user still holds the role. */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_EDIT')")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
@@ -10,6 +8,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 import java.util.List;
 import java.util.Map;

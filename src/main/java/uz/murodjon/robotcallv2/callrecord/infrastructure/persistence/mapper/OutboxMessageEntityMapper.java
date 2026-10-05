@@ -16,9 +16,13 @@ import java.util.Map;
 public class OutboxMessageEntityMapper {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxMessageEntityMapper.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {
     };
+
+    public OutboxMessageEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public OutboxMessage toOutboxMessage(OutboxMessageEntity entity) {
         return new OutboxMessage(
@@ -38,7 +42,7 @@ public class OutboxMessageEntityMapper {
 
     public String toPayloadJson(Map<String, Object> payload) {
         try {
-            return JSON.writeValueAsString(payload);
+            return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
             // A map of strings, numbers and booleans always serializes.
             throw new IllegalStateException("outbox payload is not serializable", e);
@@ -49,9 +53,9 @@ public class OutboxMessageEntityMapper {
      * A payload that cannot be read comes back empty: its delivery then fails like any other
      * and the row ends DEAD, with an alert, instead of stopping the whole batch.
      */
-    private static Map<String, Object> readPayload(Long id, String json) {
+    private Map<String, Object> readPayload(Long id, String json) {
         try {
-            return JSON.readValue(json, PAYLOAD_TYPE);
+            return objectMapper.readValue(json, PAYLOAD_TYPE);
         } catch (Exception e) {
             log.warn("Corrupt outbox_message.payload on message {}: {}", id, e.getMessage());
             return Map.of();

@@ -16,15 +16,19 @@ public interface ReportScheduleController {
 
     @PreAuthorize("hasAuthority('REPORT_EDIT')")
     @PostMapping
-    ResponseEntity<ResponseData<ReportSchedule>> create(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<ReportSchedule>> create(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody CreateReportScheduleRequest request);
 
     @PreAuthorize("hasAuthority('REPORT_READ')")
     @PostMapping("/list")
-    ResponseEntity<ResponseData<PageableData<ReportSchedule>>> list(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<PageableData<ReportSchedule>>> list(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody ReportScheduleFilter filter);
 
     @PreAuthorize("hasAuthority('REPORT_EDIT')")
     @DeleteMapping("/{id}")
-    ResponseEntity<ResponseData<ReportSchedule>> disable(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<ReportSchedule>> disable(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

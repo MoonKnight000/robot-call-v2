@@ -18,8 +18,10 @@ import java.util.Collection;
  * eventually be enforced in one. The two sessions differ in how the conversation is
  * <em>driven</em>, not in what its tools mean.
  *
- * <p>Implemented by {@link DialogSession} (cascade) and {@link RealtimeDialogSession}
- * (speech-to-speech).
+ * <p>Implemented by {@link DialogSession} (cascade), {@link RealtimeDialogSession}
+ * (speech-to-speech) and the panel's tool dry run. There are deliberately no default
+ * methods: a pipeline that cannot do something says so in its own implementation, so a
+ * new tool or a new pipeline is a compile error to think about rather than a silent no-op.
  */
 public interface DialogOutcomeSink {
 
@@ -70,58 +72,59 @@ public interface DialogOutcomeSink {
 
     /**
      * Counts one more call of a company tool on this conversation and returns the new count,
-     * which is what {@code Tool.maxCallsPerCall} is checked against. A sink that keeps no
-     * count (a dry run from the panel) answers 1: every call is its first.
+     * which is what {@code Tool.maxCallsPerCall} is checked against.
      */
-    default int countToolCall(String toolName) {
-        return 1;
-    }
+    int countToolCall(String toolName);
 
-    default AiAgent agent() {
-        return null;
-    }
+    /**
+     * The model judged the caller's words unfinished ("aa…", half a sentence) and chose to
+     * say nothing and keep listening.
+     */
+    void waitForCaller();
+
+    /**
+     * The caller asked to be spoken to in another language and the model heard it.
+     *
+     * @return whether the call now runs in {@code language} — {@code false} when it is not
+     *         one this company's calls are held in, or the pipeline cannot switch
+     */
+    boolean switchCallLanguage(String language);
+
+    /**
+     * The model's read of the caller's mood, which sets the voice and the empathy directive
+     * from the next reply on.
+     */
+    void noteCallerMood(CustomerSentiment mood);
+
+    /** The agent behind this call; {@code null} when none is (a manual test line, a dry run from the panel). */
+    AiAgent agent();
 
     /** The facts this call started with; {@code null} for a sink that has none (a dry run from the panel). */
-    default CallContext context() {
-        return null;
-    }
+    CallContext context();
 
     /**
      * Figures a company tool's answer showed the model — prices, totals, order numbers —
-     * which the fact guard then lets it say (UNIVERSAL-OPERATOR-PLAN A.3). A sink with no
-     * guard behind it (a dry run from the panel) drops them.
+     * which the fact guard then lets it say (UNIVERSAL-OPERATOR-PLAN A.3).
      */
-    default void recordToolFigures(Collection<BigDecimal> figures) {
-    }
+    void recordToolFigures(Collection<BigDecimal> figures);
 
     /**
      * The write-tool call read back to the caller and waiting for their yes, or null
      * (UNIVERSAL-OPERATOR-PLAN B.3, {@link HttpToolExecutor}).
      */
-    default PendingToolConfirmation findPendingConfirmation(String toolName) {
-        return null;
-    }
+    PendingToolConfirmation findPendingConfirmation(String toolName);
 
     /** Hold {@code pending} for {@code toolName}'s next call; null lets it go. */
-    default void setPendingConfirmation(String toolName, PendingToolConfirmation pending) {
-    }
+    void setPendingConfirmation(String toolName, PendingToolConfirmation pending);
 
     /** How many times the caller has spoken so far — what tells a later answer from the same breath. */
-    default int countCallerUtterances() {
-        return 0;
-    }
+    int countCallerUtterances();
 
     /** What the caller said last, or null before they have said anything. */
-    default String findLastCallerText() {
-        return null;
-    }
+    String findLastCallerText();
 
-    /**
-     * Keep the last catalog search's answer where the model will see it again
-     * ({@link CatalogTools}). A pipeline whose engine keeps its own tool results drops it.
-     */
-    default void rememberCatalogResult(String result) {
-    }
+    /** Keep the last catalog search's answer where the model will see it again ({@link CatalogTools}). */
+    void rememberCatalogResult(String result);
 
     /**
      * Sends {@code text} by SMS to the number this call is with.
@@ -130,7 +133,5 @@ public interface DialogOutcomeSink {
      *         one (mid-call SMS is off for its agent, or its pipeline wires no sender) or the
      *         send failed, which the tool reports back instead of claiming the SMS went
      */
-    default boolean triggerMidCallSms(String text) {
-        return false;
-    }
+    boolean triggerMidCallSms(String text);
 }

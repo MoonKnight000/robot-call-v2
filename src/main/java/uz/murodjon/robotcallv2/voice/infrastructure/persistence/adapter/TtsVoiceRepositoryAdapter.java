@@ -1,15 +1,19 @@
 package uz.murodjon.robotcallv2.voice.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.voice.infrastructure.persistence.mapper.TtsVoiceEntityMapper;
+import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.voice.application.port.output.TtsVoiceRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
+import uz.murodjon.robotcallv2.voice.infrastructure.persistence.mapper.TtsVoiceEntityMapper;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.repository.TtsVoiceJpaRepository;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class TtsVoiceRepositoryAdapter implements TtsVoiceRepository {
@@ -24,7 +28,7 @@ public class TtsVoiceRepositoryAdapter implements TtsVoiceRepository {
 
     @Override
     public List<TtsVoice> findAll() {
-        return jpaRepository.findAllByOrderByIdAsc().stream()
+        return jpaRepository.findAllByActiveTrueOrderByIdAsc().stream()
                 .map(mapper::toTtsVoice)
                 .toList();
     }
@@ -35,7 +39,7 @@ public class TtsVoiceRepositoryAdapter implements TtsVoiceRepository {
             return findAll();
         }
         String wanted = languagePrefix(language);
-        return jpaRepository.findAllByOrderByIdAsc().stream()
+        return jpaRepository.findAllByActiveTrueOrderByIdAsc().stream()
                 .filter(v -> v.getLanguage() != null && languagePrefix(v.getLanguage()).equals(wanted))
                 .map(mapper::toTtsVoice)
                 .toList();
@@ -52,10 +56,41 @@ public class TtsVoiceRepositoryAdapter implements TtsVoiceRepository {
     }
 
     @Override
+    public TtsVoice findActiveById(String id) {
+        if (isBlank(id)) {
+            return null;
+        }
+        return jpaRepository.findById(id.trim().toLowerCase(Locale.ROOT))
+                .filter(TtsVoiceEntity::isActive)
+                .map(mapper::toTtsVoice)
+                .orElse(null);
+    }
+
+    @Override
     public List<String> findIds() {
         return jpaRepository.findAllByOrderByIdAsc().stream()
                 .map(TtsVoiceEntity::getId)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void replaceSyncedVoices(String provider, List<TtsVoice> voices, Instant syncedAt) {
+        Set<String> listed = voices.stream().map(TtsVoice::id).collect(Collectors.toSet());
+        List<TtsVoiceEntity> changed = new ArrayList<>();
+        for (TtsVoiceEntity previous : jpaRepository.findAllByProviderAndSyncedAtIsNotNull(provider)) {
+            if (!listed.contains(previous.getId()) && previous.isActive()) {
+                previous.setActive(false);
+                changed.add(previous);
+            }
+        }
+        for (TtsVoice voice : voices) {
+            TtsVoiceEntity entity = mapper.toTtsVoiceEntity(voice);
+            entity.setActive(true);
+            entity.setSyncedAt(syncedAt);
+            changed.add(entity);
+        }
+        jpaRepository.saveAll(changed);
     }
 
     private static String languagePrefix(String language) {

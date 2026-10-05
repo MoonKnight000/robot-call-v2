@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
@@ -38,6 +40,31 @@ class CrmServiceTest {
         uysot = connectorFor(CrmProvider.UYSOT);
         amoCrm = connectorFor(CrmProvider.AMOCRM, CrmProvider.KOMMO);
         bitrix24 = connectorFor(CrmProvider.BITRIX24);
+    }
+
+    @Test
+    void syncLeadStageUpdatesMeetingBookedStatus() {
+        CrmProperties props = new CrmProperties(true, "https://uysot.example", "platform-token",
+                "/lead/{id}", "/lead/filter", "/lead/{id}/note", "/contract/{id}", "/contract/filter",
+                "/call-history", 3, "/v1/open-api/task", "/v1/open-api/lead/{id}/status",
+                201, 202, 203, 204);
+        CrmService service = client(props);
+        when(integrations.findConnection(COMPANY_ID)).thenReturn(Optional.empty());
+        when(uysot.updateLeadStage(any(), eq(new UpdateLeadStageRequest(42L, 201, "Sotuv ofisiga uchrashuv belgilandi")))).thenReturn(true);
+
+        CallSummary summary = new CallSummary("Uchrashuv belgilandi", Map.of("meetingBooked", true), null, false, null, null);
+        boolean synced = service.syncLeadStage(COMPANY_ID, 42L, summary, Disposition.GOAL_REACHED);
+
+        assertTrue(synced);
+        verify(uysot).updateLeadStage(any(), eq(new UpdateLeadStageRequest(42L, 201, "Sotuv ofisiga uchrashuv belgilandi")));
+    }
+
+    @Test
+    void composeNoteTextAppendsAudioUrlWhenProvided() {
+        CallSummary summary = new CallSummary(NOTE, Map.of(), null, false, null, null);
+        String textWithAudio = client(uysotProperties()).composeNoteText(summary, 54321L);
+
+        assertTrue(textWithAudio.contains("Audio yozuv: /api/files/54321"));
     }
 
     @Test

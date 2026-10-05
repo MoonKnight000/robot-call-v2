@@ -3,16 +3,15 @@ package uz.murodjon.robotcallv2.sms.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
 import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
 import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
 import uz.murodjon.robotcallv2.sms.domain.enums.SmsStatus;
-import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
 import uz.murodjon.robotcallv2.sms.domain.service.SmsValidator;
-import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
+import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
 
 /**
  * Dispatches SMS notifications (e.g. payment links, bank card details, address info)

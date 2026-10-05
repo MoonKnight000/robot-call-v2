@@ -16,39 +16,47 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
 
-/** Operator queues and their members, and the live wallboard (docs/api/call-queues.md). */
+/**
+ * Operator queues and their members, and the live wallboard (docs/api/call-queues.md).
+ */
 @RequestMapping("/api/call-queues")
 public interface CallQueueController {
 
     @PreAuthorize("hasAuthority('CALL_QUEUE_EDIT')")
     @PostMapping
-    ResponseEntity<ResponseData<CallQueue>> create(@CurrentCompanyId long companyId,
-                                                   @Valid @RequestBody SaveCallQueueRequest request);
+    ResponseEntity<ResponseData<CallQueue>> create(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody SaveCallQueueRequest request);
 
     @PreAuthorize("hasAuthority('CALL_QUEUE_READ')")
     @PostMapping("/list")
-    ResponseEntity<ResponseData<PageableData<CallQueue>>> list(@CurrentCompanyId long companyId,
-                                                               @Valid @RequestBody CallQueueFilter filter);
+    ResponseEntity<ResponseData<PageableData<CallQueue>>> list(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CallQueueFilter filter);
 
     @PreAuthorize("hasAuthority('CALL_QUEUE_READ')")
     @GetMapping("/{id}")
-    ResponseEntity<ResponseData<CallQueue>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<CallQueue>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CALL_QUEUE_EDIT')")
     @PutMapping("/{id}")
-    ResponseEntity<ResponseData<CallQueue>> update(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                   @Valid @RequestBody SaveCallQueueRequest request);
+    ResponseEntity<ResponseData<CallQueue>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody SaveCallQueueRequest request);
 
     @PreAuthorize("hasAuthority('CALL_QUEUE_EDIT')")
     @DeleteMapping("/{id}")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
-    /** Every enabled queue right now: waiting callers, longest wait, operators by status. */
     @PreAuthorize("hasAuthority('CALL_QUEUE_READ')")
     @GetMapping("/live")
     ResponseEntity<ResponseData<List<CallQueueLiveRow>>> live(@CurrentCompanyId long companyId);
 
-    /** The same pushed as SSE {@code QUEUE_STATS} every two seconds — the wallboard. */
     @PreAuthorize("hasAuthority('CALL_QUEUE_READ')")
     @GetMapping(value = "/live/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     SseEmitter liveStream(@CurrentCompanyId long companyId);

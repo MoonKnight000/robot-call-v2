@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.tts;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
 
@@ -16,8 +17,8 @@ class GeminiTtsProviderTest {
         GeminiTtsProperties geminiProps = new GeminiTtsProperties(
                 "dummy-key", "https://generativelanguage.googleapis.com/v1beta/models",
                 "gemini-3.1-flash-tts-preview", "Aoede", Map.of("uz-UZ", "Aoede", "ru-RU", "Kore"), 24000, 10);
-        TtsProperties props = new TtsProperties(true, "gemini", "uz-UZ", null, geminiProps, null, null, null, null, null);
-        GeminiTtsProvider provider = new GeminiTtsProvider(props);
+        TtsProperties props = new TtsProperties(true, "gemini", "uz-UZ", null, geminiProps, null, null, null, null, null, null);
+        GeminiTtsProvider provider = new GeminiTtsProvider(props, new ObjectMapper());
 
         assertThat(provider.name()).isEqualTo("gemini");
         assertThat(provider.supports("uz-UZ")).isTrue();

@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
@@ -49,14 +49,14 @@ public class RealtimeWatchdogRunner {
 
     private final DialogProperties dialogProperties;
     private final DialogExecutors executors;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
     private final AiModelConfigUseCase aiModelConfigUseCase;
     private final DialogTuningProperties dialogTuning;
     private final CallBillingUseCase callBillingUseCase;
     private final DialogPolicy dialogPolicy;
 
     public RealtimeWatchdogRunner(DialogProperties dialogProperties, DialogExecutors executors,
-                                  VoiceMetrics metrics, AiModelConfigUseCase aiModelConfigUseCase,
+                                  DialogMetrics metrics, AiModelConfigUseCase aiModelConfigUseCase,
                                   DialogTuningProperties dialogTuning, CallBillingUseCase callBillingUseCase,
                                   DialogPolicy dialogPolicy) {
         this.dialogProperties = dialogProperties;

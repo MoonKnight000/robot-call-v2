@@ -3,9 +3,8 @@ package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
-import uz.murodjon.robotcallv2.callrecord.domain.entity.PendingSummary;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallOutboxRepository;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.PendingSummary;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 

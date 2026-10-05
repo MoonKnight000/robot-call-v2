@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity;
 
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
-
 import jakarta.persistence.*;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
@@ -76,50 +74,23 @@ public class AiAgentEntity {
     @Column(nullable = false)
     private String language;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "pipeline_mode", nullable = false)
-    private PipelineMode pipelineMode = PipelineMode.CASCADE;
+    @Embedded
+    private AiAgentSpeechEngineEntity speechEngine = new AiAgentSpeechEngineEntity();
 
-    @Column(name = "realtime_provider")
-    private String realtimeProvider;
+    @Embedded
+    private AiAgentVoiceEntity voice = new AiAgentVoiceEntity();
 
-    @Column(name = "pipecat_stt")
-    private String pipecatStt;
+    @Embedded
+    private AiAgentAmbienceEntity ambience = new AiAgentAmbienceEntity();
 
-    @Column(name = "pipecat_llm")
-    private String pipecatLlm;
+    @Embedded
+    private AiAgentCallBehaviourEntity callBehaviour = new AiAgentCallBehaviourEntity();
 
-    @Column(name = "pipecat_tts")
-    private String pipecatTts;
+    @Embedded
+    private AiAgentLimitsEntity limits = new AiAgentLimitsEntity();
 
-    @Column(name = "stt_provider")
-    private String sttProvider;
-
-    @Column(name = "stt_model")
-    private String sttModel;
-
-    @Column(name = "tts_provider")
-    private String ttsProvider;
-
-    @Column(name = "tts_model")
-    private String ttsModel;
-
-    @Column(name = "tts_voice")
-    private String ttsVoice;
-
-    @Column(name = "voice_speed")
-    private Double voiceSpeed = 1.0;
-
-    @Column(name = "voice_stability")
-    private Double voiceStability = 0.5;
-
-    @Column(name = "voice_similarity_boost")
-    private Double voiceSimilarityBoost = 0.75;
-
-    /** Language code → speed as JSON (NEXT-PLAN A.7); null when every language uses voice_speed. */
-    @Column(name = "voice_speed_per_language")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private String voiceSpeedPerLanguage;
+    @Embedded
+    private AiAgentDataPolicyEntity dataPolicy = new AiAgentDataPolicyEntity();
 
     // Eager: the mapper reads both collections outside any transaction. SUBSELECT: an agent
     // list loads them in one query each instead of one per agent, and a single load no
@@ -155,34 +126,6 @@ public class AiAgentEntity {
     @Column(name = "data_evaluation", columnDefinition = "jsonb")
     private String dataEvaluation = "[]";
 
-    @Column(name = "zero_pii_retention", nullable = false)
-    private boolean zeroPiiRetention;
-
-    @Column(name = "store_call_audio", nullable = false)
-    private boolean storeCallAudio = true;
-
-    @Column(name = "conversation_retention_days")
-    private Integer conversationRetentionDays = 30;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "realtime_facts_delivery", length = 10)
-    private RealtimeFactsDelivery realtimeFactsDelivery;
-
-    @Column(name = "max_conversation_duration_seconds")
-    private Integer maxConversationDurationSeconds;
-
-    @Column(name = "silence_end_call_timeout_seconds")
-    private Integer silenceEndCallTimeoutSeconds;
-
-    @Column(name = "turn_timeout_seconds")
-    private Integer turnTimeoutSeconds;
-
-    @Column(name = "concurrent_calls_limit")
-    private Integer concurrentCallsLimit;
-
-    @Column(name = "daily_calls_limit")
-    private Integer dailyCallsLimit;
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "initiation_webhook", columnDefinition = "jsonb")
     private String initiationWebhook;
@@ -190,65 +133,6 @@ public class AiAgentEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "post_call_webhook", columnDefinition = "jsonb")
     private String postCallWebhook;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "ambient_sound", nullable = false)
-    private AmbientSound ambientSound = AmbientSound.OFFICE;
-
-    @Column(name = "ambient_sound_volume", nullable = false)
-    private double ambientSoundVolume = 1.0;
-
-    @Column(name = "ambient_sound_fade_in_seconds", nullable = false)
-    private double ambientSoundFadeInSeconds = 1.5;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "thinking_sound", nullable = false, length = 50)
-    private AmbientSound thinkingSound = AmbientSound.OFF;
-
-    @Column(name = "thinking_sound_volume", nullable = false)
-    private double thinkingSoundVolume = 1.0;
-
-    @Column(name = "noise_cancellation_enabled", nullable = false)
-    private boolean noiseCancellationEnabled = true;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "noise_cancellation_mode", nullable = false, length = 50)
-    private NoiseCancellationMode noiseCancellationMode = NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
-
-    @Column(name = "emotion_adaptive_voice", nullable = false)
-    private boolean emotionAdaptiveVoice;
-
-    @Column(name = "dtmf_input_enabled", nullable = false)
-    private boolean dtmfInputEnabled = true;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "voicemail_action", nullable = false)
-    private VoicemailAction voicemailAction = VoicemailAction.LEAVE_MESSAGE;
-
-    @Column(name = "voicemail_message", columnDefinition = "TEXT")
-    private String voicemailMessage;
-
-    @Column(name = "mid_call_sms_enabled", nullable = false)
-    private boolean midCallSmsEnabled;
-
-    @Column(name = "mid_call_sms_template", columnDefinition = "TEXT")
-    private String midCallSmsTemplate;
-
-    @Column(name = "transfer_phone_number", length = 32)
-    private String transferPhoneNumber;
-
-    @Column(name = "transfer_message", columnDefinition = "TEXT")
-    private String transferMessage;
-
-    @Column(name = "transfer_queue_id")
-    private Long transferQueueId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "interruption_sensitivity", nullable = false, length = 32)
-    private InterruptionSensitivity interruptionSensitivity = InterruptionSensitivity.MEDIUM;
-
-    @Column(name = "endpointing_delay_ms", nullable = false)
-    private int endpointingDelayMs = 700;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "pronunciation_rules", columnDefinition = "jsonb")
@@ -281,54 +165,6 @@ public class AiAgentEntity {
 
     public Long getId() {
         return id;
-    }
-
-    public double getAmbientSoundVolume() {
-        return ambientSoundVolume;
-    }
-
-    public void setAmbientSoundVolume(double ambientSoundVolume) {
-        this.ambientSoundVolume = ambientSoundVolume;
-    }
-
-    public double getAmbientSoundFadeInSeconds() {
-        return ambientSoundFadeInSeconds;
-    }
-
-    public void setAmbientSoundFadeInSeconds(double ambientSoundFadeInSeconds) {
-        this.ambientSoundFadeInSeconds = ambientSoundFadeInSeconds;
-    }
-
-    public AmbientSound getThinkingSound() {
-        return thinkingSound;
-    }
-
-    public void setThinkingSound(AmbientSound thinkingSound) {
-        this.thinkingSound = thinkingSound != null ? thinkingSound : AmbientSound.OFF;
-    }
-
-    public double getThinkingSoundVolume() {
-        return thinkingSoundVolume;
-    }
-
-    public void setThinkingSoundVolume(double thinkingSoundVolume) {
-        this.thinkingSoundVolume = thinkingSoundVolume;
-    }
-
-    public boolean isNoiseCancellationEnabled() {
-        return noiseCancellationEnabled;
-    }
-
-    public void setNoiseCancellationEnabled(boolean noiseCancellationEnabled) {
-        this.noiseCancellationEnabled = noiseCancellationEnabled;
-    }
-
-    public NoiseCancellationMode getNoiseCancellationMode() {
-        return noiseCancellationMode;
-    }
-
-    public void setNoiseCancellationMode(NoiseCancellationMode noiseCancellationMode) {
-        this.noiseCancellationMode = noiseCancellationMode != null ? noiseCancellationMode : NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
     }
 
     public void setId(Long id) {
@@ -447,118 +283,6 @@ public class AiAgentEntity {
         this.language = language;
     }
 
-    public PipelineMode getPipelineMode() {
-        return pipelineMode;
-    }
-
-    public void setPipelineMode(PipelineMode pipelineMode) {
-        this.pipelineMode = pipelineMode != null ? pipelineMode : PipelineMode.CASCADE;
-    }
-
-    public String getRealtimeProvider() {
-        return realtimeProvider;
-    }
-
-    public void setRealtimeProvider(String realtimeProvider) {
-        this.realtimeProvider = realtimeProvider;
-    }
-
-    public String getPipecatStt() {
-        return pipecatStt;
-    }
-
-    public void setPipecatStt(String pipecatStt) {
-        this.pipecatStt = pipecatStt;
-    }
-
-    public String getPipecatLlm() {
-        return pipecatLlm;
-    }
-
-    public void setPipecatLlm(String pipecatLlm) {
-        this.pipecatLlm = pipecatLlm;
-    }
-
-    public String getPipecatTts() {
-        return pipecatTts;
-    }
-
-    public void setPipecatTts(String pipecatTts) {
-        this.pipecatTts = pipecatTts;
-    }
-
-    public String getSttProvider() {
-        return sttProvider;
-    }
-
-    public void setSttProvider(String sttProvider) {
-        this.sttProvider = sttProvider;
-    }
-
-    public String getSttModel() {
-        return sttModel;
-    }
-
-    public void setSttModel(String sttModel) {
-        this.sttModel = sttModel;
-    }
-
-    public String getTtsProvider() {
-        return ttsProvider;
-    }
-
-    public void setTtsProvider(String ttsProvider) {
-        this.ttsProvider = ttsProvider;
-    }
-
-    public String getTtsModel() {
-        return ttsModel;
-    }
-
-    public void setTtsModel(String ttsModel) {
-        this.ttsModel = ttsModel;
-    }
-
-    public String getTtsVoice() {
-        return ttsVoice;
-    }
-
-    public void setTtsVoice(String ttsVoice) {
-        this.ttsVoice = ttsVoice;
-    }
-
-    public Double getVoiceSpeed() {
-        return voiceSpeed;
-    }
-
-    public void setVoiceSpeed(Double voiceSpeed) {
-        this.voiceSpeed = voiceSpeed;
-    }
-
-    public String getVoiceSpeedPerLanguage() {
-        return voiceSpeedPerLanguage;
-    }
-
-    public void setVoiceSpeedPerLanguage(String voiceSpeedPerLanguage) {
-        this.voiceSpeedPerLanguage = voiceSpeedPerLanguage;
-    }
-
-    public Double getVoiceStability() {
-        return voiceStability;
-    }
-
-    public void setVoiceStability(Double voiceStability) {
-        this.voiceStability = voiceStability;
-    }
-
-    public Double getVoiceSimilarityBoost() {
-        return voiceSimilarityBoost;
-    }
-
-    public void setVoiceSimilarityBoost(Double voiceSimilarityBoost) {
-        this.voiceSimilarityBoost = voiceSimilarityBoost;
-    }
-
     public Map<String, TtsVoiceEntity> getLanguageVoices() {
         return languageVoices;
     }
@@ -641,78 +365,6 @@ public class AiAgentEntity {
         this.dataEvaluation = dataEvaluation != null ? dataEvaluation : "[]";
     }
 
-    public boolean isZeroPiiRetention() {
-        return zeroPiiRetention;
-    }
-
-    public void setZeroPiiRetention(boolean zeroPiiRetention) {
-        this.zeroPiiRetention = zeroPiiRetention;
-    }
-
-    public boolean isStoreCallAudio() {
-        return storeCallAudio;
-    }
-
-    public void setStoreCallAudio(boolean storeCallAudio) {
-        this.storeCallAudio = storeCallAudio;
-    }
-
-    public Integer getConversationRetentionDays() {
-        return conversationRetentionDays;
-    }
-
-    public void setConversationRetentionDays(Integer conversationRetentionDays) {
-        this.conversationRetentionDays = conversationRetentionDays;
-    }
-
-    public RealtimeFactsDelivery getRealtimeFactsDelivery() {
-        return realtimeFactsDelivery;
-    }
-
-    public void setRealtimeFactsDelivery(RealtimeFactsDelivery realtimeFactsDelivery) {
-        this.realtimeFactsDelivery = realtimeFactsDelivery;
-    }
-
-    public Integer getMaxConversationDurationSeconds() {
-        return maxConversationDurationSeconds;
-    }
-
-    public void setMaxConversationDurationSeconds(Integer maxConversationDurationSeconds) {
-        this.maxConversationDurationSeconds = maxConversationDurationSeconds;
-    }
-
-    public Integer getSilenceEndCallTimeoutSeconds() {
-        return silenceEndCallTimeoutSeconds;
-    }
-
-    public void setSilenceEndCallTimeoutSeconds(Integer silenceEndCallTimeoutSeconds) {
-        this.silenceEndCallTimeoutSeconds = silenceEndCallTimeoutSeconds;
-    }
-
-    public Integer getTurnTimeoutSeconds() {
-        return turnTimeoutSeconds;
-    }
-
-    public void setTurnTimeoutSeconds(Integer turnTimeoutSeconds) {
-        this.turnTimeoutSeconds = turnTimeoutSeconds;
-    }
-
-    public Integer getConcurrentCallsLimit() {
-        return concurrentCallsLimit;
-    }
-
-    public void setConcurrentCallsLimit(Integer concurrentCallsLimit) {
-        this.concurrentCallsLimit = concurrentCallsLimit;
-    }
-
-    public Integer getDailyCallsLimit() {
-        return dailyCallsLimit;
-    }
-
-    public void setDailyCallsLimit(Integer dailyCallsLimit) {
-        this.dailyCallsLimit = dailyCallsLimit;
-    }
-
     public String getInitiationWebhook() {
         return initiationWebhook;
     }
@@ -727,102 +379,6 @@ public class AiAgentEntity {
 
     public void setPostCallWebhook(String postCallWebhook) {
         this.postCallWebhook = postCallWebhook;
-    }
-
-    public AmbientSound getAmbientSound() {
-        return ambientSound;
-    }
-
-    public void setAmbientSound(AmbientSound ambientSound) {
-        this.ambientSound = ambientSound != null ? ambientSound : AmbientSound.OFFICE;
-    }
-
-    public boolean isEmotionAdaptiveVoice() {
-        return emotionAdaptiveVoice;
-    }
-
-    public void setEmotionAdaptiveVoice(boolean emotionAdaptiveVoice) {
-        this.emotionAdaptiveVoice = emotionAdaptiveVoice;
-    }
-
-    public boolean isDtmfInputEnabled() {
-        return dtmfInputEnabled;
-    }
-
-    public void setDtmfInputEnabled(boolean dtmfInputEnabled) {
-        this.dtmfInputEnabled = dtmfInputEnabled;
-    }
-
-    public VoicemailAction getVoicemailAction() {
-        return voicemailAction;
-    }
-
-    public void setVoicemailAction(VoicemailAction voicemailAction) {
-        this.voicemailAction = voicemailAction != null ? voicemailAction : VoicemailAction.LEAVE_MESSAGE;
-    }
-
-    public String getVoicemailMessage() {
-        return voicemailMessage;
-    }
-
-    public void setVoicemailMessage(String voicemailMessage) {
-        this.voicemailMessage = voicemailMessage;
-    }
-
-    public boolean isMidCallSmsEnabled() {
-        return midCallSmsEnabled;
-    }
-
-    public void setMidCallSmsEnabled(boolean midCallSmsEnabled) {
-        this.midCallSmsEnabled = midCallSmsEnabled;
-    }
-
-    public String getMidCallSmsTemplate() {
-        return midCallSmsTemplate;
-    }
-
-    public void setMidCallSmsTemplate(String midCallSmsTemplate) {
-        this.midCallSmsTemplate = midCallSmsTemplate;
-    }
-
-    public String getTransferPhoneNumber() {
-        return transferPhoneNumber;
-    }
-
-    public void setTransferPhoneNumber(String transferPhoneNumber) {
-        this.transferPhoneNumber = transferPhoneNumber;
-    }
-
-    public String getTransferMessage() {
-        return transferMessage;
-    }
-
-    public void setTransferMessage(String transferMessage) {
-        this.transferMessage = transferMessage;
-    }
-
-    public Long getTransferQueueId() {
-        return transferQueueId;
-    }
-
-    public void setTransferQueueId(Long transferQueueId) {
-        this.transferQueueId = transferQueueId;
-    }
-
-    public InterruptionSensitivity getInterruptionSensitivity() {
-        return interruptionSensitivity;
-    }
-
-    public void setInterruptionSensitivity(InterruptionSensitivity interruptionSensitivity) {
-        this.interruptionSensitivity = interruptionSensitivity != null ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
-    }
-
-    public int getEndpointingDelayMs() {
-        return endpointingDelayMs;
-    }
-
-    public void setEndpointingDelayMs(int endpointingDelayMs) {
-        this.endpointingDelayMs = endpointingDelayMs > 0 ? endpointingDelayMs : 700;
     }
 
     public String getPronunciationRules() {
@@ -891,5 +447,53 @@ public class AiAgentEntity {
 
     public long getVersion() {
         return version;
+    }
+    public AiAgentSpeechEngineEntity getSpeechEngine() {
+        return speechEngine;
+    }
+
+    public void setSpeechEngine(AiAgentSpeechEngineEntity speechEngine) {
+        this.speechEngine = speechEngine;
+    }
+
+    public AiAgentVoiceEntity getVoice() {
+        return voice;
+    }
+
+    public void setVoice(AiAgentVoiceEntity voice) {
+        this.voice = voice;
+    }
+
+    public AiAgentAmbienceEntity getAmbience() {
+        return ambience;
+    }
+
+    public void setAmbience(AiAgentAmbienceEntity ambience) {
+        this.ambience = ambience;
+    }
+
+    public AiAgentCallBehaviourEntity getCallBehaviour() {
+        return callBehaviour;
+    }
+
+    public void setCallBehaviour(AiAgentCallBehaviourEntity callBehaviour) {
+        this.callBehaviour = callBehaviour;
+    }
+
+    /** Never null: an agent whose limit columns are all null loads with no embeddable at all. */
+    public AiAgentLimitsEntity getLimits() {
+        return limits != null ? limits : new AiAgentLimitsEntity();
+    }
+
+    public void setLimits(AiAgentLimitsEntity limits) {
+        this.limits = limits;
+    }
+
+    public AiAgentDataPolicyEntity getDataPolicy() {
+        return dataPolicy;
+    }
+
+    public void setDataPolicy(AiAgentDataPolicyEntity dataPolicy) {
+        this.dataPolicy = dataPolicy;
     }
 }

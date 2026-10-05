@@ -17,20 +17,26 @@ public interface InboundCallerRuleController {
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_EDIT')")
     @PostMapping
-    ResponseEntity<ResponseData<InboundCallerRule>> create(@CurrentCompanyId long companyId,
-                                                           @Valid @RequestBody SaveCallerRuleRequest request);
+    ResponseEntity<ResponseData<InboundCallerRule>> create(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody SaveCallerRuleRequest request);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_READ')")
     @PostMapping("/list")
-    ResponseEntity<ResponseData<PageableData<InboundCallerRule>>> list(@CurrentCompanyId long companyId,
-                                                                       @Valid @RequestBody InboundCallerRuleFilter filter);
+    ResponseEntity<ResponseData<PageableData<InboundCallerRule>>> list(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody InboundCallerRuleFilter filter);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_EDIT')")
     @PutMapping("/{id}")
-    ResponseEntity<ResponseData<InboundCallerRule>> update(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                           @Valid @RequestBody SaveCallerRuleRequest request);
+    ResponseEntity<ResponseData<InboundCallerRule>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody SaveCallerRuleRequest request);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_EDIT')")
     @DeleteMapping("/{id}")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

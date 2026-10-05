@@ -1,16 +1,15 @@
 package uz.murodjon.robotcallv2.profile.application.service;
 
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdateScheduleRequest;
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileScheduleUseCase;
 import uz.murodjon.robotcallv2.profile.application.port.output.UserScheduleRepository;
 import uz.murodjon.robotcallv2.profile.domain.entity.ScheduleSlot;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.List;
 

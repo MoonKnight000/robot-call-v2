@@ -3,12 +3,7 @@ package uz.murodjon.robotcallv2.integration.presentation.controller;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-
-import uz.murodjon.robotcallv2.integration.application.dto.AuthorizeUrlResponse;
-import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
-import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
-import uz.murodjon.robotcallv2.integration.application.dto.CrmCatalogEntry;
-import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
+import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 

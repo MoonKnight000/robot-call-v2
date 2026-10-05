@@ -32,4 +32,9 @@ public record AiAgentDataPolicy(
             conversationRetentionDays = DEFAULT_RETENTION_DAYS;
         }
     }
+
+    /** Whether the call's audio may be recorded and kept: stored audio is personal data. */
+    public boolean keepsCallAudio() {
+        return storeCallAudio && !zeroPiiRetention;
+    }
 }

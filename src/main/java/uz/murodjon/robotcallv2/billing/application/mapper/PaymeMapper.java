@@ -1,13 +1,7 @@
 package uz.murodjon.robotcallv2.billing.application.mapper;
 
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.billing.application.dto.PaymeAccount;
-import uz.murodjon.robotcallv2.billing.application.dto.PaymeCheckTransactionResult;
-import uz.murodjon.robotcallv2.billing.application.dto.PaymeReceiptDetail;
-import uz.murodjon.robotcallv2.billing.application.dto.PaymeReceiptItem;
-import uz.murodjon.robotcallv2.billing.application.dto.PaymeStatementTransaction;
-import uz.murodjon.robotcallv2.billing.application.dto.PaymeTransactionResult;
+import uz.murodjon.robotcallv2.billing.application.dto.*;
 import uz.murodjon.robotcallv2.billing.domain.entity.PaymentProviderTransaction;
 import uz.murodjon.robotcallv2.billing.domain.entity.PaymentTopup;
 import uz.murodjon.robotcallv2.billing.domain.service.PaymeRules;

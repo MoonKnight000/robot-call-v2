@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -59,6 +60,7 @@ class WebTestCallService {
     private final ScenarioUseCase scenarioUseCase;
     private final DialogProperties dialogProperties;
     private final AuditUseCase audit;
+    private final ObjectMapper objectMapper;
 
     WebTestCallService(PendingCallRegistry pendingCallRegistry,
                        OutboundDialService outboundDialService,
@@ -69,7 +71,9 @@ class WebTestCallService {
                        ClientMemoryUseCase clientMemoryUseCase,
                        ScenarioUseCase scenarioUseCase,
                        DialogProperties dialogProperties,
-                       AuditUseCase audit) {
+                       AuditUseCase audit,
+                       ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.pendingCallRegistry = pendingCallRegistry;
         this.outboundDialService = outboundDialService;
         this.campaignUseCase = campaignUseCase;
@@ -159,7 +163,7 @@ class WebTestCallService {
             CrmClientSnapshot crm = crmUseCase.fetchClient(campaign.companyId(), target.clientId());
             ClientMemory memory = clientMemoryUseCase.findByCompanyIdAndPhone(campaign.companyId(), target.phone());
             context = CallContextFactory.mergeCrmFacts(
-                    CallContextFactory.readContextData(target.contextData(), null, scenario.definition().factSchema()), crm)
+                    CallContextFactory.readContextData(objectMapper, target.contextData(), null, scenario.definition().factSchema()), crm)
                     .withMemory(memory);
         } else {
             context = buildTestContext(scenario.definition());

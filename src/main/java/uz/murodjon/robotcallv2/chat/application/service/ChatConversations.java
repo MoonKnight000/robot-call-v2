@@ -31,7 +31,6 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -251,11 +250,18 @@ class ChatConversations {
                 .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
         Company company = companyUseCase.findById(session.companyId());
         List<Tool> tools = toolUseCase.findAgentToolDefinitions(session.companyId(), agent.id());
-        DialogSession dialog = new DialogSession("chat-" + session.sessionKey(), session.language(), null,
-                new CallContext(Map.of(), null), scenario, null, null, null, 0L, session.companyId(), null,
-                false, company != null ? company.name() : null, null, aiModel, EffectiveVoiceSettings.NONE,
-                false, AgentPersona.AI_ASSISTANT, Map.of(), agent.script().firstMessage(), tools,
-                List.of(), agent);
+        DialogSession dialog = DialogSession.builder("chat-" + session.sessionKey(), session.language())
+                .context(new CallContext(Map.of(), null))
+                .scenario(scenario)
+                .companyId(session.companyId())
+                .disclosureEnabled(false)
+                .companyName(company != null ? company.name() : null)
+                .aiModel(aiModel)
+                .emotionAdaptiveVoice(false)
+                .firstMessage(agent.script().firstMessage())
+                .tools(tools)
+                .agent(agent)
+                .build();
         dialog.setFastModel(agent.fastLlmModel());
         return dialog;
     }

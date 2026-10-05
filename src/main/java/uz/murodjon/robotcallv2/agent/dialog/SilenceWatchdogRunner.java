@@ -6,7 +6,7 @@ import org.slf4j.MDC;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -39,13 +39,13 @@ public class SilenceWatchdogRunner {
     private static final Duration WATCHDOG_TICK = Duration.ofSeconds(1);
 
     private final DialogProperties dialogProperties;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
     private final DialogTranscript transcript;
     private final SpeechOutput speech;
     private final DialogExecutors executors;
     private final DialogPolicy dialogPolicy;
 
-    public SilenceWatchdogRunner(DialogProperties dialogProperties, VoiceMetrics metrics, DialogTranscript transcript,
+    public SilenceWatchdogRunner(DialogProperties dialogProperties, DialogMetrics metrics, DialogTranscript transcript,
                                  SpeechOutput speech, DialogExecutors executors, DialogPolicy dialogPolicy) {
         this.dialogProperties = dialogProperties;
         this.metrics = metrics;

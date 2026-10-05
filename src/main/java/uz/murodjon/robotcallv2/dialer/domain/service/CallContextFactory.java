@@ -25,18 +25,17 @@ import java.util.Map;
 public final class CallContextFactory {
 
     private static final Logger log = LoggerFactory.getLogger(CallContextFactory.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private CallContextFactory() {
     }
 
-    public static CallContext readContextData(String json, String goalFallback, List<FactField> factSchema) {
+    public static CallContext readContextData(ObjectMapper objectMapper, String json, String goalFallback, List<FactField> factSchema) {
         Map<String, Object> facts = new HashMap<>();
         String goal = goalFallback;
 
         if (json != null && !json.isBlank()) {
             try {
-                JsonNode n = MAPPER.readTree(json);
+                JsonNode n = objectMapper.readTree(json);
                 if (factSchema != null) {
                     for (FactField f : factSchema) {
                         Object value = coerceFact(n, f.name(), f.type());
@@ -88,12 +87,12 @@ public final class CallContextFactory {
      * set none. Applied over the agent's before dialling; an initiation webhook that answers
      * with one of its own still wins, being asked later.
      */
-    public static String readFirstMessageOverride(String json) {
+    public static String readFirstMessageOverride(ObjectMapper objectMapper, String json) {
         if (json == null || json.isBlank()) {
             return null;
         }
         try {
-            String first = readText(MAPPER.readTree(json).path("agentOverrides"), "firstMessage");
+            String first = readText(objectMapper.readTree(json).path("agentOverrides"), "firstMessage");
             return first == null || first.isBlank() ? null : first.trim();
         } catch (Exception e) {
             return null;
@@ -127,12 +126,12 @@ public final class CallContextFactory {
      *
      * @param json the endpoint's body, or null when it was not called or did not answer
      */
-    public static CallContext overlayWebhookFacts(CallContext context, String json, List<FactField> factSchema) {
+    public static CallContext overlayWebhookFacts(ObjectMapper objectMapper, CallContext context, String json, List<FactField> factSchema) {
         if (json == null || json.isBlank() || factSchema == null || factSchema.isEmpty()) {
             return context;
         }
         try {
-            JsonNode node = MAPPER.readTree(json);
+            JsonNode node = objectMapper.readTree(json);
             if (!node.isObject()) {
                 log.warn("Fact webhook answered with {} rather than a JSON object", node.getNodeType());
                 return context;

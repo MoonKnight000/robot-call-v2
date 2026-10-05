@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.pack.infrastructure.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
@@ -25,7 +26,7 @@ class ClasspathJsonPackCatalogAdapterTest {
 
     private static final Pattern SECRET_REFERENCE = Pattern.compile("\\{\\{secrets\\.([A-Za-z0-9_.-]+)}}");
 
-    private final ClasspathJsonPackCatalogAdapter catalog = new ClasspathJsonPackCatalogAdapter();
+    private final ClasspathJsonPackCatalogAdapter catalog = new ClasspathJsonPackCatalogAdapter(new ObjectMapper());
 
     @Test
     void theOnlineShopPackShips() {
@@ -40,14 +41,22 @@ class ClasspathJsonPackCatalogAdapterTest {
         }
     }
 
-    /** A pack has no scenario tools, so its goal can only be recorded by a company tool's mapped answer. */
+    /**
+     * A pack's goal must be recorded either by one of its company tools' mapped answers
+     * or by an internal scenario tool's parameter (e.g. nps).
+     */
     @Test
     void everyGoalIsRecordedByOneOfThePacksTools() {
         for (VerticalPack pack : catalog.findAll()) {
             String goal = pack.agent().scenario().findGoalField();
             assertThat(goal).as(pack.key()).isNotNull();
-            assertThat(pack.tools()).as(pack.key())
-                    .anySatisfy(tool -> assertThat(tool.responseMapping()).containsKey(goal));
+            boolean recordedByScenarioTool = pack.agent().scenario().tools() != null
+                    && pack.agent().scenario().tools().stream()
+                            .anyMatch(t -> t.params() != null && t.params().stream().anyMatch(p -> goal.equals(p.name())));
+            if (!recordedByScenarioTool) {
+                assertThat(pack.tools()).as(pack.key())
+                        .anySatisfy(tool -> assertThat(tool.responseMapping()).containsKey(goal));
+            }
         }
     }
 

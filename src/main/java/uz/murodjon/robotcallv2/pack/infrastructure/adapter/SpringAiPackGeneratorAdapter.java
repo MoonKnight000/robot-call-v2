@@ -123,7 +123,7 @@ public class SpringAiPackGeneratorAdapter implements PackGeneratorPort {
         String answer;
         try {
             answer = ChatClient.create(chatModel).prompt()
-                    .options(options(chatModel))
+                    .options(options(chatModel).mutate())
                     .system(INSTRUCTIONS)
                     .user(describe(business, language, tools))
                     .call()

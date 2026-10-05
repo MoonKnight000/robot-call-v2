@@ -2,12 +2,12 @@ package uz.murodjon.robotcallv2.scenario.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.mapper.ScenarioEntityMapper;
 import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
+import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.mapper.ScenarioEntityMapper;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
 
 import java.time.Instant;

@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.OutboxMessageUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepository;
@@ -12,10 +11,12 @@ import uz.murodjon.robotcallv2.callrecord.application.port.output.OutboxMessageR
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageKind;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.config.OutboxProperties;
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -99,12 +100,13 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
      * manual, widget) or a company with no CRM. Those get no outbox row at all, rather than a
      * row that fails until it is dead.
      */
-    public OutboxMessage prepareCrmNote(long companyId, long callAttemptId, long leadId, CallSummary summary) {
+    public OutboxMessage prepareCrmNote(long companyId, long callAttemptId, long leadId, CallSummary summary, Long recordingFileId) {
         if (leadId <= 0 || summary == null || !crmUseCase.isConnected(companyId)) {
             return null;
         }
+        String text = crmUseCase.composeNoteText(summary, recordingFileId);
         return OutboxMessage.pending(OutboxMessageKind.CRM_NOTE, callAttemptId,
-                Map.of(LEAD_ID, leadId, NOTE_TEXT, crmUseCase.composeNoteText(summary)));
+                Map.of(LEAD_ID, leadId, NOTE_TEXT, text != null ? text : ""));
     }
 
     /**
@@ -123,10 +125,70 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
         payload.put(INBOUND, entry.inbound());
         payload.put(ANSWERED, entry.answered());
         payload.put(CLIENT_PHONE, entry.clientPhone());
+        if (entry.recordingUrl() != null && !entry.recordingUrl().isBlank()) {
+            payload.put("recordingUrl", entry.recordingUrl());
+        }
         Long id = outboxMessageRepository.enqueue(companyId,
                 OutboxMessage.pending(OutboxMessageKind.CRM_CALL_HISTORY, callAttemptId, payload));
         if (id != null) {
             deliverNow(id);
+        }
+    }
+
+    /**
+     * Automatically updates the lead's status/stage in the company's CRM based on call outcome.
+     */
+    public void syncLeadStageIfActionable(long companyId, long leadId, CallSummary summary, Disposition disposition) {
+        if (leadId <= 0 || !crmUseCase.isConnected(companyId)) {
+            return;
+        }
+        try {
+            crmUseCase.syncLeadStage(companyId, leadId, summary, disposition);
+        } catch (Exception e) {
+            log.warn("Failed to sync CRM lead stage for lead {}: {}", leadId, e.getMessage());
+        }
+    }
+
+    /**
+     * Automatically creates a task or meeting in the company's CRM when a call achieves
+     * an actionable real-estate milestone: booking a showroom visit or securing a payment promise.
+     */
+    public void scheduleCrmTaskIfActionable(long companyId, long leadId, CallSummary summary, Disposition disposition) {
+        if (leadId <= 0 || summary == null || !crmUseCase.isConnected(companyId)) {
+            return;
+        }
+        try {
+            if (Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
+                String meetingTime = String.valueOf(summary.outcome().getOrDefault("meetingTime", "Yaqin orada"));
+                String rooms = String.valueOf(summary.outcome().getOrDefault("roomsNeeded", "Keltirilmagan"));
+                String budget = String.valueOf(summary.outcome().getOrDefault("budgetRange", "Keltirilmagan"));
+                String desc = "AI Call Center orqali sotuv ofisiga uchrashuv belgilandi.\n"
+                        + "Uchrashuv vaqti: " + meetingTime + "\n"
+                        + "Xonalar: " + rooms + "\n"
+                        + "Byudjet: " + budget;
+                crmUseCase.createTask(companyId, new CreateCrmTaskRequest(
+                        leadId,
+                        "Sotuv ofisiga uchrashuv (AI bot)",
+                        desc,
+                        Instant.now(clock).plus(Duration.ofDays(1)),
+                        null
+                ));
+            } else if (disposition == Disposition.PROMISE_TO_PAY || summary.outcome().containsKey("promisedDate")) {
+                String date = String.valueOf(summary.outcome().getOrDefault("promisedDate", "Yaqin kunlarda"));
+                String amount = String.valueOf(summary.outcome().getOrDefault("promisedAmount", "Ko'rsatilmagan"));
+                String desc = "AI Call Center orqali to'lov va'dasi olindi.\n"
+                        + "Va'da qilingan sana: " + date + "\n"
+                        + "Summa: " + amount;
+                crmUseCase.createTask(companyId, new CreateCrmTaskRequest(
+                        leadId,
+                        "To'lov va'dasi (AI bot)",
+                        desc,
+                        Instant.now(clock).plus(Duration.ofDays(1)),
+                        null
+                ));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to schedule CRM task for lead {}: {}", leadId, e.getMessage());
         }
     }
 
@@ -229,7 +291,8 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
                         Instant.parse((String) payload.get(STARTED_AT)),
                         ((Number) payload.get(DURATION_SECONDS)).intValue(),
                         Boolean.TRUE.equals(payload.get(INBOUND)), Boolean.TRUE.equals(payload.get(ANSWERED)),
-                        (String) payload.get(CLIENT_PHONE), null);
+                        (String) payload.get(CLIENT_PHONE),
+                        (String) payload.get("recordingUrl"));
                 yield accepted ? callUuid : null;
             }
         };

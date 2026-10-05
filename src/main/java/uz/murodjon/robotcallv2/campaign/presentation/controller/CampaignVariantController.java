@@ -21,30 +21,42 @@ public interface CampaignVariantController {
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping
-    ResponseEntity<ResponseData<CampaignVariantResponse>> create(@CurrentCompanyId long companyId, @PathVariable long campaignId,
-                                                                 @Valid @RequestBody CampaignVariantCreateRequest request);
+    ResponseEntity<ResponseData<CampaignVariantResponse>> create(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId,
+            @Valid @RequestBody CampaignVariantCreateRequest request);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping("/{variantId:\\d+}")
-    ResponseEntity<ResponseData<CampaignVariantResponse>> get(@CurrentCompanyId long companyId, @PathVariable long campaignId,
-                                                              @PathVariable long variantId);
+    ResponseEntity<ResponseData<CampaignVariantResponse>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId,
+            @PathVariable long variantId);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PutMapping("/{variantId:\\d+}")
-    ResponseEntity<ResponseData<CampaignVariantResponse>> update(@CurrentCompanyId long companyId, @PathVariable long campaignId,
-                                                                 @PathVariable long variantId,
-                                                                 @Valid @RequestBody CampaignVariantUpdateRequest request);
+    ResponseEntity<ResponseData<CampaignVariantResponse>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId,
+            @PathVariable long variantId,
+            @Valid @RequestBody CampaignVariantUpdateRequest request);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @DeleteMapping("/{variantId:\\d+}")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long campaignId,
-                                              @PathVariable long variantId);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId,
+            @PathVariable long variantId);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping
-    ResponseEntity<ResponseData<List<CampaignVariantResponse>>> list(@CurrentCompanyId long companyId, @PathVariable long campaignId);
+    ResponseEntity<ResponseData<List<CampaignVariantResponse>>> list(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping("/report")
-    ResponseEntity<ResponseData<AbTestReportResponse>> getReport(@CurrentCompanyId long companyId, @PathVariable long campaignId);
+    ResponseEntity<ResponseData<AbTestReportResponse>> getReport(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId);
 }

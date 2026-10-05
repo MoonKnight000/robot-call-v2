@@ -12,12 +12,12 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallControlUseC
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTransferTarget;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.api.AudioStreamWriter;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.List;
 
@@ -35,7 +35,7 @@ public class CallService implements CallControlUseCase {
      */
     private static final String WEB_TEST_SESSION_HEADER = "X-Web-Test";
 
-    private final AriService ari;
+    private final AriService ariService;
     private final ScenarioUseCase scenarioUseCase;
     private final AuditUseCase auditUseCase;
     private final WebTestProperties webTestProperties;
@@ -44,11 +44,11 @@ public class CallService implements CallControlUseCase {
     private final OperatorFirstDialer operatorFirstDialer;
     private final CurrentUser currentUser;
 
-    public CallService(AriService ari, ScenarioUseCase scenarioUseCase, AuditUseCase auditUseCase,
+    public CallService(AriService ariService, ScenarioUseCase scenarioUseCase, AuditUseCase auditUseCase,
                        WebTestProperties webTestProperties, OperatorCallControl operatorCallControl,
                        SupervisorMonitor supervisorMonitor, OperatorFirstDialer operatorFirstDialer,
                        CurrentUser currentUser) {
-        this.ari = ari;
+        this.ariService = ariService;
         this.scenarioUseCase = scenarioUseCase;
         this.auditUseCase = auditUseCase;
         this.webTestProperties = webTestProperties;
@@ -60,7 +60,7 @@ public class CallService implements CallControlUseCase {
 
     @Override
     public List<LiveCallRow> findLiveCalls(long companyId) {
-        return ari.findLiveCalls(companyId);
+        return ariService.findLiveCalls(companyId);
     }
 
     /**
@@ -69,21 +69,21 @@ public class CallService implements CallControlUseCase {
      * another tenant's or already gone.
      */
     private void requireOwned(long companyId, String channelId) {
-        if (!ari.isActiveCallOf(companyId, channelId)) {
+        if (!ariService.isActiveCallOf(companyId, channelId)) {
             throw new ConflictException(ErrorCode.CALL_NOT_ACTIVE, channelId);
         }
     }
 
     @Override
     public CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long sipTrunkId) {
-        return ari.originateManualCall(companyId, number, scenarioId, sipTrunkId);
+        return ariService.originateManualCall(companyId, number, scenarioId, sipTrunkId);
     }
 
     @Override
     public CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition,
                                                    Long sipTrunkId) {
         requireValid(definition);
-        return ari.originateTestCall(companyId, number, definition, sipTrunkId);
+        return ariService.originateTestCall(companyId, number, definition, sipTrunkId);
     }
 
     @Override
@@ -99,7 +99,7 @@ public class CallService implements CallControlUseCase {
         if (request.definition() != null) {
             requireValid(request.definition());
         }
-        String sessionId = ari.prepareWebTest(companyId, request.campaignId(), request.targetId(),
+        String sessionId = ariService.prepareWebTest(companyId, request.campaignId(), request.targetId(),
                 request.agentVersion(), request.scenarioId(), request.definition());
         return new WebTestCallResponse(sessionId, webTestProperties.wsUrl(), webTestProperties.sipUser(),
                 webTestProperties.sipPassword(), webTestProperties.dialNumber(), WEB_TEST_SESSION_HEADER);
@@ -115,19 +115,19 @@ public class CallService implements CallControlUseCase {
     @Override
     public PlayResponse play(long companyId, String channelId, String file) {
         requireOwned(companyId, channelId);
-        return ari.playRecording(channelId, file);
+        return ariService.playRecording(channelId, file);
     }
 
     @Override
     public SayResponse say(long companyId, String channelId, String text, String language, String voice) {
         requireOwned(companyId, channelId);
-        return ari.say(channelId, text, language, voice);
+        return ariService.say(channelId, text, language, voice);
     }
 
     @Override
     public HangupResponse hangup(long companyId, String channelId) {
         requireOwned(companyId, channelId);
-        ari.hangupChannel(channelId);
+        ariService.hangupChannel(channelId);
         auditUseCase.record(companyId, "CALL_HANGUP_MANUAL", "call", channelId, null);
         return new HangupResponse(channelId, "HUNG_UP");
     }
@@ -136,7 +136,7 @@ public class CallService implements CallControlUseCase {
     public TransferResponse transfer(long companyId, String channelId, TransferCallRequest request) {
         if (request == null || request.type() == null) {
             requireOwned(companyId, channelId);
-            ari.transferToOperator(channelId);
+            ariService.transferToOperator(channelId);
             auditUseCase.record(companyId, "CALL_TRANSFER_MANUAL", "call", channelId, null);
             return new TransferResponse(channelId, "TRANSFERRING");
         }
@@ -205,7 +205,7 @@ public class CallService implements CallControlUseCase {
     @Override
     public AudioStreamWriter listen(long companyId, String channelId) {
         requireOwned(companyId, channelId);
-        AudioStreamWriter body = ari.listen(channelId);
+        AudioStreamWriter body = ariService.listen(channelId);
         auditUseCase.record(companyId, "CALL_LISTEN", "call", channelId, null);
         return body;
     }

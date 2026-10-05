@@ -4,7 +4,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,8 +30,13 @@ class DialogToolsTest {
                 "contractNumber", "UY-2026-00123"
         ), "goal");
         // No RTP endpoint: none of these tools touch audio.
-        session = new DialogSession("chan-1", "uz-UZ", null, context, ScenarioFixtures.debtCollection(),
-                null, null, null, 42L, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
+        session = DialogSession.builder("chan-1", "uz-UZ")
+                .context(context)
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(42L)
+                .companyId(1L)
+                .companyName("Uysot")
+                .build();
         tools = new DialogTools(session);
     }
 
@@ -122,6 +126,47 @@ class DialogToolsTest {
     }
 
     @Test
+    void waitForCallerKeepsTheCallOpenAndSilent() {
+        tools.waitForCaller();
+
+        assertThat(session.isWaitingForCaller()).isTrue();
+        assertThat(session.isEnded()).isFalse();
+        assertThat(session.toolReplies()).isNull();
+
+        session.clearWaitForCaller();
+        assertThat(session.isWaitingForCaller()).isFalse();
+    }
+
+    @Test
+    void switchLanguageMovesTheCallToASupportedLanguage() {
+        session.setDetectLanguages(java.util.List.of("uz-UZ", "ru-RU"));
+
+        String note = tools.switchLanguage("Хорошо, давайте по-русски.", "ru-RU");
+
+        assertThat(session.language()).isEqualTo("ru-RU");
+        assertThat(session.toolReplies()).isEqualTo("Хорошо, давайте по-русски.");
+        assertThat(note).doesNotContain("XATO");
+    }
+
+    @Test
+    void switchLanguageRefusesALanguageTheCompanyDoesNotHold() {
+        session.setDetectLanguages(java.util.List.of("uz-UZ"));
+
+        String note = tools.switchLanguage("Okay, in English.", "en-US");
+
+        assertThat(session.language()).isEqualTo("uz-UZ");
+        assertThat(session.toolReplies()).isNull();
+        assertThat(note).startsWith("XATO");
+    }
+
+    @Test
+    void noteCallerMoodSetsTheMoodTheVoiceFollows() {
+        tools.noteCallerMood(CustomerSentiment.FRUSTRATED);
+
+        assertThat(session.lastCustomerSentiment()).isEqualTo(CustomerSentiment.FRUSTRATED);
+    }
+
+    @Test
     void transitionMovesTheFsm() {
         tools.transitionTo("Murodjon sizmi?", "IDENTITY_CHECK");
 
@@ -160,5 +205,42 @@ class DialogToolsTest {
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.HUNG_UP);
+    }
+
+    @Test
+    void bookShowroomVisitRecordsMeetingAndReachesGoal() {
+        String res = tools.bookShowroomVisit("Sizni ofisimizda kutamiz!", "2026-09-20 15:00",
+                "3 xonali", "60000 USD", "Bo'lib to'lash", "Oilaviy kelishadi");
+
+        assertThat(res).contains("Sotuv ofisiga uchrashuv belgilandi");
+        assertThat(session.toolReplies()).isEqualTo("Sizni ofisimizda kutamiz!");
+        assertThat(session.outcome().get("meetingBooked")).isEqualTo(true);
+        assertThat(session.outcome().get("meetingTime")).isEqualTo("2026-09-20 15:00");
+        assertThat(session.outcome().get("roomsNeeded")).isEqualTo("3 xonali");
+        assertThat(session.outcome().get("budgetRange")).isEqualTo("60000 USD");
+        assertThat(session.outcome().get("paymentMethod")).isEqualTo("Bo'lib to'lash");
+        assertThat(session.outcome().get("meetingNote")).isEqualTo("Oilaviy kelishadi");
+        assertThat(session.disposition()).isEqualTo(Disposition.GOAL_REACHED);
+    }
+
+    @Test
+    void bookShowroomVisitRequiresVisitTime() {
+        String res = tools.bookShowroomVisit("Xayr", null, "2 xonali", null, null, null);
+        assertThat(res).startsWith("XATO:");
+        assertThat(session.outcome().get("meetingBooked")).isNull();
+    }
+
+    @Test
+    void sendLocationSmsRequestsSmsWhenNoLinkOrAddress() {
+        String res = tools.sendLocationSms("Lokatsiyani yuboraman", null, null);
+        assertThat(res).contains("qayd etildi");
+        assertThat(session.outcome().get("locationSmsRequested")).isEqualTo(true);
+    }
+
+    @Test
+    void sendCatalogSmsRequestsSmsWhenNoLink() {
+        String res = tools.sendCatalogSms("Katalogni yuboraman", null);
+        assertThat(res).contains("qayd etildi");
+        assertThat(session.outcome().get("catalogSmsRequested")).isEqualTo(true);
     }
 }

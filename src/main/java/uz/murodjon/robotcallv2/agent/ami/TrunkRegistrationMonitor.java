@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.dialer.application.port.output.TrunkRegistrationStatusPort;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -46,7 +46,7 @@ public class TrunkRegistrationMonitor implements TrunkRegistrationStatusPort {
 
     private final AmiClient amiClient;
     private final AmiProperties amiProperties;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final NotificationUseCase notificationService;
     private final CompanyProperties companyProperties;
 
@@ -67,7 +67,7 @@ public class TrunkRegistrationMonitor implements TrunkRegistrationStatusPort {
         return status != null && !REGISTERED.equals(status);
     }
 
-    public TrunkRegistrationMonitor(AmiClient amiClient, AmiProperties amiProperties, VoiceMetrics metrics,
+    public TrunkRegistrationMonitor(AmiClient amiClient, AmiProperties amiProperties, CallMetrics metrics,
                                     NotificationUseCase notificationService, CompanyProperties companyProperties) {
         this.amiClient = amiClient;
         this.amiProperties = amiProperties;

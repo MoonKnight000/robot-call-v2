@@ -5,8 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
@@ -57,14 +60,16 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
     private static final String ACCEPTED = "accepted";
 
     private final PublicHttpClient httpClient;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public Bitrix24ConnectorAdapter() {
-        this(PublicHttpClient.create(CONNECT_TIMEOUT, WRITE_TIMEOUT));
+    @Autowired
+    public Bitrix24ConnectorAdapter(ObjectMapper objectMapper) {
+        this(PublicHttpClient.create(CONNECT_TIMEOUT, WRITE_TIMEOUT), objectMapper);
     }
 
-    Bitrix24ConnectorAdapter(PublicHttpClient httpClient) {
+    Bitrix24ConnectorAdapter(PublicHttpClient httpClient, ObjectMapper objectMapper) {
         this.httpClient = httpClient;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -97,7 +102,7 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
                 log.debug("Bitrix24 contact lookup at {} returned HTTP {}", webhook.getHost(), response.statusCode());
                 return null;
             }
-            JsonNode contact = mapper.readTree(response.readBodyText()).path("result").path(0);
+            JsonNode contact = objectMapper.readTree(response.readBodyText()).path("result").path(0);
             String name = (contact.path("NAME").asText("") + " " + contact.path("LAST_NAME").asText("")).trim();
             // A name is all an inbound greeting needs; Bitrix24 keeps no balance to state.
             return name.isEmpty() ? null : new CrmClientSnapshot(name, null, null, null, null, null, null, null);
@@ -115,7 +120,7 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
         if (webhook == null) {
             return null;
         }
-        ObjectNode payload = mapper.createObjectNode();
+        ObjectNode payload = objectMapper.createObjectNode();
         ObjectNode fields = payload.putObject("fields");
         fields.put("ENTITY_ID", leadId);
         fields.put("ENTITY_TYPE", NOTE_ENTITY_TYPE);
@@ -146,7 +151,7 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
         }
         Integer userId = webhookUserId(webhook);
 
-        ObjectNode register = mapper.createObjectNode();
+        ObjectNode register = objectMapper.createObjectNode();
         if (userId != null) {
             register.put("USER_ID", userId);
         }
@@ -161,7 +166,7 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
             return false;
         }
 
-        ObjectNode finish = mapper.createObjectNode();
+        ObjectNode finish = objectMapper.createObjectNode();
         finish.put("CALL_ID", callId);
         if (userId != null) {
             finish.put("USER_ID", userId);
@@ -175,6 +180,50 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
         return call(webhook, "telephony.externalcall.finish", finish) != null;
     }
 
+    @Override
+    public String createTask(CrmConnection connection, CreateCrmTaskRequest request) {
+        URI webhook = PublicUrlGuard.parsePublic(connection.baseUrl());
+        if (webhook == null) {
+            return null;
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        ObjectNode fields = payload.putObject("fields");
+        fields.put("TITLE", request.title());
+        if (request.description() != null) {
+            fields.put("DESCRIPTION", request.description());
+        }
+        if (request.dueAt() != null) {
+            fields.put("DEADLINE", request.dueAt().toString());
+        }
+        if (request.responsibleId() != null && request.responsibleId() > 0) {
+            fields.put("RESPONSIBLE_ID", request.responsibleId());
+        }
+        addAuth(payload, connection);
+
+        JsonNode reply = call(webhook, "tasks.task.add", payload);
+        if (reply == null) {
+            return null;
+        }
+        String taskId = reply.path("result").path("task").path("id").asText("");
+        return taskId.isBlank() ? ACCEPTED : taskId;
+    }
+
+    @Override
+    public boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request) {
+        URI webhook = PublicUrlGuard.parsePublic(connection.baseUrl());
+        if (webhook == null) {
+            return false;
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("id", request.leadId());
+        ObjectNode fields = payload.putObject("fields");
+        fields.put("STATUS_ID", String.valueOf(request.statusId()));
+        addAuth(payload, connection);
+
+        JsonNode reply = call(webhook, "crm.lead.update", payload);
+        return reply != null && reply.path("result").asBoolean(false);
+    }
+
     /** POSTs one REST method; the parsed answer, or {@code null} when Bitrix24 refused it. */
     private JsonNode call(URI webhook, String method, ObjectNode payload) {
         try {
@@ -182,12 +231,12 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
                     .setTimeout(WRITE_TIMEOUT)
                     .addHeader("Accept", "application/json")
                     .addHeader("Content-Type", "application/json")
-                    .setBody(mapper.writeValueAsString(payload)));
+                    .setBody(objectMapper.writeValueAsString(payload)));
             if (response.statusCode() / 100 != 2) {
                 log.warn("Bitrix24 {} at {} returned HTTP {}", method, webhook.getHost(), response.statusCode());
                 return null;
             }
-            JsonNode reply = mapper.readTree(response.readBodyText());
+            JsonNode reply = objectMapper.readTree(response.readBodyText());
             if (reply.has("error")) {
                 // The error code only: its description can echo the request back.
                 log.warn("Bitrix24 {} at {} refused: {}", method, webhook.getHost(), reply.path("error").asText());

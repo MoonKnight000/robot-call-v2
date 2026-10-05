@@ -3,16 +3,14 @@ package uz.murodjon.robotcallv2.mcp.infrastructure.persistence.adapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.mapper.McpToolExecutionEntityMapper;
 import uz.murodjon.robotcallv2.mcp.application.port.output.McpToolExecutionRepository;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpToolExecution;
 import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.entity.McpConnectionEntity;
-import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.entity.McpToolExecutionEntity;
+import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.mapper.McpToolExecutionEntityMapper;
 import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.repository.McpConnectionJpaRepository;
 import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.repository.McpToolExecutionJpaRepository;
 

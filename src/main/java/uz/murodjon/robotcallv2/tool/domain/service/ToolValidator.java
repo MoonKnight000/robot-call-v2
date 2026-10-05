@@ -6,11 +6,7 @@ import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public final class ToolValidator {
 

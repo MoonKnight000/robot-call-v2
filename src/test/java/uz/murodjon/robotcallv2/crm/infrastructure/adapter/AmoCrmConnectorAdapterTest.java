@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.crm.infrastructure.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,7 +31,7 @@ class AmoCrmConnectorAdapterTest {
     @BeforeEach
     void setUp() {
         httpClient = mock(PublicHttpClient.class);
-        adapter = new AmoCrmConnectorAdapter(httpClient);
+        adapter = new AmoCrmConnectorAdapter(httpClient, new ObjectMapper());
     }
 
     @Test

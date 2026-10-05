@@ -23,7 +23,8 @@ public class CampaignTargetEntityMapper {
                 e.getContextData(),
                 e.getStatus(),
                 e.getAttempts(),
-                e.isDoNotCall()
+                e.isDoNotCall(),
+                e.getNextAttemptAt()
         );
     }
 
@@ -40,6 +41,7 @@ public class CampaignTargetEntityMapper {
         e.setStatus(d.status());
         e.setAttempts(d.attempts());
         e.setDoNotCall(d.doNotCall());
+        e.setNextAttemptAt(d.nextAttemptAt());
         e.setCreatedAt(Instant.now());
         return e;
     }

@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.aimodel.domain.entity;
 
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 /**
  * A row of ai_model — one model an operator may pick: the company chat model

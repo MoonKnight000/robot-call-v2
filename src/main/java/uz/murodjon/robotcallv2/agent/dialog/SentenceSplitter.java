@@ -27,6 +27,9 @@ final class SentenceSplitter {
      */
     static final int MIN_CHUNK_CHARS = 20;
 
+    /** Shortest clause that may be cut at a comma rather than waiting for its sentence end. */
+    static final int LONG_CLAUSE_CHARS = 90;
+
     private SentenceSplitter() {
     }
 
@@ -59,8 +62,10 @@ final class SentenceSplitter {
                 pending.delete(0, i + 1);
                 return sentence.isEmpty() ? null : sentence;
             }
-            // Long comma clause split (e.g. >= 30 chars) for early TTS streaming
-            if (c == ',' && i >= 30) {
+            // Only a really long clause is cut at a comma. Each piece is synthesized on its
+            // own and ends on a sentence-final fall, so a 30-char cut made every
+            // "Murodjon aka," sound like the end of a sentence — the robotic cadence.
+            if (c == ',' && i >= LONG_CLAUSE_CHARS) {
                 if (i + 1 < pending.length() && !Character.isWhitespace(pending.charAt(i + 1))) {
                     continue;
                 }

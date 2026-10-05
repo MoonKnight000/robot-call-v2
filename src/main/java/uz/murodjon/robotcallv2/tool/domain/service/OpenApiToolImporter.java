@@ -2,23 +2,13 @@ package uz.murodjon.robotcallv2.tool.domain.service;
 
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
-import uz.murodjon.robotcallv2.tool.domain.entity.OpenApiOperation;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
-import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
-import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
-import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
+import uz.murodjon.robotcallv2.tool.domain.entity.*;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolAuthType;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolParamValueType;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Turns an OpenAPI 3 document into company tools (UNIVERSAL-OPERATOR-PLAN B.2): path and query

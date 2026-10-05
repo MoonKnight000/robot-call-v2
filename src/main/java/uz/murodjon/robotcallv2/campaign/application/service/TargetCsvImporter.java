@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.campaign.application.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import uz.murodjon.robotcallv2.campaign.application.dto.CsvColumnMapping;
 import uz.murodjon.robotcallv2.campaign.application.dto.ParsedTarget;
@@ -15,8 +15,6 @@ import java.util.*;
  * Parses a CSV of campaign targets with multi-lingual auto-detection and dynamic context fields (PROJECT.md §10).
  */
 public final class TargetCsvImporter {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String COL_CLIENT_ID = "clientId";
     private static final String COL_PHONE = "phone";
@@ -163,7 +161,7 @@ public final class TargetCsvImporter {
             }
         }
 
-        ObjectNode context = MAPPER.createObjectNode();
+        ObjectNode context = JsonNodeFactory.instance.objectNode();
         if (textClientId != null) {
             context.put(COL_CLIENT_ID, textClientId);
         }

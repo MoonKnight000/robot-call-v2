@@ -19,7 +19,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -62,8 +61,6 @@ public class DialogSession implements DialogOutcomeSink {
      * back to the deployment's {@code stt.detect-languages} when it set none.
      */
     private volatile List<String> detectLanguages = List.of();
-    /** How often each company tool has been called on this conversation ({@code Tool.maxCallsPerCall}). */
-    private final Map<String, AtomicInteger> toolCallCounts = new ConcurrentHashMap<>();
     /** Catalog id of the voice speaking this call (§2.5); null = configured routing. */
     private volatile String ttsVoice;
     /** The campaign's voice per language, used when the call switches language. */
@@ -130,6 +127,8 @@ public class DialogSession implements DialogOutcomeSink {
      * nothing more is spoken, run or written for the call once this is set.
      */
     private volatile boolean lineGone = false;
+    /** Whether this call was received as inbound rather than dialled outbound. */
+    private volatile boolean inbound;
     /** Set by whoever starts hanging the call up ({@code SpeechOutput#finishWhenSpoken}), so it happens once. */
     private final AtomicBoolean closing = new AtomicBoolean();
     private volatile String lastAgentText;
@@ -168,22 +167,19 @@ public class DialogSession implements DialogOutcomeSink {
     private volatile String catalogResult;
 
     private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
+    /** {@link #markBargeInPending}'s token, 0 when no barge-in is waiting to be confirmed. */
+    private final AtomicLong bargeInPendingSince = new AtomicLong();
+    /** Set by the waitForCaller tool for the turn in progress; cleared when the next turn starts. */
+    private volatile boolean waitingForCaller;
 
-    // Recorded by tool calls. disposition is read at teardown (CampaignService.applyOutcome,
-    // CallFinalizer) on the ARI lane, while tools, turns and the watchdog write it on theirs —
-    // hence volatile. outcome feeds the live view (operatorSnapshot) and settles whether the
-    // scenario's goal was reached (GoalOutcome); the persisted call_result.outcome still comes
-    // from SummaryService's independent post-call pass over the transcript (ROADMAP A.3).
-    private volatile Disposition disposition;
+    // Recorded by tool calls. disposition is read at teardown (CampaignOutcomeService.applyOutcome,
+    // CallFinalizer) on the ARI lane, while tools, turns and the watchdog write it on theirs.
+    // outcome feeds the live view (operatorSnapshot) and settles whether the scenario's goal
+    // was reached (GoalOutcome); the persisted call_result.outcome still comes from
+    // SummaryService's independent post-call pass over the transcript (ROADMAP A.3).
+    private final CallOutcomeLedger outcomeLedger = new CallOutcomeLedger();
     /** {@link #turnCount} when the first outcome was recorded; -1 until one is. */
     private volatile int outcomeTurn = -1;
-    private final Map<String, Object> outcome = new ConcurrentHashMap<>();
-    /** Figures company tools answered with on this call — the fact guard's second source ({@link FactGuard}). */
-    private final Set<BigDecimal> toolFigures = ConcurrentHashMap.newKeySet();
-    /** Write-tool calls read back to the caller and waiting for their yes, by tool name ({@link HttpToolExecutor}). */
-    private final Map<String, PendingToolConfirmation> pendingConfirmations = new ConcurrentHashMap<>();
-    /** Why the client asked not to be called again (§11.4); null unless they did. */
-    private volatile String doNotCallReason;
 
     /** Cancels the silence watchdog when the call ends; null when it is disabled. */
     private volatile ScheduledFuture<?> watchdogTask;
@@ -192,121 +188,40 @@ public class DialogSession implements DialogOutcomeSink {
     private final SpokenAudioLedger spokenAudioLedger;
     private final UsageLedger usageLedger;
 
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer, callAttemptId,
-                companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText, aiModel, voiceSettings,
-                true, Map.of());
+    /** Starts a session for {@code channelId} spoken in {@code language}; everything else is optional. */
+    public static DialogSessionBuilder builder(String channelId, String language) {
+        return new DialogSessionBuilder(channelId, language);
     }
 
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
-                         Map<String, String> languageVoices) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
-                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
-                aiModel, voiceSettings, emotionAdaptiveVoice, AgentPersona.AI_ASSISTANT, languageVoices);
-    }
-
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
-                         AgentPersona agentPersona,
-                         Map<String, String> languageVoices) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
-                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
-                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices, null, List.of());
-    }
-
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
-                         AgentPersona agentPersona,
-                         Map<String, String> languageVoices,
-                         String firstMessage) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
-                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
-                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices, firstMessage, List.of(), List.of());
-    }
-
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
-                         AgentPersona agentPersona,
-                         Map<String, String> languageVoices,
-                         String firstMessage,
-                         List<Tool> tools) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
-                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
-                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices, firstMessage, tools, List.of());
-    }
-
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
-                         AgentPersona agentPersona,
-                         Map<String, String> languageVoices,
-                         String firstMessage,
-                         List<Tool> tools,
-                         List<PronunciationRule> pronunciationRules) {
-        this(channelId, language, ttsVoice, context, scenario, endpoint, hangup, transfer,
-                callAttemptId, companyId, watchdog, disclosureEnabled, companyName, companyDisclosureText,
-                aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices,
-                firstMessage, tools, pronunciationRules, null);
-    }
-
-    public DialogSession(String channelId, String language, String ttsVoice, CallContext context,
-                         ScenarioDefinition scenario, RtpEndpoint endpoint, Runnable hangup, Runnable transfer,
-                         long callAttemptId, long companyId, NoInputWatchdog watchdog, boolean disclosureEnabled,
-                         String companyName, String companyDisclosureText, EffectiveAiModelConfig aiModel,
-                         EffectiveVoiceSettings voiceSettings, boolean emotionAdaptiveVoice,
-                         AgentPersona agentPersona,
-                         Map<String, String> languageVoices,
-                         String firstMessage,
-                         List<Tool> tools,
-                         List<PronunciationRule> pronunciationRules,
-                         AiAgent agent) {
-        this.channelId = channelId;
-        this.language = language;
-        this.ttsVoice = ttsVoice;
-        this.languageVoices = languageVoices == null ? Map.of() : Map.copyOf(languageVoices);
-        this.context = context;
-        this.scenario = scenario;
+    DialogSession(DialogSessionBuilder builder) {
+        this.channelId = builder.channelId;
+        this.language = builder.language;
+        this.ttsVoice = builder.ttsVoice;
+        this.languageVoices = builder.languageVoices == null ? Map.of() : Map.copyOf(builder.languageVoices);
+        this.context = builder.context;
+        this.scenario = builder.scenario;
         // The scenario's first declared stage is its entry point, by convention
         // (ROADMAP A.3 — every builtin template already lists its opening stage first).
         this.state = (scenario != null && scenario.stages() != null && !scenario.stages().isEmpty())
                 ? scenario.stages().get(0).id()
                 : "CONVERSATION";
-        this.endpoint = endpoint;
-        this.hangup = hangup;
-        this.transfer = transfer;
-        this.callAttemptId = callAttemptId;
-        this.companyId = companyId;
-        this.watchdog = watchdog;
-        this.disclosureEnabled = disclosureEnabled;
-        this.agentPersona = agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
-        this.companyName = companyName;
-        this.companyDisclosureText = companyDisclosureText;
-        this.aiModel = aiModel;
-        this.voiceSettings = voiceSettings;
-        this.emotionAdaptiveVoice = emotionAdaptiveVoice;
-        this.firstMessage = firstMessage;
-        this.tools = tools == null ? List.of() : List.copyOf(tools);
-        this.pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
-        this.agent = agent;
+        this.endpoint = builder.endpoint;
+        this.hangup = builder.hangup;
+        this.transfer = builder.transfer;
+        this.callAttemptId = builder.callAttemptId;
+        this.companyId = builder.companyId;
+        this.watchdog = builder.watchdog;
+        this.disclosureEnabled = builder.disclosureEnabled;
+        this.agentPersona = builder.agentPersona != null ? builder.agentPersona : AgentPersona.AI_ASSISTANT;
+        this.companyName = builder.companyName;
+        this.companyDisclosureText = builder.companyDisclosureText;
+        this.aiModel = builder.aiModel;
+        this.voiceSettings = builder.voiceSettings;
+        this.emotionAdaptiveVoice = builder.emotionAdaptiveVoice;
+        this.firstMessage = builder.firstMessage;
+        this.tools = builder.tools == null ? List.of() : List.copyOf(builder.tools);
+        this.pronunciationRules = builder.pronunciationRules == null ? List.of() : List.copyOf(builder.pronunciationRules);
+        this.agent = builder.agent;
         this.turnState = new TurnState();
         this.spokenAudioLedger = new SpokenAudioLedger(endpoint);
         this.usageLedger = new UsageLedger();
@@ -336,6 +251,14 @@ public class DialogSession implements DialogOutcomeSink {
 
     public String firstMessage() {
         return firstMessage;
+    }
+
+    public boolean isInbound() {
+        return inbound;
+    }
+
+    public void setInbound(boolean inbound) {
+        this.inbound = inbound;
     }
 
     public List<ToolCallback> mcpTools() {
@@ -399,6 +322,11 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setLastCustomerSentiment(CustomerSentiment sentiment) {
         this.lastCustomerSentiment = sentiment != null ? sentiment : CustomerSentiment.NEUTRAL;
+    }
+
+    @Override
+    public void noteCallerMood(CustomerSentiment mood) {
+        setLastCustomerSentiment(mood);
     }
 
     /** The silence watchdog, or {@code null} when it is disabled. */
@@ -609,7 +537,7 @@ public class DialogSession implements DialogOutcomeSink {
     public void end(Disposition disposition) {
         this.ended = true;
         if (disposition != null) {
-            this.disposition = disposition;
+            outcomeLedger.setDisposition(disposition);
         }
     }
 
@@ -635,11 +563,12 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     public Disposition disposition() {
-        return disposition;
+        return outcomeLedger.disposition();
     }
 
+    @Override
     public void setDisposition(Disposition disposition) {
-        this.disposition = disposition;
+        outcomeLedger.setDisposition(disposition);
         if (disposition != null && outcomeTurn < 0) {
             outcomeTurn = turnState.turnCount();
         }
@@ -657,39 +586,34 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     /** Record one outcome field a tool call produced (e.g. {@code "promisedDate"}). */
+    @Override
     public void recordOutcome(String key, Object value) {
-        if (value != null) {
-            outcome.put(key, value);
-        }
+        outcomeLedger.recordOutcome(key, value);
     }
 
     /** Everything tools have recorded so far this call — for the live operator/monitoring view. */
     public Map<String, Object> outcome() {
-        return Map.copyOf(outcome);
+        return outcomeLedger.outcome();
     }
 
     @Override
     public void recordToolFigures(Collection<BigDecimal> figures) {
-        toolFigures.addAll(figures);
+        outcomeLedger.recordToolFigures(figures);
     }
 
     /** Every figure a company tool has answered with so far this call; never null. */
     public Set<BigDecimal> toolFigures() {
-        return Collections.unmodifiableSet(toolFigures);
+        return outcomeLedger.toolFigures();
     }
 
     @Override
     public PendingToolConfirmation findPendingConfirmation(String toolName) {
-        return pendingConfirmations.get(toolName);
+        return outcomeLedger.findPendingConfirmation(toolName);
     }
 
     @Override
     public void setPendingConfirmation(String toolName, PendingToolConfirmation pending) {
-        if (pending == null) {
-            pendingConfirmations.remove(toolName);
-        } else {
-            pendingConfirmations.put(toolName, pending);
-        }
+        outcomeLedger.setPendingConfirmation(toolName, pending);
     }
 
     /**
@@ -725,11 +649,12 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     public String doNotCallReason() {
-        return doNotCallReason;
+        return outcomeLedger.doNotCallReason();
     }
 
+    @Override
     public void setDoNotCallReason(String doNotCallReason) {
-        this.doNotCallReason = doNotCallReason;
+        outcomeLedger.setDoNotCallReason(doNotCallReason);
     }
 
     /**
@@ -745,13 +670,30 @@ public class DialogSession implements DialogOutcomeSink {
         return detectLanguages;
     }
 
+    /** Switches only to a language this company's calls are held in ({@link #detectLanguages}). */
+    @Override
+    public boolean switchCallLanguage(String requested) {
+        if (requested == null) {
+            return false;
+        }
+        for (String supported : detectLanguages) {
+            if (supported.equalsIgnoreCase(requested.strip())) {
+                if (!supported.equalsIgnoreCase(language)) {
+                    switchLanguage(supported);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void setDetectLanguages(List<String> detectLanguages) {
         this.detectLanguages = detectLanguages == null ? List.of() : List.copyOf(detectLanguages);
     }
 
     @Override
     public int countToolCall(String toolName) {
-        return toolCallCounts.computeIfAbsent(toolName, name -> new AtomicInteger()).incrementAndGet();
+        return outcomeLedger.countToolCall(toolName);
     }
 
     @Override
@@ -778,6 +720,44 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setInterrupted(boolean interrupted) {
         turnState.setInterrupted(interrupted);
+    }
+
+    @Override
+    public void waitForCaller() {
+        waitingForCaller = true;
+    }
+
+    /** Whether this turn's model chose to keep listening instead of answering. */
+    public boolean isWaitingForCaller() {
+        return waitingForCaller;
+    }
+
+    public void clearWaitForCaller() {
+        waitingForCaller = false;
+    }
+
+    /**
+     * The bot was paused on caller speech and is waiting for words to say whether that
+     * was an interruption. Returns the token {@link #settleBargeIn(long)} takes.
+     */
+    public long markBargeInPending() {
+        long token = System.nanoTime();
+        bargeInPendingSince.set(token);
+        return token;
+    }
+
+    public boolean isBargeInPending() {
+        return bargeInPendingSince.get() != 0;
+    }
+
+    /** Settle the pending barge-in, once: true for the one caller that got to decide it. */
+    public boolean settleBargeIn() {
+        return bargeInPendingSince.getAndSet(0) != 0;
+    }
+
+    /** As {@link #settleBargeIn()}, only if it is still the barge-in {@code token} was issued for. */
+    public boolean settleBargeIn(long token) {
+        return bargeInPendingSince.compareAndSet(token, 0);
     }
 
     public int turnCount() {

@@ -60,6 +60,17 @@ public interface RealtimeProvider {
     }
 
     /**
+     * Whether this engine delivers the text of its answer while it is still speaking
+     * ({@link RealtimeListener#onOutputTranscriptDelta}). Only such an engine can run a
+     * {@code PipelineMode.HALF_CASCADE} call, where that text — not the engine's audio — is
+     * what the caller hears, spoken by our TTS. Any other engine runs the call on the
+     * cascade pipeline instead.
+     */
+    default boolean streamsOutputTranscript() {
+        return false;
+    }
+
+    /**
      * Open a conversation. The returned session is live from this point: the engine may
      * start speaking (a greeting) before any audio has been sent to it.
      *

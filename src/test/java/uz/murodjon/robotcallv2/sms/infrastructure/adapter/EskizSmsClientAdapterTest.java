@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.sms.infrastructure.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -51,7 +52,7 @@ class EskizSmsClientAdapterTest {
         answer(200, "{\"message\":\"token_generated\",\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"id\":\"a\",\"status\":\"waiting\"}");
         answer(200, "{\"id\":\"b\",\"status\":\"waiting\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
 
         assertThat(adapter.send(sms())).isTrue();
         assertThat(adapter.send(sms())).isTrue();
@@ -67,7 +68,7 @@ class EskizSmsClientAdapterTest {
         answer(401, "{\"status\":\"token-invalid\"}");
         answer(200, "{\"data\":{\"token\":\"t2\"}}");
         answer(200, "{\"id\":\"a\",\"status\":\"success\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
 
         assertThat(adapter.send(sms())).isTrue();
 
@@ -82,7 +83,7 @@ class EskizSmsClientAdapterTest {
         answer(401, "{\"status\":\"token-invalid\"}");
         answer(200, "{\"data\":{\"token\":\"t2\"}}");
         answer(401, "{\"status\":\"token-invalid\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
 
         assertThat(adapter.send(sms())).isFalse();
 
@@ -94,7 +95,7 @@ class EskizSmsClientAdapterTest {
     void doesNotCountAnUnacceptedStatusAsSent() {
         answer(200, "{\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"status\":\"error\",\"message\":\"Invalid template\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
 
         assertThat(adapter.send(sms())).isFalse();
     }
@@ -103,7 +104,7 @@ class EskizSmsClientAdapterTest {
     void sendsToTheDigitsOnlyNumberFromTheConfiguredSender() {
         answer(200, "{\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"status\":\"waiting\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
 
         adapter.send(new SmsMessage("+998 90 123-45-67", "Salom"));
 
@@ -114,7 +115,7 @@ class EskizSmsClientAdapterTest {
 
     @Test
     void sendsNothingWithoutCredentials() {
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(new SmsProperties(true, null, null), httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(new SmsProperties(true, null, null), httpClient, new ObjectMapper());
 
         assertThat(adapter.send(sms())).isFalse();
         assertThat(requests).isEmpty();
@@ -122,7 +123,7 @@ class EskizSmsClientAdapterTest {
 
     @Test
     void sendsNothingToANumberOutsideUzbekistan() {
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient);
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
 
         assertThat(adapter.send(new SmsMessage("+79161234567", "Salom"))).isFalse();
         assertThat(requests).isEmpty();

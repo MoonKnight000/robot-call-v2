@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
-import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
@@ -23,7 +23,7 @@ import java.util.Set;
 public class AiAgentEntityMapper {
 
     private static final Logger log = LoggerFactory.getLogger(AiAgentEntityMapper.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private static final TypeReference<List<DataExtractionField>> DATA_NEEDED_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<DataEvaluationCriterion>> DATA_EVALUATION_TYPE = new TypeReference<>() {};
@@ -33,10 +33,20 @@ public class AiAgentEntityMapper {
     private static final TypeReference<List<PostCallAction>> POST_CALL_ACTIONS_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
 
+    public AiAgentEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     public AiAgent toAiAgent(AiAgentEntity entity) {
         if (entity == null) {
             return null;
         }
+        AiAgentSpeechEngineEntity speechEngine = entity.getSpeechEngine();
+        AiAgentVoiceEntity voice = entity.getVoice();
+        AiAgentAmbienceEntity ambience = entity.getAmbience();
+        AiAgentCallBehaviourEntity callBehaviour = entity.getCallBehaviour();
+        AiAgentLimitsEntity limits = entity.getLimits();
+        AiAgentDataPolicyEntity dataPolicy = entity.getDataPolicy();
         return new AiAgent(
                 entity.getId(),
                 entity.getCompanyId(),
@@ -52,53 +62,53 @@ public class AiAgentEntityMapper {
                         entity.getFirstMessage(),
                         entity.getSystemPrompt()),
                 new AiAgentSpeechEngine(
-                        entity.getPipelineMode(),
-                        entity.getRealtimeProvider(),
-                        entity.getPipecatStt(),
-                        entity.getPipecatLlm(),
-                        entity.getPipecatTts(),
-                        entity.getSttProvider(),
-                        entity.getSttModel(),
-                        entity.getTtsProvider(),
-                        entity.getTtsModel()),
+                        speechEngine.getPipelineMode(),
+                        speechEngine.getRealtimeProvider(),
+                        speechEngine.getPipecatStt(),
+                        speechEngine.getPipecatLlm(),
+                        speechEngine.getPipecatTts(),
+                        speechEngine.getSttProvider(),
+                        speechEngine.getSttModel(),
+                        speechEngine.getTtsProvider(),
+                        speechEngine.getTtsModel()),
                 new AiAgentVoice(
-                        entity.getTtsVoice(),
-                        entity.getVoiceSpeed(),
-                        entity.getVoiceStability(),
-                        entity.getVoiceSimilarityBoost(),
+                        voice.getTtsVoice(),
+                        voice.getVoiceSpeed(),
+                        voice.getVoiceStability(),
+                        voice.getVoiceSimilarityBoost(),
                         entity.getLanguageVoiceIds(),
-                        read(entity.getVoiceSpeedPerLanguage(), SPEED_PER_LANGUAGE_TYPE, Map.of()),
-                        entity.isEmotionAdaptiveVoice()),
+                        read(voice.getVoiceSpeedPerLanguage(), SPEED_PER_LANGUAGE_TYPE, Map.of()),
+                        voice.isEmotionAdaptiveVoice()),
                 new AiAgentAmbience(
-                        entity.getAmbientSound(),
-                        entity.getAmbientSoundVolume(),
-                        entity.getAmbientSoundFadeInSeconds(),
-                        entity.getThinkingSound(),
-                        entity.getThinkingSoundVolume(),
-                        entity.isNoiseCancellationEnabled(),
-                        entity.getNoiseCancellationMode()),
+                        ambience.getAmbientSound(),
+                        ambience.getAmbientSoundVolume(),
+                        ambience.getAmbientSoundFadeInSeconds(),
+                        ambience.getThinkingSound(),
+                        ambience.getThinkingSoundVolume(),
+                        ambience.isNoiseCancellationEnabled(),
+                        ambience.getNoiseCancellationMode()),
                 new AiAgentCallBehaviour(
-                        entity.getInterruptionSensitivity(),
-                        entity.getEndpointingDelayMs(),
-                        entity.isDtmfInputEnabled(),
-                        entity.getVoicemailAction(),
-                        entity.getVoicemailMessage(),
-                        entity.isMidCallSmsEnabled(),
-                        entity.getMidCallSmsTemplate(),
-                        entity.getTransferPhoneNumber(),
-                        entity.getTransferMessage(),
-                        entity.getTransferQueueId()),
+                        callBehaviour.getInterruptionSensitivity(),
+                        callBehaviour.getEndpointingDelayMs(),
+                        callBehaviour.isDtmfInputEnabled(),
+                        callBehaviour.getVoicemailAction(),
+                        callBehaviour.getVoicemailMessage(),
+                        callBehaviour.isMidCallSmsEnabled(),
+                        callBehaviour.getMidCallSmsTemplate(),
+                        callBehaviour.getTransferPhoneNumber(),
+                        callBehaviour.getTransferMessage(),
+                        callBehaviour.getTransferQueueId()),
                 new AiAgentLimits(
-                        entity.getMaxConversationDurationSeconds(),
-                        entity.getSilenceEndCallTimeoutSeconds(),
-                        entity.getTurnTimeoutSeconds(),
-                        entity.getConcurrentCallsLimit(),
-                        entity.getDailyCallsLimit()),
+                        limits.getMaxConversationDurationSeconds(),
+                        limits.getSilenceEndCallTimeoutSeconds(),
+                        limits.getTurnTimeoutSeconds(),
+                        limits.getConcurrentCallsLimit(),
+                        limits.getDailyCallsLimit()),
                 new AiAgentDataPolicy(
-                        entity.isZeroPiiRetention(),
-                        entity.isStoreCallAudio(),
-                        entity.getConversationRetentionDays(),
-                        entity.getRealtimeFactsDelivery()),
+                        dataPolicy.isZeroPiiRetention(),
+                        dataPolicy.isStoreCallAudio(),
+                        dataPolicy.getConversationRetentionDays(),
+                        dataPolicy.getRealtimeFactsDelivery()),
                 entity.getLlmModel(),
                 entity.getFastLlmModel(),
                 entity.getTemperature(),
@@ -128,12 +138,13 @@ public class AiAgentEntityMapper {
         entity.setLanguage(agent.language());
         entity.setPersona(agent.persona());
         applyScript(entity, agent.script(), scenario);
-        applySpeechEngine(entity, agent.speechEngine());
-        applyVoice(entity, agent.voice(), languageVoices);
-        applyAmbience(entity, agent.ambience());
-        applyCallBehaviour(entity, agent.callBehaviour());
-        applyLimits(entity, agent.limits());
-        applyDataPolicy(entity, agent.dataPolicy());
+        entity.setSpeechEngine(toSpeechEngineEntity(agent.speechEngine()));
+        entity.setVoice(toVoiceEntity(agent.voice()));
+        entity.setLanguageVoices(languageVoices);
+        entity.setAmbience(toAmbienceEntity(agent.ambience()));
+        entity.setCallBehaviour(toCallBehaviourEntity(agent.callBehaviour()));
+        entity.setLimits(toLimitsEntity(agent.limits()));
+        entity.setDataPolicy(toDataPolicyEntity(agent.dataPolicy()));
         entity.setLlmModel(agent.llmModel());
         entity.setFastLlmModel(agent.fastLlmModel());
         entity.setTemperature(agent.temperature());
@@ -151,7 +162,7 @@ public class AiAgentEntityMapper {
         entity.setEnabled(agent.enabled());
     }
 
-    private static void applyScript(AiAgentEntity entity, AiAgentScript script, ScenarioEntity scenario) {
+    private void applyScript(AiAgentEntity entity, AiAgentScript script, ScenarioEntity scenario) {
         entity.setTemplateId(script.templateId());
         entity.setScenario(scenario);
         entity.setScenarioMode(script.mode());
@@ -160,85 +171,89 @@ public class AiAgentEntityMapper {
         entity.setSystemPrompt(script.systemPrompt());
     }
 
-    private static void applySpeechEngine(AiAgentEntity entity, AiAgentSpeechEngine speechEngine) {
-        entity.setPipelineMode(speechEngine.mode());
-        entity.setRealtimeProvider(speechEngine.realtimeProvider());
-        entity.setPipecatStt(speechEngine.pipecatStt());
-        entity.setPipecatLlm(speechEngine.pipecatLlm());
-        entity.setPipecatTts(speechEngine.pipecatTts());
-        entity.setSttProvider(speechEngine.sttProvider());
-        entity.setSttModel(speechEngine.sttModel());
-        entity.setTtsProvider(speechEngine.ttsProvider());
-        entity.setTtsModel(speechEngine.ttsModel());
+    private static AiAgentSpeechEngineEntity toSpeechEngineEntity(AiAgentSpeechEngine speechEngine) {
+        return new AiAgentSpeechEngineEntity(
+                speechEngine.mode(),
+                speechEngine.realtimeProvider(),
+                speechEngine.pipecatStt(),
+                speechEngine.pipecatLlm(),
+                speechEngine.pipecatTts(),
+                speechEngine.sttProvider(),
+                speechEngine.sttModel(),
+                speechEngine.ttsProvider(),
+                speechEngine.ttsModel());
     }
 
-    private static void applyVoice(AiAgentEntity entity, AiAgentVoice voice,
-                                   Map<String, TtsVoiceEntity> languageVoices) {
-        entity.setTtsVoice(voice.defaultVoice());
-        entity.setVoiceSpeed(voice.speed());
-        entity.setVoiceStability(voice.stability());
-        entity.setVoiceSimilarityBoost(voice.similarityBoost());
-        entity.setLanguageVoices(languageVoices);
-        entity.setVoiceSpeedPerLanguage(voice.perLanguageSpeed().isEmpty() ? null : write(voice.perLanguageSpeed(), null));
-        entity.setEmotionAdaptiveVoice(voice.emotionAdaptive());
+    private AiAgentVoiceEntity toVoiceEntity(AiAgentVoice voice) {
+        return new AiAgentVoiceEntity(
+                voice.defaultVoice(),
+                voice.speed(),
+                voice.stability(),
+                voice.similarityBoost(),
+                voice.perLanguageSpeed().isEmpty() ? null : write(voice.perLanguageSpeed(), null),
+                voice.emotionAdaptive());
     }
 
-    private static void applyAmbience(AiAgentEntity entity, AiAgentAmbience ambience) {
-        entity.setAmbientSound(ambience.background());
-        entity.setAmbientSoundVolume(ambience.backgroundVolume());
-        entity.setAmbientSoundFadeInSeconds(ambience.backgroundFadeInSeconds());
-        entity.setThinkingSound(ambience.thinking());
-        entity.setThinkingSoundVolume(ambience.thinkingVolume());
-        entity.setNoiseCancellationEnabled(ambience.noiseCancellationEnabled());
-        entity.setNoiseCancellationMode(ambience.noiseCancellationMode());
+    private static AiAgentAmbienceEntity toAmbienceEntity(AiAgentAmbience ambience) {
+        return new AiAgentAmbienceEntity(
+                ambience.background(),
+                ambience.backgroundVolume(),
+                ambience.backgroundFadeInSeconds(),
+                ambience.thinking(),
+                ambience.thinkingVolume(),
+                ambience.noiseCancellationEnabled(),
+                ambience.noiseCancellationMode());
     }
 
-    private static void applyCallBehaviour(AiAgentEntity entity, AiAgentCallBehaviour behaviour) {
-        entity.setInterruptionSensitivity(behaviour.interruptionSensitivity());
-        entity.setEndpointingDelayMs(behaviour.endpointingDelayMs());
-        entity.setDtmfInputEnabled(behaviour.dtmfInputEnabled());
-        entity.setVoicemailAction(behaviour.voicemailAction());
-        entity.setVoicemailMessage(behaviour.voicemailMessage());
-        entity.setMidCallSmsEnabled(behaviour.midCallSmsEnabled());
-        entity.setMidCallSmsTemplate(behaviour.midCallSmsTemplate());
-        entity.setTransferPhoneNumber(behaviour.transferPhoneNumber());
-        entity.setTransferMessage(behaviour.transferMessage());
-        entity.setTransferQueueId(behaviour.transferQueueId());
+    private static AiAgentCallBehaviourEntity toCallBehaviourEntity(AiAgentCallBehaviour behaviour) {
+        return new AiAgentCallBehaviourEntity(
+                behaviour.interruptionSensitivity(),
+                behaviour.endpointingDelayMs(),
+                behaviour.dtmfInputEnabled(),
+                behaviour.voicemailAction(),
+                behaviour.voicemailMessage(),
+                behaviour.midCallSmsEnabled(),
+                behaviour.midCallSmsTemplate(),
+                behaviour.transferPhoneNumber(),
+                behaviour.transferMessage(),
+                behaviour.transferQueueId());
     }
 
-    private static void applyLimits(AiAgentEntity entity, AiAgentLimits limits) {
-        entity.setMaxConversationDurationSeconds(limits.maxConversationDurationSeconds());
-        entity.setSilenceEndCallTimeoutSeconds(limits.silenceEndCallTimeoutSeconds());
-        entity.setTurnTimeoutSeconds(limits.turnTimeoutSeconds());
-        entity.setConcurrentCallsLimit(limits.concurrentCallsLimit());
-        entity.setDailyCallsLimit(limits.dailyCallsLimit());
+    private static AiAgentLimitsEntity toLimitsEntity(AiAgentLimits limits) {
+        return new AiAgentLimitsEntity(
+                limits.maxConversationDurationSeconds(),
+                limits.silenceEndCallTimeoutSeconds(),
+                limits.turnTimeoutSeconds(),
+                limits.concurrentCallsLimit(),
+                limits.dailyCallsLimit());
     }
 
-    private static void applyDataPolicy(AiAgentEntity entity, AiAgentDataPolicy dataPolicy) {
-        entity.setZeroPiiRetention(dataPolicy.zeroPiiRetention());
-        entity.setStoreCallAudio(dataPolicy.storeCallAudio());
-        entity.setConversationRetentionDays(dataPolicy.conversationRetentionDays());
-        entity.setRealtimeFactsDelivery(dataPolicy.realtimeFactsDelivery());
+    private static AiAgentDataPolicyEntity toDataPolicyEntity(AiAgentDataPolicy dataPolicy) {
+        return new AiAgentDataPolicyEntity(
+                dataPolicy.zeroPiiRetention(),
+                dataPolicy.storeCallAudio(),
+                dataPolicy.conversationRetentionDays(),
+                dataPolicy.realtimeFactsDelivery());
     }
 
-    private static <T> T read(String json, TypeReference<T> type, T fallback) {
+    private <T> T read(String json, TypeReference<T> type, T fallback) {
         if (json == null || json.isBlank()) {
             return fallback;
         }
         try {
-            return JSON.readValue(json, type);
+            return objectMapper.readValue(json, type);
         } catch (Exception e) {
             log.warn("ai_agent JSON column is not valid, reading fallback: {}", e.getMessage());
             return fallback;
         }
     }
 
-    private static String write(Object value, String fallback) {
+    private String write(Object value, String fallback) {
         if (value == null) {
             return fallback;
         }
         try {
-            return JSON.writeValueAsString(value);
+            return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
             log.warn("ai_agent value could not be serialized, storing fallback: {}", e.getMessage());
             return fallback;

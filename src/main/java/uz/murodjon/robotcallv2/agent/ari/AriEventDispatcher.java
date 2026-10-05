@@ -1,11 +1,7 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
 import ch.loway.oss.ari4java.generated.AriWSHelper;
-import ch.loway.oss.ari4java.generated.models.ChannelDestroyed;
-import ch.loway.oss.ari4java.generated.models.ChannelDtmfReceived;
-import ch.loway.oss.ari4java.generated.models.ChannelHangupRequest;
-import ch.loway.oss.ari4java.generated.models.StasisEnd;
-import ch.loway.oss.ari4java.generated.models.StasisStart;
+import ch.loway.oss.ari4java.generated.models.*;
 import ch.loway.oss.ari4java.tools.AriConnectionEvent;
 import ch.loway.oss.ari4java.tools.RestException;
 import org.slf4j.Logger;

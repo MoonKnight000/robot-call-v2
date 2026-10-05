@@ -184,13 +184,13 @@ class CampaignTargetRepositoryTest {
         targets.claimDue(campaignId, 1);
         // t3 stays pending
 
-        CampaignTargetStats stats = targets.statsByCampaignId(COMPANY_ID, campaignId);
+        CampaignTargetStats stats = targets.findStatsByCampaignId(COMPANY_ID, campaignId);
         assertThat(stats.totalTargets()).isEqualTo(3L);
         assertThat(stats.calledTargets()).isEqualTo(2L);
         assertThat(stats.pendingTargets()).isEqualTo(1L);
         assertThat(stats.completedTargets()).isEqualTo(1L);
 
-        Map<Long, CampaignTargetStats> map = targets.statsByCampaignIds(COMPANY_ID, List.of(campaignId));
+        Map<Long, CampaignTargetStats> map = targets.findStatsByCampaignIds(COMPANY_ID, List.of(campaignId));
         assertThat(map).containsKey(campaignId);
         assertThat(map.get(campaignId).totalTargets()).isEqualTo(3L);
         assertThat(map.get(campaignId).calledTargets()).isEqualTo(2L);

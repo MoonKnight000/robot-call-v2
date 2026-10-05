@@ -83,7 +83,7 @@ public class AgentSimulator {
         if (chatModel == null) {
             return SimulatedCall.failed("no LLM ChatModel is configured (GEMINI_API_KEY or OPENAI_API_KEY)");
         }
-        ChatClient agentClient = ChatClient.create(chatModel);
+        ChatClient agentClient = TurnTools.chatClient(chatModel);
         ChatClient callerClient = ChatClient.create(chatModel);
         DialogSession session = newSession(companyId, persona, scenario, agent, language);
         List<String> transcript = new ArrayList<>();
@@ -161,7 +161,7 @@ public class AgentSimulator {
         ChatResponse response = caller.prompt()
                 .system(PERSONA_RULES + "\nSIZNING ROLINGIZ:\n" + persona.prompt())
                 .messages(callerHistory)
-                .options(options)
+                .options(options.mutate())
                 .call()
                 .chatResponse();
         return textOf(response);
@@ -179,9 +179,14 @@ public class AgentSimulator {
         }
         // No endpoint, no watchdog and no hangup: nothing here plays audio or ends a
         // channel, and every path that would touch one is guarded against null.
-        DialogSession session = new DialogSession("sim-" + persona.id(), language, null,
-                new CallContext(persona.facts(), null), scenario, null, null, null, 0L, companyId, null, false,
-                null, null, aiModel, voiceSettingsUseCase.findEffectiveByCompanyId(companyId));
+        DialogSession session = DialogSession.builder("sim-" + persona.id(), language)
+                .context(new CallContext(persona.facts(), null))
+                .scenario(scenario)
+                .companyId(companyId)
+                .disclosureEnabled(false)
+                .aiModel(aiModel)
+                .voiceSettings(voiceSettingsUseCase.findEffectiveByCompanyId(companyId))
+                .build();
         session.setMcpTools(List.of());
         return session;
     }

@@ -2,14 +2,13 @@ package uz.murodjon.robotcallv2.agent.realtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -23,7 +22,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -42,12 +40,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class PipecatRealtimeProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(PipecatRealtimeProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public PipecatRealtimeProvider(RealtimeProperties realtimeProperties) {
+    public PipecatRealtimeProvider(RealtimeProperties realtimeProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.realtimeProperties = realtimeProperties;
     }
 
@@ -149,7 +148,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         if (p.url().startsWith("http") && p.apiKey() != null && !p.apiKey().isBlank()) {
             try {
                 String startUrl = p.url().replaceAll("/+$", "") + "/" + p.agentName() + "/start";
-                ObjectNode payload = MAPPER.createObjectNode();
+                ObjectNode payload = objectMapper.createObjectNode();
                 payload.put("createDailyRoom", true);
                 payload.put("channelId", channelId);
                 if (config.pipecatStt() != null && !config.pipecatStt().isBlank()) {
@@ -175,7 +174,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
 
                 HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
-                    JsonNode respNode = MAPPER.readTree(resp.body());
+                    JsonNode respNode = objectMapper.readTree(resp.body());
                     if (respNode.has("ws_url")) {
                         return respNode.path("ws_url").asText();
                     }
@@ -198,8 +197,8 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
     }
 
     /** Package-private for the test: what the bot is told at connect, its tools included. */
-    static String handshakeMessage(RealtimeCallConfig config, PipecatRealtimeProperties p) {
-        ObjectNode root = MAPPER.createObjectNode();
+    String handshakeMessage(RealtimeCallConfig config, PipecatRealtimeProperties p) {
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("type", "session_init");
         root.put("agent", p.agentName());
         String selectedModel = config.modelOr(config.pipecatLlm() != null && !config.pipecatLlm().isBlank() ? config.pipecatLlm() : p.model());
@@ -220,32 +219,16 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         // tool_result back, but it can only call what it was offered here. Without this list
         // it had nothing to call: no endCall, no transfer, no call facts. Same function
         // shape as the OpenAI provider's session.update.
-        List<ToolCallback> tools = config.tools();
-        if (tools != null && !tools.isEmpty()) {
-            ArrayNode toolArray = root.putArray("tools");
-            for (ToolCallback tool : tools) {
-                ObjectNode declaration = toolArray.addObject();
-                declaration.put("type", "function");
-                declaration.put("name", tool.getToolDefinition().name());
-                declaration.put("description", tool.getToolDefinition().description());
-                try {
-                    declaration.set("parameters", MAPPER.readTree(tool.getToolDefinition().inputSchema()));
-                } catch (Exception e) {
-                    // Still offered, only without a schema the bot can check arguments against.
-                    log.debug("Tool {} has an unreadable input schema: {}", tool.getToolDefinition().name(), e.getMessage());
-                }
-            }
-        }
+        RealtimeFunctionTools.putFunctionTools(objectMapper, root, config.tools());
         return root.toString();
     }
 
-    private static final class PipecatResponseHandler implements WebSocket.Listener {
+    private final class PipecatResponseHandler extends JsonWebSocketListener {
 
         private final String channelId;
         private final RealtimeListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
-        private final StringBuilder message = new StringBuilder();
         private final StringBuilder botTranscript = new StringBuilder();
 
         private PipecatResponseHandler(String channelId, RealtimeListener listener,
@@ -257,26 +240,12 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         }
 
         @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+        protected void onBinaryFrame(ByteBuffer data, boolean last) {
             byte[] bytes = new byte[data.remaining()];
             data.get(bytes);
             short[] pcm = new short[bytes.length / 2];
             ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm);
             listener.onBotAudio(pcm);
-            webSocket.request(1);
-            return null;
         }
 
         /**
@@ -285,13 +254,14 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
          * logs and the dialog engine's, reached through the listener) is filed under the
          * call it belongs to instead of {@code [call:none]}.
          */
-        private void handle(String json) {
+        @Override
+        protected void onMessage(String json) {
             CallMdc.with(channelId, () -> dispatch(json));
         }
 
         private void dispatch(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 String type = node.path("type").asText(node.path("event").asText(""));
 
                 switch (type) {
@@ -364,7 +334,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
      * WebSocket refuses a send while another is in flight, and a tool result that lost that
      * race was thrown away — the engine then waited on it forever.
      */
-    private static final class PipecatRealtimeSession implements RealtimeSession {
+    private final class PipecatRealtimeSession implements RealtimeSession {
 
         /** About two seconds of 20 ms frames. */
         private static final int MAX_PENDING_AUDIO_SENDS = 100;
@@ -403,7 +373,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
             if (!alive.get() || text == null) {
                 return;
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "user_text");
             root.put("text", text);
             send(root.toString());
@@ -414,7 +384,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
             if (!alive.get()) {
                 return;
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "tool_result");
             root.put("call_id", callId);
             root.put("result", result != null ? result : "");

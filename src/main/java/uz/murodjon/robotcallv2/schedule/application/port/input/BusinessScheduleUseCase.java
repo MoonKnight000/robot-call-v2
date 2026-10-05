@@ -3,11 +3,7 @@ package uz.murodjon.robotcallv2.schedule.application.port.input;
 import uz.murodjon.robotcallv2.schedule.application.dto.SaveBusinessScheduleRequest;
 import uz.murodjon.robotcallv2.schedule.application.dto.SaveHolidayRequest;
 import uz.murodjon.robotcallv2.schedule.application.dto.ScheduleStatusResponse;
-import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessHoursVerdict;
-import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessSchedule;
-import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessScheduleFilter;
-import uz.murodjon.robotcallv2.schedule.domain.entity.Holiday;
-import uz.murodjon.robotcallv2.schedule.domain.entity.HolidayFilter;
+import uz.murodjon.robotcallv2.schedule.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 import java.time.Instant;

@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
@@ -66,13 +68,17 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
     /** Uysot matches a lead's contact phones on their last nine digits, digits only. */
     private static final int PHONE_SUFFIX_DIGITS = 9;
 
+    private static final String DEFAULT_TASK_PATH = "/v1/open-api/task";
+    private static final String DEFAULT_LEAD_STATUS_PATH = "/v1/open-api/lead/{id}/status";
+
     private final CrmProperties crmProperties;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .build();
 
-    public UysotConnectorAdapter(CrmProperties crmProperties) {
+    public UysotConnectorAdapter(CrmProperties crmProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.crmProperties = crmProperties;
     }
 
@@ -94,7 +100,7 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
                 log.warn("CRM lead lookup HTTP {} for lead {}", response.statusCode(), leadId);
                 return null;
             }
-            CrmClientSnapshot snapshot = CrmClientSnapshot.fromJson(mapper.readTree(response.body()));
+            CrmClientSnapshot snapshot = CrmClientSnapshot.fromJson(objectMapper.readTree(response.body()));
             log.debug("CRM lead {} resolved: lang={} debt={}",
                     leadId, snapshot.preferredLanguage(), snapshot.debtAmount());
             return snapshot;
@@ -116,19 +122,19 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             return null;
         }
         try {
-            ObjectNode body = mapper.createObjectNode();
+            ObjectNode body = objectMapper.createObjectNode();
             body.put("phone", phoneSuffix(phone));
             body.put("page", 1);
             body.put("size", 1);
 
             HttpResponse<String> response = post(resolve(connection.baseUrl(), crmProperties.leadFilterPath()),
-                    connection.accessToken(), mapper.writeValueAsString(body), LOOKUP_TIMEOUT);
+                    connection.accessToken(), objectMapper.writeValueAsString(body), LOOKUP_TIMEOUT);
             if (response.statusCode() / 100 != 2) {
                 log.warn("CRM phone lookup HTTP {} for {}", response.statusCode(), PhoneMasker.mask(phone));
                 return null;
             }
             // data is a PageableData, so the rows are one level deeper than everywhere else.
-            JsonNode rows = mapper.readTree(response.body()).path("data").path("data");
+            JsonNode rows = objectMapper.readTree(response.body()).path("data").path("data");
             if (!rows.isArray() || rows.isEmpty()) {
                 log.debug("CRM phone lookup {} matched no lead", PhoneMasker.mask(phone));
                 return null;
@@ -153,7 +159,7 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
         }
         try {
             // The endpoint takes 1-10 notes at a time, so the body is an array even for one.
-            ArrayNode body = mapper.createArrayNode();
+            ArrayNode body = objectMapper.createArrayNode();
             ObjectNode note = body.addObject();
             note.put("text", noteText);
             note.put("type", "PHONE");
@@ -161,12 +167,12 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
 
             String path = crmProperties.leadNotePath().replace("{id}", String.valueOf(leadId));
             HttpResponse<String> response = post(resolve(connection.baseUrl(), path), connection.accessToken(),
-                    mapper.writeValueAsString(body), WRITE_TIMEOUT);
+                    objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
             if (response.statusCode() / 100 != 2) {
                 log.warn("CRM note HTTP {}: {}", response.statusCode(), response.body());
                 return null;
             }
-            JsonNode json = mapper.readTree(response.body());
+            JsonNode json = objectMapper.readTree(response.body());
             String requestId = json.hasNonNull("requestId") ? json.get("requestId").asText() : null;
             if (requestId == null || requestId.isBlank()) {
                 // A 2xx without a request id is this API telling us it did not enqueue the
@@ -197,7 +203,7 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             return false;
         }
         try {
-            ObjectNode body = mapper.createObjectNode();
+            ObjectNode body = objectMapper.createObjectNode();
             body.put("uuid", entry.callUuid());
             body.put("kind", "CALL");
             body.put("leadId", leadId);
@@ -216,7 +222,7 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             }
 
             HttpResponse<String> response = post(resolve(connection.baseUrl(), crmProperties.callHistoryPath()),
-                    connection.accessToken(), mapper.writeValueAsString(body), WRITE_TIMEOUT);
+                    connection.accessToken(), objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
             if (response.statusCode() / 100 != 2) {
                 log.warn("CRM call-history HTTP {} for lead {}: {}", response.statusCode(), leadId, response.body());
                 return false;
@@ -225,6 +231,70 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             return true;
         } catch (Exception e) {
             log.warn("CRM call-history post failed for lead {}: {}", leadId, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public String createTask(CrmConnection connection, CreateCrmTaskRequest request) {
+        String taskPath = crmProperties.taskPath() != null && !crmProperties.taskPath().isBlank()
+                ? crmProperties.taskPath()
+                : DEFAULT_TASK_PATH;
+        try {
+            ObjectNode body = objectMapper.createObjectNode();
+            body.put("leadId", request.leadId());
+            body.put("title", request.title() != null ? request.title() : "AI Call Qualification Follow-up");
+            if (request.description() != null) {
+                body.put("description", request.description());
+            }
+            if (request.dueAt() != null) {
+                body.put("dueTimestamp", request.dueAt().getEpochSecond());
+            }
+            if (request.responsibleId() != null && request.responsibleId() > 0) {
+                body.put("responsibleId", request.responsibleId());
+            } else if (crmProperties.callHistoryEmployeeId() != null && crmProperties.callHistoryEmployeeId() > 0) {
+                body.put("responsibleId", crmProperties.callHistoryEmployeeId());
+            }
+
+            HttpResponse<String> response = post(resolve(connection.baseUrl(), taskPath), connection.accessToken(),
+                    objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
+            if (response.statusCode() / 100 != 2) {
+                log.warn("CRM create task HTTP {}: {}", response.statusCode(), response.body());
+                return null;
+            }
+            JsonNode json = objectMapper.readTree(response.body());
+            String requestId = json.hasNonNull("requestId") ? json.get("requestId").asText() : null;
+            log.info("CRM task enqueued for lead {} (requestId={})", request.leadId(), requestId);
+            return requestId;
+        } catch (Exception e) {
+            log.warn("CRM create task failed for lead {}: {}", request.leadId(), e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request) {
+        String statusPath = crmProperties.leadStatusPath() != null && !crmProperties.leadStatusPath().isBlank()
+                ? crmProperties.leadStatusPath()
+                : DEFAULT_LEAD_STATUS_PATH;
+        try {
+            String path = statusPath.replace("{id}", String.valueOf(request.leadId()));
+            ObjectNode body = objectMapper.createObjectNode();
+            body.put("statusId", request.statusId());
+            if (request.reason() != null && !request.reason().isBlank()) {
+                body.put("reason", request.reason());
+            }
+
+            HttpResponse<String> response = post(resolve(connection.baseUrl(), path), connection.accessToken(),
+                    objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
+            if (response.statusCode() / 100 != 2) {
+                log.warn("CRM update status HTTP {} for lead {}: {}", response.statusCode(), request.leadId(), response.body());
+                return false;
+            }
+            log.info("CRM status updated for lead {} to statusId={}", request.leadId(), request.statusId());
+            return true;
+        } catch (Exception e) {
+            log.warn("CRM update status failed for lead {}: {}", request.leadId(), e.getMessage());
             return false;
         }
     }

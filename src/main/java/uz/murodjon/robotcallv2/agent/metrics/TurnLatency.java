@@ -114,7 +114,7 @@ public class TurnLatency {
      * measured and returns the line to log, or {@code null} when this turn had nothing
      * worth reporting (the greeting, which no caller was waiting through).
      */
-    public String finish(VoiceMetrics metrics) {
+    public String finish(DialogMetrics metrics) {
         firstAudioAt = System.nanoTime();
         // With the recognizer doing its own endpointing (the default: no VAD gating, no
         // external endpointing) nothing closes a gate, so the end of the utterance is

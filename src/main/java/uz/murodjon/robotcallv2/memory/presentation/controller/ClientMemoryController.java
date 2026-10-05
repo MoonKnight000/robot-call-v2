@@ -19,10 +19,14 @@ public interface ClientMemoryController {
 
     @PreAuthorize("hasAuthority('CONTACT_READ')")
     @GetMapping("/{phone}")
-    ResponseEntity<ResponseData<ClientMemory>> get(@CurrentCompanyId long companyId, @PathVariable String phone);
+    ResponseEntity<ResponseData<ClientMemory>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable String phone);
 
     @PreAuthorize("hasAuthority('CONTACT_EDIT')")
     @PutMapping("/{phone}")
-    ResponseEntity<ResponseData<ClientMemory>> update(@CurrentCompanyId long companyId, @PathVariable String phone,
-                                                      @Valid @RequestBody UpdateClientMemoryRequest request);
+    ResponseEntity<ResponseData<ClientMemory>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable String phone,
+            @Valid @RequestBody UpdateClientMemoryRequest request);
 }

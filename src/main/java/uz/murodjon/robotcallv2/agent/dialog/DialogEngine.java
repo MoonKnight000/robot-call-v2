@@ -97,17 +97,19 @@ public class DialogEngine implements CallDialog {
         return turnRunner.available();
     }
 
-    /**
-     * @param agent who is speaking — voice per language, persona, and this agent's own
-     *              model settings over the company's. Null on a manual test call, which
-     *              runs a scenario with no agent behind it and takes the defaults
-     * @param dtmf  how this call presses keypad tones for IVR navigation, or null when it
-     *              cannot — the {@code sendDtmfTones} tool then tells the model so
-     */
-    public void startCall(String channelId, RtpEndpoint endpoint, CallContext context,
-                          ScenarioDefinition scenario, String language, String ttsVoice,
-                          AiAgent agent, Runnable hangup, Runnable transfer, long callAttemptId,
-                          Consumer<String> dtmf) {
+    /** Starts the cascade conversation on {@code start}'s call; does nothing when the engine is unavailable. */
+    public void startCall(CallStart start) {
+        String channelId = start.channelId();
+        RtpEndpoint endpoint = start.endpoint();
+        CallContext context = start.context();
+        ScenarioDefinition scenario = start.scenario();
+        String language = start.language();
+        String ttsVoice = start.ttsVoice();
+        AiAgent agent = start.agent();
+        Runnable hangup = start.hangup();
+        Runnable transfer = start.transfer();
+        long callAttemptId = start.callAttemptId();
+        Consumer<String> dtmf = start.dtmf();
         if (!available()) {
             log.debug("Dialog not started for {} (engine unavailable)", channelId);
             return;
@@ -149,15 +151,36 @@ public class DialogEngine implements CallDialog {
             }
         }
         String firstMessage = agent != null ? agent.script().firstMessage() : null;
-        DialogSession session = new DialogSession(channelId, language, ttsVoice, context, scenario, endpoint,
-                hangup, transfer, callAttemptId, companyId, watchdogRunner.createWatchdog(), disclosureEnabled, companyName,
-                companyDisclosure, aiModel, voiceSettings, emotionAdaptiveVoice, agentPersona, languageVoices,
-                firstMessage, tools, agent != null ? agent.pronunciationRules() : List.of(), agent);
+        DialogSession session = DialogSession.builder(channelId, language)
+                .ttsVoice(ttsVoice)
+                .context(context)
+                .scenario(scenario)
+                .endpoint(endpoint)
+                .hangup(hangup)
+                .transfer(transfer)
+                .callAttemptId(callAttemptId)
+                .companyId(companyId)
+                .watchdog(watchdogRunner.createWatchdog())
+                .disclosureEnabled(disclosureEnabled)
+                .companyName(companyName)
+                .companyDisclosureText(companyDisclosure)
+                .aiModel(aiModel)
+                .voiceSettings(voiceSettings)
+                .emotionAdaptiveVoice(emotionAdaptiveVoice)
+                .agentPersona(agentPersona)
+                .languageVoices(languageVoices)
+                .firstMessage(firstMessage)
+                .tools(tools)
+                .pronunciationRules(agent != null ? agent.pronunciationRules() : List.of())
+                .agent(agent)
+                .build();
         if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
             session.setMidCallSmsSender(smsText ->
                     midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), smsText));
         }
         session.setDtmfSender(dtmf);
+        boolean inbound = callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null;
+        session.setInbound(inbound);
         session.setDetectLanguages(companyConfigService.findSupportedLanguageCodes(companyId));
         // Which model a one-word turn is answered on is the agent's call, the same way its
         // own llmModel is: a survey agent and a collections agent share a deployment and
@@ -276,6 +299,7 @@ public class DialogEngine implements CallDialog {
         // sentence — on a real call, 370ms before their final arrived.
         session.touchActivity();
         session.noteInterim();
+        inputGate.onInterim(session, text);
         if (session.claimBackchannel(dialogProperties.backchannelAfterMs())) {
             // Off the recognizer's thread: synthesis can take a network round trip, and
             // this one is holding the rest of the caller's audio behind it.

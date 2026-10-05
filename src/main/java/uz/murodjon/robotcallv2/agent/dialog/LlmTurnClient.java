@@ -16,23 +16,14 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -54,8 +45,14 @@ class LlmTurnClient {
     /** Runs the blocking model calls, so that {@link #callWithDeadline} can stop waiting on one. */
     private static final ExecutorService BLOCKING_LLM_CALLS = Executors.newVirtualThreadPerTaskExecutor();
 
+    /**
+     * How long the paused bot waits for {@link #isTakingTheFloor}. A person who has been
+     * talked over pauses about this long before deciding whether to carry on.
+     */
+    private static final long BARGE_IN_DECISION_MS = 1500;
+
     private static final Set<String> SILENT_CONTROL_TOOLS = Set.of(
-            "transitionTo", "endCall", "recordWrongPerson", "recordDoNotCall"
+            "transitionTo", "endCall", "recordWrongPerson", "recordDoNotCall", "waitForCaller", "switchLanguage", "noteCallerMood"
     );
 
     private final ObjectProvider<ChatModel> chatModelProvider;
@@ -64,7 +61,7 @@ class LlmTurnClient {
     private final TurnTools turnTools;
     private final SpeechOutput speech;
     private final DialogExecutors executors;
-    private final VoiceMetrics metrics;
+    private final LlmMetrics metrics;
     private final LlmTimeoutProperties llmTimeout;
     private final DialogTuningProperties dialogTuning;
 
@@ -76,7 +73,7 @@ class LlmTurnClient {
                   TurnTools turnTools,
                   SpeechOutput speech,
                   DialogExecutors executors,
-                  VoiceMetrics metrics,
+                  LlmMetrics metrics,
                   LlmTimeoutProperties llmTimeout,
                   DialogTuningProperties dialogTuning) {
         this.chatModelProvider = chatModelProvider;
@@ -108,7 +105,7 @@ class LlmTurnClient {
             // Nothing is lost by running them ourselves: the tools move the FSM and record
             // outcomes, their return strings are confirmations, and the line for the caller
             // travels in the tool's own `reply` argument.
-            chatClient = ChatClient.create(model);
+            chatClient = TurnTools.chatClient(model);
             log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
         } else {
             log.warn("Dialog engine has no LLM ChatModel (set GEMINI_API_KEY or OPENAI_API_KEY); dialog disabled");
@@ -118,6 +115,47 @@ class LlmTurnClient {
     /** Whether there is a model to send a turn to. */
     boolean isReady() {
         return chatClient != null;
+    }
+
+    /**
+     * Whether a caller who spoke over the bot is taking the floor (an objection, a "no", a
+     * question, a correction) rather than letting it carry on ("aha", a cough, agreement).
+     *
+     * <p>Asked of the model, not of a word list: "ha" is agreement over one line and the
+     * answer to the question in another, and only the line it was said over can tell
+     * which. The fast model with no tools, because the bot is paused while this runs.
+     *
+     * <p>Fails toward yielding — no model, no answer in {@link #BARGE_IN_DECISION_MS}, or
+     * an answer it cannot read all mean the bot stops: talking over a caller who meant
+     * it is the worse of the two mistakes.
+     */
+    boolean isTakingTheFloor(DialogSession s, String botLine, String callerText) {
+        ChatClient client = chatClient;
+        if (client == null) {
+            return true;
+        }
+        String prompt = "Telefon suhbati. Bot shu gapni aytayotgan edi: \""
+                + PromptSafeText.sanitize(botLine == null ? "" : botLine, 300)
+                + "\". Mijoz uning ustidan dedi: \"" + PromptSafeText.sanitize(callerText, 200) + "\".\n"
+                + "Mijoz botni to'xtatib o'zi gapirmoqchimi (e'tiroz, rad etish, savol, tuzatish, "
+                + "botning savoliga javob), yoki shunchaki tinglayotganini bildirib botning davom "
+                + "etishini kutyaptimi (ma'qullash, tasdiq tovushi, yo'tal, shovqin)?\n"
+                + "Faqat bitta so'z bilan javob bering: STOP yoki CONTINUE.";
+        try {
+            ChatResponse response = callWithDeadline(() -> client.prompt()
+                    .user(prompt)
+                    .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)).mutate())
+                    .call()
+                    .chatResponse(), BARGE_IN_DECISION_MS);
+            TokenUsage usage = new TokenUsage();
+            usage.add(response);
+            publishUsage(s, usage);
+            String answer = extractText(response);
+            return answer == null || !answer.strip().toUpperCase(Locale.ROOT).startsWith("CONTINUE");
+        } catch (RuntimeException e) {
+            log.warn("[{}] barge-in decision failed ({}) — yielding to the caller", s.channelId(), e.getMessage());
+            return true;
+        }
     }
 
     /**
@@ -204,7 +242,7 @@ class LlmTurnClient {
         return chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(turnTools.buildOptions(s, tools, model))
+                .options(turnTools.buildOptions(s, tools, model).mutate())
                 .stream()
                 .chatResponse()
                 .replay()
@@ -217,7 +255,7 @@ class LlmTurnClient {
                 .system(system)
                 .messages(messages)
                 .call()
-                .chatResponse());
+                .chatResponse(), llmTimeout.callTimeoutMs());
     }
 
     /** Add a turn's tokens to the call total (for the budget) and publish the metrics. */
@@ -350,7 +388,7 @@ class LlmTurnClient {
         StreamedReply reply = consume(s, speculated != null ? speculated : chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(turnTools.buildOptions(s, tools, model))
+                .options(turnTools.buildOptions(s, tools, model).mutate())
                 .stream()
                 .chatResponse(), turnUsage, toolCalls);
         publishUsage(s, turnUsage);
@@ -361,6 +399,11 @@ class LlmTurnClient {
 
         if (!reply.text().isEmpty() && !SpeechSanitizer.isUnspeakable(reply.text())) {
             return new TurnResult(reply.text(), reply.spoken(), reply.blocked(), toolNote);
+        }
+        if (s.isWaitingForCaller()) {
+            // The model chose silence: the caller is mid-thought. Asking it again for a
+            // line would make it say exactly what it decided not to.
+            return new TurnResult("", false, false, null);
         }
         // Tool-only turn: the model called e.g. transitionTo and produced no text of its
         // own, which is how this provider answers a tool-calling turn. The line it wrote
@@ -383,7 +426,7 @@ class LlmTurnClient {
         StreamedReply retry = consume(s, chatClient.prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
-                .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)))
+                .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)).mutate())
                 .stream()
                 .chatResponse(), retryUsage, new ArrayList<>());
         publishUsage(s, retryUsage);
@@ -533,14 +576,13 @@ class LlmTurnClient {
     }
 
     /**
-     * {@code call} with {@code voice-agent.dialog.llm-timeout.call-timeout-ms} on it. A
-     * blocking model call has no deadline of its own. A timeout surfaces with a
-     * {@link TimeoutException} cause, which {@link #isTransient} treats like the streaming
-     * path's token-gap timeout. The abandoned request may still finish on its own thread;
-     * the turn no longer waits for it.
+     * {@code call} with a deadline on it (turns use
+     * {@code voice-agent.dialog.llm-timeout.call-timeout-ms}). A blocking model call has
+     * no deadline of its own. A timeout surfaces with a {@link TimeoutException} cause,
+     * which {@link #isTransient} treats like the streaming path's token-gap timeout. The
+     * abandoned request may still finish on its own thread; the turn no longer waits for it.
      */
-    private ChatResponse callWithDeadline(Supplier<ChatResponse> call) {
-        int timeoutMs = llmTimeout.callTimeoutMs();
+    private ChatResponse callWithDeadline(Supplier<ChatResponse> call, long timeoutMs) {
         if (timeoutMs <= 0) {
             return call.get();
         }
@@ -568,9 +610,9 @@ class LlmTurnClient {
         ChatResponse response = callWithDeadline(() -> chatClient.prompt()
                 .system(system)
                 .messages(messages)
-                .options(turnTools.buildOptions(s, tools, model))
+                .options(turnTools.buildOptions(s, tools, model).mutate())
                 .call()
-                .chatResponse());
+                .chatResponse(), llmTimeout.callTimeoutMs());
         TokenUsage turnUsage = new TokenUsage();
         turnUsage.add(response);
         publishUsage(s, turnUsage);
@@ -584,6 +626,9 @@ class LlmTurnClient {
         }
         if (reply != null && SpeechSanitizer.isUnspeakable(reply)) {
             reply = null;
+        }
+        if ((reply == null || reply.isBlank()) && s.isWaitingForCaller()) {
+            return new TurnResult("", false, false, null); // the model chose to keep listening
         }
         if (reply == null || reply.isBlank()) {
             metrics.spokenLineRetry();
@@ -636,9 +681,9 @@ class LlmTurnClient {
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
                 // Fast model, no tools — same reasoning as the streaming path above.
-                .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)))
+                .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)).mutate())
                 .call()
-                .chatResponse());
+                .chatResponse(), llmTimeout.callTimeoutMs());
         TokenUsage retryUsage = new TokenUsage();
         retryUsage.add(response);
         publishUsage(s, retryUsage);

@@ -6,13 +6,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallResultEntity;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.List;
 
 /** Spring Data repository for {@link CallResultEntity}. */
 @Repository

@@ -4,9 +4,12 @@ import ch.loway.oss.ari4java.ARI;
 import ch.loway.oss.ari4java.generated.models.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.dialog.OperatorSnapshot;
+import uz.murodjon.robotcallv2.agent.flow.FlowPrompter;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.queue.CallQueueDispatcher;
 import uz.murodjon.robotcallv2.agent.queue.OperatorCallControl;
 import uz.murodjon.robotcallv2.agent.queue.OperatorFirstDialer;
@@ -46,11 +49,12 @@ class PbxLegService {
     private final CallMediaFactory callMediaFactory;
     private final CallSessionRegistry callSessionRegistry;
     private final CallAttemptUseCase callAttemptUseCase;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final CallRouteRegistry routeRegistry;
     private final RtpPortAllocator portAllocator;
     private final CallTeardownService callTeardownService;
     private final DialogRouter dialogRouter;
+    private final ObjectProvider<FlowPrompter> flowPrompterProvider;
 
     /** Two legs of one person-to-person call: when either ends, the other is hung up (and their bridge destroyed). */
     private final Map<String, String> linkedLegs = new ConcurrentHashMap<>();
@@ -65,11 +69,12 @@ class PbxLegService {
                   CallMediaFactory callMediaFactory,
                   CallSessionRegistry callSessionRegistry,
                   CallAttemptUseCase callAttemptUseCase,
-                  VoiceMetrics metrics,
+                  CallMetrics metrics,
                   CallRouteRegistry routeRegistry,
                   RtpPortAllocator portAllocator,
                   CallTeardownService callTeardownService,
-                  DialogRouter dialogRouter) {
+                  DialogRouter dialogRouter,
+                  ObjectProvider<FlowPrompter> flowPrompterProvider) {
         this.callExecutor = callExecutor;
         this.callQueueDispatcher = callQueueDispatcher;
         this.operatorFirstDialer = operatorFirstDialer;
@@ -84,6 +89,7 @@ class PbxLegService {
         this.portAllocator = portAllocator;
         this.callTeardownService = callTeardownService;
         this.dialogRouter = dialogRouter;
+        this.flowPrompterProvider = flowPrompterProvider;
     }
 
     /**
@@ -130,6 +136,24 @@ class PbxLegService {
                     log.debug("extMedia {} already gone: {}", caller.extMediaChannelId(), e.getMessage());
                 }
             }
+            OperatorSnapshot snapshot = dialogRouter.operatorSnapshot(callerId);
+            FlowPrompter prompter = flowPrompterProvider.getIfAvailable();
+            if (snapshot != null && prompter != null) {
+                String whisper = buildOperatorWhisper(snapshot);
+                if (!whisper.isBlank()) {
+                    String language = (caller != null && caller.agent() != null && caller.agent().language() != null)
+                            ? caller.agent().language() : "uz-UZ";
+                    short[] pcm = prompter.speech(whisper, language);
+                    if (pcm.length > 0) {
+                        callMediaFactory.playToChannel(operatorChannel.getId(), pcm);
+                    }
+                }
+            }
+            if (caller == null || !callSessionRegistry.contains(callerId)) {
+                log.info("Caller {} hung up before operator join completed; hanging up operator {}", callerId, operatorChannel.getId());
+                ariClient.hangup(operatorChannel.getId());
+                return;
+            }
             current.bridges().addChannel(bridgeId, operatorChannel.getId()).execute();
             // A person is on the line now: without this the reaper cut the customer off
             // mid-conversation once the AI call's limit (maxCallSeconds + 60) had passed.
@@ -139,6 +163,23 @@ class PbxLegService {
             log.error("Operator join failed for bridge {}: {}", bridgeId, e.getMessage());
             ariClient.hangup(operatorChannel.getId());
         }
+    }
+
+    private static String buildOperatorWhisper(OperatorSnapshot snapshot) {
+        if (snapshot == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (snapshot.clientName() != null && !snapshot.clientName().isBlank()) {
+            sb.append("Mijoz: ").append(snapshot.clientName()).append(". ");
+        }
+        if (snapshot.dialogState() != null && !snapshot.dialogState().isBlank()) {
+            sb.append("Holat: ").append(snapshot.dialogState()).append(". ");
+        }
+        if (snapshot.debtAmount() != null && !snapshot.debtAmount().isBlank()) {
+            sb.append("Summa: ").append(snapshot.debtAmount()).append(". ");
+        }
+        return sb.toString().trim();
     }
 
     /** Ties two legs together: when either ends, the other is hung up and {@code bridgeId} (if any) destroyed. */

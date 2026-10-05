@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.auth.application.service;
 
-import uz.murodjon.robotcallv2.auth.application.port.input.TwoFactorUseCase;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -9,6 +7,7 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.auth.application.dto.*;
 import uz.murodjon.robotcallv2.auth.application.port.input.AuthUseCase;
+import uz.murodjon.robotcallv2.auth.application.port.input.TwoFactorUseCase;
 import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
@@ -16,13 +15,13 @@ import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.security.RateLimitProperties;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.shared.ratelimit.RateLimiter;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 

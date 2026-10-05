@@ -1,11 +1,11 @@
 package uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.mapper.VoicemailEntityMapper;
 import uz.murodjon.robotcallv2.voicemail.application.port.output.VoicemailBoxRepository;
 import uz.murodjon.robotcallv2.voicemail.domain.entity.VoicemailBox;
 import uz.murodjon.robotcallv2.voicemail.domain.entity.VoicemailBoxFilter;
 import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.entity.VoicemailBoxEntity;
+import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.mapper.VoicemailEntityMapper;
 import uz.murodjon.robotcallv2.voicemail.infrastructure.persistence.repository.VoicemailBoxJpaRepository;
 
 import java.time.Instant;

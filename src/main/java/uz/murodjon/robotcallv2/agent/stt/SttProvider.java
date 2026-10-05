@@ -1,18 +1,14 @@
 package uz.murodjon.robotcallv2.agent.stt;
 
+import uz.murodjon.robotcallv2.agent.provider.NamedProvider;
+
 import java.util.List;
 
 /**
  * Streaming speech-to-text provider. Abstracted so the Russian stream can later
  * move to Yandex while Uzbek stays on Google (PROJECT.md §2.4).
  */
-public interface SttProvider {
-
-    /**
-     * Stable id used to select this provider before a run via
-     * {@code voice-agent.stt.provider} (e.g. {@code google}, {@code yandex}).
-     */
-    String name();
+public interface SttProvider extends NamedProvider {
 
     /**
      * Open a streaming recognition session for the given BCP-47 language

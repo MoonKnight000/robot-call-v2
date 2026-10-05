@@ -3,13 +3,13 @@ package uz.murodjon.robotcallv2.missedcall.infrastructure.persistence.adapter;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.missedcall.infrastructure.persistence.mapper.MissedCallEntityMapper;
 import uz.murodjon.robotcallv2.missedcall.application.port.output.MissedCallRepository;
 import uz.murodjon.robotcallv2.missedcall.domain.entity.MissedCall;
 import uz.murodjon.robotcallv2.missedcall.domain.entity.MissedCallFilter;
 import uz.murodjon.robotcallv2.missedcall.domain.entity.MissedCallOccurrence;
 import uz.murodjon.robotcallv2.missedcall.domain.enums.MissedCallStatus;
 import uz.murodjon.robotcallv2.missedcall.infrastructure.persistence.entity.MissedCallEntity;
+import uz.murodjon.robotcallv2.missedcall.infrastructure.persistence.mapper.MissedCallEntityMapper;
 import uz.murodjon.robotcallv2.missedcall.infrastructure.persistence.repository.MissedCallJpaRepository;
 
 import java.time.Instant;

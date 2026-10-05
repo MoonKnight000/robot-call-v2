@@ -9,12 +9,7 @@ import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /** The packs under {@code resources/packs/}, one JSON file each, in file-name order. */
 @Component
@@ -23,9 +18,14 @@ public class ClasspathJsonPackCatalogAdapter implements PackCatalogPort {
     private static final String LOCATION = "classpath:packs/*.json";
 
     /** Strict on unknown fields on purpose: a misspelt key in a pack would otherwise be silently dropped. */
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    private final Map<String, VerticalPack> packs = readPacks();
+    private final Map<String, VerticalPack> packs;
+
+    public ClasspathJsonPackCatalogAdapter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+        this.packs = readPacks();
+    }
 
     @Override
     public List<VerticalPack> findAll() {
@@ -42,7 +42,7 @@ public class ClasspathJsonPackCatalogAdapter implements PackCatalogPort {
      * the jar, so one that does not parse is a build defect — found at boot rather than by the
      * first company to press "install".
      */
-    private static Map<String, VerticalPack> readPacks() {
+    private Map<String, VerticalPack> readPacks() {
         Resource[] resources;
         try {
             resources = new PathMatchingResourcePatternResolver().getResources(LOCATION);
@@ -54,7 +54,7 @@ public class ClasspathJsonPackCatalogAdapter implements PackCatalogPort {
         for (Resource resource : resources) {
             VerticalPack pack;
             try (InputStream in = resource.getInputStream()) {
-                pack = JSON.readValue(in, VerticalPack.class);
+                pack = objectMapper.readValue(in, VerticalPack.class);
             } catch (IOException e) {
                 throw new IllegalStateException("pack " + resource.getFilename() + " cannot be read", e);
             }

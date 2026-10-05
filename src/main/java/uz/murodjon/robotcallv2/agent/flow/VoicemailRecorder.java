@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.agent.flow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.stt.SttProvider;
@@ -45,12 +45,12 @@ public class VoicemailRecorder {
     private final VoicemailUseCase voicemailUseCase;
     private final SttProviderSelector sttProviderSelector;
     private final SttProperties sttProperties;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     private final CallEventUseCase callEventUseCase;
     private final CallTranscriptUseCase callTranscriptUseCase;
 
     public VoicemailRecorder(FlowPrompter prompter, VoicemailUseCase voicemailUseCase,
-                             SttProviderSelector sttProviderSelector, SttProperties sttProperties, VoiceMetrics metrics,
+                             SttProviderSelector sttProviderSelector, SttProperties sttProperties, SttMetrics metrics,
                              CallEventUseCase callEventUseCase, CallTranscriptUseCase callTranscriptUseCase) {
         this.prompter = prompter;
         this.voicemailUseCase = voicemailUseCase;

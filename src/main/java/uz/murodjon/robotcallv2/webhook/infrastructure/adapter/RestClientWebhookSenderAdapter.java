@@ -40,11 +40,12 @@ public class RestClientWebhookSenderAdapter implements WebhookSenderPort {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final RestClient restClient;
 
-    public RestClientWebhookSenderAdapter() {
+    public RestClientWebhookSenderAdapter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.restClient = RestClient.builder()
                 .requestFactory(new HttpComponentsClientHttpRequestFactory(
                         PublicHttpClientFactory.create(CONNECT_TIMEOUT, READ_TIMEOUT)))
@@ -88,7 +89,7 @@ public class RestClientWebhookSenderAdapter implements WebhookSenderPort {
 
     private String serialize(Map<String, Object> payload) {
         try {
-            return JSON.writeValueAsString(payload == null ? Map.of() : payload);
+            return objectMapper.writeValueAsString(payload == null ? Map.of() : payload);
         } catch (JsonProcessingException e) {
             throw new ExternalServiceException(ErrorCode.WEBHOOK_PAYLOAD_UNSERIALIZABLE, "webhook", e);
         }

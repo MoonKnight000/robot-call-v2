@@ -10,6 +10,26 @@ qilinadigan id'larning o'zi. Yaratish/o'chirish endpoint yo'q. Ovozni eshitib
 ko'rish (`POST /api/tts/voices/{id}/preview`) va STT provayderni sinash
 (`POST /api/stt/preview`) — [speech-preview.md](speech-preview.md).
 
+**Avtomatik sinxronlash.** Ovozlar ro'yxati API'si bor provayderlarning ovozlari
+seed'da emas — kuniga bir marta provayderning o'zidan so'rab olinadi
+(`TtsVoiceSyncScheduler`, `voice-agent.voice-sync.*`):
+
+| Provayder | Manba | Qaysi tillarda |
+|---|---|---|
+| `elevenlabs` | `GET /v2/voices` — akkauntdagi ovozlar (premade va Voice Library'dan qo'shilganlar) | har bir ovoz — har bir tilda (v4 hamma tilda gapiradi) |
+| `gemini` | `GET /v1beta/voices` — prebuilt va akkauntda saqlangan ovozlar | ovozning `languageCode`i; ko'rsatilmagan bo'lsa — hamma tilda |
+| `cartesia` | `GET /voices?is_owner=true` — faqat akkauntdagi ovozlar (ommaviy kutubxona emas) | ovozning o'z tili |
+
+Vendor yangi ovoz qo'shsa, ertasi kuni ro'yxatda paydo bo'ladi;
+olib tashlasa, ro'yxatdan chiqadi, lekin uni tanlab saqlangan agent shu ovozda
+gapirishda davom etadi. Bunday ovozning `id`si `<provider>-tts-<vendor id>-<til>`
+ko'rinishida (kichik harf, masalan `elevenlabs-tts-21m00tcm4tlvdq8ikwam-uz`), `name`
+esa vendor id'ining o'zi. Faqat sozlangan tillar (`uz-UZ`, `ru-RU`, `en-US`, `kk-KZ`)
+olinadi, har til alohida qator. Gemini TTS'ning qo'lda seed qilingan qatorlari
+(`gemini-tts-kore-uz`) xuddi shu id'da, shuning uchun sinxronlash ularni o'zlashtiradi.
+`yandex`da ovozlar ro'yxati API'si yo'q — uning to'liq ro'yxati seed'da. Ro'yxat API'si yo'q provayderlar
+(`yandex`, `aisha`, `openai`, realtime engine'lar) avvalgidek seed qilinadi.
+
 `id` va `name` alohida ustunlar — shuning uchun bitta provayder ovozi bir nechta
 katalog qatori bo'lib turishi mumkin, faqat `role` bilan farq qiladi (masalan
 `id: "yulduz-whisper"` → `name: "yulduz"`, `role: "whisper"`).
@@ -32,13 +52,14 @@ cheklanadi — kredensiali yo'q provayderning ovozi umuman qaytmaydi, chunki
 `TtsRouter` baribir uni e'tiborsiz qoldirib standart provayderning o'z ovozida
 gapiradi (`settings.md`).
 
-Bundan tashqari ro'yxat `?mode=CASCADE` / `?mode=REALTIME` query parametri bo'yicha
+Bundan tashqari ro'yxat `?mode=CASCADE` / `?mode=REALTIME` / `?mode=HALF_CASCADE` query parametri bo'yicha
 toraytiriladi, chunki ovoz nomlari ikki oila o'rtasida o'tmaydi:
 
 | `mode` | Qaytadigan ovozlar |
 |---|---|
-| `CASCADE` | TTS provayderlarining ovozlari (`yandex`, `aisha`, `google`) |
+| `CASCADE` | TTS provayderlarining ovozlari (`yandex`, `aisha`, `gemini`, `elevenlabs`, `cartesia`) |
 | `REALTIME` | speech-to-speech engine'ining o'z ovozlari (`gemini-live`, `openai-realtime`, `qwen-omni`) |
+| `HALF_CASCADE` | `CASCADE` bilan bir xil — engine tinglaydi va o'ylaydi, lekin javobni bizning TTS ovozimiz o'qiydi |
 
 > `mode` berilmasa ikkala oila ham qaytadi. Pipeline endi kompaniyaniki emas, **har bir
 > agentniki** (`ai_agent.pipeline_mode`), shuning uchun agent tahrirlash ekrani o'sha

@@ -1,7 +1,8 @@
 package uz.murodjon.robotcallv2.agent.stt;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 
 import java.util.List;
 
@@ -18,8 +19,8 @@ class GeminiSttProviderTest {
         SttProperties props = new SttProperties(
                 true, "gemini", "uz-UZ", List.of(), null, null, 0, null,
                 geminiProps, null, null, null, null, null);
-        VoiceMetrics metrics = mock(VoiceMetrics.class);
-        GeminiSttProvider provider = new GeminiSttProvider(props, metrics);
+        SttMetrics metrics = mock(SttMetrics.class);
+        GeminiSttProvider provider = new GeminiSttProvider(props, metrics, new ObjectMapper());
 
         assertThat(provider.name()).isEqualTo("gemini");
         assertThat(provider.sampleRate()).isEqualTo(16000);

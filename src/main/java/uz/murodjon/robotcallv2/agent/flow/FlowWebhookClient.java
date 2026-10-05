@@ -35,12 +35,13 @@ public class FlowWebhookClient {
     private static final Duration TIMEOUT = Duration.ofSeconds(3);
     /** An answer is {@code {"exit": "<name>"}}; anything this size is not one. */
     private static final int MAX_RESPONSE_BYTES = 64 * 1024;
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final PublicHttpClient httpClient = PublicHttpClient.create(TIMEOUT, TIMEOUT);
     private final SecretUseCase secretUseCase;
 
-    public FlowWebhookClient(SecretUseCase secretUseCase) {
+    public FlowWebhookClient(SecretUseCase secretUseCase, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.secretUseCase = secretUseCase;
     }
 
@@ -63,7 +64,7 @@ public class FlowWebhookClient {
             body.put("callId", call.callAttemptId());
             body.put("vip", call.vip());
             body.put("choices", call.choices());
-            String json = JSON.writeValueAsString(body);
+            String json = objectMapper.writeValueAsString(body);
 
             PublicHttpRequest request = PublicHttpRequest.create("POST", uri)
                     .setTimeout(TIMEOUT)
@@ -82,7 +83,7 @@ public class FlowWebhookClient {
                 log.warn("[{}] flow webhook {} answered HTTP {}", call.channelId(), uri.getHost(), response.statusCode());
                 return null;
             }
-            JsonNode exit = JSON.readTree(response.readBodyText()).get("exit");
+            JsonNode exit = objectMapper.readTree(response.readBodyText()).get("exit");
             return exit != null && exit.isTextual() ? exit.asText() : null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

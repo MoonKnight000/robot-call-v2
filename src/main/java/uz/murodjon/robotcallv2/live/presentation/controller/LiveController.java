@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.live.presentation.controller;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,16 +11,9 @@ import uz.murodjon.robotcallv2.security.CurrentCompanyId;
  * Live server-push channel (docs/API-REQUIREMENTS.md §0.7). A stream only ever carries the
  * events of the company the token belongs to.
  */
-@Tag(name = "Live Stream", description = "Realtime SSE streaming events (call lifecycle, live audio levels, transcripts, KPI)")
 @RequestMapping("/api")
 public interface LiveController {
 
-    @Operation(
-            summary = "Subscribe to live SSE event stream",
-            description = "Subscribes the client to real-time Server-Sent Events (SSE). Receives live system events including: "
-                    + "connected (initial handshake), KPI, LIVE_CALLS, TRANSCRIPT, AUDIO_LEVEL, "
-                    + "NOTIFICATION, and heartbeat pings (:ping)."
-    )
     @PreAuthorize("hasAuthority('LIVE_READ')")
     @GetMapping(value = "/live/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     SseEmitter stream(@CurrentCompanyId long companyId);

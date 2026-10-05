@@ -1,11 +1,10 @@
 package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.mapper.AiModelConfigEntityMapper;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelConfigRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.entity.AiModelConfigEntity;
+import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.mapper.AiModelConfigEntityMapper;
 import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.repository.AiModelConfigJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 

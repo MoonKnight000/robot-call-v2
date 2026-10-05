@@ -14,7 +14,7 @@ import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import java.util.List;
 
 /**
- * User management API (ROADMAP E.1).
+ * User management API (ROADMAP E.1, UI-DESIGN §10.12).
  */
 @RequestMapping("/api/users")
 public interface UserController {
@@ -25,23 +25,32 @@ public interface UserController {
 
     @PreAuthorize("hasAuthority('USER_READ')")
     @GetMapping("/{id}")
-    ResponseEntity<ResponseData<UserRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<UserRow>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PostMapping("/invite")
-    ResponseEntity<ResponseData<InviteUserResponse>> invite(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<InviteUserResponse>> invite(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody InviteUserRequest request);
 
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PutMapping("/{id}/role")
-    ResponseEntity<ResponseData<UserRow>> changeRole(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                     @Valid @RequestBody UpdateUserRoleRequest request);
+    ResponseEntity<ResponseData<UserRow>> changeRole(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateUserRoleRequest request);
 
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PutMapping("/{id}/block")
-    ResponseEntity<ResponseData<UserRow>> block(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<UserRow>> block(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PutMapping("/{id}/unblock")
-    ResponseEntity<ResponseData<UserRow>> unblock(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<UserRow>> unblock(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

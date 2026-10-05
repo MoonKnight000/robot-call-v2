@@ -20,13 +20,18 @@ import java.util.Map;
 public class ToolEntityMapper {
 
     private static final Logger log = LoggerFactory.getLogger(ToolEntityMapper.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final TypeReference<List<ToolKeyValuePair>> KV_LIST_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<ToolParamConfig>> PARAM_LIST_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, String>> MAPPING_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Object>> SCHEMA_TYPE = new TypeReference<>() {};
     private static final TypeReference<ToolAuth> AUTH_TYPE = new TypeReference<>() {};
+
+    private final ObjectMapper objectMapper;
+
+    public ToolEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public Tool toTool(ToolEntity entity) {
         if (entity == null) {
@@ -99,7 +104,7 @@ public class ToolEntityMapper {
             return defaultValue;
         }
         try {
-            return JSON.readValue(json, typeRef);
+            return objectMapper.readValue(json, typeRef);
         } catch (Exception e) {
             log.warn("Failed to deserialize JSON: {}", e.getMessage());
             return defaultValue;
@@ -111,7 +116,7 @@ public class ToolEntityMapper {
             return "[]";
         }
         try {
-            return JSON.writeValueAsString(value);
+            return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
             log.warn("Failed to serialize to JSON: {}", e.getMessage());
             return "[]";

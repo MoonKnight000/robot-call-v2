@@ -1,11 +1,7 @@
 package uz.murodjon.robotcallv2.tool.application.port.input;
 
 import uz.murodjon.robotcallv2.shared.api.PageableData;
-import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
-import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
-import uz.murodjon.robotcallv2.tool.application.dto.UpdateToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.*;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 

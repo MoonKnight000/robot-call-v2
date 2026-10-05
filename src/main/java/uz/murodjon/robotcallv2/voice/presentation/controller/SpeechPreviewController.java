@@ -24,8 +24,10 @@ public interface SpeechPreviewController {
      */
     @PreAuthorize("hasAuthority('VOICE_READ')")
     @PostMapping("/tts/voices/{id}/preview")
-    ResponseEntity<Resource> previewVoice(@CurrentCompanyId long companyId, @PathVariable String id,
-                                          @Valid @RequestBody PreviewVoiceRequest request);
+    ResponseEntity<Resource> previewVoice(
+            @CurrentCompanyId long companyId,
+            @PathVariable String id,
+            @Valid @RequestBody PreviewVoiceRequest request);
 
     /**
      * The uploaded recording (WebM/Opus, MP4, WAV — anything ffmpeg reads) transcribed by

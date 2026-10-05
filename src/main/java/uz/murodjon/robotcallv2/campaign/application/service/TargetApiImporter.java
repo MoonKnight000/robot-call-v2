@@ -44,10 +44,11 @@ public class TargetApiImporter {
 
     private static final int MAX_ROWS = 100_000;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private final TargetSourceFetcherPort targetSourceFetcherPort;
 
-    public TargetApiImporter(TargetSourceFetcherPort targetSourceFetcherPort) {
+    public TargetApiImporter(TargetSourceFetcherPort targetSourceFetcherPort, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.targetSourceFetcherPort = targetSourceFetcherPort;
     }
 

@@ -1,11 +1,11 @@
 package uz.murodjon.robotcallv2.inbound.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.mapper.InboundCallerRuleEntityMapper;
 import uz.murodjon.robotcallv2.inbound.application.port.output.InboundCallerRuleRepository;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundCallerRule;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundCallerRuleFilter;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundCallerRuleEntity;
+import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.mapper.InboundCallerRuleEntityMapper;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.repository.InboundCallerRuleJpaRepository;
 
 import java.time.Instant;

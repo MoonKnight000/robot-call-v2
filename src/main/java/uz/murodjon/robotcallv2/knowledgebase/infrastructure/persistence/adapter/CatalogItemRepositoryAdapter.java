@@ -40,7 +40,7 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
 
     private static final int INSERT_BATCH = 500;
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, String>> ATTRIBUTES = new TypeReference<>() {};
 
     /** Every search's narrowing: this company's indexed sources that this agent may use. */
@@ -57,7 +57,8 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
     private final JdbcClient jdbcClient;
     private final JdbcTemplate jdbcTemplate;
 
-    public CatalogItemRepositoryAdapter(JdbcClient jdbcClient, JdbcTemplate jdbcTemplate) {
+    public CatalogItemRepositoryAdapter(JdbcClient jdbcClient, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -120,7 +121,7 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
                 .param("agentId", agentId, Types.BIGINT)
                 .param("query", vector)
                 .param("limit", limit)
-                .query(CatalogItemRepositoryAdapter::toMatch)
+                .query(this::toMatch)
                 .list();
     }
 
@@ -137,7 +138,7 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
                 .param("agentId", agentId, Types.BIGINT)
                 .param("terms", tsQuery)
                 .param("limit", limit)
-                .query(CatalogItemRepositoryAdapter::toMatch)
+                .query(this::toMatch)
                 .list();
     }
 
@@ -205,22 +206,22 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
         return vector;
     }
 
-    private static CatalogMatch toMatch(ResultSet rs, int rowNum) throws SQLException {
+    private CatalogMatch toMatch(ResultSet rs, int rowNum) throws SQLException {
         return new CatalogMatch(rs.getLong("source_id"), rs.getString("sku"), rs.getString("content"),
                 fromJson(rs.getString("attributes")), rs.getDouble("score"));
     }
 
-    private static String toJson(Map<String, String> attributes) {
+    private String toJson(Map<String, String> attributes) {
         try {
-            return JSON.writeValueAsString(attributes == null ? Map.of() : attributes);
+            return objectMapper.writeValueAsString(attributes == null ? Map.of() : attributes);
         } catch (Exception e) {
             return "{}";
         }
     }
 
-    private static Map<String, String> fromJson(String json) {
+    private Map<String, String> fromJson(String json) {
         try {
-            return json == null ? Map.of() : JSON.readValue(json, ATTRIBUTES);
+            return json == null ? Map.of() : objectMapper.readValue(json, ATTRIBUTES);
         } catch (Exception e) {
             return Map.of();
         }

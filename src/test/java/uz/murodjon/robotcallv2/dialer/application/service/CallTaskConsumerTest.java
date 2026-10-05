@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.dialer.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,7 +15,8 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
-import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
@@ -52,7 +54,9 @@ class CallTaskConsumerTest {
     @Mock
     private OutboundCallRegistry callRegistry;
     @Mock
-    private CampaignService campaignService;
+    private CampaignUseCase campaignUseCase;
+    @Mock
+    private CampaignTargetUseCase campaignTargetUseCase;
     @Mock
     private CrmUseCase crmClient;
     @Mock
@@ -75,10 +79,10 @@ class CallTaskConsumerTest {
     @BeforeEach
     void setUp() {
         consumer = new CallTaskConsumer(
-                ariService, callRegistry, campaignService, campaignService,
+                ariService, callRegistry, campaignUseCase, campaignTargetUseCase,
                 crmClient, audit, dialerState, doNotCallUseCase, callRecordService,
                 clientMemoryService, mock(FactWebhookUseCase.class), aiAgents,
-                mock(CallBillingUseCase.class), dialerService, mock(CompanyUseCase.class)
+                mock(CallBillingUseCase.class), dialerService, mock(CompanyUseCase.class), new ObjectMapper()
         );
     }
 
@@ -87,7 +91,7 @@ class CallTaskConsumerTest {
     void aTaskForAPausedCampaignIsGivenBackWithoutDialling() {
         CallTask task = new CallTask(1L, 100L, 200L, "998901234567", "uz", "{}", 1L, 7L,
                 null, null, null, null, null);
-        when(campaignService.findCampaign(1L, 1L)).thenReturn(new Campaign(
+        when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(new Campaign(
                 1L, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.PAUSED,
                 LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 5, 0, 7L, 1L, null,
                 RecurrenceType.ONCE, null, null, false, null));
@@ -95,8 +99,8 @@ class CallTaskConsumerTest {
         consumer.process(task, dialerState);
 
         verify(dialerState).release(1L, 1L);
-        verify(campaignService).releaseClaim(eq(100L), any(Instant.class));
-        verify(campaignService, never()).applyOutcome(anyLong(), anyLong(), any());
+        verify(campaignTargetUseCase).releaseClaim(eq(100L), any(Instant.class));
+        verify(campaignTargetUseCase, never()).applyOutcome(anyLong(), anyLong(), any());
         verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
     }
 
@@ -110,7 +114,7 @@ class CallTaskConsumerTest {
         consumer.process(task, dialerState);
 
         verify(dialerState).release(1L, 1L);
-        verify(campaignService).applyOutcome(1L, 100L, Disposition.DO_NOT_CALL);
+        verify(campaignTargetUseCase).applyOutcome(1L, 100L, Disposition.DO_NOT_CALL);
         verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
     }
 

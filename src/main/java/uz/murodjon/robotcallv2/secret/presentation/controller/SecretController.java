@@ -29,21 +29,27 @@ public interface SecretController {
 
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<SecretRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<SecretRow>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @PostMapping
-    ResponseEntity<ResponseData<SecretRow>> create(@CurrentCompanyId long companyId,
-                                                   @Valid @RequestBody CreateSecretRequest request);
+    ResponseEntity<ResponseData<SecretRow>> create(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CreateSecretRequest request);
 
     /** A blank {@code value} keeps the stored one, so a rename need not resend the secret. */
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @PutMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<SecretRow>> update(@CurrentCompanyId long companyId,
-                                                   @PathVariable long id,
-                                                   @Valid @RequestBody UpdateSecretRequest request);
+    ResponseEntity<ResponseData<SecretRow>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateSecretRequest request);
 
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @DeleteMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

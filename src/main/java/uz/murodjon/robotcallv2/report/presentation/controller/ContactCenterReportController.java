@@ -21,18 +21,22 @@ public interface ContactCenterReportController {
     /** SLA, ASA, abandon rate, overflow and survey score per queue; {@code from}/{@code to} as on the dashboard. */
     @PreAuthorize("hasAuthority('REPORT_READ')")
     @GetMapping("/queues")
-    ResponseEntity<ResponseData<List<QueueReportRow>>> queues(@CurrentCompanyId long companyId,
-                                                              @RequestParam(required = false) String from,
-                                                              @RequestParam(required = false) String to);
+    ResponseEntity<ResponseData<List<QueueReportRow>>> queues(
+            @CurrentCompanyId long companyId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to);
 
     /** Answered, missed (RONA), talk time, time in status and occupancy per operator. */
     @PreAuthorize("hasAuthority('REPORT_READ')")
     @GetMapping("/operators")
-    ResponseEntity<ResponseData<List<OperatorReportRow>>> operators(@CurrentCompanyId long companyId,
-                                                                    @RequestParam(required = false) String from,
-                                                                    @RequestParam(required = false) String to);
+    ResponseEntity<ResponseData<List<OperatorReportRow>>> operators(
+            @CurrentCompanyId long companyId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to);
 
     @PreAuthorize("hasAuthority('CALL_READ')")
     @GetMapping("/calls/{callId}/events")
-    ResponseEntity<ResponseData<List<CallEvent>>> callEvents(@CurrentCompanyId long companyId, @PathVariable long callId);
+    ResponseEntity<ResponseData<List<CallEvent>>> callEvents(
+            @CurrentCompanyId long companyId,
+            @PathVariable long callId);
 }

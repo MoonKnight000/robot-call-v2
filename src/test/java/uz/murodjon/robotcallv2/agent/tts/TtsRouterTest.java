@@ -2,7 +2,7 @@ package uz.murodjon.robotcallv2.agent.tts;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TtsMetrics;
 import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
@@ -41,7 +41,7 @@ class TtsRouterTest {
         when(selector.findFallback(primary)).thenReturn(fallback);
         TtsProperties ttsProperties = mock(TtsProperties.class);
         when(ttsProperties.defaultLanguage()).thenReturn("uz-UZ");
-        router = new TtsRouter(selector, ttsProperties, mock(VoiceMetrics.class), cache, mock(TtsVoiceUseCase.class));
+        router = new TtsRouter(selector, ttsProperties, mock(TtsMetrics.class), cache, mock(TtsVoiceUseCase.class));
     }
 
     @Test
@@ -74,7 +74,7 @@ class TtsRouterTest {
         when(fallback.synthesize(anyString(), anyString(), any(), any())).thenReturn(whole);
         List<short[]> heard = new ArrayList<>();
 
-        router.synthesizeStreaming(TEXT, "uz-UZ", null, EffectiveVoiceSettings.NONE, heard::add);
+        router.synthesizeStreaming(TEXT, "uz-UZ", null, EffectiveVoiceSettings.NONE, List.of(), heard::add);
 
         assertThat(heard).hasSize(2);
         assertThat(heard.get(1)).isEqualTo(whole);

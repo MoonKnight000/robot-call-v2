@@ -2,12 +2,12 @@ package uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.mapper.AiAgentVersionEntityMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionStats;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVersion;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVersionStatus;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentVersionEntity;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.mapper.AiAgentVersionEntityMapper;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiAgentVersionJpaRepository;
 
 import java.time.Instant;

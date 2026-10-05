@@ -1,10 +1,11 @@
 package uz.murodjon.robotcallv2.agent.stt;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.audio.Resampler;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavReader;
 
@@ -115,7 +116,7 @@ public class SttComparisonTool {
 
     private static List<SttProvider> initProviders(String language) {
         List<SttProvider> list = new ArrayList<>();
-        VoiceMetrics metrics = new VoiceMetrics(new SimpleMeterRegistry());
+        SttMetrics metrics = new SttMetrics(new SimpleMeterRegistry());
 
         // Gemini
         String geminiKey = System.getenv("GEMINI_API_KEY");
@@ -124,7 +125,7 @@ public class SttComparisonTool {
                 GeminiSttProperties geminiSttProperties = new GeminiSttProperties(geminiKey, null, "gemini-3.5-transcribe-live", 16000, 10);
                 SttProperties sttProperties = new SttProperties(true, "gemini", language, List.of(), null, null, 0, null,
                         geminiSttProperties, null, null, null, null, null);
-                GeminiSttProvider gemini = new GeminiSttProvider(sttProperties, metrics);
+                GeminiSttProvider gemini = new GeminiSttProvider(sttProperties, metrics, new ObjectMapper());
                 gemini.init();
                 list.add(gemini);
             } catch (Exception e) {
@@ -139,7 +140,7 @@ public class SttComparisonTool {
             try {
                 YandexSttProperties yandexSttProperties = new YandexSttProperties(
                         yandexKey, yandexFolder, "stt.api.cloud.yandex.net", 443, 8000, "general",
-                        null, true, EouSensitivity.DEFAULT, 0, 0);
+                        null, true, EouSensitivity.DEFAULT, 0, 0, true, true);
                 SttProperties sttProperties = new SttProperties(true, "yandex", language, List.of(), null, null, 0, null,
                         null, null, yandexSttProperties, null, null, null);
                 YandexSttProvider yandex = new YandexSttProvider(sttProperties, metrics);
@@ -158,7 +159,7 @@ public class SttComparisonTool {
                         aishaKey, "https://back.aisha.group/api/v1/stt/realtime", true);
                 SttProperties sttProperties = new SttProperties(true, "aisha", language, List.of(), null, null, 0, null,
                         null, null, null, aishaSttProperties, null, null);
-                AishaSttProvider aisha = new AishaSttProvider(sttProperties, metrics);
+                AishaSttProvider aisha = new AishaSttProvider(sttProperties, metrics, new ObjectMapper());
                 aisha.init();
                 list.add(aisha);
             } catch (Exception e) {

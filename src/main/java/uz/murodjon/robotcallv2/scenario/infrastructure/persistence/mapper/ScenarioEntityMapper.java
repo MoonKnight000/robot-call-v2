@@ -13,11 +13,15 @@ import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.Scenar
 public class ScenarioEntityMapper {
 
     private static final Logger log = LoggerFactory.getLogger(ScenarioEntityMapper.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public ScenarioEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public ScenarioDefinition readDefinition(String json) {
         try {
-            return JSON.readValue(json, ScenarioDefinition.class);
+            return objectMapper.readValue(json, ScenarioDefinition.class);
         } catch (Exception e) {
             // Can't happen short of a hand-edited row: every definition stored was written by
             // writeDefinition from a validated record. A bug, not a caller error — hence not an AppException.
@@ -28,7 +32,7 @@ public class ScenarioEntityMapper {
 
     public String writeDefinition(ScenarioDefinition definition) {
         try {
-            return JSON.writeValueAsString(definition);
+            return objectMapper.writeValueAsString(definition);
         } catch (Exception e) {
             // A record ScenarioService already validated always serialises; failing here is a bug.
             throw new IllegalStateException("Scenario definition could not be serialised: " + e.getMessage(), e);

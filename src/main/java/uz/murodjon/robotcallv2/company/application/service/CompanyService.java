@@ -2,7 +2,6 @@ package uz.murodjon.robotcallv2.company.application.service;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
@@ -17,6 +16,7 @@ import uz.murodjon.robotcallv2.company.domain.event.CompanyCreatedEvent;
 import uz.murodjon.robotcallv2.company.domain.event.CompanySuspendedEvent;
 import uz.murodjon.robotcallv2.security.CompanyAccessGuard;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.storage.application.port.input.ImageUploadUseCase;

@@ -9,7 +9,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,13 +28,13 @@ class SpeculationManager {
 
     private final DialogProperties dialogProperties;
     private final DialogExecutors executors;
-    private final VoiceMetrics metrics;
+    private final LlmMetrics metrics;
     private final SpeechOutput speech;
     private final SystemPromptFactory promptFactory;
     private final TurnTools turnTools;
     private final LlmTurnClient llmTurnClient;
 
-    SpeculationManager(DialogProperties dialogProperties, DialogExecutors executors, VoiceMetrics metrics,
+    SpeculationManager(DialogProperties dialogProperties, DialogExecutors executors, LlmMetrics metrics,
                        SpeechOutput speech, SystemPromptFactory promptFactory, TurnTools turnTools,
                        LlmTurnClient llmTurnClient) {
         this.dialogProperties = dialogProperties;

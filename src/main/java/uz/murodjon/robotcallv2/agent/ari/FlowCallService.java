@@ -6,19 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
-import uz.murodjon.robotcallv2.agent.dialog.CallContext;
-import uz.murodjon.robotcallv2.agent.dialog.DialogEngine;
-import uz.murodjon.robotcallv2.agent.dialog.DialogOutcome;
-import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
-import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
-import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.robotcallv2.agent.dialog.LiveDialogSnapshot;
-import uz.murodjon.robotcallv2.agent.dialog.OperatorSnapshot;
-import uz.murodjon.robotcallv2.agent.dialog.RealtimeDialogEngine;
+import uz.murodjon.robotcallv2.agent.dialog.*;
 import uz.murodjon.robotcallv2.agent.flow.CallFlowRunner;
 import uz.murodjon.robotcallv2.agent.flow.FlowCall;
 import uz.murodjon.robotcallv2.agent.flow.InboundDecision;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
@@ -40,7 +32,6 @@ import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
-import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -70,16 +61,17 @@ class FlowCallService {
     private final AriClient ariClient;
     private final DialogEngine dialogEngine;
     private final RealtimeDialogEngine realtimeDialogEngine;
+    private final DialogStarter dialogStarter;
     private final DialogRouter dialogRouter;
     private final DialogProperties dialogProperties;
     private final TtsProperties ttsProperties;
-    private final AiAgentUseCase aiAgentService;
+    private final AiAgentUseCase aiAgentUseCase;
     private final CrmUseCase crmUseCase;
     private final ClientMemoryUseCase clientMemoryUseCase;
     private final CallAttemptUseCase callAttemptUseCase;
     private final CallFlowRunner callFlowRunner;
     private final RtpPortAllocator portAllocator;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final CallRouteRegistry routeRegistry;
     private final CallTeardownService callTeardownService;
     private final ExecutorService callExecutor;
@@ -92,16 +84,17 @@ class FlowCallService {
                     AriClient ariClient,
                     DialogEngine dialogEngine,
                     RealtimeDialogEngine realtimeDialogEngine,
+                    DialogStarter dialogStarter,
                     DialogRouter dialogRouter,
                     DialogProperties dialogProperties,
                     TtsProperties ttsProperties,
-                    AiAgentUseCase aiAgentService,
+                    AiAgentUseCase aiAgentUseCase,
                     CrmUseCase crmUseCase,
                     ClientMemoryUseCase clientMemoryUseCase,
                     CallAttemptUseCase callAttemptUseCase,
                     CallFlowRunner callFlowRunner,
                     RtpPortAllocator portAllocator,
-                    VoiceMetrics metrics,
+                    CallMetrics metrics,
                     CallRouteRegistry routeRegistry,
                     CallTeardownService callTeardownService,
                     ExecutorService callExecutor) {
@@ -113,10 +106,11 @@ class FlowCallService {
         this.ariClient = ariClient;
         this.dialogEngine = dialogEngine;
         this.realtimeDialogEngine = realtimeDialogEngine;
+        this.dialogStarter = dialogStarter;
         this.dialogRouter = dialogRouter;
         this.dialogProperties = dialogProperties;
         this.ttsProperties = ttsProperties;
-        this.aiAgentService = aiAgentService;
+        this.aiAgentUseCase = aiAgentUseCase;
         this.crmUseCase = crmUseCase;
         this.clientMemoryUseCase = clientMemoryUseCase;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -240,8 +234,8 @@ class FlowCallService {
         }
         try {
             long companyId = call.companyId();
-            AiAgent agent = aiAgentService.requirePublishedAgent(companyId, agentId);
-            Scenario scenario = aiAgentService.resolveScenario(companyId, agent);
+            AiAgent agent = aiAgentUseCase.requirePublishedAgent(companyId, agentId);
+            Scenario scenario = aiAgentUseCase.resolveScenario(companyId, agent);
             String callerNumber = call.callerNumber();
             CrmClientSnapshot crm = callerNumber != null ? crmUseCase.findByPhone(companyId, callerNumber) : null;
             ClientMemory memory = callerNumber != null
@@ -253,8 +247,7 @@ class FlowCallService {
             CallContext context = CallContextFactory.mergeCrmFacts(new CallContext(Map.of(), null), crm).withMemory(memory)
                     .withPhone(callerNumber);
             ScenarioDefinition definition = scenario.definition();
-            PipelineMode mode = agent.speechEngine().mode() != null ? agent.speechEngine().mode() : PipelineMode.CASCADE;
-            boolean realtime = mode == PipelineMode.REALTIME && realtimeDialogEngine.available();
+            PipelineMode mode = dialogStarter.resolveMode(channelId, agent, null);
             RtpEndpoint endpoint = session.endpoint();
             long attemptId = call.callAttemptId();
             Instant startedAt = call.startedAt();
@@ -269,14 +262,16 @@ class FlowCallService {
                 }
             };
             call.setAgentActive(true);
-            if (realtime) {
+            CallStart start = new CallStart(channelId, endpoint, context, definition, language, ttsVoice, agent,
+                    onCompleted, transfer, attemptId, null);
+            if (mode.usesRealtimeEngine()) {
                 RealtimeAudioBridge realtimeBridge = new RealtimeAudioBridge();
                 useAgentListeners(call, audioPipelineAssembler.buildAudioListeners(channelId, companyId, attemptId, startedAt, language,
-                        realtimeBridge, context, agent));
-                Runnable toCascade = () -> {
+                        realtimeBridge, context, agent, endpoint != null ? endpoint::recentOutboundLevel : null));
+                boolean started = dialogStarter.startRealtime(start, mode, realtimeBridge, reconnecting -> {
                     try {
                         useAgentListeners(call, audioPipelineAssembler.buildAudioListeners(channelId, companyId, attemptId, startedAt, language,
-                                null, context, agent));
+                                null, context, agent, endpoint != null ? endpoint::recentOutboundLevel : null));
                     } catch (Exception e) {
                         // Runs later, on the realtime engine's thread: without speech
                         // recognition the cascade cannot take over, so the flow moves on.
@@ -285,14 +280,12 @@ class FlowCallService {
                         return;
                     }
                     if (dialogEngine.available()) {
-                        dialogEngine.startCall(channelId, endpoint, context, definition, language, null,
-                                createReconnectingAgent(agent, language), onCompleted, transfer, attemptId, null);
+                        dialogEngine.startCall(reconnecting);
                     } else {
                         onCompleted.run();
                     }
-                };
-                if (realtimeDialogEngine.startCall(channelId, endpoint, context, definition, language, ttsVoice, agent,
-                        onCompleted, transfer, attemptId, realtimeBridge, toCascade, null)) {
+                });
+                if (started) {
                     return true;
                 }
                 log.warn("[{}] realtime agent {} did not start — trying the cascade pipeline", channelId, agentId);
@@ -303,9 +296,8 @@ class FlowCallService {
                 return false;
             }
             useAgentListeners(call, audioPipelineAssembler.buildAudioListeners(channelId, companyId, attemptId, startedAt, language, null,
-                    context, agent));
-            dialogEngine.startCall(channelId, endpoint, context, definition, language, ttsVoice, agent,
-                    onCompleted, transfer, attemptId, null);
+                    context, agent, endpoint != null ? endpoint::recentOutboundLevel : null));
+            dialogEngine.startCall(start);
             return true;
         } catch (Exception e) {
             log.warn("[{}] AI agent {} could not take the call: {}", channelId, agentId, e.getMessage());
@@ -402,10 +394,5 @@ class FlowCallService {
         List<AudioListener> all = new ArrayList<>(agentListeners);
         all.addAll(call.baseListeners());
         call.endpoint().replaceListeners(all);
-    }
-
-    /** The agent, opening with an apology for the dropped line instead of a fresh greeting. */
-    static AiAgent createReconnectingAgent(AiAgent agent, String language) {
-        return agent == null ? null : agent.withFirstMessage(DialogPhrases.reconnected(language));
     }
 }

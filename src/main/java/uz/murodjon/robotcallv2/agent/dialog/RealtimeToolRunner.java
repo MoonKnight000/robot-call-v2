@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
@@ -41,7 +41,7 @@ class RealtimeToolRunner {
     private final KnowledgeRetrievalUseCase knowledgeRetrieval;
     private final CatalogSearchUseCase catalogSearch;
     private final RealtimeProperties realtimeProperties;
-    private final VoiceMetrics metrics;
+    private final RealtimeMetrics metrics;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -51,7 +51,7 @@ class RealtimeToolRunner {
     private final ExecutorService toolExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     RealtimeToolRunner(KnowledgeRetrievalUseCase knowledgeRetrieval, CatalogSearchUseCase catalogSearch,
-                       RealtimeProperties realtimeProperties, VoiceMetrics metrics) {
+                       RealtimeProperties realtimeProperties, RealtimeMetrics metrics) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
@@ -93,6 +93,9 @@ class RealtimeToolRunner {
                 if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
                     callbacks.add(fixed);
                 }
+                continue;
+            }
+            if (DialogTools.CASCADE_ONLY_TOOL_NAMES.contains(name)) {
                 continue;
             }
             // The same rule the cascade pipeline applies (TurnTools#build), and it has to

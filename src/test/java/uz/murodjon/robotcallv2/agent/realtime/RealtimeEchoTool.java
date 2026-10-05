@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.realtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
 import uz.murodjon.robotcallv2.agent.rtp.WavReader;
@@ -81,8 +82,8 @@ public final class RealtimeEchoTool {
                         15,
                         env("REALTIME_GEMINI_START_SENSITIVITY", "LOW"),
                         env("REALTIME_GEMINI_END_SENSITIVITY", ""),
-                        0, 0, 0),
-                null, null, null, null));
+                        0, 0, 0, false, false),
+                null, null, null, null), new ObjectMapper());
         provider.init();
 
         WavAudio audio = WavReader.read(input);

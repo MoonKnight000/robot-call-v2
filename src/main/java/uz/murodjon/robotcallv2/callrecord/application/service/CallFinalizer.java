@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.rtp.RtpQuality;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.summary.SummarizedCall;
@@ -16,14 +16,14 @@ import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
-import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
-import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizationUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.RecordingStoragePort;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
@@ -64,7 +64,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
     private final ScenarioUseCase scenarioUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final NotificationUseCase notificationUseCase;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final SttProperties sttProperties;
     private final TtsProperties ttsProperties;
     private final TtsVoiceUseCase ttsVoiceUseCase;
@@ -83,7 +83,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
                          RecordingStoragePort recordingStoragePort, OutboxDeliveryService outboxDeliveryService,
                          ScenarioUseCase scenarioUseCase,
                          CampaignTargetUseCase campaignTargetUseCase, NotificationUseCase notificationUseCase,
-                         VoiceMetrics metrics, SttProperties sttProperties, TtsProperties ttsProperties,
+                         CallMetrics metrics, SttProperties sttProperties, TtsProperties ttsProperties,
                          TtsVoiceUseCase ttsVoiceUseCase, VadProperties vadProperties, CallMemoryWriter memoryWriter,
                          PostCallActionExecutor postCallActionExecutor, CallBillingUseCase callBilling,
                          InboundRouteUseCase inboundRouteUseCase, CompanyConfigUseCase companyConfigUseCase,
@@ -138,13 +138,21 @@ public class CallFinalizer implements CallFinalizationUseCase {
             }
 
             Long recordingFileId = null;
-            try {
-                recordingFileId = recordingStoragePort.uploadRecording(wav, companyId, wav.getFileName().toString());
-                if (recordingFileId != null) {
-                    recordingStoragePort.deleteLocalCopy(wav);
+            boolean shouldStoreAudio = agent == null || agent.dataPolicy().keepsCallAudio();
+            if (wav != null && shouldStoreAudio) {
+                try {
+                    recordingFileId = recordingStoragePort.uploadRecording(wav, companyId, wav.getFileName() != null ? wav.getFileName().toString() : "call.wav");
+                    if (recordingFileId != null) {
+                        recordingStoragePort.deleteLocalCopy(wav);
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] audio upload to storage failed, continuing call finalization: {}", callAttemptId, e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("[{}] audio upload to storage failed, continuing call finalization: {}", callAttemptId, e.getMessage());
+            } else if (wav != null) {
+                try {
+                    recordingStoragePort.deleteLocalCopy(wav);
+                } catch (Exception ignored) {
+                }
             }
 
             try {
@@ -191,17 +199,18 @@ public class CallFinalizer implements CallFinalizationUseCase {
             // Uysot downloads that link itself, and the recording lives in a MinIO bucket
             // that is not reachable from outside this deployment. Queued in the outbox and
             // delivered from there, so a CRM that is down gets it on a retry.
+            String recordingUrl = recordingFileId != null ? "/api/files/" + recordingFileId : null;
             try {
                 outboxDeliveryService.enqueueCallHistory(companyId, callAttemptId, new CrmCallHistoryEntry(clientId,
                         "voice-" + callAttemptId, startedAt, durationSec, callRecordService.isInbound(callAttemptId),
-                        wasAnswered(disposition), phone, null));
+                        wasAnswered(disposition), phone, recordingUrl));
             } catch (Exception e) {
                 log.warn("[{}] CRM call history not queued: {}", callAttemptId, e.getMessage());
             }
 
             if (summary != null) {
                 applySummary(companyId, callAttemptId, clientId, phone, agent, scenarioRow, disposition, summary,
-                        escalated);
+                        escalated, recordingFileId);
 
                 log.info("Finalized call {} (dur={}s, disposition={}, sentiment={})",
                         callAttemptId, durationSec, disposition, summary.sentiment());
@@ -234,6 +243,12 @@ public class CallFinalizer implements CallFinalizationUseCase {
      */
     void applySummary(long companyId, long callAttemptId, long clientId, String phone, AiAgent agent,
                       Scenario scenarioRow, Disposition disposition, CallSummary summary, boolean escalated) {
+        applySummary(companyId, callAttemptId, clientId, phone, agent, scenarioRow, disposition, summary, escalated, null);
+    }
+
+    void applySummary(long companyId, long callAttemptId, long clientId, String phone, AiAgent agent,
+                      Scenario scenarioRow, Disposition disposition, CallSummary summary, boolean escalated,
+                      Long recordingFileId) {
         // A zero-PII agent's call keeps its outcome, not its words: that is what is stored
         // here — the result, the client's memory (a summary with no text leaves none), the
         // alert. The company's own CRM and post-call actions still get the whole summary;
@@ -244,7 +259,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
         // The note is queued with the result, in one transaction, and delivered from the outbox
         // right after: a result never exists without its note queued, and a note the CRM
         // refuses now is posted on a retry. A call with no CRM lead gets no note at all.
-        OutboxMessage crmNote = outboxDeliveryService.prepareCrmNote(companyId, callAttemptId, clientId, summary);
+        OutboxMessage crmNote = outboxDeliveryService.prepareCrmNote(companyId, callAttemptId, clientId, summary, recordingFileId);
         Long crmNoteMessageId = null;
         try {
             crmNoteMessageId = callRecordService.writeResult(companyId, callAttemptId, stored, escalated, crmNote);
@@ -254,6 +269,9 @@ public class CallFinalizer implements CallFinalizationUseCase {
         if (crmNoteMessageId != null) {
             outboxDeliveryService.deliverNow(crmNoteMessageId);
         }
+
+        outboxDeliveryService.scheduleCrmTaskIfActionable(companyId, clientId, summary, disposition);
+        outboxDeliveryService.syncLeadStageIfActionable(companyId, clientId, summary, disposition);
 
         memoryWriter.remember(callAttemptId, companyId, scenarioRow, disposition, stored);
 
@@ -427,11 +445,22 @@ public class CallFinalizer implements CallFinalizationUseCase {
         try {
             CompanyConfig config = companyConfigUseCase.find(companyId);
             ZoneId zone = config != null ? config.zoneId() : ZoneId.systemDefault();
-            if (callbackAt.contains("T")) {
-                LocalDateTime ldt = LocalDateTime.parse(callbackAt);
+            String trimmed = callbackAt.trim();
+            if (trimmed.endsWith("Z")) {
+                return Instant.parse(trimmed);
+            }
+            if (trimmed.contains("+") || (trimmed.contains("T") && trimmed.lastIndexOf('-') > trimmed.indexOf('T'))) {
+                try {
+                    return OffsetDateTime.parse(trimmed).toInstant();
+                } catch (Exception ignored) {
+                    // Fall back to local datetime
+                }
+            }
+            if (trimmed.contains("T")) {
+                LocalDateTime ldt = LocalDateTime.parse(trimmed);
                 return ldt.atZone(zone).toInstant();
             } else {
-                LocalDate ld = LocalDate.parse(callbackAt);
+                LocalDate ld = LocalDate.parse(trimmed);
                 return ld.atTime(10, 0).atZone(zone).toInstant();
             }
         } catch (Exception e) {

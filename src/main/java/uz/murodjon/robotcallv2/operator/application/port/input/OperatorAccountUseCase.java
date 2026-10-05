@@ -1,10 +1,6 @@
 package uz.murodjon.robotcallv2.operator.application.port.input;
 
-import uz.murodjon.robotcallv2.operator.application.dto.OperatorRow;
-import uz.murodjon.robotcallv2.operator.application.dto.OperatorSipAccountRow;
-import uz.murodjon.robotcallv2.operator.application.dto.SaveOperatorSipAccountRequest;
-import uz.murodjon.robotcallv2.operator.application.dto.SipCredentialsResponse;
-import uz.murodjon.robotcallv2.operator.application.dto.UpdateOperatorStatusRequest;
+import uz.murodjon.robotcallv2.operator.application.dto.*;
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorFilter;
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorPresence;
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorSipAccount;

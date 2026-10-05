@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.webhook.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -48,7 +49,7 @@ class WebhookDeliveryServiceTest {
     private final SecretCipher cipher = mock(SecretCipher.class);
     private final NotificationService notificationService = mock(NotificationService.class);
     private final WebhookDeliveryService service = new WebhookDeliveryService(sender, repository, secretUseCase,
-            cipher, notificationService, Clock.fixed(NOW, ZoneOffset.UTC));
+            cipher, notificationService, Clock.fixed(NOW, ZoneOffset.UTC), new ObjectMapper());
 
     @BeforeEach
     void setUp() {

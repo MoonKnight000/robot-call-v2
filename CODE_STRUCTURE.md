@@ -1,4 +1,4 @@
-﻿# Clean / Hexagonal Architecture (Ports & Adapters) — Code Strukturasi
+# Clean / Hexagonal Architecture (Ports & Adapters) — Code Strukturasi
 
 Ushbu hujjat `uysot-v2/mortgage` moduli arxitekturasi asosida ishlab chiqilgan bo'lib, `robot-call-v2` loyihasidagi barcha modullarni yagona, toza va standart arxitekturaga keltirish uchun qo'llanma hisoblanadi.
 
@@ -396,3 +396,4 @@ public class CampaignControllerImpl implements CampaignController {
 1. **Guruh 1: Foydalanuvchi & Kompaniya/Profil (`profile`, `company`, `user`, `auth`, `audit`)**
 2. **Guruh 2: Aloqa va Ovoz vositalari (`voice`, `storage`, `sms`, `donotcall`, `notification`, `contact`)**
 3. **Guruh 3: Core Biznes Modullar (`scenario`, `campaign`, `crm`, `dialer`, `report`, `dashboard`, `aimodel`)**
+

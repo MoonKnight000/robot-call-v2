@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.agent.dialog.PromptSafeText;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
@@ -32,10 +33,12 @@ public class InstantCallTriggerService implements InstantCallUseCase {
 
     private final CampaignUseCase campaignUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     public InstantCallTriggerService(CampaignUseCase campaignUseCase,
-                                     CampaignTargetUseCase campaignTargetUseCase) {
+                                     CampaignTargetUseCase campaignTargetUseCase,
+                                     ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
     }
@@ -58,15 +61,16 @@ public class InstantCallTriggerService implements InstantCallUseCase {
         String contextJson = writeFacts(request);
 
         // null lets the dialer fall back to the agent's language when it dispatches this target.
+        long clientId = request.clientId() != null ? request.clientId() : 0L;
         long targetId = campaignTargetUseCase.addQueuedTarget(companyId,
-                CampaignTarget.queued(campaign.id(), 0L, phone.trim(), null, contextJson));
+                CampaignTarget.queued(campaign.id(), clientId, phone.trim(), null, contextJson));
         if (targetId == 0) {
             // Already waiting in this campaign: the pending target is the instant call.
             CampaignTarget queued = campaignTargetUseCase.findQueuedTarget(companyId, campaign.id(), phone.trim());
             targetId = queued != null ? queued.id() : 0;
         }
-        log.info("Instant call triggered for company={} phone={} targetId={}", companyId,
-                PhoneMasker.mask(phone), targetId);
+        log.info("Instant call triggered for company={} phone={} targetId={} clientId={}", companyId,
+                PhoneMasker.mask(phone), targetId, clientId);
 
         return InstantCallResponse.queued(targetId);
     }
@@ -97,7 +101,7 @@ public class InstantCallTriggerService implements InstantCallUseCase {
         Map<String, Object> facts =
                 request.contextData() != null ? new HashMap<>(request.contextData()) : new HashMap<>();
         if (request.clientName() != null && !request.clientName().isBlank()) {
-            facts.put("clientName", request.clientName().trim());
+            facts.put("clientName", PromptSafeText.sanitize(request.clientName().trim(), 100));
         }
         try {
             return objectMapper.writeValueAsString(facts);

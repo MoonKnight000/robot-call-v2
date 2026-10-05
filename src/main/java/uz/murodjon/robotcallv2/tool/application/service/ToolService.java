@@ -16,11 +16,7 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
-import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
-import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
-import uz.murodjon.robotcallv2.tool.application.dto.UpdateToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.*;
 import uz.murodjon.robotcallv2.tool.application.mapper.ToolMapper;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.output.ToolRepository;
@@ -37,7 +33,7 @@ import java.util.Map;
 public class ToolService implements ToolUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(ToolService.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> RESULT_TYPE = new TypeReference<>() {};
 
     private final ToolRepository toolRepository;
@@ -49,8 +45,10 @@ public class ToolService implements ToolUseCase {
             ToolRepository toolRepository,
             AiAgentUseCase aiAgentUseCase,
             ToolMapper mapper,
-            HttpToolExecutor httpToolExecutor
+            HttpToolExecutor httpToolExecutor,
+            ObjectMapper objectMapper
     ) {
+        this.objectMapper = objectMapper;
         this.httpToolExecutor = httpToolExecutor;
         this.toolRepository = toolRepository;
         this.aiAgentUseCase = aiAgentUseCase;
@@ -169,7 +167,7 @@ public class ToolService implements ToolUseCase {
         String result = httpToolExecutor.executeForTest(tool,
                 request != null ? request.variables() : null, request != null ? request.args() : null);
         try {
-            return new ToolTestResponse(JSON.readValue(result, RESULT_TYPE));
+            return new ToolTestResponse(objectMapper.readValue(result, RESULT_TYPE));
         } catch (Exception e) {
             return new ToolTestResponse(Map.of("raw", result));
         }

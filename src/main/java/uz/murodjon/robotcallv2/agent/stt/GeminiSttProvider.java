@@ -8,15 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -53,16 +52,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class GeminiSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiSttProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private static final int DEFAULT_SAMPLE_RATE = 16000;
     private static final String DEFAULT_MODEL = "gemini-3.5-transcribe-live";
 
     private final SttProperties sttProperties;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     private volatile HttpClient client;
 
-    public GeminiSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+    public GeminiSttProvider(SttProperties sttProperties, SttMetrics metrics, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
@@ -196,7 +196,7 @@ public class GeminiSttProvider implements SttProvider {
      * setup that fails costs the whole call its recognition.
      */
     private String buildSetupMessage(boolean externalEndpointing, String model) {
-        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode root = objectMapper.createObjectNode();
         ObjectNode setup = root.putObject("setup");
         setup.put("model", "models/" + model);
 
@@ -238,14 +238,13 @@ public class GeminiSttProvider implements SttProvider {
     /**
      * Handles incoming WebSocket messages from Gemini Bidi streaming endpoint.
      */
-    private final class ResponseHandler implements WebSocket.Listener {
+    private final class ResponseHandler extends JsonWebSocketListener {
 
         private final String languageCode;
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
 
-        private final StringBuilder messageBuffer = new StringBuilder();
         /** The last interim of the utterance in hand — what a garbage final falls back to. */
         private String lastInterim;
 
@@ -258,32 +257,9 @@ public class GeminiSttProvider implements SttProvider {
         }
 
         @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            messageBuffer.append(data);
-            if (last) {
-                String fullMessage = messageBuffer.toString();
-                messageBuffer.setLength(0);
-                handleMessage(fullMessage);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-            messageBuffer.append(StandardCharsets.UTF_8.decode(data));
-            if (last) {
-                String fullMessage = messageBuffer.toString();
-                messageBuffer.setLength(0);
-                handleMessage(fullMessage);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        private void handleMessage(String json) {
+        protected void onMessage(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 if (node.has("setupComplete")) {
                     ready.countDown();
                     return;
@@ -347,11 +323,11 @@ public class GeminiSttProvider implements SttProvider {
     /**
      * Active Gemini streaming STT session sending raw PCM audio.
      */
-    private static final class GeminiSttSession implements SttSession {
+    private final class GeminiSttSession implements SttSession {
 
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
-        private final VoiceMetrics metrics;
+        private final SttMetrics metrics;
         /** Whether this side brackets utterances with activityStart/activityEnd. */
         private final boolean externalEndpointing;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
@@ -363,7 +339,7 @@ public class GeminiSttProvider implements SttProvider {
         /** About one second of 20 ms frames. */
         private static final int MAX_PENDING_SENDS = 50;
 
-        private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics,
+        private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, SttMetrics metrics,
                                  boolean externalEndpointing) {
             this.webSocket = webSocket;
             this.alive = alive;
@@ -380,14 +356,14 @@ public class GeminiSttProvider implements SttProvider {
                 // First audio of an utterance: with automatic detection off the server
                 // ignores audio outside an activity.
                 inActivity = true;
-                ObjectNode start = MAPPER.createObjectNode();
+                ObjectNode start = objectMapper.createObjectNode();
                 start.putObject("realtimeInput").putObject("activityStart");
                 send(start.toString());
             }
             if (pendingSends.get() >= MAX_PENDING_SENDS) {
                 return; // a stalled socket: the frame is dropped rather than queued without end
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             ObjectNode audio = root.putObject("realtimeInput").putObject("audio");
             audio.put("mimeType", "audio/pcm;rate=16000");
             audio.put("data", Base64.getEncoder().encodeToString(pcm16le));
@@ -406,7 +382,7 @@ public class GeminiSttProvider implements SttProvider {
                 return;
             }
             inActivity = false;
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.putObject("realtimeInput").putObject("activityEnd");
             send(root.toString());
         }

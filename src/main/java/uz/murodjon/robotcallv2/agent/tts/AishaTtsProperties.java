@@ -26,6 +26,7 @@ import java.util.Map;
  * @param requestTimeoutMs how long one line may take before the turn gives up on it. A
  *                         synthesis that never answers would otherwise hold the call
  *                         silent for as long as the caller stays on the line
+ * @param poolSize         maximum concurrent WebSocket connections in the pool (default 5)
  */
 public record AishaTtsProperties(
         String apiKey,
@@ -33,6 +34,12 @@ public record AishaTtsProperties(
         String speaker,
         Map<String, String> speakers,
         List<String> moods,
-        long requestTimeoutMs
+        long requestTimeoutMs,
+        int poolSize
 ) {
+    public AishaTtsProperties {
+        if (poolSize <= 0) {
+            poolSize = 5;
+        }
+    }
 }

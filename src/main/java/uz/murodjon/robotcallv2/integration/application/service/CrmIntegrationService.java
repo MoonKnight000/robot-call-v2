@@ -50,11 +50,13 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     private final UysotOAuthProperties uysotOAuthProperties;
     private final OAuthStateStorePort oauthStateStorePort;
     private final AuditUseCase audit;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private final UysotOAuthPort uysotOAuthPort;
 
     public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
-                                 OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, UysotOAuthPort uysotOAuthPort) {
+                                 OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, UysotOAuthPort uysotOAuthPort,
+                                 ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.repository = repository;
         this.cipher = cipher;
         this.uysotOAuthProperties = uysotOAuthProperties;
@@ -184,7 +186,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
                 repository.markError(companyId);
                 throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_TOKEN_EXCHANGE_HTTP_ERROR, "uysot-oauth", String.valueOf(resp.statusCode()));
             }
-            JsonNode json = mapper.readTree(resp.body());
+            JsonNode json = objectMapper.readTree(resp.body());
             String access = json.path("access_token").asText(null);
             String refresh = json.path("refresh_token").asText(null);
             int expiresIn = json.path("expires_in").asInt(86400);
@@ -274,7 +276,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
                 repository.markError(companyId);
                 return Optional.empty();
             }
-            JsonNode json = mapper.readTree(resp.body());
+            JsonNode json = objectMapper.readTree(resp.body());
             String newAccess = json.path("access_token").asText(null);
             String newRefresh = json.path("refresh_token").asText(null);
             int expiresIn = json.path("expires_in").asInt(86400);
@@ -349,7 +351,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
             return List.of();
         }
         try {
-            return mapper.readValue(json, new TypeReference<List<CrmGrant>>() {});
+            return objectMapper.readValue(json, new TypeReference<List<CrmGrant>>() {});
         } catch (Exception e) {
             return List.of();
         }
@@ -360,7 +362,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
             return "[]";
         }
         try {
-            return mapper.writeValueAsString(grants);
+            return objectMapper.writeValueAsString(grants);
         } catch (Exception e) {
             return "[]";
         }

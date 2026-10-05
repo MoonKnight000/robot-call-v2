@@ -68,7 +68,7 @@ public class TextTurnEngine {
         ChatResponse response = chatClient.prompt()
                 .system(systemPrefix(session))
                 .messages(messages)
-                .options(turnTools.buildOptions(session, tools))
+                .options(turnTools.buildOptions(session, tools).mutate())
                 .call()
                 .chatResponse();
 
@@ -93,7 +93,7 @@ public class TextTurnEngine {
         if (chatModel == null) {
             return new TextTurn(null, List.of());
         }
-        return reply(ChatClient.create(chatModel), session, clientText);
+        return reply(TurnTools.chatClient(chatModel), session, clientText);
     }
 
     /** The prompt prefix, built once per conversation exactly as a call caches it. */

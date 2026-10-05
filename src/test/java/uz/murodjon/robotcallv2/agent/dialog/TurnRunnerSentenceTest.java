@@ -35,16 +35,21 @@ class TurnRunnerSentenceTest {
     }
 
     @Test
-    void splitsOnLongCommaClausesForEarlyTtsStreaming() {
+    void keepsAnOrdinarySentenceWholeAcrossItsComma() {
+        // Cut at the comma, "Murodjon aka," was spoken with a full stop's falling tone.
         StringBuilder pending = new StringBuilder("Assalomu alaykum hurmatli Murodjon aka, sizga bugun bankdan qo'ng'iroq qilyapmiz.");
-        String firstClause = SentenceSplitter.takeSentence(pending);
 
-        assertThat(firstClause).isEqualTo("Assalomu alaykum hurmatli Murodjon aka,");
-        assertThat(pending.toString()).isEqualTo(" sizga bugun bankdan qo'ng'iroq qilyapmiz.");
-
-        String secondClause = SentenceSplitter.takeSentence(pending);
-        assertThat(secondClause).isEqualTo("sizga bugun bankdan qo'ng'iroq qilyapmiz.");
+        assertThat(SentenceSplitter.takeSentence(pending))
+                .isEqualTo("Assalomu alaykum hurmatli Murodjon aka, sizga bugun bankdan qo'ng'iroq qilyapmiz.");
         assertThat(pending.toString()).isEmpty();
+    }
+
+    @Test
+    void stillSplitsAVeryLongClauseForEarlyTtsStreaming() {
+        String clause = "Sizning shartnomangiz bo'yicha o'tgan oy uchun belgilangan oylik to'lov muddati o'tib ketgan,";
+        StringBuilder pending = new StringBuilder(clause + " iltimos, imkon qadar tezroq to'lang.");
+
+        assertThat(SentenceSplitter.takeSentence(pending)).isEqualTo(clause);
     }
 
     @Test

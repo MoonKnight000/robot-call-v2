@@ -14,36 +14,45 @@ import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 /**
- * Inbound route CRUD API (ROADMAP C.1, §10.9).
+ * Inbound route CRUD API (ROADMAP C.1, §10.9, docs/api/inbound-routes.md).
  */
 @RequestMapping("/api")
 public interface InboundRouteController {
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_EDIT')")
     @PostMapping("/inbound-routes")
-    ResponseEntity<ResponseData<InboundRouteRow>> create(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<InboundRouteRow>> create(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody CreateInboundRouteRequest request);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_READ')")
     @PostMapping("/inbound-routes/list")
-    ResponseEntity<ResponseData<PageableData<InboundRouteRow>>> list(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<PageableData<InboundRouteRow>>> list(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody InboundRouteFilter filter);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_READ')")
     @GetMapping("/inbound-routes/{id}")
-    ResponseEntity<ResponseData<InboundRouteRow>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<InboundRouteRow>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_EDIT')")
     @PutMapping("/inbound-routes/{id}")
-    ResponseEntity<ResponseData<InboundRouteRow>> update(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                         @Valid @RequestBody UpdateInboundRouteRequest r);
+    ResponseEntity<ResponseData<InboundRouteRow>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateInboundRouteRequest r);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_EDIT')")
     @DeleteMapping("/inbound-routes/{id}")
-    ResponseEntity<ResponseData<InboundRouteRow>> disable(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<InboundRouteRow>> disable(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('INBOUND_ROUTE_READ')")
     @GetMapping("/inbound-routes/{id}/stats")
-    ResponseEntity<ResponseData<InboundRouteStats>> stats(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<InboundRouteStats>> stats(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }
-

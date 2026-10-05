@@ -5,7 +5,7 @@ import ch.loway.oss.ari4java.generated.models.ChannelDestroyed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
@@ -35,7 +35,7 @@ class UnansweredCallSettler {
     private final CallBillingUseCase callBillingUseCase;
     private final TrunkHealthUseCase trunkHealthUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
 
     UnansweredCallSettler(CallSessionRegistry callSessionRegistry,
                           PbxLegService pbxLegService,
@@ -46,7 +46,7 @@ class UnansweredCallSettler {
                           CallBillingUseCase callBillingUseCase,
                           TrunkHealthUseCase trunkHealthUseCase,
                           CampaignTargetUseCase campaignTargetUseCase,
-                          VoiceMetrics metrics) {
+                          CallMetrics metrics) {
         this.callSessionRegistry = callSessionRegistry;
         this.pbxLegService = pbxLegService;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -97,5 +97,24 @@ class UnansweredCallSettler {
         metrics.disposition(disposition);
         log.info("Unanswered call {} to {} settled as {} (cause {})",
                 channelId, PhoneMasker.mask(outbound.phone()), disposition, HangupCause.label(cause));
+    }
+
+    /**
+     * Settles an outbound call whose setup failed before the session could be registered
+     * (e.g. exception during audio pipeline assembly or ARI bridge attachment). Releases
+     * the concurrency slot and billing hold immediately, records FAILED outcome on the trunk
+     * and reschedules the campaign target.
+     */
+    void settleFailedOutbound(String channelId, OutboundCall outbound) {
+        if (outbound == null) {
+            return;
+        }
+        dialerSlotUseCase.release(outbound.companyId(), outbound.campaignId());
+        callBillingUseCase.releaseReservation(outbound.companyId(), outbound.targetId());
+        trunkHealthUseCase.recordOutcome(outbound.sipTrunkId(), Disposition.FAILED);
+        campaignTargetUseCase.applyOutcome(outbound.companyId(), outbound.targetId(), Disposition.FAILED);
+        metrics.disposition(Disposition.FAILED);
+        log.info("Failed setup outbound call {} to {} settled as FAILED",
+                channelId, PhoneMasker.mask(outbound.phone()));
     }
 }

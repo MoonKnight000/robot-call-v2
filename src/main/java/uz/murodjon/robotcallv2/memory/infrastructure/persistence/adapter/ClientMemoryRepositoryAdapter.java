@@ -2,10 +2,10 @@ package uz.murodjon.robotcallv2.memory.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.memory.infrastructure.persistence.mapper.ClientMemoryEntityMapper;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.infrastructure.persistence.entity.ClientMemoryEntity;
+import uz.murodjon.robotcallv2.memory.infrastructure.persistence.mapper.ClientMemoryEntityMapper;
 import uz.murodjon.robotcallv2.memory.infrastructure.persistence.repository.ClientMemoryJpaRepository;
 
 import java.time.Instant;

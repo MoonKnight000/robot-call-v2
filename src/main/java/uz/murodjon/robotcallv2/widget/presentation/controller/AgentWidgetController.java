@@ -13,41 +13,41 @@ import java.util.List;
 /**
  * Voice widgets embedded on a customer's own website, each one an entry point to a
  * single AI agent.
- *
- * <p>The last endpoint is the odd one out: it is called by the embed script on a public
- * page, so it carries no token and is keyed by the widget's own key. It is declared
- * {@code permitAll} in {@code SecurityConfig}, and the widget's allowed-origins list is
- * what keeps that key from working when lifted onto another site.
  */
 @RequestMapping("/api")
 public interface AgentWidgetController {
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping("/ai-agents/{agentId:\\d+}/widgets")
-    ResponseEntity<ResponseData<WidgetRow>> create(@CurrentCompanyId long companyId,
-                                                    @PathVariable long agentId,
-                                                    @Valid @RequestBody CreateWidgetRequest request);
+    ResponseEntity<ResponseData<WidgetRow>> create(
+            @CurrentCompanyId long companyId,
+            @PathVariable long agentId,
+            @Valid @RequestBody CreateWidgetRequest request);
 
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/ai-agents/{agentId:\\d+}/widgets")
-    ResponseEntity<ResponseData<List<WidgetRow>>> listByAgent(@CurrentCompanyId long companyId,
-                                                               @PathVariable long agentId);
+    ResponseEntity<ResponseData<List<WidgetRow>>> listByAgent(
+            @CurrentCompanyId long companyId,
+            @PathVariable long agentId);
 
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/widgets/{widgetId:\\d+}")
-    ResponseEntity<ResponseData<WidgetRow>> get(@CurrentCompanyId long companyId,
-                                                 @PathVariable long widgetId);
+    ResponseEntity<ResponseData<WidgetRow>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long widgetId);
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PutMapping("/widgets/{widgetId:\\d+}")
-    ResponseEntity<ResponseData<WidgetRow>> update(@CurrentCompanyId long companyId,
-                                                    @PathVariable long widgetId,
-                                                    @Valid @RequestBody UpdateWidgetRequest request);
+    ResponseEntity<ResponseData<WidgetRow>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long widgetId,
+            @Valid @RequestBody UpdateWidgetRequest request);
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @DeleteMapping("/widgets/{widgetId:\\d+}")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId,
-                                               @PathVariable long widgetId);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long widgetId);
 
     /** Called by the embed script on the customer's page; no token, keyed by widget key. */
     @GetMapping("/public/widgets/{widgetKey}/config")

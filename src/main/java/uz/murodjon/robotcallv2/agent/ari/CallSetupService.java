@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import ch.loway.oss.ari4java.ARI;
 import ch.loway.oss.ari4java.generated.models.Bridge;
 import ch.loway.oss.ari4java.generated.models.Channel;
@@ -10,12 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.LiveAudioMonitor;
-import uz.murodjon.robotcallv2.agent.dialog.CallContext;
-import uz.murodjon.robotcallv2.agent.dialog.DialogEngine;
-import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
-import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
-import uz.murodjon.robotcallv2.agent.dialog.RealtimeDialogEngine;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.dialog.*;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
@@ -24,8 +21,8 @@ import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.agent.rtp.WavRecorder;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
-import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
@@ -33,8 +30,8 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUs
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
-import uz.murodjon.robotcallv2.dialer.domain.service.CallContextFactory;
 import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
+import uz.murodjon.robotcallv2.dialer.domain.service.CallContextFactory;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
@@ -93,16 +90,18 @@ class CallSetupService {
     private final CallAttemptUseCase callAttemptUseCase;
     /** A/B counters for the campaign variant an outbound call was assigned (§ campaign variants). */
     private final CampaignVariantUseCase campaignVariantUseCase;
-    private final RealtimeDialogEngine realtimeDialogEngine;
+    private final DialogStarter dialogStarter;
     private final DialogEngine dialogEngine;
     private final AudioPipelineAssembler audioPipelineAssembler;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final CallRouteRegistry routeRegistry;
     private final CallTeardownService callTeardownService;
     private final DialogRouter dialogRouter;
     private final ActiveCallService activeCallService;
     private final AgentWebhookUseCase agentWebhookUseCase;
     private final OperatorTransferService operatorTransferService;
+    private final UnansweredCallSettler unansweredCallSettler;
+    private final ObjectMapper objectMapper;
 
     CallSetupService(ExecutorService callExecutor,
                      AriClient ariClient,
@@ -124,16 +123,19 @@ class CallSetupService {
                      ClientMemoryUseCase clientMemoryUseCase,
                      CallAttemptUseCase callAttemptUseCase,
                      CampaignVariantUseCase campaignVariantUseCase,
-                     RealtimeDialogEngine realtimeDialogEngine,
+                     DialogStarter dialogStarter,
                      DialogEngine dialogEngine,
                      AudioPipelineAssembler audioPipelineAssembler,
-                     VoiceMetrics metrics,
+                     CallMetrics metrics,
                      CallRouteRegistry routeRegistry,
                      CallTeardownService callTeardownService,
                      DialogRouter dialogRouter,
                      ActiveCallService activeCallService,
                      AgentWebhookUseCase agentWebhookUseCase,
-                     OperatorTransferService operatorTransferService) {
+                     OperatorTransferService operatorTransferService,
+                     UnansweredCallSettler unansweredCallSettler,
+                     ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.callExecutor = callExecutor;
         this.ariClient = ariClient;
         this.pbxLegService = pbxLegService;
@@ -154,7 +156,7 @@ class CallSetupService {
         this.clientMemoryUseCase = clientMemoryUseCase;
         this.callAttemptUseCase = callAttemptUseCase;
         this.campaignVariantUseCase = campaignVariantUseCase;
-        this.realtimeDialogEngine = realtimeDialogEngine;
+        this.dialogStarter = dialogStarter;
         this.dialogEngine = dialogEngine;
         this.audioPipelineAssembler = audioPipelineAssembler;
         this.metrics = metrics;
@@ -164,6 +166,7 @@ class CallSetupService {
         this.activeCallService = activeCallService;
         this.agentWebhookUseCase = agentWebhookUseCase;
         this.operatorTransferService = operatorTransferService;
+        this.unansweredCallSettler = unansweredCallSettler;
     }
 
     /** Runs on the channel's event lane. */
@@ -242,9 +245,16 @@ class CallSetupService {
                 }
             }
 
-            Files.createDirectories(Path.of(rtpProperties.recordingDir()));
-            Path wav = Path.of(rtpProperties.recordingDir(), channelId.replace('/', '_') + ".wav");
-            WavRecorder recorder = new WavRecorder(wav, CallMediaFactory.SAMPLE_RATE, rtpProperties.recordingMode());
+            AiAgent setupAgent = outbound != null ? outbound.agent() : inboundAgent;
+            boolean shouldRecord = setupAgent == null || setupAgent.dataPolicy().keepsCallAudio();
+            WavRecorder recorder = null;
+            String wavPath = null;
+            if (shouldRecord) {
+                Files.createDirectories(Path.of(rtpProperties.recordingDir()));
+                Path wav = Path.of(rtpProperties.recordingDir(), channelId.replace('/', '_') + ".wav");
+                recorder = new WavRecorder(wav, CallMediaFactory.SAMPLE_RATE, rtpProperties.recordingMode());
+                wavPath = wav.toString();
+            }
 
             // Media before the line opens. Answering first and then looking the caller up
             // left the call connected with no RTP path for as long as that lookup took —
@@ -288,7 +298,6 @@ class CallSetupService {
             AiAgent agent;
 
             if (outbound != null) {
-                outboundCallTrackingUseCase.markAnswered(channelId);
                 agent = outbound.agent();
                 targetId = outbound.targetId();
                 language = outbound.language() != null ? outbound.language() : dialogProperties.language();
@@ -335,8 +344,7 @@ class CallSetupService {
                         agent.language());
                 ttsVoice = agent.voiceFor(language);
                 // The webhook's answer goes on last, over the CRM: it was asked most recently.
-                context = CallContextFactory.overlayWebhookFacts(
-                        CallContextFactory.mergeCrmFacts(new CallContext(Map.of(), null), crm).withMemory(memory),
+                context = CallContextFactory.overlayWebhookFacts(objectMapper, CallContextFactory.mergeCrmFacts(new CallContext(Map.of(), null), crm).withMemory(memory),
                         inboundFacts, scenarioRow.definition().factSchema());
             }
             // The number on the other end, for the company tools that fill a phone from the call.
@@ -360,30 +368,25 @@ class CallSetupService {
                 campaignVariantUseCase.recordAnswer(outbound.variantId());
             }
 
-            // An A/B variant testing the pipeline wins over the agent's own choice for
-            // exactly the calls assigned to it.
-            PipelineMode pipelineMode = outbound != null && outbound.pipelineModeOverride() != null
-                    ? outbound.pipelineModeOverride()
-                    : (agent != null && agent.speechEngine().mode() != null)
-                    ? agent.speechEngine().mode()
-                    : PipelineMode.CASCADE;
-            boolean realtime = pipelineMode == PipelineMode.REALTIME && realtimeDialogEngine.available();
-            if (pipelineMode == PipelineMode.REALTIME && !realtime) {
-                log.warn("[{}] agent is set to REALTIME but no engine is available — running cascade", channelId);
-            }
+            PipelineMode pipelineMode = dialogStarter.resolveMode(channelId, agent,
+                    outbound != null ? outbound.pipelineModeOverride() : null);
+            boolean realtime = pipelineMode.usesRealtimeEngine();
             RealtimeAudioBridge realtimeBridge = realtime ? new RealtimeAudioBridge() : null;
 
             List<AudioListener> audioListeners = audioPipelineAssembler.buildAudioListeners(channelId, companyId, attemptId, startedAt,
-                    language, realtimeBridge, context, agent);
+                    language, realtimeBridge, context, agent, endpoint::recentOutboundLevel);
             audioListeners.add(audioMonitor);
             endpoint.replaceListeners(audioListeners);
 
             boolean active = callSessionRegistry.register(new CallSession(channelId, companyId, extMedia.getId(), bridge.getId(),
-                    port, endpoint, attemptId, startedAt, wav.toString(), channelName, ChannelNames.extractTrunk(channelName),
+                    port, endpoint, attemptId, startedAt, wavPath, channelName, ChannelNames.extractTrunk(channelName),
                     scenarioRow.id(), audioMonitor, agent != null && agent.callBehaviour().dtmfInputEnabled(), agent));
             registered = true;
+            if (outbound != null) {
+                outboundCallTrackingUseCase.markAnswered(channelId);
+            }
             log.info("Media ready for {}: rtpPort={}, extMedia={}, bridge={}, wav={}, attempt={}",
-                    channelId, port, extMedia.getId(), bridge.getId(), wav, attemptId);
+                    channelId, port, extMedia.getId(), bridge.getId(), wavPath, attemptId);
 
             metrics.callStarted();
             metrics.activeInc();
@@ -453,33 +456,20 @@ class CallSetupService {
                     log.info("[{}] caller left during setup — the dialog is not started", channelId);
                     return;
                 }
+                CallStart start = new CallStart(channelId, endpoint, context, definition, language, ttsVoice, agent,
+                        () -> ariClient.hangup(channelId), () -> operatorTransferService.transferToOperator(channelId),
+                        attemptId, dtmfSender);
                 if (realtime) {
-                    RtpEndpoint callEndpoint = endpoint;
-                    CallContext callContext = context;
-                    AiAgent callAgent = agent;
-                    String callLanguage = language;
-                    long callAttemptId = attemptId;
-                    // Mid-call: the engine dropped and could not be resumed. The caller is
-                    // still on the line, so the cascade pipeline carries on — in another
-                    // voice, which is why its first line says what happened.
-                    Runnable toCascade = () -> continueOnCascade(channelId, callEndpoint, callContext, definition,
-                            callLanguage, FlowCallService.createReconnectingAgent(callAgent, callLanguage), callAttemptId, startedAt,
-                            audioMonitor, dtmfSender);
-                    boolean started = realtimeDialogEngine.startCall(channelId, endpoint, context,
-                            definition, language, ttsVoice, agent,
-                            () -> ariClient.hangup(channelId), () -> operatorTransferService.transferToOperator(channelId), attemptId,
-                            realtimeBridge, toCascade, dtmfSender);
+                    boolean started = dialogStarter.startRealtime(start, pipelineMode, realtimeBridge,
+                            reconnecting -> continueOnCascade(reconnecting, startedAt, audioMonitor));
                     if (!started) {
                         // Nothing has been said yet, so the caller simply gets the cascade
                         // pipeline's own opening instead of a dropped call.
                         log.warn("[{}] realtime dialog did not start — continuing on the cascade pipeline", channelId);
-                        continueOnCascade(channelId, endpoint, context, definition, language, agent,
-                                attemptId, startedAt, audioMonitor, dtmfSender);
+                        continueOnCascade(start.withDefaultVoice(), startedAt, audioMonitor);
                     }
                 } else {
-                    dialogEngine.startCall(channelId, endpoint, context, definition, language, ttsVoice,
-                            agent, () -> ariClient.hangup(channelId), () -> operatorTransferService.transferToOperator(channelId),
-                            attemptId, dtmfSender);
+                    dialogEngine.startCall(start);
                 }
                 if (!callSessionRegistry.isActive(channelId)) {
                     // StasisEnd came between the check above and the start: its endCall ran
@@ -522,6 +512,10 @@ class CallSetupService {
                 if (port >= 0) {
                     portAllocator.release(port);
                 }
+                OutboundCall failedOutbound = outboundCallTrackingUseCase.remove(channelId);
+                if (failedOutbound != null) {
+                    unansweredCallSettler.settleFailedOutbound(channelId, failedOutbound);
+                }
             }
             ariClient.hangup(channelId);
         }
@@ -533,14 +527,12 @@ class CallSetupService {
      * caller who is still there.
      *
      * <p>The two pipelines listen through different chains (a realtime call has no STT
-     * stream at all), so the endpoint's listeners are replaced, not added to. The voice
-     * is left to the company default: an agent set up for a realtime engine holds that
-     * engine's voice, which no synthesizer can speak.
+     * stream at all), so the endpoint's listeners are replaced, not added to. {@code start}
+     * already carries the company default voice ({@link CallStart#withDefaultVoice}).
      */
-    private void continueOnCascade(String channelId, RtpEndpoint endpoint, CallContext context,
-                                   ScenarioDefinition definition, String language, AiAgent agent,
-                                   long attemptId, Instant startedAt, LiveAudioMonitor audioMonitor,
-                                   Consumer<String> dtmfSender) {
+    private void continueOnCascade(CallStart start, Instant startedAt, LiveAudioMonitor audioMonitor) {
+        String channelId = start.channelId();
+        RtpEndpoint endpoint = start.endpoint();
         CallSession session = callSessionRegistry.find(channelId);
         if (session == null) {
             return; // torn down in the meantime — nobody left to talk to
@@ -552,8 +544,8 @@ class CallSetupService {
         }
         List<AudioListener> listeners;
         try {
-            listeners = audioPipelineAssembler.buildAudioListeners(channelId, session.companyId(), attemptId, startedAt,
-                    language, null, context, agent);
+            listeners = audioPipelineAssembler.buildAudioListeners(channelId, session.companyId(), start.callAttemptId(),
+                    startedAt, start.language(), null, start.context(), start.agent(), endpoint::recentOutboundLevel);
         } catch (Exception e) {
             // The cascade needs speech recognition; without it there is nobody to talk to.
             log.error("[{}] realtime engine lost and the cascade could not start: {} — hanging up",
@@ -564,7 +556,6 @@ class CallSetupService {
         listeners.add(audioMonitor);
         endpoint.replaceListeners(listeners);
         log.warn("[{}] continuing the call on the cascade pipeline", channelId);
-        dialogEngine.startCall(channelId, endpoint, context, definition, language, null, agent,
-                () -> ariClient.hangup(channelId), () -> operatorTransferService.transferToOperator(channelId), attemptId, dtmfSender);
+        dialogEngine.startCall(start);
     }
 }

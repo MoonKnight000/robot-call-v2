@@ -1,5 +1,6 @@
-# Everything that has no larger home: clustering, shutdown, QA scoring, simulation,
-# alerting, the live SSE channel, the default company.
+# Everything that has no larger home: clustering, shutdown, QA scoring, chat, pack
+# generation, insights, simulation, alerting, the live SSE channel, campaign recurrence,
+# webhook retries, the default company.
 voice-agent:
   # CallRouteRegistry (§5.1)
   routing:
@@ -18,6 +19,14 @@ voice-agent:
     sample-rate: ${QUALITY_SAMPLE_RATE:1.0}
     model: ${QUALITY_MODEL:gemini-3.8-flash}
     max-tokens: ${QUALITY_MAX_TOKENS:512}
+
+  # Daily pull of each TTS provider's voice list into tts_voice — TtsVoiceSyncProperties.
+  # Only providers with a list API (ElevenLabs, Gemini, Cartesia) take part; the rest stay seeded.
+  voice-sync:
+    enabled: ${VOICE_SYNC_ENABLED:true}
+    languages: ${VOICE_SYNC_LANGUAGES:uz-UZ,ru-RU,en-US,kk-KZ}
+    interval-ms: ${VOICE_SYNC_INTERVAL_MS:86400000}
+    initial-delay-ms: ${VOICE_SYNC_INITIAL_DELAY_MS:30000}
 
   # The widget's text channel — ChatProperties, ChatService (UNIVERSAL-OPERATOR-PLAN E.4).
   # Ceilings, not preferences: the endpoint is open to anything that can send an HTTP request
@@ -40,7 +49,7 @@ voice-agent:
   insight:
     enabled: ${INSIGHT_ENABLED:true}
     # Early morning, so the night's proposals are waiting rather than appearing during the day.
-    # Sinash uchun: INSIGHT_CRON="0 * * * * *" — har daqiqada.
+    # For testing: INSIGHT_CRON="0 * * * * *" runs it every minute.
     cron: ${INSIGHT_CRON:0 20 6 * * *}
     window-hours: ${INSIGHT_WINDOW_HOURS:24}
     min-calls: ${INSIGHT_MIN_CALLS:10}
@@ -75,6 +84,15 @@ voice-agent:
   live:
     audio-level-enabled: ${LIVE_AUDIO_LEVEL_ENABLED:false}
     kpi-poll-ms: ${LIVE_KPI_POLL_MS:2000}
+
+  # Recurring campaigns (DAILY/WEEKLY/MONTHLY/CRON) — RecurringCampaignScheduler
+  campaign:
+    recurrence-enabled: ${CAMPAIGN_RECURRENCE_ENABLED:true}
+    recurrence-check-ms: ${CAMPAIGN_RECURRENCE_CHECK_MS:60000}
+
+  # Failed webhook deliveries are retried on this tick — WebhookDeliveryService
+  webhook:
+    retry-check-ms: ${WEBHOOK_RETRY_CHECK_MS:60000}
 
   # Owner of startup work with no request behind it — CompanyProperties
   company:

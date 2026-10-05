@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-
 import uz.murodjon.robotcallv2.aimodel.application.dto.UpdateAiModelConfigRequest;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
@@ -25,6 +24,7 @@ public interface AiModelConfigController {
 
     @PreAuthorize("hasAuthority('AI_MODEL_EDIT')")
     @PutMapping
-    ResponseEntity<ResponseData<AiModelConfig>> update(@CurrentCompanyId long companyId,
-                                                       @Valid @RequestBody UpdateAiModelConfigRequest request);
+    ResponseEntity<ResponseData<AiModelConfig>> update(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody UpdateAiModelConfigRequest request);
 }

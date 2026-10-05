@@ -15,8 +15,12 @@ import java.util.Map;
 @Component
 public class ChatEntityMapper {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> OUTCOME_TYPE = new TypeReference<>() {};
+
+    public ChatEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public ChatSession toChatSession(ChatSessionEntity entity) {
         if (entity == null) {
@@ -66,20 +70,20 @@ public class ChatEntityMapper {
         return entity;
     }
 
-    private static Map<String, Object> readOutcome(String json) {
+    private Map<String, Object> readOutcome(String json) {
         if (json == null || json.isBlank()) {
             return Map.of();
         }
         try {
-            return JSON.readValue(json, OUTCOME_TYPE);
+            return objectMapper.readValue(json, OUTCOME_TYPE);
         } catch (Exception e) {
             return Map.of();
         }
     }
 
-    private static String writeOutcome(Map<String, Object> outcome) {
+    private String writeOutcome(Map<String, Object> outcome) {
         try {
-            return JSON.writeValueAsString(outcome);
+            return objectMapper.writeValueAsString(outcome);
         } catch (Exception e) {
             // A scenario tool records plain values; anything else is a defect, not a chat.
             throw new IllegalStateException("Chat outcome could not be serialised", e);

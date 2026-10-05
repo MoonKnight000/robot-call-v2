@@ -2,7 +2,12 @@ package uz.murodjon.robotcallv2.agent.alerting;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.RtpMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TtsMetrics;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -19,7 +24,9 @@ class AlertingServiceTest {
     private CallAttemptUseCase callAttemptUseCase;
     private NotificationUseCase notificationService;
     private CompanyProperties companyProperties;
-    private VoiceMetrics voiceMetrics;
+    private SttMetrics sttMetrics;
+    private RealtimeMetrics realtimeMetrics;
+    private RtpMetrics rtpMetrics;
     private AlertingProperties alertingProperties;
     private AlertingService alertingService;
 
@@ -29,7 +36,9 @@ class AlertingServiceTest {
         notificationService = mock(NotificationUseCase.class);
         companyProperties = new CompanyProperties();
         companyProperties.setDefaultId(1L);
-        voiceMetrics = mock(VoiceMetrics.class);
+        sttMetrics = mock(SttMetrics.class);
+        realtimeMetrics = mock(RealtimeMetrics.class);
+        rtpMetrics = mock(RtpMetrics.class);
 
         alertingProperties = new AlertingProperties(
                 true, // enabled
@@ -44,14 +53,13 @@ class AlertingServiceTest {
                 3.5   // minMeanMos
         );
 
-        alertingService = new AlertingService(
-                callAttemptUseCase,
-                notificationService,
-                companyProperties,
-                voiceMetrics,
-                alertingProperties,
-                AlertingServiceTest::runHere
-        );
+        alertingService = createAlertingService(alertingProperties);
+    }
+
+    private AlertingService createAlertingService(AlertingProperties properties) {
+        return new AlertingService(callAttemptUseCase, notificationService, companyProperties,
+                mock(DialogMetrics.class), mock(LlmMetrics.class), sttMetrics, mock(TtsMetrics.class),
+                realtimeMetrics, rtpMetrics, properties, AlertingServiceTest::runHere);
     }
 
     private static boolean runHere(String jobName, Runnable job) {
@@ -63,9 +71,7 @@ class AlertingServiceTest {
     void checkSuccessRateDoesNothingWhenDisabled() {
         AlertingProperties disabledProperties = new AlertingProperties(
                 false, 30, 20, 0.3, 5, 1000, 30, 0.4, 5, 3.5);
-        AlertingService disabledService = new AlertingService(
-                callAttemptUseCase, notificationService, companyProperties, voiceMetrics, disabledProperties,
-                AlertingServiceTest::runHere);
+        AlertingService disabledService = createAlertingService(disabledProperties);
 
         disabledService.checkSuccessRate();
 
@@ -125,12 +131,11 @@ class AlertingServiceTest {
 
     @Test
     void providerHealthAlertsOnABurstOfFailovers() {
-        when(voiceMetrics.mosTotals()).thenReturn(new double[]{0, 0});
-        when(voiceMetrics.counterTotal(anyString())).thenReturn(0.0);
+        when(rtpMetrics.mosTotals()).thenReturn(new double[]{0, 0});
         alertingService.checkProviderHealth(); // baseline
 
-        when(voiceMetrics.counterTotal("voice.stt.failover")).thenReturn(4.0);
-        when(voiceMetrics.counterTotal("voice.realtime.fallbacks")).thenReturn(3.0);
+        when(sttMetrics.countFailovers()).thenReturn(4.0);
+        when(realtimeMetrics.countFallbacks()).thenReturn(3.0);
         alertingService.checkProviderHealth();
 
         verify(notificationService).notify(eq(1L), eq(NotificationType.ERROR_OCCURRED), anyString(), anyString(), isNull());
@@ -138,11 +143,10 @@ class AlertingServiceTest {
 
     @Test
     void providerHealthAlertsOnPoorAudio() {
-        when(voiceMetrics.counterTotal(anyString())).thenReturn(0.0);
-        when(voiceMetrics.mosTotals()).thenReturn(new double[]{0, 0});
+        when(rtpMetrics.mosTotals()).thenReturn(new double[]{0, 0});
         alertingService.checkProviderHealth(); // baseline
 
-        when(voiceMetrics.mosTotals()).thenReturn(new double[]{40, 40 * 3.1});
+        when(rtpMetrics.mosTotals()).thenReturn(new double[]{40, 40 * 3.1});
         alertingService.checkProviderHealth();
 
         verify(notificationService).notify(eq(1L), eq(NotificationType.ERROR_OCCURRED), anyString(), anyString(), isNull());

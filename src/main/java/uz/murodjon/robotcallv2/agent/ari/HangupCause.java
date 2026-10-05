@@ -41,7 +41,7 @@ public final class HangupCause {
         return switch (cause) {
             // 1 unallocated number, 22 number changed, 3 no route to destination:
             // the number itself is wrong, so retrying it is pointless (and WRONG_NUMBER
-            // is terminal — see CampaignService.isTerminal).
+            // is terminal — see CampaignOutcomeService.isTerminal).
             case 1, 3, 22 -> Disposition.WRONG_NUMBER;
             // 17 user busy, 19 no answer, 20 subscriber absent: the subscriber may well
             // answer later, so these are retried.

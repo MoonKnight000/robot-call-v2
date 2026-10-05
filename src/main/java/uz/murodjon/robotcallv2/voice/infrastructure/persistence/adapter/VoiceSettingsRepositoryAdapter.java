@@ -1,12 +1,11 @@
 package uz.murodjon.robotcallv2.voice.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.voice.infrastructure.persistence.mapper.VoiceSettingsEntityMapper;
 import uz.murodjon.robotcallv2.voice.application.port.output.VoiceSettingsRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.VoiceSettings;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.VoiceSettingsEntity;
+import uz.murodjon.robotcallv2.voice.infrastructure.persistence.mapper.VoiceSettingsEntityMapper;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.repository.VoiceSettingsJpaRepository;
 
 import java.time.Instant;

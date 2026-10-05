@@ -4,12 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.agent.rtp.RtpProperties;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
-import uz.murodjon.robotcallv2.chat.application.port.input.ChatUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallRetentionUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
+import uz.murodjon.robotcallv2.chat.application.port.input.ChatUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort;

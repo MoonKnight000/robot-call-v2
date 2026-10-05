@@ -26,12 +26,13 @@ public class TelegramNotificationSenderAdapter implements NotificationSenderPort
     private static final Logger log = LoggerFactory.getLogger(TelegramNotificationSenderAdapter.class);
 
     private final NotificationProperties notificationProperties;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
-    public TelegramNotificationSenderAdapter(NotificationProperties notificationProperties) {
+    public TelegramNotificationSenderAdapter(NotificationProperties notificationProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.notificationProperties = notificationProperties;
     }
 
@@ -48,14 +49,14 @@ public class TelegramNotificationSenderAdapter implements NotificationSenderPort
             return;
         }
         try {
-            ObjectNode body = mapper.createObjectNode();
+            ObjectNode body = objectMapper.createObjectNode();
             body.put("chat_id", chatId);
             body.put("text", title + (message != null ? "\n" + message : ""));
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.telegram.org/bot" + notificationProperties.telegramBotToken() + "/sendMessage"))
                     .timeout(Duration.ofSeconds(5))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
             HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {

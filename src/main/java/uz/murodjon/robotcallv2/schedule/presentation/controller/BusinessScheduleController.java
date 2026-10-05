@@ -26,53 +26,70 @@ public interface BusinessScheduleController {
 
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @PostMapping("/schedules")
-    ResponseEntity<ResponseData<BusinessSchedule>> create(@CurrentCompanyId long companyId,
-                                                          @Valid @RequestBody SaveBusinessScheduleRequest request);
+    ResponseEntity<ResponseData<BusinessSchedule>> create(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody SaveBusinessScheduleRequest request);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_READ')")
     @PostMapping("/schedules/list")
-    ResponseEntity<ResponseData<PageableData<BusinessSchedule>>> list(@CurrentCompanyId long companyId,
-                                                                      @Valid @RequestBody BusinessScheduleFilter filter);
+    ResponseEntity<ResponseData<PageableData<BusinessSchedule>>> list(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody BusinessScheduleFilter filter);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_READ')")
     @GetMapping("/schedules/{id}")
-    ResponseEntity<ResponseData<BusinessSchedule>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<BusinessSchedule>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @PutMapping("/schedules/{id}")
-    ResponseEntity<ResponseData<BusinessSchedule>> update(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                          @Valid @RequestBody SaveBusinessScheduleRequest request);
+    ResponseEntity<ResponseData<BusinessSchedule>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody SaveBusinessScheduleRequest request);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @DeleteMapping("/schedules/{id}")
-    ResponseEntity<ResponseData<Void>> delete(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_READ')")
     @GetMapping("/schedules/{id}/status")
-    ResponseEntity<ResponseData<ScheduleStatusResponse>> status(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<ScheduleStatusResponse>> status(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @PostMapping("/holidays")
-    ResponseEntity<ResponseData<Holiday>> createHoliday(@CurrentCompanyId long companyId,
-                                                        @Valid @RequestBody SaveHolidayRequest request);
+    ResponseEntity<ResponseData<Holiday>> createHoliday(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody SaveHolidayRequest request);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_READ')")
     @PostMapping("/holidays/list")
-    ResponseEntity<ResponseData<PageableData<Holiday>>> listHolidays(@CurrentCompanyId long companyId,
-                                                                     @Valid @RequestBody HolidayFilter filter);
+    ResponseEntity<ResponseData<PageableData<Holiday>>> listHolidays(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody HolidayFilter filter);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @PutMapping("/holidays/{id}")
-    ResponseEntity<ResponseData<Holiday>> updateHoliday(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                        @Valid @RequestBody SaveHolidayRequest request);
+    ResponseEntity<ResponseData<Holiday>> updateHoliday(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody SaveHolidayRequest request);
 
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @DeleteMapping("/holidays/{id}")
-    ResponseEntity<ResponseData<Void>> deleteHoliday(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> deleteHoliday(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     /** Adds the year's fixed-date public holidays (Navro'z, Mustaqillik kuni, ...) not yet on the calendar. */
     @PreAuthorize("hasAuthority('CALL_FLOW_EDIT')")
     @PostMapping("/holidays/fixed")
-    ResponseEntity<ResponseData<List<Holiday>>> createFixedHolidays(@CurrentCompanyId long companyId,
-                                                                    @RequestParam int year);
+    ResponseEntity<ResponseData<List<Holiday>>> createFixedHolidays(
+            @CurrentCompanyId long companyId,
+            @RequestParam int year);
 }

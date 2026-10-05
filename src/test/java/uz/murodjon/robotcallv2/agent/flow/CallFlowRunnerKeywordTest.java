@@ -18,18 +18,18 @@ class CallFlowRunnerKeywordTest {
     /** Matching is by substring, so a Russian keyword is written as its stem to catch every case ending. */
     @Test
     void aSpokenKeywordPicksItsOption() {
-        assertThat(CallFlowRunner.matchKeyword(MENU, "Menga kvartira kerak edi")).isEqualTo("1");
-        assertThat(CallFlowRunner.matchKeyword(MENU, "Хочу узнать про оплату")).isEqualTo("2");
+        assertThat(MenuInput.matchKeyword(MENU, "Menga kvartira kerak edi")).isEqualTo("1");
+        assertThat(MenuInput.matchKeyword(MENU, "Хочу узнать про оплату")).isEqualTo("2");
     }
 
     @Test
     void everyWayOfTypingTheApostropheIsOne() {
-        assertThat(CallFlowRunner.matchKeyword(MENU, "to‘lov qilmoqchiman")).isEqualTo("2");
-        assertThat(CallFlowRunner.matchKeyword(MENU, "TOʻLOV haqida")).isEqualTo("2");
+        assertThat(MenuInput.matchKeyword(MENU, "to‘lov qilmoqchiman")).isEqualTo("2");
+        assertThat(MenuInput.matchKeyword(MENU, "TOʻLOV haqida")).isEqualTo("2");
     }
 
     @Test
     void nothingMatchesNothing() {
-        assertThat(CallFlowRunner.matchKeyword(MENU, "salom")).isNull();
+        assertThat(MenuInput.matchKeyword(MENU, "salom")).isNull();
     }
 }

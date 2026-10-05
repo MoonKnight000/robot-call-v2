@@ -34,7 +34,7 @@ import java.util.*;
 public class OpenAiTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiTtsProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     /**
      * Voices the speech endpoint accepts. Checked rather than passed through: an unknown
@@ -54,7 +54,8 @@ public class OpenAiTtsProvider implements TtsProvider {
     private final TtsProperties ttsProperties;
     private volatile HttpClient client;
 
-    public OpenAiTtsProvider(TtsProperties ttsProperties) {
+    public OpenAiTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.ttsProperties = ttsProperties;
     }
 
@@ -153,7 +154,7 @@ public class OpenAiTtsProvider implements TtsProvider {
      * boundary. A read can also stop halfway through a 16-bit sample, so an odd trailing
      * byte is carried into the next read rather than being decoded as a sample of its own.
      */
-    private static void streamPcm(InputStream body, int sourceRate, PcmChunkListener onChunk) throws Exception {
+    private void streamPcm(InputStream body, int sourceRate, PcmChunkListener onChunk) throws Exception {
         StreamingDownsampler downsampler = sourceRate == 16000
                 ? StreamingDownsampler.from16kTo8k()
                 : StreamingDownsampler.from24kTo8k();
@@ -196,8 +197,8 @@ public class OpenAiTtsProvider implements TtsProvider {
         }
     }
 
-    private static String requestBody(String text, String voice, OpenAiTtsProperties settings) {
-        ObjectNode root = MAPPER.createObjectNode();
+    private String requestBody(String text, String voice, OpenAiTtsProperties settings) {
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("model", settings.model());
         root.put("input", text);
         root.put("voice", voice);

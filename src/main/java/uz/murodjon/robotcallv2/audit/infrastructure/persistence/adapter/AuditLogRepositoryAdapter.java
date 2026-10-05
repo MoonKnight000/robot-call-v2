@@ -3,12 +3,11 @@ package uz.murodjon.robotcallv2.audit.infrastructure.persistence.adapter;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.audit.infrastructure.persistence.mapper.AuditLogEntityMapper;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.audit.infrastructure.persistence.entity.AuditLogEntity;
+import uz.murodjon.robotcallv2.audit.infrastructure.persistence.mapper.AuditLogEntityMapper;
 import uz.murodjon.robotcallv2.audit.infrastructure.persistence.repository.AuditLogJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;

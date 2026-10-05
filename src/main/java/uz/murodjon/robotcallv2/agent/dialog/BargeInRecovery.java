@@ -7,7 +7,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 
 import java.util.List;
 
@@ -23,11 +23,11 @@ class BargeInRecovery {
 
     private final DialogProperties dialogProperties;
     private final DialogExecutors executors;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
     private final SpeechOutput speech;
     private final DialogTranscript transcript;
 
-    BargeInRecovery(DialogProperties dialogProperties, DialogExecutors executors, VoiceMetrics metrics,
+    BargeInRecovery(DialogProperties dialogProperties, DialogExecutors executors, DialogMetrics metrics,
                     SpeechOutput speech, DialogTranscript transcript) {
         this.dialogProperties = dialogProperties;
         this.executors = executors;

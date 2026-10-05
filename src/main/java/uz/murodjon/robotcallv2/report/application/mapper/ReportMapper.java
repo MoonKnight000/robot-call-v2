@@ -1,16 +1,8 @@
 package uz.murodjon.robotcallv2.report.application.mapper;
 
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
-import uz.murodjon.robotcallv2.report.application.dto.CallRow;
-import uz.murodjon.robotcallv2.report.application.dto.CampaignComparisonRow;
-import uz.murodjon.robotcallv2.report.application.dto.OperatorReportRow;
-import uz.murodjon.robotcallv2.report.application.dto.QueueReportRow;
-import uz.murodjon.robotcallv2.report.domain.entity.CallReport;
-import uz.murodjon.robotcallv2.report.domain.entity.CampaignComparison;
-import uz.murodjon.robotcallv2.report.domain.entity.OperatorPerformance;
-import uz.murodjon.robotcallv2.report.domain.entity.QueuePerformance;
-import uz.murodjon.robotcallv2.report.domain.entity.ReportedCall;
+import uz.murodjon.robotcallv2.report.application.dto.*;
+import uz.murodjon.robotcallv2.report.domain.entity.*;
 
 /** Domain → DTO for the report endpoints. */
 @Component

@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.callrecord.application.service;
 
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,13 +8,10 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.rtp.RtpQuality;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepository;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTechnicalRepository;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
-import uz.murodjon.robotcallv2.callrecord.application.port.output.OutboxMessageRepository;
+import uz.murodjon.robotcallv2.callrecord.application.port.output.*;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.*;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -42,7 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CallRecordService.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final CallAttemptRepository callAttemptRepository;
     private final CallTranscriptRepository callTranscriptRepository;
@@ -60,7 +55,9 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
                              CallResultRepository callResultRepository,
                              CallTechnicalRepository callTechnicalRepository,
                              CompanyProperties companyProperties,
-                             OutboxMessageRepository outboxMessageRepository) {
+                             OutboxMessageRepository outboxMessageRepository,
+                             ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.callAttemptRepository = callAttemptRepository;
         this.callTranscriptRepository = callTranscriptRepository;
         this.callResultRepository = callResultRepository;
@@ -436,7 +433,7 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         }
     }
 
-    private static void guarded(long callId, String what, Runnable write) {
+    private void guarded(long callId, String what, Runnable write) {
         if (callId == 0) {
             return;
         }
@@ -550,9 +547,9 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         }
     }
 
-    private static String toJson(Map<String, Object> outcome) {
+    private String toJson(Map<String, Object> outcome) {
         try {
-            return JSON.writeValueAsString(outcome);
+            return objectMapper.writeValueAsString(outcome);
         } catch (Exception e) {
             log.warn("Could not serialize call outcome: {}", e.getMessage());
             return "{}";

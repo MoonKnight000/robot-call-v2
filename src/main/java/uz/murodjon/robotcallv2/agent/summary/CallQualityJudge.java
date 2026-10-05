@@ -14,7 +14,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
@@ -73,7 +73,7 @@ public class CallQualityJudge {
             """;
 
     private final ObjectProvider<ChatModel> chatModelProvider;
-    private final VoiceMetrics metrics;
+    private final CallMetrics metrics;
     private final boolean enabled;
     private final double sampleRate;
     private final String model;
@@ -82,7 +82,7 @@ public class CallQualityJudge {
     private volatile ChatClient chatClient;
 
     public CallQualityJudge(ObjectProvider<ChatModel> chatModelProvider,
-                            VoiceMetrics metrics,
+                            CallMetrics metrics,
                             QualityProperties qualityProperties) {
         this.chatModelProvider = chatModelProvider;
         this.metrics = metrics;
@@ -158,7 +158,7 @@ public class CallQualityJudge {
                         .build();
             }
             Map<String, Object> raw = chatClient.prompt()
-                    .options(options)
+                    .options(options.mutate())
                     .system(RUBRIC + rules(scenario))
                     .user("QO'NG'IROQ YAKUNI: " + disposition + "\n\nTRANSKRIPT:\n" + transcript)
                     .call()

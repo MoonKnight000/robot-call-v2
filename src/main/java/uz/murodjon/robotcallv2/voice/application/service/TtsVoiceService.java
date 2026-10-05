@@ -54,7 +54,7 @@ public class TtsVoiceService implements TtsVoiceUseCase {
 
     @Override
     public boolean isSelectable(PipelineMode mode, String id) {
-        TtsVoice voice = ttsVoiceRepository.find(id);
+        TtsVoice voice = ttsVoiceRepository.findActiveById(id);
         return voice != null && spokenBy(mode, voice);
     }
 
@@ -68,11 +68,11 @@ public class TtsVoiceService implements TtsVoiceUseCase {
      * which is what a caller with no agent in hand — the company-wide default — asks for.
      */
     private boolean spokenBy(PipelineMode mode, TtsVoice voice) {
-        if (mode == PipelineMode.REALTIME) {
-            return realtimeProviderRegistry.exists(voice.provider());
-        }
-        if (mode == PipelineMode.CASCADE) {
-            return ttsProviderSelector.exists(voice.provider());
+        if (mode != null) {
+            // HALF_CASCADE thinks on a realtime engine but speaks with our TTS, like CASCADE.
+            return mode.speaksWithTts()
+                    ? ttsProviderSelector.exists(voice.provider())
+                    : realtimeProviderRegistry.exists(voice.provider());
         }
         return realtimeProviderRegistry.exists(voice.provider())
                 || ttsProviderSelector.exists(voice.provider());

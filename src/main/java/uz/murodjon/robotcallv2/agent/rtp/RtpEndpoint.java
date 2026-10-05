@@ -156,6 +156,8 @@ public class RtpEndpoint implements Closeable {
     private volatile ScheduledFuture<?> pacer;
 
     private volatile boolean running = true;
+    /** See {@link #pausePlayback}. */
+    private volatile boolean paused;
     private volatile InetSocketAddress remoteAddress;
     private volatile boolean remoteLatched;
     /** Whether {@link #remoteAddress} is the one Asterisk reported for this leg. */
@@ -378,6 +380,23 @@ public class RtpEndpoint implements Closeable {
         }
     }
 
+    /**
+     * Hold the bot's audio where it is without discarding it: the line carries silence
+     * (and the ambient bed) and nothing queued is consumed, so {@link #resumePlayback}
+     * carries on from the very sample it stopped at. Used while a barge-in is still being
+     * confirmed — a cough should cost the caller a pause, not the rest of the sentence.
+     */
+    public void pausePlayback() {
+        paused = true;
+    }
+
+    public void resumePlayback() {
+        paused = false;
+        if (remoteAddress != null && hasQueuedAudio()) {
+            startPacer();
+        }
+    }
+
     public void flushPlayback() {
         synchronized (playLock) {
             playQueue.clear();
@@ -385,6 +404,7 @@ public class RtpEndpoint implements Closeable {
             currentOffset = 0;
             queuedSamples = playedSamples;
             idleFrames = 0;
+            paused = false;
         }
         if (ambientSound == AmbientSound.OFF && !thinkingActive.get()) {
             stopPacer();
@@ -470,7 +490,9 @@ public class RtpEndpoint implements Closeable {
         int filled = 0;
         boolean first;
         synchronized (playLock) {
-            while (filled < SAMPLES_PER_FRAME) {
+            // Paused: nothing is taken off the queue, and the frame goes out as silence.
+            // Not counted as idle either — the pacer has to be running for the resume.
+            while (!paused && filled < SAMPLES_PER_FRAME) {
                 if (currentChunk == null || currentOffset >= currentChunk.length) {
                     currentChunk = playQueue.pollFirst();
                     currentOffset = 0;
@@ -489,7 +511,9 @@ public class RtpEndpoint implements Closeable {
             }
             playedSamples += filled;
             if (filled == 0) {
-                idleFrames++;
+                if (!paused) {
+                    idleFrames++;
+                }
                 if (idleFrames >= MAX_IDLE_FRAMES && ambientSound == AmbientSound.OFF && !thinkingActive.get()) {
                     stopPacer();
                     return;
@@ -528,7 +552,9 @@ public class RtpEndpoint implements Closeable {
         }
 
         recordOutboundLevel(pcmFrame);
-        recorder.writeBot(pcmFrame, SAMPLES_PER_FRAME);
+        if (recorder != null) {
+            recorder.writeBot(pcmFrame, SAMPLES_PER_FRAME);
+        }
         if (outboundTap != null) {
             outboundTap.onAudio(pcmFrame, SAMPLES_PER_FRAME);
         }
@@ -654,7 +680,7 @@ public class RtpEndpoint implements Closeable {
      * stops the recording for this call and is logged once; the call itself carries on.
      */
     private void recordCaller(short[] pcm, int length) {
-        if (recorderFailed) {
+        if (recorder == null || recorderFailed) {
             return;
         }
         try {
@@ -678,10 +704,12 @@ public class RtpEndpoint implements Closeable {
                 Thread.currentThread().interrupt();
             }
         }
-        try {
-            recorder.close();
-        } catch (Exception e) {
-            log.warn("Failed to finalize recording on port {}: {}", port, e.getMessage());
+        if (recorder != null) {
+            try {
+                recorder.close();
+            } catch (Exception e) {
+                log.warn("Failed to finalize recording on port {}: {}", port, e.getMessage());
+            }
         }
         for (AudioListener listener : listeners) {
             if (listener instanceof Closeable closeable) {

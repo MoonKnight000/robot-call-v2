@@ -5,10 +5,10 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
 import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportedCall;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.search.application.dto.SearchItem;
 import uz.murodjon.robotcallv2.search.application.dto.SearchResult;
 import uz.murodjon.robotcallv2.search.application.port.input.SearchUseCase;
-import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.search.domain.service.SearchValidator;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 

@@ -9,7 +9,6 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,8 +29,13 @@ class SystemPromptFactoryTest {
     private final SystemPromptFactory factory = new SystemPromptFactory();
 
     private static DialogSession session(CallContext context, String language) {
-        return new DialogSession("chan-1", language, null, context, ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, 1L, null, true, "Uysot", null, null, EffectiveVoiceSettings.NONE);
+        return DialogSession.builder("chan-1", language)
+                .context(context)
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(1L)
+                .companyId(1L)
+                .companyName("Uysot")
+                .build();
     }
 
     @Test
@@ -223,6 +227,18 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void showsHowToHandleARepairRequestAWhoIsThisAndAnUnfinishedThought() {
+        // "adashibmiz" on a "kim bu?" and a full re-greeting on "nima dedingiz?" came from
+        // real calls; the pairs put the right reply next to each.
+        String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+
+        assertThat(prompt)
+                .contains("Nima dedingiz?")
+                .contains("\"Uzr, adashibmiz.\"")
+                .contains("waitForCaller chaqiring va gapini tugatishini kuting");
+    }
+
+    @Test
     void tellsTheModelNotToRestateFactsItHasAlreadySpoken() {
         // Asked "allo", the bot re-delivered the whole debt notice. The stage purpose is
         // re-sent every turn and reads as an order to state it again, so the counter-rule
@@ -273,9 +289,13 @@ class SystemPromptFactoryTest {
                 "Siz so'rovnoma o'tkazadigan agentisiz.",
                 java.util.List.of("Savollarni neytral tarzda bering"),
                 "disclosure");
-        DialogSession s = new DialogSession("chan-2", "uz-UZ", null,
-                new CallContext(Map.of("topicName", "xizmat sifati"), null), survey, null, null, null, 1L, 1L, null, true,
-                "Uysot", null, null, EffectiveVoiceSettings.NONE);
+        DialogSession s = DialogSession.builder("chan-2", "uz-UZ")
+                .context(new CallContext(Map.of("topicName", "xizmat sifati"), null))
+                .scenario(survey)
+                .callAttemptId(1L)
+                .companyId(1L)
+                .companyName("Uysot")
+                .build();
 
         String prompt = factory.stablePrefix(s);
 
@@ -298,11 +318,16 @@ class SystemPromptFactoryTest {
 
     @Test
     void humanLikePersonaConfiguresNameAndProhibitsRobotIdentity() {
-        DialogSession session = new DialogSession(
-                "chan-1", "uz", "dilnavoz", ScenarioFixtures.fullContext(), ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, 1L, null, false, "Uysot", null, null,
-                EffectiveVoiceSettings.NONE, true, AgentPersona.HUMAN_LIKE, Map.of()
-        );
+        DialogSession session = DialogSession.builder("chan-1", "uz")
+                .ttsVoice("dilnavoz")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(1L)
+                .companyId(1L)
+                .disclosureEnabled(false)
+                .companyName("Uysot")
+                .agentPersona(AgentPersona.HUMAN_LIKE)
+                .build();
 
         String prompt = factory.stablePrefix(session);
 
@@ -323,11 +348,16 @@ class SystemPromptFactoryTest {
 
     @Test
     void aiAssistantPersonaConfiguresRobotDisclosureAndFallback() {
-        DialogSession session = new DialogSession(
-                "chan-1", "uz", "dilnavoz", ScenarioFixtures.fullContext(), ScenarioFixtures.debtCollection(),
-                null, null, null, 1L, 1L, null, true, "Uysot", null, null,
-                EffectiveVoiceSettings.NONE, true, AgentPersona.AI_ASSISTANT, Map.of()
-        );
+        DialogSession session = DialogSession.builder("chan-1", "uz")
+                .ttsVoice("dilnavoz")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(1L)
+                .companyId(1L)
+                .disclosureEnabled(true)
+                .companyName("Uysot")
+                .agentPersona(AgentPersona.AI_ASSISTANT)
+                .build();
 
         String prompt = factory.stablePrefix(session);
         assertThat(prompt).contains("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT)");

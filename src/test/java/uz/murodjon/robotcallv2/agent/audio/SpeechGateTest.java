@@ -515,4 +515,18 @@ class SpeechGateTest {
 
         assertThat(gate.isOpen()).isFalse();
     }
+
+    @Test
+    void aShortButUnfinishedStartWaitsLikeASentenceStillInProgress() {
+        // "Men…" — short, but the caller is still finding the words. The 300ms short wait
+        // would hand half a sentence to the model and leave the rest to land over the reply.
+        SpeechGate gate = adaptiveGate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 300);
+        gate.onInterimTranscript("men");
+        feed(gate, false, 900);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
 }

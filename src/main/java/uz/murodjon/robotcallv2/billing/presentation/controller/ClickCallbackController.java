@@ -4,7 +4,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-
 import uz.murodjon.robotcallv2.billing.application.dto.ClickResponse;
 
 import java.util.Map;
@@ -28,12 +27,14 @@ public interface ClickCallbackController {
 
     /** Prepare (action 0): may this top-up be paid? Opens a transaction and answers its {@code merchant_prepare_id}. */
     @PostMapping("/prepare")
-    ResponseEntity<ClickResponse> prepare(@RequestParam Map<String, String> form);
+    ResponseEntity<ClickResponse> prepare(
+            @RequestParam Map<String, String> form);
 
     /**
      * Complete (action 1): the payment went through and the balance is credited — or, with
      * {@code error < 0}, it did not and the transaction and top-up are cancelled.
      */
     @PostMapping("/complete")
-    ResponseEntity<ClickResponse> complete(@RequestParam Map<String, String> form);
+    ResponseEntity<ClickResponse> complete(
+            @RequestParam Map<String, String> form);
 }

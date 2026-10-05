@@ -2,10 +2,10 @@ package uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.mapper.AgentEvaluationEntityMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentTestCaseRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AgentTestCaseEntity;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.mapper.AgentEvaluationEntityMapper;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AgentTestCaseJpaRepository;
 
 import java.time.Instant;

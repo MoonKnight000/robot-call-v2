@@ -2,16 +2,15 @@ package uz.murodjon.robotcallv2.tool.application.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
-import java.util.Map;
-
-import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
 import java.util.List;
+import java.util.Map;
 
 public record UpdateToolRequest(
         @Size(max = 100, message = "name must be at most 100 characters")

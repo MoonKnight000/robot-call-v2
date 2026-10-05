@@ -2,7 +2,6 @@ package uz.murodjon.robotcallv2.role.application.service;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.role.application.dto.CreateRoleRequest;
@@ -18,10 +17,10 @@ import uz.murodjon.robotcallv2.role.domain.enums.PermissionScope;
 import uz.murodjon.robotcallv2.role.domain.enums.SystemRole;
 import uz.murodjon.robotcallv2.role.domain.event.RoleChangedEvent;
 import uz.murodjon.robotcallv2.role.domain.service.RoleValidator;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 
 import java.util.ArrayList;
 import java.util.Arrays;

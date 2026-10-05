@@ -43,7 +43,7 @@ import java.util.Optional;
 public class ConversionService implements ConversionUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(ConversionService.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final ConversionGoalRepository goalRepository;
     private final ConversionRepository conversionRepository;
@@ -51,7 +51,9 @@ public class ConversionService implements ConversionUseCase {
 
     public ConversionService(ConversionGoalRepository goalRepository,
                              ConversionRepository conversionRepository,
-                             CallAttemptUseCase callAttemptUseCase) {
+                             CallAttemptUseCase callAttemptUseCase,
+                             ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.goalRepository = goalRepository;
         this.conversionRepository = conversionRepository;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -171,12 +173,12 @@ public class ConversionService implements ConversionUseCase {
                         duplicate, null, null, null));
     }
 
-    private static String toJson(Map<String, Object> evidence) {
+    private String toJson(Map<String, Object> evidence) {
         if (evidence == null || evidence.isEmpty()) {
             return null;
         }
         try {
-            return MAPPER.writeValueAsString(evidence);
+            return objectMapper.writeValueAsString(evidence);
         } catch (JsonProcessingException e) {
             // Evidence is what somebody kept for a later argument, not something the
             // attribution needs; losing it must not cost the conversion.

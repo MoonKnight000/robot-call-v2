@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.dialer.domain.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 
@@ -9,6 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** NEXT-PLAN A.8: per-call {@code agentOverrides} in a target's context data. */
 class CallContextAgentOverridesTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final String JSON = """
             {"goal": "Qarzni eslatish",
@@ -20,7 +23,7 @@ class CallContextAgentOverridesTest {
 
     @Test
     void variablesBecomeFactsAndPromptIsAppendedToGoal() {
-        CallContext context = CallContextFactory.readContextData(JSON, null, List.of());
+        CallContext context = CallContextFactory.readContextData(OBJECT_MAPPER, JSON, null, List.of());
 
         assertThat(context.fact("orderNumber")).isEqualTo("ORD-9981");
         assertThat(context.fact("orderAmount")).isEqualTo("450000");
@@ -29,14 +32,14 @@ class CallContextAgentOverridesTest {
 
     @Test
     void firstMessageOverrideIsReadOnlyFromOverrides() {
-        assertThat(CallContextFactory.readFirstMessageOverride(JSON)).isEqualTo("Assalomu alaykum, Sardor aka!");
-        assertThat(CallContextFactory.readFirstMessageOverride("{\"goal\": \"x\"}")).isNull();
-        assertThat(CallContextFactory.readFirstMessageOverride(null)).isNull();
+        assertThat(CallContextFactory.readFirstMessageOverride(OBJECT_MAPPER, JSON)).isEqualTo("Assalomu alaykum, Sardor aka!");
+        assertThat(CallContextFactory.readFirstMessageOverride(OBJECT_MAPPER, "{\"goal\": \"x\"}")).isNull();
+        assertThat(CallContextFactory.readFirstMessageOverride(OBJECT_MAPPER, null)).isNull();
     }
 
     @Test
     void contextWithoutOverridesIsUnchanged() {
-        CallContext context = CallContextFactory.readContextData("{\"goal\": \"Qarzni eslatish\"}", null, List.of());
+        CallContext context = CallContextFactory.readContextData(OBJECT_MAPPER, "{\"goal\": \"Qarzni eslatish\"}", null, List.of());
 
         assertThat(context.facts()).isEmpty();
         assertThat(context.goal()).isEqualTo("Qarzni eslatish");

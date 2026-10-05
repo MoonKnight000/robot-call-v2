@@ -103,7 +103,7 @@ public class SpringAiInsightClustererAdapter implements InsightClustererPort {
         }
         try {
             Map<String, Object> answer = ChatClient.create(chatModel).prompt()
-                    .options(options())
+                    .options(options().mutate())
                     .system(INSTRUCTIONS)
                     .user(describe(agentName, language, signals))
                     .call()

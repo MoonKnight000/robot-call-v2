@@ -37,7 +37,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ToolOAuthTokens {
 
     private static final Logger log = LoggerFactory.getLogger(ToolOAuthTokens.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Renewed this long before it runs out, so a token is never sent in its last seconds. */
     private static final Duration EXPIRY_MARGIN = Duration.ofSeconds(60);
@@ -47,7 +46,12 @@ public class ToolOAuthTokens {
     private static final int MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
 
     private final PublicHttpClient httpClient = PublicHttpClient.create(Duration.ofSeconds(5), TOKEN_TIMEOUT);
+    private final ObjectMapper objectMapper;
     private final Map<String, CachedToken> tokens = new ConcurrentHashMap<>();
+
+    public ToolOAuthTokens(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     /** A token that is still good for a while, fetched from the token endpoint when there is none. */
     public String findAccessToken(long companyId, ToolAuth auth, Map<String, String> secrets)
@@ -102,7 +106,7 @@ public class ToolOAuthTokens {
             throw new ExternalServiceException(ErrorCode.TOOL_AUTH_TOKEN_FAILED, "oauth2", uri.getHost(),
                     "HTTP " + response.statusCode());
         }
-        JsonNode answer = MAPPER.readTree(response.readBodyText());
+        JsonNode answer = objectMapper.readTree(response.readBodyText());
         String token = answer.path("access_token").asText(null);
         if (token == null || token.isBlank()) {
             throw new ExternalServiceException(ErrorCode.TOOL_AUTH_TOKEN_FAILED, "oauth2", uri.getHost(),

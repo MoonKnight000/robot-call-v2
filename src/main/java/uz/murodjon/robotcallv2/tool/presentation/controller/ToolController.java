@@ -7,14 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
-import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsResponse;
-import uz.murodjon.robotcallv2.tool.application.dto.OpenApiOperationRow;
-import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
-import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
-import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
-import uz.murodjon.robotcallv2.tool.application.dto.UpdateToolRequest;
+import uz.murodjon.robotcallv2.tool.application.dto.*;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 
 import java.util.List;

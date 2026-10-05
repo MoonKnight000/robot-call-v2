@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HttpToolExecutorBodyTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private final ToolSchemas toolSchemas = new ToolSchemas(JSON);
+    private final ToolRequestTemplates toolRequestTemplates = new ToolRequestTemplates(JSON);
 
     /** An order: lines and a street the model fills; a channel, the phone and a token it does not. */
     private static final Map<String, Object> ORDER_SCHEMA = Map.of(
@@ -37,7 +39,7 @@ class HttpToolExecutorBodyTest {
 
     @Test
     void theModelIsAskedOnlyForTheFieldsItFills() {
-        JsonNode schema = HttpToolExecutor.schemaForModel(JSON.valueToTree(ORDER_SCHEMA));
+        JsonNode schema = toolSchemas.schemaForModel(JSON.valueToTree(ORDER_SCHEMA));
 
         assertThat(schema.path("properties").has("items")).isTrue();
         assertThat(schema.path("properties").has("phone")).isFalse();
@@ -58,7 +60,7 @@ class HttpToolExecutorBodyTest {
                 "address", Map.of("street", "Chilonzor 5"),
                 "invented", "not in the schema");
 
-        String body = HttpToolExecutor.bodyFromSchema(ORDER_SCHEMA, Map.of("phone", "+998901234567"), args,
+        String body = toolRequestTemplates.buildSchemaBody(ORDER_SCHEMA, Map.of("phone", "+998901234567"), args,
                 Map.of("SHOP_TOKEN", "t0k3n"));
 
         assertThat(JSON.readTree(body)).isEqualTo(JSON.readTree("""
@@ -74,7 +76,7 @@ class HttpToolExecutorBodyTest {
     void aConfiguredFieldIgnoresWhatTheModelSent() throws Exception {
         Map<String, Object> args = Map.of("items", List.of(), "token", "{{secrets.OTHER}}", "phone", "+000");
 
-        JsonNode body = JSON.readTree(HttpToolExecutor.bodyFromSchema(ORDER_SCHEMA,
+        JsonNode body = JSON.readTree(toolRequestTemplates.buildSchemaBody(ORDER_SCHEMA,
                 Map.of("phone", "+998901234567"), args, Map.of("SHOP_TOKEN", "t0k3n", "OTHER", "leak")));
 
         assertThat(body.path("token").asText()).isEqualTo("t0k3n");
@@ -83,7 +85,7 @@ class HttpToolExecutorBodyTest {
 
     @Test
     void aValueTheCallDoesNotHaveIsLeftOut() throws Exception {
-        JsonNode body = JSON.readTree(HttpToolExecutor.bodyFromSchema(ORDER_SCHEMA, Map.of(),
+        JsonNode body = JSON.readTree(toolRequestTemplates.buildSchemaBody(ORDER_SCHEMA, Map.of(),
                 Map.of("items", List.of()), Map.of()));
 
         assertThat(body.has("phone")).isFalse();

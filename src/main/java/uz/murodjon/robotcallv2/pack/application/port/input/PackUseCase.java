@@ -1,10 +1,6 @@
 package uz.murodjon.robotcallv2.pack.application.port.input;
 
-import uz.murodjon.robotcallv2.pack.application.dto.GeneratePackRequest;
-import uz.murodjon.robotcallv2.pack.application.dto.InstallDraftRequest;
-import uz.murodjon.robotcallv2.pack.application.dto.InstallPackRequest;
-import uz.murodjon.robotcallv2.pack.application.dto.PackInstallResponse;
-import uz.murodjon.robotcallv2.pack.application.dto.PackRow;
+import uz.murodjon.robotcallv2.pack.application.dto.*;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 
 import java.util.List;

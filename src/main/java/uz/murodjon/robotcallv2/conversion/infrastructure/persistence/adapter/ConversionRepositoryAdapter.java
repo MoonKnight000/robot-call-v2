@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.conversion.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
@@ -15,7 +14,6 @@ import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionAttribution;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionEvent;
 import uz.murodjon.robotcallv2.conversion.domain.entity.VariantConversions;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.entity.ConversionAttributionEntity;
-import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.entity.ConversionEventEntity;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionAttributionEntityMapper;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.ConversionEventEntityMapper;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.repository.ConversionAttributionJpaRepository;

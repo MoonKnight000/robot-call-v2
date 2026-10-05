@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.audio.Resampler;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavReader;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -28,7 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Aisha realtime text-to-speech over its WebSocket API (PROJECT.md §2.5). A line is sent
@@ -54,7 +55,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class AishaTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AishaTtsProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     /** Rate of the WAV Aisha returns; anything else means the API changed under us. */
@@ -62,17 +63,11 @@ public class AishaTtsProvider implements TtsProvider {
 
     private final TtsProperties ttsProperties;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+    private final BlockingQueue<AishaConnection> idlePool = new LinkedBlockingQueue<>();
+    private final AtomicInteger connectionCount = new AtomicInteger(0);
 
-    /** Lines waiting for their audio, by {@code request_id}. */
-    private final Map<String, CompletableFuture<byte[]>> pending = new ConcurrentHashMap<>();
-
-    private volatile WebSocket webSocket;
-    /** Guards opening the socket — a lock, not a monitor, so a caller waiting on it doesn't pin a virtual thread. */
-    private final ReentrantLock connectLock = new ReentrantLock();
-    private final Object sendChainLock = new Object();
-    private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
-
-    public AishaTtsProvider(TtsProperties ttsProperties) {
+    public AishaTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.ttsProperties = ttsProperties;
     }
 
@@ -84,12 +79,14 @@ public class AishaTtsProvider implements TtsProvider {
             return;
         }
         try {
-            // Connect at startup so the first call of a deploy does not pay the handshake.
-            connect();
-            log.info("Aisha TTS ready (url={}, speaker='{}')", aisha.url(), aisha.speaker());
+            // Warm up one connection in the pool at startup so the first call does not pay the handshake.
+            AishaConnection conn = borrowConnection();
+            returnToPool(conn);
+            log.info("Aisha TTS pool ready (url={}, speaker='{}', maxPoolSize={})",
+                    aisha.url(), aisha.speaker(), aisha.poolSize());
         } catch (RuntimeException e) {
-            // Not fatal: the first synthesis reconnects. Failing startup here would take
-            // the whole dialer down for a provider outage.
+            // Not fatal: subsequent synthesis attempts will connect. Failing startup here
+            // would take the whole application down for a provider outage.
             log.warn("Aisha TTS could not connect at startup: {}", e.getMessage());
         }
     }
@@ -116,33 +113,33 @@ public class AishaTtsProvider implements TtsProvider {
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
         AishaTtsProperties aisha = ttsProperties.aisha();
         String requestId = UUID.randomUUID().toString();
-        CompletableFuture<byte[]> audio = new CompletableFuture<>();
-        pending.put(requestId, audio);
+        String requestJson = request(requestId, text, language, voice, style).toString();
+        AishaConnection conn = borrowConnection();
         try {
-            send(request(requestId, text, language, voice, style).toString());
-            byte[] wav = audio.get(aisha.requestTimeoutMs(), TimeUnit.MILLISECONDS);
+            byte[] wav = conn.requestAudio(requestJson, aisha.requestTimeoutMs());
+            returnToPool(conn);
             return toTelephonePcm(wav);
         } catch (ExternalServiceException e) {
-            // Already carries its own code (connect / audio parse) — rewrapping it as a
-            // synthesis failure would hide which half actually broke.
+            discardConnection(conn);
             throw e;
         } catch (InterruptedException e) {
+            discardConnection(conn);
             Thread.currentThread().interrupt();
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "aisha-tts", e, e.getMessage());
         } catch (TimeoutException e) {
+            discardConnection(conn);
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_TIMEOUT, "aisha-tts", e,
                     aisha.requestTimeoutMs());
         } catch (Exception e) {
+            discardConnection(conn);
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_SYNTH_FAILED, "aisha-tts", e, e.getMessage());
-        } finally {
-            pending.remove(requestId);
         }
     }
 
     /** The JSON one line is synthesized from. */
     private ObjectNode request(String requestId, String text, String language, String voice,
                                EffectiveVoiceSettings style) {
-        ObjectNode request = MAPPER.createObjectNode();
+        ObjectNode request = objectMapper.createObjectNode();
         request.put("request_id", requestId);
         request.put("text", text);
         request.put("language", languageTag(language));
@@ -221,178 +218,166 @@ public class AishaTtsProvider implements TtsProvider {
         return Resampler.downsample16kTo8k(audio.samples(), audio.samples().length);
     }
 
-    /**
-     * Write one request to the shared socket. The JDK client forbids a second send before
-     * the previous one completes, so sends are chained; the wait is on the audio coming
-     * back anyway.
-     */
-    private void send(String json) throws Exception {
-        WebSocket current = connect();
-        CompletableFuture<Void> sent;
-        synchronized (sendChainLock) {
-            sendChain = sendChain
-                    .thenCompose(ignored -> current.sendText(json, true))
-                    .thenAccept(ws -> {
-                    });
-            sent = sendChain;
-            // A failed send must not poison every later line, so the chain continues from
-            // a clean future while the failure is reported to this caller.
-            sendChain = sent.exceptionally(e -> null);
+    private AishaConnection borrowConnection() {
+        AishaTtsProperties aisha = ttsProperties.aisha();
+        if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
+            throw new ExternalServiceException(ErrorCode.TTS_AISHA_CLIENT_UNAVAILABLE, "aisha-tts");
         }
-        sent.get(CONNECT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-    }
+        int maxPoolSize = aisha.poolSize();
 
-    /** The shared socket, opened (or reopened after a drop) on demand. */
-    private WebSocket connect() {
-        WebSocket current = webSocket;
-        if (current != null && !current.isOutputClosed() && !current.isInputClosed()) {
-            return current;
+        // 1. Try taking an idle connection
+        AishaConnection conn = idlePool.poll();
+        while (conn != null) {
+            if (conn.isUsable()) {
+                return conn;
+            }
+            conn.close();
+            connectionCount.decrementAndGet();
+            conn = idlePool.poll();
         }
-        connectLock.lock();
+
+        // 2. If room in pool, create a new connection
+        if (connectionCount.get() < maxPoolSize) {
+            return openConnection(aisha);
+        }
+
+        // 3. Otherwise wait for one to be returned
         try {
-            current = webSocket;
-            if (current != null && !current.isOutputClosed() && !current.isInputClosed()) {
-                return current; // another caller reopened it while this one waited
-            }
-            AishaTtsProperties aisha = ttsProperties.aisha();
-            if (aisha == null || aisha.apiKey() == null || aisha.apiKey().isBlank()) {
-                throw new ExternalServiceException(ErrorCode.TTS_AISHA_CLIENT_UNAVAILABLE, "aisha-tts");
-            }
-            URI uri = URI.create(aisha.url() + "?token=" + aisha.apiKey());
-            WebSocket opened = client.newWebSocketBuilder()
-                    .connectTimeout(CONNECT_TIMEOUT)
-                    .buildAsync(uri, new AudioHandler())
-                    .get(CONNECT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-            synchronized (sendChainLock) {
-                sendChain = CompletableFuture.completedFuture(null);
-            }
-            webSocket = opened;
-            return opened;
-        } catch (ExternalServiceException e) {
-            throw e;
+            conn = idlePool.poll(CONNECT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_CONNECT_FAILED, "aisha-tts", e, e.getMessage());
+        }
+        if (conn != null && conn.isUsable()) {
+            return conn;
+        }
+        if (conn != null) {
+            conn.close();
+            connectionCount.decrementAndGet();
+        }
+        return openConnection(aisha);
+    }
+
+    private AishaConnection openConnection(AishaTtsProperties aisha) {
+        connectionCount.incrementAndGet();
+        try {
+            return new AishaConnection(client, URI.create(aisha.url() + "?token=" + aisha.apiKey()));
         } catch (Exception e) {
+            connectionCount.decrementAndGet();
             throw new ExternalServiceException(ErrorCode.TTS_AISHA_CONNECT_FAILED, "aisha-tts", e, e.getMessage());
-        } finally {
-            connectLock.unlock();
         }
     }
 
-    /** Fail everything still waiting — their socket is gone and no audio is coming. */
-    private void abandonPending(String reason) {
-        for (Map.Entry<String, CompletableFuture<byte[]>> entry : pending.entrySet()) {
-            entry.getValue().completeExceptionally(new IllegalStateException(reason));
+    private void returnToPool(AishaConnection conn) {
+        if (conn != null && conn.isUsable()) {
+            idlePool.offer(conn);
+        } else if (conn != null) {
+            discardConnection(conn);
         }
-        pending.clear();
+    }
+
+    private void discardConnection(AishaConnection conn) {
+        if (conn != null) {
+            conn.close();
+            connectionCount.decrementAndGet();
+        }
     }
 
     @PreDestroy
     public void close() {
-        WebSocket current = webSocket;
-        if (current != null) {
-            try {
-                current.sendClose(WebSocket.NORMAL_CLOSURE, "app shutdown").get(1, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                log.debug("Aisha socket close failed: {}", e.getMessage());
-            }
+        AishaConnection conn;
+        while ((conn = idlePool.poll()) != null) {
+            conn.close();
         }
     }
 
     /**
-     * Reads the metadata frame + audio frame pairs off the shared socket and hands each
-     * line's audio to the caller waiting for it.
+     * An isolated WebSocket connection to Aisha TTS. Dedicated to a single line synthesis
+     * while borrowed, avoiding frame interleaving, shared-memory races, and global locks.
      */
-    private final class AudioHandler implements WebSocket.Listener {
+    private final class AishaConnection extends JsonWebSocketListener implements AutoCloseable {
 
-        private final StringBuilder message = new StringBuilder();
-        private final ByteArrayOutputStream audio = new ByteArrayOutputStream();
-        /** The id the metadata frame announced, claimed by the binary frame after it. */
-        private volatile String currentRequestId;
+        private final WebSocket webSocket;
+        private final ByteArrayOutputStream audioBuffer = new ByteArrayOutputStream();
+        private volatile CompletableFuture<byte[]> currentAudioFuture;
+        private volatile boolean closed;
 
-        @Override
-        public CompletionStage<?> onText(WebSocket socket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            socket.request(1);
-            return null;
+        private AishaConnection(HttpClient client, URI uri) throws Exception {
+            this.webSocket = client.newWebSocketBuilder()
+                    .connectTimeout(CONNECT_TIMEOUT)
+                    .buildAsync(uri, this)
+                    .get(CONNECT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
         }
 
-        private void handle(String json) {
+        public byte[] requestAudio(String json, long timeoutMs) throws Exception {
+            CompletableFuture<byte[]> future = new CompletableFuture<>();
+            this.currentAudioFuture = future;
+            webSocket.sendText(json, true).get(CONNECT_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        }
+
+        @Override
+        protected void onMessage(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
-                String requestId = node.path("request_id").asText("");
-                if (!requestId.isBlank()) {
-                    currentRequestId = requestId;
-                }
+                JsonNode node = objectMapper.readTree(json);
                 String type = node.path("type").asText("");
                 if ("error".equals(type) || node.hasNonNull("error")) {
                     String reason = node.path("message").asText(node.path("error").asText("synthesis failed"));
-                    CompletableFuture<byte[]> waiting = claim();
-                    if (waiting != null) {
-                        waiting.completeExceptionally(new IllegalStateException(reason));
+                    CompletableFuture<byte[]> f = currentAudioFuture;
+                    if (f != null) {
+                        f.completeExceptionally(new IllegalStateException(reason));
                     }
-                    log.warn("Aisha TTS error: {}", reason);
                 }
             } catch (Exception e) {
-                log.warn("Aisha TTS sent an unparseable message ({}): {}", e.getMessage(), json);
+                log.warn("Aisha TTS sent unparseable message: {}", e.getMessage());
             }
         }
 
         @Override
-        public CompletionStage<?> onBinary(WebSocket socket, ByteBuffer data, boolean last) {
+        protected void onBinaryFrame(ByteBuffer data, boolean last) {
             byte[] chunk = new byte[data.remaining()];
             data.get(chunk);
-            audio.writeBytes(chunk);
+            audioBuffer.writeBytes(chunk);
             if (last) {
-                byte[] wav = audio.toByteArray();
-                audio.reset();
-                CompletableFuture<byte[]> waiting = claim();
-                if (waiting != null) {
-                    waiting.complete(wav);
-                } else {
-                    log.warn("Aisha TTS delivered {} bytes that match no waiting line — dropped", wav.length);
+                byte[] wav = audioBuffer.toByteArray();
+                audioBuffer.reset();
+                CompletableFuture<byte[]> f = currentAudioFuture;
+                if (f != null) {
+                    f.complete(wav);
                 }
             }
-            socket.request(1);
-            return null;
-        }
-
-        /**
-         * The request this frame belongs to: the id the metadata frame carried, or — if it
-         * carried none — the one line waiting, when exactly one is. With several waiting
-         * the reply could be anyone's; guessing "the oldest" played one caller's line into
-         * another company's call, so the reply is dropped and those lines run into their
-         * timeout (and the TTS fallback) instead.
-         */
-        private CompletableFuture<byte[]> claim() {
-            String requestId = currentRequestId;
-            currentRequestId = null;
-            if (requestId == null) {
-                if (pending.size() != 1) {
-                    return null;
-                }
-                requestId = pending.keySet().iterator().next();
-            }
-            return pending.remove(requestId);
         }
 
         @Override
         public CompletionStage<?> onClose(WebSocket socket, int statusCode, String reason) {
-            log.info("Aisha TTS socket closed: {} ({})", statusCode, reason);
-            abandonPending("socket closed by server: " + reason);
+            closed = true;
+            CompletableFuture<byte[]> f = currentAudioFuture;
+            if (f != null && !f.isDone()) {
+                f.completeExceptionally(new IllegalStateException("Socket closed by server: " + reason));
+            }
             return null;
         }
 
         @Override
         public void onError(WebSocket socket, Throwable error) {
-            log.warn("Aisha TTS socket error: {}", error.getMessage());
-            abandonPending("socket error: " + error.getMessage());
+            closed = true;
+            CompletableFuture<byte[]> f = currentAudioFuture;
+            if (f != null && !f.isDone()) {
+                f.completeExceptionally(error);
+            }
+        }
+
+        public boolean isUsable() {
+            return !closed && !webSocket.isInputClosed() && !webSocket.isOutputClosed();
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            try {
+                webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "pool closed");
+            } catch (Exception ignored) {
+            }
         }
     }
 }

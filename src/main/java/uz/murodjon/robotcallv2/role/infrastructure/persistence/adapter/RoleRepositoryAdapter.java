@@ -1,12 +1,11 @@
 package uz.murodjon.robotcallv2.role.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.role.infrastructure.persistence.mapper.RoleEntityMapper;
 import uz.murodjon.robotcallv2.role.application.port.output.RoleRepository;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
+import uz.murodjon.robotcallv2.role.infrastructure.persistence.mapper.RoleEntityMapper;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 

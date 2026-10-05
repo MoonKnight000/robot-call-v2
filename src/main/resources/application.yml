@@ -2,10 +2,6 @@ spring:
   application:
     name: robot-call-v2
 
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
-
   lifecycle:
     timeout-per-shutdown-phase: 90s
 
@@ -69,9 +65,11 @@ spring:
   #   telephony.yml     — Asterisk/ARI, AMI, SIP trunk, RTP, dialer, operator transfer
   #   speech.yml        — realtime engine, STT, turn detection, TTS, VAD/AMD
   #   dialog.yml        — spring.ai (LLM chat), dialog FSM, post-call summary
-  #   integrations.yml  — storage, CRM, Uysot OAuth, notifications, outbox, report schedule
-  #   misc.yml          — routing, shutdown, QA, simulation, alerting, live SSE, company
-  #   billing.yml       — call rates, balance enforcement, auto-recharge
+  #   integrations.yml  — storage, retention, CRM, Uysot OAuth, notifications, SMS, outbox,
+  #                       report schedule
+  #   misc.yml          — routing, shutdown, QA, chat, pack generator, insight, simulation,
+  #                       alerting, live SSE, campaign recurrence, webhook retry, company
+  #   billing.yml       — call rates, balance enforcement, auto-recharge, Payme/Click
   # Each value is documented on its @ConfigurationProperties class, not here.
   config:
     import:
@@ -107,3 +105,18 @@ logging:
     # ari4java WARNs on its normal path and buries our own lines — see AriClient#open.
     ch.loway.oss.ari4java.tools.BaseAriAction: ${ARI_LOG_LEVEL:ERROR}
     ch.loway.oss.ari4java.generated.AriWSHelper: ${ARI_LOG_LEVEL:ERROR}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    url: /openapi.yaml
+    enabled: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+    doc-expansion: none
+    filter: true
+    display-request-duration: true
+    try-it-out-enabled: true

@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
@@ -18,6 +17,7 @@ import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
@@ -117,7 +117,7 @@ public class TtsWarmup {
         if (!warmedCampaigns.add(campaign.id())) {
             return;
         }
-        if (agent.speechEngine().mode() == PipelineMode.REALTIME) {
+        if (!agent.speechEngine().mode().speaksWithTts()) {
             log.debug("Skipping TTS warm-up for campaign {} — agent is in REALTIME mode",
                     campaign.id(), campaign.companyId());
             return;

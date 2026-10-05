@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.tts;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
@@ -12,12 +13,18 @@ import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Cartesia Sonic Ultra-Fast TTS Provider (<90ms TTFB).
@@ -30,12 +37,13 @@ import java.time.Duration;
 public class CartesiaTtsProvider implements TtsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(CartesiaTtsProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final TtsProperties ttsProperties;
     private volatile HttpClient client;
 
-    public CartesiaTtsProvider(TtsProperties ttsProperties) {
+    public CartesiaTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.ttsProperties = ttsProperties;
     }
 
@@ -76,7 +84,7 @@ public class CartesiaTtsProvider implements TtsProvider {
         }
 
         try {
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("model_id", cartesia.model());
             root.put("transcript", text);
 
@@ -120,5 +128,63 @@ public class CartesiaTtsProvider implements TtsProvider {
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_SYNTH_FAILED, "cartesia", e, e.getMessage());
         }
+    }
+
+    /**
+     * The account's own voices ({@code GET /voices?is_owner=true}) — not the public library,
+     * whose hundreds of voices would bury the picker — each offered for its one native language. Asked with the current API version, which
+     * pages as {@code {data, has_more, next_page}}; the 2024-06-10 synthesis above answered
+     * this route with a bare array, so that shape is read too.
+     */
+    @Override
+    public List<ProviderVoice> listVoices() {
+        CartesiaTtsProperties cartesia = ttsProperties.cartesia();
+        HttpClient current = client;
+        if (current == null || cartesia == null || cartesia.apiKey() == null || cartesia.apiKey().isBlank()) {
+            throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_CLIENT_UNAVAILABLE, "cartesia");
+        }
+        URI voicesUri = URI.create(cartesia.url()).resolve("/voices?limit=100&is_owner=true");
+        List<ProviderVoice> voices = new ArrayList<>();
+        String after = null;
+        try {
+            do {
+                URI page = after == null ? voicesUri
+                        : URI.create(voicesUri + "&starting_after=" + URLEncoder.encode(after, StandardCharsets.UTF_8));
+                HttpRequest request = HttpRequest.newBuilder(page)
+                        .header("Authorization", "Bearer " + cartesia.apiKey())
+                        .header("Cartesia-Version", "2026-08-14")
+                        .timeout(Duration.ofSeconds(cartesia.connectTimeoutSeconds()))
+                        .GET()
+                        .build();
+                HttpResponse<String> response = current.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_HTTP_STATUS, "cartesia", response.statusCode());
+                }
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode data = root.isArray() ? root : root.path("data");
+                for (JsonNode voice : data) {
+                    String id = voice.path("id").asText("");
+                    String language = voice.path("language").asText("");
+                    if (!id.isBlank() && !language.isBlank()) {
+                        voices.add(new ProviderVoice(id, voiceLabel(voice, id),
+                                Set.of(language.split("-")[0].toLowerCase(Locale.ROOT))));
+                    }
+                }
+                after = !root.isArray() && root.path("has_more").asBoolean(false)
+                        ? root.path("next_page").asText("") : "";
+            } while (!after.isBlank());
+        } catch (ExternalServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ExternalServiceException(ErrorCode.TTS_CARTESIA_VOICES_FAILED, "cartesia", e, e.getMessage());
+        }
+        return voices;
+    }
+
+    /** "Katie (feminine)" — the vendor's name and gender. */
+    private static String voiceLabel(JsonNode voice, String id) {
+        String name = voice.path("name").asText("");
+        String gender = voice.path("gender").asText("");
+        return (name.isBlank() ? id : name) + (gender.isBlank() ? "" : " (" + gender + ")");
     }
 }

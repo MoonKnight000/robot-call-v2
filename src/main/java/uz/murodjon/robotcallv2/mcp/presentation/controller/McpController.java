@@ -39,27 +39,35 @@ public interface McpController {
     @PutMapping("/connections/{id}")
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     ResponseEntity<ResponseData<McpConnectionRow>> updateConnection(
-            @CurrentCompanyId long companyId, @PathVariable long id,
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
             @Valid @RequestBody McpConnectionRequest request);
 
     @DeleteMapping("/connections/{id}")
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
-    ResponseEntity<ResponseData<Void>> deleteConnection(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<Void>> deleteConnection(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     /** Re-reads the server's tool list — after its tools change, or to retry a failure. */
     @PostMapping("/connections/{id}/refresh")
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     ResponseEntity<ResponseData<McpConnectionRow>> refreshConnection(
-            @CurrentCompanyId long companyId, @PathVariable long id);
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     /** Lets one agent use one connection. A collections agent and a support agent share a company, not a toolbox. */
     @PostMapping("/connections/{id}/agents/{agentId}")
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
-    ResponseEntity<ResponseData<Void>> attachToAgent(@CurrentCompanyId long companyId,
-                                                     @PathVariable long id, @PathVariable long agentId);
+    ResponseEntity<ResponseData<Void>> attachToAgent(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @PathVariable long agentId);
 
     @DeleteMapping("/connections/{id}/agents/{agentId}")
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
-    ResponseEntity<ResponseData<Void>> detachFromAgent(@CurrentCompanyId long companyId,
-                                                       @PathVariable long id, @PathVariable long agentId);
+    ResponseEntity<ResponseData<Void>> detachFromAgent(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @PathVariable long agentId);
 }

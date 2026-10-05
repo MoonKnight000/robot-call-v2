@@ -61,11 +61,12 @@ public class ChainedTargetImporter {
     /** Pages of the list step, when it paginates. */
     private static final int MAX_PAGES = 100;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final TargetSourceFetcherPort targetSourceFetcherPort;
 
-    public ChainedTargetImporter(TargetSourceFetcherPort targetSourceFetcherPort) {
+    public ChainedTargetImporter(TargetSourceFetcherPort targetSourceFetcherPort, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.targetSourceFetcherPort = targetSourceFetcherPort;
     }
 

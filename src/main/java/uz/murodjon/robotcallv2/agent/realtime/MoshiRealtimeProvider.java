@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -41,14 +42,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MoshiRealtimeProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(MoshiRealtimeProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private static final int AUDIO_RATE = 24000;
 
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public MoshiRealtimeProvider(RealtimeProperties realtimeProperties) {
+    public MoshiRealtimeProvider(RealtimeProperties realtimeProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.realtimeProperties = realtimeProperties;
     }
 
@@ -134,8 +136,8 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
         }
     }
 
-    private static String handshakeMessage(RealtimeCallConfig config, MoshiRealtimeProperties m) {
-        ObjectNode root = MAPPER.createObjectNode();
+    private String handshakeMessage(RealtimeCallConfig config, MoshiRealtimeProperties m) {
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("type", "handshake");
         root.put("model", config.modelOr(m.model()));
         root.put("sample_rate", AUDIO_RATE);
@@ -145,13 +147,12 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
         return root.toString();
     }
 
-    private static final class MoshiResponseHandler implements WebSocket.Listener {
+    private final class MoshiResponseHandler extends JsonWebSocketListener {
 
         private final String channelId;
         private final RealtimeListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
-        private final StringBuilder message = new StringBuilder();
         private final StringBuilder botTranscript = new StringBuilder();
 
         private MoshiResponseHandler(String channelId, RealtimeListener listener,
@@ -163,26 +164,12 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
         }
 
         @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+        protected void onBinaryFrame(ByteBuffer data, boolean last) {
             byte[] bytes = new byte[data.remaining()];
             data.get(bytes);
             short[] pcm = new short[bytes.length / 2];
             ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm);
             listener.onBotAudio(pcm);
-            webSocket.request(1);
-            return null;
         }
 
         /**
@@ -191,13 +178,14 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
          * logs and the dialog engine's, reached through the listener) is filed under the
          * call it belongs to instead of {@code [call:none]}.
          */
-        private void handle(String json) {
+        @Override
+        protected void onMessage(String json) {
             CallMdc.with(channelId, () -> dispatch(json));
         }
 
         private void dispatch(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 String type = node.path("type").asText("");
 
                 switch (type) {
@@ -256,7 +244,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
         }
     }
 
-    private static final class MoshiRealtimeSession implements RealtimeSession {
+    private final class MoshiRealtimeSession implements RealtimeSession {
 
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
@@ -291,7 +279,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
             if (text == null || text.isBlank() || closed || !alive.get()) {
                 return;
             }
-            ObjectNode node = MAPPER.createObjectNode();
+            ObjectNode node = objectMapper.createObjectNode();
             node.put("type", "prompt");
             node.put("text", text);
             send(node.toString());
@@ -302,7 +290,7 @@ public class MoshiRealtimeProvider implements RealtimeProvider {
             if (closed || !alive.get()) {
                 return;
             }
-            ObjectNode node = MAPPER.createObjectNode();
+            ObjectNode node = objectMapper.createObjectNode();
             node.put("type", "tool_result");
             node.put("call_id", callId);
             node.put("result", result != null ? result : "{}");

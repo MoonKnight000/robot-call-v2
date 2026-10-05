@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.entity;
 import jakarta.persistence.*;
 
 import java.time.Instant;
-import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.entity.KnowledgeSourceEntity;
 
 @Entity
 @Table(name = "knowledge_chunk")

@@ -127,9 +127,20 @@ public class SupervisorMonitor {
             }
             return;
         }
-        for (Session watching : bySupervisorChannel.values()) {
-            if (watching.callerChannelId.equals(channelId) && watching.supervisorChannelId != null) {
-                ari.hangupChannel(watching.supervisorChannelId);
+        for (java.util.Iterator<Map.Entry<String, Session>> it = bySupervisorChannel.entrySet().iterator(); it.hasNext(); ) {
+            Session watching = it.next().getValue();
+            if (watching.callerChannelId.equals(channelId)) {
+                it.remove();
+                byToken.remove(watching.token);
+                if (watching.snoopChannelId != null) {
+                    ari.hangupChannel(watching.snoopChannelId);
+                }
+                if (watching.bridgeId != null) {
+                    ari.destroyBridge(watching.bridgeId);
+                }
+                if (watching.supervisorChannelId != null) {
+                    ari.hangupChannel(watching.supervisorChannelId);
+                }
             }
         }
     }

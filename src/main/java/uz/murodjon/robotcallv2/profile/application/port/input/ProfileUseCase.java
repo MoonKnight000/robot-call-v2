@@ -1,15 +1,10 @@
 package uz.murodjon.robotcallv2.profile.application.port.input;
 
 import uz.murodjon.robotcallv2.auth.application.dto.TwoFactorSetupResponse;
-import uz.murodjon.robotcallv2.profile.application.dto.DisableTwoFactorRequest;
-import uz.murodjon.robotcallv2.profile.application.dto.TwoFactorCodeRequest;
-
-import uz.murodjon.robotcallv2.shared.api.UploadedFile;
-import uz.murodjon.robotcallv2.profile.application.dto.ChangePasswordRequest;
-import uz.murodjon.robotcallv2.profile.application.dto.UpdateCallColumnsRequest;
-import uz.murodjon.robotcallv2.profile.application.dto.UpdateProfileRequest;
+import uz.murodjon.robotcallv2.profile.application.dto.*;
 import uz.murodjon.robotcallv2.profile.domain.entity.Profile;
 import uz.murodjon.robotcallv2.profile.domain.entity.TodayStats;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 
 import java.util.List;
 

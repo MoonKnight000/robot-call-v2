@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 
 import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
 import java.util.function.IntConsumer;
 
 /**
@@ -48,6 +49,9 @@ public class VadStream implements AudioListener {
     private final float listeningThreshold;
     private final double minEnergyRms;
     private final double noiseFloorMargin;
+    private final double echoGateRatio;
+    private final double echoMinBotLevel;
+    private final DoubleSupplier botLevel;
     /**
      * Running estimate of this call's background level, measured only on windows the model
      * scored as non-speech. One number per call because the noise is a property of the
@@ -92,6 +96,15 @@ public class VadStream implements AudioListener {
      */
     public VadStream(SileroVad model, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
                      SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd) {
+        this(model, vadProperties, channelId, onBargeIn, gate, amd, onSpeechEnd, null);
+    }
+
+    /**
+     * Overload with bot output level supplier for acoustic echo suppression during bot playback.
+     */
+    public VadStream(SileroVad model, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
+                     SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd,
+                     DoubleSupplier botLevel) {
         this.model = model;
         this.channelId = channelId;
         this.threshold = vadProperties.threshold();
@@ -99,6 +112,9 @@ public class VadStream implements AudioListener {
         this.minEnergyRms = vadProperties.minEnergyRms() > 0 ? vadProperties.minEnergyRms() : 150.0;
         this.noiseFloorMargin = vadProperties.noiseFloorMargin() > 0 ? vadProperties.noiseFloorMargin() : DEFAULT_NOISE_FLOOR_MARGIN;
         this.noiseFloorRms = this.minEnergyRms;
+        this.echoGateRatio = vadProperties.echoGateRatio();
+        this.echoMinBotLevel = vadProperties.echoMinBotLevel();
+        this.botLevel = botLevel;
         this.onBargeIn = onBargeIn;
         this.gate = gate;
         this.amd = amd;
@@ -160,14 +176,25 @@ public class VadStream implements AudioListener {
                 Math.max(minEnergyRms, noiseFloorRms * noiseFloorMargin),
                 minEnergyRms * MAX_FLOOR_MULTIPLE);
 
-        // For barge-in: strict probability and energy check to avoid false barge-ins from short coughs/noise
-        boolean bargeInSpeech = prob >= threshold && rms >= bargeInFloor;
+        // Acoustic echo check: if the bot is actively speaking on the wire, microphone audio
+        // that is quieter than botLevel * echoGateRatio is the bot's own voice reflected
+        // through speakerphone or trunk hybrid, not genuine caller speech.
+        boolean isEcho = false;
+        if (botLevel != null && echoGateRatio > 0) {
+            double bot = botLevel.getAsDouble();
+            if (bot >= echoMinBotLevel && rms < bot * echoGateRatio) {
+                isEcho = true;
+            }
+        }
+
+        // For barge-in: strict probability and energy check to avoid false barge-ins from short coughs/noise or bot echo
+        boolean bargeInSpeech = !isEcho && prob >= threshold && rms >= bargeInFloor;
 
         // For gating / listening: sensitive threshold so quiet or slow speakers are not missed when bot is listening.
         // Deliberately still measured against the fixed floor — the gate only decides what
         // reaches the recognizer, and sending a little noise costs a fraction of a cent
         // where a missed quiet answer costs the turn.
-        boolean gateSpeech = bargeInSpeech || (prob >= listeningThreshold && rms >= (minEnergyRms * 0.4));
+        boolean gateSpeech = bargeInSpeech || (!isEcho && prob >= listeningThreshold && rms >= (minEnergyRms * 0.4));
 
         if (gate != null) {
             gate.onVadWindow(gateSpeech, window.length);

@@ -1,11 +1,10 @@
 package uz.murodjon.robotcallv2.auth.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
-
-import uz.murodjon.robotcallv2.auth.infrastructure.persistence.mapper.UserSessionEntityMapper;
 import uz.murodjon.robotcallv2.auth.application.port.output.UserSessionRepository;
 import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.auth.infrastructure.persistence.entity.UserSessionEntity;
+import uz.murodjon.robotcallv2.auth.infrastructure.persistence.mapper.UserSessionEntityMapper;
 import uz.murodjon.robotcallv2.auth.infrastructure.persistence.repository.UserSessionJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;

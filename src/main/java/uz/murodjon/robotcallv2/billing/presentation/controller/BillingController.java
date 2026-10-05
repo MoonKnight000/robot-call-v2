@@ -11,6 +11,9 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
 
+/**
+ * Billing & Payments API (docs/api/billing.md).
+ */
 @RequestMapping("/api/billing")
 public interface BillingController {
 
@@ -22,22 +25,24 @@ public interface BillingController {
     @GetMapping("/spend-chart")
     ResponseEntity<ResponseData<List<SpendMonthDto>>> getSpendChart(
             @CurrentCompanyId long companyId,
-            @RequestParam(name = "months", defaultValue = "6") int months
-    );
+            @RequestParam(name = "months", defaultValue = "6") int months);
 
     @PreAuthorize("hasAuthority('BILLING_READ')")
     @GetMapping("/invoices")
     ResponseEntity<ResponseData<PageableData<InvoiceDto>>> getInvoices(
             @CurrentCompanyId long companyId,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "10") int size
-    );
+            @RequestParam(name = "size", defaultValue = "10") int size);
 
     @PreAuthorize("hasAuthority('BILLING_READ')")
     @GetMapping(value = "/invoices/{id}/pdf", produces = "application/pdf")
-    ResponseEntity<byte[]> downloadInvoicePdf(@CurrentCompanyId long companyId, @PathVariable("id") String id);
+    ResponseEntity<byte[]> downloadInvoicePdf(
+            @CurrentCompanyId long companyId,
+            @PathVariable("id") String id);
 
     @PreAuthorize("hasAuthority('BILLING_EDIT')")
     @PostMapping("/topup")
-    ResponseEntity<ResponseData<TopupResponse>> topup(@CurrentCompanyId long companyId, @Valid @RequestBody TopupRequest request);
+    ResponseEntity<ResponseData<TopupResponse>> topup(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody TopupRequest request);
 }

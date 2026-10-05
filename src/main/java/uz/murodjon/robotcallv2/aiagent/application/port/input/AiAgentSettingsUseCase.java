@@ -1,11 +1,6 @@
 package uz.murodjon.robotcallv2.aiagent.application.port.input;
 
-import uz.murodjon.robotcallv2.aiagent.application.dto.AgentAdvancedDto;
-import uz.murodjon.robotcallv2.aiagent.application.dto.AgentAnalysisDto;
-import uz.murodjon.robotcallv2.aiagent.application.dto.AgentLimitsDto;
-import uz.murodjon.robotcallv2.aiagent.application.dto.AgentPostCallActionsDto;
-import uz.murodjon.robotcallv2.aiagent.application.dto.AgentPronunciationDto;
-import uz.murodjon.robotcallv2.aiagent.application.dto.AgentScenarioDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.*;
 
 /** The agent editor's sections, each read and written on its own against the draft. */
 public interface AiAgentSettingsUseCase {

@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import yandex.cloud.api.ai.stt.v3.RecognizerGrpc;
@@ -49,10 +49,10 @@ public class YandexSttProvider implements SttProvider {
     private static final int MAX_PAUSE_HINT_MS = 5000;
 
     private final SttProperties sttProperties;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     private volatile ManagedChannel channel;
 
-    public YandexSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+    public YandexSttProvider(SttProperties sttProperties, SttMetrics metrics) {
         this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
@@ -170,6 +170,11 @@ public class YandexSttProvider implements SttProvider {
                                 .setSampleRateHertz(y.sampleRate())
                                 .setAudioChannelCount(1)))
                 .setLanguageRestriction(languages)
+                .setTextNormalization(Stt.TextNormalizationOptions.newBuilder()
+                        .setTextNormalization(y.textNormalization()
+                                ? Stt.TextNormalizationOptions.TextNormalization.TEXT_NORMALIZATION_ENABLED
+                                : Stt.TextNormalizationOptions.TextNormalization.TEXT_NORMALIZATION_DISABLED)
+                        .setLiteratureText(y.literatureText()))
                 .setAudioProcessingType(Stt.RecognitionModelOptions.AudioProcessingType.REAL_TIME);
         String chosenModel;
         if (requestedModel != null && !requestedModel.isBlank()) {

@@ -32,8 +32,12 @@ public class WebhookNotificationSenderAdapter implements NotificationSenderPort 
     /** The answer is not read; this much is taken off the wire before the connection is dropped. */
     private static final int MAX_RESPONSE_BYTES = 4 * 1024;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private final PublicHttpClient publicHttpClient = PublicHttpClient.create(TIMEOUT, TIMEOUT);
+
+    public WebhookNotificationSenderAdapter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public NotificationChannelType resolveChannelType() {
@@ -52,12 +56,12 @@ public class WebhookNotificationSenderAdapter implements NotificationSenderPort 
             return;
         }
         try {
-            ObjectNode body = mapper.createObjectNode();
+            ObjectNode body = objectMapper.createObjectNode();
             body.put("type", type.name());
             body.put("title", title);
             body.put("message", message);
             body.put("link", link);
-            String json = mapper.writeValueAsString(body);
+            String json = objectMapper.writeValueAsString(body);
             PublicHttpRequest request = PublicHttpRequest.create("POST", uri)
                     .setTimeout(TIMEOUT)
                     .setMaxResponseBytes(MAX_RESPONSE_BYTES)

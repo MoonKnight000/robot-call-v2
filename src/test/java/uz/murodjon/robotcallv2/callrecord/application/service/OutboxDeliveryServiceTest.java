@@ -10,10 +10,12 @@ import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageKind;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageStatus;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.config.OutboxProperties;
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -48,30 +50,53 @@ class OutboxDeliveryServiceTest {
         crmClient = mock(CrmUseCase.class);
         notificationService = mock(NotificationUseCase.class);
         when(crmClient.isConnected(COMPANY_ID)).thenReturn(true);
-        when(crmClient.composeNoteText(any())).thenReturn("note");
+        when(crmClient.composeNoteText(any(), any())).thenReturn("note");
         when(outboxMessageRepository.update(any())).thenReturn(true);
         service = serviceWith(new OutboxProperties(true, 5, MAX_ATTEMPTS, 20, 30, 120));
+    }
+
+    @Test
+    void syncLeadStageDelegatesToCrmUseCase() {
+        CallSummary meetingSummary = new CallSummary("Shourumga kelishga rozi bo'ldi",
+                Map.of("meetingBooked", true), null, false, null, null);
+
+        service.syncLeadStageIfActionable(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+
+        verify(crmClient).syncLeadStage(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+    }
+
+    @Test
+    void prepareCrmNoteWithRecordingFileIdCallsComposedNote() {
+        CallSummary summary = new CallSummary("Suhbat", Map.of(), null, false, null, null);
+        when(crmClient.isConnected(COMPANY_ID)).thenReturn(true);
+        when(crmClient.composeNoteText(summary, 999L)).thenReturn("Suhbat\nAudio yozuv: /api/files/999");
+
+        OutboxMessage message = service.prepareCrmNote(COMPANY_ID, CALL_ID, LEAD_ID, summary, 999L);
+
+        assertNotNull(message);
+        assertEquals("Suhbat\nAudio yozuv: /api/files/999", message.payload().get("noteText"));
+        verify(crmClient).composeNoteText(summary, 999L);
     }
 
     // --- no CRM lead, no row
 
     @Test
     void callWithoutALeadGetsNoNote() {
-        assertNull(service.prepareCrmNote(COMPANY_ID, CALL_ID, 0L, summary()));
+        assertNull(service.prepareCrmNote(COMPANY_ID, CALL_ID, 0L, summary(), null));
         verify(crmClient, never()).isConnected(anyLong());
-        verify(crmClient, never()).composeNoteText(any());
+        verify(crmClient, never()).composeNoteText(any(), any());
     }
 
     @Test
     void companyWithoutACrmGetsNoNote() {
         when(crmClient.isConnected(COMPANY_ID)).thenReturn(false);
 
-        assertNull(service.prepareCrmNote(COMPANY_ID, CALL_ID, LEAD_ID, summary()));
+        assertNull(service.prepareCrmNote(COMPANY_ID, CALL_ID, LEAD_ID, summary(), null));
     }
 
     @Test
     void noteIsKeyedByKindAndCall() {
-        OutboxMessage note = service.prepareCrmNote(COMPANY_ID, CALL_ID, LEAD_ID, summary());
+        OutboxMessage note = service.prepareCrmNote(COMPANY_ID, CALL_ID, LEAD_ID, summary(), null);
 
         assertEquals(OutboxMessageKind.CRM_NOTE, note.kind());
         assertEquals("CRM_NOTE:55", note.idempotencyKey());
@@ -223,6 +248,36 @@ class OutboxDeliveryServiceTest {
         service.deliverDue();
 
         verifyNoInteractions(outboxMessageRepository);
+    }
+
+    @Test
+    void meetingBookedCreatesCrmTask() {
+        CallSummary meetingSummary = new CallSummary("Shourumga kelishga rozi bo'ldi",
+                Map.of("meetingBooked", true, "meetingTime", "2026-09-20 15:00", "roomsNeeded", "3 xonali", "budgetRange", "50000 USD"),
+                null, false, null, null);
+
+        service.scheduleCrmTaskIfActionable(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+
+        ArgumentCaptor<CreateCrmTaskRequest> captor = ArgumentCaptor.forClass(CreateCrmTaskRequest.class);
+        verify(crmClient).createTask(eq(COMPANY_ID), captor.capture());
+        assertEquals(LEAD_ID, captor.getValue().leadId());
+        assertTrue(captor.getValue().title().contains("Sotuv ofisiga uchrashuv"));
+        assertTrue(captor.getValue().description().contains("3 xonali"));
+        assertTrue(captor.getValue().description().contains("2026-09-20 15:00"));
+    }
+
+    @Test
+    void paymentPromiseCreatesCrmTask() {
+        CallSummary promiseSummary = new CallSummary("Ertaga to'laydi",
+                Map.of("promisedDate", "2026-09-18", "promisedAmount", "12000000"),
+                null, false, null, null);
+
+        service.scheduleCrmTaskIfActionable(COMPANY_ID, LEAD_ID, promiseSummary, Disposition.PROMISE_TO_PAY);
+
+        ArgumentCaptor<CreateCrmTaskRequest> captor = ArgumentCaptor.forClass(CreateCrmTaskRequest.class);
+        verify(crmClient).createTask(eq(COMPANY_ID), captor.capture());
+        assertEquals(LEAD_ID, captor.getValue().leadId());
+        assertTrue(captor.getValue().title().contains("To'lov va'dasi"));
     }
 
     private OutboxDeliveryService serviceWith(OutboxProperties outboxProperties) {

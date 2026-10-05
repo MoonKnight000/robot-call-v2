@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.pack.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -9,6 +10,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUse
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionGoalRequest;
 import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionGoal;
@@ -19,6 +21,7 @@ import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeSou
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
 import uz.murodjon.robotcallv2.pack.application.dto.InstallPackRequest;
 import uz.murodjon.robotcallv2.pack.application.dto.PackInstallResponse;
+import uz.murodjon.robotcallv2.pack.application.port.output.PackGeneratorPort;
 import uz.murodjon.robotcallv2.pack.application.mapper.PackMapper;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
@@ -28,6 +31,7 @@ import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
+import uz.murodjon.robotcallv2.tool.application.port.input.ToolImportUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 
 import java.util.List;
@@ -46,7 +50,7 @@ class PackServiceTest {
     private static final long AGENT_ID = 42L;
     private static final long TOOL_ID = 5L;
 
-    private final ClasspathJsonPackCatalogAdapter packCatalog = new ClasspathJsonPackCatalogAdapter();
+    private final ClasspathJsonPackCatalogAdapter packCatalog = new ClasspathJsonPackCatalogAdapter(new ObjectMapper());
     private final VerticalPack ecommerce = packCatalog.findByKey("ecommerce");
 
     private AiAgentUseCase aiAgentUseCase;
@@ -65,7 +69,8 @@ class PackServiceTest {
         conversionUseCase = mock(ConversionUseCase.class);
         secretUseCase = mock(SecretUseCase.class);
         service = new PackService(packCatalog, new PackMapper(), aiAgentUseCase, toolUseCase, knowledgeSourceUseCase,
-                agentEvaluationUseCase, conversionUseCase, secretUseCase, mock(AuditUseCase.class));
+                agentEvaluationUseCase, conversionUseCase, secretUseCase, mock(AuditUseCase.class),
+                mock(ToolImportUseCase.class), mock(CompanyConfigUseCase.class), mock(PackGeneratorPort.class));
 
         AiAgentRow agent = mock(AiAgentRow.class);
         when(agent.id()).thenReturn(AGENT_ID);

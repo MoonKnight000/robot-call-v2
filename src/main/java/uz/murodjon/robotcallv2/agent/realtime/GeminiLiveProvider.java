@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -19,13 +20,8 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -51,7 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class GeminiLiveProvider implements RealtimeProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiLiveProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     /**
      * Rates fixed by the protocol, not config knobs. The API documents 16 kHz
@@ -67,7 +63,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * itself — a plain chat id is accepted by the URL and then never answers the setup,
      * which surfaces as a connect timeout and reads like a network fault.
      */
-    private static final String DEFAULT_LIVE_MODEL = "gemini-3.8-live";
+    private static final String DEFAULT_LIVE_MODEL = "gemini-3.8-live-extended-thinking";
 
     /**
      * Models whose tools are declared {@code NON_BLOCKING}: the engine keeps talking while a
@@ -80,7 +76,8 @@ public class GeminiLiveProvider implements RealtimeProvider {
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
-    public GeminiLiveProvider(RealtimeProperties realtimeProperties) {
+    public GeminiLiveProvider(RealtimeProperties realtimeProperties, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.realtimeProperties = realtimeProperties;
     }
 
@@ -119,6 +116,11 @@ public class GeminiLiveProvider implements RealtimeProvider {
     @Override
     public int outputSampleRate() {
         return OUTPUT_RATE;
+    }
+
+    @Override
+    public boolean streamsOutputTranscript() {
+        return true;
     }
 
     @Override
@@ -169,9 +171,9 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * instructed at connect time, not per turn, so everything the cascade pipeline
      * rebuilds on every turn — instructions, tools, language — is settled here.
      */
-    private static String setupMessage(RealtimeCallConfig config, GeminiLiveProperties live,
+    private String setupMessage(RealtimeCallConfig config, GeminiLiveProperties live,
                                        String resumptionHandle) {
-        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode root = objectMapper.createObjectNode();
         ObjectNode setup = root.putObject("setup");
         String model = resolveModelName(config.modelOr(live.model()));
         setup.put("model", "models/" + model);
@@ -196,6 +198,12 @@ public class GeminiLiveProvider implements RealtimeProvider {
         if (config.language() != null && !config.language().isBlank()) {
             speech.put("languageCode", config.language());
         }
+        if (live.affectiveDialog()) {
+            generation.put("enableAffectiveDialog", true);
+        }
+        if (live.proactiveAudio()) {
+            setup.putObject("proactivity").put("proactiveAudio", true);
+        }
 
         if (config.systemPrompt() != null && !config.systemPrompt().isBlank()) {
             setup.putObject("systemInstruction").putArray("parts")
@@ -209,7 +217,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
 
         // The engine's own turn detection, tuned for a phone line rather than a laptop
         // microphone. Only what is configured is sent; the rest stays the engine's default.
-        ObjectNode activityDetection = MAPPER.createObjectNode();
+        ObjectNode activityDetection = objectMapper.createObjectNode();
         String startSensitivity = sensitivity(live.startOfSpeechSensitivity());
         if (startSensitivity != null) {
             activityDetection.put("startOfSpeechSensitivity", "START_SENSITIVITY_" + startSensitivity);
@@ -284,15 +292,15 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * One scenario tool as Gemini declares it. The schema is reused verbatim from the
      * cascade pipeline's {@link ToolCallback} — the same tool, described once.
      */
-    private static ObjectNode declarationFor(ToolCallback tool, boolean async) {
-        ObjectNode declaration = MAPPER.createObjectNode();
+    private ObjectNode declarationFor(ToolCallback tool, boolean async) {
+        ObjectNode declaration = objectMapper.createObjectNode();
         declaration.put("name", tool.getToolDefinition().name());
         declaration.put("description", tool.getToolDefinition().description());
         if (async) {
             declaration.put("behavior", "NON_BLOCKING");
         }
         try {
-            JsonNode parameters = MAPPER.readTree(tool.getToolDefinition().inputSchema());
+            JsonNode parameters = objectMapper.readTree(tool.getToolDefinition().inputSchema());
             stripUnsupportedSchemaKeywords(parameters);
             declaration.set("parameters", parameters);
         } catch (Exception e) {
@@ -329,7 +337,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * where what has accumulated is exactly what the caller heard before cutting in.
      * Nothing downstream wants a guardrail audit run on half a word.
      */
-    private static final class ResponseHandler implements WebSocket.Listener {
+    private final class ResponseHandler extends JsonWebSocketListener {
 
         private final String channelId;
         private final RealtimeListener listener;
@@ -344,7 +352,6 @@ public class GeminiLiveProvider implements RealtimeProvider {
          */
         private final int generation;
         /** A message is only parseable once {@code last} is set; frames may split it. */
-        private final StringBuilder message = new StringBuilder();
         private final StringBuilder heard = new StringBuilder();
         private final StringBuilder spoken = new StringBuilder();
         /**
@@ -369,48 +376,20 @@ public class GeminiLiveProvider implements RealtimeProvider {
             this.generation = generation;
         }
 
-        @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            // Overriding onText replaces the default implementation's own request(1) —
-            // without this the stream delivers one message and then goes silent.
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-            // The endpoint sends its JSON as binary frames as readily as text ones, so
-            // both paths feed the same parser rather than one of them silently dropping
-            // every message the session depends on.
-            message.append(StandardCharsets.UTF_8.decode(data));
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
         /**
          * Every message arrives on the WebSocket's own thread, which knows nothing about
          * the call — so the id goes in here, once, and everything below it (this class's
          * logs and the dialog engine's, reached through the listener) is filed under the
          * call it belongs to instead of {@code [call:none]}.
          */
-        private void handle(String json) {
+        @Override
+        protected void onMessage(String json) {
             CallMdc.with(channelId, () -> dispatch(json));
         }
 
         private void dispatch(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 if (node.has("usageMetadata")) {
                     captureUsage(node.get("usageMetadata"));
                 }
@@ -479,7 +458,11 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 heard.append(input);
                 listener.onInputTranscript(input, false);
             }
-            spoken.append(content.path("outputTranscription").path("text").asText(""));
+            String said = content.path("outputTranscription").path("text").asText("");
+            if (!said.isEmpty()) {
+                spoken.append(said);
+                listener.onOutputTranscriptDelta(said);
+            }
 
             if (content.path("interrupted").asBoolean(false)) {
                 // Playback is stopped first, so that the transcript released below can be
@@ -739,7 +722,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
             }
             ByteBuffer buffer = ByteBuffer.allocate(pcm.length * 2).order(ByteOrder.LITTLE_ENDIAN);
             buffer.asShortBuffer().put(pcm);
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             ObjectNode audio = root.putObject("realtimeInput").putObject("audio");
             audio.put("data", Base64.getEncoder().encodeToString(buffer.array()));
             audio.put("mimeType", "audio/pcm;rate=" + INPUT_RATE);
@@ -768,7 +751,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
         }
 
         private String clientContent(String text, boolean turnComplete) {
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             ObjectNode content = root.putObject("clientContent");
             content.putArray("turns").addObject()
                     .put("role", "user")
@@ -844,7 +827,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
 
         /** @param scheduling when a non-blocking result is used; null for a blocking batch */
         private String toolResponseMessage(Map<String, String> batch, String scheduling) {
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             ArrayNode responses = root.putObject("toolResponse").putArray("functionResponses");
             batch.forEach((id, result) -> {
                 ObjectNode response = responses.addObject();

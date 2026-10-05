@@ -12,7 +12,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class VoiceEmotionResolverTest {
 
-    private final SentimentDetector sentimentDetector = new SentimentDetector();
     private final VoiceEmotionResolver resolver = new VoiceEmotionResolver();
 
     private static DialogSession createSession(String stageId, String stageEmotion, String ttsVoice,
@@ -27,12 +26,16 @@ class VoiceEmotionResolverTest {
                 List.of(),
                 "uz-UZ"
         );
-        DialogSession session = new DialogSession(
-                "chan-test", "uz-UZ", ttsVoice,
-                new CallContext(Map.of(), "goal"),
-                scenario, null, null, null, 1L, 1L, null, true, "Company",
-                null, null, voiceSettings, emotionAdaptive, Map.of()
-        );
+        DialogSession session = DialogSession.builder("chan-test", "uz-UZ")
+                .ttsVoice(ttsVoice)
+                .context(new CallContext(Map.of(), "goal"))
+                .scenario(scenario)
+                .callAttemptId(1L)
+                .companyId(1L)
+                .companyName("Company")
+                .voiceSettings(voiceSettings)
+                .emotionAdaptiveVoice(emotionAdaptive)
+                .build();
         session.setState(stageId);
         return session;
     }
@@ -113,12 +116,5 @@ class VoiceEmotionResolverTest {
         assertThat(resolver.mapEmotionToRole(VoiceEmotion.FRIENDLY)).isEqualTo("friendly");
         assertThat(resolver.mapEmotionToRole(VoiceEmotion.STRICT)).isEqualTo("strict");
         assertThat(resolver.mapEmotionToRole(VoiceEmotion.NEUTRAL)).isEqualTo("neutral");
-    }
-
-    @Test
-    void sentimentDetectorCorrectlyIdentifiesSentiments() {
-        assertThat(sentimentDetector.analyze("Nega menga tinimsiz telefon qilyapsiz, asabimga tegmang!")).isEqualTo(CustomerSentiment.FRUSTRATED);
-        assertThat(sentimentDetector.analyze("Bu nima degani? Tushunmadim, qanaqa qarz?")).isEqualTo(CustomerSentiment.CONFUSED);
-        assertThat(sentimentDetector.analyze("Eshitaman, kim bu?")).isEqualTo(CustomerSentiment.CONFUSED);
     }
 }

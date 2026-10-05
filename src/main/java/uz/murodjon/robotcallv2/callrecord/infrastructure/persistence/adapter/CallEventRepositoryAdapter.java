@@ -15,13 +15,14 @@ import java.util.Map;
 @Component
 public class CallEventRepositoryAdapter implements CallEventRepository {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> PAYLOAD = new TypeReference<>() {
     };
 
     private final CallEventJpaRepository jpaRepository;
 
-    public CallEventRepositoryAdapter(CallEventJpaRepository jpaRepository) {
+    public CallEventRepositoryAdapter(CallEventJpaRepository jpaRepository, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.jpaRepository = jpaRepository;
     }
 
@@ -33,7 +34,7 @@ public class CallEventRepositoryAdapter implements CallEventRepository {
         entity.setAt(event.at());
         entity.setType(event.type());
         try {
-            entity.setPayload(event.payload().isEmpty() ? null : JSON.writeValueAsString(event.payload()));
+            entity.setPayload(event.payload().isEmpty() ? null : objectMapper.writeValueAsString(event.payload()));
         } catch (JsonProcessingException e) {
             entity.setPayload(null);
         }
@@ -48,12 +49,12 @@ public class CallEventRepositoryAdapter implements CallEventRepository {
                 .toList();
     }
 
-    private static Map<String, Object> readPayload(String json) {
+    private Map<String, Object> readPayload(String json) {
         if (json == null || json.isBlank()) {
             return Map.of();
         }
         try {
-            return JSON.readValue(json, PAYLOAD);
+            return objectMapper.readValue(json, PAYLOAD);
         } catch (JsonProcessingException e) {
             return Map.of();
         }

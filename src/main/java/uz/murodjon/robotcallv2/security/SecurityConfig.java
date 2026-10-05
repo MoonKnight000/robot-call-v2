@@ -10,8 +10,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,6 +57,7 @@ import java.util.List;
  * add here.
  */
 @Configuration
+@EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
@@ -77,6 +81,14 @@ public class SecurityConfig {
                     + "or still a CHANGE_ME placeholder — nobody can log in and every /api/** request "
                     + "will be rejected with 401.");
         }
+    }
+
+    /**
+     * Standard Spring Security AuthenticationManager bean.
+     */
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
+        return authConfig.getAuthenticationManager();
     }
 
     /**
@@ -142,6 +154,8 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // Probes carry no data and must work without a secret.
                     auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
+                    // Swagger UI and OpenAPI documentation
+                    auth.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs", "/openapi.yaml").permitAll();
                     // Metrics describe the whole platform — every tenant's calls, the providers,
                     // the tool tags — so they are for platform staff. Any logged-in user or
                     // tenant API key used to be able to read them (an API key can never hold
@@ -158,6 +172,8 @@ public class SecurityConfig {
                     // param authenticates it instead (CrmIntegrationService
                     // #consumeState).
                     auth.requestMatchers(HttpMethod.GET, "/api/settings/integrations/uysot/callback").permitAll();
+                    // Inbound Uysot CRM webhooks (e.g. LEAD_CREATED speed-to-lead)
+                    auth.requestMatchers(HttpMethod.POST, "/api/public/uysot/webhook").permitAll();
                     // The embed script on a customer's own website reads its widget's
                     // configuration and books its calls before anyone has logged into
                     // anything. The widget key is the only credential it has, and the

@@ -8,7 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -44,7 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class AishaSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AishaSttProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     /**
      * The rate Aisha's {@code format=pcm} stream is defined at — 16 kHz mono s16le. Not
@@ -58,10 +59,11 @@ public class AishaSttProvider implements SttProvider {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     private final SttProperties sttProperties;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     private volatile HttpClient client;
 
-    public AishaSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+    public AishaSttProvider(SttProperties sttProperties, SttMetrics metrics, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
@@ -126,13 +128,11 @@ public class AishaSttProvider implements SttProvider {
     }
 
     /** Maps Aisha JSON messages (transcription / session_started / error) onto the listener. */
-    private final class ResponseHandler implements WebSocket.Listener {
+    private final class ResponseHandler extends JsonWebSocketListener {
 
         private final String language;
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
-        /** Text arrives in fragments; a message is only parseable once {@code last} is set. */
-        private final StringBuilder message = new StringBuilder();
 
         private ResponseHandler(String language, TranscriptListener listener, AtomicBoolean alive) {
             this.language = language;
@@ -141,22 +141,9 @@ public class AishaSttProvider implements SttProvider {
         }
 
         @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            message.append(data);
-            if (last) {
-                String json = message.toString();
-                message.setLength(0);
-                handle(json);
-            }
-            // Overriding onText replaces the default implementation's own request(1) —
-            // without this the stream delivers one message and then goes silent.
-            webSocket.request(1);
-            return null;
-        }
-
-        private void handle(String json) {
+        protected void onMessage(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 String type = node.path("type").asText("");
                 switch (type) {
                     case "transcription" -> emit(node);
@@ -188,10 +175,8 @@ public class AishaSttProvider implements SttProvider {
         }
 
         @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+        protected void onBinaryFrame(ByteBuffer data, boolean last) {
             // Recognition results are JSON; nothing binary is expected on this stream.
-            webSocket.request(1);
-            return null;
         }
 
         @Override

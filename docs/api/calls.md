@@ -106,14 +106,64 @@ Hali bazada saqlanmagan, veb-muharrirda tahrirlanayotgan yangi stsenariy JSON st
 | `number` | `string` | ✅ | Teriladigan telefon raqami |
 | `sipTrunkId` | `number` | ❌ | Chiquvchi SIP trunk ID raqami (berilmasa — default trunk) |
 
-**Request Body**: To'liq `ScenarioDefinition` JSON obyekti (`states`, `edges`, `systemPrompt`, va h.k.).
+**Request Body**: `ScenarioDefinition` JSON obyektining **o'zi** — o'ramsiz (`stages`, `outcomeSchema`,
+`factSchema`, `tools`, `rolePrompt`, `guardrails`, …; tarkibi va tekshiruv qoidalari —
+[scenarios.md](scenarios.md#scenariodefinition-tarkibi)). `POST /api/scenarios/validate` bilan bir xil body.
 
-**Misol So'rov:**
+> **Frontend uchun.** Muharrirdagi ssenariy (`GET /api/scenarios/{id}` javobi yoki `CreateScenarioRequest`)
+> da ssenariy `definition` maydoni ichida turadi — body'ga **faqat shu `definition` qiymati** yuboriladi.
+> Noma'lum maydonlar jimgina tashlab yuboriladi, shuning uchun:
+>
+> | Yuborilgan body | Natija |
+> |---|---|
+> | `{ "stages": [...], "outcomeSchema": [...], ... }` | ✅ to'g'ri |
+> | `{ "definition": { "stages": ... } }` | ❌ `stages must not be empty`, `outcomeSchema must not be empty` |
+> | `{ "id": 5, "name": "...", "definition": {...} }` (butun ssenariy yozuvi) | ❌ xuddi shu |
+> | `{ "states": [...], "edges": [...], "systemPrompt": "..." }` (eski hujjatdagi nomlar — bunday maydon yo'q) | ❌ xuddi shu |
+>
+> Saqlangan ssenariyni sinash uchun body kerak emas: `POST /api/calls?number=…&scenarioId=…`.
+
+**Misol So'rov** — eng kichik to'g'ri body:
+
 `POST /api/calls/test?number=+998901234567&sipTrunkId=1`
+
+```json
+{
+  "stages": [
+    { "id": "GREETING", "purpose": "Salomlashib, qo'ng'iroq sababini ayting", "allowedTransitions": ["CLOSING"], "allowedTools": [] },
+    { "id": "CLOSING", "purpose": "Xayrlashing", "allowedTransitions": [], "allowedTools": [] }
+  ],
+  "factSchema": [],
+  "tools": [],
+  "outcomeSchema": [
+    { "name": "interested", "type": "boolean", "description": "Mijoz qiziqdimi", "goal": true }
+  ],
+  "rolePrompt": "Siz kompaniya operatorisiz. Qisqa va xushmuomala gapiring.",
+  "guardrails": []
+}
+```
+
+**Response** — `POST /api/calls` bilan bir xil (`CallOriginateResponse`).
 
 **Xatolar:** yuqoridagilar, qo'shimcha `400 SCENARIO_DEFINITION_INVALID` — ssenariy tekshiruvdan
 o'tmadi. Har bir topilgan muammo `errors` ro'yxatida alohida qator bo'lib keladi; `message` faqat
-umumiy matn (muammolar soni bilan), ro'yxatni o'z ichiga olmaydi.
+umumiy matn (muammolar soni bilan), ro'yxatni o'z ichiga olmaydi:
+
+```json
+{
+  "data": null,
+  "message": "Invalid scenario definition: 2 problem(s), listed in errors",
+  "messageCode": "SCENARIO_DEFINITION_INVALID",
+  "accept": false,
+  "errors": [
+    "stages must not be empty",
+    "outcomeSchema must not be empty — a scenario with no outcome fields records nothing"
+  ]
+}
+```
+
+Frontend `errors` ni ro'yxat qilib ko'rsatsin; qo'ng'iroq tugmasidan oldin `POST /api/scenarios/validate`
+bilan tekshirib olish mumkin (u qo'ng'iroq qilmaydi).
 
 ---
 

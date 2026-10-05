@@ -24,6 +24,7 @@ public interface NotificationSettingsController {
 
     @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_EDIT')")
     @PutMapping
-    ResponseEntity<ResponseData<NotificationSettings>> update(@CurrentCompanyId long companyId,
+    ResponseEntity<ResponseData<NotificationSettings>> update(
+            @CurrentCompanyId long companyId,
             @Valid @RequestBody UpdateNotificationSettingsRequest request);
 }

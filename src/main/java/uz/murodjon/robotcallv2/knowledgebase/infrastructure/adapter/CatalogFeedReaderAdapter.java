@@ -2,12 +2,7 @@ package uz.murodjon.robotcallv2.knowledgebase.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.DataFormatter;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.CatalogFeedReaderPort;
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
@@ -22,11 +17,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Reads a catalog feed as rows (UNIVERSAL-OPERATOR-PLAN B.4): a CSV, a spreadsheet or a
@@ -45,9 +36,13 @@ public class CatalogFeedReaderAdapter implements CatalogFeedReaderPort {
     private static final int MAX_FEED_BYTES = 32 * 1024 * 1024;
     private static final Duration FEED_TIMEOUT = Duration.ofSeconds(30);
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final PublicHttpClient httpClient = PublicHttpClient.create(Duration.ofSeconds(10), FEED_TIMEOUT);
+
+    public CatalogFeedReaderAdapter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public List<Map<String, String>> parseRows(InputStream content, String fileName) {
@@ -94,8 +89,8 @@ public class CatalogFeedReaderAdapter implements CatalogFeedReaderPort {
     }
 
     /** The objects of a JSON array — the whole answer, or the one at {@code itemsPath}; scalars as text, nested values as JSON. */
-    private static List<Map<String, String>> jsonRows(String text, String itemsPath) throws IOException {
-        JsonNode root = JSON.readTree(text);
+    private List<Map<String, String>> jsonRows(String text, String itemsPath) throws IOException {
+        JsonNode root = objectMapper.readTree(text);
         boolean wholeAnswer = itemsPath == null || itemsPath.isBlank();
         JsonNode items = wholeAnswer ? root : root.at(toPointer(itemsPath));
         if (!items.isArray()) {

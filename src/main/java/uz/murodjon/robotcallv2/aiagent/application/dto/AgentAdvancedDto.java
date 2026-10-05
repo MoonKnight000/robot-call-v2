@@ -1,11 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.NoiseCancellationMode;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.RealtimeFactsDelivery;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
 
 public record AgentAdvancedDto(
         Boolean useRag,

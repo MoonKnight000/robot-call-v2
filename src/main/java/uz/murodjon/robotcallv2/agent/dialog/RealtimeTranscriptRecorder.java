@@ -4,7 +4,7 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -26,7 +26,7 @@ class RealtimeTranscriptRecorder {
     private final CallTranscriptUseCase callTranscriptUseCase;
     private final CallAttemptUseCase callAttemptUseCase;
     private final DialogProperties dialogProperties;
-    private final VoiceMetrics metrics;
+    private final DialogMetrics metrics;
     private final DialogPolicy dialogPolicy;
     private final DialogTranscript transcript;
 
@@ -35,7 +35,7 @@ class RealtimeTranscriptRecorder {
             Executors.newSingleThreadExecutor(Thread.ofVirtual().name("realtime-transcript").factory());
 
     RealtimeTranscriptRecorder(CallTranscriptUseCase callTranscriptUseCase, CallAttemptUseCase callAttemptUseCase,
-                               DialogProperties dialogProperties, VoiceMetrics metrics,
+                               DialogProperties dialogProperties, DialogMetrics metrics,
                                DialogPolicy dialogPolicy, DialogTranscript transcript) {
         this.callTranscriptUseCase = callTranscriptUseCase;
         this.callAttemptUseCase = callAttemptUseCase;

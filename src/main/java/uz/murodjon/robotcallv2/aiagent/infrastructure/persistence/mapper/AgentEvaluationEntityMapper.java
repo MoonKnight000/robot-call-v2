@@ -17,9 +17,13 @@ import java.util.Map;
 @Component
 public class AgentEvaluationEntityMapper {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<String>> LIST_TYPE = new TypeReference<>() {};
+
+    public AgentEvaluationEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public AgentTestCase toAgentTestCase(AgentTestCaseEntity entity) {
         if (entity == null) {
@@ -53,19 +57,19 @@ public class AgentEvaluationEntityMapper {
 
     public String write(Object value) {
         try {
-            return JSON.writeValueAsString(value);
+            return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
             // Cannot happen: only lists and maps of plain values are written here.
             throw new IllegalStateException("Evaluation column could not be serialised", e);
         }
     }
 
-    private static <T> T read(String json, TypeReference<T> type, T fallback) {
+    private <T> T read(String json, TypeReference<T> type, T fallback) {
         if (json == null || json.isBlank()) {
             return fallback;
         }
         try {
-            return JSON.readValue(json, type);
+            return objectMapper.readValue(json, type);
         } catch (Exception e) {
             return fallback;
         }

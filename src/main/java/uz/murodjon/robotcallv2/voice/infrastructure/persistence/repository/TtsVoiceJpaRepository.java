@@ -11,4 +11,8 @@ import java.util.List;
 public interface TtsVoiceJpaRepository extends JpaRepository<TtsVoiceEntity, String> {
 
     List<TtsVoiceEntity> findAllByOrderByIdAsc();
+
+    List<TtsVoiceEntity> findAllByActiveTrueOrderByIdAsc();
+
+    List<TtsVoiceEntity> findAllByProviderAndSyncedAtIsNotNull(String provider);
 }

@@ -1,9 +1,10 @@
 package uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import java.time.Instant;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "knowledge_base_item")

@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
@@ -23,11 +22,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -48,7 +43,6 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     /** The mid-call SMS tool waits on this while the caller is on the line. */
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
-    private static final ObjectMapper JSON = new ObjectMapper();
     /** Eskiz's word for a message it took: queued for the operator, or already handed on. */
     private static final Set<String> ACCEPTED_STATUSES = Set.of("waiting", "success");
     /** This endpoint delivers to Uzbek numbers only; abroad is a separate Eskiz product. */
@@ -57,20 +51,22 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
     private final SmsEskizProperties eskizProperties;
     private final String sender;
     private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
     private final String host;
     private final Object loginLock = new Object();
     private volatile String token;
 
     @Autowired
-    public EskizSmsClientAdapter(SmsProperties smsProperties) {
-        this(smsProperties, HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+    public EskizSmsClientAdapter(SmsProperties smsProperties, ObjectMapper objectMapper) {
+        this(smsProperties, HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(), objectMapper);
     }
 
     /** Lets a unit test answer for the gateway. */
-    EskizSmsClientAdapter(SmsProperties smsProperties, HttpClient httpClient) {
+    EskizSmsClientAdapter(SmsProperties smsProperties, HttpClient httpClient, ObjectMapper objectMapper) {
         this.eskizProperties = smsProperties.eskiz();
         this.sender = smsProperties.defaultSender();
         this.httpClient = httpClient;
+        this.objectMapper = objectMapper;
         this.host = URI.create(eskizProperties.baseUrl()).getHost();
         if (smsProperties.enabled() && !eskizProperties.hasCredentials()) {
             log.warn("SMS is enabled but SMS_ESKIZ_EMAIL / SMS_ESKIZ_PASSWORD are not set — "
@@ -200,12 +196,12 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
         return UZ_MOBILE_PHONE.matcher(digits).matches() ? digits : null;
     }
 
-    private static String readText(String body, String pointer) {
+    private String readText(String body, String pointer) {
         if (body == null || body.isBlank()) {
             return null;
         }
         try {
-            JsonNode node = JSON.readTree(body).at(pointer);
+            JsonNode node = objectMapper.readTree(body).at(pointer);
             return node.isTextual() && !node.asText().isBlank() ? node.asText() : null;
         } catch (JsonProcessingException e) {
             return null;

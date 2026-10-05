@@ -13,8 +13,12 @@ import java.util.List;
 @Component
 public class AgentInsightEntityMapper {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<List<Long>> ID_LIST = new TypeReference<>() {};
+
+    public AgentInsightEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public AgentInsight toAgentInsight(AgentInsightEntity entity) {
         if (entity == null) {
@@ -46,20 +50,20 @@ public class AgentInsightEntityMapper {
         return entity;
     }
 
-    private static List<Long> readIds(String json) {
+    private List<Long> readIds(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
         }
         try {
-            return JSON.readValue(json, ID_LIST);
+            return objectMapper.readValue(json, ID_LIST);
         } catch (Exception e) {
             return List.of();
         }
     }
 
-    private static String writeIds(List<Long> ids) {
+    private String writeIds(List<Long> ids) {
         try {
-            return JSON.writeValueAsString(ids);
+            return objectMapper.writeValueAsString(ids);
         } catch (Exception e) {
             // Cannot happen: a list of longs is always serialisable.
             throw new IllegalStateException("Insight sample call ids could not be serialised", e);

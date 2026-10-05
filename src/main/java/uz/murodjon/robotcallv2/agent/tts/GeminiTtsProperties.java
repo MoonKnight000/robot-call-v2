@@ -4,12 +4,12 @@ import java.util.Map;
 
 /**
  * Gemini Text-to-Speech settings ({@code voice-agent.tts.gemini.*}).
- * Uses {@code gemini-3.1-flash-tts-preview} to synthesize controllable, expressive speech
+ * Uses {@code gemini-3.8-flash-tts} to synthesize controllable, expressive speech
  * streaming chunk-by-chunk.
  *
  * @param apiKey                Gemini API key (defaults to GEMINI_API_KEY)
  * @param url                   Gemini REST/SSE endpoint base URL
- * @param model                 Gemini TTS model (default: gemini-3.1-flash-tts-preview)
+ * @param model                 Gemini TTS model (default: gemini-3.8-flash-tts)
  * @param voice                 default voice name (e.g. Aoede, Fenrir, Puck, Charon, Kore)
  * @param voices                optional per-language voice names (e.g. uz-UZ -> Aoede, ru-RU -> Kore)
  * @param sampleRate            audio sample rate (default: 24000 Hz)
@@ -29,7 +29,7 @@ public record GeminiTtsProperties(
             url = "https://generativelanguage.googleapis.com/v1beta/models";
         }
         if (model == null || model.isBlank()) {
-            model = "gemini-3.1-flash-tts-preview";
+            model = "gemini-3.8-flash-tts";
         }
         if (voice == null || voice.isBlank()) {
             voice = "Aoede";

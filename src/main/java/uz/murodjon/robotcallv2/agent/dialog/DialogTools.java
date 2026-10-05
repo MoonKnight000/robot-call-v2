@@ -4,20 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -36,7 +29,8 @@ public class DialogTools {
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
             "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
             "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
-            "sendSmsPaymentLink", "requestPaymentExtension", "endCall", "sendDtmfTones"
+            "sendSmsPaymentLink", "requestPaymentExtension", "endCall", "sendDtmfTones",
+            "bookShowroomVisit", "sendLocationSms", "sendCatalogSms", "waitForCaller", "switchLanguage", "noteCallerMood"
     );
 
     /**
@@ -51,8 +45,15 @@ public class DialogTools {
      * recordPaymentPromise.
      */
     static final Set<String> ALWAYS_AVAILABLE_TOOL_NAMES = Set.of(
-            "transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall"
+            "transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall",
+            "waitForCaller", "switchLanguage", "noteCallerMood"
     );
+
+    /**
+     * Always-available tools only the cascade pipeline offers: a realtime engine does its own
+     * turn-taking, speaks whatever language it hears, and has no separate voice to set a mood on.
+     */
+    static final Set<String> CASCADE_ONLY_TOOL_NAMES = Set.of("waitForCaller", "switchLanguage", "noteCallerMood");
 
     /**
      * One SMS a call, counted across sendMidCallSms and sendSmsPaymentLink on the counter
@@ -375,15 +376,7 @@ public class DialogTools {
      * and half a link is worse than none.
      */
     private static String findPaymentLink(CallContext context) {
-        Object fact = context != null ? context.fact(PAYMENT_LINK_FACT) : null;
-        if (!(fact instanceof String value)) {
-            return null;
-        }
-        String link = value.trim();
-        boolean webAddress = (link.startsWith("https://") || link.startsWith("http://"))
-                && !link.endsWith("…")
-                && link.chars().noneMatch(Character::isWhitespace);
-        return webAddress ? link : null;
+        return findLink(context, null, PAYMENT_LINK_FACT);
     }
 
     @Tool(description = "Mijoz to'lov muddatini bir necha kunga uzaytirishni (kechiktirishni) so'raganda chaqiriladi")
@@ -420,6 +413,44 @@ public class DialogTools {
         return "'" + digits + "' bosildi. Endi menyu javobini kuting.";
     }
 
+    @Tool(description = "Mijozning gapi hali tugamagan bo'lsa chaqiriladi: u o'ylanyapti, faqat "
+            + "o'ylanish tovushi chiqardi yoki jumlasi chala qolib, davomi kelishi aniq. Bu holda "
+            + "hech narsa demang va matn yozmang — bot jim turib, mijoz gapini davom ettirishini "
+            + "kutadi, davomi esa shu gap bilan birga keladi. Mijoz savolni eshitmagan yoki "
+            + "qaytarishni so'ragan bo'lsa, bu tool EMAS — oxirgi savolingizni qisqa qaytaring.")
+    public String waitForCaller() {
+        session.waitForCaller();
+        log.info("[{}] model chose to keep listening", session.channelId());
+        return "Jim turing, mijozning davomini kuting.";
+    }
+
+    @Tool(description = "Mijoz boshqa tilda gaplashishni so'raganda (qanday so'z bilan so'rasa ham) "
+            + "chaqiriladi. Bu tool bilan birga oddiy matn YOZMANG — yangi tildagi gapingizni reply "
+            + "parametriga yozing, u yangi tilning ovozi bilan aytiladi.")
+    public String switchLanguage(@ToolParam(description = "mijozga yangi tilda aytiladigan gap") String reply,
+                                 @ToolParam(description = "til kodi: uz-UZ, ru-RU yoki en-US") String language) {
+        if (!session.switchCallLanguage(language)) {
+            log.info("[{}] language switch to {} refused — not one of this company's languages",
+                    session.channelId(), language);
+            return "XATO: bu til ushbu qo'ng'iroqda qo'llab-quvvatlanmaydi. Mijozdan uzr so'rab, "
+                    + "joriy tilda davom eting.";
+        }
+        // After the switch, so the line is synthesized in the new language's voice.
+        recordReply(reply);
+        log.info("[{}] caller asked for {} — language switched", session.channelId(), language);
+        return "Til " + language + " ga o'tkazildi. Bundan keyin faqat shu tilda gapiring.";
+    }
+
+    @Tool(description = "Mijozning kayfiyati O'ZGARGANINI sezsangiz chaqiriladi: asabiylashdi "
+            + "(FRUSTRATED), nima gapligini tushunmay qoldi (CONFUSED), mamnun (POSITIVE) yoki yana "
+            + "xotirjam (NEUTRAL). Har navbatda emas — faqat o'zgarganda. Mijozga aytadigan gapingizni "
+            + "odatdagidek oddiy matn qilib yozing; bu tool faqat ovoz ohangi va keyingi javob uslubini sozlaydi.")
+    public String noteCallerMood(@ToolParam(description = "mijozning hozirgi kayfiyati") CustomerSentiment mood) {
+        session.noteCallerMood(mood);
+        log.info("[{}] caller mood noted: {}", session.channelId(), mood);
+        return "Belgilandi.";
+    }
+
     @Tool(description = "Suhbatni yakunlaydi va natijani belgilaydi")
     public String endCall(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                           @ToolParam(description = "qo'ng'iroq yakunlash sababi/natijasi") Disposition disposition) {
@@ -427,5 +458,135 @@ public class DialogTools {
         session.end(disposition);
         log.info("[{}] call ended with disposition: {}", session.channelId(), disposition);
         return "Qo'ng'iroq yakunlandi: " + disposition;
+    }
+
+    @Tool(description = "Mijoz ko'chmas mulk sotuv ofisiga (shourumga) kelishga rozi bo'lganda uchrashuvni band qiladi. "
+            + "Uchrashuv vaqti, qiziqayotgan xonalar soni va to'lov turini yozib oladi. "
+            + "Faqat mijoz tashrif buyurishga aniq rozi bo'lganda chaqiring.")
+    public String bookShowroomVisit(
+            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+            @ToolParam(description = "uchrashuv sanasi va vaqti (masalan '2026-09-20 15:00' yoki 'ertaga soat 15:00')") String visitTime,
+            @ToolParam(description = "kerakli xonalar soni (masalan '2 xonali', '3 xonali')", required = false) String roomsNeeded,
+            @ToolParam(description = "taxminiy byudjet", required = false) String budgetRange,
+            @ToolParam(description = "to'lov shakli (100% to'lov, bo'lib to'lash, ipoteka)", required = false) String paymentMethod,
+            @ToolParam(description = "qo'shimcha izoh", required = false) String note) {
+        if (visitTime == null || visitTime.isBlank()) {
+            return "XATO: Uchrashuv vaqti ko'rsatilmadi. Mijozdan qaysi kun va soatda kela olishini so'rang.";
+        }
+        recordReply(reply);
+        session.recordOutcome("meetingBooked", true);
+        session.recordOutcome("meetingTime", visitTime.trim());
+        recordIfPresent("roomsNeeded", roomsNeeded);
+        recordIfPresent("budgetRange", budgetRange);
+        recordIfPresent("paymentMethod", paymentMethod);
+        recordIfPresent("meetingNote", note);
+        session.setDisposition(Disposition.GOAL_REACHED);
+        log.info("[{}] showroom visit booked: time={}, rooms={}, budget={}, payment={}",
+                session.channelId(), visitTime, roomsNeeded, budgetRange, paymentMethod);
+        return "Sotuv ofisiga uchrashuv belgilandi: " + visitTime.trim()
+                + ". Mijozga mutaxassislarimiz kutib olishini bildiring va manzil/lokatsiyani SMS orqali yuborishni taklif qiling.";
+    }
+
+    @Tool(description = "Mijoz sotuv ofisi (shourum) manzili yoki lokatsiyasini so'raganda, "
+            + "yoki uchrashuv belgilangandan so'ng SMS orqali lokatsiya va manzilni yuboradi.")
+    public String sendLocationSms(
+            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+            @ToolParam(description = "lokatsiya havolasi (Google Maps yoki Yandex Maps)", required = false) String locationUrl,
+            @ToolParam(description = "ofis manzili yoki mo'ljal", required = false) String address) {
+        session.recordOutcome("locationSmsRequested", true);
+        String link = findLink(session.context(), locationUrl, "locationLink", "showroomLocation", "mapUrl");
+        String officeAddress = address != null && !address.isBlank()
+                ? address.trim()
+                : findLocationAddress(session.context());
+
+        if (link == null && officeAddress == null) {
+            recordReply(reply);
+            log.info("[{}] location SMS requested but no location link/address found", session.channelId());
+            return "Lokatsiya ma'lumotlari SMS orqali yuborish uchun qayd etildi.";
+        }
+
+        StringBuilder smsText = new StringBuilder("Sotuv ofisimiz manzili: ");
+        if (officeAddress != null) {
+            smsText.append(officeAddress);
+            if (link != null) smsText.append(". ");
+        }
+        if (link != null) {
+            smsText.append("Lokatsiya: ").append(link);
+        }
+
+        String refusal = sendGuardedSms(smsText.toString());
+        if (refusal != null) {
+            return refusal;
+        }
+        recordReply(reply);
+        session.recordOutcome("locationSmsSent", true);
+        log.info("[{}] location SMS sent successfully", session.channelId());
+        return "Sotuv ofisi lokatsiyasi mijozning telefoniga SMS orqali yuborildi. Mijozga SMSni tekshirib olishini ayting.";
+    }
+
+    @Tool(description = "Mijoz turar joy majmuasi loyihalari, rejalari yoki taqdimotini (katalog) so'raganda "
+            + "SMS orqali katalog havolasini yuboradi.")
+    public String sendCatalogSms(
+            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+            @ToolParam(description = "katalog yoki taqdimot havolasi", required = false) String catalogUrl) {
+        session.recordOutcome("catalogSmsRequested", true);
+        String link = findLink(session.context(), catalogUrl, "catalogUrl", "presentationUrl");
+        if (link == null) {
+            recordReply(reply);
+            log.info("[{}] catalog SMS requested but no link found", session.channelId());
+            return "Katalog havolasi SMS orqali yuborish uchun qayd etildi.";
+        }
+        String refusal = sendGuardedSms("Loyihalarimiz katalogi va rejalari: " + link);
+        if (refusal != null) {
+            return refusal;
+        }
+        recordReply(reply);
+        session.recordOutcome("catalogSmsSent", true);
+        log.info("[{}] catalog SMS sent successfully", session.channelId());
+        return "Katalog havolasi mijozga SMS orqali yuborildi. Mijozga SMS kelganini ma'lum qiling.";
+    }
+
+    private void recordIfPresent(String key, String value) {
+        if (value != null && !value.isBlank()) {
+            session.recordOutcome(key, value.trim());
+        }
+    }
+
+    /**
+     * {@code provided} when the model passed a whole web address, else the first of the
+     * call's {@code factKeys} that is set — when that one is a whole web address.
+     */
+    private static String findLink(CallContext context, String provided, String... factKeys) {
+        if (isValidWebLink(provided)) {
+            return provided.trim();
+        }
+        return firstFact(context, factKeys) instanceof String s && isValidWebLink(s) ? s.trim() : null;
+    }
+
+    private static String findLocationAddress(CallContext context) {
+        return firstFact(context, "showroomAddress", "officeAddress") instanceof String s && !s.isBlank()
+                ? s.trim() : null;
+    }
+
+    private static Object firstFact(CallContext context, String... keys) {
+        if (context == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = context.fact(key);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    /** A whole web address. A fact longer than {@link CallContext} keeps arrives cut and ending in "…". */
+    private static boolean isValidWebLink(String value) {
+        if (value == null) return false;
+        String link = value.trim();
+        return (link.startsWith("https://") || link.startsWith("http://"))
+                && !link.endsWith("…")
+                && link.chars().noneMatch(Character::isWhitespace);
     }
 }

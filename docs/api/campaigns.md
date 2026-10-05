@@ -634,7 +634,7 @@ Dialer har bir nishonni navbatga qo'yayotganda kampaniyaning **faol** variantlar
 | `aiAgentId` | To'ldirilgan bo'lsa, qo'ng'iroq kampaniya agenti o'rniga shu agent bilan ketadi — boshqa senariy, ovoz yoki persona bilan |
 | `ttsVoiceId` | To'ldirilgan bo'lsa, qo'ng'iroq shu ovozda gapiradi. Agentning `languageVoices` xaritasi bu qo'ng'iroq uchun **bekor qilinadi** — aks holda u variant ovozidan ustun kelib, variant faqat nomi bilan farq qilardi |
 | `promptOverride` | To'ldirilgan bo'lsa, ssenariyning `rolePrompt` i shu matn bilan almashtiriladi. Faqat shu qo'ng'iroq uchun — ssenariy yozuvi o'zgarmaydi, bosqichlar, faktlar, tool'lar va guardrail'lar tegilmaydi |
-| `pipelineMode` | To'ldirilgan bo'lsa (`CASCADE` / `REALTIME`), qo'ng'iroq agentning o'z rejimi o'rniga shu pipeline'da ketadi. **Cascade va realtime'ni solishtirishning yagona adolatli yo'li** — bir ro'yxat, bir kunlar, bir xil taqsimot. `REALTIME` tanlangan, lekin deploy'da realtime engine yo'q bo'lsa, qo'ng'iroq cascade'da ketadi (logda WARN). Natijani solishtirish: shu hisobotdagi `answerRate`/`conversionRate`/`spentUzs` + [reports.md](reports.md) dagi `technical.avgTurnLatencyMs` va `rtpMos` |
+| `pipelineMode` | To'ldirilgan bo'lsa (`CASCADE` / `REALTIME` / `HALF_CASCADE`), qo'ng'iroq agentning o'z rejimi o'rniga shu pipeline'da ketadi. **Cascade va realtime'ni solishtirishning yagona adolatli yo'li** — bir ro'yxat, bir kunlar, bir xil taqsimot. `REALTIME` tanlangan, lekin deploy'da realtime engine yo'q bo'lsa, qo'ng'iroq cascade'da ketadi (logda WARN). Natijani solishtirish: shu hisobotdagi `answerRate`/`conversionRate`/`spentUzs` + [reports.md](reports.md) dagi `technical.avgTurnLatencyMs` va `rtpMos` |
 | `trafficWeight` | Taqsimotdagi ulush. Yig'indisi 100 bo'lishi shart emas — nisbat muhim |
 | `active` | `false` bo'lsa umuman tanlanmaydi |
 
@@ -677,7 +677,7 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
 | `aiAgentId` | `number` | ❌ | Kampaniya agenti o'rniga ishlatiladigan agent |
 | `promptOverride` | `string` | ❌ | Ssenariyning `rolePrompt` i o'rniga (faqat shu variant qo'ng'iroqlarida) |
 | `ttsVoiceId` | `string` | ❌ | Variant ovozi |
-| `pipelineMode` | `CASCADE` \| `REALTIME` \| `null` | ❌ | Variant qo'ng'iroqlari qaysi pipeline'da ketadi; `null` — agentning o'zi |
+| `pipelineMode` | `CASCADE` | `REALTIME` | `HALF_CASCADE` | `null` || `REALTIME` \| `null` | ❌ | Variant qo'ng'iroqlari qaysi pipeline'da ketadi; `null` — agentning o'zi |
 | `trafficWeight` | `number` | ❌ | Taqsimotdagi ulush; berilmasa `50` |
 | `active` | `boolean` | ❌ (`PUT` da) | `false` — variant umuman tanlanmaydi |
 

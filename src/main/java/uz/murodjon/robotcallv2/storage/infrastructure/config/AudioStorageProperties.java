@@ -22,7 +22,7 @@ public record AudioStorageProperties(
 ) {
     public AudioStorageProperties {
         if (bucket == null || bucket.isBlank()) {
-            bucket = "voice-recordings";
+            bucket = "files";
         }
     }
 }

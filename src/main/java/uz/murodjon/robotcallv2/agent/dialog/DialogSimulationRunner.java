@@ -45,7 +45,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DialogSimulationRunner.class);
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final ConfigurableApplicationContext context;
     private final AgentSimulator simulator;
@@ -61,7 +61,9 @@ public class DialogSimulationRunner implements ApplicationRunner {
                                   AgentSimulator simulator,
                                   ScenarioUseCase scenarioUseCase,
                                   CompanyProperties companyProperties,
-                                  SimulationProperties simulationProperties) {
+                                  SimulationProperties simulationProperties,
+                                  ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.context = context;
         this.simulator = simulator;
         this.scenarioUseCase = scenarioUseCase;
@@ -96,7 +98,7 @@ public class DialogSimulationRunner implements ApplicationRunner {
         List<SimulationPersona> personas;
         ScenarioDefinition scenario;
         try {
-            personas = List.of(MAPPER.readValue(Files.readString(Path.of(personasPath)),
+            personas = List.of(objectMapper.readValue(Files.readString(Path.of(personasPath)),
                     SimulationPersona[].class));
             scenario = scenarioUseCase.requireScenario(companyProperties.defaultId(), scenarioId).definition();
         } catch (Exception e) {

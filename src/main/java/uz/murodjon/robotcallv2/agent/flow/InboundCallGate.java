@@ -3,9 +3,13 @@ package uz.murodjon.robotcallv2.agent.flow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callflow.application.port.input.CallFlowUseCase;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowGraph;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleUseCase;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundCallerRule;
@@ -38,16 +42,21 @@ public class InboundCallGate {
     private final CallFlowUseCase callFlowUseCase;
     private final BusinessScheduleUseCase businessScheduleUseCase;
     private final CompanyConfigUseCase companyConfigService;
+    private final CompanyUseCase companyUseCase;
+    private final CallBillingUseCase callBillingUseCase;
     private final Clock clock;
 
     public InboundCallGate(InboundRouteUseCase inboundRouteUseCase, InboundCallerRuleUseCase callerRuleUseCase,
                            CallFlowUseCase callFlowUseCase, BusinessScheduleUseCase businessScheduleUseCase,
-                           CompanyConfigUseCase companyConfigService, Clock clock) {
+                           CompanyConfigUseCase companyConfigService, CompanyUseCase companyUseCase,
+                           CallBillingUseCase callBillingUseCase, Clock clock) {
         this.inboundRouteUseCase = inboundRouteUseCase;
         this.callerRuleUseCase = callerRuleUseCase;
         this.callFlowUseCase = callFlowUseCase;
         this.businessScheduleUseCase = businessScheduleUseCase;
         this.companyConfigService = companyConfigService;
+        this.companyUseCase = companyUseCase;
+        this.callBillingUseCase = callBillingUseCase;
         this.clock = clock;
     }
 
@@ -58,6 +67,16 @@ public class InboundCallGate {
         }
         long companyId = route.companyId();
         String language = companyLanguage(companyId);
+
+        Company company = companyUseCase.findById(companyId);
+        if (company != null && company.status() == CompanyStatus.SUSPENDED) {
+            log.info("Inbound call to DID {} rejected: company {} is suspended", did, companyId);
+            return InboundDecision.closed(route, PbxPhrases.companyUnavailable(language), language, false, false);
+        }
+        if (!callBillingUseCase.hasBalanceForCall(companyId)) {
+            log.info("Inbound call to DID {} rejected: company {} has insufficient balance", did, companyId);
+            return InboundDecision.closed(route, PbxPhrases.companyUnavailable(language), language, false, false);
+        }
         InboundCallerRule rule = findRule(companyId, callerNumber);
         if (rule != null && rule.action().blocks()) {
             return InboundDecision.reject(route, rule, language);

@@ -1,9 +1,9 @@
 package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
-import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 /**
  * JPA entity for ai_model_config (§11 settings).

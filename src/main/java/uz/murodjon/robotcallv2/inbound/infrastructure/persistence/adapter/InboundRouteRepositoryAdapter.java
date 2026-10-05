@@ -4,7 +4,6 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.repository.AiAgentJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.mapper.InboundRouteEntityMapper;
 import uz.murodjon.robotcallv2.inbound.application.port.output.InboundRouteRepository;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
@@ -13,6 +12,7 @@ import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
 import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundRouteEntity;
+import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.mapper.InboundRouteEntityMapper;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.repository.InboundRouteJpaRepository;
 
 import java.time.Instant;

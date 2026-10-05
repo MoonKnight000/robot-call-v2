@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.dialer.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -60,6 +61,7 @@ public class CallTaskConsumer {
     /** Whose dial window the task is re-checked against at the last moment. */
     private final DialerService dialerService;
     private final CompanyUseCase companyUseCase;
+    private final ObjectMapper objectMapper;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
                             CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
@@ -67,7 +69,9 @@ public class CallTaskConsumer {
                             DoNotCallUseCase doNotCallUseCase, CallAttemptUseCase callAttemptUseCase,
                             ClientMemoryUseCase clientMemoryUseCase, FactWebhookUseCase factWebhookUseCase,
                             AiAgentUseCase aiAgentUseCase, CallBillingUseCase callBilling, DialerService dialerService,
-                            CompanyUseCase companyUseCase) {
+                            CompanyUseCase companyUseCase,
+                            ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.dialerService = dialerService;
         this.companyUseCase = companyUseCase;
         this.ariService = ariService;
@@ -144,13 +148,13 @@ public class CallTaskConsumer {
             CrmClientSnapshot crm = crmUseCase.fetchClient(task.companyId(), task.clientId());
             ClientMemory memory = clientMemoryUseCase.findByCompanyIdAndPhone(task.companyId(), task.phone());
             CallContext context = CallContextFactory.mergeCrmFacts(
-                    CallContextFactory.readContextData(task.contextData(), null, scenario.definition().factSchema()), crm)
+                    CallContextFactory.readContextData(objectMapper, task.contextData(), null, scenario.definition().factSchema()), crm)
                     .withMemory(memory);
             // Last and freshest. Deliberately here rather than once the call is up: the
             // number has not been dialled yet, so a slow endpoint costs this call's place in
             // the queue and not a silence the person who answered has to sit through.
             if (scenario.definition().factWebhook() != null) {
-                context = CallContextFactory.overlayWebhookFacts(context,
+                context = CallContextFactory.overlayWebhookFacts(objectMapper, context,
                         factWebhookUseCase.fetchFacts(scenario.definition().factWebhook(),
                                 FactWebhookRequest.outbound(task.phone(), task.clientId(), task.campaignId())),
                         scenario.definition().factSchema());
@@ -164,7 +168,7 @@ public class CallTaskConsumer {
                     : agent.voiceFor(language);
 
             // The target's own opening line (agentOverrides.firstMessage, NEXT-PLAN A.8).
-            String firstMessage = CallContextFactory.readFirstMessageOverride(task.contextData());
+            String firstMessage = CallContextFactory.readFirstMessageOverride(objectMapper, task.contextData());
             if (firstMessage != null) {
                 agent = agent.withFirstMessage(firstMessage);
             }

@@ -106,13 +106,13 @@ class CompanyIsolationTest {
 
     @Test
     void countExcludesAnotherCompanysCampaigns() {
-        long before = campaigns.count(OWN_COMPANY_ID);
+        long before = campaigns.countByCompanyId(OWN_COMPANY_ID);
 
         campaigns.create(OWN_COMPANY_ID, ownCampaign("counted-campaign"));
 
         // +1 for the campaign just created in *this* company; otherCompanyCampaignId
         // (seeded in setUp under company 2) must not also be reflected here.
-        assertThat(campaigns.count(OWN_COMPANY_ID)).isEqualTo(before + 1);
+        assertThat(campaigns.countByCompanyId(OWN_COMPANY_ID)).isEqualTo(before + 1);
     }
 
     @Test

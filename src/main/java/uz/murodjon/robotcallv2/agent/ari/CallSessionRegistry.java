@@ -43,6 +43,10 @@ class CallSessionRegistry {
         return sessions.get(channelId);
     }
 
+    boolean contains(String channelId) {
+        return sessions.containsKey(channelId);
+    }
+
     /** A snapshot of the live calls. */
     List<CallSession> findAll() {
         return List.copyOf(sessions.values());

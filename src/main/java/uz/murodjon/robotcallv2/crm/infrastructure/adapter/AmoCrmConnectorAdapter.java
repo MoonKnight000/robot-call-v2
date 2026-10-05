@@ -6,8 +6,11 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
@@ -55,14 +58,16 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
     private static final String ACCEPTED = "accepted";
 
     private final PublicHttpClient httpClient;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public AmoCrmConnectorAdapter() {
-        this(PublicHttpClient.create(CONNECT_TIMEOUT, WRITE_TIMEOUT));
+    @Autowired
+    public AmoCrmConnectorAdapter(ObjectMapper objectMapper) {
+        this(PublicHttpClient.create(CONNECT_TIMEOUT, WRITE_TIMEOUT), objectMapper);
     }
 
-    AmoCrmConnectorAdapter(PublicHttpClient httpClient) {
+    AmoCrmConnectorAdapter(PublicHttpClient httpClient, ObjectMapper objectMapper) {
         this.httpClient = httpClient;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -94,7 +99,7 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
                 log.debug("amoCRM contact search at {} returned HTTP {}", account.getHost(), response.statusCode());
                 return null;
             }
-            JsonNode contacts = mapper.readTree(response.readBodyText()).path("_embedded").path("contacts");
+            JsonNode contacts = objectMapper.readTree(response.readBodyText()).path("_embedded").path("contacts");
             String name = contacts.path(0).path("name").asText("").trim();
             // A name is all an inbound greeting needs; amoCRM keeps no balance to state.
             return name.isEmpty() ? null : new CrmClientSnapshot(name, null, null, null, null, null, null, null);
@@ -113,7 +118,7 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
             return null;
         }
         try {
-            ArrayNode body = mapper.createArrayNode();
+            ArrayNode body = objectMapper.createArrayNode();
             ObjectNode note = body.addObject();
             note.put("note_type", "common");
             note.putObject("params").put("text", noteText);
@@ -123,7 +128,7 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
                 log.warn("amoCRM note at {} HTTP {} for lead {}", account.getHost(), response.statusCode(), leadId);
                 return null;
             }
-            String noteId = mapper.readTree(response.readBodyText())
+            String noteId = objectMapper.readTree(response.readBodyText())
                     .path("_embedded").path("notes").path(0).path("id").asText("");
             return noteId.isBlank() ? ACCEPTED : noteId;
         } catch (Exception e) {
@@ -147,7 +152,7 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
             return false;
         }
         try {
-            ArrayNode body = mapper.createArrayNode();
+            ArrayNode body = objectMapper.createArrayNode();
             ObjectNode call = body.addObject();
             call.put("direction", entry.inbound() ? "inbound" : "outbound");
             call.put("uniq", entry.callUuid());
@@ -168,6 +173,62 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
             return true;
         } catch (Exception e) {
             log.warn("amoCRM call log at {} failed for lead {}: {}", account.getHost(), entry.leadId(), failure(e));
+            return false;
+        }
+    }
+
+    @Override
+    public String createTask(CrmConnection connection, CreateCrmTaskRequest request) {
+        URI account = screen(connection);
+        if (account == null) {
+            return null;
+        }
+        try {
+            ArrayNode body = objectMapper.createArrayNode();
+            ObjectNode task = body.addObject();
+            task.put("entity_id", request.leadId());
+            task.put("entity_type", "leads");
+            task.put("text", request.title() + (request.description() != null ? " - " + request.description() : ""));
+            if (request.dueAt() != null) {
+                task.put("complete_till", request.dueAt().getEpochSecond());
+            }
+            if (request.responsibleId() != null && request.responsibleId() > 0) {
+                task.put("responsible_user_id", request.responsibleId());
+            }
+
+            PublicHttpResponse response = post(account, "/api/v4/tasks", connection, body);
+            if (response.statusCode() / 100 != 2) {
+                log.warn("amoCRM task at {} HTTP {} for lead {}", account.getHost(), response.statusCode(), request.leadId());
+                return null;
+            }
+            String taskId = objectMapper.readTree(response.readBodyText())
+                    .path("_embedded").path("tasks").path(0).path("id").asText("");
+            return taskId.isBlank() ? ACCEPTED : taskId;
+        } catch (Exception e) {
+            log.warn("amoCRM task at {} failed for lead {}: {}", account.getHost(), request.leadId(), failure(e));
+            return null;
+        }
+    }
+
+    @Override
+    public boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request) {
+        URI account = screen(connection);
+        if (account == null) {
+            return false;
+        }
+        try {
+            ArrayNode body = objectMapper.createArrayNode();
+            ObjectNode lead = body.addObject();
+            lead.put("id", request.leadId());
+            lead.put("status_id", request.statusId());
+
+            PublicHttpRequest patchRequest = request("PATCH", account, "/api/v4/leads", connection, WRITE_TIMEOUT)
+                    .addHeader("Content-Type", "application/json")
+                    .setBody(objectMapper.writeValueAsString(body));
+            PublicHttpResponse response = httpClient.send(patchRequest);
+            return response.statusCode() / 100 == 2;
+        } catch (Exception e) {
+            log.warn("amoCRM update lead stage at {} failed for lead {}: {}", account.getHost(), request.leadId(), failure(e));
             return false;
         }
     }
@@ -197,7 +258,7 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
             throws IOException, InterruptedException {
         PublicHttpRequest request = request("POST", account, path, connection, WRITE_TIMEOUT)
                 .addHeader("Content-Type", "application/json")
-                .setBody(mapper.writeValueAsString(body));
+                .setBody(objectMapper.writeValueAsString(body));
         return httpClient.send(request);
     }
 

@@ -1,51 +1,17 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.regex.Pattern;
-
 /**
- * Real-time conversational sentiment analyzer that detects customer frustration,
- * agitation, confusion, or satisfaction from their spoken utterances.
+ * What the caller's mood asks of the next reply.
+ *
+ * <p>The mood itself is not detected here. It used to be, from regexes — and "to'lamayman"
+ * read as anger and "kim bu?" as confusion whatever the tone of the call. The model now
+ * judges it from the conversation and reports it with its noteCallerMood tool
+ * ({@link DialogTools}); this only turns that judgement into the directive for the next turn.
  */
 @Component
 public class SentimentDetector {
-
-    private static final Logger log = LoggerFactory.getLogger(SentimentDetector.class);
-
-    private static final Pattern ANGER_FRUSTRATION_UZ = Pattern.compile(
-            "\\b(jonga tegdingiz|asabimga tegmang|yetar|eshitishni xohlamayman|yo'qol|lanat|axmoq|tushunmayapsiz|bormayman|to'lamayman|qayerdan oldingiz|adashdingiz|bezdirdingiz|o'chir telefonni|bezovta qilmang)\\b",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
-    );
-
-    private static final Pattern ANGER_FRUSTRATION_RU = Pattern.compile(
-            "\\b(достали|задолбали|хватит|отстаньте|не звоните|вы издеваетесь|не понимаю|пошел|мошенники|надоели|не хочу слушать|заблокирую)\\b",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
-    );
-
-    private static final Pattern CONFUSION = Pattern.compile(
-            "\\b(tushunmadim|qanaqa qarz|kim bu|qayerdan|nima deyapsiz|qaysi kompaniya|ne ponimayu|kto eto|kakoy dolg|o chem vy)\\b",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
-    );
-
-    /**
-     * Evaluates customer text for sentiment triggers.
-     */
-    public CustomerSentiment analyze(String text) {
-        if (text == null || text.isBlank()) {
-            return CustomerSentiment.NEUTRAL;
-        }
-        if (ANGER_FRUSTRATION_UZ.matcher(text).find() || ANGER_FRUSTRATION_RU.matcher(text).find()) {
-            log.info("Detected FRUSTRATED customer sentiment");
-            return CustomerSentiment.FRUSTRATED;
-        }
-        if (CONFUSION.matcher(text).find()) {
-            return CustomerSentiment.CONFUSED;
-        }
-        return CustomerSentiment.NEUTRAL;
-    }
 
     /**
      * Dynamic empathy prompt addition if customer is agitated.

@@ -13,7 +13,8 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
-import uz.murodjon.robotcallv2.campaign.application.service.CampaignService;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
@@ -43,7 +44,8 @@ class DialerServiceTest {
     private static final RtpProperties RTP_PROPS =
             new RtpProperties("127.0.0.1", 10000, 10100, "recordings", "", 2, RecordingMode.SPATIAL_STEREO, null, 0, 0);
 
-    private CampaignService campaignService;
+    private CampaignUseCase campaignUseCase;
+    private CampaignTargetUseCase campaignTargetUseCase;
     private SipTrunkUseCase sipTrunks;
     private RabbitTemplate rabbit;
     private DialerState state;
@@ -53,7 +55,8 @@ class DialerServiceTest {
 
     @BeforeEach
     void setUp() {
-        campaignService = mock(CampaignService.class);
+        campaignUseCase = mock(CampaignUseCase.class);
+        campaignTargetUseCase = mock(CampaignTargetUseCase.class);
         sipTrunks = mock(SipTrunkUseCase.class);
         rabbit = mock(RabbitTemplate.class);
         state = mock(DialerState.class);
@@ -76,7 +79,7 @@ class DialerServiceTest {
         ZonedDateTime now = ZonedDateTime.of(LocalDate.of(2026, 7, 1), LocalTime.of(hour, 0), ZONE);
         return new DialerService(
                 new DialerProperties(true, 5, 10, 5, 5, 60),
-                RTP_PROPS, campaignService, campaignService, mock(CompanyConfigUseCase.class),
+                RTP_PROPS, campaignUseCase, campaignTargetUseCase, mock(CompanyConfigUseCase.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class),
                 mock(GracefulShutdownManager.class), ttsWarmup,
@@ -88,14 +91,14 @@ class DialerServiceTest {
     }
 
     private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
-        when(campaignService.findActiveCampaigns()).thenReturn(List.of(new Campaign(
+        when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(new Campaign(
                 CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
                 LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, dailyCallCap, AI_AGENT_ID, 1L, null,
                 RecurrenceType.ONCE, null, null, false, null)));
     }
 
     private void givenDueTargets(int count) {
-        when(campaignService.claimDueTargets(anyLong(), anyInt())).thenAnswer(call -> {
+        when(campaignTargetUseCase.claimDueTargets(anyLong(), anyInt())).thenAnswer(call -> {
             int limit = call.getArgument(1);
             return java.util.stream.IntStream.range(0, Math.min(count, limit))
                     .mapToObj(i -> new CampaignTarget(100L + i, CAMPAIGN_ID, 1L, "99890111223" + i,
@@ -121,7 +124,7 @@ class DialerServiceTest {
 
         dialerAt(7).dispatch();
 
-        verify(campaignService, never()).claimDueTargets(anyLong(), anyInt());
+        verify(campaignTargetUseCase, never()).claimDueTargets(anyLong(), anyInt());
         verify(rabbit, never()).convertAndSend(any(String.class), any(CallTask.class));
     }
 
@@ -132,7 +135,7 @@ class DialerServiceTest {
 
         dialerAt(10).dispatch();
 
-        verify(campaignService, never()).claimDueTargets(anyLong(), anyInt());
+        verify(campaignTargetUseCase, never()).claimDueTargets(anyLong(), anyInt());
     }
 
     @Test
@@ -143,7 +146,7 @@ class DialerServiceTest {
 
         dialerAt(10).dispatch();
 
-        verify(campaignService).claimDueTargets(CAMPAIGN_ID, 2);
+        verify(campaignTargetUseCase).claimDueTargets(CAMPAIGN_ID, 2);
         verify(rabbit, times(2)).convertAndSend(eq(CallTask.QUEUE), any(CallTask.class));
     }
 
@@ -155,7 +158,7 @@ class DialerServiceTest {
 
         dialerAt(10).dispatch();
 
-        verify(campaignService, never()).claimDueTargets(anyLong(), anyInt());
+        verify(campaignTargetUseCase, never()).claimDueTargets(anyLong(), anyInt());
         verify(rabbit, never()).convertAndSend(any(String.class), any(CallTask.class));
     }
 
@@ -168,7 +171,7 @@ class DialerServiceTest {
 
         dialerAt(10).dispatch();
 
-        verify(campaignService, never()).claimDueTargets(anyLong(), anyInt());
+        verify(campaignTargetUseCase, never()).claimDueTargets(anyLong(), anyInt());
         verify(rabbit, never()).convertAndSend(any(String.class), any(CallTask.class));
     }
 
@@ -179,7 +182,7 @@ class DialerServiceTest {
 
         dialerAt(10).dispatch();
 
-        verify(campaignService).claimDueTargets(CAMPAIGN_ID, 5);
+        verify(campaignTargetUseCase).claimDueTargets(CAMPAIGN_ID, 5);
     }
 
     @Test
@@ -201,7 +204,7 @@ class DialerServiceTest {
         when(shutdown.isDraining()).thenReturn(true);
         DialerService dialer = new DialerService(
                 new DialerProperties(true, 5, 10, 5, 5, 60),
-                RTP_PROPS, campaignService, campaignService, mock(CompanyConfigUseCase.class),
+                RTP_PROPS, campaignUseCase, campaignTargetUseCase, mock(CompanyConfigUseCase.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class), shutdown, ttsWarmup,
                 Clock.systemDefaultZone(), mock(CampaignVariantUseCase.class), aiAgents, callBilling,
@@ -212,6 +215,6 @@ class DialerServiceTest {
 
         dialer.dispatch();
 
-        verify(campaignService, never()).findActiveCampaigns();
+        verify(campaignUseCase, never()).findActiveCampaigns();
     }
 }

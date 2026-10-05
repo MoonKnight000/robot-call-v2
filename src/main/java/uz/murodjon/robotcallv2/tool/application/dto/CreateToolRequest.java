@@ -2,17 +2,16 @@ package uz.murodjon.robotcallv2.tool.application.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
-import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
-import java.util.Map;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
 import java.util.List;
+import java.util.Map;
 
 public record CreateToolRequest(
         @NotBlank(message = "name is required")

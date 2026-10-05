@@ -19,7 +19,7 @@ voice-agent:
 
     # Browser test calls (POST /api/calls/web-test) — WebTestProperties, docs/api/calls.md
     web-test:
-      ws-url: ${WEB_TEST_WS_URL:ws://192.168.0.100:8088/ws}
+      ws-url: ${WEB_TEST_WS_URL:ws://localhost:8088/ws}
       sip-user: ${WEB_TEST_SIP_USER:webtest}
       # No default: the same value asterisk/render-auth.sh writes into pjsip_local_auth.conf.
       sip-password: ${WEB_TEST_SIP_PASSWORD:}
@@ -33,6 +33,8 @@ voice-agent:
       port: ${AMI_PORT:5038}
       username: ${AMI_USER:uysot-ami}
       password: ${AMI_PASSWORD:CHANGE_ME_AMI_PASSWORD}
+      # How often TrunkRegistrationMonitor polls trunk registration over AMI.
+      registration-check-seconds: ${AMI_REGISTRATION_CHECK_SECONDS:60}
 
   # Generated PJSIP trunk config — PjsipConfigProperties, PjsipConfigWriter
   siptrunk:

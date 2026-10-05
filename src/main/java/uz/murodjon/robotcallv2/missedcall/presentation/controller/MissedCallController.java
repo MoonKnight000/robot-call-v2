@@ -19,26 +19,34 @@ public interface MissedCallController {
 
     @PreAuthorize("hasAuthority('MISSED_CALL_READ')")
     @PostMapping("/list")
-    ResponseEntity<ResponseData<PageableData<MissedCall>>> list(@CurrentCompanyId long companyId,
-                                                                @Valid @RequestBody MissedCallFilter filter);
+    ResponseEntity<ResponseData<PageableData<MissedCall>>> list(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody MissedCallFilter filter);
 
     @PreAuthorize("hasAuthority('MISSED_CALL_READ')")
     @GetMapping("/{id}")
-    ResponseEntity<ResponseData<MissedCall>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<MissedCall>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('MISSED_CALL_EDIT')")
     @PutMapping("/{id}")
-    ResponseEntity<ResponseData<MissedCall>> update(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                    @Valid @RequestBody UpdateMissedCallRequest request);
+    ResponseEntity<ResponseData<MissedCall>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateMissedCallRequest request);
 
     @PreAuthorize("hasAuthority('MISSED_CALL_EDIT')")
     @PutMapping("/{id}/assign")
-    ResponseEntity<ResponseData<MissedCall>> assign(@CurrentCompanyId long companyId, @PathVariable long id,
-                                                    @Valid @RequestBody AssignMissedCallRequest request);
+    ResponseEntity<ResponseData<MissedCall>> assign(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AssignMissedCallRequest request);
 
     /** Rings the current operator's softphone; when they answer, the caller is dialled. */
     @PreAuthorize("hasAuthority('MISSED_CALL_EDIT')")
     @PostMapping("/{id}/call-back")
-    ResponseEntity<ResponseData<MissedCallCallBackResponse>> callBack(@CurrentCompanyId long companyId,
-                                                                      @PathVariable long id);
+    ResponseEntity<ResponseData<MissedCallCallBackResponse>> callBack(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

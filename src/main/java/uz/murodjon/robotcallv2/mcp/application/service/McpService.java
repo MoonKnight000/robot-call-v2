@@ -39,7 +39,7 @@ import java.util.Map;
 public class McpService implements McpUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(McpService.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final McpConnectionRepository connectionRepository;
     private final McpToolExecutionRepository executionRepository;
@@ -53,7 +53,9 @@ public class McpService implements McpUseCase {
                       McpClientPort client,
                       McpMapper mapper,
                       SecretUseCase secretUseCase,
-                      AiAgentUseCase aiAgentUseCase) {
+                      AiAgentUseCase aiAgentUseCase,
+                      ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.connectionRepository = connectionRepository;
         this.executionRepository = executionRepository;
         this.client = client;
@@ -212,7 +214,7 @@ public class McpService implements McpUseCase {
             return List.of();
         }
         try {
-            return List.of(MAPPER.readValue(connection.toolsJson(), McpTool[].class));
+            return List.of(objectMapper.readValue(connection.toolsJson(), McpTool[].class));
         } catch (Exception e) {
             log.warn("MCP connection {} has an unreadable tool list: {}",
                     connection.name(), e.getMessage());
@@ -222,7 +224,7 @@ public class McpService implements McpUseCase {
 
     private String writeTools(List<McpTool> tools) {
         try {
-            return MAPPER.writeValueAsString(tools);
+            return objectMapper.writeValueAsString(tools);
         } catch (Exception e) {
             // The counts are still worth storing; the connection simply offers no tools
             // until the next refresh works.

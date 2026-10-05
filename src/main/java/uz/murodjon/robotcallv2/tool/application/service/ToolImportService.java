@@ -16,13 +16,7 @@ import uz.murodjon.robotcallv2.tool.domain.entity.OpenApiOperation;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.service.OpenApiToolImporter;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.TreeSet;
+import java.util.*;
 
 /**
  * Imports tools from an OpenAPI document (UNIVERSAL-OPERATOR-PLAN B.2). The document is read

@@ -5,13 +5,10 @@ import ch.loway.oss.ari4java.generated.models.StasisEnd;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import uz.murodjon.robotcallv2.agent.dialog.DialogEngine;
-import uz.murodjon.robotcallv2.agent.dialog.DialogOutcome;
-import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
-import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.robotcallv2.agent.dialog.RealtimeDialogEngine;
+import uz.murodjon.robotcallv2.agent.dialog.*;
 import uz.murodjon.robotcallv2.agent.flow.FlowCall;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.RtpMetrics;
 import uz.murodjon.robotcallv2.agent.queue.CallQueueDispatcher;
 import uz.murodjon.robotcallv2.agent.queue.WaitingCall;
 import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
@@ -22,8 +19,8 @@ import uz.murodjon.robotcallv2.agent.rtp.RtpStats;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizationUseCase;
-import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.application.port.input.DialerSlotUseCase;
 import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
@@ -64,7 +61,8 @@ class CallTeardownService {
     private final AriClient ariClient;
     private final RtpPortAllocator portAllocator;
     private final RtpProperties rtpProperties;
-    private final VoiceMetrics metrics;
+    private final CallMetrics callMetrics;
+    private final RtpMetrics rtpMetrics;
     private final CallRouteRegistry routeRegistry;
     private final OutboundCallTrackingUseCase outboundCallTrackingUseCase;
     private final DialerSlotUseCase dialerSlotUseCase;
@@ -86,7 +84,8 @@ class CallTeardownService {
                         AriClient ariClient,
                         RtpPortAllocator portAllocator,
                         RtpProperties rtpProperties,
-                        VoiceMetrics metrics,
+                        CallMetrics callMetrics,
+                        RtpMetrics rtpMetrics,
                         CallRouteRegistry routeRegistry,
                         OutboundCallTrackingUseCase outboundCallTrackingUseCase,
                         DialerSlotUseCase dialerSlotUseCase,
@@ -106,7 +105,8 @@ class CallTeardownService {
         this.ariClient = ariClient;
         this.portAllocator = portAllocator;
         this.rtpProperties = rtpProperties;
-        this.metrics = metrics;
+        this.callMetrics = callMetrics;
+        this.rtpMetrics = rtpMetrics;
         this.routeRegistry = routeRegistry;
         this.outboundCallTrackingUseCase = outboundCallTrackingUseCase;
         this.dialerSlotUseCase = dialerSlotUseCase;
@@ -244,7 +244,7 @@ class CallTeardownService {
         portAllocator.release(session.rtpPort());
         log.info("Torn down call {}", session.channelId());
 
-        metrics.activeDec();
+        callMetrics.activeDec();
         routeRegistry.unregister(session.channelId());
 
         pendingCallRegistry.forgetWebTestCall(session.channelId());
@@ -271,7 +271,7 @@ class CallTeardownService {
             // which can recognise an outcome the caller hung up before a tool could
             // record. Applying the target's outcome first rescheduled such a call.
             disposition = callFinalizationUseCase.finalizeCall(session.callAttemptId(), clientId, session.scenarioId(),
-                    Path.of(session.wavPath()), session.startedAt(), disposition,
+                    session.wavPath() != null ? Path.of(session.wavPath()) : null, session.startedAt(), disposition,
                     session.channelName(), session.trunk(), technical, session.agent(), outbound != null ? outbound.phone() : null,
                     mediaQuality);
         }
@@ -290,14 +290,14 @@ class CallTeardownService {
         RtpStats stats = session.endpoint().stats();
         RtpQuality quality = stats.quality();
         long received = quality.packetsReceived();
-        metrics.recordRtpQuality(received, stats.lostPackets(), stats.reorderedPackets(), stats.jitterMillis());
+        rtpMetrics.recordRtpQuality(received, stats.lostPackets(), stats.reorderedPackets(), stats.jitterMillis());
         if (received == 0) {
             log.error("ALERT: no inbound RTP at all on call {} — the caller was never heard. "
                             + "Check that RTP_LOCAL_IP ({}) is reachable from Asterisk (docs/NETWORK.md)",
                     session.channelId(), rtpProperties.localIp());
             return quality;
         }
-        metrics.recordRtpMos(quality.mosEstimate());
+        rtpMetrics.recordRtpMos(quality.mosEstimate());
         double mos = Math.round(quality.mosEstimate() * 10) / 10.0;
         double loss = stats.lossPercent();
         if (loss >= POOR_RTP_LOSS_PERCENT) {

@@ -47,7 +47,7 @@ import java.util.UUID;
 public class WebhookDeliveryService implements WebhookDeliveryUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookDeliveryService.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> TARGET_TYPE = new TypeReference<>() {};
 
     /** Waits before the second, third and fourth tries. */
@@ -70,7 +70,9 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
 
     public WebhookDeliveryService(WebhookSenderPort sender, WebhookDeliveryRepository repository,
                                   SecretUseCase secretUseCase, SecretCipher cipher,
-                                  NotificationUseCase notificationService, Clock clock) {
+                                  NotificationUseCase notificationService, Clock clock,
+                                  ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.sender = sender;
         this.repository = repository;
         this.secretUseCase = secretUseCase;
@@ -168,7 +170,7 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
         target.put("url", url);
         target.put("headers", headers == null ? Map.of() : headers);
         try {
-            return cipher.encrypt(JSON.writeValueAsString(target));
+            return cipher.encrypt(objectMapper.writeValueAsString(target));
         } catch (Exception e) {
             log.warn("Webhook target could not be sealed for retry: {}", e.getMessage());
             return null;
@@ -178,7 +180,7 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
     /** The stored URL and headers; a key rotated since they were sealed fails this try like any other failure. */
     private Map<String, Object> unseal(WebhookDelivery delivery) {
         try {
-            return JSON.readValue(cipher.decrypt(delivery.sealedTarget()), TARGET_TYPE);
+            return objectMapper.readValue(cipher.decrypt(delivery.sealedTarget()), TARGET_TYPE);
         } catch (Exception e) {
             log.debug("Webhook {} target could not be decrypted: {}", delivery.id(), e.getMessage());
             throw new ConflictException(ErrorCode.WEBHOOK_TARGET_UNREADABLE, delivery.id());

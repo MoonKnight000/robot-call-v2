@@ -1,10 +1,6 @@
 package uz.murodjon.robotcallv2.integration.application.port.input;
 
-import uz.murodjon.robotcallv2.integration.application.dto.AuthorizeUrlResponse;
-import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
-import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
-import uz.murodjon.robotcallv2.integration.application.dto.CrmCatalogEntry;
-import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
+import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 
 import java.net.URI;

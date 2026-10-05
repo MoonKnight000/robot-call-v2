@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.tool.application.dto;
 
-import java.util.Map;
-
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
@@ -9,6 +7,7 @@ import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public record ToolRow(
         Long id,

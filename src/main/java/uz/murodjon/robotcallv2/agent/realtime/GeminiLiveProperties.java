@@ -37,6 +37,13 @@ package uz.murodjon.robotcallv2.agent.realtime;
  *                 tokens, the engine drops its oldest turns (sliding window) instead of
  *                 ending the session. A long call with many tool results otherwise runs
  *                 out of context and is closed by the server. 0 leaves compression off
+ * @param affectiveDialog let the model hear the caller's tone and answer in kind
+ *                 ({@code generationConfig.enableAffectiveDialog}). Native-audio models only;
+ *                 off by default because a model or API version that does not know the field
+ *                 rejects the whole setup — turn it on and watch the first call connect
+ * @param proactiveAudio let the model stay silent on audio that is not addressed to it —
+ *                 a television, someone else in the room ({@code proactivity.proactiveAudio}).
+ *                 Off by default for the same reason
  */
 public record GeminiLiveProperties(
         String apiKey,
@@ -48,6 +55,8 @@ public record GeminiLiveProperties(
         String endOfSpeechSensitivity,
         int prefixPaddingMs,
         int silenceDurationMs,
-        int contextCompressionTriggerTokens
+        int contextCompressionTriggerTokens,
+        boolean affectiveDialog,
+        boolean proactiveAudio
 ) {
 }

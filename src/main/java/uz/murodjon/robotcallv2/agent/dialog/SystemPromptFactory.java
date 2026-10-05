@@ -349,7 +349,9 @@ public class SystemPromptFactory {
                 + "xayrlashish.");
         rules.add("Mijoz mazmunli gap aytsa (sabab, e'tiroz, sana, savol) — javobingizni bir og'iz "
                 + "munosabat bilan boshlang "
-                + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Tushunarli\", \"Yaxshi\", \"Aha\")")
+                // No "Aha" among the uz examples: the synthesized voice draws it out into a
+                // long "Aaa…", heard on calls as the bot stalling before every answer.
+                + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Tushunarli\", \"Yaxshi\")")
                 + ", lekin ketma-ket ikki javobda bir xilini takrorlamang. Mijoz shunchaki tasdiqlasa "
                 + (russian ? "(\"да\", \"ага\", \"хорошо\")" : "(\"ha\", \"aha\", \"xo'p\", \"shunday\")")
                 + " — munosabat bildirmang, to'g'ridan-to'g'ri ishga o'ting: tasdiqni qayta "
@@ -361,6 +363,15 @@ public class SystemPromptFactory {
                 + "allaqachon bergan savolingizni boshqa so'z bilan qayta bermang. Mijoz eshitmagan "
                 + "bo'lsa — butun xabarni emas, faqat so'ralgan qismini qisqa ayting. Istisno: "
                 + "kelishilgan natija yakunda bir marta tasdiqlanadi.");
+        // Left to the model on purpose: a word list cannot tell a "what?" from a "yes" or
+        // a thinking noise — the conversation around it can.
+        rules.add("Mijoz sizni eshitmagani yoki qayta aytishni so'raganini qanday shaklda bo'lsa ham "
+                + "bildirsa (masalan "
+                + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"nima?\", \"labbay?\", \"nima dedingiz\"")
+                + ") — yangi savolga o'tmang va uzr bilan cho'zmang: oxirgi savolingizni o'sha "
+                + "mazmunda, qisqaroq qilib qaytaring. Mijoz gapini endigina boshlab o'ylanib qolgan "
+                + "bo'lsa (faqat o'ylanish tovushi yoki chala jumla, davomi kelishi aniq) — "
+                + "waitForCaller chaqiring va hech narsa demang.");
         // A garbled answer used to cost the whole question: on a real call the caller's
         // reply came back as noise, the model said "Gapingizni to'liq tushunolmadim" and
         // then asked the next stage's question instead, so the reason it had just asked
@@ -446,6 +457,21 @@ public class SystemPromptFactory {
         sb.append(isRussian(language)
                 ? "✗ \"Вы Мурод?\" → ✓ \"Я говорю с Мурод-ака?\"\n"
                 : "✗ \"Siz Murodjonmisiz?\" → ✓ \"Men Murodjon aka bilan gaplashayapmanmi?\"\n");
+        // How the conversation itself goes, the same in every domain: answering a repair
+        // request, a caller asking who is calling, and a caller still mid-thought.
+        sb.append(isRussian(language)
+                ? "✗ (клиент: \"А? Что вы сказали?\") повторить всё вступление заново → "
+                        + "✓ \"Я спросил, удобно ли вам сейчас говорить?\"\n"
+                        + "✗ (клиент: \"А кто это?\") \"Извините, ошиблись номером.\" → "
+                        + "✓ \"Я звоню из компании. Я говорю с Мурод-ака?\"\n"
+                        + "✗ (клиент: \"Ну я, это, хотел...\") \"Понятно, спасибо!\" → "
+                        + "✓ ничего не говорить — вызвать waitForCaller и дать договорить\n"
+                : "✗ (mijoz: \"A? Nima dedingiz?\") butun kirish so'zini boshidan takrorlash → "
+                        + "✓ \"Hozir gaplashishga qulaymi, deb so'radim.\"\n"
+                        + "✗ (mijoz: \"Kim bu?\") \"Uzr, adashibmiz.\" → "
+                        + "✓ \"Kompaniyadan qo'ng'iroq qilyapman. Murodjon aka bilan gaplashayapmanmi?\"\n"
+                        + "✗ (mijoz: \"Men... endi, haligi...\") \"Tushunarli, rahmat!\" → "
+                        + "✓ hech narsa demang — waitForCaller chaqiring va gapini tugatishini kuting\n");
         appendStyleExamples(sb, scenario, language);
         return sb.toString();
     }

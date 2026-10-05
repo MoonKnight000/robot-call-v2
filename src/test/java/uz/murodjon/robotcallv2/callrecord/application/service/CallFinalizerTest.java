@@ -6,7 +6,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.summary.SummarizedCall;
 import uz.murodjon.robotcallv2.agent.summary.SummaryService;
@@ -101,13 +101,13 @@ class CallFinalizerTest {
         when(callRecordService.findTargetIdByAttemptId(CALL_ID)).thenReturn(TARGET_ID);
         when(scenarioUseCase.requireScenario(COMPANY_ID, SCENARIO_ID)).thenReturn(scenario);
         when(recordingStoragePort.uploadRecording(eq(WAV), eq(COMPANY_ID), anyString())).thenReturn(RECORDING_ID);
-        when(outboxDeliveryService.prepareCrmNote(eq(COMPANY_ID), eq(CALL_ID), eq(LEAD_ID), any())).thenReturn(crmNote);
+        when(outboxDeliveryService.prepareCrmNote(eq(COMPANY_ID), eq(CALL_ID), eq(LEAD_ID), any(), any())).thenReturn(crmNote);
         when(callRecordService.writeResult(eq(COMPANY_ID), eq(CALL_ID), any(), anyBoolean(), any()))
                 .thenReturn(NOTE_MESSAGE_ID);
 
         finalizer = new CallFinalizer(callRecordService, summaryService, mock(CallQualityUseCase.class),
                 recordingStoragePort, outboxDeliveryService, scenarioUseCase, campaignTargetUseCase,
-                notificationUseCase, mock(VoiceMetrics.class), mock(SttProperties.class), mock(TtsProperties.class),
+                notificationUseCase, mock(CallMetrics.class), mock(SttProperties.class), mock(TtsProperties.class),
                 mock(TtsVoiceUseCase.class), mock(VadProperties.class), memoryWriter, postCallActionExecutor,
                 callBilling, mock(InboundRouteUseCase.class), companyConfigUseCase, "gemini-2.5-flash");
     }
@@ -158,7 +158,7 @@ class CallFinalizerTest {
         CallSummary stripped = SUMMARY.stripPersonalData(null);
         verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, stripped, false, crmNote);
         verify(memoryWriter).remember(CALL_ID, COMPANY_ID, scenario, Disposition.REFUSED, stripped);
-        verify(outboxDeliveryService).prepareCrmNote(COMPANY_ID, CALL_ID, LEAD_ID, SUMMARY);
+        verify(outboxDeliveryService).prepareCrmNote(eq(COMPANY_ID), eq(CALL_ID), eq(LEAD_ID), eq(SUMMARY), any());
         verify(postCallActionExecutor).executeActions(COMPANY_ID, CALL_ID, PHONE, agent, Disposition.REFUSED, SUMMARY);
     }
 
@@ -177,7 +177,7 @@ class CallFinalizerTest {
     @Test
     void callWithNoNoteQueuedDeliversNothing() {
         summarizes(SUMMARY);
-        when(outboxDeliveryService.prepareCrmNote(anyLong(), anyLong(), anyLong(), any())).thenReturn(null);
+        when(outboxDeliveryService.prepareCrmNote(anyLong(), anyLong(), anyLong(), any(), any())).thenReturn(null);
         when(callRecordService.writeResult(eq(COMPANY_ID), eq(CALL_ID), any(), anyBoolean(), isNull()))
                 .thenReturn(null);
 

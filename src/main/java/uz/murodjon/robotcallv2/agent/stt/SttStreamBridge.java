@@ -5,7 +5,9 @@ import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 import uz.murodjon.robotcallv2.agent.audio.StreamingUpsampler;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.turn.TranscriptTurnCues;
+import uz.murodjon.robotcallv2.agent.turn.TurnCue;
 
 import java.io.Closeable;
 import java.util.*;
@@ -48,7 +50,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
     private final String channelId;
     private final int sourceSampleRate;
     private final SpeechGate gate;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     /** Where another provider comes from when this one stops working; null disables failover. */
     private final SttProviderSelector selector;
     /** Replay buffer size, promoted-final window and failover threshold ({@code stt.stream.*}). */
@@ -162,7 +164,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
      */
     public SttStreamBridge(SttProvider provider, int targetSampleRate, int sourceSampleRate, String channelId,
                            String language, List<String> alternativeLanguages, TranscriptListener listener,
-                           SpeechGate gate, VoiceMetrics metrics, EndpointingProperties endpointing,
+                           SpeechGate gate, SttMetrics metrics, EndpointingProperties endpointing,
                            int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
                            SttProviderSelector selector, String model, SttStreamProperties streamProperties) {
         this.streamProperties = streamProperties;
@@ -377,6 +379,12 @@ public class SttStreamBridge implements AudioListener, Closeable {
         synchronized (finalLock) {
             if (!finalPending || closed || lastInterim == null || lastInterim.isBlank()) {
                 return; // the final made it in time, or there is nothing to promote yet
+            }
+            if (TranscriptTurnCues.judge(lastInterim) == TurnCue.INCOMPLETE) {
+                // "aa", "pulni", "men" — an interim that stops there is the one most likely
+                // to be revised, and answering it answers half a sentence. The provider's
+                // own final is still pending and will be taken as usual.
+                return;
             }
             text = lastInterim;
             lastInterim = null;

@@ -14,9 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.doubleOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.intOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.toTimestamptz;
+import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
 
 /** Queue and operator reports over {@code call_attempt}, {@code call_event} and {@code operator_status_log}. */
 @Component

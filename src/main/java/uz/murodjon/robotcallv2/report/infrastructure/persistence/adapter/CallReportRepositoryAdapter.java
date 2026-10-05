@@ -5,12 +5,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.report.application.port.output.CallReportRepository;
-import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
-import uz.murodjon.robotcallv2.report.domain.entity.CallReport;
-import uz.murodjon.robotcallv2.report.domain.entity.CallTechnicalMetrics;
-import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallHistoryEntry;
-import uz.murodjon.robotcallv2.report.domain.entity.ReportedCall;
-import uz.murodjon.robotcallv2.report.domain.entity.TranscriptLine;
+import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
@@ -20,15 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.doubleOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.enumOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.firstOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.floatOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.instantOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.intOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.localDateOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.longOrNull;
-import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.toTimestamptz;
+import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
 
 /**
  * The call list, one call in full, and a number's history. Native SQL through

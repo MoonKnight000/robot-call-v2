@@ -3,11 +3,7 @@ package uz.murodjon.robotcallv2.chat.presentation.controller;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatDetail;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatRow;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatFilter;
@@ -25,11 +21,14 @@ public interface ChatHistoryController {
 
     @PreAuthorize("hasAuthority('REPORT_READ')")
     @PostMapping("/list")
-    ResponseEntity<ResponseData<PageableData<ChatRow>>> list(@CurrentCompanyId long companyId,
-                                                             @Valid @RequestBody ChatFilter filter);
+    ResponseEntity<ResponseData<PageableData<ChatRow>>> list(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ChatFilter filter);
 
     /** One conversation with what its tools recorded and the whole transcript. */
     @PreAuthorize("hasAuthority('REPORT_READ')")
     @GetMapping("/{id:\\d+}")
-    ResponseEntity<ResponseData<ChatDetail>> get(@CurrentCompanyId long companyId, @PathVariable long id);
+    ResponseEntity<ResponseData<ChatDetail>> get(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 }

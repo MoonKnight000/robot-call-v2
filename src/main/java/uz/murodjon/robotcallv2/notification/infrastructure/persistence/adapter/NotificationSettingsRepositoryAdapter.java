@@ -2,16 +2,15 @@ package uz.murodjon.robotcallv2.notification.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.notification.infrastructure.persistence.mapper.NotificationSettingsEntityMapper;
 import uz.murodjon.robotcallv2.notification.application.port.output.NotificationSettingsRepository;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationChannel;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationMatrixEntry;
 import uz.murodjon.robotcallv2.notification.domain.entity.NotificationSettings;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.notification.infrastructure.persistence.entity.NotificationChannelEntity;
+import uz.murodjon.robotcallv2.notification.infrastructure.persistence.mapper.NotificationSettingsEntityMapper;
 import uz.murodjon.robotcallv2.notification.infrastructure.persistence.repository.NotificationChannelJpaRepository;
 import uz.murodjon.robotcallv2.notification.infrastructure.persistence.repository.NotificationMatrixJpaRepository;
 

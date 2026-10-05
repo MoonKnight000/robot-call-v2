@@ -1,9 +1,9 @@
 package uz.murodjon.robotcallv2.notification.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
 import java.time.Instant;
-import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
 /** JPA entity for notification_recipient — links to NotificationEntity. */
 @Entity

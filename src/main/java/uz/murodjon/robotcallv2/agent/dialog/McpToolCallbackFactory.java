@@ -31,14 +31,15 @@ import java.util.Map;
 public class McpToolCallbackFactory {
 
     private static final Logger log = LoggerFactory.getLogger(McpToolCallbackFactory.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     /** What a tool is called for the model: the connection and the tool, so two servers may share a name. */
     private static final String NAME_SEPARATOR = "__";
 
     private final McpUseCase mcpUseCase;
 
-    public McpToolCallbackFactory(McpUseCase mcpUseCase) {
+    public McpToolCallbackFactory(McpUseCase mcpUseCase, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.mcpUseCase = mcpUseCase;
     }
 
@@ -99,12 +100,12 @@ public class McpToolCallbackFactory {
      * The server's JSON Schema, or an empty object when it sent none — a tool with no
      * declared parameters still has to be callable.
      */
-    private static String schemaOf(McpTool tool) {
+    private String schemaOf(McpTool tool) {
         if (tool.inputSchema() == null || tool.inputSchema().isBlank()) {
             return "{\"type\":\"object\",\"properties\":{}}";
         }
         try {
-            MAPPER.readTree(tool.inputSchema());
+            objectMapper.readTree(tool.inputSchema());
             return tool.inputSchema();
         } catch (Exception e) {
             log.warn("MCP tool {} has an unreadable input schema, offering it with none: {}",

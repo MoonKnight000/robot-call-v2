@@ -2,12 +2,7 @@ package uz.murodjon.robotcallv2.chat.presentation.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatReplyResponse;
 import uz.murodjon.robotcallv2.chat.application.dto.SendChatMessageRequest;
 import uz.murodjon.robotcallv2.chat.application.dto.StartChatResponse;

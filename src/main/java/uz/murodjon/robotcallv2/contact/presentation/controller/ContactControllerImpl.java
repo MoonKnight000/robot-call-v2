@@ -2,16 +2,10 @@ package uz.murodjon.robotcallv2.contact.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactDataExport;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactDetail;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactErasureResponse;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactImportResult;
-import uz.murodjon.robotcallv2.contact.application.dto.CreateContactRequest;
-import uz.murodjon.robotcallv2.contact.application.dto.UpdateContactRequest;
+import uz.murodjon.robotcallv2.contact.application.dto.*;
 import uz.murodjon.robotcallv2.contact.application.port.input.ContactUseCase;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
-import uz.murodjon.robotcallv2.contact.application.dto.ContactDncResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 

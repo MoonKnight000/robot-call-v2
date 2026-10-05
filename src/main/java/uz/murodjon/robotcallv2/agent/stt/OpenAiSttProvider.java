@@ -9,15 +9,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
+import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -50,13 +49,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OpenAiSttProvider implements SttProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiSttProvider.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     private final SttProperties sttProperties;
-    private final VoiceMetrics metrics;
+    private final SttMetrics metrics;
     private volatile HttpClient client;
 
-    public OpenAiSttProvider(SttProperties sttProperties, VoiceMetrics metrics) {
+    public OpenAiSttProvider(SttProperties sttProperties, SttMetrics metrics, ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.sttProperties = sttProperties;
         this.metrics = metrics;
     }
@@ -155,10 +155,10 @@ public class OpenAiSttProvider implements SttProvider {
      * {@link SttHints} the turn already assembles (the client's name, the services they
      * will be pointed at), which is what this API offers in place of a phrase list.
      */
-    private static String sessionUpdate(OpenAiSttProperties settings, String model, String languageCode,
+    private String sessionUpdate(OpenAiSttProperties settings, String model, String languageCode,
                                         List<String> alternativeLanguages, List<String> hints,
                                         boolean externalEndpointing) {
-        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("type", "session.update");
         ObjectNode session = root.putObject("session");
         session.put("type", "transcription");
@@ -213,12 +213,11 @@ public class OpenAiSttProvider implements SttProvider {
     }
 
     /** Reads the session's server events. */
-    private final class ResponseHandler implements WebSocket.Listener {
+    private final class ResponseHandler extends JsonWebSocketListener {
 
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
-        private final StringBuilder messageBuffer = new StringBuilder();
 
         private ResponseHandler(TranscriptListener listener, AtomicBoolean alive, CountDownLatch ready) {
             this.listener = listener;
@@ -227,32 +226,9 @@ public class OpenAiSttProvider implements SttProvider {
         }
 
         @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            messageBuffer.append(data);
-            if (last) {
-                String message = messageBuffer.toString();
-                messageBuffer.setLength(0);
-                handleMessage(message);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-            messageBuffer.append(StandardCharsets.UTF_8.decode(data));
-            if (last) {
-                String message = messageBuffer.toString();
-                messageBuffer.setLength(0);
-                handleMessage(message);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        private void handleMessage(String json) {
+        protected void onMessage(String json) {
             try {
-                JsonNode node = MAPPER.readTree(json);
+                JsonNode node = objectMapper.readTree(json);
                 String type = node.path("type").asText("");
                 switch (type) {
                     case "session.created", "session.updated", "transcription_session.updated" -> ready.countDown();
@@ -301,11 +277,11 @@ public class OpenAiSttProvider implements SttProvider {
     }
 
     /** An open transcription session; audio in, commits on the gate's signal. */
-    private static final class OpenAiSttSession implements SttSession {
+    private final class OpenAiSttSession implements SttSession {
 
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
-        private final VoiceMetrics metrics;
+        private final SttMetrics metrics;
         private final boolean externalEndpointing;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private volatile boolean closed;
@@ -316,7 +292,7 @@ public class OpenAiSttProvider implements SttProvider {
         /** About one second of 20 ms frames. */
         private static final int MAX_PENDING_SENDS = 50;
 
-        private OpenAiSttSession(WebSocket webSocket, AtomicBoolean alive, VoiceMetrics metrics,
+        private OpenAiSttSession(WebSocket webSocket, AtomicBoolean alive, SttMetrics metrics,
                                  boolean externalEndpointing) {
             this.webSocket = webSocket;
             this.alive = alive;
@@ -332,7 +308,7 @@ public class OpenAiSttProvider implements SttProvider {
             if (pendingSends.get() >= MAX_PENDING_SENDS) {
                 return; // a stalled socket: the frame is dropped rather than queued without end
             }
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "input_audio_buffer.append");
             root.put("audio", Base64.getEncoder().encodeToString(pcm16le));
             pendingAudio = true;
@@ -345,7 +321,7 @@ public class OpenAiSttProvider implements SttProvider {
                 return;
             }
             pendingAudio = false;
-            ObjectNode root = MAPPER.createObjectNode();
+            ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "input_audio_buffer.commit");
             send(root.toString());
         }

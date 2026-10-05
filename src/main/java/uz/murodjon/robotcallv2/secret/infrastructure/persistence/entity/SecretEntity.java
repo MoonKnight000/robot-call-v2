@@ -1,9 +1,9 @@
 package uz.murodjon.robotcallv2.secret.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
-import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 @Entity
 @Table(name = "secret", uniqueConstraints = @UniqueConstraint(name = "uk_secret_company_key", columnNames = {"company_id", "key"}))

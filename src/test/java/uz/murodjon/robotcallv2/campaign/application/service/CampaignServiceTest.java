@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.campaign.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -65,6 +66,7 @@ class CampaignServiceTest {
     private TargetSourceRepository targetSources;
     private Clock clock;
     private CampaignService service;
+    private CampaignTargetService targetService;
 
     @BeforeEach
     void setUp() {
@@ -81,10 +83,13 @@ class CampaignServiceTest {
         ttsWarmup = mock(TtsWarmup.class);
         clock = Clock.systemDefaultZone();
 
-        service = new CampaignService(campaigns, targets, doNotCallUseCase, aiAgents,
-                users, companyConfig, retryProperties, audit, notifications, ttsWarmup,
-                targetSources, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
-                mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), clock);
+        CampaignOutcomeService outcomeService = new CampaignOutcomeService(campaigns, targets, companyConfig,
+                retryProperties, audit, notifications, clock);
+        targetService = new CampaignTargetService(campaigns, targets, targetSources, doNotCallUseCase, audit,
+                notifications, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
+                mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper());
+        service = new CampaignService(campaigns, targets, targetSources, aiAgents, users, companyConfig, audit,
+                notifications, ttsWarmup, targetService, outcomeService, clock);
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
@@ -140,7 +145,7 @@ class CampaignServiceTest {
                 TARGET_ID, CAMPAIGN_ID, 1L, "998901112233", null, "{}", TargetStatus.IN_PROGRESS, 5, false));
         when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(null);
 
-        service.applyOutcome(1L, TARGET_ID, Disposition.NO_ANSWER);
+        targetService.applyOutcome(1L, TARGET_ID, Disposition.NO_ANSWER);
 
         // Falls back to maxAttempts=3, and 5 attempts is already past it.
         verify(targets).updateStatus(eq(TARGET_ID), eq(TargetStatus.EXHAUSTED), isNull());
@@ -159,7 +164,7 @@ class CampaignServiceTest {
                 .thenReturn(Map.of("+998901110001", 100L, "+998901110003", 101L));
         String csv = "phone\n+998901110001\n+998901110002\n+998901110001\n+998901110003\n+998901110004\n";
 
-        TargetImportResult result = service.importTargetsCsv(1L, CAMPAIGN_ID, csv);
+        TargetImportResult result = targetService.importTargetsCsv(1L, CAMPAIGN_ID, csv);
 
         assertThat(result.added()).isEqualTo(2);
         assertThat(result.targetIds()).containsExactly(100L, 101L);
@@ -177,7 +182,7 @@ class CampaignServiceTest {
     void importTargetsCsvIntoACampaignTheCompanyDoesNotHaveIsNotFound() {
         when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(null);
 
-        assertThatThrownBy(() -> service.importTargetsCsv(1L, CAMPAIGN_ID, "phone\n+998901110001\n"))
+        assertThatThrownBy(() -> targetService.importTargetsCsv(1L, CAMPAIGN_ID, "phone\n+998901110001\n"))
                 .isInstanceOf(NotFoundException.class);
         verify(targets, never()).insertAllQueued(anyLong(), anyList());
     }

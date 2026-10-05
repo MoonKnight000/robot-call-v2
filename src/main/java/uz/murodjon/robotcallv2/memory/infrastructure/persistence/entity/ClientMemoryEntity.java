@@ -3,9 +3,9 @@ package uz.murodjon.robotcallv2.memory.infrastructure.persistence.entity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
-import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 /**
  * JPA entity for client_memory: one row per (company, phone).

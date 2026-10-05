@@ -64,13 +64,15 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
     private final CrmProperties crmProperties;
     private final DebtorImportProperties debtorImportProperties;
     private final CrmIntegrationUseCase crmIntegrationUseCase;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public UysotDebtorSourceAdapter(CrmProperties crmProperties, DebtorImportProperties debtorImportProperties,
-                                    CrmIntegrationUseCase crmIntegrationUseCase) {
+                                    CrmIntegrationUseCase crmIntegrationUseCase,
+                                    ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.crmProperties = crmProperties;
         this.debtorImportProperties = debtorImportProperties;
         this.crmIntegrationUseCase = crmIntegrationUseCase;
@@ -123,7 +125,7 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
 
     /** One page of contracts in force, or {@code null} when the API would not answer. */
     private JsonNode contractPage(long companyId, int page) {
-        ObjectNode body = mapper.createObjectNode();
+        ObjectNode body = objectMapper.createObjectNode();
         body.put("page", page);
         body.put("size", debtorImportProperties.pageSize());
         ArrayNode statuses = body.putArray("statuses");
@@ -213,7 +215,7 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
                     .timeout(TIMEOUT)
                     .header("Accept", "application/json")
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))), path);
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body))), path);
         } catch (Exception e) {
             log.warn("Uysot {} could not be built: {}", path, e.getMessage());
             return null;
@@ -228,7 +230,7 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
                 log.warn("Uysot {} answered HTTP {}: {}", path, response.statusCode(), response.body());
                 return null;
             }
-            return mapper.readTree(response.body());
+            return objectMapper.readTree(response.body());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("Uysot {} interrupted", path);

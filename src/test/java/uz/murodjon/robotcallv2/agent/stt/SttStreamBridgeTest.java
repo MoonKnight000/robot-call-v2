@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.agent.stt;
 
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.agent.metrics.VoiceMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -86,7 +86,7 @@ class SttStreamBridgeTest {
         when(selector.findFallback(primary)).thenReturn(backup);
 
         SttStreamBridge bridge = new SttStreamBridge(primary, 8000, 8000, "test-channel", "uz-UZ", List.of(),
-                (text, isFinal, confidence) -> { }, null, mock(VoiceMetrics.class), null, 0, null, List.of(),
+                (text, isFinal, confidence) -> { }, null, mock(SttMetrics.class), null, 0, null, List.of(),
                 selector, null, SttStreamProperties.DEFAULTS);
 
         short[] frame = new short[160];

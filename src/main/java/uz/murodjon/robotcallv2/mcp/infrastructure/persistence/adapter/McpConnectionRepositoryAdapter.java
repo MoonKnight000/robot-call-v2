@@ -2,13 +2,11 @@ package uz.murodjon.robotcallv2.mcp.infrastructure.persistence.adapter;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
-import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.mapper.McpConnectionEntityMapper;
 import uz.murodjon.robotcallv2.mcp.application.port.output.McpConnectionRepository;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpConnection;
-import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.entity.McpConnectionEntity;
+import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.mapper.McpConnectionEntityMapper;
 import uz.murodjon.robotcallv2.mcp.infrastructure.persistence.repository.McpConnectionJpaRepository;
 
 import java.util.List;

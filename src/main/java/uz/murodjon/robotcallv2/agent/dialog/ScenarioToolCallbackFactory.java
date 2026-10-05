@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +11,6 @@ import org.springframework.ai.tool.function.FunctionToolCallback;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolParamDef;
 
-import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -30,7 +29,6 @@ import java.util.Map;
 final class ScenarioToolCallbackFactory {
 
     private static final Logger log = LoggerFactory.getLogger(ScenarioToolCallbackFactory.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private ScenarioToolCallbackFactory() {
     }
@@ -83,7 +81,7 @@ final class ScenarioToolCallbackFactory {
     }
 
     private static String schemaFor(ToolDef toolDef) {
-        ObjectNode schema = MAPPER.createObjectNode();
+        ObjectNode schema = JsonNodeFactory.instance.objectNode();
         schema.put("type", "object");
         ObjectNode properties = schema.putObject("properties");
         ArrayNode required = schema.putArray("required");
@@ -107,12 +105,7 @@ final class ScenarioToolCallbackFactory {
                 }
             }
         }
-        try {
-            return MAPPER.writeValueAsString(schema);
-        } catch (Exception e) {
-            // Built entirely from validated ScenarioDefinition data above — not reachable.
-            throw new UncheckedIOException(new java.io.IOException(e));
-        }
+        return schema.toString();
     }
 
     /** {@code "date"} stays a plain string — its format is only ever conveyed in prose (see {@link ToolParamDef}). */

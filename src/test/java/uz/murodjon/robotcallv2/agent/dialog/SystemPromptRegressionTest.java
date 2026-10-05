@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.junit.jupiter.api.Test;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
-import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.List;
 import java.util.Map;
@@ -26,9 +25,13 @@ class SystemPromptRegressionTest {
     private final SystemPromptFactory factory = new SystemPromptFactory();
 
     private static DialogSession session(String stageId) {
-        DialogSession s = new DialogSession("chan-1", "uz-UZ", null, ScenarioFixtures.fullContext(),
-                ScenarioFixtures.debtCollection(), null, null, null, 1L, 1L, null, true, "Uysot",
-                null, null, EffectiveVoiceSettings.NONE);
+        DialogSession s = DialogSession.builder("chan-1", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(1L)
+                .companyId(1L)
+                .companyName("Uysot")
+                .build();
         s.setState(stageId);
         return s;
     }
