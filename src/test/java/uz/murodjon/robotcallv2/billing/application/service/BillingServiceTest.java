@@ -23,6 +23,7 @@ import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -84,7 +85,8 @@ class BillingServiceTest {
                 companyUseCase,
                 pdfService,
                 audit,
-                PAYMENTS
+                PAYMENTS,
+                Clock.systemUTC()
         );
     }
 

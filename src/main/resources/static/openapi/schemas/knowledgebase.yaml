@@ -1,0 +1,309 @@
+# `knowledgebase` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CreateKnowledgeSourceItem:
+  type: object
+  description: One document of a create request. A file source names the `storedFileId` returned by `POST /api/files`; a `URL` source names the address instead. A `STRUCTURED_FEED` names either, plus where its items are (`feedItemsPath`), which column is the key (`feedKeyField`) and, for a URL, how often to fetch it again.
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 200
+    sourceType:
+      $ref: '#/KnowledgeSourceType'
+    url:
+      type: string
+      maxLength: 2048
+    storedFileId:
+      type: integer
+      format: int64
+    originalFileName:
+      type: string
+      maxLength: 255
+    feedItemsPath:
+      type: string
+      maxLength: 200
+    feedKeyField:
+      type: string
+      maxLength: 100
+    refreshMinutes:
+      type: integer
+      format: int32
+      minimum: 15
+  required:
+  - name
+  - sourceType
+CreateKnowledgeSourceRequest:
+  type: object
+  properties:
+    agentId:
+      type: integer
+      format: int64
+    documents:
+      type: array
+      items:
+        $ref: '#/CreateKnowledgeSourceItem'
+      minItems: 1
+  required:
+  - documents
+KnowledgeItemCreateRequest:
+  type: object
+  properties:
+    agentId:
+      type: integer
+      format: int64
+    key:
+      type: string
+      minLength: 1
+      maxLength: 100
+    topic:
+      type: string
+      minLength: 1
+      maxLength: 50
+    title:
+      type: string
+      minLength: 1
+      maxLength: 255
+    answerUz:
+      type: string
+      minLength: 1
+    answerRu:
+      type: string
+    answerEn:
+      type: string
+    keywords:
+      type: string
+  required:
+  - key
+  - topic
+  - title
+  - answerUz
+KnowledgeItemFilter:
+  type: object
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        KEY:
+          $ref: ../common.yaml#/schemas/SortDirection
+        TOPIC:
+          $ref: ../common.yaml#/schemas/SortDirection
+        TITLE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    agentId:
+      type: integer
+      format: int64
+    search:
+      type: string
+KnowledgeItemResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    agentId:
+      type: integer
+      format: int64
+    key:
+      type: string
+    topic:
+      type: string
+    title:
+      type: string
+    answerUz:
+      type: string
+    answerRu:
+      type: string
+    answerEn:
+      type: string
+    keywords:
+      type: string
+    active:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - active
+KnowledgeItemResponsePage:
+  type: object
+  description: '`KnowledgeItemResponse` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/KnowledgeItemResponse'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+KnowledgeItemUpdateRequest:
+  type: object
+  properties:
+    agentId:
+      type: integer
+      format: int64
+    key:
+      type: string
+      minLength: 1
+      maxLength: 100
+    topic:
+      type: string
+      minLength: 1
+      maxLength: 50
+    title:
+      type: string
+      minLength: 1
+      maxLength: 255
+    answerUz:
+      type: string
+      minLength: 1
+    answerRu:
+      type: string
+    answerEn:
+      type: string
+    keywords:
+      type: string
+    active:
+      type: boolean
+  required:
+  - key
+  - topic
+  - title
+  - answerUz
+  - active
+KnowledgeSourceRow:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    agentId:
+      type: integer
+      format: int64
+    agentName:
+      type: string
+    name:
+      type: string
+    sourceType:
+      $ref: '#/KnowledgeSourceType'
+    originalFileName:
+      type: string
+    storedFileId:
+      type: integer
+      format: int64
+    url:
+      type: string
+    status:
+      $ref: '#/KnowledgeSourceStatus'
+    errorCode:
+      type: string
+    errorMessage:
+      type: string
+    lastIndexedAt:
+      type: string
+      format: date-time
+    chunkCount:
+      type: integer
+      format: int32
+    createdAt:
+      type: string
+      format: date-time
+    feedItemsPath:
+      type: string
+    feedKeyField:
+      type: string
+    refreshMinutes:
+      type: integer
+      format: int32
+  required:
+  - id
+  - companyId
+  - chunkCount
+KnowledgeSourceStatus:
+  type: string
+  enum:
+  - PENDING
+  - PROCESSING
+  - INDEXED
+  - FAILED
+  description: Processing status of a knowledge source item.
+KnowledgeSourceType:
+  type: string
+  enum:
+  - PDF
+  - TXT
+  - DOCX
+  - CSV
+  - XLSX
+  - XLS
+  - URL
+  - STRUCTURED_FEED
+  description: |-
+    Supported knowledge source document types.
+
+    - `PDF`
+
+    - `TXT`
+
+    - `DOCX`
+
+    - `CSV`
+
+    - `XLSX`
+
+    - `XLS`
+
+    - `URL`
+
+    - `STRUCTURED_FEED` — A product catalog — a CSV/XLSX/JSON file, or a URL answering one — read row by row into catalog items the agent searches with `searchCatalog` (UNIVERSAL-OPERATOR-PLAN B.4), not split into passages of prose.
+UpdateKnowledgeSourceRequest:
+  type: object
+  description: Renames a source or moves it to another agent. Changing the `url` re-indexes it; to replace a file, add a new source instead — the old chunks belong to the old file. `refreshMinutes` changes how often a URL catalog feed is fetched again.
+  properties:
+    name:
+      type: string
+      maxLength: 200
+    agentId:
+      type: integer
+      format: int64
+    url:
+      type: string
+      maxLength: 2048
+    refreshMinutes:
+      type: integer
+      format: int32
+      minimum: 15

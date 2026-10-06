@@ -1,0 +1,120 @@
+# Reports & Analytics — contact-center-report controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/reports/calls/{callId}/events:
+  get:
+    tags:
+    - Reports & Analytics
+    summary: Qo'ng'iroq timeline'i
+    description: '**Huquq:** `CALL_READ`'
+    operationId: contactCenterReport_callEvents
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/callrecord.yaml#/CallEvent
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/reports/operators:
+  get:
+    tags:
+    - Reports & Analytics
+    summary: Operatorlar bo'yicha hisobot
+    description: |-
+      Answered, missed (RONA), talk time, time in status and occupancy per operator.
+
+      **Huquq:** `REPORT_READ`
+    operationId: contactCenterReport_operators
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/OperatorReportRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/queues:
+  get:
+    tags:
+    - Reports & Analytics
+    summary: Navbatlar bo'yicha hisobot
+    description: |-
+      SLA, ASA, abandon rate, overflow and survey score per queue; `from`/`to` as on the dashboard.
+
+      **Huquq:** `REPORT_READ`
+    operationId: contactCenterReport_queues
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/QueueReportRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

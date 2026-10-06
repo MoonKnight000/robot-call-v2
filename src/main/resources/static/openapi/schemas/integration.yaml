@@ -1,0 +1,123 @@
+# `integration` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AuthorizeUrlResponse:
+  type: object
+  description: GET /api/settings/integrations/uysot/authorize-url response (§11).
+  properties:
+    authorizeUrl:
+      type: string
+ConnectCrmAccountRequest:
+  type: object
+  description: PUT /api/settings/integrations/account body — amoCRM, Kommo or Bitrix24 (§11).
+  properties:
+    provider:
+      allOf:
+      - $ref: '#/CrmProvider'
+      description: '`AMOCRM`, `KOMMO` or `BITRIX24`; Uysot connects through OAuth instead'
+    baseUrl:
+      type: string
+      description: 'amoCRM/Kommo: the account address, e.g. `acme.amocrm.ru` or `https://acme.kommo.com`; Bitrix24: the inbound webhook URL, `https://<portal>/rest/<user>/<code>/`'
+      minLength: 1
+    accessToken:
+      type: string
+      description: 'amoCRM/Kommo: the long-lived token of the account''s private integration; Bitrix24: none — the webhook URL is the credential'
+  required:
+  - provider
+  - baseUrl
+ConnectIntegrationRequest:
+  type: object
+  description: 'PUT /api/settings/integrations/uysot body (§11, report #10).'
+  properties:
+    appName:
+      type: string
+      minLength: 1
+    grants:
+      type: array
+      items:
+        $ref: '#/CrmGrant'
+      minItems: 1
+  required:
+  - appName
+  - grants
+CrmAuthMethod:
+  type: string
+  enum:
+  - OAUTH
+  - API_TOKEN
+CrmCatalogEntry:
+  type: object
+  description: 'One row of GET /api/settings/integrations/catalog (report #10).'
+  properties:
+    provider:
+      $ref: '#/CrmProvider'
+    displayName:
+      type: string
+    authMethod:
+      $ref: '#/CrmAuthMethod'
+    available:
+      type: boolean
+  required:
+  - available
+CrmGrant:
+  type: object
+  description: 'One entry of Uysot''s OAuth grants param (report #10).'
+  properties:
+    permission:
+      $ref: '#/CrmPermission'
+    scope:
+      $ref: '#/CrmScopeLevel'
+  required:
+  - permission
+  - scope
+CrmIntegrationRow:
+  type: object
+  description: GET /api/settings/integrations row (§11).
+  properties:
+    companyId:
+      type: integer
+      format: int64
+    provider:
+      $ref: '#/CrmProvider'
+    appName:
+      type: string
+    grants:
+      type: array
+      items:
+        $ref: '#/CrmGrant'
+    status:
+      $ref: '#/CrmIntegrationStatus'
+    connectedAt:
+      type: string
+      format: date-time
+    accountHost:
+      type: string
+      description: the host of a connected amoCRM, Kommo or Bitrix24 account — never the full address, which for Bitrix24 is the credential; `null` for Uysot
+  required:
+  - companyId
+CrmIntegrationStatus:
+  type: string
+  enum:
+  - NOT_CONNECTED
+  - CONNECTED
+  - ERROR
+CrmPermission:
+  type: string
+  enum:
+  - LEAD
+  - LEAD_NOTE
+  - LEAD_TASK
+  - CONTRACT
+  - CONTRACT_PAYMENT
+  - CALL
+CrmProvider:
+  type: string
+  enum:
+  - UYSOT
+  - BITRIX24
+  - AMOCRM
+  - KOMMO
+CrmScopeLevel:
+  type: string
+  enum:
+  - READ
+  - SAVE
+  - DELETE

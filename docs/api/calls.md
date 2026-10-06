@@ -47,18 +47,20 @@ bo'ladigan ssenariyni A/B testda g'olib qilardi ([campaigns.md](campaigns.md)).
 
 ## `POST /api/calls` — Qo'lda qo'ng'iroq qilish / Ssenariyni sinash
 
-Saqlangan stsenariy asosida kiritilgan raqamga qo'ng'iroq boshlaydi.
+Saqlangan stsenariy yoki AI agent asosida kiritilgan raqamga qo'ng'iroq boshlaydi.
 
 **Query Parametrlari:**
 
 | Parametr | Turi | Majburiymi | Izoh |
 |---|---|---|---|
 | `number` | `string` | ✅ | Teriladigan telefon raqami (masalan `+998901234567`) |
-| `scenarioId` | `number` | ❌ | Sinovdan o'tkaziladigan stsenariy ID raqami. Berilmasa — standart test stsenariysi ishlatiladi |
+| `scenarioId` | `number` | ❌ | Sinovdan o'tkaziladigan stsenariy ID raqami. Berilmasa (va `agentId` ham berilmasa) — standart test stsenariysi ishlatiladi |
+| `agentId` | `number` | ❌ | Sinovdan o'tkaziladigan AI agent ID raqami — kampaniyasiz. Agentning **nashr qilingan** versiyasi (hech nashr qilinmagan bo'lsa — qoralamasi) ishlaydi: o'z ssenariysi, tili, ovozi, prompti, tool'lari, pipeline rejimi (cascade/realtime) va yozib olish siyosati bilan. O'chirilgan (`enabled=false`) agent ham sinash uchun qo'ng'iroq qiladi. Faktlar — standart test faktlari (`voice-agent.dialog.test-context`), kampaniya nishoni yo'q. `scenarioId` bilan birga berilmaydi |
 | `sipTrunkId` | `number` | ❌ | **Chiquvchi SIP trunk ID raqami**. Aniq bir trunkdan qo'ng'iroq qilish uchun ko'rsatiladi. Agar berilmasa — kompaniyaning standart (default) yoqilgan trunki ishlatiladi |
 
 **Misol So'rov:**
 `POST /api/calls?number=+998901234567&scenarioId=4&sipTrunkId=2`
+`POST /api/calls?number=+998901234567&agentId=2`
 
 **Response** (`CallOriginateResponse`):
 ```json
@@ -80,6 +82,10 @@ Saqlangan stsenariy asosida kiritilgan raqamga qo'ng'iroq boshlaydi.
 > **`channelId` — terilgan raqam, `status` — haqiqiy Asterisk kanal id'si**. Jonli
 > boshqaruv endpointlariga (`/{channelId}/hangup` va h.k.) `status` maydonidagi
 > qiymatni bering. Bu `POST /api/calls` va `POST /api/calls/test` uchun bir xil.
+
+**Faqat `POST /api/calls` xatolari:** `400 CALL_SOURCE_INVALID` (`scenarioId` va `agentId` ikkalasi
+berilgan), `404 AI_AGENT_NOT_FOUND` (agent yo'q yoki boshqa kompaniyaniki), `404 SCENARIO_NOT_FOUND`.
+Ikkala tekshiruv ham raqam terilishidan **oldin** bo'ladi.
 
 **Xatolar** (`POST /api/calls` va `POST /api/calls/test` uchun bir xil): `400 PHONE_INVALID`,
 `403 COMPANY_SUSPENDED` (kompaniya to'xtatilgan), `409 CALL_NUMBER_ON_DO_NOT_CALL_LIST` (raqam

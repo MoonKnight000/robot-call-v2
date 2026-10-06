@@ -1,0 +1,94 @@
+# Public Widget Chat — chat controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/public/widgets/{widgetKey}/chat:
+  post:
+    tags:
+    - Public Widget Chat
+    summary: Vidjet orqali chat boshlash
+    description: |-
+      Opens a conversation and answers with the agent's opening line. The `sessionKey` that comes back is what every following message carries; the id is never exposed.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: chat_startChat
+    parameters:
+    - name: widgetKey
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: language
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: Origin
+      in: header
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/chat.yaml#/StartChatResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+    security: []
+/api/public/widgets/{widgetKey}/chat/{sessionKey}:
+  post:
+    tags:
+    - Public Widget Chat
+    summary: Chatga xabar yuborish
+    description: |-
+      Answers one message. A conversation that has ended, run out of messages or gone quiet for too long is refused rather than reopened — the visitor starts a new one.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: chat_sendMessage
+    parameters:
+    - name: widgetKey
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: sessionKey
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: Origin
+      in: header
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/chat.yaml#/SendChatMessageRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/chat.yaml#/ChatReplyResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+    security: []

@@ -1,0 +1,214 @@
+# `pack` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+GeneratePackRequest:
+  type: object
+  description: A business in its owner's own words, and optionally the API its agent should call (UNIVERSAL-OPERATOR-PLAN E.1).
+  properties:
+    business:
+      type: string
+      description: what the company does, what the calls are for, the hours, the rules — prose, not a form. The more concrete it is, the less the model invents
+      minLength: 1
+      maxLength: 4000
+    openApiUrl:
+      type: string
+      description: the API document's address; with `openApiSpec`, exactly one of the two
+      maxLength: 2048
+    openApiSpec:
+      type: string
+      description: the document as text, for an API that is not published
+      maxLength: 5000000
+    baseUrl:
+      type: string
+      description: where the tools send their requests, instead of the document's server
+      maxLength: 500
+    secretPrefix:
+      type: string
+      description: the start of the secret keys the tools read (`SHOP` → `SHOP_TOKEN`)
+      maxLength: 30
+      pattern: ^[A-Za-z0-9_]*$
+    language:
+      type: string
+      description: the calls' language as a BCP-47 tag; null uses the company's own
+      maxLength: 10
+  required:
+  - business
+InstallDraftRequest:
+  type: object
+  description: |-
+    A pack that is not in the catalog — the generated draft, once a person has read it (UNIVERSAL-OPERATOR-PLAN E.1).
+
+    The pack comes back from the client rather than being held on the server between the two calls: a draft is edited before it is installed, and what is installed has to be what the person saw, not what the model first wrote.
+  properties:
+    pack:
+      $ref: '#/VerticalPack'
+    catalogUrl:
+      type: string
+      description: the company's product feed, as in a catalog pack's install
+      maxLength: 2048
+    catalogItemsPath:
+      type: string
+      maxLength: 200
+  required:
+  - pack
+InstallPackRequest:
+  type: object
+  description: '`POST /api/packs/{key`/install}. Both fields are optional: without `catalogUrl` the catalog is added later through `POST /api/knowledge-base/sources`.'
+  properties:
+    catalogUrl:
+      type: string
+      description: the company's product feed (CSV or JSON), for a pack that has a catalog
+      maxLength: 2048
+    catalogItemsPath:
+      type: string
+      description: where the rows are in a JSON feed (`$.data`); null for a top-level array
+      maxLength: 200
+PackAgent:
+  type: object
+  description: The part of an agent a pack decides. Voice, engine, limits and the rest are left to the agent's own defaults — they belong to the company, not to the industry.
+  properties:
+    name:
+      type: string
+    description:
+      type: string
+    language:
+      type: string
+    firstMessage:
+      type: string
+    useRag:
+      type: boolean
+      description: 'whether the agent searches the company''s knowledge base before answering. An industry decision rather than a company one: a support line without it answers from the prompt alone, and a survey call with it pays for a search on every turn it has nothing to look up. Null leaves the agent''s default (off)'
+    dataPolicy:
+      allOf:
+      - $ref: aiagent.yaml#/AiAgentDataPolicy
+      description: 'what is kept after the call, when the industry decides that rather than the company (UNIVERSAL-OPERATOR-PLAN E.3): a clinic''s calls carry why somebody is seeing a doctor, and that is not something to keep by default. All of it or none of it — null leaves every part to the agent''s own defaults, and a pack that sets it is saying the industry answers all four questions'
+    scenario:
+      allOf:
+      - $ref: scenario.yaml#/ScenarioDefinition
+      description: the agent's own scenario, stored on the agent rather than as a shared scenario row, so a pack can be installed more than once
+    dataNeeded:
+      type: array
+      items:
+        $ref: aiagent.yaml#/DataExtractionField
+    dataEvaluation:
+      type: array
+      items:
+        $ref: aiagent.yaml#/DataEvaluationCriterion
+PackCatalogFeed:
+  type: object
+  description: 'The catalog a pack''s agent searches (UNIVERSAL-OPERATOR-PLAN B.4). Where it is fetched from is not here: that is the company''s own feed address, given at install time.'
+  properties:
+    name:
+      type: string
+    feedKeyField:
+      type: string
+      description: the column every row is keyed by — the SKU the order tool is handed
+    refreshMinutes:
+      type: integer
+      format: int32
+      description: how often the feed is fetched again; null never
+PackInstallResponse:
+  type: object
+  description: What an install created, and what is still left to the company before the agent can take a call.
+  properties:
+    agentId:
+      type: integer
+      format: int64
+    toolIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+    catalogSourceId:
+      type: integer
+      format: int64
+      description: the catalog feed being indexed; null when no `catalogUrl` was given
+    testCaseIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+    conversionGoalKey:
+      type: string
+      description: the goal created now; null when the pack has none or the company already had a goal under its key — that one is left as it was
+    missingSecrets:
+      type: array
+      items:
+        $ref: '#/PackSecret'
+      description: the pack's secrets this company has not set yet — every tool call fails until they are
+  required:
+  - agentId
+PackRow:
+  type: object
+  description: 'One pack in the catalog (`GET /api/packs`): enough to choose it and to know what has to be filled in after installing it.'
+  properties:
+    key:
+      type: string
+    name:
+      type: string
+    description:
+      type: string
+    industry:
+      type: string
+    toolNames:
+      type: array
+      items:
+        type: string
+    hasCatalogFeed:
+      type: boolean
+      description: whether the agent searches a product catalog — the install request's `catalogUrl` is then worth giving
+    testCaseCount:
+      type: integer
+      format: int32
+    secrets:
+      type: array
+      items:
+        $ref: '#/PackSecret'
+  required:
+  - hasCatalogFeed
+  - testCaseCount
+PackSecret:
+  type: object
+  description: A secret a pack's tools read through `{{secrets.KEY`}}. Installing never fills it — the value is the company's own shop token or address, set afterwards in the secrets store.
+  properties:
+    key:
+      type: string
+    description:
+      type: string
+      description: what the value is, for the person filling it in
+VerticalPack:
+  type: object
+  description: |-
+    One industry, as data (UNIVERSAL-OPERATOR-PLAN C.1): everything an operator for it needs, installed into a company in one step. The core stays industry-blind — a new industry is a new pack, never new Java code.
+
+    The tools, test cases and goal use their own features' types, so a pack says exactly what those features would store; the fields only storage fills (ids, company, timestamps) are left out of a pack and ignored on install.
+  properties:
+    key:
+      type: string
+    name:
+      type: string
+    description:
+      type: string
+    industry:
+      type: string
+    agent:
+      $ref: '#/PackAgent'
+    tools:
+      type: array
+      items:
+        $ref: tool.yaml#/Tool
+    catalogFeed:
+      allOf:
+      - $ref: '#/PackCatalogFeed'
+      description: the product catalog the agent searches; null for a pack without one
+    conversionGoal:
+      allOf:
+      - $ref: conversion.yaml#/ConversionGoal
+      description: created on install when the company has no goal under its key yet; null for none
+    testCases:
+      type: array
+      items:
+        $ref: aiagent.yaml#/AgentTestCase
+    secrets:
+      type: array
+      items:
+        $ref: '#/PackSecret'
+      description: every `{{secrets.KEY`}} the tools read

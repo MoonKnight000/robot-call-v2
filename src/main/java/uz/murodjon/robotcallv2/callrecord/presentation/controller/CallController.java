@@ -22,12 +22,17 @@ public interface CallController {
     @GetMapping("/live")
     ResponseEntity<ResponseData<List<LiveCallRow>>> live(@CurrentCompanyId long companyId);
 
+    /**
+     * A manual call on a saved scenario, or on an AI agent ({@code agentId}: its published
+     * version with its own scenario, voice and prompt). At most one of the two.
+     */
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping
     ResponseEntity<ResponseData<CallOriginateResponse>> call(
             @CurrentCompanyId long companyId,
             @RequestParam String number,
             @RequestParam(required = false) Long scenarioId,
+            @RequestParam(required = false) Long agentId,
             @RequestParam(required = false) Long sipTrunkId);
 
     @PreAuthorize("hasAuthority('CALL_EDIT')")

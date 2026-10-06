@@ -1,0 +1,55 @@
+# AI Model Settings — ai-model-config controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/settings/ai-model:
+  get:
+    tags:
+    - AI Model Settings
+    summary: Joriy AI konfiguratsiyasi
+    description: '**Huquq:** `AI_MODEL_READ`'
+    operationId: aiModelConfig_get
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aimodel.yaml#/AiModelConfig
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  put:
+    tags:
+    - AI Model Settings
+    summary: AI sozlamalarini yangilash
+    description: '**Huquq:** `AI_MODEL_EDIT`'
+    operationId: aiModelConfig_update
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aimodel.yaml#/UpdateAiModelConfigRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aimodel.yaml#/AiModelConfig
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

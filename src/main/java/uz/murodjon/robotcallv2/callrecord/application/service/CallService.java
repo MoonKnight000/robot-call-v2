@@ -75,8 +75,11 @@ public class CallService implements CallControlUseCase {
     }
 
     @Override
-    public CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long sipTrunkId) {
-        return ariService.originateManualCall(companyId, number, scenarioId, sipTrunkId);
+    public CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long agentId, Long sipTrunkId) {
+        if (scenarioId != null && agentId != null) {
+            throw new ValidationException(ErrorCode.CALL_SOURCE_INVALID);
+        }
+        return ariService.originateManualCall(companyId, number, scenarioId, agentId, sipTrunkId);
     }
 
     @Override

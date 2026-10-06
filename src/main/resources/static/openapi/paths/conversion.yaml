@@ -1,0 +1,132 @@
+# Conversions & Attribution — conversion controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/conversions:
+  post:
+    tags:
+    - Conversions & Attribution
+    summary: Hodisa haqida xabar berish
+    description: |-
+      Reports one thing that happened, and answers which call was credited for it.
+
+      The answer is deliberate: a poster whose number matched nothing learns so immediately. A webhook that always says 200 and quietly drops half its events is how a campaign's numbers end up wrong with nobody noticing.
+
+      **Huquq:** `CAMPAIGN_EDIT`
+    operationId: conversion_reportConversion
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/conversion.yaml#/ReportConversionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/conversion.yaml#/ConversionResultResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/conversions/goals:
+  get:
+    tags:
+    - Conversions & Attribution
+    summary: Maqsadlar ro'yxati
+    description: |-
+      The goals this company counts, with their attribution windows.
+
+      **Huquq:** `CAMPAIGN_READ`
+    operationId: conversion_goals
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/conversion.yaml#/ConversionGoal
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  put:
+    tags:
+    - Conversions & Attribution
+    summary: Maqsad yaratish/yangilash
+    description: |-
+      Creates the goal, or updates the one already under that `goalKey`.
+
+      **Huquq:** `CAMPAIGN_EDIT`
+    operationId: conversion_upsertGoal
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/conversion.yaml#/ConversionGoalRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/conversion.yaml#/ConversionGoal
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/conversions/goals/{id}:
+  delete:
+    tags:
+    - Conversions & Attribution
+    summary: O'chirish
+    description: |-
+      Switches a goal off. The row and everything attributed under it are kept — a report that cannot name its own goal is worse than one naming a goal nobody posts to.
+
+      **Huquq:** `CAMPAIGN_EDIT`
+    operationId: conversion_deleteGoal
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

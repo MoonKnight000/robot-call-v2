@@ -1,0 +1,1260 @@
+# AI Agents — ai-agent controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/ai-agents:
+  post:
+    tags:
+    - AI Agents
+    summary: Agent yaratish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/CreateAiAgentRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/ai-agents/engine-options:
+  get:
+    tags:
+    - AI Agents
+    summary: Mavjud variantlar katalogi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getEngineOptions
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/EngineOptionsResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/ai-agents/filter:
+  post:
+    tags:
+    - AI Agents
+    summary: Ro'yxat va qidiruv
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_filter
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AiAgentFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/ai-agents/list:
+  post:
+    tags:
+    - AI Agents
+    summary: Agentlar ro'yxati (filtr bilan)
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_filter_1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AiAgentFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/ai-agents/templates:
+  get:
+    tags:
+    - AI Agents
+    summary: Tayyor agent shablonlarini olish (Templates)
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getTemplates
+    parameters:
+    - name: language
+      in: query
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/aiagent.yaml#/TemplatePresetDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/ai-agents/{id}:
+  get:
+    tags:
+    - AI Agents
+    summary: Bitta agent
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/UpdateAiAgentRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - AI Agents
+    summary: O'chirish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/advanced:
+  get:
+    tags:
+    - AI Agents
+    summary: Kengaytirilgan sozlamalar
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getAdvanced
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentAdvancedDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Kengaytirilgan sozlamalarni tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updateAdvanced
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentAdvancedDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentAdvancedDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/analysis:
+  get:
+    tags:
+    - AI Agents
+    summary: Qo'ng'iroqdan keyingi tahlil sozlamalari
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getAnalysis
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentAnalysisDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Tahlil sozlamalarini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updateAnalysis
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentAnalysisDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentAnalysisDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/clone:
+  post:
+    tags:
+    - AI Agents
+    summary: Agentdan nusxa olish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_clone
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/eval-runs:
+  get:
+    tags:
+    - AI Agents
+    summary: Baholash yugurishlari ro'yxati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_evalRuns
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/aiagent.yaml#/AgentEvalRun
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/eval-runs/{runId}:
+  get:
+    tags:
+    - AI Agents
+    summary: Bitta baholash natijasi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_evalRun
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: runId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentEvalRunDetail
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/evaluate:
+  post:
+    tags:
+    - AI Agents
+    summary: Agentni sinov holatlari bo'yicha baholash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_evaluate
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: version
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentEvalRun
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/limits:
+  get:
+    tags:
+    - AI Agents
+    summary: Agent limitlari
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getLimits
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentLimitsDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Agent limitlarini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updateLimits
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentLimitsDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentLimitsDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/post-call-actions:
+  get:
+    tags:
+    - AI Agents
+    summary: Qo'ng'iroqdan keyingi amallar
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getPostCallActions
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentPostCallActionsDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Qo'ng'iroqdan keyingi amallarni tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updatePostCallActions
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentPostCallActionsDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentPostCallActionsDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/pronunciation:
+  get:
+    tags:
+    - AI Agents
+    summary: Talaffuz lug'ati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getPronunciation
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentPronunciationDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Talaffuz lug'atini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updatePronunciation
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentPronunciationDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentPronunciationDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/publish:
+  post:
+    tags:
+    - AI Agents
+    summary: Agentni nashr qilish (yangi versiya)
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_publish
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/PublishAiAgentRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentVersionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/rollback/{version}:
+  post:
+    tags:
+    - AI Agents
+    summary: Agentni oldingi versiyaga qaytarish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_rollback
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentVersionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/scenario:
+  get:
+    tags:
+    - AI Agents
+    summary: Agent ssenariysi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getScenario
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentScenarioDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Agent ssenariysini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updateScenario
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentScenarioDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentScenarioDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/test-cases:
+  get:
+    tags:
+    - AI Agents
+    summary: Sinov holatlari ro'yxati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_testCases
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/aiagent.yaml#/AgentTestCase
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  post:
+    tags:
+    - AI Agents
+    summary: Sinov holati yaratish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_createTestCase
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/SaveAgentTestCaseRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentTestCase
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/test-cases/{caseId}:
+  put:
+    tags:
+    - AI Agents
+    summary: Sinov holatini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_updateTestCase
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: caseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/SaveAgentTestCaseRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentTestCase
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - AI Agents
+    summary: Sinov holatini o'chirish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_deleteTestCase
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: caseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/tools:
+  get:
+    tags:
+    - AI Agents
+    summary: Agentga ulangan toollar
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getTools
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/tool.yaml#/ToolRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/tools/{toolId}:
+  post:
+    tags:
+    - AI Agents
+    summary: Toolni agentga ulash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_attachTool
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: toolId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - AI Agents
+    summary: Toolni agentdan uzish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: aiAgent_detachTool
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: toolId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/versions:
+  get:
+    tags:
+    - AI Agents
+    summary: Agent versiyalari tarixi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_versions
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/aiagent.yaml#/AiAgentVersionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/versions/{version}:
+  get:
+    tags:
+    - AI Agents
+    summary: Agentning bitta versiyasi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_version
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AiAgentRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

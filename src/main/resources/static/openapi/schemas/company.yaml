@@ -1,0 +1,220 @@
+# `company` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+Company:
+  type: object
+  description: Domain record for company (ROADMAP B.1).
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    status:
+      $ref: '#/CompanyStatus'
+    createdAt:
+      type: string
+      format: date-time
+    logoFileId:
+      type: integer
+      format: int64
+    address:
+      type: string
+  required:
+  - id
+CompanyConfig:
+  type: object
+  description: Domain record for company operational settings (ROADMAP B.1/B.3).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    dialWindowStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialWindowEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    timezone:
+      type: string
+    defaultLanguage:
+      $ref: '#/Language'
+    supportedLanguages:
+      type: array
+      items:
+        $ref: '#/Language'
+    disclosureText:
+      type: string
+    maxAttemptsPerPhonePerWeek:
+      type: integer
+      format: int32
+      description: placed outbound attempts one number may receive in any seven days, across all of this company's campaigns; 0 = no cap
+    quietDaysAfterConversation:
+      type: integer
+      format: int32
+      description: days after a real conversation with a number before any campaign calls it again; 0 = no quiet period. A conversation that ended in a requested callback (`CALLBACK_REQUESTED`) does not start one
+    respectPromisedDate:
+      type: boolean
+      description: no outbound call to a number while a promise to pay it made is still within its promised date
+    humanLikePersonaAllowed:
+      type: boolean
+      description: whether this company's agents may present as a person (`AgentPersona.HUMAN_LIKE`) and so skip the §11.1 automated-call disclosure. When false such an agent cannot be saved, and one saved earlier speaks as an AI assistant, disclosure included
+    holidays:
+      type: array
+      items:
+        type: string
+        format: date
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - maxAttemptsPerPhonePerWeek
+  - quietDaysAfterConversation
+  - respectPromisedDate
+  - humanLikePersonaAllowed
+CompanyFilter:
+  type: object
+  description: Pagination + filter + sort for POST /api/companies/list.
+  properties:
+    search:
+      type: string
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        STATUS:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+CompanyPage:
+  type: object
+  description: '`Company` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/Company'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CompanyStatus:
+  type: string
+  enum:
+  - ACTIVE
+  - SUSPENDED
+  description: company.status (ROADMAP B.1).
+CreateCompanyRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+  required:
+  - name
+Language:
+  type: string
+  enum:
+  - uz-UZ
+  - ru-RU
+  - en-US
+  description: 'BCP-47 languages the platform can speak (report #6).'
+UpdateCompanyConfigRequest:
+  type: object
+  description: 'The contact-policy fields, `humanLikePersonaAllowed` and `holidays` are optional: null keeps what the company already has, so a client written before they existed does not reset them by omission.'
+  properties:
+    dialWindowStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialWindowEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    timezone:
+      type: string
+      minLength: 1
+    defaultLanguage:
+      $ref: '#/Language'
+    supportedLanguages:
+      type: array
+      items:
+        $ref: '#/Language'
+      minItems: 1
+    disclosureText:
+      type: string
+      maxLength: 500
+    maxAttemptsPerPhonePerWeek:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 100
+    quietDaysAfterConversation:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 90
+    respectPromisedDate:
+      type: boolean
+    humanLikePersonaAllowed:
+      type: boolean
+    holidays:
+      type: array
+      items:
+        type: string
+        format: date
+      maxItems: 366
+  required:
+  - dialWindowStart
+  - dialWindowEnd
+  - timezone
+  - defaultLanguage
+  - supportedLanguages
+UpdateCompanyRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    address:
+      type: string
+      maxLength: 255
+  required:
+  - name
+UpdateCompanyStatusRequest:
+  type: object
+  properties:
+    status:
+      $ref: '#/CompanyStatus'
+  required:
+  - status

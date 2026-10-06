@@ -1,0 +1,334 @@
+# `callqueue` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CallQueue:
+  type: object
+  description: An operator queue (docs/INBOUND-PBX-PLAN.md §7.3). Every timer is in seconds; 0 switches it off.
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    strategy:
+      $ref: '#/CallQueueStrategy'
+    ringTimeoutSec:
+      type: integer
+      format: int32
+      description: how long one operator rings before the next is tried
+    wrapUpSec:
+      type: integer
+      format: int32
+      description: after-call time before the operator is offered the next call
+    maxWaitSec:
+      type: integer
+      format: int32
+      description: longest a caller waits before overflow
+    maxLength:
+      type: integer
+      format: int32
+      description: callers that may wait at once; 0 = no limit
+    announcePositionEverySec:
+      type: integer
+      format: int32
+      description: how often "sizning navbatingiz N-chi" is repeated
+    announceWaitTime:
+      type: boolean
+      description: add the estimated wait when it is reliable enough to say
+    periodicAnnounceText:
+      type: string
+      description: said every `periodicAnnounceEverySec` while waiting
+    periodicAnnounceEverySec:
+      type: integer
+      format: int32
+    holdMusicFileId:
+      type: integer
+      format: int64
+      description: a WAV to wait to; null plays the built-in melody
+    callbackOfferAfterSec:
+      type: integer
+      format: int32
+      description: after this long, offer "1 ni bosing — qayta qo'ng'iroq qilamiz"
+    callbackCampaignId:
+      type: integer
+      format: int64
+      description: the campaign an accepted callback joins; null puts it on the missed-call list instead
+    overflowAction:
+      $ref: '#/QueueOverflowAction'
+    overflowTarget:
+      type: string
+      description: 'read by `overflowAction`: an id or a number'
+    serviceLevelSec:
+      type: integer
+      format: int32
+      description: answered within this long counts toward SLA
+    stickySeconds:
+      type: integer
+      format: int32
+      description: ring the operator who last spoke to this caller alone for this long before the rest of the queue
+    postCallSurvey:
+      type: boolean
+      description: ask for a 1–5 rating after the operator hangs up
+    waitingAgentId:
+      type: integer
+      format: int64
+      description: an AI agent that talks to the caller while they wait
+    autoCallback:
+      type: boolean
+      description: call back this queue's missed callers by itself
+    enabled:
+      type: boolean
+    members:
+      type: array
+      items:
+        $ref: '#/CallQueueMember'
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - ringTimeoutSec
+  - wrapUpSec
+  - maxWaitSec
+  - maxLength
+  - announcePositionEverySec
+  - announceWaitTime
+  - periodicAnnounceEverySec
+  - callbackOfferAfterSec
+  - serviceLevelSec
+  - stickySeconds
+  - postCallSurvey
+  - autoCallback
+  - enabled
+CallQueueFilter:
+  type: object
+  description: Pagination + sort for POST /api/call-queues/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+CallQueueLiveRow:
+  type: object
+  description: 'One queue on the wallboard (GET /api/call-queues/live, SSE `QUEUE_STATS`): who is waiting and for how long, and where the queue''s operators are.'
+  properties:
+    queueId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    waiting:
+      type: integer
+      format: int32
+      description: callers in line (not yet with an operator)
+    longestWaitSeconds:
+      type: integer
+      format: int64
+      description: the longest of those waits — the number a supervisor acts on
+    connected:
+      type: integer
+      format: int32
+      description: calls with an operator right now
+    available:
+      type: integer
+      format: int32
+    ringing:
+      type: integer
+      format: int32
+    onCall:
+      type: integer
+      format: int32
+    wrapUp:
+      type: integer
+      format: int32
+    onBreak:
+      type: integer
+      format: int32
+    offline:
+      type: integer
+      format: int32
+    calls:
+      type: array
+      items:
+        $ref: agent.yaml#/WaitingCallView
+  required:
+  - queueId
+  - waiting
+  - longestWaitSeconds
+  - connected
+  - available
+  - ringing
+  - onCall
+  - wrapUp
+  - onBreak
+  - offline
+CallQueueMember:
+  type: object
+  description: An operator in a queue.
+  properties:
+    userId:
+      type: integer
+      format: int64
+    priority:
+      type: integer
+      format: int32
+      description: lower rings first; members of equal priority are ordered by the strategy
+    skills:
+      type: array
+      items:
+        type: string
+      uniqueItems: true
+      description: tags this operator covers — call languages ("uz-UZ", "ru-RU") for SKILL_BASED
+  required:
+  - userId
+  - priority
+CallQueuePage:
+  type: object
+  description: '`CallQueue` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/CallQueue'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CallQueueStrategy:
+  type: string
+  enum:
+  - RING_ALL
+  - ROUND_ROBIN
+  - LEAST_RECENT
+  - FEWEST_CALLS
+  - RANDOM
+  - SKILL_BASED
+  description: |-
+    Which available operator a waiting call is offered to first.
+
+    - `RING_ALL` — Every available member rings at once; the first to answer takes it.
+
+    - `ROUND_ROBIN` — Members in turn, continuing after whoever was offered the last call.
+
+    - `LEAST_RECENT` — The member who has been free the longest.
+
+    - `FEWEST_CALLS` — The member who has answered the fewest calls today.
+
+    - `RANDOM`
+
+    - `SKILL_BASED` — Members holding the caller's language first; anyone after `30` seconds of waiting.
+QueueOverflowAction:
+  type: string
+  enum:
+  - CALLBACK
+  - VOICEMAIL
+  - QUEUE
+  - AI_AGENT
+  - EXTERNAL_NUMBER
+  - HANGUP
+  description: |-
+    What happens to a caller the queue cannot serve — waited too long, the queue is full, or nobody is signed in. Used when the queue was reached without a call flow around it (a transfer from an AI agent); inside a flow the QUEUE node's `overflow` exit decides.
+
+    - `CALLBACK` — "Sizga qayta qo'ng'iroq qilamiz" — the caller joins the missed-call list.
+
+    - `VOICEMAIL` — Leave a message in the voicemail box named by `overflowTarget`.
+
+    - `QUEUE` — Wait in the queue named by `overflowTarget`.
+
+    - `AI_AGENT` — Talk to the AI agent named by `overflowTarget`.
+
+    - `EXTERNAL_NUMBER` — Forward to the number in `overflowTarget`.
+
+    - `HANGUP`
+SaveCallQueueRequest:
+  type: object
+  description: Body of POST/PUT /api/call-queues. Every null takes the default listed in docs/api/call-queues.md; the meaning of each field is on `CallQueue`.
+  properties:
+    name:
+      type: string
+      minLength: 1
+    strategy:
+      $ref: '#/CallQueueStrategy'
+    ringTimeoutSec:
+      type: integer
+      format: int32
+    wrapUpSec:
+      type: integer
+      format: int32
+    maxWaitSec:
+      type: integer
+      format: int32
+    maxLength:
+      type: integer
+      format: int32
+    announcePositionEverySec:
+      type: integer
+      format: int32
+    announceWaitTime:
+      type: boolean
+    periodicAnnounceText:
+      type: string
+    periodicAnnounceEverySec:
+      type: integer
+      format: int32
+    holdMusicFileId:
+      type: integer
+      format: int64
+    callbackOfferAfterSec:
+      type: integer
+      format: int32
+    callbackCampaignId:
+      type: integer
+      format: int64
+    overflowAction:
+      $ref: '#/QueueOverflowAction'
+    overflowTarget:
+      type: string
+    serviceLevelSec:
+      type: integer
+      format: int32
+    stickySeconds:
+      type: integer
+      format: int32
+    postCallSurvey:
+      type: boolean
+    waitingAgentId:
+      type: integer
+      format: int64
+    autoCallback:
+      type: boolean
+    enabled:
+      type: boolean
+    members:
+      type: array
+      items:
+        $ref: '#/CallQueueMember'
+  required:
+  - name

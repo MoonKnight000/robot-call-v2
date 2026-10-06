@@ -1,0 +1,24 @@
+# `search` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+SearchItem:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    title:
+      type: string
+    subtitle:
+      type: string
+  required:
+  - id
+SearchResult:
+  type: object
+  properties:
+    campaigns:
+      type: array
+      items:
+        $ref: '#/SearchItem'
+    calls:
+      type: array
+      items:
+        $ref: '#/SearchItem'

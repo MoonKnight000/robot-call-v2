@@ -1,0 +1,226 @@
+# Call Quality Reviews — call-review controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/call-reviews/filter:
+  post:
+    tags:
+    - Call Quality Reviews
+    summary: Baholash navbati (inbox)
+    description: '**Huquq:** `QUALITY_REVIEW_READ`'
+    operationId: callReview_filter
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/quality.yaml#/CallReviewFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/quality.yaml#/CallQualityPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/call-reviews/list:
+  post:
+    tags:
+    - Call Quality Reviews
+    summary: Qo'ng'iroq baholari ro'yxati
+    description: '**Huquq:** `QUALITY_REVIEW_READ`'
+    operationId: callReview_filter_1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/quality.yaml#/CallReviewFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/quality.yaml#/CallQualityPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/call-reviews/{callId}:
+  get:
+    tags:
+    - Call Quality Reviews
+    summary: Bitta qo'ng'iroq bahosi
+    description: '**Huquq:** `QUALITY_REVIEW_READ`'
+    operationId: callReview_get
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/quality.yaml#/CallQuality
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Call Quality Reviews
+    summary: Qo'ng'iroqni baholash
+    description: |-
+      "The agent was right" or "the agent was wrong: <reason>". Changing an earlier verdict is allowed.
+
+      **Huquq:** `QUALITY_REVIEW_EDIT`
+    operationId: callReview_review
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/quality.yaml#/ReviewCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/quality.yaml#/CallQuality
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/call-reviews/{callId}/knowledge-item:
+  post:
+    tags:
+    - Call Quality Reviews
+    summary: Bahodan bilimlar bazasi javobi yaratish
+    description: |-
+      Writes a knowledge base answer for the call's agent — the request's `agentId` is ignored. Needs KNOWLEDGE_BASE_EDIT as well: the answer is what the agent tells callers.
+
+      **Huquq:** `QUALITY_REVIEW_EDIT` va `KNOWLEDGE_BASE_EDIT`
+    operationId: callReview_createKnowledgeItem
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemCreateRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/quality.yaml#/CallQuality
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/call-reviews/{callId}/test-case:
+  post:
+    tags:
+    - Call Quality Reviews
+    summary: Bahodan sinov holati yaratish
+    description: |-
+      Adds a test case to the call's agent, so its eval replays what went wrong here.
+
+      **Huquq:** `QUALITY_REVIEW_EDIT`
+    operationId: callReview_createTestCase
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/SaveAgentTestCaseRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/quality.yaml#/CallQuality
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

@@ -1,0 +1,172 @@
+# Telegram Bots — telegram controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/public/telegram/{botId}:
+  post:
+    tags:
+    - Telegram Bots
+    summary: Telegram yangilanishini qabul qilish (webhook)
+    description: |-
+      Where Telegram posts. Public and token-less by necessity — Telegram has no account here — so what makes an update genuine is the secret it carries in `X-Telegram-Bot-Api-Secret-Token`, which only Telegram and this row know.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: telegram_receiveUpdate
+    parameters:
+    - name: botId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: X-Telegram-Bot-Api-Secret-Token
+      in: header
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: object
+              additionalProperties: true
+    responses:
+      '200':
+        description: OK — javob tanasi yo'q
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+    security: []
+/api/telegram-bots:
+  get:
+    tags:
+    - Telegram Bots
+    summary: Telegram botlar ro'yxati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: telegram_list
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/chat.yaml#/TelegramBotRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  post:
+    tags:
+    - Telegram Bots
+    summary: Telegram bot qo'shish
+    description: |-
+      Registers a bot this company owns. The token is not sent here — it is stored once as a company secret and named by `tokenSecretKey` ([secrets.md]).
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: telegram_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/chat.yaml#/SaveTelegramBotRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/chat.yaml#/TelegramBotRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/telegram-bots/{botId}:
+  delete:
+    tags:
+    - Telegram Bots
+    summary: Telegram botni o'chirish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: telegram_delete
+    parameters:
+    - name: botId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/telegram-bots/{botId}/webhook:
+  post:
+    tags:
+    - Telegram Bots
+    summary: Telegram webhookni ro'yxatdan o'tkazish
+    description: |-
+      Tells Telegram where to send this bot's updates. The address is the operator's to give: it is the one their deployment answers on, which this application cannot know from the inside.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: telegram_registerWebhook
+    parameters:
+    - name: botId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/chat.yaml#/RegisterWebhookRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/chat.yaml#/TelegramBotRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

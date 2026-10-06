@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.*;
 
 import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
@@ -83,7 +84,7 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
             """.formatted(AVG_ANSWERED_DURATION);
 
     private static final String BUCKET_SELECT = """
-            SELECT date_trunc(:granularity, a.started_at) AS bucket,
+            SELECT date_trunc(:granularity, a.started_at, :zone) AS bucket,
                    count(*) AS total,
                    count(*) FILTER (WHERE a.answered_at IS NOT NULL) AS answered,
                    count(*) FILTER (WHERE a.disposition = :noAnswer) AS no_answer,
@@ -151,7 +152,8 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
 
     @Override
     public List<DashboardBucket> findDashboardBuckets(long companyId, DashboardFilter filter, String granularity) {
-        return bindBucketParams(buildDashboardQuery(BUCKET_SELECT + DASHBOARD_FROM, companyId, filter), granularity)
+        return bindBucketParams(buildDashboardQuery(BUCKET_SELECT + DASHBOARD_FROM, companyId, filter), granularity,
+                filter.zone())
                 .append("GROUP BY bucket ORDER BY bucket")
                 .prepare(jdbc)
                 .query(DashboardReportRepositoryAdapter::toDashboardBucket)
@@ -165,15 +167,16 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
         if (escalated != null) {
             statement.where("coalesce(r.escalated, false) = :escalated", "escalated", escalated);
         }
-        return bindBucketParams(statement, granularity)
+        return bindBucketParams(statement, granularity, filter.zone())
                 .append("GROUP BY bucket ORDER BY bucket")
                 .prepare(jdbc)
                 .query(DashboardReportRepositoryAdapter::toDashboardBucket)
                 .list();
     }
 
-    static SqlStatement bindBucketParams(SqlStatement statement, String granularity) {
+    static SqlStatement bindBucketParams(SqlStatement statement, String granularity, ZoneId zone) {
         return statement.bind("granularity", granularity)
+                .bind("zone", zone.getId())
                 .bind("noAnswer", Disposition.NO_ANSWER.name())
                 .bind("failedDispositions", FAILED_DISPOSITIONS)
                 .bind("promiseToPay", Disposition.PROMISE_TO_PAY.name());
@@ -199,11 +202,12 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
     @Override
     public List<HourlyHeatmapCell> findHourlyHeatmap(long companyId, DashboardFilter filter) {
         return buildDashboardQuery("""
-                        SELECT extract(dow from a.started_at)::int AS day_of_week,
-                               extract(hour from a.started_at)::int AS hour_of_day,
+                        SELECT extract(dow from a.started_at AT TIME ZONE :zone)::int AS day_of_week,
+                               extract(hour from a.started_at AT TIME ZONE :zone)::int AS hour_of_day,
                                count(*) AS total,
                                count(*) FILTER (WHERE a.answered_at IS NOT NULL) AS answered
                         """ + DASHBOARD_FROM, companyId, filter)
+                .bind("zone", filter.zone().getId())
                 .append("GROUP BY day_of_week, hour_of_day ORDER BY day_of_week, hour_of_day")
                 .prepare(jdbc)
                 .query((rs, n) -> {
@@ -338,7 +342,7 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
                                                                       String granularity) {
         return buildDashboardQuery("""
                         SELECT
-                            date_trunc(:granularity, a.started_at) AS bucket,
+                            date_trunc(:granularity, a.started_at, :zone) AS bucket,
                             COUNT(a.id) AS calls,
                             COALESCE(SUM(a.duration_sec), 0) / 60 AS minutes,
                             COUNT(a.id) FILTER (WHERE a.disposition IN (:failedDispositions)) AS failed,
@@ -347,6 +351,7 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
                             COALESCE(%s, 0) AS avg_duration_sec
                         """.formatted(AVG_ANSWERED_DURATION) + DASHBOARD_FROM, companyId, filter)
                 .bind("granularity", granularity)
+                .bind("zone", filter.zone().getId())
                 .bind("successDispositions", SUCCESS_DISPOSITIONS)
                 .bind("failedDispositions", FAILED_DISPOSITIONS)
                 .bind("noAnswer", Disposition.NO_ANSWER.name())

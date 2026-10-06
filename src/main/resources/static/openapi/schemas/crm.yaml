@@ -1,0 +1,95 @@
+# `crm` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+UysotLeadAttributionDto:
+  type: object
+  description: Attribution source for a lead (e.g. INSTAGRAM, TELEGRAM, WEBSITE).
+  properties:
+    channelId:
+      type: integer
+      format: int64
+    source:
+      type: string
+    channelValue:
+      type: string
+    attachedTimestamp:
+      type: integer
+      format: int64
+UysotLeadPayloadDto:
+  type: object
+  description: Lead details carried by a Uysot CRM webhook event.
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    statusId:
+      type: integer
+      format: int64
+    statusName:
+      type: string
+    pipeId:
+      type: integer
+      format: int64
+    pipeName:
+      type: string
+    responsibleId:
+      type: integer
+      format: int64
+    responsibleName:
+      type: string
+    balance:
+      type: number
+      format: double
+    currency:
+      type: string
+    phone:
+      type: string
+    attributions:
+      type: array
+      items:
+        $ref: '#/UysotLeadAttributionDto'
+    uuid:
+      type: string
+    createdTimestamp:
+      type: integer
+      format: int64
+    updatedTimestamp:
+      type: integer
+      format: int64
+UysotLeadWebhookEvent:
+  type: object
+  description: Inbound webhook payload from Uysot Open API (e.g. LEAD_CREATED).
+  properties:
+    eventId:
+      type: string
+    eventType:
+      type: string
+      minLength: 1
+    occurredAt:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    lead:
+      $ref: '#/UysotLeadPayloadDto'
+  required:
+  - eventType
+  - companyId
+UysotWebhookResult:
+  type: object
+  description: Outcome of processing an inbound Uysot webhook event.
+  properties:
+    eventId:
+      type: string
+    eventType:
+      type: string
+    processed:
+      type: boolean
+    targetId:
+      type: integer
+      format: int64
+    message:
+      type: string
+  required:
+  - processed

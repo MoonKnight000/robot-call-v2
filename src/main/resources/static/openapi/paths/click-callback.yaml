@@ -1,0 +1,58 @@
+# Payment Webhooks — click-callback controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/billing/click/complete:
+  post:
+    tags:
+    - Payment Webhooks
+    summary: 'Click: to''lovni yakunlash (webhook)'
+    description: |-
+      Complete (action 1): the payment went through and the balance is credited — or, with `error < 0`, it did not and the transaction and top-up are cancelled.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: clickCallback_complete
+    requestBody:
+      required: true
+      content:
+        application/x-www-form-urlencoded:
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/billing.yaml#/ClickResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []
+/api/billing/click/prepare:
+  post:
+    tags:
+    - Payment Webhooks
+    summary: 'Click: to''lovni tayyorlash (webhook)'
+    description: |-
+      Prepare (action 0): may this top-up be paid? Opens a transaction and answers its `merchant_prepare_id`.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: clickCallback_prepare
+    requestBody:
+      required: true
+      content:
+        application/x-www-form-urlencoded:
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/billing.yaml#/ClickResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []

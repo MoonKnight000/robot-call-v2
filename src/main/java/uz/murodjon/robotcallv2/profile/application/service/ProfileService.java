@@ -6,6 +6,8 @@ import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.auth.application.dto.TwoFactorSetupResponse;
 import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
 import uz.murodjon.robotcallv2.auth.application.port.input.TwoFactorUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.profile.application.dto.*;
 import uz.murodjon.robotcallv2.profile.application.port.input.ProfileUseCase;
 import uz.murodjon.robotcallv2.profile.domain.entity.Profile;
@@ -22,8 +24,10 @@ import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 
+import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -37,10 +41,13 @@ public class ProfileService implements ProfileUseCase {
     private final DashboardReportUseCase dashboardReportUseCase;
     private final SessionUseCase sessionUseCase;
     private final TwoFactorUseCase twoFactor;
+    private final CompanyConfigUseCase companyConfigUseCase;
+    private final Clock clock;
 
     public ProfileService(UserUseCase userUseCase, CurrentUser currentUser, PasswordEncoder passwordEncoder,
                           ImageUploadUseCase imageUploadUseCase, AuditUseCase audit, DashboardReportUseCase dashboardReportUseCase,
-                          SessionUseCase sessionUseCase, TwoFactorUseCase twoFactor) {
+                          SessionUseCase sessionUseCase, TwoFactorUseCase twoFactor,
+                          CompanyConfigUseCase companyConfigUseCase, Clock clock) {
         this.twoFactor = twoFactor;
         this.userUseCase = userUseCase;
         this.currentUser = currentUser;
@@ -49,6 +56,8 @@ public class ProfileService implements ProfileUseCase {
         this.audit = audit;
         this.dashboardReportUseCase = dashboardReportUseCase;
         this.sessionUseCase = sessionUseCase;
+        this.companyConfigUseCase = companyConfigUseCase;
+        this.clock = clock;
     }
 
     @Override
@@ -100,8 +109,12 @@ public class ProfileService implements ProfileUseCase {
     @Override
     public TodayStats findTodayStats(long companyId) {
         long userId = requireUserId();
-        Instant startOfToday = Instant.now().truncatedTo(ChronoUnit.DAYS);
-        DashboardTotals totals = dashboardReportUseCase.findOperatorTotals(companyId, startOfToday, Instant.now(), userId);
+        // "Today" is the company's day — a UTC day would reset the operator's figures at 05:00 in Tashkent.
+        CompanyConfig config = companyConfigUseCase.find(companyId);
+        ZoneId zone = config != null ? config.zoneId() : clock.getZone();
+        Instant now = clock.instant();
+        Instant startOfToday = LocalDate.ofInstant(now, zone).atStartOfDay(zone).toInstant();
+        DashboardTotals totals = dashboardReportUseCase.findOperatorTotals(companyId, startOfToday, now, userId);
         double onAirMinutes = totals.avgDurationSec() == null
                 ? 0
                 : totals.avgDurationSec() * totals.answeredCalls() / 60.0;

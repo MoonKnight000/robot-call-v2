@@ -1,0 +1,147 @@
+# Umumiy turlar: javob konverti, xato javoblari va bir nechta feature ishlatadigan turlar.
+schemas:
+  AgentPersona:
+    type: string
+    enum:
+    - AI_ASSISTANT
+    - HUMAN_LIKE
+    description: |-
+      Defines whether the AI agent behaves as an upfront AI assistant or acts human-like.
+
+      - `AI_ASSISTANT` — Identifies as an AI robot for the company, speaks the official disclosure, and when unable to answer or confronted with difficult questions, honestly discloses it is an AI.
+
+      - `HUMAN_LIKE` — Behaves like a real human employee, introduces itself by the voice persona name (e.g. "Salom, mening ismim Dilnavoz..."), never admits being a bot, and strives to answer any question directly and naturally.
+  CsvRowError:
+    type: object
+    description: One CSV row that could not be used, and why. Shared by every importer so a partial import reports its rejects the same way whatever was being imported.
+    properties:
+      line:
+        type: integer
+        format: int32
+        description: 1-based line number in the file, so an error can be found
+      message:
+        type: string
+        description: why the row was rejected
+    required:
+    - line
+  Disposition:
+    type: string
+    enum:
+    - PROMISE_TO_PAY
+    - REFUSED
+    - NO_ANSWER
+    - CARRIER_REJECTED
+    - WRONG_NUMBER
+    - DO_NOT_CALL
+    - HUNG_UP
+    - TRANSFERRED
+    - VOICEMAIL
+    - CALLBACK_REQUESTED
+    - FAILED
+    - COMPLETED
+    - GOAL_REACHED
+    - GOAL_NOT_REACHED
+    description: Final outcome of a call attempt. See PROJECT.md §4.2 and §8.6.
+  ErrorResponse:
+    allOf:
+    - $ref: '#/schemas/ResponseData'
+    example:
+      data: null
+      message: Campaign 42 not found
+      messageCode: CAMPAIGN_NOT_FOUND
+      accept: false
+      errors: null
+  PipelineMode:
+    type: string
+    enum:
+    - CASCADE
+    - REALTIME
+    - HALF_CASCADE
+    description: |-
+      How a company's calls turn speech into speech (PROJECT.md §2.4/§2.5).
+
+      - `CASCADE` — Our STT, our LLM, our TTS — every sentence is checked before it is spoken.
+
+      - `REALTIME` — A speech-to-speech engine hears, thinks and speaks; its words are only audited after the fact.
+
+      - `HALF_CASCADE` — A speech-to-speech engine hears and thinks, but its own voice is dropped: the text of its answer goes through the fact guard and is spoken by our TTS voice. Keeps the engine's fast understanding of the caller's audio while every figure is still gated, and the brand voice stays the same as on CASCADE calls.
+  ReasonCode:
+    type: string
+    enum:
+    - NO_MONEY
+    - JOB_LOSS
+    - ILLNESS
+    - ALREADY_PAID
+    - DISPUTES_DEBT
+    - FORGOT
+    - TECHNICAL_ISSUE
+    - OTHER
+    description: Reason a debt is unpaid, recorded via the `recordRefusalReason` tool. See PROJECT.md §4.2.
+  ResponseData:
+    type: object
+    description: 'Har bir JSON javobning konverti. Muvaffaqiyatda `accept: true` va `data` to''ldirilgan; xatoda `accept: false`, `messageCode` — `ErrorCode` nomi (frontend shu bo''yicha tarjima qiladi).'
+    required:
+    - accept
+    properties:
+      data:
+        description: Javob ma'lumoti; xatoda `null`
+      message:
+        type: string
+        nullable: true
+        description: Xato matni (server tilida)
+      messageCode:
+        type: string
+        nullable: true
+        description: '`ErrorCode` nomi, masalan `CAMPAIGN_NOT_FOUND`'
+      accept:
+        type: boolean
+      errors:
+        type: array
+        nullable: true
+        items:
+          type: string
+        description: Validatsiya muammolari ro'yxati
+  Sentiment:
+    type: string
+    enum:
+    - POSITIVE
+    - NEUTRAL
+    - NEGATIVE
+    - HOSTILE
+    description: Overall client sentiment inferred for the call summary. See PROJECT.md §4.3.
+  SortDirection:
+    type: string
+    enum:
+    - ASC
+    - DESC
+responses:
+  BadRequest:
+    description: Validatsiya xatosi — `VALIDATION_FAILED` yoki aniq `ErrorCode`
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/ErrorResponse'
+  Unauthorized:
+    description: Token yo'q, muddati o'tgan yoki noto'g'ri
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/ErrorResponse'
+  Forbidden:
+    description: Foydalanuvchida kerakli huquq yo'q
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/ErrorResponse'
+  NotFound:
+    description: Obyekt topilmadi (yoki boshqa kompaniyaga tegishli)
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/ErrorResponse'
+  Conflict:
+    description: So'rov to'g'ri, lekin tizim holati mos emas
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/ErrorResponse'

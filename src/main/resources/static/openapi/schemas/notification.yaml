@@ -1,0 +1,137 @@
+# `notification` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+Notification:
+  type: object
+  description: Domain model for an in-app notification (UI-DESIGN §9 topbar bell, §0.8).
+  properties:
+    id:
+      type: integer
+      format: int64
+    type:
+      $ref: '#/NotificationType'
+    title:
+      type: string
+    message:
+      type: string
+    link:
+      type: string
+    read:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - read
+NotificationChannel:
+  type: object
+  description: Domain model for a notification channel configuration (§11 settings).
+  properties:
+    channel:
+      $ref: '#/NotificationChannelType'
+    target:
+      type: string
+    enabled:
+      type: boolean
+  required:
+  - channel
+  - enabled
+NotificationChannelType:
+  type: string
+  enum:
+  - EMAIL
+  - WEBHOOK
+  - TELEGRAM
+  description: Notification delivery channel types (§11 settings).
+NotificationMatrixEntry:
+  type: object
+  description: Domain model for a cell of the notification channel x event matrix (§11 settings).
+  properties:
+    type:
+      $ref: '#/NotificationType'
+    channel:
+      $ref: '#/NotificationChannelType'
+    enabled:
+      type: boolean
+  required:
+  - type
+  - channel
+  - enabled
+NotificationSettings:
+  type: object
+  description: Domain model for company notification settings aggregation (§11 settings).
+  properties:
+    channels:
+      type: array
+      items:
+        $ref: '#/NotificationChannel'
+    matrix:
+      type: array
+      items:
+        $ref: '#/NotificationMatrixEntry'
+NotificationType:
+  type: string
+  enum:
+  - CAMPAIGN_FINISHED
+  - ERROR_OCCURRED
+  - OPERATOR_REQUEST
+  - DAILY_REPORT
+  - MISSED_CALL
+  - VOICEMAIL_RECEIVED
+  - LOW_SURVEY_SCORE
+  - CAMPAIGN_PAUSED
+  - BALANCE_LOW
+  - TARGET_SYNC_FAILED
+  - WEBHOOK_DELIVERY_FAILED
+  - AGENT_INSIGHT_READY
+  description: |-
+    Event types for notifications (UI-DESIGN §8.2 popover toggles).
+
+    - `CAMPAIGN_FINISHED`
+
+    - `ERROR_OCCURRED`
+
+    - `OPERATOR_REQUEST`
+
+    - `DAILY_REPORT`
+
+    - `MISSED_CALL` — A caller was not served — after hours, left the queue, or no operator was free.
+
+    - `VOICEMAIL_RECEIVED` — A caller left a voicemail.
+
+    - `LOW_SURVEY_SCORE` — A caller rated an operator call 1 or 2 out of 5.
+
+    - `CAMPAIGN_PAUSED` — The dialer paused a campaign itself — no usable SIP trunk.
+
+    - `BALANCE_LOW` — A campaign's calls are being held because the company's balance cannot cover them.
+
+    - `TARGET_SYNC_FAILED` — A campaign's target source could not be fetched.
+
+    - `WEBHOOK_DELIVERY_FAILED` — A post-call webhook failed every retry (NEXT-PLAN S.6).
+
+    - `AGENT_INSIGHT_READY` — An accepted improvement passed the agent's test cases and is waiting to be published (D.4).
+UpdateNotificationSettingsRequest:
+  type: object
+  description: PUT /api/settings/notifications (§11) body — replaces the whole grid at once.
+  properties:
+    channels:
+      type: array
+      items:
+        $ref: '#/NotificationChannel'
+    matrix:
+      type: array
+      items:
+        $ref: '#/NotificationMatrixEntry'
+  required:
+  - channels
+  - matrix
+UpdatePreferenceRequest:
+  type: object
+  description: PUT /api/notifications/preferences body — one toggle at a time (UI-DESIGN §8.2).
+  properties:
+    type:
+      $ref: '#/NotificationType'
+    enabled:
+      type: boolean
+  required:
+  - type
+  - enabled

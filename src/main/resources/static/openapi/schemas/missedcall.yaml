@@ -1,0 +1,194 @@
+# `missedcall` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AssignMissedCallRequest:
+  type: object
+  description: Body of PUT /api/missed-calls/{id}/assign.
+  properties:
+    userId:
+      type: integer
+      format: int64
+      description: who calls back; null un-assigns
+MissedCall:
+  type: object
+  description: 'A caller the company still owes a call to (docs/INBOUND-PBX-PLAN.md §8.2). One open row per phone: ringing again adds to `callCount` and moves `lastAt`.'
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    phone:
+      type: string
+    reason:
+      allOf:
+      - $ref: '#/MissedCallReason'
+      description: the latest reason the caller was not served
+    status:
+      $ref: '#/MissedCallStatus'
+    callCount:
+      type: integer
+      format: int32
+    firstAt:
+      type: string
+      format: date-time
+    lastAt:
+      type: string
+      format: date-time
+    queueId:
+      type: integer
+      format: int64
+    inboundRouteId:
+      type: integer
+      format: int64
+    lastCallAttemptId:
+      type: integer
+      format: int64
+      description: the most recent unserved call
+    voicemailMessageId:
+      type: integer
+      format: int64
+      description: the voicemail they left, if any
+    assignedUserId:
+      type: integer
+      format: int64
+    callbackAttempts:
+      type: integer
+      format: int32
+      description: callbacks tried so far, by hand or automatically — automatic ones stop at the limit, so an operator's own tries count against it
+    lastCallbackAt:
+      type: string
+      format: date-time
+    resolvedAt:
+      type: string
+      format: date-time
+    resolvedByUserId:
+      type: integer
+      format: int64
+    note:
+      type: string
+  required:
+  - id
+  - companyId
+  - callCount
+  - callbackAttempts
+MissedCallCallBackResponse:
+  type: object
+  description: POST /api/missed-calls/{id}/call-back — the operator's phone is ringing; once they pick up, the caller is dialled.
+  properties:
+    missedCallId:
+      type: integer
+      format: int64
+    phone:
+      type: string
+    operatorChannelId:
+      type: string
+      description: the Asterisk channel ringing the operator
+  required:
+  - missedCallId
+MissedCallFilter:
+  type: object
+  description: Pagination + filter for POST /api/missed-calls/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        LAST_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        FIRST_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CALL_COUNT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    status:
+      allOf:
+      - $ref: '#/MissedCallStatus'
+      description: only this status; null for all
+    reason:
+      allOf:
+      - $ref: '#/MissedCallReason'
+      description: only this reason; null for all
+    assignedUserId:
+      type: integer
+      format: int64
+      description: only calls assigned to this user; null for all
+MissedCallPage:
+  type: object
+  description: '`MissedCall` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/MissedCall'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+MissedCallReason:
+  type: string
+  enum:
+  - AFTER_HOURS
+  - ABANDONED
+  - NO_OPERATOR
+  - CALLBACK_REQUESTED
+  - VOICEMAIL
+  description: |-
+    Why a caller was not served.
+
+    - `AFTER_HOURS` — Rang outside working hours and nobody took the call.
+
+    - `ABANDONED` — Hung up while waiting in a queue.
+
+    - `NO_OPERATOR` — The queue overflowed or had nobody signed in.
+
+    - `CALLBACK_REQUESTED` — Asked to be called back instead of waiting.
+
+    - `VOICEMAIL` — Left a voicemail — a request to be called back in the caller's own words.
+MissedCallStatus:
+  type: string
+  enum:
+  - NEW
+  - IN_PROGRESS
+  - CALLED_BACK
+  - RESOLVED
+  description: |-
+    Where a missed call is on the operators' list.
+
+    - `NEW`
+
+    - `IN_PROGRESS` — Someone is calling back right now.
+
+    - `CALLED_BACK` — Called back and reached.
+
+    - `RESOLVED` — Closed without a callback (the caller rang again and was served, or it needed none).
+UpdateMissedCallRequest:
+  type: object
+  description: Body of PUT /api/missed-calls/{id}.
+  properties:
+    status:
+      $ref: '#/MissedCallStatus'
+    note:
+      type: string
+      maxLength: 2000
+  required:
+  - status

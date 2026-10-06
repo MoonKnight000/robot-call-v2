@@ -1,0 +1,139 @@
+# Industry Packs — pack controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/packs:
+  get:
+    tags:
+    - Industry Packs
+    summary: Soha paketlari katalogi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: pack_list
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/pack.yaml#/PackRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/packs/generate:
+  post:
+    tags:
+    - Industry Packs
+    summary: Tavsifdan paket qoralamasi
+    description: |-
+      Writes a pack for a business the catalog has no pack for (UNIVERSAL-OPERATOR-PLAN E.1): the description in the owner's own words, and optionally the API document its agent should call. Creates nothing — the draft comes back to be read, edited and then sent to `/install-draft`.
+
+      The tools in the draft are built from the document by the same importer `/api/tools/import` uses; the model writes only what the caller hears.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: pack_generate
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/pack.yaml#/GeneratePackRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/pack.yaml#/VerticalPack
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/packs/install-draft:
+  post:
+    tags:
+    - Industry Packs
+    summary: Qoralamani o'rnatish
+    description: |-
+      Installs a draft — a generated pack as the person edited it — exactly as a catalog pack.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: pack_installDraft
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/pack.yaml#/InstallDraftRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/pack.yaml#/PackInstallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/packs/{key}/install:
+  post:
+    tags:
+    - Industry Packs
+    summary: O'rnatish
+    description: |-
+      Creates the pack's agent and everything around it in this company. The agent is a draft like any other: its tools fail until the secrets listed in `missingSecrets` are set, and it is edited, evaluated and published through `/api/ai-agents`. Installing twice gives two independent agents.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: pack_install
+    parameters:
+    - name: key
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/pack.yaml#/InstallPackRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/pack.yaml#/PackInstallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.report.application.dto.*;
 import uz.murodjon.robotcallv2.report.application.mapper.ReportMapper;
 import uz.murodjon.robotcallv2.report.application.port.input.DashboardReportUseCase;
@@ -18,10 +20,15 @@ public class DashboardReportService implements DashboardReportUseCase {
 
     private final DashboardReportRepository dashboardReportRepository;
     private final ReportMapper reportMapper;
+    private final CompanyConfigUseCase companyConfigUseCase;
+    private final Clock clock;
 
-    public DashboardReportService(DashboardReportRepository dashboardReportRepository, ReportMapper reportMapper) {
+    public DashboardReportService(DashboardReportRepository dashboardReportRepository, ReportMapper reportMapper,
+                                  CompanyConfigUseCase companyConfigUseCase, Clock clock) {
         this.dashboardReportRepository = dashboardReportRepository;
         this.reportMapper = reportMapper;
+        this.companyConfigUseCase = companyConfigUseCase;
+        this.clock = clock;
     }
 
     @Override
@@ -31,7 +38,7 @@ public class DashboardReportService implements DashboardReportUseCase {
 
     @Override
     public DashboardKpi findDashboardKpi(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         DashboardFilter filter = DashboardFilter.of(range, campaignId, null);
         DashboardTotals current = dashboardReportRepository.findDashboardTotals(companyId, filter);
         DashboardTotals previous = dashboardReportRepository.findDashboardTotals(companyId,
@@ -56,7 +63,7 @@ public class DashboardReportService implements DashboardReportUseCase {
 
     @Override
     public List<DashboardBucket> findDashboardTimeseries(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findDashboardBuckets(companyId, DashboardFilter.of(range, campaignId, null),
                 range.granularity());
     }
@@ -64,27 +71,27 @@ public class DashboardReportService implements DashboardReportUseCase {
     @Override
     public List<DashboardBucket> findDynamics(long companyId, String from, String to, Long campaignId, Long scenarioId,
                                               Boolean escalated) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findDynamicsBuckets(companyId,
                 DashboardFilter.of(range, campaignId, scenarioId), escalated, range.granularity());
     }
 
     @Override
     public List<DashboardOutcome> findDashboardOutcomes(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findDashboardOutcomes(companyId, DashboardFilter.of(range, campaignId, null));
     }
 
     @Override
     public List<HourlyHeatmapCell> findHourlyHeatmap(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findHourlyHeatmap(companyId, DashboardFilter.of(range, campaignId, null));
     }
 
     @Override
     public List<CampaignComparisonRow> findCampaignComparison(long companyId, String from, String to,
                                                               List<Long> campaignIds) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findCampaignComparison(companyId, range.from(), range.to(), campaignIds)
                 .stream()
                 .map(reportMapper::toCampaignComparisonRow)
@@ -93,19 +100,19 @@ public class DashboardReportService implements DashboardReportUseCase {
 
     @Override
     public List<DurationHistogramBucket> findDurationHistogram(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findDurationHistogram(companyId, DashboardFilter.of(range, campaignId, null));
     }
 
     @Override
     public List<FunnelStage> findFunnel(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findFunnel(companyId, DashboardFilter.of(range, campaignId, null));
     }
 
     @Override
     public ReportSummary findSummary(long companyId, String from, String to, Long campaignId) {
-        DashboardRange range = DashboardRange.of(from, to);
+        DashboardRange range = findRange(companyId, from, to);
         DashboardFilter filter = DashboardFilter.of(range, campaignId, null);
         DashboardTotals totals = dashboardReportRepository.findDashboardTotals(companyId, filter);
         List<DashboardOutcome> outcomes = dashboardReportRepository.findDashboardOutcomes(companyId, filter);
@@ -120,7 +127,8 @@ public class DashboardReportService implements DashboardReportUseCase {
     public DashboardSummaryResponse findDashboardSummary(long companyId, String range, String from, String to,
                                                          Long campaignId, Long scenarioId) {
         String rangePreset = (range != null && !range.isBlank()) ? range : "24h";
-        DashboardRange currentRange = DashboardRange.ofPreset(rangePreset, from, to);
+        DashboardRange currentRange = DashboardRange.ofPreset(rangePreset, from, to, findZone(companyId),
+                clock.instant());
         DashboardFilter current = DashboardFilter.of(currentRange, campaignId, scenarioId);
         DashboardFilter previous = DashboardFilter.of(currentRange.previous(), campaignId, scenarioId);
 
@@ -133,7 +141,7 @@ public class DashboardReportService implements DashboardReportUseCase {
         List<DashboardTimelineBucket> buckets = dashboardReportRepository.findDashboardTimelineBuckets(companyId,
                 current, granularity);
 
-        ZoneId zone = ZoneId.of("Asia/Tashkent");
+        ZoneId zone = currentRange.zone();
         List<TimelinePoint> points = new ArrayList<>();
         List<Number> sparkTotalCalls = new ArrayList<>();
         List<Number> sparkMinutes = new ArrayList<>();
@@ -327,7 +335,7 @@ public class DashboardReportService implements DashboardReportUseCase {
         // 8. Live Calls
         List<DashboardLiveCall> liveRows = dashboardReportRepository.findDashboardLiveCalls(companyId, 5);
         List<DashboardLiveItem> live = liveRows.stream().map(l -> {
-            long elapsedSec = l.startedAt() != null ? Math.max(0, Duration.between(l.startedAt(), Instant.now()).toSeconds()) : 0L;
+            long elapsedSec = l.startedAt() != null ? Math.max(0, Duration.between(l.startedAt(), clock.instant()).toSeconds()) : 0L;
             String timer = formatMMSS((int) elapsedSec);
             String displayName = l.phone() + (l.clientName() != null && !l.clientName().isBlank() ? " (" + l.clientName() + ")" : "");
             String line = "inbound".equalsIgnoreCase(l.direction()) ? "Kiruvchi liniya" : "Chiquvchi liniya";
@@ -379,6 +387,16 @@ public class DashboardReportService implements DashboardReportUseCase {
                 live,
                 recentCalls
         );
+    }
+
+    private DashboardRange findRange(long companyId, String from, String to) {
+        return DashboardRange.of(from, to, findZone(companyId), clock.instant());
+    }
+
+    /** The company's own days — a chart day that starts at UTC midnight is 05:00 in Tashkent. */
+    private ZoneId findZone(long companyId) {
+        CompanyConfig config = companyConfigUseCase.find(companyId);
+        return config != null ? config.zoneId() : clock.getZone();
     }
 
     private static double computeDeltaPct(double current, double prev) {

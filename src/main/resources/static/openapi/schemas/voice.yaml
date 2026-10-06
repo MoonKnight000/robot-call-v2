@@ -1,0 +1,82 @@
+# `voice` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+PreviewVoiceRequest:
+  type: object
+  description: '`POST /api/tts/voices/{id`/preview} body — the line to hear the voice speak.'
+  properties:
+    text:
+      type: string
+      minLength: 1
+      maxLength: 500
+  required:
+  - text
+SttPreviewResponse:
+  type: object
+  description: '`POST /api/stt/preview` response — what one recognizer heard in the uploaded file.'
+  properties:
+    provider:
+      type: string
+      description: the STT provider that transcribed it
+    language:
+      type: string
+      description: BCP-47 language the recognizer was told to expect
+    transcript:
+      type: string
+      description: recognized text; empty when the provider returned nothing
+    audioMs:
+      type: integer
+      format: int64
+      description: length of the uploaded audio
+  required:
+  - audioMs
+TtsVoice:
+  type: object
+  description: A row of tts_voice (PROJECT.md §2.5) — one selectable voice.
+  properties:
+    id:
+      type: string
+      description: stable id stored on the campaign (e.g. nigora)
+    provider:
+      type: string
+      description: provider that owns the voice (yandex/google/aisha)
+    language:
+      type: string
+      description: BCP-47 language the voice speaks
+    name:
+      type: string
+      description: provider-side voice name sent with the synthesis request
+    label:
+      type: string
+      description: human-readable name shown in the campaign UI
+    role:
+      type: string
+      description: provider-side speaking role
+UpdateVoiceSettingsRequest:
+  type: object
+  description: '`PUT /api/settings/voice` body — every field `null` clears that override. `speed` is range-checked by `VoiceSettingsValidator`, the same check an agent''s speed gets, so both answer `VOICE_SPEED_OUT_OF_RANGE` on both sides.'
+  properties:
+    speed:
+      type: number
+      format: double
+    pitch:
+      type: number
+      format: double
+      minimum: -20.0
+      maximum: 20.0
+VoiceSettings:
+  type: object
+  description: A company's TTS tuning overrides.
+  properties:
+    companyId:
+      type: integer
+      format: int64
+    speed:
+      type: number
+      format: double
+    pitch:
+      type: number
+      format: double
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - companyId

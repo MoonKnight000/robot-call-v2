@@ -1,0 +1,332 @@
+# Contacts — contact controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/contacts:
+  post:
+    tags:
+    - Contacts
+    summary: Yangi kontakt
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: contact_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/contact.yaml#/CreateContactRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/Contact
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/contacts/csv:
+  post:
+    tags:
+    - Contacts
+    summary: Kontaktlarni CSV'dan import qilish
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: contact_importCsv
+    requestBody:
+      required: true
+      content:
+        text/csv:
+          schema:
+            type: string
+        text/plain:
+          schema:
+            type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactImportResult
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/contacts/data:
+  get:
+    tags:
+    - Contacts
+    summary: Shaxs ma'lumotlari eksporti {#subject-export}
+    description: '**Huquq:** `CONTACT_READ`'
+    operationId: contact_exportData
+    parameters:
+    - name: phone
+      in: query
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactDataExport
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  delete:
+    tags:
+    - Contacts
+    summary: Shaxs ma'lumotlarini o'chirish {#subject-erasure}
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: contact_eraseData
+    parameters:
+    - name: phone
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: confirm
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactErasureResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/contacts/filter:
+  post:
+    tags:
+    - Contacts
+    summary: Ro'yxat
+    description: '**Huquq:** `CONTACT_READ`'
+    operationId: contact_list_1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/contact.yaml#/ContactFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/contacts/list:
+  post:
+    tags:
+    - Contacts
+    summary: Ro'yxat
+    description: '**Huquq:** `CONTACT_READ`'
+    operationId: contact_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/contact.yaml#/ContactFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/contacts/{id}:
+  get:
+    tags:
+    - Contacts
+    summary: Profil + qo'ng'iroqlar tarixi
+    description: '**Huquq:** `CONTACT_READ`'
+    operationId: contact_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactDetail
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Contacts
+    summary: Yangilash
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: contact_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/contact.yaml#/UpdateContactRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/Contact
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Contacts
+    summary: Kontaktni o'chirish
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: contact_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/contacts/{id}/dnc:
+  post:
+    tags:
+    - Contacts
+    summary: '"DNC ga qo''shish" {#post-apicontactsiddnc}'
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: contact_addToDoNotCall
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/contact.yaml#/ContactDncResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

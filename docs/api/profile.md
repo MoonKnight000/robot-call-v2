@@ -319,6 +319,9 @@ qiymatning o'zi.
 
 ## `GET /api/profile/today-stats` — popover mini-statistika
 
+"Bugun" — kompaniya mintaqasi (`company_config.timezone`) bo'yicha yarim tundan hozirgacha. Ilgari UTC
+bo'yicha olinardi, shuning uchun Toshkentda statistika soat 05:00 da nolga tushardi.
+
 **Javob** (`TodayStats`):
 
 ```json

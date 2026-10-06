@@ -1,0 +1,66 @@
+# Do Not Call — do-not-call-list controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/do-not-call/list:
+  post:
+    tags:
+    - Do Not Call
+    summary: Ro'yxat
+    description: '**Huquq:** `DO_NOT_CALL_READ`'
+    operationId: doNotCallList_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/donotcall.yaml#/DoNotCallFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/donotcall.yaml#/DoNotCallRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/do-not-call/{phone}/remove:
+  post:
+    tags:
+    - Do Not Call
+    summary: Ro'yxatdan chiqarish
+    description: '**Huquq:** `DO_NOT_CALL_EDIT`'
+    operationId: doNotCallList_remove
+    parameters:
+    - name: phone
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/donotcall.yaml#/DoNotCallRemoveResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

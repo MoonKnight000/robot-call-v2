@@ -1,0 +1,55 @@
+# Notification Settings — notification-settings controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/settings/notifications:
+  get:
+    tags:
+    - Notification Settings
+    summary: Matritsani olish
+    description: '**Huquq:** `NOTIFICATION_SETTINGS_READ`'
+    operationId: notificationSettings_get
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/notification.yaml#/NotificationSettings
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  put:
+    tags:
+    - Notification Settings
+    summary: Matritsani saqlash
+    description: '**Huquq:** `NOTIFICATION_SETTINGS_EDIT`'
+    operationId: notificationSettings_update
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/notification.yaml#/UpdateNotificationSettingsRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/notification.yaml#/NotificationSettings
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

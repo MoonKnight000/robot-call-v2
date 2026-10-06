@@ -1,0 +1,286 @@
+# `role` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CreateRoleRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    description:
+      type: string
+      maxLength: 500
+    permissions:
+      type: array
+      items:
+        $ref: '#/Permission'
+      uniqueItems: true
+      minItems: 1
+  required:
+  - name
+  - permissions
+Permission:
+  type: string
+  enum:
+  - DASHBOARD_READ
+  - CAMPAIGN_READ
+  - CAMPAIGN_EDIT
+  - CALL_READ
+  - CALL_EDIT
+  - LIVE_READ
+  - LIVE_EDIT
+  - OPERATOR_READ
+  - OPERATOR_EDIT
+  - CONTACT_READ
+  - CONTACT_EDIT
+  - AI_AGENT_READ
+  - AI_AGENT_EDIT
+  - SCENARIO_READ
+  - SCENARIO_EDIT
+  - KNOWLEDGE_BASE_READ
+  - KNOWLEDGE_BASE_EDIT
+  - REPORT_READ
+  - REPORT_EDIT
+  - AUDIT_READ
+  - DO_NOT_CALL_READ
+  - DO_NOT_CALL_EDIT
+  - INBOUND_ROUTE_READ
+  - INBOUND_ROUTE_EDIT
+  - CALL_FLOW_READ
+  - CALL_FLOW_EDIT
+  - CALL_QUEUE_READ
+  - CALL_QUEUE_EDIT
+  - MISSED_CALL_READ
+  - MISSED_CALL_EDIT
+  - CALL_MONITOR
+  - SIP_TRUNK_READ
+  - SIP_TRUNK_EDIT
+  - USER_READ
+  - USER_EDIT
+  - ROLE_READ
+  - ROLE_EDIT
+  - COMPANY_READ
+  - COMPANY_EDIT
+  - AI_MODEL_READ
+  - AI_MODEL_EDIT
+  - ENGINE_READ
+  - ENGINE_EDIT
+  - VOICE_READ
+  - VOICE_EDIT
+  - NOTIFICATION_SETTINGS_READ
+  - NOTIFICATION_SETTINGS_EDIT
+  - INTEGRATION_READ
+  - INTEGRATION_EDIT
+  - BILLING_READ
+  - BILLING_EDIT
+  - API_KEY_READ
+  - API_KEY_EDIT
+  - QUALITY_REVIEW_READ
+  - QUALITY_REVIEW_EDIT
+  - PLATFORM_ADMIN
+  description: |-
+    Every right the panel can grant, one pair per page: `*_READ` opens the page, `*_EDIT` allows creating, changing and deleting on it.
+
+    Two identifiers travel with each constant and they are not interchangeable. The `#name()` is what the database stores, what `@PreAuthorize` checks and what the frontend translates — readable and safe to reason about. The `#code()` is the short form the access token carries, so a role with forty permissions costs a few hundred bytes of JWT instead of a kilobyte. A code is part of every token already issued: renaming one silently changes what an old token grants, so codes are append-only.
+
+    - `DASHBOARD_READ`
+
+    - `CAMPAIGN_READ`
+
+    - `CAMPAIGN_EDIT`
+
+    - `CALL_READ`
+
+    - `CALL_EDIT`
+
+    - `LIVE_READ`
+
+    - `LIVE_EDIT`
+
+    - `OPERATOR_READ`
+
+    - `OPERATOR_EDIT`
+
+    - `CONTACT_READ`
+
+    - `CONTACT_EDIT`
+
+    - `AI_AGENT_READ`
+
+    - `AI_AGENT_EDIT`
+
+    - `SCENARIO_READ`
+
+    - `SCENARIO_EDIT`
+
+    - `KNOWLEDGE_BASE_READ`
+
+    - `KNOWLEDGE_BASE_EDIT`
+
+    - `REPORT_READ`
+
+    - `REPORT_EDIT`
+
+    - `AUDIT_READ`
+
+    - `DO_NOT_CALL_READ`
+
+    - `DO_NOT_CALL_EDIT`
+
+    - `INBOUND_ROUTE_READ`
+
+    - `INBOUND_ROUTE_EDIT`
+
+    - `CALL_FLOW_READ` — Call flows, business schedules, holidays and voicemail boxes (caller rules sit under INBOUND_ROUTE_*).
+
+    - `CALL_FLOW_EDIT`
+
+    - `CALL_QUEUE_READ` — Operator queues and their members.
+
+    - `CALL_QUEUE_EDIT`
+
+    - `MISSED_CALL_READ` — Missed and abandoned calls, and the voicemail left on them — an operator's work list.
+
+    - `MISSED_CALL_EDIT`
+
+    - `CALL_MONITOR` — Supervisor: listen to, whisper into or barge into another person's live call (the wallboard is CALL_QUEUE_READ).
+
+    - `SIP_TRUNK_READ`
+
+    - `SIP_TRUNK_EDIT`
+
+    - `USER_READ`
+
+    - `USER_EDIT`
+
+    - `ROLE_READ`
+
+    - `ROLE_EDIT`
+
+    - `COMPANY_READ`
+
+    - `COMPANY_EDIT`
+
+    - `AI_MODEL_READ`
+
+    - `AI_MODEL_EDIT`
+
+    - `ENGINE_READ`
+
+    - `ENGINE_EDIT`
+
+    - `VOICE_READ`
+
+    - `VOICE_EDIT`
+
+    - `NOTIFICATION_SETTINGS_READ`
+
+    - `NOTIFICATION_SETTINGS_EDIT`
+
+    - `INTEGRATION_READ`
+
+    - `INTEGRATION_EDIT`
+
+    - `BILLING_READ`
+
+    - `BILLING_EDIT`
+
+    - `API_KEY_READ`
+
+    - `API_KEY_EDIT`
+
+    - `QUALITY_REVIEW_READ` — The review inbox: the calls the quality judge flagged, and a person's verdict on them.
+
+    - `QUALITY_REVIEW_EDIT`
+
+    - `PLATFORM_ADMIN` — Tenant onboarding and suspension — platform staff only, never grantable to a company role.
+PermissionGroup:
+  type: string
+  enum:
+  - DASHBOARD
+  - CAMPAIGN
+  - CALL
+  - LIVE
+  - OPERATOR
+  - CONTACT
+  - AI_AGENT
+  - SCENARIO
+  - REPORT
+  - AUDIT
+  - DO_NOT_CALL
+  - INBOUND_ROUTE
+  - CALL_FLOW
+  - CALL_QUEUE
+  - MISSED_CALL
+  - SIP_TRUNK
+  - USER
+  - ROLE
+  - COMPANY
+  - AI_MODEL
+  - ENGINE
+  - VOICE
+  - NOTIFICATION_SETTINGS
+  - INTEGRATION
+  - BILLING
+  - API_KEY
+  - QUALITY_REVIEW
+  - PLATFORM
+  description: The panel page a permission guards — the frontend renders the role editor grouped by this, and translates each name itself (same contract as `ErrorCode`).
+PermissionGroupRow:
+  type: object
+  description: One page's worth of the permission catalog the role editor renders.
+  properties:
+    group:
+      $ref: '#/PermissionGroup'
+    permissions:
+      type: array
+      items:
+        $ref: '#/Permission'
+RoleRow:
+  type: object
+  description: Row for the roles page — the role plus how many users currently hold it.
+  properties:
+    id:
+      type: integer
+      format: int64
+    code:
+      type: string
+    name:
+      type: string
+    description:
+      type: string
+    system:
+      type: boolean
+    permissions:
+      type: array
+      items:
+        $ref: '#/Permission'
+      uniqueItems: true
+    userCount:
+      type: integer
+      format: int64
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - system
+  - userCount
+UpdateRoleRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    description:
+      type: string
+      maxLength: 500
+    permissions:
+      type: array
+      items:
+        $ref: '#/Permission'
+      uniqueItems: true
+      minItems: 1
+  required:
+  - name
+  - permissions

@@ -1,0 +1,259 @@
+# `schedule` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+BusinessSchedule:
+  type: object
+  description: A company's weekly opening hours, shared by every inbound route, call flow and queue that points at it (docs/INBOUND-PBX-PLAN.md §5).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    timezone:
+      type: string
+      description: IANA zone the slots are in; null means the company's own (`company_config.timezone`)
+    slots:
+      type: array
+      items:
+        $ref: '#/BusinessScheduleSlot'
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+BusinessScheduleFilter:
+  type: object
+  description: Pagination + sort for POST /api/schedules/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+BusinessSchedulePage:
+  type: object
+  description: '`BusinessSchedule` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/BusinessSchedule'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+BusinessScheduleSlot:
+  type: object
+  description: One open interval on one weekday. A day may carry several (a lunch break is two slots); an interval whose end is before its start runs past midnight into the next day (22:00–06:00).
+  properties:
+    dayOfWeek:
+      type: string
+      enum:
+      - MONDAY
+      - TUESDAY
+      - WEDNESDAY
+      - THURSDAY
+      - FRIDAY
+      - SATURDAY
+      - SUNDAY
+    startTime:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    endTime:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+  required:
+  - dayOfWeek
+  - startTime
+  - endTime
+Holiday:
+  type: object
+  description: 'A dated exception to every business schedule of the company: a public holiday, a shortened pre-holiday day, or a weekend the government moved work onto.'
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    date:
+      type: string
+      format: date
+    name:
+      type: string
+    kind:
+      $ref: '#/HolidayKind'
+    openTime:
+      type: string
+      example: 09:00:00
+      description: 'start of the day''s window; null for `HolidayKind#CLOSED` Format: `HH:mm` Format: `HH:mm`'
+    closeTime:
+      type: string
+      example: 09:00:00
+      description: 'end of the day''s window; null for `HolidayKind#CLOSED` Format: `HH:mm` Format: `HH:mm`'
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+HolidayFilter:
+  type: object
+  description: Pagination + sort for POST /api/holidays/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        DATE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    year:
+      type: integer
+      format: int32
+      description: only that calendar year's holidays; null for all of them
+      minimum: 2000
+      maximum: 2100
+HolidayKind:
+  type: string
+  enum:
+  - CLOSED
+  - SHORT_DAY
+  - WORKING_DAY
+  description: |-
+    How a dated exception changes a business schedule for one day.
+
+    `#SHORT_DAY` and `#WORKING_DAY` are evaluated the same way — the day is open exactly within the holiday's own window — and differ only in what they mean to whoever reads the calendar: a pre-holiday day that closes early, or a normally closed day the government moved work onto.
+
+    - `CLOSED` — The whole day is closed.
+
+    - `SHORT_DAY` — A working day with its own, shorter window.
+
+    - `WORKING_DAY` — A normally closed day that is worked, within its own window.
+HolidayPage:
+  type: object
+  description: '`Holiday` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/Holiday'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+SaveBusinessScheduleRequest:
+  type: object
+  description: Body of POST/PUT /api/schedules.
+  properties:
+    name:
+      type: string
+      minLength: 1
+    timezone:
+      type: string
+      description: IANA zone ("Asia/Tashkent"); null or blank uses the company's
+    slots:
+      type: array
+      items:
+        $ref: '#/BusinessScheduleSlot'
+      minItems: 1
+  required:
+  - name
+  - slots
+SaveHolidayRequest:
+  type: object
+  description: Body of POST/PUT /api/holidays.
+  properties:
+    date:
+      type: string
+      format: date
+    name:
+      type: string
+      minLength: 1
+    kind:
+      allOf:
+      - $ref: '#/HolidayKind'
+      description: null is `HolidayKind#CLOSED`
+    openTime:
+      type: string
+      example: 09:00:00
+      description: 'required unless the day is CLOSED Format: `HH:mm` Format: `HH:mm`'
+    closeTime:
+      type: string
+      example: 09:00:00
+      description: 'required unless the day is CLOSED Format: `HH:mm` Format: `HH:mm`'
+  required:
+  - date
+  - name
+ScheduleStatusResponse:
+  type: object
+  description: GET /api/schedules/{id}/status — what a caller would get if they rang now.
+  properties:
+    open:
+      type: boolean
+      description: within working hours right now
+    holidayName:
+      type: string
+      description: the holiday that governs today, or null
+    nextOpeningAt:
+      type: string
+      format: date-time
+      description: when it opens next (in the schedule's zone); null when open
+    timezone:
+      type: string
+      description: the zone the schedule is read in
+  required:
+  - open

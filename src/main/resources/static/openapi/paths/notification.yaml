@@ -1,0 +1,78 @@
+# Notifications — notification controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/notifications:
+  get:
+    tags:
+    - Notifications
+    summary: Ro'yxat
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: notification_list
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/notification.yaml#/Notification
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/notifications/preferences:
+  put:
+    tags:
+    - Notifications
+    summary: Bildirishnoma turini yoqish/o'chirish
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: notification_updatePreference
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/notification.yaml#/UpdatePreferenceRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/notifications/{id}/read:
+  post:
+    tags:
+    - Notifications
+    summary: O'qilgan deb belgilash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: notification_markRead
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

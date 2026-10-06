@@ -1,0 +1,113 @@
+# Operators — operator controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/operator/calls/{channelId}:
+  get:
+    tags:
+    - Operators
+    summary: Uzatilgan qo'ng'iroq konteksti
+    description: '**Huquq:** `OPERATOR_READ`'
+    operationId: operator_context
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorContextResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/operator/calls/{channelId}/takeover:
+  post:
+    tags:
+    - Operators
+    summary: Qo'ng'iroqni operatorga qabul qilish (Takeover)
+    description: '**Huquq:** `OPERATOR_EDIT`'
+    operationId: operator_takeover
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: extension
+      in: query
+      required: false
+      schema:
+        type: string
+        default: '100'
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorTakeoverResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/operator/calls/{channelId}/whisper:
+  post:
+    tags:
+    - Operators
+    summary: Supervisor yo'riqnomasi yuborish (Whisper)
+    description: '**Huquq:** `OPERATOR_EDIT`'
+    operationId: operator_whisper
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/operator.yaml#/OperatorWhisperRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorWhisperResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

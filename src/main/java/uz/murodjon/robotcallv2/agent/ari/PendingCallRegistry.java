@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.ari;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -46,6 +47,13 @@ class PendingCallRegistry {
     private final Map<String, ScenarioDefinition> pendingManualDefinitions = new ConcurrentHashMap<>();
 
     /**
+     * The published agent a manual call runs ({@code POST /api/calls?agentId=}) — its own
+     * scenario, voice and prompt — correlated by channel id the same way. A channel here has
+     * no {@link #pendingManualScenarios} entry: the agent brings its scenario.
+     */
+    private final Map<String, AiAgent> pendingManualAgents = new ConcurrentHashMap<>();
+
+    /**
      * The company a manual/test call was placed for, kept until its {@code StasisStart}
      * arrives — that thread has no request behind it, so the tenant cannot be re-derived.
      */
@@ -77,6 +85,11 @@ class PendingCallRegistry {
 
     void registerManualDefinition(String channelId, ScenarioDefinition definition, long companyId) {
         pendingManualDefinitions.put(channelId, definition);
+        pendingManualCompanies.put(channelId, companyId);
+    }
+
+    void registerManualAgent(String channelId, AiAgent agent, long companyId) {
+        pendingManualAgents.put(channelId, agent);
         pendingManualCompanies.put(channelId, companyId);
     }
 
@@ -115,7 +128,13 @@ class PendingCallRegistry {
 
     /** Whether {@code channelId} is a manual or test call still waiting for its setup. */
     boolean isManual(String channelId) {
-        return pendingManualScenarios.containsKey(channelId) || pendingManualDefinitions.containsKey(channelId);
+        return pendingManualScenarios.containsKey(channelId) || pendingManualDefinitions.containsKey(channelId)
+                || pendingManualAgents.containsKey(channelId);
+    }
+
+    /** The agent a manual call was placed with, or null when it runs a bare scenario. */
+    AiAgent takeManualAgent(String channelId) {
+        return pendingManualAgents.remove(channelId);
     }
 
     Long takeManualCompany(String channelId) {
@@ -143,6 +162,7 @@ class PendingCallRegistry {
     void forgetUnanswered(String channelId) {
         pendingManualScenarios.remove(channelId);
         pendingManualDefinitions.remove(channelId);
+        pendingManualAgents.remove(channelId);
         pendingManualCompanies.remove(channelId);
         webTestCalls.remove(channelId);
     }

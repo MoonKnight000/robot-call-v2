@@ -1,0 +1,122 @@
+# Live Call Control — live-control controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/calls/live/{channelId}/scenario:
+  post:
+    tags:
+    - Live Call Control
+    summary: Qo'ng'iroqni boshqa ssenariyga o'tkazish (Handoff)
+    description: |-
+      The rest of the call runs under `scenarioId`, from its first stage; transcript and facts stay.
+
+      **Huquq:** `OPERATOR_EDIT`
+    operationId: liveControl_switchScenario
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/live.yaml#/SwitchScenarioRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/live.yaml#/LiveControlResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/live/{channelId}/takeover:
+  post:
+    tags:
+    - Live Call Control
+    summary: Qo'ng'iroqni operatorga olish (Human Takeover)
+    description: '**Huquq:** `OPERATOR_EDIT`'
+    operationId: liveControl_takeover
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/live.yaml#/TakeoverRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/live.yaml#/LiveControlResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/live/{channelId}/whisper:
+  post:
+    tags:
+    - Live Call Control
+    summary: Jonli operator ko'rsatmasi (Whisper Mode)
+    description: '**Huquq:** `OPERATOR_EDIT`'
+    operationId: liveControl_whisper
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/live.yaml#/WhisperRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/live.yaml#/LiveControlResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

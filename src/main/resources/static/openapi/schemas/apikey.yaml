@@ -1,0 +1,63 @@
+# `apikey` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+ApiKeyRow:
+  type: object
+  description: One key as the console lists it. Carries no secret — `keyPrefix` is only enough to tell one key from another.
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    keyPrefix:
+      type: string
+    scopes:
+      type: array
+      items:
+        $ref: role.yaml#/Permission
+      uniqueItems: true
+    lastUsedAt:
+      type: string
+      format: date-time
+    expiresAt:
+      type: string
+      format: date-time
+    revokedAt:
+      type: string
+      format: date-time
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+CreateApiKeyRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      description: what this key is for, so it can be recognised and revoked later
+      minLength: 1
+      maxLength: 128
+    scopes:
+      type: array
+      items:
+        $ref: role.yaml#/Permission
+      uniqueItems: true
+      description: permission names it may exercise; anything no key may hold is dropped
+    expiresAt:
+      type: string
+      format: date-time
+      description: when it should stop working, or null for a key with no end date
+  required:
+  - name
+CreatedApiKeyResponse:
+  type: object
+  description: |-
+    The one and only time the key itself is returned.
+
+    Kept apart from `ApiKeyRow` so that the secret cannot be served by accident from a listing endpoint: there is no field to leak it through, because only the response to the request that created it has one.
+  properties:
+    apiKey:
+      $ref: '#/ApiKeyRow'
+    key:
+      type: string
+      description: the credential, to be stored by the caller now — it is not recoverable

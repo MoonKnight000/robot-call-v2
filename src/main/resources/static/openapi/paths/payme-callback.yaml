@@ -1,0 +1,34 @@
+# Payment Webhooks — payme-callback controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/billing/payme/callback:
+  post:
+    tags:
+    - Payment Webhooks
+    summary: Payme Merchant API (webhook)
+    description: |-
+      One Merchant API call: CheckPerformTransaction, CreateTransaction, PerformTransaction, CancelTransaction, CheckTransaction or GetStatement. Amounts are in tiyin; the top-up is named by `account.payment_id`.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: paymeCallback_handleCallback
+    parameters:
+    - name: Authorization
+      in: header
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/billing.yaml#/PaymeResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []

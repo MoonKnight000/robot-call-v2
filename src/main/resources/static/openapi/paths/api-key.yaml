@@ -1,0 +1,113 @@
+# API Keys — api-key controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/api-keys:
+  get:
+    tags:
+    - API Keys
+    summary: Kompaniya kalitlari
+    description: '**Huquq:** `API_KEY_READ`'
+    operationId: apiKey_apiKeys
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/apikey.yaml#/ApiKeyRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  post:
+    tags:
+    - API Keys
+    summary: Kalit yaratish
+    description: '**Huquq:** `API_KEY_EDIT`'
+    operationId: apiKey_createApiKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/apikey.yaml#/CreateApiKeyRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/apikey.yaml#/CreatedApiKeyResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/api-keys/scopes:
+  get:
+    tags:
+    - API Keys
+    summary: Berilishi mumkin bo'lgan huquqlar
+    description: '**Huquq:** `API_KEY_READ`'
+    operationId: apiKey_grantableScopes
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/role.yaml#/Permission
+                    uniqueItems: true
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/api-keys/{id}:
+  delete:
+    tags:
+    - API Keys
+    summary: Bekor qilish
+    description: '**Huquq:** `API_KEY_EDIT`'
+    operationId: apiKey_revokeApiKey
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

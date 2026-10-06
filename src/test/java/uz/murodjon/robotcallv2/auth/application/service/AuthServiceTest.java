@@ -28,6 +28,7 @@ import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
@@ -77,7 +78,7 @@ class AuthServiceTest {
                 users, companies, passwordEncoder, tokens,
                 currentUser, audit, sessions, resetMail, roleUseCase,
                 rateLimiter, new RateLimitProperties(true, false, 5, 10, 15, 30, 3, 20),
-                mock(TwoFactorUseCase.class), streamTicketService
+                mock(TwoFactorUseCase.class), streamTicketService, Clock.systemUTC()
         );
     }
 

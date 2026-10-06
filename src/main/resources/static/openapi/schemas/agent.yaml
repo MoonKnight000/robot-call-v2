@@ -1,0 +1,53 @@
+# `agent` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+WaitingCallState:
+  type: string
+  enum:
+  - WAITING
+  - RINGING
+  - CONNECTING
+  - CONNECTED
+  - OPERATOR_LEFT
+  - CANCELLED
+  description: |-
+    Where a queued call is, as the dispatcher and the call's own thread both see it.
+
+    - `WAITING` — In line, nobody ringing.
+
+    - `RINGING` — One or more operators are ringing for it.
+
+    - `CONNECTING` — An operator answered; the whisper plays and the bridge is being joined.
+
+    - `CONNECTED` — Caller and operator are talking.
+
+    - `OPERATOR_LEFT` — The operator hung up (or was transferred away); the caller is still on the line.
+
+    - `CANCELLED` — Out of the queue: answered and done, overflowed, called back, or the caller left.
+WaitingCallView:
+  type: object
+  description: A waiting call as the wallboard shows it.
+  properties:
+    queueId:
+      type: integer
+      format: int64
+    channelId:
+      type: string
+    callerNumber:
+      type: string
+    position:
+      type: integer
+      format: int32
+    waitSeconds:
+      type: integer
+      format: int64
+    state:
+      $ref: '#/WaitingCallState'
+    vip:
+      type: boolean
+    operatorUserId:
+      type: integer
+      format: int64
+  required:
+  - queueId
+  - position
+  - waitSeconds
+  - vip

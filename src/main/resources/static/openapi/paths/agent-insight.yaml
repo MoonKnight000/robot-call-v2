@@ -1,0 +1,175 @@
+# Agent Insights — agent-insight controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/agent-insights/filter:
+  post:
+    tags:
+    - Agent Insights
+    summary: Takomillashtirish takliflari (filtr bilan)
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: agentInsight_filter
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/insight.yaml#/AgentInsightFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/insight.yaml#/AgentInsightPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/agent-insights/list:
+  post:
+    tags:
+    - Agent Insights
+    summary: Takomillashtirish takliflari ro'yxati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: agentInsight_filter_1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/insight.yaml#/AgentInsightFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/insight.yaml#/AgentInsightPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/agent-insights/{insightId}:
+  get:
+    tags:
+    - Agent Insights
+    summary: Bitta takomillashtirish taklifi
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: agentInsight_get
+    parameters:
+    - name: insightId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/insight.yaml#/AgentInsight
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/agent-insights/{insightId}/accept:
+  post:
+    tags:
+    - Agent Insights
+    summary: Taklifni qabul qilish
+    description: |-
+      Carries the proposal out as far as it can be carried out on its own. A `PROMPT_FIX` comes back `EVALUATING`: the sentence is in the draft and the agent's test cases are being played against it, and the gate either keeps it or takes it back out again.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: agentInsight_accept
+    parameters:
+    - name: insightId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/insight.yaml#/AgentInsight
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/agent-insights/{insightId}/reject:
+  post:
+    tags:
+    - Agent Insights
+    summary: Taklifni rad etish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: agentInsight_reject
+    parameters:
+    - name: insightId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/insight.yaml#/RejectInsightRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/insight.yaml#/AgentInsight
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

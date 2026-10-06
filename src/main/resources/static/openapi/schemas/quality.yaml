@@ -1,0 +1,192 @@
+# `quality` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CallQuality:
+  type: object
+  description: 'How one finished AI call went (UNIVERSAL-OPERATOR-PLAN D.1–D.2): the quality judge''s verdict, the signals read without an LLM, and a person''s review.'
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    callAttemptId:
+      type: integer
+      format: int64
+    aiAgentId:
+      type: integer
+      format: int64
+    agentVersion:
+      type: integer
+      format: int32
+    disposition:
+      $ref: ../common.yaml#/schemas/Disposition
+    score:
+      type: integer
+      format: int32
+      description: the judge's 0–100; null — with every flag below — when the judge did not score the call (off, not sampled, failed)
+    guardrailViolation:
+      type: boolean
+    languageMismatch:
+      type: boolean
+    talkedOverClient:
+      type: boolean
+    outcomeCorrect:
+      type: boolean
+    goalReached:
+      type: boolean
+    unansweredQuestion:
+      type: boolean
+    toolMisuse:
+      type: boolean
+    note:
+      type: string
+    needsReview:
+      type: boolean
+      description: whether the judge found something a person should look at
+    turnCount:
+      type: integer
+      format: int32
+    repairCount:
+      type: integer
+      format: int32
+      description: the caller's "what?" and "say that again" — a sign of speech that did not land
+    bargeInCount:
+      type: integer
+      format: int32
+      description: times the caller cut the agent off, noise included
+    noInputPromptCount:
+      type: integer
+      format: int32
+      description: times the silence watchdog asked whether the caller was still there
+    lowConfidenceCount:
+      type: integer
+      format: int32
+      description: caller utterances the recognizer was unsure of; 0 on a realtime call
+    toolErrorCount:
+      type: integer
+      format: int32
+      description: company tool requests that did not come back 2xx (UNIVERSAL-OPERATOR-PLAN B.6)
+    repeatCall:
+      type: boolean
+      description: the same number called again within a day — the matter was likely not settled
+    reviewStatus:
+      allOf:
+      - $ref: '#/CallReviewStatus'
+      description: null when nothing was flagged and nobody reviewed the call
+    reviewReason:
+      type: string
+    reviewedBy:
+      type: integer
+      format: int64
+      description: the reviewing user; null for a review not made by a person's session
+    reviewedAt:
+      type: string
+      format: date-time
+    knowledgeItemId:
+      type: integer
+      format: int64
+      description: the knowledge base answer written from this call, if any
+    testCaseId:
+      type: integer
+      format: int64
+      description: the test case made from this call, if any
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - companyId
+  - callAttemptId
+  - needsReview
+  - turnCount
+  - repairCount
+  - bargeInCount
+  - noInputPromptCount
+  - lowConfidenceCount
+  - toolErrorCount
+  - repeatCall
+CallQualityPage:
+  type: object
+  description: '`CallQuality` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/CallQuality'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CallReviewFilter:
+  type: object
+  description: The review inbox's page.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        SCORE:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    status:
+      allOf:
+      - $ref: '#/CallReviewStatus'
+      description: null — every call that was flagged or reviewed; set — only those in that state
+    aiAgentId:
+      type: integer
+      format: int64
+    from:
+      type: string
+      format: date-time
+      description: inclusive, by when the call was scored
+    to:
+      type: string
+      format: date-time
+      description: exclusive
+CallReviewStatus:
+  type: string
+  enum:
+  - PENDING
+  - AGENT_CORRECT
+  - AGENT_WRONG
+  description: |-
+    Where a call stands in the review inbox (UNIVERSAL-OPERATOR-PLAN D.2). The two verdicts are about the agent, which is also a verdict on the judge: a flagged call marked `AGENT_CORRECT` was a false alarm — what the judge is calibrated against.
+
+    - `PENDING` — Flagged by the judge, not looked at yet.
+
+    - `AGENT_CORRECT`
+
+    - `AGENT_WRONG`
+ReviewCallRequest:
+  type: object
+  description: '`PUT /api/call-reviews/{callId`}.'
+  properties:
+    status:
+      allOf:
+      - $ref: '#/CallReviewStatus'
+      description: '`AGENT_CORRECT` or `AGENT_WRONG`'
+    reason:
+      type: string
+      description: what the agent got wrong; required for `AGENT_WRONG`
+      maxLength: 1000
+  required:
+  - status

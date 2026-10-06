@@ -1,0 +1,402 @@
+# `inbound` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CallerRuleAction:
+  type: string
+  enum:
+  - BLOCK_HANGUP
+  - BLOCK_BUSY
+  - BLOCK_MESSAGE
+  - VIP
+  description: |-
+    What an inbound caller rule does to a matching caller, before any flow runs.
+
+    - `BLOCK_HANGUP` — Hang up at once.
+
+    - `BLOCK_BUSY` — Reject as busy — the caller hears an ordinary busy tone.
+
+    - `BLOCK_MESSAGE` — Answer, say the rule's `message`, hang up.
+
+    - `VIP` — Put first in every queue the call reaches, and take the flow's CALLER_ROUTER 'vip' exit.
+CreateInboundRouteRequest:
+  type: object
+  properties:
+    didNumber:
+      type: string
+      minLength: 1
+      pattern: ^\+?[1-9]\d{8,14}$
+    aiAgentId:
+      type: integer
+      format: int64
+    routeType:
+      $ref: '#/InboundRouteType'
+    targetDestination:
+      type: string
+    queueStrategy:
+      $ref: '#/QueueStrategy'
+    ringTimeoutSec:
+      type: integer
+      format: int32
+    failoverAction:
+      $ref: '#/InboundFailoverAction'
+    failoverDestination:
+      type: string
+    afterHoursAction:
+      $ref: '#/InboundAfterHoursAction'
+    afterHoursDestination:
+      type: string
+    ivrMenuConfig:
+      type: string
+    businessHoursStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    businessHoursEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    fallbackMessage:
+      type: string
+    callbackCampaignId:
+      type: integer
+      format: int64
+    scheduleId:
+      type: integer
+      format: int64
+    callFlowId:
+      type: integer
+      format: int64
+  required:
+  - didNumber
+InboundAfterHoursAction:
+  type: string
+  enum:
+  - AI_AGENT
+  - VOICEMAIL
+  - PLAY_MESSAGE_AND_HANGUP
+  - FORWARD_EXTERNAL
+  description: |-
+    Action to take when an inbound call arrives outside of configured business hours.
+
+    - `AI_AGENT` — Route to after-hours Night AI Agent.
+
+    - `VOICEMAIL` — Allow caller to record a voicemail message.
+
+    - `PLAY_MESSAGE_AND_HANGUP` — Play custom fallback announcement text via TTS and hang up.
+
+    - `FORWARD_EXTERNAL` — Forward to on-duty night engineer or mobile number.
+InboundCallerRule:
+  type: object
+  description: Who is refused or put first before any flow runs (docs/INBOUND-PBX-PLAN.md §9).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    phonePrefix:
+      type: string
+      description: digits the caller's number starts with ("99890", a whole number), or `#ANONYMOUS` for callers who hide their number
+    action:
+      $ref: '#/CallerRuleAction'
+    message:
+      type: string
+      description: said by `CallerRuleAction#BLOCK_MESSAGE`
+    note:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+InboundCallerRuleFilter:
+  type: object
+  description: Pagination + sort for POST /api/inbound-caller-rules/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        PHONE_PREFIX:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+InboundCallerRulePage:
+  type: object
+  description: '`InboundCallerRule` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/InboundCallerRule'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+InboundFailoverAction:
+  type: string
+  enum:
+  - SCENARIO
+  - VOICEMAIL
+  - EXTERNAL_FORWARD
+  - HANGUP
+  description: |-
+    Action to take when operators do not answer within the ring timeout.
+
+    - `SCENARIO` — Fall back to AI Voice Agent scenario.
+
+    - `VOICEMAIL` — Fall back to Voicemail recording.
+
+    - `EXTERNAL_FORWARD` — Forward to a backup external mobile number.
+
+    - `HANGUP` — Play busy tone or farewell and hang up.
+InboundRouteFilter:
+  type: object
+  description: Pagination + filter + sort for POST /api/inbound-routes/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        DID_NUMBER:
+          $ref: ../common.yaml#/schemas/SortDirection
+        AI_AGENT_ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        LANGUAGE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        ENABLED:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+InboundRouteRow:
+  type: object
+  description: InboundRoute enriched with the agent's name and OnlinePBX parameters for API response.
+  properties:
+    id:
+      type: integer
+      format: int64
+    didNumber:
+      type: string
+    aiAgentId:
+      type: integer
+      format: int64
+    aiAgentName:
+      type: string
+    routeType:
+      $ref: '#/InboundRouteType'
+    targetDestination:
+      type: string
+    queueStrategy:
+      $ref: '#/QueueStrategy'
+    ringTimeoutSec:
+      type: integer
+      format: int32
+    failoverAction:
+      $ref: '#/InboundFailoverAction'
+    failoverDestination:
+      type: string
+    afterHoursAction:
+      $ref: '#/InboundAfterHoursAction'
+    afterHoursDestination:
+      type: string
+    ivrMenuConfig:
+      type: string
+    businessHoursStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    businessHoursEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    fallbackMessage:
+      type: string
+    callbackCampaignId:
+      type: integer
+      format: int64
+    scheduleId:
+      type: integer
+      format: int64
+    callFlowId:
+      type: integer
+      format: int64
+    enabled:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - ringTimeoutSec
+  - enabled
+InboundRouteRowPage:
+  type: object
+  description: '`InboundRouteRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/InboundRouteRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+InboundRouteType:
+  type: string
+  enum:
+  - SCENARIO
+  - OPERATOR_QUEUE
+  - EXTENSION
+  - EXTERNAL_NUMBER
+  - STICKY_AGENT
+  - IVR_MENU
+  - VOICEMAIL
+  description: |-
+    Type of inbound call handling / routing target in the Virtual PBX.
+
+    - `SCENARIO` — Route to AI Voice Agent (Scenario).
+
+    - `OPERATOR_QUEUE` — Route to human operator call queue.
+
+    - `EXTENSION` — Route to a specific internal SIP extension (e.g. 101, 102).
+
+    - `EXTERNAL_NUMBER` — Forward to an external mobile or landline phone number.
+
+    - `STICKY_AGENT` — Sticky agent routing: route directly to the client's assigned manager from CRM.
+
+    - `IVR_MENU` — Interactive Voice Response (IVR) menu with DTMF or voice choices.
+
+    - `VOICEMAIL` — Send caller directly to Voicemail.
+QueueStrategy:
+  type: string
+  enum:
+  - RING_ALL
+  - ROUND_ROBIN
+  - FEWEST_CALLS
+  - LEAST_RECENT
+  - RANDOM
+  description: |-
+    Call distribution strategies across available operators in a queue.
+
+    - `RING_ALL` — Ring all available operators simultaneously.
+
+    - `ROUND_ROBIN` — Distribute calls sequentially in a cycle across operators.
+
+    - `FEWEST_CALLS` — Route to the operator with the fewest handled calls today.
+
+    - `LEAST_RECENT` — Route to the operator who has been idle the longest.
+
+    - `RANDOM` — Choose a random available operator.
+SaveCallerRuleRequest:
+  type: object
+  description: Body of POST/PUT /api/inbound-caller-rules.
+  properties:
+    phonePrefix:
+      type: string
+      minLength: 1
+    action:
+      $ref: '#/CallerRuleAction'
+    message:
+      type: string
+      maxLength: 1000
+    note:
+      type: string
+      maxLength: 255
+  required:
+  - phonePrefix
+  - action
+UpdateInboundRouteRequest:
+  type: object
+  properties:
+    didNumber:
+      type: string
+      minLength: 1
+      pattern: ^\+?[1-9]\d{8,14}$
+    aiAgentId:
+      type: integer
+      format: int64
+    routeType:
+      $ref: '#/InboundRouteType'
+    targetDestination:
+      type: string
+    queueStrategy:
+      $ref: '#/QueueStrategy'
+    ringTimeoutSec:
+      type: integer
+      format: int32
+    failoverAction:
+      $ref: '#/InboundFailoverAction'
+    failoverDestination:
+      type: string
+    afterHoursAction:
+      $ref: '#/InboundAfterHoursAction'
+    afterHoursDestination:
+      type: string
+    ivrMenuConfig:
+      type: string
+    businessHoursStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    businessHoursEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    fallbackMessage:
+      type: string
+    callbackCampaignId:
+      type: integer
+      format: int64
+    scheduleId:
+      type: integer
+      format: int64
+    callFlowId:
+      type: integer
+      format: int64
+    enabled:
+      type: boolean
+  required:
+  - didNumber
+  - enabled

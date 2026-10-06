@@ -1,0 +1,275 @@
+# Voicemail — voicemail controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/voicemail-boxes:
+  post:
+    tags:
+    - Voicemail
+    summary: Yangi quti
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: voicemail_createBox
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/voicemail.yaml#/SaveVoicemailBoxRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/voicemail.yaml#/VoicemailBox
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/voicemail-boxes/list:
+  post:
+    tags:
+    - Voicemail
+    summary: Ro'yxat
+    description: '**Huquq:** `CALL_FLOW_READ`'
+    operationId: voicemail_listBoxes
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/voicemail.yaml#/VoicemailBoxFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/voicemail.yaml#/VoicemailBoxPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/voicemail-boxes/{id}:
+  get:
+    tags:
+    - Voicemail
+    summary: Bitta quti
+    description: '**Huquq:** `CALL_FLOW_READ`'
+    operationId: voicemail_getBox
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/voicemail.yaml#/VoicemailBox
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Voicemail
+    summary: Tahrirlash
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: voicemail_updateBox
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/voicemail.yaml#/SaveVoicemailBoxRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/voicemail.yaml#/VoicemailBox
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Voicemail
+    summary: O'chirish
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: voicemail_deleteBox
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/voicemails/list:
+  post:
+    tags:
+    - Voicemail
+    summary: Xabarlar ro'yxati
+    description: '**Huquq:** `MISSED_CALL_READ`'
+    operationId: voicemail_listMessages
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/voicemail.yaml#/VoicemailMessageFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/voicemail.yaml#/VoicemailMessagePage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/voicemails/{id}/audio:
+  get:
+    tags:
+    - Voicemail
+    summary: Xabarni tinglash
+    description: |-
+      The message audio (WAV); supports `Range` like a call recording.
+
+      **Huquq:** `MISSED_CALL_READ`
+    operationId: voicemail_audio
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: Range
+      in: header
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/voicemails/{id}/status:
+  put:
+    tags:
+    - Voicemail
+    summary: Holatni o'zgartirish
+    description: '**Huquq:** `MISSED_CALL_EDIT`'
+    operationId: voicemail_updateStatus
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/voicemail.yaml#/UpdateVoicemailStatusRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/voicemail.yaml#/VoicemailMessage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

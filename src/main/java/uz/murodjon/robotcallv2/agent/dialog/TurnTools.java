@@ -306,6 +306,12 @@ public class TurnTools {
         EffectiveAiModelConfig aiModel = s.aiModel();
         String selectedModel = model != null && !model.isBlank() ? model : aiModel.model();
         ChatModel chatModel = chatModelProvider != null ? chatModelProvider.getIfAvailable() : null;
+        // A company without its own model must still name one here: GoogleGenAiChatOptions
+        // turns a null model into its hardcoded gemini-2.5-flash, never the configured
+        // spring.ai.google.genai.chat model — and 2.5 rejects thinkingLevel outright.
+        if ((selectedModel == null || selectedModel.isBlank()) && chatModel != null) {
+            selectedModel = chatModel.getOptions().getModel();
+        }
 
         boolean isOpenAi = (chatModel instanceof OpenAiChatModel)
                 || (selectedModel != null && (selectedModel.startsWith("llama") || selectedModel.startsWith("mixtral")

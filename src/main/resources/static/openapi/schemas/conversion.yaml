@@ -1,0 +1,154 @@
+# `conversion` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AttributionModel:
+  type: string
+  enum:
+  - LAST_CALL
+  - FIRST_CALL
+  description: |-
+    Which call inside the window gets the credit when several could claim it.
+
+    - `LAST_CALL` — The most recent answered call before the conversion. The default: on a debt-collection list the call that finally moved someone is nearly always the last one they took.
+
+    - `FIRST_CALL` — The earliest answered call in the window. Worth choosing when the first contact is what does the work and later calls only chase a decision already made.
+ConversionGoal:
+  type: object
+  description: |-
+    What a company counts as a call having worked, and how long after a call it still counts.
+
+    Company-scoped rather than per campaign, because the system that posts the event knows a customer paid — not which campaign called them. Working that out is attribution's job, and it is what lets one CRM webhook serve every campaign a company runs.
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    goalKey:
+      type: string
+      description: 'what the posting system names it: `payment`, `appointment`'
+    name:
+      type: string
+    attributionWindowHours:
+      type: integer
+      format: int32
+      description: how long after a call a conversion may still be credited to it
+    attributionModel:
+      allOf:
+      - $ref: '#/AttributionModel'
+      description: which call in the window gets the credit
+    enabled:
+      type: boolean
+      description: a goal switched off rejects its events instead of attributing them
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+  required:
+  - companyId
+  - attributionWindowHours
+  - enabled
+ConversionGoalRequest:
+  type: object
+  properties:
+    goalKey:
+      type: string
+      minLength: 1
+      maxLength: 64
+    name:
+      type: string
+      minLength: 1
+      maxLength: 128
+    attributionWindowHours:
+      type: integer
+      format: int32
+      description: how long after a call a conversion still counts, 1..8760 (a year)
+      minimum: 1
+      maximum: 8760
+    attributionModel:
+      allOf:
+      - $ref: '#/AttributionModel'
+      description: null keeps `LAST_CALL`
+    enabled:
+      type: boolean
+  required:
+  - goalKey
+  - name
+  - attributionWindowHours
+ConversionResultResponse:
+  type: object
+  description: |-
+    What ingest answers: whether the event was credited to a call, and to which.
+
+    Answered synchronously so the poster learns straight away that its number matched nothing — a webhook that always returns 200 and quietly drops half the events is how a campaign's numbers end up wrong with nobody noticing.
+  properties:
+    conversionEventId:
+      type: integer
+      format: int64
+    attributed:
+      type: boolean
+      description: false when nothing in the window qualified
+    reason:
+      type: string
+      description: why not, when `attributed` is false; null otherwise
+    duplicate:
+      type: boolean
+      description: true when this key had already been posted; nothing was changed
+    campaignId:
+      type: integer
+      format: int64
+      description: the campaign credited, when there is one
+    variantId:
+      type: integer
+      format: int64
+      description: the A/B variant credited, when the campaign was testing
+    callAttemptId:
+      type: integer
+      format: int64
+      description: the call credited
+  required:
+  - conversionEventId
+  - attributed
+  - duplicate
+ReportConversionRequest:
+  type: object
+  description: What a company's own system posts when something it counts as a result happened.
+  properties:
+    goalKey:
+      type: string
+      description: which goal this is, as configured on the company
+      minLength: 1
+      maxLength: 64
+    phone:
+      type: string
+      description: the customer's number; matched against the numbers we dialled
+      minLength: 1
+    occurredAt:
+      type: string
+      format: date-time
+      description: when it happened — not when it was posted, which may be much later
+    valueUzs:
+      type: integer
+      format: int64
+      description: what it was worth, or null for a goal with no money attached
+    source:
+      type: string
+      description: 'where it came from: `crm`, `payme`, an integration''s name'
+      maxLength: 64
+    dedupeKey:
+      type: string
+      description: the poster's own id for the thing; a retry with the same key changes nothing
+      minLength: 1
+      maxLength: 128
+    evidence:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: 'anything worth keeping for a later argument: an order id, a receipt'
+  required:
+  - goalKey
+  - phone
+  - occurredAt
+  - dedupeKey

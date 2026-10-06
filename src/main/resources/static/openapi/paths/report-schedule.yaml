@@ -1,0 +1,98 @@
+# Reports & Analytics — report-schedule controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/reports/schedule:
+  post:
+    tags:
+    - Reports & Analytics
+    summary: Hisobotni muntazam yuborishni rejalashtirish
+    description: '**Huquq:** `REPORT_EDIT`'
+    operationId: reportSchedule_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/report.yaml#/CreateReportScheduleRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/ReportSchedule
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/schedule/list:
+  post:
+    tags:
+    - Reports & Analytics
+    summary: Rejalashtirilgan hisobotlar ro'yxati
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: reportSchedule_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/report.yaml#/ReportScheduleFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/ReportSchedulePage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/schedule/{id}:
+  delete:
+    tags:
+    - Reports & Analytics
+    summary: Rejalashtirilgan hisobotni o'chirish
+    description: '**Huquq:** `REPORT_EDIT`'
+    operationId: reportSchedule_disable
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/ReportSchedule
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

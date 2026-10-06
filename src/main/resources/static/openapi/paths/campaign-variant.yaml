@@ -1,0 +1,231 @@
+# Campaign A/B Variants — campaign-variant controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/campaigns/{campaignId}/variants:
+  post:
+    tags:
+    - Campaign A/B Variants
+    summary: A/B variant yaratish
+    description: '**Huquq:** `CAMPAIGN_EDIT`'
+    operationId: campaignVariant_create
+    parameters:
+    - name: campaignId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/campaign.yaml#/CampaignVariantCreateRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/CampaignVariantResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  get:
+    tags:
+    - Campaign A/B Variants
+    summary: A/B variantlar ro'yxati
+    description: '**Huquq:** `CAMPAIGN_READ`'
+    operationId: campaignVariant_list
+    parameters:
+    - name: campaignId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/campaign.yaml#/CampaignVariantResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/campaigns/{campaignId}/variants/report:
+  get:
+    tags:
+    - Campaign A/B Variants
+    summary: A/B variantlar taqqoslash hisoboti
+    description: '**Huquq:** `CAMPAIGN_READ`'
+    operationId: campaignVariant_getReport
+    parameters:
+    - name: campaignId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/AbTestReportResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/campaigns/{campaignId}/variants/{variantId}:
+  get:
+    tags:
+    - Campaign A/B Variants
+    summary: Bitta A/B variant
+    description: '**Huquq:** `CAMPAIGN_READ`'
+    operationId: campaignVariant_get
+    parameters:
+    - name: campaignId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: variantId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/CampaignVariantResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Campaign A/B Variants
+    summary: A/B variantni tahrirlash
+    description: '**Huquq:** `CAMPAIGN_EDIT`'
+    operationId: campaignVariant_update
+    parameters:
+    - name: campaignId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: variantId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/campaign.yaml#/CampaignVariantUpdateRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/CampaignVariantResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Campaign A/B Variants
+    summary: A/B variantni o'chirish
+    description: '**Huquq:** `CAMPAIGN_EDIT`'
+    operationId: campaignVariant_delete
+    parameters:
+    - name: campaignId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: variantId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

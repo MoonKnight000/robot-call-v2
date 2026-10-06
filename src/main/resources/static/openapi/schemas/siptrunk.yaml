@@ -1,0 +1,198 @@
+# `siptrunk` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CreateSipTrunkRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+    pjsipEndpoint:
+      type: string
+    host:
+      type: string
+    port:
+      type: integer
+      format: int32
+    sipUsername:
+      type: string
+    sipPassword:
+      type: string
+    transport:
+      $ref: '#/SipTrunkTransport'
+    codecs:
+      type: array
+      items:
+        type: string
+    callerId:
+      type: string
+  required:
+  - name
+SipTrunkDeleteResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    deleted:
+      type: boolean
+  required:
+  - id
+  - deleted
+SipTrunkFilter:
+  type: object
+  description: Pagination + sort for POST /api/sip-trunks/list (ROADMAP B.3).
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        IS_DEFAULT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        ENABLED:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+SipTrunkRow:
+  type: object
+  description: One row of GET/POST /api/sip-trunks... (ROADMAP B.3).
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    pjsipEndpoint:
+      type: string
+    callerId:
+      type: string
+    managed:
+      type: boolean
+    host:
+      type: string
+    port:
+      type: integer
+      format: int32
+    sipUsername:
+      type: string
+    transport:
+      $ref: '#/SipTrunkTransport'
+    codecs:
+      type: array
+      items:
+        type: string
+    isDefault:
+      type: boolean
+    enabled:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - managed
+  - port
+  - isDefault
+  - enabled
+SipTrunkRowPage:
+  type: object
+  description: '`SipTrunkRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/SipTrunkRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+SipTrunkStatus:
+  type: object
+  description: Live status report for a SIP trunk / phone registration (Asterisk AMI / PJSIP state).
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    pjsipEndpoint:
+      type: string
+    managed:
+      type: boolean
+    enabled:
+      type: boolean
+    isDefault:
+      type: boolean
+    status:
+      type: string
+    isOnline:
+      type: boolean
+    details:
+      type: string
+    checkedAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - managed
+  - enabled
+  - isDefault
+  - isOnline
+SipTrunkTransport:
+  type: string
+  enum:
+  - UDP
+  - TCP
+  - TLS
+  description: 'PJSIP transport a trunk registers over (report #7).'
+UpdateSipTrunkRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+    pjsipEndpoint:
+      type: string
+    host:
+      type: string
+    port:
+      type: integer
+      format: int32
+    sipUsername:
+      type: string
+    sipPassword:
+      type: string
+    transport:
+      $ref: '#/SipTrunkTransport'
+    codecs:
+      type: array
+      items:
+        type: string
+    callerId:
+      type: string
+    enabled:
+      type: boolean
+  required:
+  - name
+  - enabled

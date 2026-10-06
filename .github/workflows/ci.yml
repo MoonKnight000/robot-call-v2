@@ -45,6 +45,14 @@ jobs:
           path: build/reports/tests/unitTest
           if-no-files-found: ignore
 
+      - name: Publish coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-coverage
+          path: build/reports/jacoco/jacocoUnitTestReport
+          if-no-files-found: ignore
+
   turn-replay:
     name: Turn-boundary regression
     runs-on: ubuntu-latest

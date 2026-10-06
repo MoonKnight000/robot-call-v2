@@ -1,0 +1,38 @@
+# Speech & Voice Preview — tts-voice controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/tts/voices:
+  get:
+    tags:
+    - Speech & Voice Preview
+    summary: Ovozlar ro'yxati
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: ttsVoice_voices
+    parameters:
+    - name: mode
+      in: query
+      required: false
+      schema:
+        $ref: ../common.yaml#/schemas/PipelineMode
+    - name: language
+      in: query
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/voice.yaml#/TtsVoice
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized

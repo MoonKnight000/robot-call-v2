@@ -1,0 +1,368 @@
+# Business Schedules & Holidays — business-schedule controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/holidays:
+  post:
+    tags:
+    - Business Schedules & Holidays
+    summary: Bayram / maxsus kun qo'shish
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: businessSchedule_createHoliday
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/schedule.yaml#/SaveHolidayRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/Holiday
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/holidays/fixed:
+  post:
+    tags:
+    - Business Schedules & Holidays
+    summary: O'zbekistonning belgilangan bayramlarini qo'shish
+    description: |-
+      Adds the year's fixed-date public holidays (Navro'z, Mustaqillik kuni, ...) not yet on the calendar.
+
+      **Huquq:** `CALL_FLOW_EDIT`
+    operationId: businessSchedule_createFixedHolidays
+    parameters:
+    - name: year
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int32
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/schedule.yaml#/Holiday
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/holidays/list:
+  post:
+    tags:
+    - Business Schedules & Holidays
+    summary: Ro'yxat
+    description: '**Huquq:** `CALL_FLOW_READ`'
+    operationId: businessSchedule_listHolidays
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/schedule.yaml#/HolidayFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/HolidayPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/holidays/{id}:
+  put:
+    tags:
+    - Business Schedules & Holidays
+    summary: Tahrirlash
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: businessSchedule_updateHoliday
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/schedule.yaml#/SaveHolidayRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/Holiday
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Business Schedules & Holidays
+    summary: O'chirish
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: businessSchedule_deleteHoliday
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/schedules:
+  post:
+    tags:
+    - Business Schedules & Holidays
+    summary: Yangi jadval
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: businessSchedule_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/schedule.yaml#/SaveBusinessScheduleRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/BusinessSchedule
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/schedules/list:
+  post:
+    tags:
+    - Business Schedules & Holidays
+    summary: Ro'yxat
+    description: '**Huquq:** `CALL_FLOW_READ`'
+    operationId: businessSchedule_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/schedule.yaml#/BusinessScheduleFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/BusinessSchedulePage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/schedules/{id}:
+  get:
+    tags:
+    - Business Schedules & Holidays
+    summary: Bitta jadval
+    description: '**Huquq:** `CALL_FLOW_READ`'
+    operationId: businessSchedule_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/BusinessSchedule
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Business Schedules & Holidays
+    summary: Tahrirlash
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: businessSchedule_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/schedule.yaml#/SaveBusinessScheduleRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/BusinessSchedule
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Business Schedules & Holidays
+    summary: O'chirish
+    description: '**Huquq:** `CALL_FLOW_EDIT`'
+    operationId: businessSchedule_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/schedules/{id}/status:
+  get:
+    tags:
+    - Business Schedules & Holidays
+    summary: Hozir ochiqmi?
+    description: '**Huquq:** `CALL_FLOW_READ`'
+    operationId: businessSchedule_status
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/schedule.yaml#/ScheduleStatusResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

@@ -1,0 +1,30 @@
+# `dialer` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+InstantCallRequest:
+  type: object
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    phone:
+      type: string
+    clientName:
+      type: string
+    contextData:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+    clientId:
+      type: integer
+      format: int64
+InstantCallResponse:
+  type: object
+  description: 'Answer to `POST /api/calls/instant`: the queued target and the state it was queued in.'
+  properties:
+    targetId:
+      type: integer
+      format: int64
+    status:
+      type: string
+  required:
+  - targetId

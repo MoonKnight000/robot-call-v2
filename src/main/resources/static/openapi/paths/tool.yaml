@@ -1,0 +1,334 @@
+# Tools — tool controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/tools:
+  post:
+    tags:
+    - Tools
+    summary: Tool yaratish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: tool_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/CreateToolRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ToolRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  get:
+    tags:
+    - Tools
+    summary: Toollar ro'yxati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: tool_list
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/tool.yaml#/ToolRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/tools/filter:
+  post:
+    tags:
+    - Tools
+    summary: Qidiruv va sahifalash
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: tool_filter
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/ToolFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ToolRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/tools/import:
+  post:
+    tags:
+    - Tools
+    summary: OpenAPI spec'dan toollarni import qilish
+    description: |-
+      One tool per chosen operation, all or none; the secrets they read are named, not created.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: tool_importTools
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/ImportToolsRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ImportToolsResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/tools/import/operations:
+  post:
+    tags:
+    - Tools
+    summary: OpenAPI hujjatidagi operatsiyalarni ko'rish
+    description: |-
+      The operations an OpenAPI 3 document describes (UNIVERSAL-OPERATOR-PLAN B.2), to choose which become tools. Creates nothing; `operationIds` is ignored. A POST because the document itself may be in the body.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: tool_importOperations
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/ImportToolsRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/tool.yaml#/OpenApiOperationRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/tools/list:
+  post:
+    tags:
+    - Tools
+    summary: Toollar ro'yxati (filtr bilan)
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: tool_filter_1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/ToolFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ToolRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/tools/{id}:
+  get:
+    tags:
+    - Tools
+    summary: Bitta tool
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: tool_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ToolRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Tools
+    summary: Toolni tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: tool_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/UpdateToolRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ToolRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Tools
+    summary: O'chirish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: tool_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/tools/{id}/test:
+  post:
+    tags:
+    - Tools
+    summary: Sinab ko'rish
+    description: |-
+      Calls the tool once, as the model would, and returns what the model would be handed: the panel's "Test" button. The request really goes out: a tool that writes (a POST creating a lead) writes on a test too.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: tool_test
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/tool.yaml#/TestToolRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/tool.yaml#/ToolTestResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

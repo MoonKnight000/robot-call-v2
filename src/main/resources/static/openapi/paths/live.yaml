@@ -1,0 +1,20 @@
+# Live Stream — live controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/live/stream:
+  get:
+    tags:
+    - Live Stream
+    summary: Jonli hodisalar oqimi (SSE)
+    description: '**Huquq:** `LIVE_READ`'
+    operationId: live_stream
+    responses:
+      '200':
+        description: Server-Sent Events oqimi
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

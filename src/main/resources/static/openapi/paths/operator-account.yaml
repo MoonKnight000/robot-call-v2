@@ -1,0 +1,230 @@
+# Operators — operator-account controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/operators/list:
+  post:
+    tags:
+    - Operators
+    summary: Operatorlar ro'yxati (supervisor ekrani)
+    description: '**Huquq:** `OPERATOR_READ`'
+    operationId: operatorAccount_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/operator.yaml#/OperatorFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/operators/me/events:
+  get:
+    tags:
+    - Operators
+    summary: Operator paneli SSE oqimi
+    description: '**Huquq:** `OPERATOR_READ`'
+    operationId: operatorAccount_myEvents
+    responses:
+      '200':
+        description: Server-Sent Events oqimi
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/operators/me/sip-credentials:
+  get:
+    tags:
+    - Operators
+    summary: Softphone uchun login
+    description: '**Huquq:** `OPERATOR_READ`'
+    operationId: operatorAccount_myCredentials
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/SipCredentialsResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/operators/me/status:
+  get:
+    tags:
+    - Operators
+    summary: Mening statusim
+    description: '**Huquq:** `OPERATOR_READ`'
+    operationId: operatorAccount_myStatus
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorPresence
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  put:
+    tags:
+    - Operators
+    summary: Statusni o'zgartirish
+    description: '**Huquq:** `OPERATOR_EDIT`'
+    operationId: operatorAccount_updateMyStatus
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/operator.yaml#/UpdateOperatorStatusRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorPresence
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/operators/{userId}/sip-account:
+  put:
+    tags:
+    - Operators
+    summary: SIP akkaunt berish / o'zgartirish
+    description: '**Huquq:** `USER_EDIT`'
+    operationId: operatorAccount_saveSipAccount
+    parameters:
+    - name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/operator.yaml#/SaveOperatorSipAccountRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/OperatorSipAccountRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Operators
+    summary: SIP akkauntni o'chirish
+    description: '**Huquq:** `USER_EDIT`'
+    operationId: operatorAccount_deleteSipAccount
+    parameters:
+    - name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/operators/{userId}/sip-account/reset-password:
+  post:
+    tags:
+    - Operators
+    summary: Yangi parol
+    description: '**Huquq:** `USER_EDIT`'
+    operationId: operatorAccount_resetSipPassword
+    parameters:
+    - name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/operator.yaml#/SipCredentialsResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

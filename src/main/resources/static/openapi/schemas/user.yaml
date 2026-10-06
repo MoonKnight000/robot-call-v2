@@ -1,0 +1,90 @@
+# `user` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+InviteUserRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    username:
+      type: string
+      minLength: 3
+      maxLength: 64
+    email:
+      type: string
+      minLength: 1
+      format: email
+      maxLength: 190
+    roleId:
+      type: integer
+      format: int64
+  required:
+  - name
+  - username
+  - email
+  - roleId
+InviteUserResponse:
+  type: object
+  properties:
+    userId:
+      type: integer
+      format: int64
+    email:
+      type: string
+    inviteToken:
+      type: string
+    expiresAt:
+      type: string
+      format: date-time
+  required:
+  - userId
+UpdateUserRoleRequest:
+  type: object
+  properties:
+    roleId:
+      type: integer
+      format: int64
+  required:
+  - roleId
+UserRow:
+  type: object
+  description: Row for GET /api/users (UI-DESIGN §10.12).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    username:
+      type: string
+    email:
+      type: string
+    roleId:
+      type: integer
+      format: int64
+    roleCode:
+      type: string
+    roleName:
+      type: string
+    status:
+      $ref: '#/UserStatus'
+    lastLoginAt:
+      type: string
+      format: date-time
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - roleId
+UserStatus:
+  type: string
+  enum:
+  - INVITED
+  - ACTIVE
+  - BLOCKED
+  description: app_user.status (ROADMAP E.1).

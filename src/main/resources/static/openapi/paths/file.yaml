@@ -1,0 +1,132 @@
+# Files — file controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/files/upload:
+  post:
+    tags:
+    - Files
+    summary: Fayl yuklash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: file_upload
+    parameters:
+    - name: category
+      in: query
+      required: false
+      schema:
+        $ref: ../schemas/storage.yaml#/FileCategory
+    - name: companyId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+            required:
+            - file
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/storage.yaml#/FileUploadResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/files/{id}:
+  get:
+    tags:
+    - Files
+    summary: Faylni yuklab olish
+    description: |-
+      The file's bytes. Images and call recordings come back `inline` so a browser plays them in place; a `Range` request is answered with `206` and just that slice, which is how an audio player seeks.
+
+      **Huquq:** tizimga kirgan har qanday foydalanuvchi.
+    operationId: file_download
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: Range
+      in: header
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/v1/files/upload:
+  post:
+    tags:
+    - Files
+    summary: Fayl yuklash (eski yo'l)
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: file_upload_1
+    parameters:
+    - name: category
+      in: query
+      required: false
+      schema:
+        $ref: ../schemas/storage.yaml#/FileCategory
+    - name: companyId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+            required:
+            - file
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/storage.yaml#/FileUploadResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized

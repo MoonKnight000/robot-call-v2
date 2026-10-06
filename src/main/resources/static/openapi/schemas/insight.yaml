@@ -1,0 +1,158 @@
+# `insight` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AgentInsight:
+  type: object
+  description: |-
+    One proposed change to an agent, and how far it has got (UNIVERSAL-OPERATOR-PLAN D.3).
+
+    The loop's unit of work. It is written by the daily job, decided by a person, and — when the decision was to accept a prompt change — settled by the evaluation run named here: the agent's own test cases are what stands between a suggestion and the calls it would shape.
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    aiAgentId:
+      type: integer
+      format: int64
+    type:
+      $ref: '#/InsightType'
+    title:
+      type: string
+    detail:
+      type: string
+    suggestion:
+      type: string
+      description: the change accepting it makes; null for a finding that only names a problem
+    callCount:
+      type: integer
+      format: int32
+    sampleCalls:
+      type: array
+      items:
+        type: integer
+        format: int64
+    status:
+      $ref: '#/InsightStatus'
+    decisionReason:
+      type: string
+      description: why it was rejected, or what the evaluation said when it was accepted
+    decidedBy:
+      type: integer
+      format: int64
+      description: the user who decided; null when the gate decided
+    decidedAt:
+      type: string
+      format: date-time
+    evalRunId:
+      type: integer
+      format: int64
+      description: the run the decision is waiting on, or the one it was settled by
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - companyId
+  - aiAgentId
+  - callCount
+AgentInsightFilter:
+  type: object
+  description: The insight inbox's page.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CALL_COUNT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    aiAgentId:
+      type: integer
+      format: int64
+    type:
+      $ref: '#/InsightType'
+    status:
+      allOf:
+      - $ref: '#/InsightStatus'
+      description: null — every proposal whatever its standing; set — only those in that state
+AgentInsightPage:
+  type: object
+  description: '`AgentInsight` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/AgentInsight'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+InsightStatus:
+  type: string
+  enum:
+  - PROPOSED
+  - EVALUATING
+  - ACCEPTED
+  - REJECTED
+  description: |-
+    How far a proposal has got. Nothing reaches a call from here without a person: `#ACCEPTED` is as far as the loop goes on its own, and publishing stays a button somebody presses (UNIVERSAL-OPERATOR-PLAN D.4).
+
+    - `PROPOSED` — Waiting in the inbox.
+
+    - `EVALUATING` — Accepted, the change is in the draft, and its evaluation run is deciding whether it stays.
+
+    - `ACCEPTED` — Accepted: applied to the draft where there was something to apply, acknowledged where there was not.
+
+    - `REJECTED` — Turned down — by a person, or by the evaluation the accepted change then failed.
+InsightType:
+  type: string
+  enum:
+  - KB_GAP
+  - PROMPT_FIX
+  - TOOL_FIX
+  - NEW_TEST_CASE
+  - PRONUNCIATION
+  - HANDOFF_PATTERN
+  description: |-
+    What a day of calls says is wrong, and therefore what kind of change would fix it (UNIVERSAL-OPERATOR-PLAN D.3).
+
+    Split by the change rather than by the symptom, because the change is what accepting a proposal has to carry out: a caller asking something the agent could not answer is a `#KB_GAP` whether the judge flagged it or the operator did.
+
+    - `KB_GAP` — Callers asked something the agent had no answer for — the knowledge base is missing it.
+
+    - `PROMPT_FIX` — The agent said something it should not have. The suggestion is one guardrail sentence.
+
+    - `TOOL_FIX` — A company tool kept answering with an error — its parameters are described wrongly.
+
+    - `NEW_TEST_CASE` — A call that went wrong is worth keeping as a test case, so it cannot go wrong unnoticed again.
+
+    - `PRONUNCIATION` — The recognizer or the synthesizer keeps mangling a word. The suggestion is a pronunciation rule.
+
+    - `HANDOFF_PATTERN` — Callers asked for a person and waited too long, or were transferred when they need not have been.
+RejectInsightRequest:
+  type: object
+  properties:
+    reason:
+      type: string
+      description: why the proposal was turned down; kept so the loop can be argued with later
+      maxLength: 500

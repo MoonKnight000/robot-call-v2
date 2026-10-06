@@ -8,6 +8,11 @@ POST http://localhost:8080/api/calls?number=+998901234567&scenarioId=1
 Authorization: Bearer {{auth_token}}
 X-Company-Id: 1
 
+### Originate Call with an AI agent (its published version, own scenario and voice)
+POST http://localhost:8080/api/calls?number=%2B998901234567&agentId=2
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+
 ### Play Audio in Call
 POST http://localhost:8080/api/calls/channel-123/play?file=greeting.wav
 Authorization: Bearer {{auth_token}}

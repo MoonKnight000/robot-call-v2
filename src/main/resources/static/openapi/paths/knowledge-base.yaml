@@ -1,0 +1,197 @@
+# Knowledge Base — knowledge-base controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/knowledge-base:
+  post:
+    tags:
+    - Knowledge Base
+    summary: Yangi yozuv
+    description: '**Huquq:** `KNOWLEDGE_BASE_EDIT`'
+    operationId: knowledgeBase_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemCreateRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/knowledge-base/filter:
+  post:
+    tags:
+    - Knowledge Base
+    summary: Ro'yxat
+    description: '**Huquq:** `KNOWLEDGE_BASE_READ`'
+    operationId: knowledgeBase_list_1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemResponsePage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/knowledge-base/list:
+  post:
+    tags:
+    - Knowledge Base
+    summary: Ro'yxat
+    description: '**Huquq:** `KNOWLEDGE_BASE_READ`'
+    operationId: knowledgeBase_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemResponsePage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/knowledge-base/{id}:
+  get:
+    tags:
+    - Knowledge Base
+    summary: Bitta yozuv
+    description: '**Huquq:** `KNOWLEDGE_BASE_READ`'
+    operationId: knowledgeBase_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Knowledge Base
+    summary: Tahrirlash
+    description: '**Huquq:** `KNOWLEDGE_BASE_EDIT`'
+    operationId: knowledgeBase_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemUpdateRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeItemResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Knowledge Base
+    summary: O'chirish
+    description: '**Huquq:** `KNOWLEDGE_BASE_EDIT`'
+    operationId: knowledgeBase_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

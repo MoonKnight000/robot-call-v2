@@ -1,0 +1,190 @@
+# `profile` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+ChangePasswordRequest:
+  type: object
+  properties:
+    currentPassword:
+      type: string
+      minLength: 1
+    newPassword:
+      type: string
+      minLength: 10
+      maxLength: 128
+      pattern: ^(?=.*\p{L})(?=.*\d).+$
+  required:
+  - currentPassword
+  - newPassword
+DisableTwoFactorRequest:
+  type: object
+  description: 'Switching two-factor login off takes both factors: a stolen session alone must not be able to remove the second one.'
+  properties:
+    currentPassword:
+      type: string
+      minLength: 1
+    code:
+      type: string
+      minLength: 6
+      maxLength: 6
+  required:
+  - currentPassword
+  - code
+PersonalNotificationMatrixEntry:
+  type: object
+  properties:
+    type:
+      $ref: notification.yaml#/NotificationType
+    channel:
+      $ref: notification.yaml#/NotificationChannelType
+    enabled:
+      type: boolean
+  required:
+  - type
+  - channel
+  - enabled
+Profile:
+  type: object
+  description: Domain model for User Profile (UI-DESIGN §8.3).
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    username:
+      type: string
+    email:
+      type: string
+    phone:
+      type: string
+    position:
+      type: string
+    avatarFileId:
+      type: integer
+      format: int64
+    roleId:
+      type: integer
+      format: int64
+    roleCode:
+      type: string
+    roleName:
+      type: string
+    companyId:
+      type: integer
+      format: int64
+    lastLoginAt:
+      type: string
+      format: date-time
+    createdAt:
+      type: string
+      format: date-time
+    callColumns:
+      type: array
+      items:
+        type: string
+  required:
+  - id
+  - roleId
+  - companyId
+ScheduleSlot:
+  type: object
+  properties:
+    dayOfWeek:
+      type: string
+      enum:
+      - MONDAY
+      - TUESDAY
+      - WEDNESDAY
+      - THURSDAY
+      - FRIDAY
+      - SATURDAY
+      - SUNDAY
+    startTime:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    endTime:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+  required:
+  - dayOfWeek
+  - startTime
+  - endTime
+TodayStats:
+  type: object
+  properties:
+    totalCalls:
+      type: integer
+      format: int64
+    answeredCalls:
+      type: integer
+      format: int64
+    onAirMinutes:
+      type: number
+      format: double
+    qualityPct:
+      type: number
+      format: double
+  required:
+  - totalCalls
+  - answeredCalls
+  - onAirMinutes
+  - qualityPct
+TwoFactorCodeRequest:
+  type: object
+  description: '@param code the 6-digit code the authenticator app shows now'
+  properties:
+    code:
+      type: string
+      description: the 6-digit code the authenticator app shows now
+      minLength: 6
+      maxLength: 6
+  required:
+  - code
+UpdateCallColumnsRequest:
+  type: object
+  properties:
+    columns:
+      type: array
+      items:
+        type: string
+  required:
+  - columns
+UpdatePersonalNotificationSettingsRequest:
+  type: object
+  properties:
+    matrix:
+      type: array
+      items:
+        $ref: '#/PersonalNotificationMatrixEntry'
+  required:
+  - matrix
+UpdateProfileRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    email:
+      type: string
+      minLength: 1
+      format: email
+      maxLength: 190
+    phone:
+      type: string
+      pattern: ^\+?[1-9]\d{8,14}$
+    position:
+      type: string
+      maxLength: 120
+  required:
+  - name
+  - email
+UpdateScheduleRequest:
+  type: object
+  properties:
+    slots:
+      type: array
+      items:
+        $ref: '#/ScheduleSlot'
+  required:
+  - slots

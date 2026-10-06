@@ -245,7 +245,9 @@ class CallSetupService {
                 }
             }
 
-            AiAgent setupAgent = outbound != null ? outbound.agent() : inboundAgent;
+            AiAgent manualAgent = manual ? pendingCallRegistry.takeManualAgent(channelId) : null;
+
+            AiAgent setupAgent = outbound != null ? outbound.agent() : inboundAgent != null ? inboundAgent : manualAgent;
             boolean shouldRecord = setupAgent == null || setupAgent.dataPolicy().keepsCallAudio();
             WavRecorder recorder = null;
             String wavPath = null;
@@ -293,8 +295,8 @@ class CallSetupService {
             Scenario scenarioRow;
             String phone;
             long companyId;
-            // Null only on a manual test call, which runs a scenario with no agent behind
-            // it and therefore falls back to the platform defaults everywhere below.
+            // Null only on a manual test call placed without agentId, which runs a scenario with
+            // no agent behind it and therefore falls back to the platform defaults everywhere below.
             AiAgent agent;
 
             if (outbound != null) {
@@ -307,10 +309,10 @@ class CallSetupService {
                 phone = outbound.phone();
                 companyId = outbound.companyId();
             } else if (manual) {
-                agent = null;
+                agent = manualAgent;
                 targetId = CallAttempt.NO_TARGET;
-                language = dialogProperties.language();
-                ttsVoice = dialogProperties.ttsVoice();
+                language = agent != null ? agent.language() : dialogProperties.language();
+                ttsVoice = agent != null ? agent.voiceFor(language) : dialogProperties.ttsVoice();
                 Long manualCompanyId = pendingCallRegistry.takeManualCompany(channelId);
                 if (manualCompanyId == null) {
                     // Every manual and test call registers its company when it is placed; without
@@ -318,7 +320,9 @@ class CallSetupService {
                     throw new ConflictException(ErrorCode.CALL_COMPANY_UNKNOWN, channelId);
                 }
                 companyId = manualCompanyId;
-                scenarioRow = webTestCallService.resolveManualScenario(companyId, channelId);
+                scenarioRow = agent != null
+                        ? aiAgentService.resolveScenario(companyId, agent)
+                        : webTestCallService.resolveManualScenario(companyId, channelId);
                 context = webTestCallService.buildTestContext(scenarioRow.definition());
                 phone = "MANUAL";
             } else {

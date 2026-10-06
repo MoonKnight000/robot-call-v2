@@ -1,0 +1,1227 @@
+# `campaign` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AbTestReportResponse:
+  type: object
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    totalVariants:
+      type: integer
+      format: int32
+    totalCalls:
+      type: integer
+      format: int32
+    totalAnswered:
+      type: integer
+      format: int32
+    totalConverted:
+      type: integer
+      format: int32
+    overallConversionRate:
+      type: number
+      format: double
+    conversionRateLow:
+      type: number
+      format: double
+      description: lower edge of the 95% interval around `overallConversionRate`, in percent
+    conversionRateHigh:
+      type: number
+      format: double
+      description: upper edge of the same interval, in percent
+    leadingVariantName:
+      type: string
+      description: the variant with the best conversion rate so far — a ranking, not a verdict
+    winningVariantName:
+      type: string
+      description: the variant that has actually won, or null while the test is still inconclusive; see `uz.murodjon.robotcallv2.campaign.domain.service.AbTestSignificance`
+    variants:
+      type: array
+      items:
+        $ref: '#/CampaignVariantResponse'
+  required:
+  - campaignId
+  - companyId
+  - totalVariants
+  - totalCalls
+  - totalAnswered
+  - totalConverted
+  - overallConversionRate
+  - conversionRateLow
+  - conversionRateHigh
+AddTargetRequest:
+  type: object
+  properties:
+    clientId:
+      type: integer
+      format: int64
+      minimum: 0
+      exclusiveMinimum: true
+    phone:
+      type: string
+      minLength: 1
+    language:
+      type: string
+    contextData:
+      type: object
+      additionalProperties: true
+  required:
+  - clientId
+  - phone
+AddTargetsResponse:
+  type: object
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    added:
+      type: integer
+      format: int32
+    targetIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+    skippedDuplicates:
+      type: integer
+      format: int32
+      description: numbers the campaign already had queued, left as they were
+    skippedDoNotCall:
+      type: integer
+      format: int32
+      description: numbers on the company's do-not-call list, stored marked and never dialled
+  required:
+  - campaignId
+  - added
+  - skippedDuplicates
+  - skippedDoNotCall
+CampaignFilter:
+  type: object
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        TYPE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        STATUS:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        LAST_RUN_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        AI_AGENT_ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    search:
+      type: string
+    status:
+      $ref: '#/CampaignStatus'
+    type:
+      $ref: '#/CampaignType'
+    aiAgentId:
+      type: integer
+      format: int64
+    createdBy:
+      type: integer
+      format: int64
+    recurrenceType:
+      $ref: '#/RecurrenceType'
+    dateFrom:
+      type: string
+      format: date-time
+    dateTo:
+      type: string
+      format: date-time
+CampaignRow:
+  type: object
+  description: '`Campaign` enriched for the API response with names resolved from the ids it carries (backend-uchun-talablar.md §16/§18) — a projection over `campaign`, `ai_agent` and `app_user`, so it takes the `<Noun>Row` suffix rather than bare `Campaign`.'
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    type:
+      $ref: '#/CampaignType'
+    status:
+      $ref: '#/CampaignStatus'
+    dialWindowStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialWindowEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialDays:
+      type: array
+      items:
+        type: string
+        enum:
+        - MONDAY
+        - TUESDAY
+        - WEDNESDAY
+        - THURSDAY
+        - FRIDAY
+        - SATURDAY
+        - SUNDAY
+      uniqueItems: true
+    maxAttempts:
+      type: integer
+      format: int32
+    retryIntervalMinutes:
+      type: integer
+      format: int32
+    maxConcurrentCalls:
+      type: integer
+      format: int32
+    dailyCallCap:
+      type: integer
+      format: int32
+    aiAgentId:
+      type: integer
+      format: int64
+    aiAgentName:
+      type: string
+    companyId:
+      type: integer
+      format: int64
+    createdBy:
+      type: integer
+      format: int64
+    createdByName:
+      type: string
+    recurrenceType:
+      $ref: '#/RecurrenceType'
+    recurringDayOfMonth:
+      type: integer
+      format: int32
+    cronExpression:
+      type: string
+    autoResetTargets:
+      type: boolean
+    lastRunAt:
+      type: string
+      format: date-time
+    priority:
+      type: integer
+      format: int32
+    retryPolicy:
+      type: object
+      properties:
+        PROMISE_TO_PAY:
+          $ref: '#/RetryRule'
+        REFUSED:
+          $ref: '#/RetryRule'
+        NO_ANSWER:
+          $ref: '#/RetryRule'
+        CARRIER_REJECTED:
+          $ref: '#/RetryRule'
+        WRONG_NUMBER:
+          $ref: '#/RetryRule'
+        DO_NOT_CALL:
+          $ref: '#/RetryRule'
+        HUNG_UP:
+          $ref: '#/RetryRule'
+        TRANSFERRED:
+          $ref: '#/RetryRule'
+        VOICEMAIL:
+          $ref: '#/RetryRule'
+        CALLBACK_REQUESTED:
+          $ref: '#/RetryRule'
+        FAILED:
+          $ref: '#/RetryRule'
+        COMPLETED:
+          $ref: '#/RetryRule'
+        GOAL_REACHED:
+          $ref: '#/RetryRule'
+        GOAL_NOT_REACHED:
+          $ref: '#/RetryRule'
+      additionalProperties: false
+    startAt:
+      type: string
+      format: date-time
+    endAt:
+      type: string
+      format: date-time
+    budgetUzs:
+      type: integer
+      format: int64
+    dailyBudgetUzs:
+      type: integer
+      format: int64
+    totalTargets:
+      type: integer
+      format: int64
+    calledTargets:
+      type: integer
+      format: int64
+    pendingTargets:
+      type: integer
+      format: int64
+    completedTargets:
+      type: integer
+      format: int64
+    version:
+      type: integer
+      format: int64
+  required:
+  - id
+  - maxAttempts
+  - retryIntervalMinutes
+  - maxConcurrentCalls
+  - dailyCallCap
+  - aiAgentId
+  - companyId
+  - autoResetTargets
+  - priority
+  - totalTargets
+  - calledTargets
+  - pendingTargets
+  - completedTargets
+  - version
+CampaignRowPage:
+  type: object
+  description: '`CampaignRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/CampaignRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CampaignStatus:
+  type: string
+  enum:
+  - DRAFT
+  - SCHEDULED
+  - ACTIVE
+  - PAUSED
+  - COMPLETED
+  - ARCHIVED
+  description: |-
+    Lifecycle of a `Campaign` (PROJECT.md §6).
+
+    - `DRAFT`
+
+    - `SCHEDULED` — Started with a future `startAt`; the sweep makes it ACTIVE when that time comes.
+
+    - `ACTIVE`
+
+    - `PAUSED`
+
+    - `COMPLETED` — Every target reached a terminal state while the campaign was ACTIVE — see `CampaignOutcomeService#checkCompletion`.
+
+    - `ARCHIVED`
+CampaignStatusResponse:
+  type: object
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    status:
+      $ref: '#/CampaignStatus'
+  required:
+  - campaignId
+CampaignTarget:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    campaignId:
+      type: integer
+      format: int64
+    clientId:
+      type: integer
+      format: int64
+    phone:
+      type: string
+    language:
+      type: string
+    contextData:
+      type: string
+    status:
+      $ref: '#/TargetStatus'
+    attempts:
+      type: integer
+      format: int32
+    doNotCall:
+      type: boolean
+    nextAttemptAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - campaignId
+  - clientId
+  - attempts
+  - doNotCall
+CampaignTargetPage:
+  type: object
+  description: '`CampaignTarget` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/CampaignTarget'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CampaignType:
+  type: string
+  enum:
+  - DEBT_COLLECTION
+  - SURVEY
+  description: What a `Campaign` is dialling for (PROJECT.md §6).
+CampaignVariantCreateRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 100
+    aiAgentId:
+      type: integer
+      format: int64
+    promptOverride:
+      type: string
+    ttsVoiceId:
+      type: string
+    pipelineMode:
+      allOf:
+      - $ref: ../common.yaml#/schemas/PipelineMode
+      description: the pipeline this variant's calls run on; null keeps the agent's
+    trafficWeight:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 100
+  required:
+  - name
+CampaignVariantResponse:
+  type: object
+  description: |-
+    One A/B variant, on two sets of numbers.
+
+    `convertedCount` and `conversionRate` count the dispositions the bot recorded — a promise to pay. `attributedConversions` and `attributedValueUzs` count what a company's own systems later reported actually happening (conversions.md). Both are shown because they answer different questions, and a company that has configured no goals still has the first.
+  properties:
+    id:
+      type: integer
+      format: int64
+    campaignId:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    aiAgentId:
+      type: integer
+      format: int64
+    promptOverride:
+      type: string
+    ttsVoiceId:
+      type: string
+    pipelineMode:
+      allOf:
+      - $ref: ../common.yaml#/schemas/PipelineMode
+      description: the pipeline the variant's calls run on; null = the agent's own
+    trafficWeight:
+      type: integer
+      format: int32
+    callsCount:
+      type: integer
+      format: int32
+    answeredCount:
+      type: integer
+      format: int32
+    convertedCount:
+      type: integer
+      format: int32
+    answerRate:
+      type: number
+      format: double
+    conversionRate:
+      type: number
+      format: double
+    attributedConversions:
+      type: integer
+      format: int64
+    attributedValueUzs:
+      type: integer
+      format: int64
+    spentUzs:
+      type: integer
+      format: int64
+      description: what this variant's settled calls were charged
+    costPerConversionUzs:
+      type: integer
+      format: int64
+      description: spend divided by real conversions, or null when there are none
+    active:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - campaignId
+  - companyId
+  - trafficWeight
+  - callsCount
+  - answeredCount
+  - convertedCount
+  - answerRate
+  - conversionRate
+  - attributedConversions
+  - attributedValueUzs
+  - spentUzs
+  - active
+CampaignVariantUpdateRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 100
+    aiAgentId:
+      type: integer
+      format: int64
+    promptOverride:
+      type: string
+    ttsVoiceId:
+      type: string
+    pipelineMode:
+      allOf:
+      - $ref: ../common.yaml#/schemas/PipelineMode
+      description: the pipeline this variant's calls run on; null keeps the agent's
+    trafficWeight:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 100
+    active:
+      type: boolean
+  required:
+  - name
+  - active
+CreateCampaignRequest:
+  type: object
+  description: |-
+    A new calling job (`POST /api/campaigns`).
+
+    Only who is called and when. The voice, the persona, the scenario, the model and the trunks come from the `aiAgentId` — see `POST /api/ai-agents`.
+  properties:
+    name:
+      type: string
+      minLength: 1
+    type:
+      allOf:
+      - $ref: '#/CampaignType'
+      description: required (backend-uchun-talablar.md §9a) — previously an omitted/blank value silently fell back to `DEBT_COLLECTION`, which surprised callers that meant to leave it unset; a missing value is now a 400
+    aiAgentId:
+      type: integer
+      format: int64
+      description: 'required: the agent from `GET /api/ai-agents` whose voice and scenario this campaign''s calls run under. Changeable later — an agent is a way of speaking, not the campaign''s identity'
+    dialWindowStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialWindowEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialDays:
+      type: array
+      items:
+        type: string
+        enum:
+        - MONDAY
+        - TUESDAY
+        - WEDNESDAY
+        - THURSDAY
+        - FRIDAY
+        - SATURDAY
+        - SUNDAY
+      uniqueItems: true
+      description: days this campaign may dial on (`["MONDAY", ...]`); omit or leave empty for every day of the week (§11.2)
+    maxAttempts:
+      type: integer
+      format: int32
+    retryIntervalMinutes:
+      type: integer
+      format: int32
+      description: minutes before a client who did not answer (or whose call failed) is dialled again; 0 leaves it to the per-disposition defaults, which wait longer after a voicemail than after a busy line. A retry lands inside the dial window either way
+    maxConcurrentCalls:
+      type: integer
+      format: int32
+    dailyCallCap:
+      type: integer
+      format: int32
+      description: most calls this campaign may place in one day; 0 or omitted for unlimited. A spend ceiling — every call costs STT, LLM, TTS and trunk minutes, and a campaign with 50 000 targets will spend them all
+    recurrenceType:
+      allOf:
+      - $ref: '#/RecurrenceType'
+      description: 'repetition schedule: ONCE (default), DAILY, WEEKLY, MONTHLY, CRON. Anything but ONCE re-runs the campaign on its own; pair it with a target source (`PUT /api/campaigns/{id`/target-source}) to have each run dial a freshly fetched list instead of the same one'
+    recurringDayOfMonth:
+      type: integer
+      format: int32
+      description: specific day of the month for MONTHLY recurrence (1-31)
+      minimum: 1
+      maximum: 31
+    cronExpression:
+      type: string
+      description: custom cron expression for CRON recurrence
+    autoResetTargets:
+      type: boolean
+      description: whether targets are automatically reset to PENDING when recurrence triggers
+    priority:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 5
+    retryPolicy:
+      type: object
+      properties:
+        PROMISE_TO_PAY:
+          $ref: '#/RetryRule'
+        REFUSED:
+          $ref: '#/RetryRule'
+        NO_ANSWER:
+          $ref: '#/RetryRule'
+        CARRIER_REJECTED:
+          $ref: '#/RetryRule'
+        WRONG_NUMBER:
+          $ref: '#/RetryRule'
+        DO_NOT_CALL:
+          $ref: '#/RetryRule'
+        HUNG_UP:
+          $ref: '#/RetryRule'
+        TRANSFERRED:
+          $ref: '#/RetryRule'
+        VOICEMAIL:
+          $ref: '#/RetryRule'
+        CALLBACK_REQUESTED:
+          $ref: '#/RetryRule'
+        FAILED:
+          $ref: '#/RetryRule'
+        COMPLETED:
+          $ref: '#/RetryRule'
+        GOAL_REACHED:
+          $ref: '#/RetryRule'
+        GOAL_NOT_REACHED:
+          $ref: '#/RetryRule'
+      additionalProperties: false
+    startAt:
+      type: string
+      format: date-time
+    endAt:
+      type: string
+      format: date-time
+    budgetUzs:
+      type: integer
+      format: int64
+      minimum: 1
+    dailyBudgetUzs:
+      type: integer
+      format: int64
+      minimum: 1
+  required:
+  - name
+  - type
+  - aiAgentId
+  - maxAttempts
+  - retryIntervalMinutes
+  - maxConcurrentCalls
+  - dailyCallCap
+CreateCampaignResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    status:
+      $ref: '#/CampaignStatus'
+  required:
+  - id
+CsvColumnMapping:
+  type: object
+  description: One CSV header matched against the importer's known columns (§10.6 "ustunni moslashtirish" wizard step).
+  properties:
+    header:
+      type: string
+      description: the raw header text as it appears in the file
+    mappedField:
+      type: string
+      description: the target field it will be loaded into (`clientId`, `phone`, `language`, or a `context_data` key like `debtAmount`), or `null` if the importer does not recognize this header
+ParsedTarget:
+  type: object
+  description: A target ready to be inserted.
+  properties:
+    line:
+      type: integer
+      format: int32
+      description: 1-based line number in the file, so an error can be found
+    clientId:
+      type: integer
+      format: int64
+      description: CRM client id
+    phone:
+      type: string
+      description: number to dial (validated on insert)
+    language:
+      type: string
+      description: per-target language override, or null for the campaign default
+    contextJson:
+      type: string
+      description: debtor facts as `context_data` JSON
+  required:
+  - line
+  - clientId
+RecurrenceType:
+  type: string
+  enum:
+  - ONCE
+  - DAILY
+  - WEEKLY
+  - MONTHLY
+  - CRON
+  description: |-
+    Frequency rule for recurring automated campaigns.
+
+    - `ONCE` — Run once on manual start / creation (default).
+
+    - `DAILY` — Run daily within dial window and allowed dial days.
+
+    - `WEEKLY` — Run weekly on specific weekdays (e.g. every Sunday / every Monday).
+
+    - `MONTHLY` — Run monthly on a specific day of the month (e.g. 1st or 25th of every month).
+
+    - `CRON` — Run according to a standard 6-field Spring/Quartz Cron expression.
+RetryRule:
+  type: object
+  description: How a campaign retries after one particular disposition.
+  properties:
+    maxAttempts:
+      type: integer
+      format: int32
+      description: 'give up on the target once this many attempts have been spent and the latest one ended this way — `null` or 0 keeps the campaign''s overall `maxAttempts`. "One voicemail is enough" is `VOICEMAIL: {maxAttempts: 1`}'
+    delayMinutes:
+      type: integer
+      format: int32
+      description: minutes before the next attempt — `null` or 0 keeps the deployment default for that disposition
+StepFilterOperator:
+  type: string
+  enum:
+  - GT
+  - GTE
+  - LT
+  - LTE
+  - EQ
+  - NE
+  - PRESENT
+  - ABSENT
+  description: |-
+    How a chained target source's step decides whether to keep a row.
+
+    Deliberately small. This is the rule that stops the chain from fetching a phone number for every client a company has — "only the ones more than N days late", "only the ones that still owe something" — not a query language.
+
+    - `GT` — Numeric comparisons. A row whose value is not a number never matches.
+
+    - `GTE`
+
+    - `LT`
+
+    - `LTE`
+
+    - `EQ` — Text comparison, case-insensitive; numbers are compared as text too.
+
+    - `NE`
+
+    - `PRESENT` — The path resolves to something that is neither missing nor null nor blank.
+
+    - `ABSENT` — The inverse of `#PRESENT`.
+TargetCsvPreview:
+  type: object
+  description: '`POST /api/campaigns/{id`/targets/csv/preview} response (§10.6 "ustunni moslashtirish" wizard step) — parses the file and reports how it would be loaded, without inserting anything.'
+  properties:
+    columns:
+      type: array
+      items:
+        $ref: '#/CsvColumnMapping'
+      description: each CSV header matched against a known field, or unmatched
+    sampleRows:
+      type: array
+      items:
+        $ref: '#/ParsedTarget'
+      description: first rows that parsed cleanly, for an on-screen preview
+    totalRows:
+      type: integer
+      format: int32
+      description: how many data rows parsed cleanly in total (may exceed `sampleRows.size()`)
+    errors:
+      type: array
+      items:
+        $ref: ../common.yaml#/schemas/CsvRowError
+      description: rows that failed to parse, with the reason
+    unknownColumns:
+      type: array
+      items:
+        type: string
+      description: headers the importer does not recognize (also reflected in `columns`)
+  required:
+  - totalRows
+TargetFilter:
+  type: object
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        PHONE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        STATUS:
+          $ref: ../common.yaml#/schemas/SortDirection
+        ATTEMPTS:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+TargetImportResult:
+  type: object
+  description: Outcome of a target CSV import.
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+      description: campaign the targets were loaded into
+    added:
+      type: integer
+      format: int32
+      description: how many targets were inserted
+    targetIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+      description: ids of those targets
+    skippedDuplicates:
+      type: integer
+      format: int32
+      description: rows whose number the campaign already has queued — the same file uploaded twice inserts nothing the second time
+    skippedDoNotCall:
+      type: integer
+      format: int32
+      description: 'rows inserted with the do-not-call mark because the number is on the company''s list: counted, visible, never dialled'
+    errors:
+      type: array
+      items:
+        $ref: ../common.yaml#/schemas/CsvRowError
+      description: rows that were rejected, with the reason
+    unknownColumns:
+      type: array
+      items:
+        type: string
+      description: headers that were ignored — usually a typo in a header, which is worth surfacing because the facts in that column silently never reach the agent
+  required:
+  - campaignId
+  - added
+  - skippedDuplicates
+  - skippedDoNotCall
+TargetSourceMethod:
+  type: string
+  enum:
+  - GET
+  - POST
+  description: How a campaign's target source is called.
+TargetSourceProvider:
+  type: string
+  enum:
+  - GENERIC
+  - CHAINED
+  - UYSOT_DEBTORS
+  description: |-
+    How a campaign's target source produces its list.
+
+    - `GENERIC` — One HTTP request to the URL the company configured, whose answer is an array of rows with a phone in each. The default, and everything `PUT /api/campaigns/{id`/target-source} can create.
+
+    - `CHAINED` — Several requests, configured on the campaign screen: one that lists rows and any number that are then called per row to fill in what the list did not carry. The general form of what `#UYSOT_DEBTORS` does for one CRM in particular.
+
+    - `UYSOT_DEBTORS` — Today's overdue debtors, read out of Uysot's Open API. Configured by `voice-agent.crm.*` rather than by the source's own URL, because reaching a phone number there takes three chained reads and not one.
+
+    Kept as its own provider although `#CHAINED` can now express the same chain: it is what the seeded daily campaign runs on, and it reads its credentials from the company's Uysot OAuth connection rather than from a header typed into a form.
+TargetSourceRow:
+  type: object
+  description: |-
+    A campaign's target source as the API returns it — the same fields the request takes, minus `authHeaderValue`: a secret this system was given is never handed back out, only replaced.
+
+    Which fields are filled depends on `provider`: GENERIC uses the single-request ones and no steps, CHAINED the reverse. UYSOT_DEBTORS fills neither — it is provisioned rather than configured, and reads where to call from the platform's CRM settings.
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    provider:
+      $ref: '#/TargetSourceProvider'
+    url:
+      type: string
+    method:
+      $ref: '#/TargetSourceMethod'
+    requestBody:
+      type: string
+    authHeaderName:
+      type: string
+    authHeaderSet:
+      type: boolean
+    itemsPath:
+      type: string
+    phoneField:
+      type: string
+    clientIdField:
+      type: string
+    languageField:
+      type: string
+    replaceTargets:
+      type: boolean
+    syncOnRecurrence:
+      type: boolean
+    enabled:
+      type: boolean
+    steps:
+      type: array
+      items:
+        $ref: '#/TargetSourceStep'
+    lastSyncAt:
+      type: string
+      format: date-time
+    lastSyncAdded:
+      type: integer
+      format: int32
+    lastSyncError:
+      type: string
+  required:
+  - campaignId
+  - authHeaderSet
+  - replaceTargets
+  - syncOnRecurrence
+  - enabled
+TargetSourceStep:
+  type: object
+  description: |-
+    One request in a chained target source.
+
+    The first step lists: it is called once (or once per page) and its answer is an array of rows. Every step after it enriches: it is called once per surviving row, and what it extracts is added to that row's variables. That is the shape a real CRM forces — the endpoint that knows who is overdue is rarely the endpoint that knows their phone number — and expressing it as configuration is what lets a company point this at their own API from the campaign screen instead of asking for code.
+
+    Anywhere below that takes `{{name`}} is filled from the variables collected so far, so a later step's URL can read `.../contract/{{contractId`}}. Substituted values are URL-encoded in a URL and JSON-escaped in a body. The list step additionally has `{{page`}} when `#paginate` is set.
+  properties:
+    name:
+      type: string
+      description: what this step is called, for the error a rejected row reports
+    method:
+      $ref: '#/TargetSourceMethod'
+    url:
+      type: string
+    body:
+      type: string
+    itemsPath:
+      type: string
+      description: dot path to the array of rows in this step's answer (`"data.data"`); only the list step uses it, and null there means the body is itself the array
+    paginate:
+      type: boolean
+      description: 'list step only: call it again with `{{page`}} incremented until a page comes back short or the row cap is reached. Without it the step is called exactly once and whatever it answered is the whole list'
+    filters:
+      type: array
+      items:
+        $ref: '#/TargetSourceStepFilter'
+      description: 'list step only: a row is carried on only if it satisfies every one of them. This is what keeps the chain from spending two requests each on clients who owe nothing'
+    extract:
+      type: object
+      additionalProperties:
+        type: string
+      description: variable name → dot path in this step's answer. On the list step the paths are relative to each row; on a later step, to the whole response body. Whichever variables the source names as its phone, client id and language are used as those; every other one becomes a fact
+  required:
+  - paginate
+TargetSourceStepFilter:
+  type: object
+  description: One condition a listed row has to satisfy to be worth carrying through the rest of the chain.
+  properties:
+    path:
+      type: string
+      description: 'dot path inside the row (`"delay"`, `"client.status"`). A numeric segment indexes an array: `"phones.0"`'
+    operator:
+      allOf:
+      - $ref: '#/StepFilterOperator'
+      description: how `value` is compared with what `path` resolves to
+    value:
+      type: string
+      description: the comparison operand, as text. Ignored by `PRESENT`/`ABSENT`
+TargetStatus:
+  type: string
+  enum:
+  - PENDING
+  - IN_PROGRESS
+  - DONE
+  - FAILED
+  - EXHAUSTED
+  description: Dial-loop state of a `CampaignTarget` (PROJECT.md §6).
+TargetSyncResult:
+  type: object
+  description: Outcome of fetching a campaign's list from its target source.
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    fetched:
+      type: integer
+      format: int32
+      description: how many rows the endpoint answered with
+    added:
+      type: integer
+      format: int32
+      description: how many of them became targets
+    removed:
+      type: integer
+      format: int32
+      description: how many existing targets were cleared first (`replaceTargets`)
+    skippedDuplicates:
+      type: integer
+      format: int32
+      description: rows whose number was already queued (a sync without `replaceTargets` never doubles the list)
+    skippedDoNotCall:
+      type: integer
+      format: int32
+      description: rows stored with the do-not-call mark, never dialled
+    errors:
+      type: array
+      items:
+        $ref: ../common.yaml#/schemas/CsvRowError
+      description: rows the endpoint got wrong, with the reason and the row's position
+  required:
+  - campaignId
+  - fetched
+  - added
+  - removed
+  - skippedDuplicates
+  - skippedDoNotCall
+UpdateCampaignRequest:
+  type: object
+  description: |-
+    Full edit of a campaign (`PUT /api/campaigns/{id`}) — the same shape as `CreateCampaignRequest`, minus `type`, which is fixed at creation.
+
+    `version` is the one `CampaignRow` carried when the form was opened; a campaign saved by someone else since is answered 409 instead of being overwritten. Optional, so an older client that does not send it keeps working.
+  properties:
+    name:
+      type: string
+      minLength: 1
+    aiAgentId:
+      type: integer
+      format: int64
+    dialWindowStart:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialWindowEnd:
+      type: string
+      example: 09:00:00
+      description: 'Format: `HH:mm` Format: `HH:mm`'
+    dialDays:
+      type: array
+      items:
+        type: string
+        enum:
+        - MONDAY
+        - TUESDAY
+        - WEDNESDAY
+        - THURSDAY
+        - FRIDAY
+        - SATURDAY
+        - SUNDAY
+      uniqueItems: true
+    maxAttempts:
+      type: integer
+      format: int32
+    retryIntervalMinutes:
+      type: integer
+      format: int32
+    maxConcurrentCalls:
+      type: integer
+      format: int32
+    dailyCallCap:
+      type: integer
+      format: int32
+    recurrenceType:
+      $ref: '#/RecurrenceType'
+    recurringDayOfMonth:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 31
+    cronExpression:
+      type: string
+    autoResetTargets:
+      type: boolean
+    priority:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 5
+    retryPolicy:
+      type: object
+      properties:
+        PROMISE_TO_PAY:
+          $ref: '#/RetryRule'
+        REFUSED:
+          $ref: '#/RetryRule'
+        NO_ANSWER:
+          $ref: '#/RetryRule'
+        CARRIER_REJECTED:
+          $ref: '#/RetryRule'
+        WRONG_NUMBER:
+          $ref: '#/RetryRule'
+        DO_NOT_CALL:
+          $ref: '#/RetryRule'
+        HUNG_UP:
+          $ref: '#/RetryRule'
+        TRANSFERRED:
+          $ref: '#/RetryRule'
+        VOICEMAIL:
+          $ref: '#/RetryRule'
+        CALLBACK_REQUESTED:
+          $ref: '#/RetryRule'
+        FAILED:
+          $ref: '#/RetryRule'
+        COMPLETED:
+          $ref: '#/RetryRule'
+        GOAL_REACHED:
+          $ref: '#/RetryRule'
+        GOAL_NOT_REACHED:
+          $ref: '#/RetryRule'
+      additionalProperties: false
+    startAt:
+      type: string
+      format: date-time
+    endAt:
+      type: string
+      format: date-time
+    budgetUzs:
+      type: integer
+      format: int64
+      minimum: 1
+    dailyBudgetUzs:
+      type: integer
+      format: int64
+      minimum: 1
+    version:
+      type: integer
+      format: int64
+  required:
+  - name
+  - aiAgentId
+  - maxAttempts
+  - retryIntervalMinutes
+  - maxConcurrentCalls
+  - dailyCallCap
+UpdateTargetSourceRequest:
+  type: object
+  description: |-
+    Configures where a campaign fetches its call list from (`PUT /api/campaigns/{id`/target-source}).
+
+    Two shapes, chosen by `provider`. GENERIC is one request whose answer is already a list of rows with a phone in each, described by the fields below. CHAINED is several requests — `steps` — for the common case where the endpoint that knows who to call is not the endpoint that knows their number; the single-request fields are then unused.
+
+    `url` carries no `@NotBlank` because a CHAINED source has no single address; `CampaignValidator` requires whichever of the two the provider needs, so an omission is still a `400` and not a source that fetches nothing.
+  properties:
+    provider:
+      $ref: '#/TargetSourceProvider'
+    url:
+      type: string
+      description: http(s) endpoint (GENERIC). Screened against loopback and private addresses at fetch time — this URL is written by a tenant and the request is made by this server, from inside its own network
+      maxLength: 1000
+    method:
+      $ref: '#/TargetSourceMethod'
+    requestBody:
+      type: string
+    authHeaderName:
+      type: string
+      maxLength: 100
+    authHeaderValue:
+      type: string
+      description: write-only, and sent on every step of a chain. Omit on a later edit to keep the stored secret
+    itemsPath:
+      type: string
+      description: dot path to the array of rows (`"data.items"`); omit when the response body is the array itself
+      maxLength: 200
+    phoneField:
+      type: string
+      description: 'GENERIC: the key holding the number in each row. CHAINED: the name of the variable the steps collected that holds it. Defaults to `phone` either way'
+      maxLength: 100
+    clientIdField:
+      type: string
+      description: likewise for the CRM's client id; omit when there is none
+      maxLength: 100
+    languageField:
+      type: string
+      description: likewise for a per-row language; omit to use the agent's
+      maxLength: 100
+    replaceTargets:
+      type: boolean
+      description: clear the campaign's targets before importing — for a source that answers with the whole of today's list
+    syncOnRecurrence:
+      type: boolean
+      description: fetch automatically on every recurrence run (default true)
+    enabled:
+      type: boolean
+    steps:
+      type: array
+      items:
+        $ref: '#/TargetSourceStep'
+      description: 'CHAINED only: the requests to run, in order. The first lists rows; each later one is called once per row'

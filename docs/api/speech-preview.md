@@ -17,6 +17,12 @@ Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 
 **Path:** `id` — `GET /api/tts/voices` dan kelgan ovoz `id`si (`zamira`, `gulnoza-cheerful`, ...).
 
+**`gemini-live` ovozlari** (`gemini-aoede-uz`, `gemini-puck-ru`, ...) Gemini TTS orqali eshittiriladi:
+realtime engine matnni alohida o'qib bera olmaydi, lekin uning ovozlari (Aoede, Puck, Kore, Fenrir,
+Charon) Gemini TTS'dagi ovozlarning o'zi. Tembr bir xil, ammo jonli qo'ng'iroqdagi intonatsiya biroz
+farq qilishi mumkin — preview taxminiy. Buning uchun serverda Gemini TTS yoqilgan bo'lishi kerak
+(`GEMINI_API_KEY`).
+
 **Request** — `Content-Type: application/json`, `PreviewVoiceRequest`:
 
 ```json
@@ -58,7 +64,7 @@ async function playVoicePreview(voiceId, text) {
 |---|---|---|
 | 400 | `VALIDATION_FAILED` | `text` bo'sh yoki 500 dan uzun (`errors[]` da maydon) |
 | 404 | `TTS_VOICE_NOT_FOUND` | katalogda bunday `id` yo'q |
-| 409 | `TTS_VOICE_PROVIDER_UNAVAILABLE` | ovoz realtime engine'niki (`gemini-live`, `openai-realtime`) yoki provayder kredensiali serverda yo'q — UI'da bu ovoz uchun "eshitish" tugmasini o'chirib qo'yish mumkin (`provider` maydoniga qarab) |
+| 409 | `TTS_VOICE_PROVIDER_UNAVAILABLE` | ovoz `gemini-live` dan boshqa realtime engine'niki (`openai-realtime`, ...), yoki provayder kredensiali serverda yo'q (`gemini-live` ovozi uchun — Gemini TTS kaliti) — UI'da bu ovoz uchun "eshitish" tugmasini o'chirib qo'yish mumkin (`provider` maydoniga qarab) |
 | 502 | `TTS_YANDEX_*`, `TTS_AISHA_*`, `TTS_GEMINI_*` | provayder sintez qila olmadi — "Provayder javob bermadi, qayta urinib ko'ring" |
 
 ---

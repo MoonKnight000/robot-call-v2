@@ -1,0 +1,196 @@
+# `billing` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+BillingMetricItemDto:
+  type: object
+  properties:
+    used:
+      type: integer
+      format: int64
+    limit:
+      type: integer
+      format: int64
+    unit:
+      type: string
+    overagePricePerUnit:
+      type: number
+      format: double
+  required:
+  - used
+  - limit
+BillingMetricsDto:
+  type: object
+  properties:
+    minutes:
+      $ref: '#/BillingMetricItemDto'
+    aiTokens:
+      $ref: '#/BillingMetricItemDto'
+    ttsCharacters:
+      $ref: '#/BillingMetricItemDto'
+    concurrentChannels:
+      $ref: '#/BillingMetricItemDto'
+BillingOverviewResponse:
+  type: object
+  properties:
+    planName:
+      type: string
+    planCode:
+      type: string
+    balanceUzs:
+      type: integer
+      format: int64
+    nextBillingDate:
+      type: string
+      format: date-time
+    autoRecharge:
+      type: boolean
+    metrics:
+      $ref: '#/BillingMetricsDto'
+  required:
+  - balanceUzs
+  - autoRecharge
+ClickResponse:
+  type: object
+  description: Click's answer to Prepare (`merchant_prepare_id`) or Complete (`merchant_confirm_id`). Not a `ResponseData` — Click reads only its own shape, and the HTTP status is 200 whatever `error` says.
+  properties:
+    click_trans_id:
+      type: integer
+      format: int64
+    merchant_trans_id:
+      type: string
+    merchant_prepare_id:
+      type: integer
+      format: int64
+    merchant_confirm_id:
+      type: integer
+      format: int64
+    error:
+      type: integer
+      format: int32
+      description: 0 for success, one of Click's negative codes otherwise
+    error_note:
+      type: string
+  required:
+  - error
+InvoiceDto:
+  type: object
+  properties:
+    id:
+      type: string
+    period:
+      type: string
+    amountUzs:
+      type: integer
+      format: int64
+    status:
+      $ref: '#/InvoiceStatus'
+    paidAt:
+      type: string
+      format: date-time
+    pdfUrl:
+      type: string
+  required:
+  - amountUzs
+InvoiceDtoPage:
+  type: object
+  description: '`InvoiceDto` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/InvoiceDto'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+InvoiceStatus:
+  type: string
+  enum:
+  - PAID
+  - PENDING
+  - CANCELLED
+PaymeErrorBody:
+  type: object
+  description: The `error` member of a Payme answer.
+  properties:
+    code:
+      type: integer
+      format: int32
+      description: Payme's error code, e.g. -31050
+    message:
+      allOf:
+      - $ref: '#/PaymeErrorMessage'
+      description: what Payme shows the payer, in three languages
+    data:
+      type: string
+      description: the account field an account error is about; left out when there is none
+  required:
+  - code
+PaymeErrorMessage:
+  type: object
+  description: An error text Payme shows the payer, in the language Payme picks.
+  properties:
+    ru:
+      type: string
+    uz:
+      type: string
+    en:
+      type: string
+PaymeResponse:
+  type: object
+  description: 'Payme''s JSON-RPC answer: a `result` or an `error`, never both, and the request `id` (null when the request could not be read). Not a `ResponseData` — Payme reads only its own shape, and the HTTP status is 200 either way.'
+  properties:
+    result:
+      type: object
+      additionalProperties: true
+    error:
+      $ref: '#/PaymeErrorBody'
+    id:
+      type: object
+      additionalProperties: true
+PaymentMethod:
+  type: string
+  enum:
+  - PAYME
+  - CLICK
+  - BANK_TRANSFER
+SpendMonthDto:
+  type: object
+  properties:
+    month:
+      type: string
+    totalSpendUzs:
+      type: integer
+      format: int64
+    callMinutes:
+      type: integer
+      format: int32
+  required:
+  - totalSpendUzs
+  - callMinutes
+TopupRequest:
+  type: object
+  properties:
+    amountUzs:
+      type: integer
+      format: int64
+      minimum: 1000
+    paymentMethod:
+      $ref: '#/PaymentMethod'
+  required:
+  - amountUzs
+  - paymentMethod
+TopupResponse:
+  type: object
+  properties:
+    paymentId:
+      type: string
+    checkoutUrl:
+      type: string

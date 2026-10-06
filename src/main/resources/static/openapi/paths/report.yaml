@@ -1,0 +1,800 @@
+# Reports — report controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/reports/audit/list:
+  post:
+    tags:
+    - Reports
+    summary: Tizim audit jurnali (Audit log)
+    description: '**Huquq:** `AUDIT_READ`'
+    operationId: report_auditLog
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/audit.yaml#/AuditFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/audit.yaml#/AuditLogPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/calls/bulk:
+  post:
+    tags:
+    - Reports
+    summary: Ommaviy amallar
+    description: '**Huquq:** `REPORT_EDIT`'
+    operationId: report_bulkAction
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/report.yaml#/BulkCallActionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/BulkCallActionResult
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/calls/export:
+  post:
+    tags:
+    - Reports
+    summary: Qo'ng'iroqlarni CSV eksport qilish
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_exportCalls
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/report.yaml#/CallFilter
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/calls/list:
+  post:
+    tags:
+    - Reports
+    summary: Barcha qo'ng'iroqlar ro'yxati
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_calls
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/report.yaml#/CallFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/CallRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/calls/{callId}:
+  get:
+    tags:
+    - Reports
+    summary: Bitta qo'ng'iroq + to'liq transkript
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_call
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/CallDetail
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/reports/calls/{callId}/recording:
+  get:
+    tags:
+    - Reports
+    summary: Qo'ng'iroq audio yozuvi
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_recording
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: Range
+      in: header
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/reports/calls/{callId}/transcript.txt:
+  get:
+    tags:
+    - Reports
+    summary: Transkriptni matn ko'rinishida
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_transcript
+    parameters:
+    - name: callId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/reports/campaign-comparison:
+  get:
+    tags:
+    - Reports
+    summary: Kampaniyalarni taqqoslash
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_campaignComparison
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignIds
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: integer
+          format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/CampaignComparisonRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/campaigns/{id}:
+  get:
+    tags:
+    - Reports
+    summary: Kampaniya statistikasi
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_campaign
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/CampaignStats
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/reports/campaigns/{id}/calls/list:
+  post:
+    tags:
+    - Reports
+    summary: Bitta kampaniya qo'ng'iroqlari
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_campaignCalls
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/report.yaml#/CallFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/CallRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/reports/dashboard/kpi:
+  get:
+    tags:
+    - Reports
+    summary: Asosiy KPI ko'rsatkichlari
+    description: '**Huquq:** `DASHBOARD_READ`'
+    operationId: report_dashboardKpi
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/DashboardKpi
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/dashboard/outcomes:
+  get:
+    tags:
+    - Reports
+    summary: Qo'ng'iroq natijalari taqsimoti (Outcomes)
+    description: '**Huquq:** `DASHBOARD_READ`'
+    operationId: report_dashboardOutcomes
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/DashboardOutcome
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/dashboard/summary:
+  get:
+    tags:
+    - Reports
+    summary: Birlashgan Dashboard Ko'rsatkichlari (Unified Dashboard Summary)
+    description: '**Huquq:** `DASHBOARD_READ`'
+    operationId: report_dashboardSummary
+    parameters:
+    - name: range
+      in: query
+      required: false
+      schema:
+        type: string
+        default: 24h
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    - name: scenarioId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/report.yaml#/DashboardSummaryResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/dashboard/timeseries:
+  get:
+    tags:
+    - Reports
+    summary: Vaqt bo'yicha dinamika
+    description: '**Huquq:** `DASHBOARD_READ`'
+    operationId: report_dashboardTimeseries
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/DashboardBucket
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/duration-histogram:
+  get:
+    tags:
+    - Reports
+    summary: Davomiylik taqsimoti
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_durationHistogram
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/DurationHistogramBucket
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/dynamics:
+  get:
+    tags:
+    - Reports
+    summary: Kengaytirilgan dinamika
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_dynamics
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    - name: scenarioId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    - name: operator
+      in: query
+      required: false
+      schema:
+        type: boolean
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/DashboardBucket
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/export:
+  get:
+    tags:
+    - Reports
+    summary: Umumiy hisobotni faylga chiqarish
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_export
+    parameters:
+    - name: format
+      in: query
+      required: false
+      schema:
+        type: string
+        default: csv
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/funnel:
+  get:
+    tags:
+    - Reports
+    summary: Voronka
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_funnel
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/FunnelStage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/hourly-heatmap:
+  get:
+    tags:
+    - Reports
+    summary: Soatlik issiqlik xaritasi
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_hourlyHeatmap
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/HourlyHeatmapCell
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/reports/outcomes-distribution:
+  get:
+    tags:
+    - Reports
+    summary: Natijalar taqsimoti tahlili
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: report_outcomesDistribution
+    parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: campaignId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/report.yaml#/DashboardOutcome
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

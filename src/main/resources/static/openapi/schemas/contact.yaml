@@ -1,0 +1,225 @@
+# `contact` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+Contact:
+  type: object
+  description: Domain record for a contact record (1:1 with contact table, §10.8).
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    phone:
+      type: string
+    address:
+      type: string
+    tags:
+      type: string
+    notes:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+ContactCallHistoryRow:
+  type: object
+  description: One line of a contact's call-history timeline (§10.8 drawer).
+  properties:
+    callId:
+      type: integer
+      format: int64
+    campaignName:
+      type: string
+    startedAt:
+      type: string
+      format: date-time
+    durationSec:
+      type: integer
+      format: int32
+    disposition:
+      type: string
+  required:
+  - callId
+ContactDataExport:
+  type: object
+  description: Everything the company holds about one phone number (`GET /api/contacts/data`).
+  properties:
+    phone:
+      type: string
+    contact:
+      allOf:
+      - $ref: '#/Contact'
+      description: null when the number is not in the contact book
+    memory:
+      allOf:
+      - $ref: memory.yaml#/ClientMemory
+      description: null when no call has been remembered for it
+    calls:
+      type: array
+      items:
+        $ref: '#/ContactDataExportCall'
+ContactDataExportCall:
+  type: object
+  description: One call in a data-subject export, with its full transcript.
+  properties:
+    callId:
+      type: integer
+      format: int64
+    startedAt:
+      type: string
+      format: date-time
+    durationSec:
+      type: integer
+      format: int32
+    disposition:
+      type: string
+    summary:
+      type: string
+    transcript:
+      type: string
+  required:
+  - callId
+ContactDetail:
+  type: object
+  description: 'GET /api/contacts/{id} response: profile + call-history timeline (§10.8 drawer).'
+  properties:
+    contact:
+      $ref: '#/Contact'
+    callHistory:
+      type: array
+      items:
+        $ref: '#/ContactCallHistoryRow'
+ContactDncResponse:
+  type: object
+  description: Response for `POST /api/contacts/{id`/dnc}.
+  properties:
+    contactId:
+      type: integer
+      format: int64
+    doNotCall:
+      type: boolean
+  required:
+  - contactId
+  - doNotCall
+ContactErasureResponse:
+  type: object
+  description: What `DELETE /api/contacts/data` did.
+  properties:
+    phone:
+      type: string
+      description: the erased number, masked — the response is logged and shown
+    callsAnonymized:
+      type: integer
+      format: int32
+      description: calls whose number, transcript and summary were removed
+    filesDeleted:
+      type: integer
+      format: int32
+      description: recordings and voicemail messages deleted from storage
+  required:
+  - callsAnonymized
+  - filesDeleted
+ContactFilter:
+  type: object
+  description: Pagination + sort for POST /api/contacts/list (§10.8).
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        PHONE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    search:
+      type: string
+      description: free-text match against name or phone, or null/blank for no filter
+ContactImportResult:
+  type: object
+  properties:
+    added:
+      type: integer
+      format: int32
+    contactIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+    errors:
+      type: array
+      items:
+        $ref: ../common.yaml#/schemas/CsvRowError
+    unknownColumns:
+      type: array
+      items:
+        type: string
+  required:
+  - added
+ContactPage:
+  type: object
+  description: '`Contact` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/Contact'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CreateContactRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+    phone:
+      type: string
+      minLength: 1
+    address:
+      type: string
+    tags:
+      type: string
+    notes:
+      type: string
+  required:
+  - name
+  - phone
+UpdateContactRequest:
+  type: object
+  description: Phone is not editable here — it is the contact's stable identity key (§10.8).
+  properties:
+    name:
+      type: string
+      minLength: 1
+    address:
+      type: string
+    tags:
+      type: string
+    notes:
+      type: string
+  required:
+  - name

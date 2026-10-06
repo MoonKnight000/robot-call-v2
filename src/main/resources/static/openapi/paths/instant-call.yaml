@@ -1,0 +1,33 @@
+# Instant Calls — instant-call controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/calls/instant:
+  post:
+    tags:
+    - Instant Calls
+    summary: Tezkor (Instant Trigger) qo'ng'iroq
+    description: '**Huquq:** `CALL_EDIT`'
+    operationId: instantCall_trigger
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/dialer.yaml#/InstantCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/dialer.yaml#/InstantCallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

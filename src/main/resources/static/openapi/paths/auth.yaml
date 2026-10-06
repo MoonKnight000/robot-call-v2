@@ -1,0 +1,223 @@
+# Auth — auth controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/auth/activate:
+  post:
+    tags:
+    - Auth
+    summary: Taklifni faollashtirish
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: auth_activate
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/auth.yaml#/ActivateRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/LoginResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []
+/api/auth/forgot-password:
+  post:
+    tags:
+    - Auth
+    summary: Parolni tiklashni so'rash
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: auth_forgotPassword
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/auth.yaml#/ForgotPasswordRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []
+/api/auth/login:
+  post:
+    tags:
+    - Auth
+    summary: Kirish
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: auth_login
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/auth.yaml#/LoginRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/LoginResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []
+/api/auth/logout:
+  post:
+    tags:
+    - Auth
+    summary: Chiqish
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: auth_logout
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/auth/me:
+  get:
+    tags:
+    - Auth
+    summary: Joriy foydalanuvchi
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: auth_me
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/CurrentUserResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/auth/refresh:
+  post:
+    tags:
+    - Auth
+    summary: Tokenni yangilash
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: auth_refresh
+    parameters:
+    - name: refresh_token
+      in: cookie
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/auth.yaml#/RefreshTokenRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/LoginResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []
+/api/auth/reset-password:
+  post:
+    tags:
+    - Auth
+    summary: Parolni tiklash
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: auth_resetPassword
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/auth.yaml#/ResetPasswordRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/LoginResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []
+/api/auth/stream-ticket:
+  post:
+    tags:
+    - Auth
+    summary: Oqim uchun bir martalik ticket
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: auth_streamTicket
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/StreamTicketResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/auth/uysot/callback:
+  post:
+    tags:
+    - Auth
+    summary: Uysot OAuth (stub)
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: auth_uysotCallback
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/LoginResponse
+    security: []

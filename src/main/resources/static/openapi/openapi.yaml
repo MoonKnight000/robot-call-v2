@@ -1,0 +1,688 @@
+# Swagger UI kirish nuqtasi (springdoc.swagger-ui.url). Endpointlar paths/*.yaml da — har controller
+# alohida faylda; ma'lumot turlari schemas/*.yaml da — har feature alohida; umumiylari common.yaml da.
+openapi: 3.0.3
+info:
+  title: Uysot Voice Platform (robot-call-v2) API
+  version: 2.0.0
+  description: |-
+    AI voice agent platformasi: chiquvchi/kiruvchi qo'ng'iroqlar, IVR, real vaqt telefoniya va matnli AI kanallar.
+
+    **Javob konverti.** Har bir JSON javob `ResponseData` ichida: `{data, message, messageCode, accept, errors}`. Ro'yxatlar `data` ichida `PageableData`: `{totalPages, currentPage, totalElements, data}`.
+
+    **Xatolar.** `messageCode` — `ErrorCode` nomi; frontend tarjimani shu bo'yicha qiladi. Batafsil hujjat: `docs/api/`.
+
+    **Autentifikatsiya.** `Authorization: Bearer <JWT>` (`/api/auth/login`) yoki `X-Api-Key`.
+servers:
+- url: /
+  description: Joriy server
+- url: https://voice.app.uysot.uz
+  description: Production
+security:
+- BearerAuth: []
+- ApiKeyAuth: []
+tags:
+- name: AI Agents
+  description: Ovozli sun'iy intellekt agentlari, xarakter, prompt va ovoz sozlamalari
+- name: AI Model Settings
+  description: Company-level default AI model configurations, temperature, and token parameters
+- name: AI Models Catalog
+  description: Supported foundational LLM, Speech-to-Speech, and voice models catalog
+- name: API Keys
+  description: Dasturiy kirish uchun API-kalitlar va ularning huquqlari
+- name: Agent Insights
+  description: AI agent continuous self-improvement suggestions, prompt tuning insights, and supervisor approvals
+- name: Auth
+  description: Foydalanuvchi autentifikatsiyasi, tokenlar, 2FA TOTP va parolni tiklash
+- name: Billing
+  description: Kompaniya balansi, tariflar va to'lovlar (Payme, Click)
+- name: Business Schedules & Holidays
+  description: Call center operating hours, holiday calendars, and open/closed status calculation
+- name: CRM Integrations
+  description: CRM integrations (Uysot, amoCRM, Kommo, Bitrix24) and OAuth connection management
+- name: CRM Webhooks
+  description: CRM integratsiyalari va kiruvchi webhooklar (Uysot, AmoCRM, Bitrix24)
+- name: Call Flows
+  description: Visual IVR graphs, routing flowcharts, validation, and publishing
+- name: Call Quality Reviews
+  description: Quality monitoring, AI call evaluations, and supervisor reviews inbox
+- name: Call Queues
+  description: Operator navbatlari, qo'ng'iroqlarni taqsimlash va guruhlar
+- name: Calls
+  description: Qo'ng'iroqlar jurnali (CDR), audio yozuvlar, transkript va tahlillar
+- name: Campaign A/B Variants
+  description: Campaign A/B testing variant management and conversion comparative reports
+- name: Campaigns
+  description: Chiqish qo'ng'iroqlari kampaniyalari, nishon raqamlar va CSV yuklash
+- name: Chat History
+  description: Audit and review history of Widget and Telegram AI text conversations
+- name: Client Memory
+  description: Cross-call memory, persistent facts, preferences, and supervisor notes about callers
+- name: Companies
+  description: Kompaniya profili, telefon sozlamalari va ish tartibi
+- name: Contacts
+  description: Kontaktlar kitobi, ro'yxatlar, teglar va import
+- name: Conversions & Attribution
+  description: Call conversion goals, business outcomes, and call attribution tracking
+- name: Do Not Call
+  description: Chiqish qo'ng'iroqlari taqiqlangan raqamlar (DNC) qora ro'yxati
+- name: Files
+  description: Unified file storage, upload, and media streaming endpoints
+- name: Global Search
+  description: Global command palette search across calls, campaigns, and contacts
+- name: Inbound Caller Rules
+  description: Caller-specific routing rules, VIP priority overrides, and inbound blocklists
+- name: Inbound Routes
+  description: Kiruvchi raqamlar, yo'naltirish qoidalari va IVR menyular
+- name: Industry Packs
+  description: Pre-built vertical industry templates (debt collection, retail, clinic, real estate) and custom pack generation
+- name: Instant Calls
+  description: Bitta raqamga darhol qo'ng'iroq qilish (kampaniyasiz)
+- name: Knowledge Base
+  description: RAG bilimlar bazasi, manbalar va semantik qidiruv hujjatlari
+- name: Knowledge Base Sources
+  description: RAG document uploads, web crawlers, and ingestion queue for agent knowledge
+- name: Live Call Control
+  description: 'Live call supervisory actions: whisper coaching, operator takeover, and scenario mid-call switching'
+- name: Live Stream
+  description: Realtime SSE streaming events (call lifecycle, live audio levels, transcripts, KPI)
+- name: Missed Calls
+  description: Missed calls queue management and operator callback workflows
+- name: Model Context Protocol (MCP)
+  description: Integration with external Model Context Protocol (MCP) servers and tool sets
+- name: Notification Settings
+  description: Company-level notification channel matrix and alerts configuration
+- name: Notifications
+  description: User notifications inbox and preferences
+- name: Operators
+  description: Operator hisoblari, navbat a'zoligi va SIP webphone ma'lumotlari
+- name: Payment Webhooks
+  description: Payment gateway callback processing for Click and Payme merchant services
+- name: Public Widget Chat
+  description: Public text conversation channel for website AI agents
+- name: Reports
+  description: Aloqa markazi analitikasi, KPI ko'rsatkichlari va hisobot eksporti
+- name: Reports & Analytics
+  description: Contact center, campaign performance, queue metrics, and call detail analytics
+- name: Roles
+  description: Rollar (RBAC) va ruxsatnomalar katalogi
+- name: Scenarios
+  description: Vizual dialog ssenariylari, graf tugunlari va ssenariy testi
+- name: Secret Vault
+  description: Encrypted storage for external API tokens, credentials, and secrets
+- name: Speech & Voice Preview
+  description: Speech synthesis (TTS) and recognition (STT) testing and audio preview
+- name: Telegram Bots
+  description: Management and public webhook receivers for AI agent Telegram bots
+- name: Tools
+  description: AI agent custom function calling tools, REST integrations, and OpenAPI 3 import
+- name: User Profile
+  description: Current user self-service profile, 2FA, avatar, sessions, and UI preferences
+- name: Users
+  description: Foydalanuvchilar ro'yxati, taklifnoma, rol biriktirish va bloklash
+- name: Voice Settings
+  description: Company-level speech synthesis and recognition default tuning overrides
+- name: Voicemail
+  description: Voicemail boxes and incoming audio messages queue
+- name: Website Widgets
+  description: Management and public runtime endpoints for website AI voice call widgets
+paths:
+  /api/agent-insights/filter:
+    $ref: paths/agent-insight.yaml#/~1api~1agent-insights~1filter
+  /api/agent-insights/list:
+    $ref: paths/agent-insight.yaml#/~1api~1agent-insights~1list
+  /api/agent-insights/{insightId}:
+    $ref: paths/agent-insight.yaml#/~1api~1agent-insights~1%7BinsightId%7D
+  /api/agent-insights/{insightId}/accept:
+    $ref: paths/agent-insight.yaml#/~1api~1agent-insights~1%7BinsightId%7D~1accept
+  /api/agent-insights/{insightId}/reject:
+    $ref: paths/agent-insight.yaml#/~1api~1agent-insights~1%7BinsightId%7D~1reject
+  /api/ai-agents:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents
+  /api/ai-agents/engine-options:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1engine-options
+  /api/ai-agents/filter:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1filter
+  /api/ai-agents/list:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1list
+  /api/ai-agents/templates:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1templates
+  /api/ai-agents/{agentId}/widgets:
+    $ref: paths/agent-widget.yaml#/~1api~1ai-agents~1%7BagentId%7D~1widgets
+  /api/ai-agents/{id}:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D
+  /api/ai-agents/{id}/advanced:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1advanced
+  /api/ai-agents/{id}/analysis:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1analysis
+  /api/ai-agents/{id}/clone:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1clone
+  /api/ai-agents/{id}/eval-runs:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1eval-runs
+  /api/ai-agents/{id}/eval-runs/{runId}:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1eval-runs~1%7BrunId%7D
+  /api/ai-agents/{id}/evaluate:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1evaluate
+  /api/ai-agents/{id}/limits:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1limits
+  /api/ai-agents/{id}/post-call-actions:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1post-call-actions
+  /api/ai-agents/{id}/pronunciation:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1pronunciation
+  /api/ai-agents/{id}/publish:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1publish
+  /api/ai-agents/{id}/rollback/{version}:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1rollback~1%7Bversion%7D
+  /api/ai-agents/{id}/scenario:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1scenario
+  /api/ai-agents/{id}/test-cases:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1test-cases
+  /api/ai-agents/{id}/test-cases/{caseId}:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1test-cases~1%7BcaseId%7D
+  /api/ai-agents/{id}/tools:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1tools
+  /api/ai-agents/{id}/tools/{toolId}:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1tools~1%7BtoolId%7D
+  /api/ai-agents/{id}/versions:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1versions
+  /api/ai-agents/{id}/versions/{version}:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1versions~1%7Bversion%7D
+  /api/ai-models:
+    $ref: paths/ai-model.yaml#/~1api~1ai-models
+  /api/api-keys:
+    $ref: paths/api-key.yaml#/~1api~1api-keys
+  /api/api-keys/scopes:
+    $ref: paths/api-key.yaml#/~1api~1api-keys~1scopes
+  /api/api-keys/{id}:
+    $ref: paths/api-key.yaml#/~1api~1api-keys~1%7Bid%7D
+  /api/auth/activate:
+    $ref: paths/auth.yaml#/~1api~1auth~1activate
+  /api/auth/forgot-password:
+    $ref: paths/auth.yaml#/~1api~1auth~1forgot-password
+  /api/auth/login:
+    $ref: paths/auth.yaml#/~1api~1auth~1login
+  /api/auth/logout:
+    $ref: paths/auth.yaml#/~1api~1auth~1logout
+  /api/auth/me:
+    $ref: paths/auth.yaml#/~1api~1auth~1me
+  /api/auth/refresh:
+    $ref: paths/auth.yaml#/~1api~1auth~1refresh
+  /api/auth/reset-password:
+    $ref: paths/auth.yaml#/~1api~1auth~1reset-password
+  /api/auth/stream-ticket:
+    $ref: paths/auth.yaml#/~1api~1auth~1stream-ticket
+  /api/auth/uysot/callback:
+    $ref: paths/auth.yaml#/~1api~1auth~1uysot~1callback
+  /api/billing/click/complete:
+    $ref: paths/click-callback.yaml#/~1api~1billing~1click~1complete
+  /api/billing/click/prepare:
+    $ref: paths/click-callback.yaml#/~1api~1billing~1click~1prepare
+  /api/billing/invoices:
+    $ref: paths/billing.yaml#/~1api~1billing~1invoices
+  /api/billing/invoices/{id}/pdf:
+    $ref: paths/billing.yaml#/~1api~1billing~1invoices~1%7Bid%7D~1pdf
+  /api/billing/overview:
+    $ref: paths/billing.yaml#/~1api~1billing~1overview
+  /api/billing/payme/callback:
+    $ref: paths/payme-callback.yaml#/~1api~1billing~1payme~1callback
+  /api/billing/spend-chart:
+    $ref: paths/billing.yaml#/~1api~1billing~1spend-chart
+  /api/billing/topup:
+    $ref: paths/billing.yaml#/~1api~1billing~1topup
+  /api/call-flows:
+    $ref: paths/call-flow.yaml#/~1api~1call-flows
+  /api/call-flows/list:
+    $ref: paths/call-flow.yaml#/~1api~1call-flows~1list
+  /api/call-flows/{id}:
+    $ref: paths/call-flow.yaml#/~1api~1call-flows~1%7Bid%7D
+  /api/call-flows/{id}/publish:
+    $ref: paths/call-flow.yaml#/~1api~1call-flows~1%7Bid%7D~1publish
+  /api/call-flows/{id}/validate:
+    $ref: paths/call-flow.yaml#/~1api~1call-flows~1%7Bid%7D~1validate
+  /api/call-queues:
+    $ref: paths/call-queue.yaml#/~1api~1call-queues
+  /api/call-queues/list:
+    $ref: paths/call-queue.yaml#/~1api~1call-queues~1list
+  /api/call-queues/live:
+    $ref: paths/call-queue.yaml#/~1api~1call-queues~1live
+  /api/call-queues/live/stream:
+    $ref: paths/call-queue.yaml#/~1api~1call-queues~1live~1stream
+  /api/call-queues/{id}:
+    $ref: paths/call-queue.yaml#/~1api~1call-queues~1%7Bid%7D
+  /api/call-reviews/filter:
+    $ref: paths/call-review.yaml#/~1api~1call-reviews~1filter
+  /api/call-reviews/list:
+    $ref: paths/call-review.yaml#/~1api~1call-reviews~1list
+  /api/call-reviews/{callId}:
+    $ref: paths/call-review.yaml#/~1api~1call-reviews~1%7BcallId%7D
+  /api/call-reviews/{callId}/knowledge-item:
+    $ref: paths/call-review.yaml#/~1api~1call-reviews~1%7BcallId%7D~1knowledge-item
+  /api/call-reviews/{callId}/test-case:
+    $ref: paths/call-review.yaml#/~1api~1call-reviews~1%7BcallId%7D~1test-case
+  /api/calls:
+    $ref: paths/call.yaml#/~1api~1calls
+  /api/calls/click-to-call:
+    $ref: paths/call.yaml#/~1api~1calls~1click-to-call
+  /api/calls/instant:
+    $ref: paths/instant-call.yaml#/~1api~1calls~1instant
+  /api/calls/live:
+    $ref: paths/call.yaml#/~1api~1calls~1live
+  /api/calls/live/{channelId}/scenario:
+    $ref: paths/live-control.yaml#/~1api~1calls~1live~1%7BchannelId%7D~1scenario
+  /api/calls/live/{channelId}/takeover:
+    $ref: paths/live-control.yaml#/~1api~1calls~1live~1%7BchannelId%7D~1takeover
+  /api/calls/live/{channelId}/whisper:
+    $ref: paths/live-control.yaml#/~1api~1calls~1live~1%7BchannelId%7D~1whisper
+  /api/calls/test:
+    $ref: paths/call.yaml#/~1api~1calls~1test
+  /api/calls/web-test:
+    $ref: paths/call.yaml#/~1api~1calls~1web-test
+  /api/calls/{channelId}/consult:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1consult
+  /api/calls/{channelId}/consult/cancel:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1consult~1cancel
+  /api/calls/{channelId}/consult/complete:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1consult~1complete
+  /api/calls/{channelId}/hangup:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1hangup
+  /api/calls/{channelId}/hold:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1hold
+  /api/calls/{channelId}/listen:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1listen
+  /api/calls/{channelId}/monitor:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1monitor
+  /api/calls/{channelId}/play:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1play
+  /api/calls/{channelId}/say:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1say
+  /api/calls/{channelId}/transfer:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1transfer
+  /api/calls/{channelId}/unhold:
+    $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1unhold
+  /api/campaigns:
+    $ref: paths/campaign.yaml#/~1api~1campaigns
+  /api/campaigns/filter:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1filter
+  /api/campaigns/list:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1list
+  /api/campaigns/{campaignId}/variants:
+    $ref: paths/campaign-variant.yaml#/~1api~1campaigns~1%7BcampaignId%7D~1variants
+  /api/campaigns/{campaignId}/variants/report:
+    $ref: paths/campaign-variant.yaml#/~1api~1campaigns~1%7BcampaignId%7D~1variants~1report
+  /api/campaigns/{campaignId}/variants/{variantId}:
+    $ref: paths/campaign-variant.yaml#/~1api~1campaigns~1%7BcampaignId%7D~1variants~1%7BvariantId%7D
+  /api/campaigns/{id}:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D
+  /api/campaigns/{id}/clone:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1clone
+  /api/campaigns/{id}/pause:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1pause
+  /api/campaigns/{id}/start:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1start
+  /api/campaigns/{id}/target-source:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1target-source
+  /api/campaigns/{id}/targets:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1targets
+  /api/campaigns/{id}/targets/csv:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1targets~1csv
+  /api/campaigns/{id}/targets/csv/preview:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1targets~1csv~1preview
+  /api/campaigns/{id}/targets/list:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1targets~1list
+  /api/campaigns/{id}/targets/sync:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1targets~1sync
+  /api/chats/list:
+    $ref: paths/chat-history.yaml#/~1api~1chats~1list
+  /api/chats/{id}:
+    $ref: paths/chat-history.yaml#/~1api~1chats~1%7Bid%7D
+  /api/companies:
+    $ref: paths/company.yaml#/~1api~1companies
+  /api/companies/list:
+    $ref: paths/company.yaml#/~1api~1companies~1list
+  /api/companies/{id}:
+    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D
+  /api/companies/{id}/config:
+    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1config
+  /api/companies/{id}/logo:
+    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1logo
+  /api/companies/{id}/status:
+    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1status
+  /api/contacts:
+    $ref: paths/contact.yaml#/~1api~1contacts
+  /api/contacts/csv:
+    $ref: paths/contact.yaml#/~1api~1contacts~1csv
+  /api/contacts/data:
+    $ref: paths/contact.yaml#/~1api~1contacts~1data
+  /api/contacts/filter:
+    $ref: paths/contact.yaml#/~1api~1contacts~1filter
+  /api/contacts/list:
+    $ref: paths/contact.yaml#/~1api~1contacts~1list
+  /api/contacts/{id}:
+    $ref: paths/contact.yaml#/~1api~1contacts~1%7Bid%7D
+  /api/contacts/{id}/dnc:
+    $ref: paths/contact.yaml#/~1api~1contacts~1%7Bid%7D~1dnc
+  /api/conversions:
+    $ref: paths/conversion.yaml#/~1api~1conversions
+  /api/conversions/goals:
+    $ref: paths/conversion.yaml#/~1api~1conversions~1goals
+  /api/conversions/goals/{id}:
+    $ref: paths/conversion.yaml#/~1api~1conversions~1goals~1%7Bid%7D
+  /api/do-not-call/list:
+    $ref: paths/do-not-call-list.yaml#/~1api~1do-not-call~1list
+  /api/do-not-call/{phone}/remove:
+    $ref: paths/do-not-call-list.yaml#/~1api~1do-not-call~1%7Bphone%7D~1remove
+  /api/files/upload:
+    $ref: paths/file.yaml#/~1api~1files~1upload
+  /api/files/{id}:
+    $ref: paths/file.yaml#/~1api~1files~1%7Bid%7D
+  /api/holidays:
+    $ref: paths/business-schedule.yaml#/~1api~1holidays
+  /api/holidays/fixed:
+    $ref: paths/business-schedule.yaml#/~1api~1holidays~1fixed
+  /api/holidays/list:
+    $ref: paths/business-schedule.yaml#/~1api~1holidays~1list
+  /api/holidays/{id}:
+    $ref: paths/business-schedule.yaml#/~1api~1holidays~1%7Bid%7D
+  /api/inbound-caller-rules:
+    $ref: paths/inbound-caller-rule.yaml#/~1api~1inbound-caller-rules
+  /api/inbound-caller-rules/list:
+    $ref: paths/inbound-caller-rule.yaml#/~1api~1inbound-caller-rules~1list
+  /api/inbound-caller-rules/{id}:
+    $ref: paths/inbound-caller-rule.yaml#/~1api~1inbound-caller-rules~1%7Bid%7D
+  /api/inbound-routes:
+    $ref: paths/inbound-route.yaml#/~1api~1inbound-routes
+  /api/inbound-routes/list:
+    $ref: paths/inbound-route.yaml#/~1api~1inbound-routes~1list
+  /api/inbound-routes/{id}:
+    $ref: paths/inbound-route.yaml#/~1api~1inbound-routes~1%7Bid%7D
+  /api/inbound-routes/{id}/stats:
+    $ref: paths/inbound-route.yaml#/~1api~1inbound-routes~1%7Bid%7D~1stats
+  /api/knowledge-base:
+    $ref: paths/knowledge-base.yaml#/~1api~1knowledge-base
+  /api/knowledge-base/filter:
+    $ref: paths/knowledge-base.yaml#/~1api~1knowledge-base~1filter
+  /api/knowledge-base/list:
+    $ref: paths/knowledge-base.yaml#/~1api~1knowledge-base~1list
+  /api/knowledge-base/sources:
+    $ref: paths/knowledge-source.yaml#/~1api~1knowledge-base~1sources
+  /api/knowledge-base/sources/{id}:
+    $ref: paths/knowledge-source.yaml#/~1api~1knowledge-base~1sources~1%7Bid%7D
+  /api/knowledge-base/sources/{id}/retry:
+    $ref: paths/knowledge-source.yaml#/~1api~1knowledge-base~1sources~1%7Bid%7D~1retry
+  /api/knowledge-base/{id}:
+    $ref: paths/knowledge-base.yaml#/~1api~1knowledge-base~1%7Bid%7D
+  /api/live/stream:
+    $ref: paths/live.yaml#/~1api~1live~1stream
+  /api/mcp/connections:
+    $ref: paths/mcp.yaml#/~1api~1mcp~1connections
+  /api/mcp/connections/{id}:
+    $ref: paths/mcp.yaml#/~1api~1mcp~1connections~1%7Bid%7D
+  /api/mcp/connections/{id}/agents/{agentId}:
+    $ref: paths/mcp.yaml#/~1api~1mcp~1connections~1%7Bid%7D~1agents~1%7BagentId%7D
+  /api/mcp/connections/{id}/refresh:
+    $ref: paths/mcp.yaml#/~1api~1mcp~1connections~1%7Bid%7D~1refresh
+  /api/memory/{phone}:
+    $ref: paths/client-memory.yaml#/~1api~1memory~1%7Bphone%7D
+  /api/missed-calls/list:
+    $ref: paths/missed-call.yaml#/~1api~1missed-calls~1list
+  /api/missed-calls/{id}:
+    $ref: paths/missed-call.yaml#/~1api~1missed-calls~1%7Bid%7D
+  /api/missed-calls/{id}/assign:
+    $ref: paths/missed-call.yaml#/~1api~1missed-calls~1%7Bid%7D~1assign
+  /api/missed-calls/{id}/call-back:
+    $ref: paths/missed-call.yaml#/~1api~1missed-calls~1%7Bid%7D~1call-back
+  /api/notifications:
+    $ref: paths/notification.yaml#/~1api~1notifications
+  /api/notifications/preferences:
+    $ref: paths/notification.yaml#/~1api~1notifications~1preferences
+  /api/notifications/{id}/read:
+    $ref: paths/notification.yaml#/~1api~1notifications~1%7Bid%7D~1read
+  /api/operator/calls/{channelId}:
+    $ref: paths/operator.yaml#/~1api~1operator~1calls~1%7BchannelId%7D
+  /api/operator/calls/{channelId}/takeover:
+    $ref: paths/operator.yaml#/~1api~1operator~1calls~1%7BchannelId%7D~1takeover
+  /api/operator/calls/{channelId}/whisper:
+    $ref: paths/operator.yaml#/~1api~1operator~1calls~1%7BchannelId%7D~1whisper
+  /api/operators/list:
+    $ref: paths/operator-account.yaml#/~1api~1operators~1list
+  /api/operators/me/events:
+    $ref: paths/operator-account.yaml#/~1api~1operators~1me~1events
+  /api/operators/me/sip-credentials:
+    $ref: paths/operator-account.yaml#/~1api~1operators~1me~1sip-credentials
+  /api/operators/me/status:
+    $ref: paths/operator-account.yaml#/~1api~1operators~1me~1status
+  /api/operators/{userId}/sip-account:
+    $ref: paths/operator-account.yaml#/~1api~1operators~1%7BuserId%7D~1sip-account
+  /api/operators/{userId}/sip-account/reset-password:
+    $ref: paths/operator-account.yaml#/~1api~1operators~1%7BuserId%7D~1sip-account~1reset-password
+  /api/packs:
+    $ref: paths/pack.yaml#/~1api~1packs
+  /api/packs/generate:
+    $ref: paths/pack.yaml#/~1api~1packs~1generate
+  /api/packs/install-draft:
+    $ref: paths/pack.yaml#/~1api~1packs~1install-draft
+  /api/packs/{key}/install:
+    $ref: paths/pack.yaml#/~1api~1packs~1%7Bkey%7D~1install
+  /api/profile:
+    $ref: paths/profile.yaml#/~1api~1profile
+  /api/profile/2fa/disable:
+    $ref: paths/profile.yaml#/~1api~1profile~12fa~1disable
+  /api/profile/2fa/enable:
+    $ref: paths/profile.yaml#/~1api~1profile~12fa~1enable
+  /api/profile/2fa/setup:
+    $ref: paths/profile.yaml#/~1api~1profile~12fa~1setup
+  /api/profile/avatar:
+    $ref: paths/profile.yaml#/~1api~1profile~1avatar
+  /api/profile/call-columns:
+    $ref: paths/profile.yaml#/~1api~1profile~1call-columns
+  /api/profile/notifications:
+    $ref: paths/profile.yaml#/~1api~1profile~1notifications
+  /api/profile/password:
+    $ref: paths/profile.yaml#/~1api~1profile~1password
+  /api/profile/schedule:
+    $ref: paths/profile.yaml#/~1api~1profile~1schedule
+  /api/profile/sessions:
+    $ref: paths/profile.yaml#/~1api~1profile~1sessions
+  /api/profile/sessions/{id}:
+    $ref: paths/profile.yaml#/~1api~1profile~1sessions~1%7Bid%7D
+  /api/profile/table-config/{key}:
+    $ref: paths/profile.yaml#/~1api~1profile~1table-config~1%7Bkey%7D
+  /api/profile/today-stats:
+    $ref: paths/profile.yaml#/~1api~1profile~1today-stats
+  /api/public/telegram/{botId}:
+    $ref: paths/telegram.yaml#/~1api~1public~1telegram~1%7BbotId%7D
+  /api/public/uysot/webhook:
+    $ref: paths/uysot-webhook.yaml#/~1api~1public~1uysot~1webhook
+  /api/public/widgets/{widgetKey}/chat:
+    $ref: paths/chat.yaml#/~1api~1public~1widgets~1%7BwidgetKey%7D~1chat
+  /api/public/widgets/{widgetKey}/chat/{sessionKey}:
+    $ref: paths/chat.yaml#/~1api~1public~1widgets~1%7BwidgetKey%7D~1chat~1%7BsessionKey%7D
+  /api/public/widgets/{widgetKey}/config:
+    $ref: paths/agent-widget.yaml#/~1api~1public~1widgets~1%7BwidgetKey%7D~1config
+  /api/public/widgets/{widgetKey}/session:
+    $ref: paths/agent-widget.yaml#/~1api~1public~1widgets~1%7BwidgetKey%7D~1session
+  /api/reports/audit/list:
+    $ref: paths/report.yaml#/~1api~1reports~1audit~1list
+  /api/reports/calls/bulk:
+    $ref: paths/report.yaml#/~1api~1reports~1calls~1bulk
+  /api/reports/calls/export:
+    $ref: paths/report.yaml#/~1api~1reports~1calls~1export
+  /api/reports/calls/list:
+    $ref: paths/report.yaml#/~1api~1reports~1calls~1list
+  /api/reports/calls/{callId}:
+    $ref: paths/report.yaml#/~1api~1reports~1calls~1%7BcallId%7D
+  /api/reports/calls/{callId}/events:
+    $ref: paths/contact-center-report.yaml#/~1api~1reports~1calls~1%7BcallId%7D~1events
+  /api/reports/calls/{callId}/recording:
+    $ref: paths/report.yaml#/~1api~1reports~1calls~1%7BcallId%7D~1recording
+  /api/reports/calls/{callId}/transcript.txt:
+    $ref: paths/report.yaml#/~1api~1reports~1calls~1%7BcallId%7D~1transcript.txt
+  /api/reports/campaign-comparison:
+    $ref: paths/report.yaml#/~1api~1reports~1campaign-comparison
+  /api/reports/campaigns/{id}:
+    $ref: paths/report.yaml#/~1api~1reports~1campaigns~1%7Bid%7D
+  /api/reports/campaigns/{id}/calls/list:
+    $ref: paths/report.yaml#/~1api~1reports~1campaigns~1%7Bid%7D~1calls~1list
+  /api/reports/dashboard/kpi:
+    $ref: paths/report.yaml#/~1api~1reports~1dashboard~1kpi
+  /api/reports/dashboard/outcomes:
+    $ref: paths/report.yaml#/~1api~1reports~1dashboard~1outcomes
+  /api/reports/dashboard/summary:
+    $ref: paths/report.yaml#/~1api~1reports~1dashboard~1summary
+  /api/reports/dashboard/timeseries:
+    $ref: paths/report.yaml#/~1api~1reports~1dashboard~1timeseries
+  /api/reports/duration-histogram:
+    $ref: paths/report.yaml#/~1api~1reports~1duration-histogram
+  /api/reports/dynamics:
+    $ref: paths/report.yaml#/~1api~1reports~1dynamics
+  /api/reports/export:
+    $ref: paths/report.yaml#/~1api~1reports~1export
+  /api/reports/funnel:
+    $ref: paths/report.yaml#/~1api~1reports~1funnel
+  /api/reports/hourly-heatmap:
+    $ref: paths/report.yaml#/~1api~1reports~1hourly-heatmap
+  /api/reports/operators:
+    $ref: paths/contact-center-report.yaml#/~1api~1reports~1operators
+  /api/reports/outcomes-distribution:
+    $ref: paths/report.yaml#/~1api~1reports~1outcomes-distribution
+  /api/reports/queues:
+    $ref: paths/contact-center-report.yaml#/~1api~1reports~1queues
+  /api/reports/schedule:
+    $ref: paths/report-schedule.yaml#/~1api~1reports~1schedule
+  /api/reports/schedule/list:
+    $ref: paths/report-schedule.yaml#/~1api~1reports~1schedule~1list
+  /api/reports/schedule/{id}:
+    $ref: paths/report-schedule.yaml#/~1api~1reports~1schedule~1%7Bid%7D
+  /api/roles:
+    $ref: paths/role.yaml#/~1api~1roles
+  /api/roles/permissions:
+    $ref: paths/role.yaml#/~1api~1roles~1permissions
+  /api/roles/{id}:
+    $ref: paths/role.yaml#/~1api~1roles~1%7Bid%7D
+  /api/scenarios:
+    $ref: paths/scenario.yaml#/~1api~1scenarios
+  /api/scenarios/filter:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1filter
+  /api/scenarios/list:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1list
+  /api/scenarios/simulate:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1simulate
+  /api/scenarios/validate:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1validate
+  /api/scenarios/{id}:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1%7Bid%7D
+  /api/scenarios/{id}/clone:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1%7Bid%7D~1clone
+  /api/scenarios/{id}/test-personas:
+    $ref: paths/scenario.yaml#/~1api~1scenarios~1%7Bid%7D~1test-personas
+  /api/schedules:
+    $ref: paths/business-schedule.yaml#/~1api~1schedules
+  /api/schedules/list:
+    $ref: paths/business-schedule.yaml#/~1api~1schedules~1list
+  /api/schedules/{id}:
+    $ref: paths/business-schedule.yaml#/~1api~1schedules~1%7Bid%7D
+  /api/schedules/{id}/status:
+    $ref: paths/business-schedule.yaml#/~1api~1schedules~1%7Bid%7D~1status
+  /api/search:
+    $ref: paths/search.yaml#/~1api~1search
+  /api/secrets:
+    $ref: paths/secret.yaml#/~1api~1secrets
+  /api/secrets/{id}:
+    $ref: paths/secret.yaml#/~1api~1secrets~1%7Bid%7D
+  /api/settings/ai-model:
+    $ref: paths/ai-model-config.yaml#/~1api~1settings~1ai-model
+  /api/settings/integrations:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations
+  /api/settings/integrations/account:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations~1account
+  /api/settings/integrations/catalog:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations~1catalog
+  /api/settings/integrations/uysot:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations~1uysot
+  /api/settings/integrations/uysot/authorize-url:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations~1uysot~1authorize-url
+  /api/settings/integrations/uysot/callback:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations~1uysot~1callback
+  /api/settings/notifications:
+    $ref: paths/notification-settings.yaml#/~1api~1settings~1notifications
+  /api/settings/voice:
+    $ref: paths/voice-settings.yaml#/~1api~1settings~1voice
+  /api/sip-trunks:
+    $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks
+  /api/sip-trunks/list:
+    $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1list
+  /api/sip-trunks/status:
+    $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1status
+  /api/sip-trunks/{id}:
+    $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1%7Bid%7D
+  /api/sip-trunks/{id}/default:
+    $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1%7Bid%7D~1default
+  /api/sip-trunks/{id}/status:
+    $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1%7Bid%7D~1status
+  /api/stt/preview:
+    $ref: paths/speech-preview.yaml#/~1api~1stt~1preview
+  /api/targets/{id}/do-not-call:
+    $ref: paths/campaign.yaml#/~1api~1targets~1%7Bid%7D~1do-not-call
+  /api/telegram-bots:
+    $ref: paths/telegram.yaml#/~1api~1telegram-bots
+  /api/telegram-bots/{botId}:
+    $ref: paths/telegram.yaml#/~1api~1telegram-bots~1%7BbotId%7D
+  /api/telegram-bots/{botId}/webhook:
+    $ref: paths/telegram.yaml#/~1api~1telegram-bots~1%7BbotId%7D~1webhook
+  /api/tools:
+    $ref: paths/tool.yaml#/~1api~1tools
+  /api/tools/filter:
+    $ref: paths/tool.yaml#/~1api~1tools~1filter
+  /api/tools/import:
+    $ref: paths/tool.yaml#/~1api~1tools~1import
+  /api/tools/import/operations:
+    $ref: paths/tool.yaml#/~1api~1tools~1import~1operations
+  /api/tools/list:
+    $ref: paths/tool.yaml#/~1api~1tools~1list
+  /api/tools/{id}:
+    $ref: paths/tool.yaml#/~1api~1tools~1%7Bid%7D
+  /api/tools/{id}/test:
+    $ref: paths/tool.yaml#/~1api~1tools~1%7Bid%7D~1test
+  /api/tts/voices:
+    $ref: paths/tts-voice.yaml#/~1api~1tts~1voices
+  /api/tts/voices/{id}/preview:
+    $ref: paths/speech-preview.yaml#/~1api~1tts~1voices~1%7Bid%7D~1preview
+  /api/users:
+    $ref: paths/user.yaml#/~1api~1users
+  /api/users/invite:
+    $ref: paths/user.yaml#/~1api~1users~1invite
+  /api/users/{id}:
+    $ref: paths/user.yaml#/~1api~1users~1%7Bid%7D
+  /api/users/{id}/block:
+    $ref: paths/user.yaml#/~1api~1users~1%7Bid%7D~1block
+  /api/users/{id}/role:
+    $ref: paths/user.yaml#/~1api~1users~1%7Bid%7D~1role
+  /api/users/{id}/unblock:
+    $ref: paths/user.yaml#/~1api~1users~1%7Bid%7D~1unblock
+  /api/v1/files/upload:
+    $ref: paths/file.yaml#/~1api~1v1~1files~1upload
+  /api/voicemail-boxes:
+    $ref: paths/voicemail.yaml#/~1api~1voicemail-boxes
+  /api/voicemail-boxes/list:
+    $ref: paths/voicemail.yaml#/~1api~1voicemail-boxes~1list
+  /api/voicemail-boxes/{id}:
+    $ref: paths/voicemail.yaml#/~1api~1voicemail-boxes~1%7Bid%7D
+  /api/voicemails/list:
+    $ref: paths/voicemail.yaml#/~1api~1voicemails~1list
+  /api/voicemails/{id}/audio:
+    $ref: paths/voicemail.yaml#/~1api~1voicemails~1%7Bid%7D~1audio
+  /api/voicemails/{id}/status:
+    $ref: paths/voicemail.yaml#/~1api~1voicemails~1%7Bid%7D~1status
+  /api/widgets/{widgetId}:
+    $ref: paths/agent-widget.yaml#/~1api~1widgets~1%7BwidgetId%7D
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: '`/api/auth/login` dan olingan access token'
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Tashqi integratsiyalar uchun kompaniya API kaliti

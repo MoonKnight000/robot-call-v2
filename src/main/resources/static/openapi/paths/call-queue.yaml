@@ -1,0 +1,209 @@
+# Call Queues — call-queue controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/call-queues:
+  post:
+    tags:
+    - Call Queues
+    summary: Yangi navbat
+    description: '**Huquq:** `CALL_QUEUE_EDIT`'
+    operationId: callQueue_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callqueue.yaml#/SaveCallQueueRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callqueue.yaml#/CallQueue
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/call-queues/list:
+  post:
+    tags:
+    - Call Queues
+    summary: Ro'yxat
+    description: '**Huquq:** `CALL_QUEUE_READ`'
+    operationId: callQueue_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callqueue.yaml#/CallQueueFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callqueue.yaml#/CallQueuePage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/call-queues/live:
+  get:
+    tags:
+    - Call Queues
+    summary: Wallboard (bir martalik)
+    description: '**Huquq:** `CALL_QUEUE_READ`'
+    operationId: callQueue_live
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/callqueue.yaml#/CallQueueLiveRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/call-queues/live/stream:
+  get:
+    tags:
+    - Call Queues
+    summary: Wallboard SSE oqimi
+    description: '**Huquq:** `CALL_QUEUE_READ`'
+    operationId: callQueue_liveStream
+    responses:
+      '200':
+        description: Server-Sent Events oqimi
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/call-queues/{id}:
+  get:
+    tags:
+    - Call Queues
+    summary: Bitta navbat
+    description: '**Huquq:** `CALL_QUEUE_READ`'
+    operationId: callQueue_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callqueue.yaml#/CallQueue
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Call Queues
+    summary: Tahrirlash
+    description: '**Huquq:** `CALL_QUEUE_EDIT`'
+    operationId: callQueue_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callqueue.yaml#/SaveCallQueueRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callqueue.yaml#/CallQueue
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Call Queues
+    summary: O'chirish
+    description: '**Huquq:** `CALL_QUEUE_EDIT`'
+    operationId: callQueue_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

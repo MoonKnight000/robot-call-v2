@@ -1,0 +1,213 @@
+# Knowledge Base Sources — knowledge-source controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/knowledge-base/sources:
+  post:
+    tags:
+    - Knowledge Base Sources
+    summary: Manba(lar) qo'shish
+    description: |-
+      Registers one or more documents or links, optionally bound to a single agent.
+
+      **Huquq:** `KNOWLEDGE_BASE_EDIT`
+    operationId: knowledgeSource_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/CreateKnowledgeSourceRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/knowledgebase.yaml#/KnowledgeSourceRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  get:
+    tags:
+    - Knowledge Base Sources
+    summary: Ro'yxat
+    description: |-
+      All sources of the company, or only those bound to `agentId` when given.
+
+      **Huquq:** `KNOWLEDGE_BASE_READ`
+    operationId: knowledgeSource_list
+    parameters:
+    - name: agentId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/knowledgebase.yaml#/KnowledgeSourceRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/knowledge-base/sources/{id}:
+  get:
+    tags:
+    - Knowledge Base Sources
+    summary: Bitta manba
+    description: '**Huquq:** `KNOWLEDGE_BASE_READ`'
+    operationId: knowledgeSource_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeSourceRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Knowledge Base Sources
+    summary: Nomini yoki agentini o'zgartirish
+    description: '**Huquq:** `KNOWLEDGE_BASE_EDIT`'
+    operationId: knowledgeSource_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/UpdateKnowledgeSourceRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeSourceRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Knowledge Base Sources
+    summary: O'chirish
+    description: '**Huquq:** `KNOWLEDGE_BASE_EDIT`'
+    operationId: knowledgeSource_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/knowledge-base/sources/{id}/retry:
+  post:
+    tags:
+    - Knowledge Base Sources
+    summary: Manbani qayta indekslash
+    description: |-
+      Puts a failed source back in the queue and clears the error it carried.
+
+      **Huquq:** `KNOWLEDGE_BASE_EDIT`
+    operationId: knowledgeSource_retry
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeSourceRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

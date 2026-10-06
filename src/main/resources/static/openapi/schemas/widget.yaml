@@ -1,0 +1,190 @@
+# `widget` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CreateWidgetRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 100
+    enabled:
+      type: boolean
+    allowedOrigins:
+      type: array
+      items:
+        type: string
+      description: 'the sites this widget''s key works on, as browsers send them (`https://example.uz`, no trailing slash). Required: the key is public, so a widget with nothing to tie it to a site would take calls from anywhere. `"*"` is the explicit way to say that is wanted.'
+      minItems: 1
+    theme:
+      $ref: '#/WidgetTheme'
+    consentRequired:
+      type: boolean
+    consentText:
+      type: string
+      maxLength: 500
+  required:
+  - name
+  - allowedOrigins
+PublicWidgetConfigResponse:
+  type: object
+  properties:
+    widgetKey:
+      type: string
+    name:
+      type: string
+    agentName:
+      type: string
+    theme:
+      $ref: '#/WidgetTheme'
+    consentRequired:
+      type: boolean
+    consentText:
+      type: string
+  required:
+  - consentRequired
+PublicWidgetSessionResponse:
+  type: object
+  description: |-
+    Everything the embed script needs to put a visitor through to the agent: connect a SIP-over-WebSocket client to `wsUrl` as `sipUser`/`sipPassword` and INVITE `dialNumber` carrying the header `sessionHeader: sessionId`.
+
+    The same shape the operator console uses for a browser test call — from Asterisk's side a visitor and a tester arrive identically — and the credentials are the shared WebRTC account, not anything belonging to the visitor. The session id is what actually authorises the call, it is single-use, and it expires in five minutes.
+
+    Handing those credentials to an anonymous visitor is safe only because they are not a capability on their own: the `webtest` endpoint sits in Asterisk's `[from-webrtc]` context, whose single extension hangs up any call that does not carry a session id this application issued. Getting one costs an allowed origin and a slot from the agent's call limits. If that endpoint is ever pointed at a context that can dial a trunk, this response becomes toll fraud — see `pjsip.conf`.
+  properties:
+    sessionId:
+      type: string
+    wsUrl:
+      type: string
+    sipUser:
+      type: string
+    sipPassword:
+      type: string
+    dialNumber:
+      type: string
+    sessionHeader:
+      type: string
+UpdateWidgetRequest:
+  type: object
+  description: Every field is optional; a `null` leaves that setting as it was.
+  properties:
+    name:
+      type: string
+      maxLength: 100
+    enabled:
+      type: boolean
+    allowedOrigins:
+      type: array
+      items:
+        type: string
+      description: may be omitted, but not emptied — a widget that already takes calls cannot be left with nothing tying its public key to a site.
+      minItems: 1
+    theme:
+      $ref: '#/WidgetTheme'
+    consentRequired:
+      type: boolean
+    consentText:
+      type: string
+      maxLength: 500
+WidgetRow:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    widgetKey:
+      type: string
+    companyId:
+      type: integer
+      format: int64
+    agentId:
+      type: integer
+      format: int64
+    agentName:
+      type: string
+    name:
+      type: string
+    enabled:
+      type: boolean
+    allowedOrigins:
+      type: array
+      items:
+        type: string
+    theme:
+      $ref: '#/WidgetTheme'
+    consentRequired:
+      type: boolean
+    consentText:
+      type: string
+    embedSnippet:
+      type: string
+    scriptUrl:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - agentId
+  - enabled
+  - consentRequired
+WidgetTheme:
+  type: object
+  description: Visual and behavioral styling of the website voice widget.
+  properties:
+    primaryColor:
+      type: string
+    accentColor:
+      type: string
+    surfaceColor:
+      type: string
+    textColor:
+      type: string
+    mutedTextColor:
+      type: string
+    buttonTextColor:
+      type: string
+    borderColor:
+      type: string
+    position:
+      type: string
+    launcherSize:
+      type: string
+    panelWidth:
+      type: integer
+      format: int32
+    borderRadius:
+      type: integer
+      format: int32
+    defaultOpen:
+      type: boolean
+    showAvatar:
+      type: boolean
+    avatarImageUrl:
+      type: string
+    avatarOrbColor1:
+      type: string
+    avatarOrbColor2:
+      type: string
+    brandName:
+      type: string
+    actionText:
+      type: string
+    welcomeText:
+      type: string
+    startButtonText:
+      type: string
+    endButtonText:
+      type: string
+    connectingText:
+      type: string
+    listeningText:
+      type: string
+    speakingText:
+      type: string
+    endedText:
+      type: string
+    whiteLabel:
+      type: boolean

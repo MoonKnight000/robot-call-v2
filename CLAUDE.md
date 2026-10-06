@@ -6,7 +6,7 @@ va natijani CRM ga yozadi.
 **Stack:** Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Asterisk 20 (ari4java) ·
 PostgreSQL + Flyway · RabbitMQ · Redis · MinIO · Netty (RTP) · ONNX Runtime (VAD, turn)
 **Base paket:** `uz.murodjon.robotcallv2` · bitta Gradle moduli
-Joriy holat: `docs/STATUS.md` · audit: `docs/AUDIT-2026-09-13.md` · bosqichlar tarixi: `docs/claude/CLAUDE.md`
+Bosqichlar tarixi: `docs/claude/CLAUDE.md`
 
 ---
 

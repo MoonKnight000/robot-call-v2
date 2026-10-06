@@ -2,6 +2,7 @@ import com.google.protobuf.gradle.id
 
 plugins {
     java
+    jacoco
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.google.protobuf") version "0.10.0"
@@ -141,6 +142,51 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// Tests that need Docker (Testcontainers) or a full Spring context. CI runs everything
+// else as `unitTest`; these stay with the plain `test` task, run by hand.
+val integrationTests = listOf(
+    "uz/murodjon/robotcallv2/RobotCallV2ApplicationTests.class",
+    "uz/murodjon/robotcallv2/company/CompanyIsolationTest.class",
+    "uz/murodjon/robotcallv2/campaign/repository/CampaignTargetRepositoryTest.class",
+)
+
+val unitTest by tasks.registering(Test::class) {
+    description = "Runs the tests that need neither Docker nor a Spring context."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    exclude(integrationTests)
+    finalizedBy("jacocoUnitTestReport")
+}
+
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+// Coverage of the unit suite. Generated gRPC stubs (yandex.*) are not our code.
+tasks.register<JacocoReport>("jacocoUnitTestReport") {
+    description = "Coverage report for the unitTest task."
+    group = "verification"
+    executionData(unitTest.get())
+    sourceSets(sourceSets.main.get())
+    classDirectories.setFrom(sourceSets.main.get().output.asFileTree.matching {
+        include("uz/murodjon/**")
+    })
+    reports {
+        html.required = true
+        xml.required = true
+    }
+}
+
+// Offline turn-boundary replay over recorded calls (TurnReplayTool), used by CI's
+// turn-replay job: ./gradlew turnReplay --args="corpus --vad-model=... --manifest=..."
+tasks.register<JavaExec>("turnReplay") {
+    description = "Replays recordings through VAD + turn detection and reports the turns."
+    group = "verification"
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass = "uz.murodjon.robotcallv2.agent.turn.TurnReplayTool"
 }
 
 // Generates Java + gRPC stubs from the .proto files vendored under src/main/proto

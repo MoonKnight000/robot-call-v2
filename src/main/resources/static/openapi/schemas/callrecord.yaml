@@ -1,0 +1,273 @@
+# `callrecord` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CallEvent:
+  type: object
+  description: One step on a call's timeline (call_event).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    callAttemptId:
+      type: integer
+      format: int64
+    at:
+      type: string
+      format: date-time
+    type:
+      $ref: '#/CallEventType'
+    payload:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+  required:
+  - id
+  - companyId
+  - callAttemptId
+CallEventType:
+  type: string
+  enum:
+  - REJECTED
+  - FLOW_ENTERED
+  - NODE_ENTERED
+  - DTMF
+  - LANGUAGE_SET
+  - ENQUEUED
+  - POSITION_ANNOUNCED
+  - OPERATOR_RINGING
+  - OPERATOR_MISSED
+  - OPERATOR_ANSWERED
+  - WHISPER
+  - HOLD
+  - UNHOLD
+  - TRANSFER
+  - ABANDONED
+  - OVERFLOW
+  - VOICEMAIL
+  - CALLBACK_REQUESTED
+  - SURVEY_SCORE
+  - MONITOR
+  description: |-
+    One step on a call's timeline (call_event.type, docs/INBOUND-PBX-PLAN.md §11.1).
+
+    - `REJECTED` — A caller rule refused the call; payload: action, prefix.
+
+    - `FLOW_ENTERED` — The call started a flow; payload: flowId.
+
+    - `NODE_ENTERED` — payload: node, type.
+
+    - `DTMF` — payload: key, and extension when the caller dialled one.
+
+    - `LANGUAGE_SET` — payload: language.
+
+    - `ENQUEUED` — payload: queueId, position.
+
+    - `POSITION_ANNOUNCED` — payload: position, waitMinutes.
+
+    - `OPERATOR_RINGING` — payload: userId (or number), channelId.
+
+    - `OPERATOR_MISSED` — The operator let it ring out or rejected it; payload: userId, cause.
+
+    - `OPERATOR_ANSWERED` — payload: userId, waitSeconds.
+
+    - `WHISPER` — The operator heard the handover summary; payload: userId, seconds.
+
+    - `HOLD`
+
+    - `UNHOLD`
+
+    - `TRANSFER` — payload: from (operator userId), to ("queue 5", "user 17" or the number), mode (BLIND, CONSULT, ATTENDED).
+
+    - `ABANDONED` — The caller hung up while waiting; payload: queueId, waitSeconds.
+
+    - `OVERFLOW` — payload: queueId, action.
+
+    - `VOICEMAIL` — payload: boxId, seconds.
+
+    - `CALLBACK_REQUESTED`
+
+    - `SURVEY_SCORE` — payload: score.
+
+    - `MONITOR` — A supervisor joined; payload: userId, mode.
+CallOriginateResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    status:
+      type: string
+ClickToCallRequest:
+  type: object
+  description: Body of POST /api/calls/click-to-call — the number the operator wants to ring.
+  properties:
+    phone:
+      type: string
+      minLength: 1
+      pattern: ^\+?[1-9]\d{8,14}$
+  required:
+  - phone
+ClickToCallResponse:
+  type: object
+  description: The operator's own phone is ringing; when they answer, `phone` is dialled.
+  properties:
+    operatorChannelId:
+      type: string
+      description: the channel ringing the operator
+    phone:
+      type: string
+HangupResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    status:
+      type: string
+LiveCallRow:
+  type: object
+  description: One row of GET /api/calls/live (§10.2/§10.3 UI-DESIGN.md "Jonli qo'ng'iroqlar").
+  properties:
+    channelId:
+      type: string
+    phone:
+      type: string
+    clientName:
+      type: string
+    campaignId:
+      type: integer
+      format: int64
+    campaignName:
+      type: string
+    language:
+      type: string
+    startedAt:
+      type: string
+      format: date-time
+    dialogState:
+      type: string
+    trunk:
+      type: string
+MonitorCallRequest:
+  type: object
+  description: Body of POST /api/calls/{channelId}/monitor.
+  properties:
+    mode:
+      $ref: '#/MonitorMode'
+  required:
+  - mode
+MonitorCallResponse:
+  type: object
+  description: The supervisor's phone is ringing; once answered they are on the call in `mode`.
+  properties:
+    channelId:
+      type: string
+    supervisorChannelId:
+      type: string
+      description: the channel ringing the supervisor
+    mode:
+      $ref: '#/MonitorMode'
+MonitorMode:
+  type: string
+  enum:
+  - LISTEN
+  - WHISPER
+  - BARGE
+  description: |-
+    How a supervisor joins someone else's live call.
+
+    - `LISTEN` — Hear both sides; nobody hears the supervisor.
+
+    - `WHISPER` — Hear both sides; only the operator hears the supervisor (coaching).
+
+    - `BARGE` — Join the conversation; everyone hears everyone.
+PlayResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    file:
+      type: string
+    playbackId:
+      type: string
+SayResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    text:
+      type: string
+    language:
+      type: string
+    playbackId:
+      type: string
+TransferCallRequest:
+  type: object
+  description: Optional body of POST /api/calls/{channelId}/transfer and of .../consult. Without a body a transfer goes where the agent's settings say (its queue, or the configured operator).
+  properties:
+    type:
+      $ref: '#/TransferTargetType'
+    targetId:
+      type: integer
+      format: int64
+      description: the queue or user id; null for EXTERNAL
+    number:
+      type: string
+      description: the phone number for EXTERNAL
+TransferResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    status:
+      type: string
+TransferTargetType:
+  type: string
+  enum:
+  - QUEUE
+  - USER
+  - EXTERNAL
+  description: |-
+    Where an operator hands a call on to.
+
+    - `QUEUE` — Another operator queue — the caller waits in line there.
+
+    - `USER` — One colleague, by user id.
+
+    - `EXTERNAL` — A phone number over the trunk.
+WebTestCallRequest:
+  type: object
+  description: What to test from the browser — at most one of `campaignId`, `scenarioId`, `definition`; none means the configured default test scenario.
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    targetId:
+      type: integer
+      format: int64
+      description: optional campaign target whose facts the call uses (needs `campaignId`); without it the `voice-agent.dialog.test-context` facts are used
+    agentVersion:
+      type: integer
+      format: int32
+      description: 'which version of the campaign''s agent to talk to (needs `campaignId`): a published number, or null for the draft — what an editor tests before publishing'
+    scenarioId:
+      type: integer
+      format: int64
+    definition:
+      $ref: scenario.yaml#/ScenarioDefinition
+WebTestCallResponse:
+  type: object
+  description: 'Everything the browser needs to dial in: connect a SIP-over-WebSocket client to `wsUrl` as `sipUser`/`sipPassword` and INVITE `dialNumber` with the header `sessionHeader: sessionId`.'
+  properties:
+    sessionId:
+      type: string
+    wsUrl:
+      type: string
+    sipUser:
+      type: string
+    sipPassword:
+      type: string
+    dialNumber:
+      type: string
+    sessionHeader:
+      type: string

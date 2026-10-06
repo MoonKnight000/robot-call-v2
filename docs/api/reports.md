@@ -557,6 +557,15 @@ Huquq: **DASHBOARD_READ**.
 > bitta so'rov. Bu endpointlarning raqamlari o'zgarmadi — faqat `dynamics` ning `scenarioId`
 > filtri (pastda).
 >
+> **Kompaniya mintaqasi (2026-10-05).** Kunlar, haftalar va soatlar endi kompaniyaning
+> `company_config.timezone` mintaqasi bo'yicha hisoblanadi, UTC bo'yicha emas. Bu `timeseries`,
+> `dynamics`, `dashboard/summary` ning kunlik va haftalik bucket'lariga, `hourly-heatmap` ning
+> `dayOfWeek`/`hour` qiymatlariga, `from`/`to` dagi `YYYY-MM-DD` sanalarga va `7d`/`30d` presetlariga
+> taalluqli. Ilgari Toshkentda "kun" 05:00 da boshlanardi. Shuning uchun `bucketStart` endi
+> mahalliy yarim tunni bildiradi (Toshkent uchun `2026-09-01T00:00:00+05:00` =
+> `"2026-08-31T19:00:00Z"`). **Heatmap** soatlari ham mahalliy: frontend ularga +5 qo'shayotgan
+> bo'lsa, buni olib tashlash kerak.
+>
 > **"Muvaffaqiyatsiz" va "o'rtacha davomiylik" — ikkala oila uchun bitta ta'rif.** KPI/timeseries
 > oilasi (`dashboard/kpi`, `timeseries`, `dynamics`, `campaign-comparison`, `summary` va
 > eksport) hamda `dashboard/summary` oilasi bir xil sanaydi:
@@ -588,7 +597,7 @@ Huquq: **DASHBOARD_READ**. **Response** (`List<DashboardBucket>`):
 
 ```json
 [
-  { "bucketStart": "2026-09-01T00:00:00Z", "total": 180, "answered": 151,
+  { "bucketStart": "2026-08-31T19:00:00Z", "total": 180, "answered": 151,
     "noAnswer": 22, "error": 7, "avgDurationSec": 138.5, "promises": 42 }
 ]
 ```
@@ -665,8 +674,8 @@ Ikkala hisobot bir xil query parametrlarini oladi. Dashboard'dagi `range` preset
 
 | Parametr | Standart | Izoh |
 |---|---|---|
-| `from` | `to` − 7 kun | ISO instant (`2026-09-01T00:00:00Z`) yoki `YYYY-MM-DD` — Toshkent vaqti bilan kun boshi |
-| `to` | hozir | ISO instant yoki `YYYY-MM-DD` — Toshkent vaqti bilan kun oxiri (23:59:59.999…) |
+| `from` | `to` − 7 kun | ISO instant (`2026-09-01T00:00:00Z`) yoki `YYYY-MM-DD` — kompaniya mintaqasi (`company_config.timezone`) bo'yicha kun boshi |
+| `to` | hozir | ISO instant yoki `YYYY-MM-DD` — kompaniya mintaqasi bo'yicha kun oxiri (23:59:59.999…) |
 
 Oraliq yarim ochiq: `from ≤ t < to`. **Xatolar:** `400 DATE_RANGE_INVALID` (`from` `to` dan keyin
 yoki teng), `400 DATE_RANGE_TOO_LONG` (366 kundan uzun), `400 INSTANT_PARSE_FAILED`.

@@ -1,0 +1,1095 @@
+# `report` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+BulkCallActionRequest:
+  type: object
+  description: '`POST /api/reports/calls/bulk` (§10.4 "Ommaviy amal paneli").'
+  properties:
+    action:
+      type: string
+      description: '`retry` (re-queue each call''s target for another attempt) or `dnc` (opt each call''s phone number out); CSV export of a selection is handled by `POST /api/reports/calls/export` with `CallFilter#ids()` instead — that returns a file, which does not fit this endpoint''s `ResponseData` envelope'
+      minLength: 1
+    ids:
+      type: array
+      items:
+        type: integer
+        format: int64
+      description: '`call_attempt` ids to act on'
+      minItems: 1
+  required:
+  - action
+  - ids
+BulkCallActionResult:
+  type: object
+  description: Outcome of `POST /api/reports/calls/bulk` — a bad id (wrong company, or no matching target/phone) is reported here rather than failing the whole request, matching the CSV-import convention elsewhere in the codebase.
+  properties:
+    processed:
+      type: integer
+      format: int32
+      description: how many ids the action was applied to
+    failed:
+      type: array
+      items:
+        type: integer
+        format: int64
+      description: ids that could not be acted on
+  required:
+  - processed
+CallDetail:
+  type: object
+  description: '`GET /api/reports/calls/{callId`}: the call''s line, its transcript, what the summary made of it, and the technical tab. The fields are those of `CallReport`.'
+  properties:
+    call:
+      $ref: '#/CallRow'
+    transcript:
+      type: array
+      items:
+        $ref: '#/TranscriptLine'
+    reasonCode:
+      $ref: ../common.yaml#/schemas/ReasonCode
+    sentiment:
+      $ref: ../common.yaml#/schemas/Sentiment
+    needsFollowUp:
+      type: boolean
+    followUpNote:
+      type: string
+    escalated:
+      type: boolean
+    errorMessage:
+      type: string
+    technical:
+      $ref: '#/CallTechnicalMetrics'
+  required:
+  - needsFollowUp
+  - escalated
+CallFilter:
+  type: object
+  description: Pagination + sort + filter for the call report list (`POST /api/reports/calls/list`...). `page`/`size` may be omitted (defaulted by `FilterInterface`), but a value that is present and out of range is rejected rather than silently clamped.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        CALL_ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        STARTED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        ENDED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        DURATION_SEC:
+          $ref: ../common.yaml#/schemas/SortDirection
+        DISPOSITION:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    q:
+      type: string
+      description: free-text match against the dialled phone number
+    campaignId:
+      type: integer
+      format: int64
+      description: restrict to one campaign
+    disposition:
+      allOf:
+      - $ref: ../common.yaml#/schemas/Disposition
+      description: restrict to one final outcome
+    dateFrom:
+      type: string
+      format: date-time
+      description: only calls started at or after this instant
+    dateTo:
+      type: string
+      format: date-time
+      description: only calls started before this instant
+    durationMinSec:
+      type: integer
+      format: int32
+      description: only calls at least this long
+    durationMaxSec:
+      type: integer
+      format: int32
+      description: only calls at most this long
+    ids:
+      type: array
+      items:
+        type: integer
+        format: int64
+      description: when present, `POST /api/reports/calls/export` returns exactly these calls and every other filter field is ignored — this is how a user-selected subset of rows gets exported instead of the whole filter
+    afterId:
+      type: integer
+      format: int64
+      description: 'keyset cursor for the call list: when set, the page holds the calls with an id below it, newest first — `page` is ignored, an `orders` other than the default is refused, and no total is counted. Pass the last `callId` of the previous page. Ignored by the export.'
+      minimum: 1
+CallRow:
+  type: object
+  description: One line of the call list (`POST /api/reports/calls/list`) and of its CSV export. The fields are those of `ReportedCall`; see docs/api/reports.md for their meaning.
+  properties:
+    callId:
+      type: integer
+      format: int64
+    targetId:
+      type: integer
+      format: int64
+    phone:
+      type: string
+    language:
+      type: string
+    startedAt:
+      type: string
+      format: date-time
+    endedAt:
+      type: string
+      format: date-time
+    durationSec:
+      type: integer
+      format: int32
+    disposition:
+      $ref: ../common.yaml#/schemas/Disposition
+    hangupCause:
+      type: string
+    hasRecording:
+      type: boolean
+    summary:
+      type: string
+    promisedDate:
+      type: string
+      format: date
+      description: 'Format: `dd.MM.yyyy` Format: `dd.MM.yyyy`'
+    promisedAmount:
+      type: number
+    crmNoteId:
+      type: integer
+      format: int64
+    clientName:
+      type: string
+    campaignName:
+      type: string
+    operatorName:
+      type: string
+  required:
+  - callId
+  - targetId
+  - hasRecording
+CallRowPage:
+  type: object
+  description: '`CallRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/CallRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CallTechnicalMetrics:
+  type: object
+  description: '"Texnik" tab (§10.5): channel/trunk, AMD result, STT/TTS/LLM identity, token usage, turn-latency stats and inbound audio quality for one call. `null` on `CallReport#technical()` for calls that predate this table.'
+  properties:
+    channelName:
+      type: string
+      description: the caller's Asterisk channel name
+    trunk:
+      type: string
+      description: PJSIP endpoint dialled
+    amdResult:
+      type: string
+      description: '`MACHINE`/`HUMAN`, or null if AMD was disabled'
+    sttProvider:
+      type: string
+      description: speech-to-text provider used
+    ttsProvider:
+      type: string
+      description: text-to-speech provider used
+    ttsVoice:
+      type: string
+      description: provider-side voice name used
+    llmModel:
+      type: string
+      description: LLM model used
+    promptTokens:
+      type: integer
+      format: int32
+      description: prompt tokens spent, summed across the call
+    completionTokens:
+      type: integer
+      format: int32
+      description: completion tokens spent (includes Gemini's thinking tokens)
+    cachedTokens:
+      type: integer
+      format: int32
+      description: of `promptTokens`, how many were billed at the cached rate
+    turnCount:
+      type: integer
+      format: int32
+      description: number of LLM turns
+    avgTurnLatencyMs:
+      type: integer
+      format: int32
+      description: average client-stopped-talking -> first-audio-queued latency
+    maxTurnLatencyMs:
+      type: integer
+      format: int32
+      description: the slowest turn
+    avgLlmLatencyMs:
+      type: integer
+      format: int32
+      description: average LLM-only wall time per turn
+    maxLlmLatencyMs:
+      type: integer
+      format: int32
+      description: the slowest one
+    rtpPacketsReceived:
+      type: integer
+      format: int32
+      description: inbound RTP packets that arrived; null for calls before V11
+    rtpPacketsLost:
+      type: integer
+      format: int32
+      description: inbound RTP packets that never did
+    rtpJitterMs:
+      type: integer
+      format: int32
+      description: smoothed inbound jitter
+    rtpMos:
+      type: number
+      format: double
+      description: estimated MOS of what the caller's side sent us (1.0–4.4), null when nothing arrived
+CampaignComparisonRow:
+  type: object
+  description: One line of `GET /api/reports/campaign-comparison`.
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    campaignName:
+      type: string
+    totalCalls:
+      type: integer
+      format: int64
+    answeredCalls:
+      type: integer
+      format: int64
+    answerRate:
+      type: number
+      format: double
+    avgDurationSec:
+      type: number
+      format: double
+    promises:
+      type: integer
+      format: int64
+  required:
+  - campaignId
+  - totalCalls
+  - answeredCalls
+  - answerRate
+  - promises
+CampaignStats:
+  type: object
+  description: |-
+    What a campaign has actually achieved (PROJECT.md §10 Bosqich 12).
+
+    The Micrometer metrics answer "is the system healthy"; this answers "is the campaign working", which is a different question and the one the operator running it asks. Before this, the only way to see a campaign's outcome was to read the logs or query Postgres by hand.
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+      description: the campaign
+    name:
+      type: string
+      description: its name, so a report is readable on its own
+    status:
+      allOf:
+      - $ref: campaign.yaml#/CampaignStatus
+      description: the campaign's lifecycle status
+    targetsByStatus:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64
+      description: how many targets sit in each lifecycle status
+    dispositions:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64
+      description: finished attempts by disposition — the §10 "disposition taqsimoti"
+    answeredCalls:
+      type: integer
+      format: int64
+      description: finished attempts (kept under its historical name for the panel)
+    promiseRate:
+      type: number
+      format: double
+      description: share of finished attempts that ended in PROMISE_TO_PAY (0..1), the number the campaign is judged on
+    avgDurationSec:
+      type: number
+      format: double
+      description: mean length of a finished call, or null with nothing to average
+    escalatedCalls:
+      type: integer
+      format: int64
+      description: calls handed to a human operator (§11.6)
+    connectedCalls:
+      type: integer
+      format: int64
+      description: attempts somebody picked up (`answered_at` set)
+    asr:
+      type: number
+      format: double
+      description: 'answer-seizure ratio: connected / finished attempts (0..1) — a telephony figure; low with a healthy list means the trunk or the caller ID, not the script'
+    contactRate:
+      type: number
+      format: double
+      description: share of the targets attempted so far that were reached at least once (0..1) — what the list itself is worth
+    connectedByAttemptNo:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64
+      description: how many targets were first reached on their 1st, 2nd, 3rd… attempt — whether the third try still pays for itself
+    spentUzs:
+      type: integer
+      format: int64
+      description: what the campaign's settled calls were charged in total
+    costPerConnectedUzs:
+      type: integer
+      format: int64
+      description: spend per connected call, or null with none connected
+    costPerConversionUzs:
+      type: integer
+      format: int64
+      description: spend per PROMISE_TO_PAY / GOAL_REACHED / COMPLETED, or null with none
+  required:
+  - campaignId
+  - answeredCalls
+  - promiseRate
+  - escalatedCalls
+  - connectedCalls
+  - asr
+  - contactRate
+  - spentUzs
+CreateReportScheduleRequest:
+  type: object
+  properties:
+    email:
+      type: string
+      description: where to send the report (`POST /api/reports/schedule`, §10.10)
+      minLength: 1
+      format: email
+    periodicity:
+      allOf:
+      - $ref: '#/ReportPeriodicity'
+      description: how often — also the window the attached report covers
+    format:
+      type: string
+      description: '`csv`, `pdf`, or `xlsx`; omit for `pdf`'
+    campaignId:
+      type: integer
+      format: int64
+      description: narrows the report to one campaign; omit for every campaign
+  required:
+  - email
+  - periodicity
+DashboardBucket:
+  type: object
+  description: 'One time bucket of `DashboardRange#granularity()` size, aggregated from `call_attempt`. Shared by two screens (§10.2 UI-DESIGN.md): the KPI cards read it as four per-metric sparklines, and the "Qo''ng''iroqlar dinamikasi" chart reads `answered`/`noAnswer`/`error` as its three stacked-area series — one query, two shapes, rather than near-duplicate SQL for each.'
+  properties:
+    bucketStart:
+      type: string
+      format: date-time
+    total:
+      type: integer
+      format: int64
+    answered:
+      type: integer
+      format: int64
+      description: connected calls (had a measured duration)
+    noAnswer:
+      type: integer
+      format: int64
+      description: attempts that ended `NO_ANSWER`
+    error:
+      type: integer
+      format: int64
+      description: attempts that ended `FAILED` or `CARRIER_REJECTED`
+    avgDurationSec:
+      type: number
+      format: double
+      description: average length of the bucket's answered calls; null when none was answered
+    promises:
+      type: integer
+      format: int64
+  required:
+  - total
+  - answered
+  - noAnswer
+  - error
+  - promises
+DashboardCampaignItem:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    progress:
+      type: integer
+      format: int32
+    done:
+      type: integer
+      format: int64
+    total:
+      type: integer
+      format: int64
+  required:
+  - id
+  - progress
+  - done
+  - total
+DashboardKpi:
+  type: object
+  description: The four KPI cards on the dashboard (§10.2 UI-DESIGN.md).
+  properties:
+    totalCalls:
+      $ref: '#/DashboardMetric'
+    answeredRate:
+      $ref: '#/DashboardMetric'
+    avgDurationSec:
+      $ref: '#/DashboardMetric'
+    promises:
+      $ref: '#/DashboardMetric'
+DashboardKpiCard:
+  type: object
+  properties:
+    id:
+      type: string
+    label:
+      type: string
+    value:
+      type: string
+    rawValue:
+      type: number
+    unit:
+      type: string
+    delta:
+      type: string
+    deltaPct:
+      type: number
+      format: double
+    up:
+      type: boolean
+    isBad:
+      type: boolean
+    sparkline:
+      type: array
+      items:
+        type: number
+    hint:
+      type: string
+    targetLink:
+      type: string
+  required:
+  - up
+DashboardLiveItem:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    campaign:
+      type: string
+    timer:
+      type: string
+    startedAt:
+      type: string
+    line:
+      type: string
+DashboardMetric:
+  type: object
+  description: 'One KPI card''s value (§10.2 UI-DESIGN.md): the number itself, its change against the previous equal-length period, and the per-bucket trend behind the sparkline.'
+  properties:
+    value:
+      type: number
+      format: double
+    changePct:
+      type: number
+      format: double
+      description: percent change vs. the previous period, or null when the previous period was zero and the change is therefore undefined
+    sparkline:
+      type: array
+      items:
+        type: number
+        format: double
+  required:
+  - value
+DashboardOutcome:
+  type: object
+  description: One slice of the "Natijalar taqsimoti" distribution (§10.2 UI-DESIGN.md).
+  properties:
+    disposition:
+      type: string
+    count:
+      type: integer
+      format: int64
+  required:
+  - count
+DashboardRecentCallItem:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    phone:
+      type: string
+    campaign:
+      type: string
+    agentName:
+      type: string
+    direction:
+      type: string
+    code:
+      type: string
+    dispositionLabel:
+      type: string
+    duration:
+      type: string
+    durationSec:
+      type: integer
+      format: int32
+    time:
+      type: string
+    date:
+      type: string
+    hasRecording:
+      type: boolean
+  required:
+  - durationSec
+  - hasRecording
+DashboardSummaryResponse:
+  type: object
+  properties:
+    range:
+      type: string
+    from:
+      type: string
+    to:
+      type: string
+    updatedAt:
+      type: string
+    kpis:
+      type: array
+      items:
+        $ref: '#/DashboardKpiCard'
+    timeline:
+      $ref: '#/DashboardTimeline'
+    statusBreakdown:
+      type: array
+      items:
+        $ref: '#/StatusBreakdownItem'
+    directionMix:
+      $ref: '#/DirectionMix'
+    topAgents:
+      type: array
+      items:
+        $ref: '#/TopAgentItem'
+    campaigns:
+      type: array
+      items:
+        $ref: '#/DashboardCampaignItem'
+    live:
+      type: array
+      items:
+        $ref: '#/DashboardLiveItem'
+    recentCalls:
+      type: array
+      items:
+        $ref: '#/DashboardRecentCallItem'
+DashboardTimeline:
+  type: object
+  properties:
+    unit:
+      type: string
+    peakCalls:
+      type: integer
+      format: int64
+    peakLabel:
+      type: string
+    totalCalls:
+      type: integer
+      format: int64
+    totalMinutes:
+      type: integer
+      format: int64
+    points:
+      type: array
+      items:
+        $ref: '#/TimelinePoint'
+  required:
+  - peakCalls
+  - totalCalls
+  - totalMinutes
+DirectionMix:
+  type: object
+  properties:
+    outbound:
+      $ref: '#/DirectionStats'
+    inbound:
+      $ref: '#/DirectionStats'
+DirectionStats:
+  type: object
+  properties:
+    count:
+      type: integer
+      format: int64
+    pct:
+      type: integer
+      format: int32
+    minutes:
+      type: integer
+      format: int64
+    avgDurationSec:
+      type: integer
+      format: int32
+    successRatePct:
+      type: number
+      format: double
+  required:
+  - count
+  - pct
+  - minutes
+  - avgDurationSec
+  - successRatePct
+DurationHistogramBucket:
+  type: object
+  description: One duration range of the "Suhbat davomiyligi taqsimoti" histogram (§10.10 Grafik 5), over calls that connected (`duration_sec` not null). `rangeEndSec` is `null` for the open-ended last bucket (`600+`).
+  properties:
+    rangeLabel:
+      type: string
+    rangeStartSec:
+      type: integer
+      format: int32
+    rangeEndSec:
+      type: integer
+      format: int32
+    count:
+      type: integer
+      format: int64
+  required:
+  - rangeStartSec
+  - count
+FunnelStage:
+  type: object
+  description: One stage of the "Qo'ng'iroq → Javob → Shaxs tasdiqlandi → Suhbat → Natija" funnel (§10.10 Grafik 6).
+  properties:
+    stage:
+      type: string
+      description: 'constant id, in funnel order: `CALL`, `ANSWERED`, `PERSON_CONFIRMED`, `CONVERSATION`, `RESULT`'
+    count:
+      type: integer
+      format: int64
+      description: calls that reached this stage
+    rate:
+      type: number
+      format: double
+      description: '`count` / the funnel''s total calls (0..1) — conversion from the very top, not from the previous stage, so the chart reads as "what share of everything dialled got this far"'
+  required:
+  - count
+  - rate
+HourlyHeatmapCell:
+  type: object
+  description: |-
+    One day×hour cell of the "Kun × soat javob foizi" heatmap (§10.10 Grafik 3).
+
+    Both the day and the hour are on the company's clock (`company_config.timezone`), like the day buckets elsewhere in this package.
+  properties:
+    dayOfWeek:
+      type: integer
+      format: int32
+      description: 'Postgres `extract(dow)`: `0` = Sunday .. `6` = Saturday'
+    hour:
+      type: integer
+      format: int32
+      description: 0..23
+    total:
+      type: integer
+      format: int64
+    answered:
+      type: integer
+      format: int64
+    answerRate:
+      type: number
+      format: double
+  required:
+  - dayOfWeek
+  - hour
+  - total
+  - answered
+  - answerRate
+InboundRouteStats:
+  type: object
+  description: '"Shu raqamga tushgan qo''ng''iroqlar statistikasi" (§10.9 drawer) — everything a call matched to one `inbound_route` has actually done, mirroring {@link CampaignStats}'' shape for the same question asked of an inbound number instead of a campaign.'
+  properties:
+    inboundRouteId:
+      type: integer
+      format: int64
+      description: the route
+    didNumber:
+      type: string
+      description: its dialled number, so a report is readable on its own
+    totalCalls:
+      type: integer
+      format: int64
+      description: every call this route has ever matched
+    answeredCalls:
+      type: integer
+      format: int64
+      description: attempts that reached a conversation (measured duration)
+    answerRate:
+      type: number
+      format: double
+      description: answeredCalls / totalCalls (0..1), 0 with no calls yet
+    avgDurationSec:
+      type: number
+      format: double
+      description: mean length of an answered call, or null with nothing to average
+    lastCallAt:
+      type: string
+      format: date-time
+      description: when this route was last dialled into, or null if never
+    dispositions:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64
+      description: finished attempts by disposition
+    statsAvailableFrom:
+      type: string
+      format: date-time
+      description: the earliest `call_attempt.started_at` in this company with a non-null `inbound_route_id` — i.e. when inbound-route attribution started being recorded at all (backend-uchun-talablar.md §8). `null` means no inbound call has ever been attributed to a route yet. Calls before this timestamp are invisible to every `inbound_route`'s stats, not just this one — the frontend should treat totals as "since `statsAvailableFrom`", not "all-time", when this is non-null and recent
+  required:
+  - inboundRouteId
+  - totalCalls
+  - answeredCalls
+  - answerRate
+OperatorReportRow:
+  type: object
+  description: One line of `GET /api/reports/operators`; the fields are those of `OperatorPerformance`.
+  properties:
+    userId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    answered:
+      type: integer
+      format: int64
+    missed:
+      type: integer
+      format: int64
+    averageTalkSeconds:
+      type: number
+      format: double
+    totalTalkSeconds:
+      type: integer
+      format: int64
+    averageSurveyScore:
+      type: number
+      format: double
+    availableSeconds:
+      type: integer
+      format: int64
+    onCallSeconds:
+      type: integer
+      format: int64
+    wrapUpSeconds:
+      type: integer
+      format: int64
+    breakSeconds:
+      type: integer
+      format: int64
+    occupancyPercent:
+      type: number
+      format: double
+  required:
+  - userId
+  - answered
+  - missed
+  - totalTalkSeconds
+  - availableSeconds
+  - onCallSeconds
+  - wrapUpSeconds
+  - breakSeconds
+QueueReportRow:
+  type: object
+  description: One line of `GET /api/reports/queues`; the fields are those of `QueuePerformance`.
+  properties:
+    queueId:
+      type: integer
+      format: int64
+    queueName:
+      type: string
+    offered:
+      type: integer
+      format: int64
+    answered:
+      type: integer
+      format: int64
+    abandoned:
+      type: integer
+      format: int64
+    shortAbandoned:
+      type: integer
+      format: int64
+    answeredWithinSla:
+      type: integer
+      format: int64
+    serviceLevelPercent:
+      type: number
+      format: double
+    abandonRatePercent:
+      type: number
+      format: double
+    averageWaitSeconds:
+      type: number
+      format: double
+    maxWaitSeconds:
+      type: integer
+      format: int32
+    averageTalkSeconds:
+      type: number
+      format: double
+    overflowed:
+      type: integer
+      format: int64
+    callbacksRequested:
+      type: integer
+      format: int64
+    averageSurveyScore:
+      type: number
+      format: double
+  required:
+  - queueId
+  - offered
+  - answered
+  - abandoned
+  - shortAbandoned
+  - answeredWithinSla
+  - overflowed
+  - callbacksRequested
+ReportPeriodicity:
+  type: string
+  enum:
+  - DAILY
+  - WEEKLY
+  - MONTHLY
+  description: How often a `report_schedule` row sends its email (§10.10 "Jadval bo'yicha yuborish"). `#span()` doubles as both "how long to wait before the next send" and "what window the attached report covers" — a weekly email reports on the week that just ended.
+ReportSchedule:
+  type: object
+  description: A row of `GET/POST /api/reports/schedule...` (§10.10 "Jadval bo'yicha yuborish").
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    email:
+      type: string
+      description: where the report is sent
+    periodicity:
+      allOf:
+      - $ref: '#/ReportPeriodicity'
+      description: how often (`ReportPeriodicity#span()` is both the interval and the window the attached report covers)
+    format:
+      type: string
+      description: '`csv`, `pdf`, or `xlsx` ({@link uz.murodjon.robotcallv2.report.application.service.ReportExportService})'
+    campaignId:
+      type: integer
+      format: int64
+      description: narrows the report to one campaign, or null for every campaign
+    enabled:
+      type: boolean
+      description: paused schedules are skipped by the dispatch sweep, never deleted
+    lastSentAt:
+      type: string
+      format: date-time
+      description: when the last email actually went out, or null if never
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - enabled
+ReportScheduleFilter:
+  type: object
+  description: Pagination + sort for `POST /api/reports/schedule/list` (§10.10).
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        EMAIL:
+          $ref: ../common.yaml#/schemas/SortDirection
+        PERIODICITY:
+          $ref: ../common.yaml#/schemas/SortDirection
+        ENABLED:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+ReportSchedulePage:
+  type: object
+  description: '`ReportSchedule` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/ReportSchedule'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+StatusBreakdownItem:
+  type: object
+  properties:
+    code:
+      type: string
+    label:
+      type: string
+    count:
+      type: integer
+      format: int64
+    pct:
+      type: integer
+      format: int32
+    color:
+      type: string
+  required:
+  - count
+  - pct
+TimelinePoint:
+  type: object
+  properties:
+    t:
+      type: string
+    label:
+      type: string
+    calls:
+      type: integer
+      format: int64
+    minutes:
+      type: integer
+      format: int64
+    failed:
+      type: integer
+      format: int64
+    completed:
+      type: integer
+      format: int64
+    successRate:
+      type: number
+      format: double
+  required:
+  - calls
+  - minutes
+  - failed
+  - completed
+  - successRate
+TopAgentItem:
+  type: object
+  properties:
+    id:
+      type: object
+      additionalProperties: true
+    name:
+      type: string
+    role:
+      type: string
+    type:
+      type: string
+    calls:
+      type: integer
+      format: int64
+    minutes:
+      type: integer
+      format: int64
+    successRate:
+      type: number
+      format: double
+    relativePct:
+      type: integer
+      format: int32
+  required:
+  - calls
+  - minutes
+  - successRate
+  - relativePct
+TranscriptLine:
+  type: object
+  description: One utterance of a call transcript.
+  properties:
+    seq:
+      type: integer
+      format: int32
+      description: order within the call
+    role:
+      type: string
+      description: AGENT or CLIENT
+    text:
+      type: string
+      description: what was said
+    dialogState:
+      type: string
+      description: FSM state the agent was in (null for client lines)
+    tsOffsetMs:
+      type: integer
+      format: int32
+      description: milliseconds from the start of the call
+    confidence:
+      type: number
+      format: float
+      description: recognizer confidence for client lines; a low value next to a strange transcript is usually the explanation for a strange turn
+  required:
+  - seq
+  - tsOffsetMs

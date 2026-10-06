@@ -1,0 +1,70 @@
+# Chat History — chat-history controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/chats/list:
+  post:
+    tags:
+    - Chat History
+    summary: Suhbatlar ro'yxati (vidjet va Telegram)
+    description: '**Huquq:** `REPORT_READ`'
+    operationId: chatHistory_list
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/chat.yaml#/ChatFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/chat.yaml#/ChatRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/chats/{id}:
+  get:
+    tags:
+    - Chat History
+    summary: Bitta suhbat (xabarlari bilan)
+    description: |-
+      One conversation with what its tools recorded and the whole transcript.
+
+      **Huquq:** `REPORT_READ`
+    operationId: chatHistory_get
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/chat.yaml#/ChatDetail
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

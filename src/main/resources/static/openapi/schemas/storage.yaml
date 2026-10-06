@@ -1,0 +1,31 @@
+# `storage` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+FileCategory:
+  type: string
+  enum:
+  - IMAGE
+  - AUDIO
+  - DOCUMENT
+  description: '`stored_file.category` — also the MinIO object-key folder under `com-{companyId`/}.'
+FileUploadResponse:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    originalName:
+      type: string
+    url:
+      type: string
+    contentType:
+      type: string
+    sizeBytes:
+      type: integer
+      format: int64
+    category:
+      $ref: '#/FileCategory'
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - sizeBytes

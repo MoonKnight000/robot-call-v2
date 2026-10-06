@@ -1,0 +1,39 @@
+# AI Models Catalog — ai-model controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/ai-models:
+  get:
+    tags:
+    - AI Models Catalog
+    summary: Mavjud modellar
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: aiModel_models
+    parameters:
+    - name: kind
+      in: query
+      required: false
+      schema:
+        $ref: ../schemas/aimodel.yaml#/AiModelKind
+        default: LLM
+    - name: mode
+      in: query
+      required: false
+      schema:
+        $ref: ../common.yaml#/schemas/PipelineMode
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/aimodel.yaml#/AiModel
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized

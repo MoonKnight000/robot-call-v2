@@ -1,0 +1,534 @@
+# `tool` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CreateToolRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 100
+    description:
+      type: string
+      minLength: 1
+      maxLength: 500
+    apiUrl:
+      type: string
+      minLength: 1
+      maxLength: 1000
+    apiMethod:
+      type: string
+    apiHeaders:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    apiBody:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiQueryParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiPathParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    responseTimeoutSecs:
+      type: integer
+      format: int32
+    dynamicVariables:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    disableInterruptions:
+      type: boolean
+    forcePreToolSpeech:
+      type: boolean
+    preToolSpeech:
+      type: string
+    responseMapping:
+      type: object
+      additionalProperties:
+        type: string
+    retryAttempts:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 3
+    maxCallsPerCall:
+      type: integer
+      format: int32
+      minimum: 0
+    bodySchema:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+    effect:
+      $ref: '#/ToolEffect'
+    requiresConfirmation:
+      type: boolean
+    readbackTemplate:
+      type: string
+      maxLength: 500
+    auth:
+      $ref: '#/ToolAuth'
+  required:
+  - name
+  - description
+  - apiUrl
+ImportToolsRequest:
+  type: object
+  description: An OpenAPI 3 document to import tools from (UNIVERSAL-OPERATOR-PLAN B.2) — by address or as text, exactly one of the two.
+  properties:
+    openApiUrl:
+      type: string
+      maxLength: 2048
+    openApiSpec:
+      type: string
+      maxLength: 5000000
+    operationIds:
+      type: array
+      items:
+        type: string
+      description: which operations become tools; ignored when only listing them
+      maxItems: 100
+    baseUrl:
+      type: string
+      description: where the tools send their requests, instead of the document's server
+      maxLength: 500
+    secretPrefix:
+      type: string
+      description: the start of the secret keys the tools read (`SHOP` → `SHOP_TOKEN`); null derives it from the document's title
+      maxLength: 30
+      pattern: ^[A-Za-z0-9_]*$
+ImportToolsResponse:
+  type: object
+  properties:
+    tools:
+      type: array
+      items:
+        $ref: '#/ToolRow'
+    secretKeys:
+      type: array
+      items:
+        type: string
+      description: every secret the new tools read — set them in `/api/secrets` before the tools are tried; the import creates none
+OpenApiOperationRow:
+  type: object
+  description: One operation of a document, to choose whether to import it (`POST /api/tools/import/operations`).
+  properties:
+    operationId:
+      type: string
+    method:
+      type: string
+    path:
+      type: string
+    summary:
+      type: string
+    toolName:
+      type: string
+      description: the name the tool would get; null when it cannot be one
+    importable:
+      type: boolean
+      description: false when the operation cannot become a tool — `unsupportedReason` says why
+    unsupportedReason:
+      type: string
+    secretKeys:
+      type: array
+      items:
+        type: string
+      description: the secrets the tool would read
+  required:
+  - importable
+TestToolRequest:
+  type: object
+  description: A dry run of a tool from the panel's "Test" button (`POST /api/tools/{id`/test}).
+  properties:
+    args:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: 'what the model would pass: one entry per `LLM Prompt` parameter'
+    variables:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: the call variables a `Dynamic Variable` parameter reads, the way a real call would have them (`phone`, `clientName`, ...)
+Tool:
+  type: object
+  description: A company's REST endpoint the agent may call during a conversation.
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    description:
+      type: string
+    apiUrl:
+      type: string
+    apiMethod:
+      type: string
+    apiHeaders:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    apiBody:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiQueryParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiPathParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    responseTimeoutSecs:
+      type: integer
+      format: int32
+    dynamicVariables:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    disableInterruptions:
+      type: boolean
+    forcePreToolSpeech:
+      type: boolean
+    preToolSpeech:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+    responseMapping:
+      type: object
+      additionalProperties:
+        type: string
+    retryAttempts:
+      type: integer
+      format: int32
+    maxCallsPerCall:
+      type: integer
+      format: int32
+    bodySchema:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: 'a JSON Schema for a body with nested objects and arrays (UNIVERSAL-OPERATOR-PLAN B.1); empty when the flat `apiBody` list describes it. A field carrying {@value #BODY_SOURCE_KEY} is filled from the configuration, the call or a secret, not by the model'
+    effect:
+      allOf:
+      - $ref: '#/ToolEffect'
+      description: what calling it does (B.3); unset, a GET reads and anything else writes
+    requiresConfirmation:
+      type: boolean
+      description: whether a call is read back to the caller and sent only after their yes; unset, on for a `WRITE` tool
+    readbackTemplate:
+      type: string
+      description: the sentence that reads a call back, `{{name`}} per argument; null leaves the wording to the model
+    auth:
+      allOf:
+      - $ref: '#/ToolAuth'
+      description: the tool's own OAuth client (B.5); null when its headers and address carry the authentication
+  required:
+  - disableInterruptions
+  - forcePreToolSpeech
+  - retryAttempts
+  - maxCallsPerCall
+ToolAuth:
+  type: object
+  description: 'A tool''s own authentication (UNIVERSAL-OPERATOR-PLAN B.5). Names secrets, never holds them: the id and the secret stay in the company''s encrypted store and are read on each call.'
+  properties:
+    type:
+      $ref: '#/ToolAuthType'
+    tokenUrl:
+      type: string
+      description: the token endpoint; may hold `{{secrets.KEY`}}
+    clientIdSecret:
+      type: string
+      description: the secret key holding the OAuth client id
+    clientSecretSecret:
+      type: string
+      description: the secret key holding the OAuth client secret
+    scope:
+      type: string
+      description: space-separated scopes to ask for; null asks for none
+ToolAuthType:
+  type: string
+  enum:
+  - OAUTH2_CLIENT_CREDENTIALS
+  description: |-
+    How a tool authenticates beyond what its headers and address already carry (UNIVERSAL-OPERATOR-PLAN B.5). An API key in a header or in the query string and a fixed bearer token need no type of their own: `{{secrets.KEY`}} in `apiHeaders` or `apiUrl` is enough.
+
+    - `OAUTH2_CLIENT_CREDENTIALS` — The tool gets its own access token from the token endpoint, as an OAuth 2.0 client.
+ToolEffect:
+  type: string
+  enum:
+  - READ
+  - WRITE
+  - DESTRUCTIVE
+  description: |-
+    What calling a tool does to the system it calls — the split `McpToolGuard` makes for MCP tools, brought to the company's own REST tools (UNIVERSAL-OPERATOR-PLAN B.3).
+
+    The model is on a live call with a stranger who can say anything, so this is about what a talked-into model could do, not about what the tool is for.
+
+    - `READ` — Only reads — a status lookup, a catalog search. Offered as it is.
+
+    - `WRITE` — Writes something a person can still put right — an order, a booking, a lead. Sent with an `Idempotency-Key`, and read back for the caller's yes first when the tool `requiresConfirmation`.
+
+    - `DESTRUCTIVE` — Deletes or cancels what cannot be put back. Never offered to the model: no wording of "are you sure" survives a determined caller. The panel's test run still reaches it.
+ToolFilter:
+  type: object
+  properties:
+    search:
+      type: string
+    page:
+      type: integer
+      format: int32
+    size:
+      type: integer
+      format: int32
+    orders:
+      type: object
+      additionalProperties:
+        type: string
+ToolKeyValuePair:
+  type: object
+  properties:
+    key:
+      type: string
+    value:
+      type: string
+    type:
+      type: string
+    redacted:
+      type: boolean
+ToolParamConfig:
+  type: object
+  properties:
+    name:
+      type: string
+    type:
+      type: string
+    valueType:
+      $ref: '#/ToolParamValueType'
+    value:
+      type: object
+      additionalProperties: true
+    description:
+      type: string
+    allowedValues:
+      type: array
+      items:
+        type: string
+    required:
+      type: boolean
+  required:
+  - required
+ToolParamValueType:
+  type: string
+  enum:
+  - Static Value
+  - Dynamic Variable
+  - LLM Prompt
+  description: |-
+    Where a tool parameter's value comes from when the call is about to be made.
+
+    `#from(String)` accepts the labels the configuration screen used to send as free text ("Static Value", "Dynamic Variable", "LLM Prompt") so tools configured before this became an enum keep working; anything unrecognised is treated as {@link #LLM_PROMPT}, which is what an unset value has always meant.
+
+    - `Static Value` — Written once in the tool's configuration and sent unchanged on every call.
+
+    - `Dynamic Variable` — Read from the call's own variables — the phone number, a CRM fact, a fetched value.
+
+    - `LLM Prompt` — Asked of the model: the parameter is published in the tool's schema and filled per call.
+ToolRow:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    description:
+      type: string
+    apiUrl:
+      type: string
+    apiMethod:
+      type: string
+    apiHeaders:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    apiBody:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiQueryParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiPathParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    responseTimeoutSecs:
+      type: integer
+      format: int32
+    dynamicVariables:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    disableInterruptions:
+      type: boolean
+    forcePreToolSpeech:
+      type: boolean
+    preToolSpeech:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+    responseMapping:
+      type: object
+      additionalProperties:
+        type: string
+    retryAttempts:
+      type: integer
+      format: int32
+    maxCallsPerCall:
+      type: integer
+      format: int32
+    bodySchema:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+    effect:
+      $ref: '#/ToolEffect'
+    requiresConfirmation:
+      type: boolean
+    readbackTemplate:
+      type: string
+    auth:
+      $ref: '#/ToolAuth'
+  required:
+  - disableInterruptions
+  - forcePreToolSpeech
+  - retryAttempts
+  - maxCallsPerCall
+  - requiresConfirmation
+ToolRowPage:
+  type: object
+  description: '`ToolRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/ToolRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+ToolTestResponse:
+  type: object
+  description: What a tool's dry run returned.
+  properties:
+    result:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: 'exactly what the model would be handed: `status` and `data` — mapped by `responseMapping` when the tool has one, made prompt-safe, and `truncated: true` when it had to be cut'
+UpdateToolRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      maxLength: 100
+    description:
+      type: string
+      maxLength: 500
+    apiUrl:
+      type: string
+      maxLength: 1000
+    apiMethod:
+      type: string
+    apiHeaders:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    apiBody:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiQueryParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    apiPathParams:
+      type: array
+      items:
+        $ref: '#/ToolParamConfig'
+    responseTimeoutSecs:
+      type: integer
+      format: int32
+    dynamicVariables:
+      type: array
+      items:
+        $ref: '#/ToolKeyValuePair'
+    disableInterruptions:
+      type: boolean
+    forcePreToolSpeech:
+      type: boolean
+    preToolSpeech:
+      type: string
+    responseMapping:
+      type: object
+      additionalProperties:
+        type: string
+    retryAttempts:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 3
+    maxCallsPerCall:
+      type: integer
+      format: int32
+      minimum: 0
+    bodySchema:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+    effect:
+      $ref: '#/ToolEffect'
+    requiresConfirmation:
+      type: boolean
+    readbackTemplate:
+      type: string
+      maxLength: 500
+    auth:
+      $ref: '#/ToolAuth'

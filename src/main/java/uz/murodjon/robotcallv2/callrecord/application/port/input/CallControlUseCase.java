@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface CallControlUseCase {
     List<LiveCallRow> findLiveCalls(long companyId);
-    CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long sipTrunkId);
+    CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long agentId, Long sipTrunkId);
     CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition,
                                             Long sipTrunkId);
     WebTestCallResponse startWebTest(long companyId, WebTestCallRequest request);

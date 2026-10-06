@@ -1,0 +1,250 @@
+# `operator` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+OperatorContextResponse:
+  type: object
+  description: What the operator screen shows for a transferred call — the controller's own shape, so the web layer never depends on the voice pipeline's `OperatorSnapshot`.
+  properties:
+    channelId:
+      type: string
+    clientName:
+      type: string
+    debtAmount:
+      type: string
+    currency:
+      type: string
+    dueDate:
+      type: string
+    contractNumber:
+      type: string
+    dialogState:
+      type: string
+    transcript:
+      type: string
+OperatorFilter:
+  type: object
+  description: Pagination + filter for POST /api/operators/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        USER_ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        STATUS:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    status:
+      allOf:
+      - $ref: '#/OperatorStatus'
+      description: only operators currently in this status; null for all
+OperatorPresence:
+  type: object
+  description: One operator's live state, as the queue dispatcher and the panel read it.
+  properties:
+    userId:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    status:
+      $ref: '#/OperatorStatus'
+    reason:
+      type: string
+      description: why, for BREAK ("tushlik", "javob bermadi"); null otherwise
+    since:
+      type: string
+      format: date-time
+      description: when the current status began
+    channelId:
+      type: string
+      description: the call ringing or connected to this operator, if any
+    lastCallEndedAt:
+      type: string
+      format: date-time
+      description: when the operator last finished a call — LEAST_RECENT's key
+    callsToday:
+      type: integer
+      format: int32
+      description: calls answered since midnight — FEWEST_CALLS' key
+    consecutiveMisses:
+      type: integer
+      format: int32
+      description: offers left ringing in a row; two sends the operator on BREAK
+    wrapUpUntil:
+      type: string
+      format: date-time
+      description: when WRAP_UP ends by itself; null otherwise
+  required:
+  - userId
+  - companyId
+  - callsToday
+  - consecutiveMisses
+OperatorRow:
+  type: object
+  description: 'One operator on the supervisor''s list: who, how to reach them, and what they are doing now.'
+  properties:
+    userId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    extension:
+      type: string
+    status:
+      $ref: '#/OperatorStatus'
+    reason:
+      type: string
+    since:
+      type: string
+      format: date-time
+    channelId:
+      type: string
+    callsToday:
+      type: integer
+      format: int32
+    webrtc:
+      type: boolean
+    forwardNumber:
+      type: string
+  required:
+  - userId
+  - callsToday
+  - webrtc
+OperatorRowPage:
+  type: object
+  description: '`OperatorRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/OperatorRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+OperatorSipAccountRow:
+  type: object
+  description: An operator's SIP account as the admin screen shows it — without the password.
+  properties:
+    userId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    extension:
+      type: string
+    endpointName:
+      type: string
+    webrtc:
+      type: boolean
+    forwardNumber:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - userId
+  - webrtc
+OperatorStatus:
+  type: string
+  enum:
+  - OFFLINE
+  - AVAILABLE
+  - RINGING
+  - ON_CALL
+  - WRAP_UP
+  - BREAK
+  description: Where an operator is right now (docs/INBOUND-PBX-PLAN.md §7.2). Only `#AVAILABLE` is offered queue calls; an operator sets `#AVAILABLE`, `#BREAK` and `#OFFLINE` by hand, the call path sets the rest.
+OperatorTakeoverResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    status:
+      type: string
+    operatorExtension:
+      type: string
+OperatorWhisperRequest:
+  type: object
+  description: '@param message what the supervisor tells the bot — same limit as the live whisper''s instruction'
+  properties:
+    message:
+      type: string
+      description: what the supervisor tells the bot — same limit as the live whisper's instruction
+      minLength: 1
+      maxLength: 1000
+  required:
+  - message
+OperatorWhisperResponse:
+  type: object
+  properties:
+    channelId:
+      type: string
+    status:
+      type: string
+    message:
+      type: string
+SaveOperatorSipAccountRequest:
+  type: object
+  description: Body of PUT /api/operators/{userId}/sip-account.
+  properties:
+    webrtc:
+      type: boolean
+      description: true (default) for the browser softphone; false for a SIP phone
+    forwardNumber:
+      type: string
+      description: the operator's mobile, rung when the softphone is offline; null for none
+      pattern: ^\+?[1-9]\d{8,14}$
+SipCredentialsResponse:
+  type: object
+  description: What a softphone signs in with. Only ever returned to the operator it belongs to (or to an admin resetting it, to provision a desk phone).
+  properties:
+    username:
+      type: string
+      description: the SIP username and PJSIP endpoint, `op-<userId>`
+    password:
+      type: string
+    wsUrl:
+      type: string
+      description: the WebSocket a browser softphone connects to (`voice-agent.asterisk.web-test.ws-url`)
+    extension:
+      type: string
+      description: the number colleagues dial to reach this operator
+    webrtc:
+      type: boolean
+  required:
+  - webrtc
+UpdateOperatorStatusRequest:
+  type: object
+  description: Body of PUT /api/operators/me/status.
+  properties:
+    status:
+      allOf:
+      - $ref: '#/OperatorStatus'
+      description: AVAILABLE, BREAK or OFFLINE — the rest are set by the call itself
+    reason:
+      type: string
+      description: why, for BREAK ("tushlik")
+      maxLength: 255
+  required:
+  - status

@@ -1,0 +1,1292 @@
+# `aiagent` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AgentAdvancedDto:
+  type: object
+  properties:
+    useRag:
+      type: boolean
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    storeCallAudio:
+      type: boolean
+    zeroPiiRetention:
+      type: boolean
+    conversationRetentionDays:
+      type: integer
+      format: int32
+    realtimeFactsDelivery:
+      $ref: '#/RealtimeFactsDelivery'
+    initiationWebhook:
+      $ref: '#/AgentWebhookConfig'
+    postCallWebhook:
+      $ref: '#/AgentWebhookConfig'
+    ambientSound:
+      $ref: '#/AmbientSound'
+    ambientSoundVolume:
+      type: number
+      format: double
+    ambientSoundFadeInSeconds:
+      type: number
+      format: double
+    thinkingSound:
+      $ref: '#/AmbientSound'
+    thinkingSoundVolume:
+      type: number
+      format: double
+    noiseCancellationEnabled:
+      type: boolean
+    noiseCancellationMode:
+      $ref: '#/NoiseCancellationMode'
+    emotionAdaptiveVoice:
+      type: boolean
+    dtmfInputEnabled:
+      type: boolean
+    voicemailAction:
+      $ref: '#/VoicemailAction'
+    voicemailMessage:
+      type: string
+    midCallSmsEnabled:
+      type: boolean
+    midCallSmsTemplate:
+      type: string
+    transferPhoneNumber:
+      type: string
+    transferMessage:
+      type: string
+    transferQueueId:
+      type: integer
+      format: int64
+    interruptionSensitivity:
+      $ref: '#/InterruptionSensitivity'
+    endpointingDelayMs:
+      type: integer
+      format: int32
+AgentAnalysisDto:
+  type: object
+  properties:
+    dataNeeded:
+      type: array
+      items:
+        $ref: '#/DataExtractionField'
+    dataEvaluation:
+      type: array
+      items:
+        $ref: '#/DataEvaluationCriterion'
+AgentEvalResult:
+  type: object
+  description: How one test case went in one evaluation run (NEXT-PLAN A.2).
+  properties:
+    id:
+      type: integer
+      format: int64
+    runId:
+      type: integer
+      format: int64
+    testCaseId:
+      type: integer
+      format: int64
+      description: null once the case has been deleted; `caseName` keeps its name
+    caseName:
+      type: string
+    passed:
+      type: boolean
+    disposition:
+      type: string
+    stage:
+      type: string
+    problems:
+      type: array
+      items:
+        type: string
+      description: every expectation it missed, empty when it passed
+    transcript:
+      type: string
+      description: the simulated call, one `AGENT:`/`CLIENT:` line each
+    qaScore:
+      type: integer
+      format: int32
+      description: the judge's score, or null when it was not scored
+    guardrailViolation:
+      type: boolean
+      description: the judge found a figure, date or promise the facts do not support
+  required:
+  - runId
+  - passed
+  - guardrailViolation
+AgentEvalRun:
+  type: object
+  description: One evaluation of an agent against all its test cases (NEXT-PLAN A.2).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    agentId:
+      type: integer
+      format: int64
+    agentVersion:
+      type: integer
+      format: int32
+      description: the published version evaluated, or null for the draft
+    status:
+      $ref: '#/AgentEvalRunStatus'
+    total:
+      type: integer
+      format: int32
+    passed:
+      type: integer
+      format: int32
+    avgQaScore:
+      type: integer
+      format: int32
+      description: the judge's mean score over the cases it scored, or null
+    error:
+      type: string
+      description: why the run broke off, when it did
+    startedAt:
+      type: string
+      format: date-time
+    finishedAt:
+      type: string
+      format: date-time
+  required:
+  - companyId
+  - agentId
+  - total
+  - passed
+AgentEvalRunDetail:
+  type: object
+  description: One evaluation run with every case's transcript and verdict.
+  properties:
+    run:
+      $ref: '#/AgentEvalRun'
+    results:
+      type: array
+      items:
+        $ref: '#/AgentEvalResult'
+AgentEvalRunStatus:
+  type: string
+  enum:
+  - RUNNING
+  - DONE
+  - FAILED
+  description: |-
+    Where an agent evaluation run stands.
+
+    - `RUNNING`
+
+    - `DONE`
+
+    - `FAILED` — The run itself broke off; the cases played before it are kept.
+AgentLimitsDto:
+  type: object
+  properties:
+    concurrentCallsLimit:
+      type: integer
+      format: int32
+    dailyCallsLimit:
+      type: integer
+      format: int32
+    maxConversationDurationSeconds:
+      type: integer
+      format: int32
+    silenceEndCallTimeoutSeconds:
+      type: integer
+      format: int32
+    turnTimeoutSeconds:
+      type: integer
+      format: int32
+AgentPostCallActionsDto:
+  type: object
+  description: DTO for Post-Call Actions & Automated Follow-ups tab.
+  properties:
+    actions:
+      type: array
+      items:
+        $ref: '#/PostCallAction'
+AgentPronunciationDto:
+  type: object
+  description: DTO for Pronunciation / Phonetic Dictionary tab.
+  properties:
+    rules:
+      type: array
+      items:
+        $ref: '#/PronunciationRule'
+AgentScenarioDto:
+  type: object
+  description: Behavior and embedded Scenario configuration for an AI Agent.
+  properties:
+    scenarioMode:
+      $ref: '#/ScenarioMode'
+    firstMessage:
+      type: string
+    systemPrompt:
+      type: string
+    stages:
+      type: array
+      items:
+        $ref: scenario.yaml#/StageDef
+    guardrails:
+      type: array
+      items:
+        type: string
+    factSchema:
+      type: array
+      items:
+        $ref: scenario.yaml#/FactField
+    disclosureText:
+      type: string
+AgentTemplate:
+  type: string
+  enum:
+  - BUSINESS
+  - SUPPORT
+  - MEDICAL
+  - BLANK
+  description: Presets a new agent can be started from, so the first screen is not empty.
+AgentTestCase:
+  type: object
+  description: One scripted caller an agent is evaluated against (NEXT-PLAN A.2).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    agentId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    personaPrompt:
+      type: string
+      description: instructions to the model that plays the caller
+    facts:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: the call's facts, as the CRM would supply them
+    language:
+      type: string
+      description: the caller's language; null uses the agent's
+    expectDisposition:
+      type: string
+      description: how the call must end, or null to not judge it
+    expectStage:
+      type: string
+      description: the stage it must end in, or null
+    mustSay:
+      type: array
+      items:
+        type: string
+      description: phrases the agent has to say at some point (case-insensitive)
+    mustNotSay:
+      type: array
+      items:
+        type: string
+      description: phrases the agent must never say — "chegirma", a figure, a promise
+    maxTurns:
+      type: integer
+      format: int32
+      description: turns before the simulated call is cut off
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - companyId
+  - agentId
+  - maxTurns
+AgentVersionStatus:
+  type: string
+  enum:
+  - PUBLISHED
+  - ARCHIVED
+  description: 'Where a published agent snapshot stands: `PUBLISHED` is the one version calls run on, `ARCHIVED` every earlier one — kept so a rollback has something to return to.'
+AgentWebhookConfig:
+  type: object
+  description: Webhook configuration for agent initiation or post-call callback. The URL, headers and timeout one of an agent's webhooks is called with.
+  properties:
+    webhookUrl:
+      type: string
+      description: destination URL
+    method:
+      type: string
+      description: HTTP method (POST, GET)
+    headers:
+      type: object
+      additionalProperties:
+        type: string
+      description: HTTP headers
+    dynamicVariables:
+      type: object
+      additionalProperties:
+        type: string
+      description: variables to pass (initiation)
+    transcript:
+      type: boolean
+      description: whether to send call transcript (post-call)
+    audioUrl:
+      type: boolean
+      description: whether to send recorded audio URL (post-call)
+AiAgentDataPolicy:
+  type: object
+  description: |-
+    What is kept after the call ends, for how long, and what leaves this system during it.
+
+    One group because they are answered together, by whoever signs off on the company's data handling rather than by whoever tunes the voice: turning on `zeroPiiRetention` while leaving the audio stored keeps the very thing the setting was meant to remove.
+  properties:
+    zeroPiiRetention:
+      type: boolean
+      description: strip personal data from what is stored about the call
+    storeCallAudio:
+      type: boolean
+      description: keep the recording at all
+    conversationRetentionDays:
+      type: integer
+      format: int32
+      description: how long the transcript is kept; never null
+    realtimeFactsDelivery:
+      allOf:
+      - $ref: '#/RealtimeFactsDelivery'
+      description: how a speech-to-speech engine is given the call's facts; null leaves it to the deployment (`voice-agent.realtime.facts-in-prompt`). `TOOL` also keeps the figures off the vendor's instructions entirely — they are sent one at a time, only when asked for
+  required:
+  - zeroPiiRetention
+  - storeCallAudio
+AiAgentFilter:
+  type: object
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        LANGUAGE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        SCENARIO_ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    search:
+      type: string
+    scenarioId:
+      type: integer
+      format: int64
+    enabled:
+      type: boolean
+AiAgentRow:
+  type: object
+  description: '`AiAgent` representation returned to the agent screens.'
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    description:
+      type: string
+    scenarioId:
+      type: integer
+      format: int64
+    scenarioName:
+      type: string
+    templateId:
+      $ref: '#/AgentTemplate'
+    firstMessage:
+      type: string
+    systemPrompt:
+      type: string
+    scenarioMode:
+      $ref: '#/ScenarioMode'
+    scenarioDefinition:
+      $ref: scenario.yaml#/ScenarioDefinition
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    useRag:
+      type: boolean
+    language:
+      type: string
+    pipelineMode:
+      $ref: ../common.yaml#/schemas/PipelineMode
+    realtimeProvider:
+      type: string
+    pipecatStt:
+      type: string
+    pipecatLlm:
+      type: string
+    pipecatTts:
+      type: string
+    sttProvider:
+      type: string
+    sttModel:
+      type: string
+    ttsProvider:
+      type: string
+    ttsModel:
+      type: string
+    ttsVoice:
+      type: string
+    voiceSpeed:
+      type: number
+      format: double
+    voiceStability:
+      type: number
+      format: double
+    voiceSimilarityBoost:
+      type: number
+      format: double
+    languageVoices:
+      type: object
+      additionalProperties:
+        type: string
+    languageVoiceSpeeds:
+      type: object
+      additionalProperties:
+        type: number
+        format: double
+    persona:
+      $ref: ../common.yaml#/schemas/AgentPersona
+    disclosureEnabled:
+      type: boolean
+    llmModel:
+      type: string
+    fastLlmModel:
+      type: string
+    temperature:
+      type: number
+      format: double
+    maxOutputTokens:
+      type: integer
+      format: int32
+    dataNeeded:
+      type: array
+      items:
+        $ref: '#/DataExtractionField'
+    dataEvaluation:
+      type: array
+      items:
+        $ref: '#/DataEvaluationCriterion'
+    zeroPiiRetention:
+      type: boolean
+    storeCallAudio:
+      type: boolean
+    conversationRetentionDays:
+      type: integer
+      format: int32
+    realtimeFactsDelivery:
+      $ref: '#/RealtimeFactsDelivery'
+    maxConversationDurationSeconds:
+      type: integer
+      format: int32
+    silenceEndCallTimeoutSeconds:
+      type: integer
+      format: int32
+    turnTimeoutSeconds:
+      type: integer
+      format: int32
+    concurrentCallsLimit:
+      type: integer
+      format: int32
+    dailyCallsLimit:
+      type: integer
+      format: int32
+    initiationWebhook:
+      $ref: '#/AgentWebhookConfig'
+    postCallWebhook:
+      $ref: '#/AgentWebhookConfig'
+    ambientSound:
+      $ref: '#/AmbientSound'
+    ambientSoundVolume:
+      type: number
+      format: double
+    ambientSoundFadeInSeconds:
+      type: number
+      format: double
+    thinkingSound:
+      $ref: '#/AmbientSound'
+    thinkingSoundVolume:
+      type: number
+      format: double
+    noiseCancellationEnabled:
+      type: boolean
+    noiseCancellationMode:
+      $ref: '#/NoiseCancellationMode'
+    emotionAdaptiveVoice:
+      type: boolean
+    dtmfInputEnabled:
+      type: boolean
+    voicemailAction:
+      $ref: '#/VoicemailAction'
+    voicemailMessage:
+      type: string
+    midCallSmsEnabled:
+      type: boolean
+    midCallSmsTemplate:
+      type: string
+    transferPhoneNumber:
+      type: string
+    transferMessage:
+      type: string
+    transferQueueId:
+      type: integer
+      format: int64
+    interruptionSensitivity:
+      $ref: '#/InterruptionSensitivity'
+    endpointingDelayMs:
+      type: integer
+      format: int32
+    pronunciationRules:
+      type: array
+      items:
+        $ref: '#/PronunciationRule'
+    postCallActions:
+      type: array
+      items:
+        $ref: '#/PostCallAction'
+    sipTrunkIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+      uniqueItems: true
+    enabled:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+    createdBy:
+      type: integer
+      format: int64
+    createdByName:
+      type: string
+    publishedVersion:
+      type: integer
+      format: int32
+    hasDraftChanges:
+      type: boolean
+    version:
+      type: integer
+      format: int64
+  required:
+  - id
+  - companyId
+  - preemptiveGeneration
+  - ivrNavigationEnabled
+  - useRag
+  - disclosureEnabled
+  - zeroPiiRetention
+  - storeCallAudio
+  - noiseCancellationEnabled
+  - emotionAdaptiveVoice
+  - dtmfInputEnabled
+  - midCallSmsEnabled
+  - enabled
+  - hasDraftChanges
+  - version
+AiAgentRowPage:
+  type: object
+  description: '`AiAgentRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/AiAgentRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+AiAgentVersionRow:
+  type: object
+  description: One line of an agent's version history — the snapshot itself is fetched per version.
+  properties:
+    version:
+      type: integer
+      format: int32
+    status:
+      $ref: '#/AgentVersionStatus'
+    note:
+      type: string
+    publishedAt:
+      type: string
+      format: date-time
+    publishedBy:
+      type: integer
+      format: int64
+    publishedByName:
+      type: string
+    calls:
+      type: integer
+      format: int64
+      description: calls that ran on this version
+    conversions:
+      type: integer
+      format: int64
+      description: of those, the ones that ended in PROMISE_TO_PAY, GOAL_REACHED or COMPLETED
+  required:
+  - version
+  - calls
+  - conversions
+AmbientSound:
+  type: string
+  enum:
+  - 'OFF'
+  - OFFICE
+  - CALL_CENTER
+  - NATURAL_LINE
+  - CAFE
+  - KEYBOARD_TYPING
+  description: |-
+    Ambient background soundscape types mixed into outbound audio at ~ -38dB to -43dB — roughly 20 dB under the bot's own voice, the distance a real room sits at (`AmbientSoundGenerator`).
+
+    `#KEYBOARD_TYPING` is the odd one out: it is not a room the bot is calling from but a thing the bot is doing, so it is played only while a reply is being composed rather than for the whole call.
+CreateAiAgentRequest:
+  type: object
+  description: A new AI agent (`POST /api/ai-agents`).
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 255
+    description:
+      type: string
+      maxLength: 500
+    scenarioId:
+      type: integer
+      format: int64
+    templateId:
+      $ref: '#/AgentTemplate'
+    firstMessage:
+      type: string
+    systemPrompt:
+      type: string
+    scenarioMode:
+      $ref: '#/ScenarioMode'
+    scenarioDefinition:
+      $ref: scenario.yaml#/ScenarioDefinition
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    useRag:
+      type: boolean
+    language:
+      type: string
+    pipelineMode:
+      $ref: ../common.yaml#/schemas/PipelineMode
+    realtimeProvider:
+      type: string
+    pipecatStt:
+      type: string
+    pipecatLlm:
+      type: string
+    pipecatTts:
+      type: string
+    sttProvider:
+      type: string
+    sttModel:
+      type: string
+    ttsProvider:
+      type: string
+    ttsModel:
+      type: string
+    ttsVoice:
+      type: string
+    voiceSpeed:
+      type: number
+      format: double
+    voiceStability:
+      type: number
+      format: double
+    voiceSimilarityBoost:
+      type: number
+      format: double
+    languageVoices:
+      type: object
+      additionalProperties:
+        type: string
+    languageVoiceSpeeds:
+      type: object
+      additionalProperties:
+        type: number
+        format: double
+    persona:
+      $ref: ../common.yaml#/schemas/AgentPersona
+    llmModel:
+      type: string
+      maxLength: 120
+    fastLlmModel:
+      type: string
+      maxLength: 120
+    temperature:
+      type: number
+      format: double
+    maxOutputTokens:
+      type: integer
+      format: int32
+    dataNeeded:
+      type: array
+      items:
+        $ref: '#/DataExtractionField'
+    dataEvaluation:
+      type: array
+      items:
+        $ref: '#/DataEvaluationCriterion'
+    zeroPiiRetention:
+      type: boolean
+    storeCallAudio:
+      type: boolean
+    conversationRetentionDays:
+      type: integer
+      format: int32
+    realtimeFactsDelivery:
+      $ref: '#/RealtimeFactsDelivery'
+    maxConversationDurationSeconds:
+      type: integer
+      format: int32
+    silenceEndCallTimeoutSeconds:
+      type: integer
+      format: int32
+    turnTimeoutSeconds:
+      type: integer
+      format: int32
+    concurrentCallsLimit:
+      type: integer
+      format: int32
+    dailyCallsLimit:
+      type: integer
+      format: int32
+    initiationWebhook:
+      $ref: '#/AgentWebhookConfig'
+    postCallWebhook:
+      $ref: '#/AgentWebhookConfig'
+    ambientSound:
+      $ref: '#/AmbientSound'
+    ambientSoundVolume:
+      type: number
+      format: double
+    ambientSoundFadeInSeconds:
+      type: number
+      format: double
+    thinkingSound:
+      $ref: '#/AmbientSound'
+    thinkingSoundVolume:
+      type: number
+      format: double
+    noiseCancellationEnabled:
+      type: boolean
+    noiseCancellationMode:
+      $ref: '#/NoiseCancellationMode'
+    emotionAdaptiveVoice:
+      type: boolean
+    dtmfInputEnabled:
+      type: boolean
+    voicemailAction:
+      $ref: '#/VoicemailAction'
+    voicemailMessage:
+      type: string
+    midCallSmsEnabled:
+      type: boolean
+    midCallSmsTemplate:
+      type: string
+    transferPhoneNumber:
+      type: string
+    transferMessage:
+      type: string
+    transferQueueId:
+      type: integer
+      format: int64
+    interruptionSensitivity:
+      $ref: '#/InterruptionSensitivity'
+    endpointingDelayMs:
+      type: integer
+      format: int32
+    sipTrunkIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+      uniqueItems: true
+    enabled:
+      type: boolean
+  required:
+  - name
+DataEvaluationCriterion:
+  type: object
+  description: A post-call evaluation criterion assessed by AI upon call completion. One thing the call is scored on afterwards.
+  properties:
+    id:
+      type: string
+      description: unique criterion identifier (e.g. "human_follow_up_needed")
+    name:
+      type: string
+      description: human-readable label
+    criteria:
+      type: string
+      description: evaluation prompt or question to verify against conversation transcript
+DataExtractionField:
+  type: object
+  description: A structured data field the AI Agent should extract from the caller during a conversation. One field the call is expected to come back with.
+  properties:
+    id:
+      type: string
+      description: unique field identifier (e.g. "caller_name", "callback_number")
+    type:
+      type: string
+      description: data type (e.g. "String", "Number", "Boolean")
+    name:
+      type: string
+      description: human-readable display label
+    description:
+      type: string
+      description: extraction instructions for the LLM
+EngineOptionsResponse:
+  type: object
+  description: Options for engine settings screen.
+  properties:
+    stt:
+      type: array
+      items:
+        type: string
+    tts:
+      type: array
+      items:
+        type: string
+    realtime:
+      type: array
+      items:
+        type: string
+    pipecatStt:
+      type: array
+      items:
+        type: string
+    pipecatLlm:
+      type: array
+      items:
+        type: string
+    pipecatTts:
+      type: array
+      items:
+        type: string
+InterruptionSensitivity:
+  type: string
+  enum:
+  - LOW
+  - MEDIUM
+  - HIGH
+  - 'OFF'
+NoiseCancellationMode:
+  type: string
+  enum:
+  - 'OFF'
+  - BACKGROUND_NOISE_SUPPRESSION
+  - VOICE_ISOLATION
+  description: |-
+    How hard the inbound cleaner works on the caller's leg before the recognizer hears it (`TelephonyNoiseCanceller`).
+
+    - `OFF` — No noise cancellation applied.
+
+    - `BACKGROUND_NOISE_SUPPRESSION` — Reduces non-speech background noise such as traffic, fans, AC, humming, typing, and environmental static while preserving natural caller voice.
+
+    - `VOICE_ISOLATION` — Emphasizes the primary speaker and aggressively suppresses competing speech, background chatter, and room reverberation.
+PostCallAction:
+  type: object
+  description: An automated follow-up action executed after a call finishes (e.g. send SMS, call CRM webhook).
+  properties:
+    id:
+      type: string
+      description: unique identifier within the agent's action list
+      minLength: 1
+      maxLength: 64
+    name:
+      type: string
+      description: human-friendly title
+      minLength: 1
+      maxLength: 120
+    actionType:
+      allOf:
+      - $ref: '#/PostCallActionType'
+      description: SEND_SMS, WEBHOOK, or TELEGRAM
+    triggerDisposition:
+      allOf:
+      - $ref: ../common.yaml#/schemas/Disposition
+      description: specific disposition (null for any conversion)
+    onlyOnSuccess:
+      type: boolean
+      description: true if action should only fire on successful calls (conversion or positive sentiment)
+    template:
+      type: string
+      description: message template supporting placeholders like `{{client_name`}}, `{{summary`}}
+    webhookUrl:
+      type: string
+      description: optional target endpoint if actionType == WEBHOOK
+    headers:
+      type: object
+      additionalProperties:
+        type: string
+      description: optional HTTP headers for webhook
+    enabled:
+      type: boolean
+      description: whether this action is active
+  required:
+  - id
+  - name
+  - actionType
+  - onlyOnSuccess
+  - enabled
+PostCallActionType:
+  type: string
+  enum:
+  - SEND_SMS
+  - WEBHOOK
+  - TELEGRAM
+  description: Type of automated action triggered upon call finalization.
+PronunciationRule:
+  type: object
+  description: |-
+    Custom pronunciation or phonetic substitution rule for an AI Agent.
+
+    Rewrites acronyms, domain jargon, brand names or numbers into spoken phonetic equivalents before passing text to the TTS engine (e.g. `"MCHJ" -> "mas'uliyati cheklangan jamiyat"`).
+  properties:
+    word:
+      type: string
+      description: original word or acronym to match
+      minLength: 1
+      maxLength: 120
+    replacement:
+      type: string
+      description: spoken phonetic replacement text
+      minLength: 1
+      maxLength: 255
+    caseSensitive:
+      type: boolean
+      description: whether string matching respects case (default false)
+    language:
+      type: string
+      description: target language code or `null` / `"*"` for all languages
+  required:
+  - word
+  - replacement
+  - caseSensitive
+PublishAiAgentRequest:
+  type: object
+  description: '@param note what this version changes, shown in the history; optional'
+  properties:
+    note:
+      type: string
+      description: what this version changes, shown in the history; optional
+      maxLength: 500
+RealtimeFactsDelivery:
+  type: string
+  enum:
+  - PROMPT
+  - TOOL
+  description: |-
+    How a speech-to-speech engine learns the call's facts — the debt amount, the due date, the contract number (§4.4).
+
+    Only a realtime call has to choose. The cascade pipeline sees every sentence before it is spoken and withholds one whose figures do not match the facts; a realtime engine speaks straight from audio, so the only prevention left is what it was given.
+
+    - `PROMPT` — Written into the instructions, as the cascade pipeline does. Fastest — the figure is already there when the model needs it — and the engine can misremember or embellish it; the audit only notices afterwards.
+
+    - `TOOL` — Kept out of the instructions and fetched with `getCallFact` at the moment it is about to be said. Costs a tool round trip before a figure and leaves the model nothing to misremember — the right setting for money on a recorded line.
+SaveAgentTestCaseRequest:
+  type: object
+  description: A test case, created or replaced as a whole (NEXT-PLAN A.2).
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 200
+    personaPrompt:
+      type: string
+      description: 'instructions to the model that plays the caller: who they are, what they want, how they react'
+      minLength: 1
+      maxLength: 4000
+    facts:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: the call's facts, keyed by the scenario's `factSchema` names
+    language:
+      type: string
+      description: the caller's language; null uses the agent's
+      maxLength: 10
+    expectDisposition:
+      type: string
+      description: how the call must end (`PROMISE_TO_PAY`, `REFUSED`, …)
+      maxLength: 40
+    expectStage:
+      type: string
+      maxLength: 100
+    mustSay:
+      type: array
+      items:
+        type: string
+      description: phrases the agent has to say (case-insensitive)
+      maxItems: 20
+    mustNotSay:
+      type: array
+      items:
+        type: string
+      description: phrases the agent must never say
+      maxItems: 20
+    maxTurns:
+      type: integer
+      format: int32
+      description: turns before the call is cut off; null means 12
+      minimum: 1
+      maximum: 30
+  required:
+  - name
+  - personaPrompt
+ScenarioMode:
+  type: string
+  enum:
+  - PROMPT
+  - STRUCTURED_STEPS
+  description: "Scenario mode of an AI Agent:\r\n- PROMPT: The agent is driven primarily by natural language instructions, rules, and goal.\r\n- STRUCTURED_STEPS: The agent follows a defined state machine (FSM) of stages with explicit transitions."
+TemplateDefaults:
+  type: object
+  description: Default preset values provided by an agent template.
+  properties:
+    firstMessage:
+      type: string
+    systemPrompt:
+      type: string
+    dataNeeded:
+      type: array
+      items:
+        $ref: '#/DataExtractionField'
+    dataEvaluation:
+      type: array
+      items:
+        $ref: '#/DataEvaluationCriterion'
+TemplatePresetDto:
+  type: object
+  description: Template preset descriptor for frontend template picker.
+  properties:
+    templateId:
+      $ref: '#/AgentTemplate'
+    name:
+      type: string
+    description:
+      type: string
+    defaults:
+      $ref: '#/TemplateDefaults'
+UpdateAiAgentRequest:
+  type: object
+  description: |-
+    Full edit of an agent (`PUT /api/ai-agents/{id`}).
+
+    `version` is the one `AiAgentRow` carried when the form was opened — the draft row's lock counter, not `publishedVersion`. An agent saved by someone else since is answered 409 instead of being overwritten. Optional, so an older client that does not send it keeps working.
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 255
+    description:
+      type: string
+      maxLength: 500
+    scenarioId:
+      type: integer
+      format: int64
+    templateId:
+      $ref: '#/AgentTemplate'
+    firstMessage:
+      type: string
+    systemPrompt:
+      type: string
+    scenarioMode:
+      $ref: '#/ScenarioMode'
+    scenarioDefinition:
+      $ref: scenario.yaml#/ScenarioDefinition
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    useRag:
+      type: boolean
+    language:
+      type: string
+    pipelineMode:
+      $ref: ../common.yaml#/schemas/PipelineMode
+    realtimeProvider:
+      type: string
+    pipecatStt:
+      type: string
+    pipecatLlm:
+      type: string
+    pipecatTts:
+      type: string
+    sttProvider:
+      type: string
+    sttModel:
+      type: string
+    ttsProvider:
+      type: string
+    ttsModel:
+      type: string
+    ttsVoice:
+      type: string
+    voiceSpeed:
+      type: number
+      format: double
+    voiceStability:
+      type: number
+      format: double
+    voiceSimilarityBoost:
+      type: number
+      format: double
+    languageVoices:
+      type: object
+      additionalProperties:
+        type: string
+    languageVoiceSpeeds:
+      type: object
+      additionalProperties:
+        type: number
+        format: double
+    persona:
+      $ref: ../common.yaml#/schemas/AgentPersona
+    llmModel:
+      type: string
+      maxLength: 120
+    fastLlmModel:
+      type: string
+      maxLength: 120
+    temperature:
+      type: number
+      format: double
+    maxOutputTokens:
+      type: integer
+      format: int32
+    dataNeeded:
+      type: array
+      items:
+        $ref: '#/DataExtractionField'
+    dataEvaluation:
+      type: array
+      items:
+        $ref: '#/DataEvaluationCriterion'
+    zeroPiiRetention:
+      type: boolean
+    storeCallAudio:
+      type: boolean
+    conversationRetentionDays:
+      type: integer
+      format: int32
+    realtimeFactsDelivery:
+      $ref: '#/RealtimeFactsDelivery'
+    maxConversationDurationSeconds:
+      type: integer
+      format: int32
+    silenceEndCallTimeoutSeconds:
+      type: integer
+      format: int32
+    turnTimeoutSeconds:
+      type: integer
+      format: int32
+    concurrentCallsLimit:
+      type: integer
+      format: int32
+    dailyCallsLimit:
+      type: integer
+      format: int32
+    initiationWebhook:
+      $ref: '#/AgentWebhookConfig'
+    postCallWebhook:
+      $ref: '#/AgentWebhookConfig'
+    ambientSound:
+      $ref: '#/AmbientSound'
+    ambientSoundVolume:
+      type: number
+      format: double
+    ambientSoundFadeInSeconds:
+      type: number
+      format: double
+    thinkingSound:
+      $ref: '#/AmbientSound'
+    thinkingSoundVolume:
+      type: number
+      format: double
+    noiseCancellationEnabled:
+      type: boolean
+    noiseCancellationMode:
+      $ref: '#/NoiseCancellationMode'
+    emotionAdaptiveVoice:
+      type: boolean
+    dtmfInputEnabled:
+      type: boolean
+    voicemailAction:
+      $ref: '#/VoicemailAction'
+    voicemailMessage:
+      type: string
+      maxLength: 500
+    midCallSmsEnabled:
+      type: boolean
+    midCallSmsTemplate:
+      type: string
+      maxLength: 500
+    transferPhoneNumber:
+      type: string
+    transferMessage:
+      type: string
+    transferQueueId:
+      type: integer
+      format: int64
+    interruptionSensitivity:
+      $ref: '#/InterruptionSensitivity'
+    endpointingDelayMs:
+      type: integer
+      format: int32
+    sipTrunkIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+      uniqueItems: true
+    enabled:
+      type: boolean
+    version:
+      type: integer
+      format: int64
+  required:
+  - name
+VoicemailAction:
+  type: string
+  enum:
+  - HANGUP
+  - LEAVE_MESSAGE
+  - IGNORE
+  description: Action taken when Answering Machine Detection (AMD) classifies the answered call as voicemail.

@@ -1,0 +1,37 @@
+# `live` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+LiveControlResponse:
+  type: object
+  description: Acknowledgement for a whisper, takeover or scenario switch on a live channel.
+  properties:
+    channelId:
+      type: string
+    status:
+      type: string
+SwitchScenarioRequest:
+  type: object
+  description: Continue a live call under another scenario of the company; see `POST /api/calls/live/{channelId`/scenario}.
+  properties:
+    scenarioId:
+      type: integer
+      format: int64
+      minimum: 0
+      exclusiveMinimum: true
+  required:
+  - scenarioId
+TakeoverRequest:
+  type: object
+  description: Hand a live call to a human; `extension` is optional and may be null. When given it is the SIP extension (`User.sipExtension`) of an operator of the call's own company who has a SIP account, and the call rings that operator's phone. Digits only.
+  properties:
+    extension:
+      type: string
+      pattern: '[0-9]{2,8}'
+WhisperRequest:
+  type: object
+  description: Operator guidance injected into a live call; the customer never hears it.
+  properties:
+    instruction:
+      type: string
+      minLength: 1
+      maxLength: 1000
+  required:
+  - instruction

@@ -1,0 +1,73 @@
+# Client Memory — client-memory controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/memory/{phone}:
+  get:
+    tags:
+    - Client Memory
+    summary: Mijoz xotirasini olish
+    description: '**Huquq:** `CONTACT_READ`'
+    operationId: clientMemory_get
+    parameters:
+    - name: phone
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/memory.yaml#/ClientMemory
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Client Memory
+    summary: Operator qismini yangilash
+    description: '**Huquq:** `CONTACT_EDIT`'
+    operationId: clientMemory_update
+    parameters:
+    - name: phone
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/memory.yaml#/UpdateClientMemoryRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/memory.yaml#/ClientMemory
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

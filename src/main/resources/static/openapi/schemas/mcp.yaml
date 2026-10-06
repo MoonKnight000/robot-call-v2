@@ -1,0 +1,97 @@
+# `mcp` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+McpAuthType:
+  type: string
+  enum:
+  - NONE
+  - BEARER
+  description: |-
+    How this server is told who is calling.
+
+    - `NONE` — A public server, or one that authenticates by the URL it handed out.
+
+    - `BEARER` — `Authorization: Bearer <secret>`, where the secret is a named row in the company's secret store rather than a value kept on the connection.
+McpConnectionRequest:
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 128
+    url:
+      type: string
+      description: the server's endpoint; HTTPS only, and never an address on this network
+      minLength: 1
+      maxLength: 500
+    authType:
+      $ref: '#/McpAuthType'
+    secretKey:
+      type: string
+      description: the name of the company secret holding the bearer token, for `BEARER` auth — the token itself is never sent here
+      maxLength: 128
+    allowWrites:
+      type: boolean
+      description: whether tools the server does not mark read-only may be offered to the model at all; leave false unless the company means it
+  required:
+  - name
+  - url
+McpConnectionRow:
+  type: object
+  description: |-
+    One connection as the console lists it.
+
+    `usableToolCount` beside `toolCount` is the number worth reading: a server offering forty tools of which two survive the guard is a server whose `allowWrites` needs a decision.
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    url:
+      type: string
+    authType:
+      $ref: '#/McpAuthType'
+    secretKey:
+      type: string
+    status:
+      $ref: '#/McpConnectionStatus'
+    toolCount:
+      type: integer
+      format: int32
+    usableToolCount:
+      type: integer
+      format: int32
+    allowWrites:
+      type: boolean
+    lastError:
+      type: string
+    refreshedAt:
+      type: string
+      format: date-time
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - toolCount
+  - usableToolCount
+  - allowWrites
+McpConnectionStatus:
+  type: string
+  enum:
+  - PENDING
+  - CONNECTED
+  - AUTH_REQUIRED
+  - ERROR
+  - DISABLED
+  description: |-
+    Where a connection to somebody else's MCP server has got to.
+
+    - `PENDING` — Saved, not yet talked to.
+
+    - `CONNECTED` — The server answered and its tools were read.
+
+    - `AUTH_REQUIRED` — The server answered 401/403 — its token is missing, wrong or expired.
+
+    - `ERROR` — It could not be reached, or answered with something unusable. `lastError` says what.
+
+    - `DISABLED` — Switched off by the company; its tools are not offered to any agent.

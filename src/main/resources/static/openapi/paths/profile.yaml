@@ -1,0 +1,470 @@
+# User Profile — profile controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/profile:
+  get:
+    tags:
+    - User Profile
+    summary: Profil ma'lumotlari
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_get
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/profile.yaml#/Profile
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+  put:
+    tags:
+    - User Profile
+    summary: Profilni tahrirlash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_update
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/UpdateProfileRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/profile.yaml#/Profile
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/2fa/disable:
+  post:
+    tags:
+    - User Profile
+    summary: O'chirish
+    description: |-
+      Switches it off; takes the current password and a code.
+
+      **Huquq:** tizimga kirgan har qanday foydalanuvchi.
+    operationId: profile_disableTwoFactor
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/DisableTwoFactorRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/2fa/enable:
+  post:
+    tags:
+    - User Profile
+    summary: Yoqish
+    description: |-
+      Switches two-factor login on with the first code from the new secret.
+
+      **Huquq:** tizimga kirgan har qanday foydalanuvchi.
+    operationId: profile_enableTwoFactor
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/TwoFactorCodeRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/2fa/setup:
+  post:
+    tags:
+    - User Profile
+    summary: Ikki bosqichli kirishni sozlash {#2fa}
+    description: |-
+      Starts two-factor setup: a new secret and its `otpauth://` link for the QR code. Nothing changes at login until `/2fa/enable` proves a code from it.
+
+      **Huquq:** tizimga kirgan har qanday foydalanuvchi.
+    operationId: profile_setupTwoFactor
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/auth.yaml#/TwoFactorSetupResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/avatar:
+  post:
+    tags:
+    - User Profile
+    summary: Avatar yuklash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_uploadAvatar
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+            required:
+            - file
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/profile.yaml#/Profile
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/call-columns:
+  put:
+    tags:
+    - User Profile
+    summary: Qo'ng'iroqlar jadvali ustunlari
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_updateCallColumns
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/UpdateCallColumnsRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: string
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/notifications:
+  get:
+    tags:
+    - User Profile
+    summary: '"Bildirishnomalar" tab'
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_notifications
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/profile.yaml#/PersonalNotificationMatrixEntry
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+  put:
+    tags:
+    - User Profile
+    summary: Matritsani saqlash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_updateNotifications
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/UpdatePersonalNotificationSettingsRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/profile.yaml#/PersonalNotificationMatrixEntry
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/password:
+  put:
+    tags:
+    - User Profile
+    summary: '"Xavfsizlik" tab, parol almashtirish'
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_changePassword
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/ChangePasswordRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/schedule:
+  get:
+    tags:
+    - User Profile
+    summary: '"Ish jadvali" tab'
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_schedule
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/profile.yaml#/ScheduleSlot
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+  put:
+    tags:
+    - User Profile
+    summary: Jadvalni saqlash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_updateSchedule
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/profile.yaml#/UpdateScheduleRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/profile.yaml#/ScheduleSlot
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/sessions:
+  get:
+    tags:
+    - User Profile
+    summary: Faol sessiyalar
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_sessions
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/auth.yaml#/UserSessionRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+/api/profile/sessions/{id}:
+  delete:
+    tags:
+    - User Profile
+    summary: Sessiyani tugatish
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_revokeSession
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/profile/table-config/{key}:
+  get:
+    tags:
+    - User Profile
+    summary: Jadval sozlamasi
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_tableConfig
+    parameters:
+    - name: key
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - User Profile
+    summary: Jadval sozlamasini saqlash
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_updateTableConfig
+    parameters:
+    - name: key
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/profile/today-stats:
+  get:
+    tags:
+    - User Profile
+    summary: Popover mini-statistika
+    description: '**Huquq:** tizimga kirgan har qanday foydalanuvchi.'
+    operationId: profile_todayStats
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/profile.yaml#/TodayStats
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized

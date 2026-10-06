@@ -1,0 +1,160 @@
+# Billing — billing controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/billing/invoices:
+  get:
+    tags:
+    - Billing
+    summary: Hisob-fakturalar ro'yxati
+    description: '**Huquq:** `BILLING_READ`'
+    operationId: billing_getInvoices
+    parameters:
+    - name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 0
+    - name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 10
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/billing.yaml#/InvoiceDtoPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/billing/invoices/{id}/pdf:
+  get:
+    tags:
+    - Billing
+    summary: Hisob-faktura PDF faylini yuklab olish
+    description: '**Huquq:** `BILLING_READ`'
+    operationId: billing_downloadInvoicePdf
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Fayl
+        content:
+          application/pdf:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/billing/overview:
+  get:
+    tags:
+    - Billing
+    summary: Hisob holati va limitlar
+    description: '**Huquq:** `BILLING_READ`'
+    operationId: billing_getOverview
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/billing.yaml#/BillingOverviewResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/billing/spend-chart:
+  get:
+    tags:
+    - Billing
+    summary: Sarf-xarajatlar dinamikasi
+    description: '**Huquq:** `BILLING_READ`'
+    operationId: billing_getSpendChart
+    parameters:
+    - name: months
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 6
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/billing.yaml#/SpendMonthDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/billing/topup:
+  post:
+    tags:
+    - Billing
+    summary: Balansni to'ldirish
+    description: '**Huquq:** `BILLING_EDIT`'
+    operationId: billing_topup
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/billing.yaml#/TopupRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/billing.yaml#/TopupResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

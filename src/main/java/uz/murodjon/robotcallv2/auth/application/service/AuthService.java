@@ -25,6 +25,7 @@ import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -58,6 +59,7 @@ public class AuthService implements AuthUseCase {
     private final RateLimitProperties rateLimitProperties;
     private final TwoFactorUseCase twoFactor;
     private final StreamTicketService streamTicketService;
+    private final Clock clock;
     /** See {@link #obtainDummyPasswordHash()}. */
     private volatile String dummyPasswordHash;
 
@@ -65,7 +67,7 @@ public class AuthService implements AuthUseCase {
                        PasswordEncoder passwordEncoder, JwtTokenService jwtTokenService, CurrentUser currentUser,
                        AuditUseCase audit, SessionService sessionService, PasswordResetMailSender resetMail,
                        RoleUseCase roleUseCase, RateLimiter rateLimiter, RateLimitProperties rateLimitProperties,
-                       TwoFactorUseCase twoFactor, StreamTicketService streamTicketService) {
+                       TwoFactorUseCase twoFactor, StreamTicketService streamTicketService, Clock clock) {
         this.twoFactor = twoFactor;
         this.streamTicketService = streamTicketService;
         this.userUseCase = userUseCase;
@@ -79,6 +81,7 @@ public class AuthService implements AuthUseCase {
         this.roleUseCase = roleUseCase;
         this.rateLimiter = rateLimiter;
         this.rateLimitProperties = rateLimitProperties;
+        this.clock = clock;
     }
 
     @Override
@@ -187,7 +190,7 @@ public class AuthService implements AuthUseCase {
         String tokenHash = Tokens.hash(chooseRefreshToken(request, cookieRefreshToken));
         UserSession session = sessionService.findActiveByHash(tokenHash)
                 .orElseThrow(() -> refreshRejected(tokenHash));
-        if (session.expiresAt().isBefore(Instant.now())) {
+        if (session.expiresAt().isBefore(clock.instant())) {
             throw new ForbiddenException(ErrorCode.REFRESH_TOKEN_EXPIRED);
         }
         User user = userUseCase.findById(session.userId())
@@ -246,7 +249,7 @@ public class AuthService implements AuthUseCase {
         if (user.status() != UserStatus.INVITED) {
             throw new ValidationException(ErrorCode.ACTIVATION_TOKEN_INVALID);
         }
-        if (user.inviteExpiresAt() == null || user.inviteExpiresAt().isBefore(Instant.now())) {
+        if (user.inviteExpiresAt() == null || user.inviteExpiresAt().isBefore(clock.instant())) {
             throw new ValidationException(ErrorCode.ACTIVATION_TOKEN_EXPIRED);
         }
         userUseCase.activate(user.id(), passwordEncoder.encode(request.password()));
@@ -263,7 +266,7 @@ public class AuthService implements AuthUseCase {
                 .filter(user -> user.status() == UserStatus.ACTIVE)
                 .ifPresent(user -> {
                     String token = Tokens.generate();
-                    userUseCase.setResetToken(user.id(), Tokens.hash(token), Instant.now().plus(RESET_TTL));
+                    userUseCase.setResetToken(user.id(), Tokens.hash(token), clock.instant().plus(RESET_TTL));
                     audit.record(user.companyId(), "PASSWORD_RESET_REQUEST", "user", String.valueOf(user.id()), user.email());
                     try {
                         resetMail.send(user.email(), token);
@@ -282,7 +285,7 @@ public class AuthService implements AuthUseCase {
         if (user.status() != UserStatus.ACTIVE) {
             throw new ValidationException(ErrorCode.RESET_TOKEN_INVALID);
         }
-        if (user.resetExpiresAt() == null || user.resetExpiresAt().isBefore(Instant.now())) {
+        if (user.resetExpiresAt() == null || user.resetExpiresAt().isBefore(clock.instant())) {
             throw new ValidationException(ErrorCode.RESET_TOKEN_EXPIRED);
         }
         // With two-factor login on, a reset link alone must not be a way in (NEXT-PLAN S.3).
@@ -331,7 +334,7 @@ public class AuthService implements AuthUseCase {
         IssuedToken issued = jwtTokenService.issue(buildPrincipal(user));
 
         String refreshToken = Tokens.generate();
-        Instant refreshExpiresAt = Instant.now().plus(REFRESH_TTL);
+        Instant refreshExpiresAt = clock.instant().plus(REFRESH_TTL);
 
         LoginResponse response = new LoginResponse(issued.token(), issued.expiresAt(), refreshToken,
                 refreshExpiresAt, UserRow.of(user));

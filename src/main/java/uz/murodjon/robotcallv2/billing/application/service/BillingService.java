@@ -21,6 +21,7 @@ import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -41,6 +42,7 @@ public class BillingService implements BillingUseCase {
     private final InvoicePdfService pdfService;
     private final AuditUseCase audit;
     private final PaymentProperties paymentProperties;
+    private final Clock clock;
 
     public BillingService(
             CompanyBillingRepository companyBillingRepository,
@@ -52,7 +54,8 @@ public class BillingService implements BillingUseCase {
             CompanyUseCase companyUseCase,
             InvoicePdfService pdfService,
             AuditUseCase audit,
-            PaymentProperties paymentProperties
+            PaymentProperties paymentProperties,
+            Clock clock
     ) {
         this.companyBillingRepository = companyBillingRepository;
         this.billingUsageRepository = billingUsageRepository;
@@ -64,6 +67,7 @@ public class BillingService implements BillingUseCase {
         this.pdfService = pdfService;
         this.audit = audit;
         this.paymentProperties = paymentProperties;
+        this.clock = clock;
     }
 
     @Override
@@ -74,7 +78,7 @@ public class BillingService implements BillingUseCase {
 
         String currentPeriod = DateTimeFormatter.ofPattern("yyyy-MM")
                 .withZone(ZoneId.of("Asia/Tashkent"))
-                .format(Instant.now());
+                .format(clock.instant());
 
         BillingUsage limits = billingUsageRepository.findByCompanyIdAndPeriod(companyId, currentPeriod)
                 .orElseGet(() -> billingUsageRepository.save(BillingUsage.defaultFor(companyId, currentPeriod)));
@@ -154,7 +158,7 @@ public class BillingService implements BillingUseCase {
                 request.paymentMethod(),
                 TopupStatus.PENDING,
                 checkoutUrl,
-                Instant.now(),
+                clock.instant(),
                 null
         );
 
@@ -172,9 +176,9 @@ public class BillingService implements BillingUseCase {
         return callBillingRepository.findSpendByVariant(companyId, campaignId);
     }
 
-    private static Instant startOfMonth() {
+    private Instant startOfMonth() {
         ZoneId zone = ZoneId.of("Asia/Tashkent");
-        return LocalDate.now(zone).withDayOfMonth(1).atStartOfDay(zone).toInstant();
+        return LocalDate.ofInstant(clock.instant(), zone).withDayOfMonth(1).atStartOfDay(zone).toInstant();
     }
 
     private InvoiceDto toInvoiceDto(Invoice inv) {

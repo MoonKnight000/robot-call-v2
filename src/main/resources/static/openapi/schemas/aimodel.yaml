@@ -1,0 +1,90 @@
+# `aimodel` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AiModel:
+  type: object
+  description: |-
+    A row of ai_model — one model an operator may pick: the company chat model (`ai_model_config.model`) or one of an agent's three (`ai_agent.llm_model`, `stt_model`, `tts_model`), depending on `AiModelKind`.
+
+    The catalog exists so that a model that cannot answer a call is refused when it is typed, not when the phone is already ringing: the form is filled from here and the save-time check reads the same rows.
+  properties:
+    id:
+      type: string
+      description: model id sent to the provider verbatim, e.g. `gemini-3.8-flash`
+    kind:
+      allOf:
+      - $ref: '#/AiModelKind'
+      description: which of the agent's model fields this row fills
+    provider:
+      type: string
+      description: who serves it — for `LLM` a `spring.ai.model.chat` value (CASCADE) or a `RealtimeProvider` name (REALTIME), for `STT` and `TTS` the speech provider id (`gemini`, `yandex`)
+    mode:
+      allOf:
+      - $ref: ../common.yaml#/schemas/PipelineMode
+      description: the pipeline this model belongs to; the two sets never overlap
+    label:
+      type: string
+      description: human-readable name shown in the settings and agent forms
+AiModelConfig:
+  type: object
+  description: A company's AI model overrides — the domain model of ai_model_config.
+  properties:
+    companyId:
+      type: integer
+      format: int64
+    model:
+      type: string
+    temperature:
+      type: number
+      format: double
+    maxOutputTokens:
+      type: integer
+      format: int32
+    maxCallSeconds:
+      type: integer
+      format: int32
+    maxTokensPerCall:
+      type: integer
+      format: int64
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - companyId
+AiModelKind:
+  type: string
+  enum:
+  - LLM
+  - STT
+  - TTS
+  description: |-
+    Which of an agent's three model fields a catalog row can fill.
+
+    The families never overlap, and that is the reason the column exists: `nova-3` is a Deepgram recognizer, `gemini-3.1-flash-tts-preview` a synthesizer and `gemini-3.8-flash` a chat model, and offering any of them where another belongs produces a setting that saves cleanly and fails on the call.
+
+    - `LLM` — `ai_agent.llm_model` and `ai_model_config.model` — the text LLM.
+
+    - `STT` — `ai_agent.stt_model` — the recognition model of the agent's STT provider.
+
+    - `TTS` — `ai_agent.tts_model` — the synthesis model of the agent's TTS provider.
+UpdateAiModelConfigRequest:
+  type: object
+  description: Every field optional — null clears the override back to the process default.
+  properties:
+    model:
+      type: string
+    temperature:
+      type: number
+      format: double
+      minimum: 0
+      maximum: 2
+    maxOutputTokens:
+      type: integer
+      format: int32
+      minimum: 1
+    maxCallSeconds:
+      type: integer
+      format: int32
+      minimum: 1
+    maxTokensPerCall:
+      type: integer
+      format: int64
+      minimum: 1

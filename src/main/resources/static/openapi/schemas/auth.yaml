@@ -1,0 +1,157 @@
+# `auth` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+ActivateRequest:
+  type: object
+  properties:
+    token:
+      type: string
+      minLength: 1
+    password:
+      type: string
+      minLength: 10
+      maxLength: 128
+      pattern: ^(?=.*\p{L})(?=.*\d).+$
+  required:
+  - token
+  - password
+CurrentUserResponse:
+  type: object
+  description: 'What the panel needs right after login: who is signed in, and every permission the role grants so the frontend can decide which pages to render at all.'
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    username:
+      type: string
+    email:
+      type: string
+    roleId:
+      type: integer
+      format: int64
+    roleCode:
+      type: string
+    roleName:
+      type: string
+    permissions:
+      type: array
+      items:
+        $ref: role.yaml#/Permission
+      uniqueItems: true
+    companyId:
+      type: integer
+      format: int64
+    companyName:
+      type: string
+  required:
+  - id
+  - roleId
+  - companyId
+ForgotPasswordRequest:
+  type: object
+  properties:
+    email:
+      type: string
+      minLength: 1
+      format: email
+  required:
+  - email
+LoginRequest:
+  type: object
+  properties:
+    username:
+      type: string
+      minLength: 1
+    password:
+      type: string
+      minLength: 1
+    otpCode:
+      type: string
+      description: the authenticator code; required only for an account with two-factor login on, which is refused with `TOTP_REQUIRED` until it is sent
+      minLength: 6
+      maxLength: 6
+  required:
+  - username
+  - password
+LoginResponse:
+  type: object
+  properties:
+    accessToken:
+      type: string
+    accessTokenExpiresAt:
+      type: string
+      format: date-time
+    refreshToken:
+      type: string
+      description: 'deprecated in the body: the same token is set as the `refresh_token` HttpOnly cookie, which is where clients should take it from; kept here until every client has moved over'
+    refreshTokenExpiresAt:
+      type: string
+      format: date-time
+    user:
+      $ref: user.yaml#/UserRow
+RefreshTokenRequest:
+  type: object
+  properties:
+    refreshToken:
+      type: string
+      description: optional since the token travels in the `refresh_token` cookie; sending it in the body is deprecated and still wins when present
+ResetPasswordRequest:
+  type: object
+  properties:
+    token:
+      type: string
+      minLength: 1
+    newPassword:
+      type: string
+      minLength: 10
+      maxLength: 128
+      pattern: ^(?=.*\p{L})(?=.*\d).+$
+    otpCode:
+      type: string
+      description: the authenticator code; required only when the account has two-factor login on, so a reset link alone is not a way in
+      minLength: 6
+      maxLength: 6
+  required:
+  - token
+  - newPassword
+StreamTicketResponse:
+  type: object
+  properties:
+    ticket:
+      type: string
+      description: single-use credential for `?ticket=` on a stream URL
+    expiresAt:
+      type: string
+      format: date-time
+      description: after this it is refused even if never used
+TwoFactorSetupResponse:
+  type: object
+  description: What the user needs to add the account to an authenticator app.
+  properties:
+    secret:
+      type: string
+      description: the Base32 secret, for typing in by hand
+    otpauthUri:
+      type: string
+      description: the same as an `otpauth://` link, for the QR code
+UserSessionRow:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    device:
+      type: string
+    ipAddress:
+      type: string
+    createdAt:
+      type: string
+      format: date-time
+    lastActivityAt:
+      type: string
+      format: date-time
+    current:
+      type: boolean
+  required:
+  - id
+  - current

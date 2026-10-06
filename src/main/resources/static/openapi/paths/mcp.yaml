@@ -1,0 +1,237 @@
+# Model Context Protocol (MCP) — mcp controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/mcp/connections:
+  get:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP ulanishlari ro'yxati
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: mcp_connections
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/mcp.yaml#/McpConnectionRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  post:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP ulanishi yaratish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: mcp_createConnection
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/mcp.yaml#/McpConnectionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/mcp.yaml#/McpConnectionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/mcp/connections/{id}:
+  put:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP ulanishini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: mcp_updateConnection
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/mcp.yaml#/McpConnectionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/mcp.yaml#/McpConnectionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP ulanishini o'chirish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: mcp_deleteConnection
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/mcp/connections/{id}/agents/{agentId}:
+  post:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP ulanishini agentga biriktirish
+    description: |-
+      Lets one agent use one connection. A collections agent and a support agent share a company, not a toolbox.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: mcp_attachToAgent
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: agentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP ulanishini agentdan ajratish
+    description: '**Huquq:** `AI_AGENT_EDIT`'
+    operationId: mcp_detachFromAgent
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: agentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/mcp/connections/{id}/refresh:
+  post:
+    tags:
+    - Model Context Protocol (MCP)
+    summary: MCP server toollarini qayta o'qish
+    description: |-
+      Re-reads the server's tool list — after its tools change, or to retry a failure.
+
+      **Huquq:** `AI_AGENT_EDIT`
+    operationId: mcp_refreshConnection
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/mcp.yaml#/McpConnectionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

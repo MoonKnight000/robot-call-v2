@@ -1,0 +1,36 @@
+# CRM Webhooks — uysot-webhook controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/public/uysot/webhook:
+  post:
+    tags:
+    - CRM Webhooks
+    summary: Uysot CRM webhookini qabul qilish
+    description: '**Ochiq endpoint** — token talab qilinmaydi.'
+    operationId: uysotWebhook_handleWebhook
+    parameters:
+    - name: X-Webhook-Secret
+      in: header
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/crm.yaml#/UysotLeadWebhookEvent
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/crm.yaml#/UysotWebhookResult
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []

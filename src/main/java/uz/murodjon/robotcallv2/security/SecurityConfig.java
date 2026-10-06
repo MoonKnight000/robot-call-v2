@@ -155,7 +155,7 @@ public class SecurityConfig {
                     // Probes carry no data and must work without a secret.
                     auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
                     // Swagger UI and OpenAPI documentation
-                    auth.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs", "/openapi.yaml").permitAll();
+                    auth.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs", "/openapi/**").permitAll();
                     // Metrics describe the whole platform — every tenant's calls, the providers,
                     // the tool tags — so they are for platform staff. Any logged-in user or
                     // tenant API key used to be able to read them (an API key can never hold

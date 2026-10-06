@@ -1,0 +1,579 @@
+# Calls — call controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/calls:
+  post:
+    tags:
+    - Calls
+    summary: Qo'lda qo'ng'iroq qilish / Ssenariyni sinash
+    description: '**Huquq:** `CALL_EDIT`'
+    operationId: call_call
+    parameters:
+    - name: number
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: scenarioId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    - name: agentId
+      in: query
+      required: false
+      description: AI agent (nashr qilingan versiyasi, o'z ssenariysi va ovozi bilan). scenarioId bilan birga berilmaydi — 400 CALL_SOURCE_INVALID
+      schema:
+        type: integer
+        format: int64
+    - name: sipTrunkId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/CallOriginateResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/calls/click-to-call:
+  post:
+    tags:
+    - Calls
+    summary: Operator softfonidan qo'ng'iroq
+    description: '**Huquq:** `OPERATOR_EDIT`'
+    operationId: call_clickToCall
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callrecord.yaml#/ClickToCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/ClickToCallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/calls/live:
+  get:
+    tags:
+    - Calls
+    summary: Jonli faol qo'ng'iroqlar monitoringi
+    description: '**Huquq:** `LIVE_READ`'
+    operationId: call_live
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/callrecord.yaml#/LiveCallRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/calls/test:
+  post:
+    tags:
+    - Calls
+    summary: Saqlanmagan qoralama (Draft) stsenariyni sinash
+    description: '**Huquq:** `CALL_EDIT`'
+    operationId: call_testCall
+    parameters:
+    - name: number
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: sipTrunkId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/scenario.yaml#/ScenarioDefinition
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/CallOriginateResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/calls/web-test:
+  post:
+    tags:
+    - Calls
+    summary: Brauzerdan test qo'ng'irog'i (mikrofon ↔ AI)
+    description: '**Huquq:** `CALL_EDIT`'
+    operationId: call_webTest
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callrecord.yaml#/WebTestCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/WebTestCallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/calls/{channelId}/consult:
+  post:
+    tags:
+    - Calls
+    summary: Maslahat qo'ng'irog'ini boshlash
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_consult
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callrecord.yaml#/TransferCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/TransferResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/consult/cancel:
+  post:
+    tags:
+    - Calls
+    summary: Maslahat qo'ng'irog'ini bekor qilish
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_cancelConsult
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/TransferResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/consult/complete:
+  post:
+    tags:
+    - Calls
+    summary: Maslahatdan keyin uzatishni yakunlash
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_completeConsult
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/TransferResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/hangup:
+  post:
+    tags:
+    - Calls
+    summary: Qo'ng'iroqni tugatish
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_hangup
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/HangupResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/hold:
+  post:
+    tags:
+    - Calls
+    summary: Qo'ng'iroqni kutishga qo'yish
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_hold
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/TransferResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/listen:
+  get:
+    tags:
+    - Calls
+    summary: Jonli qo'ng'iroqni tinglash (audio oqim)
+    description: '**Huquq:** `LIVE_READ`'
+    operationId: call_listen
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Fayl
+        content:
+          audio/wav:
+            schema:
+              type: string
+              format: binary
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/monitor:
+  post:
+    tags:
+    - Calls
+    summary: 'Supervayzer: tinglash / pichirlash / aralashish'
+    description: '**Huquq:** `CALL_MONITOR`'
+    operationId: call_monitor
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callrecord.yaml#/MonitorCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/MonitorCallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/play:
+  post:
+    tags:
+    - Calls
+    summary: Qo'ng'iroqda audio ijro etish
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_play
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: file
+      in: query
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/PlayResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/say:
+  post:
+    tags:
+    - Calls
+    summary: Qo'ng'iroqda matnni aytish (TTS)
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_say
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: text
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: language
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: voice
+      in: query
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/SayResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/transfer:
+  post:
+    tags:
+    - Calls
+    summary: Uzatish (blind transfer)
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_transfer
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/callrecord.yaml#/TransferCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/TransferResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/calls/{channelId}/unhold:
+  post:
+    tags:
+    - Calls
+    summary: Qo'ng'iroqni kutishdan qaytarish
+    description: '**Huquq:** `LIVE_EDIT`'
+    operationId: call_unhold
+    parameters:
+    - name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/callrecord.yaml#/TransferResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

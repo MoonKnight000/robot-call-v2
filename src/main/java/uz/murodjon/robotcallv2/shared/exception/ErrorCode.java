@@ -111,6 +111,7 @@ public enum ErrorCode {
     SCENARIO_DEFINITION_INVALID("Invalid scenario definition: %s problem(s), listed in errors"),
     SCENARIO_HAS_NO_STAGES("Scenario %s has no stages to continue the call with"),
     WEB_TEST_SOURCE_INVALID("give at most one of campaignId, scenarioId or definition; targetId needs campaignId"),
+    CALL_SOURCE_INVALID("give at most one of scenarioId or agentId — an agent already runs its own scenario"),
     CAMPAIGN_DIAL_WINDOW_INVALID("dialWindowStart must be before dialWindowEnd"),
     CAMPAIGN_DIAL_WINDOW_OUT_OF_RANGE(
             "Campaign dial window (%s-%s) must fit inside the company's allowed dial window (%s-%s)"),

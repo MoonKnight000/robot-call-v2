@@ -48,6 +48,8 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
     private static final long FINAL_WAIT_MS = 4000;
     /** Once a final has arrived, how long a quiet recognizer is given before it is taken as done. */
     private static final long QUIET_MS = 1200;
+    private static final String GEMINI_LIVE_PROVIDER = "gemini-live";
+    private static final String GEMINI_TTS_PROVIDER = "gemini";
 
     private final TtsVoiceRepository ttsVoiceRepository;
     private final TtsProviderSelector ttsProviderSelector;
@@ -73,7 +75,7 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         if (voice == null) {
             throw new NotFoundException(ErrorCode.TTS_VOICE_NOT_FOUND, voiceId);
         }
-        TtsProvider provider = ttsProviderSelector.tryFind(voice.provider());
+        TtsProvider provider = ttsProviderSelector.tryFind(previewProviderOf(voice));
         if (provider == null) {
             // A realtime engine's voice, or a TTS vendor whose credentials are not configured.
             throw new ConflictException(ErrorCode.TTS_VOICE_PROVIDER_UNAVAILABLE, voiceId, voice.provider());
@@ -82,6 +84,16 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         String speech = SpeechTextNormalizer.normalize(text, voice.language());
         short[] pcm = provider.synthesize(speech, voice.language(), voice.name(), style);
         return toWav(pcm);
+    }
+
+    /**
+     * The TTS vendor that speaks this voice for a preview. Gemini Live cannot read a text
+     * out on its own, but its prebuilt voices (Aoede, Puck, …) are the same ones Gemini TTS
+     * offers, so they are previewed there: the same timbre, though the intonation of a live
+     * call may differ somewhat. Other realtime engines have no such twin and stay a 409.
+     */
+    private static String previewProviderOf(TtsVoice voice) {
+        return GEMINI_LIVE_PROVIDER.equals(voice.provider()) ? GEMINI_TTS_PROVIDER : voice.provider();
     }
 
     @Override

@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.dto.CallOriginateResponse;
@@ -55,6 +57,7 @@ class OutboundDialService {
     /** Whose calls may go out over the platform's own trunk. */
     private final CompanyProperties companyProperties;
     private final ScenarioUseCase scenarioUseCase;
+    private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase audit;
     private final PendingCallRegistry pendingCallRegistry;
 
@@ -69,6 +72,7 @@ class OutboundDialService {
                         CallBillingUseCase callBillingUseCase,
                         CompanyProperties companyProperties,
                         ScenarioUseCase scenarioUseCase,
+                        AiAgentUseCase aiAgentUseCase,
                         AuditUseCase audit,
                         PendingCallRegistry pendingCallRegistry) {
         this.asteriskProperties = asteriskProperties;
@@ -82,6 +86,7 @@ class OutboundDialService {
         this.callBillingUseCase = callBillingUseCase;
         this.companyProperties = companyProperties;
         this.scenarioUseCase = scenarioUseCase;
+        this.aiAgentUseCase = aiAgentUseCase;
         this.audit = audit;
         this.pendingCallRegistry = pendingCallRegistry;
     }
@@ -189,15 +194,22 @@ class OutboundDialService {
     }
 
     CallOriginateResponse originateManualCall(long companyId, String number, Long scenarioId) {
-        return originateManualCall(companyId, number, scenarioId, null);
+        return originateManualCall(companyId, number, scenarioId, null, null);
     }
 
-    CallOriginateResponse originateManualCall(long companyId, String number, Long scenarioId, Long sipTrunkId) {
+    CallOriginateResponse originateManualCall(long companyId, String number, Long scenarioId, Long agentId,
+                                              Long sipTrunkId) {
         if (scenarioId != null) {
             scenarioUseCase.requireScenario(companyId, scenarioId);
         }
+        // Loaded before dialling, so an unknown agent is a 404 rather than a phone that rings for nothing.
+        AiAgent agent = agentId != null ? aiAgentUseCase.requirePublishedAgent(companyId, agentId) : null;
         String channelId = originate(number, companyId, sipTrunkId);
-        pendingCallRegistry.registerManualScenario(channelId, scenarioId, companyId);
+        if (agent != null) {
+            pendingCallRegistry.registerManualAgent(channelId, agent, companyId);
+        } else {
+            pendingCallRegistry.registerManualScenario(channelId, scenarioId, companyId);
+        }
         audit.record(companyId, "CALL_ORIGINATE_MANUAL", "call", channelId, number);
         return new CallOriginateResponse(number, channelId);
     }

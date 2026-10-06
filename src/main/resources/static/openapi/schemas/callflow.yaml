@@ -1,0 +1,245 @@
+# `callflow` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+CallFlow:
+  type: object
+  description: A call flow (docs/INBOUND-PBX-PLAN.md §4). Edits land in `draftGraph`; calls run `publishedGraph`, which only a successful publish replaces.
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    description:
+      type: string
+    draftGraph:
+      $ref: '#/CallFlowGraph'
+    publishedGraph:
+      allOf:
+      - $ref: '#/CallFlowGraph'
+      description: what calls run; null until first published
+    version:
+      type: integer
+      format: int32
+      description: how many times it has been published
+    publishedAt:
+      type: string
+      format: date-time
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - version
+CallFlowFilter:
+  type: object
+  description: Pagination + sort for POST /api/call-flows/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        UPDATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+CallFlowGraph:
+  type: object
+  description: The nodes of a call flow and where a call starts. Stored as one JSON document, so the flow editor writes the whole graph at once and a published version is a copy.
+  properties:
+    entry:
+      type: string
+      description: id of the first node
+    nodes:
+      type: object
+      additionalProperties:
+        $ref: '#/CallFlowNode'
+      description: node id → node
+CallFlowNode:
+  type: object
+  description: One step of a call flow. Which fields matter depends on `#type()`; the rest stay null (docs/api/call-flows.md lists them per type).
+  properties:
+    type:
+      $ref: '#/CallFlowNodeType'
+    prompt:
+      type: object
+      additionalProperties:
+        type: string
+      description: what is said, by language tag ("uz-UZ" → text); the call's language is picked, then the first entry
+    audioFileId:
+      type: integer
+      format: int64
+      description: a recording played instead of `prompt`
+    options:
+      type: object
+      additionalProperties:
+        type: string
+      description: 'MENU: key ("1", "*") → next node; LANGUAGE_SELECT: key → language tag'
+    exits:
+      type: object
+      additionalProperties:
+        type: string
+      description: exit key (`CallFlowExit#key()`) → next node
+    timeoutSec:
+      type: integer
+      format: int32
+      description: 'MENU / LANGUAGE_SELECT: seconds to wait for a key; RING_GROUP, EXTENSION, FORWARD_EXTERNAL: seconds to ring'
+    maxRetries:
+      type: integer
+      format: int32
+      description: 'MENU: how often the menu is repeated after no or a wrong key'
+    language:
+      type: string
+      description: 'LANGUAGE_SELECT: taken when no key is pressed'
+    skipWhenKnown:
+      type: boolean
+      description: 'LANGUAGE_SELECT: skip the question when the caller''s language is known'
+    scheduleId:
+      type: integer
+      format: int64
+    queueId:
+      type: integer
+      format: int64
+    aiAgentId:
+      type: integer
+      format: int64
+    voicemailBoxId:
+      type: integer
+      format: int64
+    userIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+    phoneNumber:
+      type: string
+    confirmAnswer:
+      type: boolean
+      description: 'FORWARD_EXTERNAL: whoever answers must press 1 before being connected, so a mobile''s voicemail cannot take the call'
+    url:
+      type: string
+    extensionDigits:
+      type: integer
+      format: int32
+      description: 'MENU: also accept an internal extension of this many digits'
+    keywords:
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
+      description: 'MENU: words that pick an option when said instead of pressed'
+CallFlowNodeType:
+  type: string
+  enum:
+  - PLAY
+  - SCHEDULE
+  - MENU
+  - LANGUAGE_SELECT
+  - AI_AGENT
+  - QUEUE
+  - RING_GROUP
+  - EXTENSION
+  - FORWARD_EXTERNAL
+  - VOICEMAIL
+  - CALLBACK_OFFER
+  - CALLER_ROUTER
+  - WEBHOOK_ROUTER
+  - HANGUP
+  description: |-
+    What a call-flow node does (docs/INBOUND-PBX-PLAN.md §4.2), and the exits it may take. An exit a node does not name ends the call.
+
+    - `PLAY` — Say `prompt` (or play `audioFileId`).
+
+    - `SCHEDULE` — Branch on `scheduleId`: open, closed, or a holiday.
+
+    - `MENU` — Keypad (and optionally spoken) menu; `options` maps a key to the next node.
+
+    - `LANGUAGE_SELECT` — "O'zbek tili uchun 1 ni bosing": `options` maps a key to a language tag.
+
+    - `AI_AGENT` — Hand the call to the AI agent `aiAgentId`.
+
+    - `QUEUE` — Wait in operator queue `queueId`.
+
+    - `RING_GROUP` — Ring `userIds` at once.
+
+    - `EXTENSION` — Ring the one operator in `userIds`.
+
+    - `FORWARD_EXTERNAL` — Ring `phoneNumber` over the trunk.
+
+    - `VOICEMAIL` — Record a message into `voicemailBoxId`.
+
+    - `CALLBACK_OFFER` — "Qayta qo'ng'iroq qilaylikmi? 1 ni bosing."
+
+    - `CALLER_ROUTER` — Branch on who is calling: a VIP rule, a caller the CRM knows, a repeat caller.
+
+    - `WEBHOOK_ROUTER` — Ask `url` which exit to take; any exit name it answers with is allowed.
+
+    - `HANGUP`
+CallFlowPage:
+  type: object
+  description: '`CallFlow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/CallFlow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+CallFlowValidationResponse:
+  type: object
+  description: POST /api/call-flows/{id}/validate — whether the draft could be published, and if not, why.
+  properties:
+    valid:
+      type: boolean
+    problems:
+      type: array
+      items:
+        type: string
+  required:
+  - valid
+SaveCallFlowRequest:
+  type: object
+  description: Body of POST/PUT /api/call-flows — saves the draft. A draft may be incomplete; only publishing requires it to be valid.
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 255
+    description:
+      type: string
+    graph:
+      $ref: '#/CallFlowGraph'
+  required:
+  - name
+  - graph

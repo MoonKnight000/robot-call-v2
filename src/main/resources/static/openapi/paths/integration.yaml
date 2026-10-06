@@ -1,0 +1,183 @@
+# CRM Integrations — integration controller endpointlari.
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/settings/integrations:
+  get:
+    tags:
+    - CRM Integrations
+    summary: Joriy integratsiya holati
+    description: '**Huquq:** `INTEGRATION_READ`'
+    operationId: integration_get
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/integration.yaml#/CrmIntegrationRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/settings/integrations/account:
+  put:
+    tags:
+    - CRM Integrations
+    summary: AmoCRM / Kommo / Bitrix24 ulash
+    description: |-
+      Connects amoCRM, Kommo or Bitrix24 by account address and token, replacing whatever the company was connected to — these have no consent screen to go through. Calls are routed to the new CRM from the next one on; `PUT /uysot` switches back.
+
+      **Huquq:** `INTEGRATION_EDIT`
+    operationId: integration_connectAccount
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/integration.yaml#/ConnectCrmAccountRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/integration.yaml#/CrmIntegrationRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/settings/integrations/catalog:
+  get:
+    tags:
+    - CRM Integrations
+    summary: Mavjud integratsiyalar katalogi
+    description: '**Huquq:** `INTEGRATION_READ`'
+    operationId: integration_catalog
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/integration.yaml#/CrmCatalogEntry
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/settings/integrations/uysot:
+  put:
+    tags:
+    - CRM Integrations
+    summary: Uysot App & Grants sozlash
+    description: '**Huquq:** `INTEGRATION_EDIT`'
+    operationId: integration_connect
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/integration.yaml#/ConnectIntegrationRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/integration.yaml#/CrmIntegrationRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+  delete:
+    tags:
+    - CRM Integrations
+    summary: Integratsiyani uzish
+    description: '**Huquq:** `INTEGRATION_EDIT`'
+    operationId: integration_disconnect
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/settings/integrations/uysot/authorize-url:
+  get:
+    tags:
+    - CRM Integrations
+    summary: OAuth avtorizatsiya havolasi
+    description: '**Huquq:** `INTEGRATION_READ`'
+    operationId: integration_authorizeUrl
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/integration.yaml#/AuthorizeUrlResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/settings/integrations/uysot/callback:
+  get:
+    tags:
+    - CRM Integrations
+    summary: OAuth qaytish nuqtasi
+    description: |-
+      Where the frontend navigates the browser with the `code` and `state` Uysot returned to its integrations page after the company approved the connection.
+
+      **Ochiq endpoint** — token talab qilinmaydi.
+    operationId: integration_callback
+    parameters:
+    - name: code
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: state
+      in: query
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: OK — javob tanasi yo'q
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+    security: []

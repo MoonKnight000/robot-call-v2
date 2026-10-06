@@ -1,0 +1,214 @@
+# `voicemail` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+SaveVoicemailBoxRequest:
+  type: object
+  description: Body of POST/PUT /api/voicemail-boxes.
+  properties:
+    name:
+      type: string
+      minLength: 1
+    greetingText:
+      type: string
+    greetingFileId:
+      type: integer
+      format: int64
+    maxSeconds:
+      type: integer
+      format: int32
+      description: null is 120
+    transcribe:
+      type: boolean
+      description: null is true
+    enabled:
+      type: boolean
+      description: null is true
+  required:
+  - name
+UpdateVoicemailStatusRequest:
+  type: object
+  description: Body of PUT /api/voicemails/{id}/status.
+  properties:
+    status:
+      $ref: '#/VoicemailStatus'
+  required:
+  - status
+VoicemailBox:
+  type: object
+  description: Where a caller can leave a message (docs/INBOUND-PBX-PLAN.md §8.1).
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    name:
+      type: string
+    greetingText:
+      type: string
+      description: spoken with TTS before the beep, unless `greetingFileId` is set
+    greetingFileId:
+      type: integer
+      format: int64
+      description: a recorded greeting (stored_file, WAV) played instead
+    maxSeconds:
+      type: integer
+      format: int32
+      description: the longest message recorded
+    transcribe:
+      type: boolean
+      description: run the message through STT while it is recorded
+    enabled:
+      type: boolean
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - maxSeconds
+  - transcribe
+  - enabled
+VoicemailBoxFilter:
+  type: object
+  description: Pagination + sort for POST /api/voicemail-boxes/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        NAME:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+VoicemailBoxPage:
+  type: object
+  description: '`VoicemailBox` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/VoicemailBox'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+VoicemailMessage:
+  type: object
+  description: One message a caller left.
+  properties:
+    id:
+      type: integer
+      format: int64
+    companyId:
+      type: integer
+      format: int64
+    boxId:
+      type: integer
+      format: int64
+    callAttemptId:
+      type: integer
+      format: int64
+      description: the call it was left on — its summary and recording are there
+    callerPhone:
+      type: string
+    storedFileId:
+      type: integer
+      format: int64
+      description: the message audio; null if storage was down when it was recorded
+    durationSec:
+      type: integer
+      format: int32
+    transcript:
+      type: string
+      description: what the recognizer heard; null when the box does not transcribe
+    status:
+      $ref: '#/VoicemailStatus'
+    createdAt:
+      type: string
+      format: date-time
+  required:
+  - id
+  - companyId
+  - boxId
+  - durationSec
+VoicemailMessageFilter:
+  type: object
+  description: Pagination + filter for POST /api/voicemails/list.
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+        DURATION_SEC:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    status:
+      allOf:
+      - $ref: '#/VoicemailStatus'
+      description: only messages in this status; null for all
+    boxId:
+      type: integer
+      format: int64
+      description: only this box's messages; null for all
+VoicemailMessagePage:
+  type: object
+  description: '`VoicemailMessage` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/VoicemailMessage'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+VoicemailStatus:
+  type: string
+  enum:
+  - NEW
+  - HEARD
+  - ARCHIVED
+  description: 'Where a voicemail is in the operators'' work: just left, listened to, or put away.'
