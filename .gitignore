@@ -13,6 +13,8 @@ asterisk/etc/asterisk/pjsip_local_auth.conf
 # never committed. The directory itself is kept so the app's bind mount has a source.
 asterisk/etc/asterisk/generated/*
 !asterisk/etc/asterisk/generated/.gitkeep
+# Which cells of a cluster talk to each other — hosts of this deployment (pjsip_cells.conf.example).
+asterisk/etc/asterisk/pjsip_cells.conf
 # Cloud credentials — Google STT/TTS read them via GOOGLE_APPLICATION_CREDENTIALS
 # (a path outside the repo), so a key file must never live here.
 **/credential/
@@ -68,3 +70,6 @@ logs/
 # EOU training corpus pulled out of MinIO (TurnDatasetTool) — customer voices, and
 # regenerable from the recordings at any time. Never committed.
 corpus/
+
+# Turn dataset (caller words from live calls) — TurnDatasetProperties
+data/turn-dataset/

@@ -2,9 +2,10 @@ package uz.murodjon.robotcallv2.tool.infrastructure.persistence.mapper;
 
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecution;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecutionStats;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.entity.ToolExecutionEntity;
+import uz.murodjon.robotcallv2.tool.infrastructure.persistence.repository.ToolExecutionStatsProjection;
 
-/** Write-only, like the log it maps: nothing reads a row back through the port yet. */
 @Component
 public class ToolExecutionEntityMapper {
 
@@ -23,5 +24,35 @@ public class ToolExecutionEntityMapper {
         entity.setArgsHash(execution.argsHash());
         entity.setError(execution.error());
         return entity;
+    }
+
+    public ToolExecution toToolExecution(ToolExecutionEntity entity) {
+        if (entity == null) {
+            return null;
+        }
+        return new ToolExecution(
+                entity.getId(),
+                entity.getCompanyId(),
+                entity.getToolId(),
+                entity.getCallAttemptId(),
+                entity.getToolName(),
+                entity.getStatus(),
+                entity.getHttpStatus(),
+                entity.getLatencyMs(),
+                entity.getArgsHash(),
+                entity.getError(),
+                entity.getCreatedAt());
+    }
+
+    public ToolExecutionStats toToolExecutionStats(ToolExecutionStatsProjection projection) {
+        return new ToolExecutionStats(
+                projection.getToolId(),
+                projection.getToolName(),
+                projection.getTotal(),
+                projection.getOk(),
+                projection.getHttpError(),
+                projection.getFailed(),
+                (int) Math.round(projection.getAvgLatencyMs()),
+                (int) Math.round(projection.getP95LatencyMs()));
     }
 }

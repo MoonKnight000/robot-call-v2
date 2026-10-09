@@ -40,3 +40,32 @@ X-Company-Id: 1
 Content-Type: application/json
 
 { "campaignId": 1 }
+
+### Reanalysis — how many calls and roughly what it would cost
+POST http://localhost:8080/api/call-reanalyses/preview
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{ "aiAgentId": 1, "from": "2026-10-01T00:00:00Z", "to": "2026-10-09T00:00:00Z" }
+
+### Reanalysis — queue it
+POST http://localhost:8080/api/call-reanalyses
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{ "aiAgentId": 1, "from": "2026-10-01T00:00:00Z", "to": "2026-10-09T00:00:00Z" }
+
+### Reanalysis — progress
+GET http://localhost:8080/api/call-reanalyses/1
+Authorization: Bearer {{auth_token}}
+
+### Reanalysis — the company's jobs
+POST http://localhost:8080/api/call-reanalyses/filter
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{ "page": 0, "size": 20, "status": "RUNNING" }
+
+### Reanalysis — cancel
+POST http://localhost:8080/api/call-reanalyses/1/cancel
+Authorization: Bearer {{auth_token}}

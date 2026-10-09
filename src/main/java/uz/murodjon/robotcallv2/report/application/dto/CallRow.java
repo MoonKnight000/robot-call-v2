@@ -27,7 +27,7 @@ public record CallRow(
         String summary,
         @JsonFormat(pattern = DateTimeProperties.DATE_PATTERN) LocalDate promisedDate,
         BigDecimal promisedAmount,
-        Long crmNoteId,
+        String crmNoteId,
         String clientName,
         String campaignName,
         String operatorName

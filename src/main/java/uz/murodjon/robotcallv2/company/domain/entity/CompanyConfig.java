@@ -24,6 +24,8 @@ import java.util.List;
  *                                   automated-call disclosure. When false such an agent
  *                                   cannot be saved, and one saved earlier speaks as an
  *                                   AI assistant, disclosure included
+ * @param scorecardReviewThreshold   an operator call scored below this (0–100) goes to the
+ *                                   review inbox (docs/OPERATOR-DIALER-ANALYTICS-PLAN.md §2.3b)
  */
 public record CompanyConfig(
         long id,
@@ -39,8 +41,11 @@ public record CompanyConfig(
         boolean respectPromisedDate,
         boolean humanLikePersonaAllowed,
         List<LocalDate> holidays,
+        int scorecardReviewThreshold,
         Instant createdAt
 ) {
+
+    public static final int DEFAULT_SCORECARD_REVIEW_THRESHOLD = 60;
 
     public CompanyConfig {
         holidays = holidays == null ? List.of() : List.copyOf(holidays);
@@ -85,19 +90,23 @@ public record CompanyConfig(
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
                 defaultLanguage, supportedLanguages, disclosureText,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
-                humanLikePersonaAllowed, List.of(), null);
+                humanLikePersonaAllowed, List.of(), DEFAULT_SCORECARD_REVIEW_THRESHOLD, null);
     }
 
-    /** The same, with the days the company does not call at all (NEXT-PLAN C.4). */
+    /**
+     * The same, with the days the company does not call at all (NEXT-PLAN C.4) and the score
+     * below which an operator call is reviewed.
+     */
     public static CompanyConfig settings(LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
                                          Language defaultLanguage, List<Language> supportedLanguages,
                                          String disclosureText, int maxAttemptsPerPhonePerWeek,
                                          int quietDaysAfterConversation, boolean respectPromisedDate,
-                                         boolean humanLikePersonaAllowed, List<LocalDate> holidays) {
+                                         boolean humanLikePersonaAllowed, List<LocalDate> holidays,
+                                         int scorecardReviewThreshold) {
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
                 defaultLanguage, supportedLanguages, disclosureText,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
-                humanLikePersonaAllowed, holidays, null);
+                humanLikePersonaAllowed, holidays, scorecardReviewThreshold, null);
     }
 
     /** Whether any contact-frequency rule is switched on, so the dialer has history to read. */

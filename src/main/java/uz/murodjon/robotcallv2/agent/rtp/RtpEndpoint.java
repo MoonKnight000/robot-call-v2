@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
+import uz.murodjon.robotcallv2.agent.audio.NeuralDenoiseStream;
 import uz.murodjon.robotcallv2.agent.audio.TelephonyNoiseCanceller;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
@@ -24,6 +25,7 @@ import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import java.io.Closeable;
 import java.net.InetSocketAddress;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Random;
@@ -122,6 +124,8 @@ public class RtpEndpoint implements Closeable {
     private final TelephonyNoiseCanceller noiseCanceller = new TelephonyNoiseCanceller();
     private volatile boolean noiseCancellationEnabled = true;
     private volatile NoiseCancellationMode noiseCancellationMode = NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
+    /** The neural stage, when the deployment has one; replaces the broadband gate while it works. */
+    private volatile NeuralDenoiseStream neuralDenoiser;
 
     /**
      * The room the bot is calling from, and how loud it is. Volume is a multiplier on the
@@ -162,8 +166,13 @@ public class RtpEndpoint implements Closeable {
     private volatile boolean remoteLatched;
     /** Whether {@link #remoteAddress} is the one Asterisk reported for this leg. */
     private volatile boolean remoteFromAsterisk;
-    /** Set after the first failed write: the call goes on unrecorded rather than unheard. RTP thread only. */
-    private boolean recorderFailed;
+    /**
+     * Set after the first failed write: the call goes on unrecorded rather than unheard.
+     * Volatile because an operator call's taps write from their own threads.
+     */
+    private volatile boolean recorderFailed;
+    /** Off while an operator call's taps record both sides instead of this leg's mixed audio. */
+    private volatile boolean recordingInbound = true;
     private io.netty.channel.Channel channel;
     private Thread consumer;
 
@@ -199,14 +208,33 @@ public class RtpEndpoint implements Closeable {
      * packet, and handing it a new immutable list through a volatile field is what keeps
      * that walk safe without putting a lock on the hot path.
      */
-    public void replaceListeners(List<AudioListener> replacement) {
+    public synchronized void replaceListeners(List<AudioListener> replacement) {
         this.listeners = replacement == null ? List.of() : List.copyOf(replacement);
+    }
+
+    /**
+     * Add one listener to a live endpoint, after the ones already there — for a consumer
+     * only some calls need, and only from some point on (a voicemail's beep). Copied the
+     * same way as {@link #replaceListeners}; synchronized with it so neither change is lost.
+     */
+    public synchronized void addListener(AudioListener listener) {
+        List<AudioListener> next = new ArrayList<>(listeners);
+        next.add(listener);
+        this.listeners = List.copyOf(next);
     }
 
     public void setNoiseCancellation(boolean enabled, NoiseCancellationMode mode) {
         this.noiseCancellationEnabled = enabled;
         this.noiseCancellationMode = mode != null ? mode : NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
         this.noiseCanceller.configure(enabled, this.noiseCancellationMode);
+    }
+
+    /**
+     * Clean the recognizer's copy with the neural denoiser instead of the broadband gate.
+     * Still governed by {@link #setNoiseCancellation}: off there means off here too.
+     */
+    public void setNeuralDenoiser(NeuralDenoiseStream neuralDenoiser) {
+        this.neuralDenoiser = neuralDenoiser;
     }
 
     public void setAmbientSound(AmbientSound ambientSound, Double volume, Double fadeInSeconds) {
@@ -634,8 +662,7 @@ public class RtpEndpoint implements Closeable {
                             plcFrame[i] = (short) Math.round(lastGoodFrame[i] * decay);
                         }
                         recordCaller(plcFrame, SAMPLES_PER_FRAME);
-                        short[] cleanPlcFrame = noiseCancellationEnabled
-                                ? noiseCanceller.process(plcFrame, SAMPLES_PER_FRAME) : plcFrame;
+                        short[] cleanPlcFrame = clean(plcFrame, SAMPLES_PER_FRAME);
                         for (AudioListener listener : listeners) {
                             listener.onAudio(cleanPlcFrame, SAMPLES_PER_FRAME);
                         }
@@ -662,8 +689,7 @@ public class RtpEndpoint implements Closeable {
                 // call, and a filter that guesses wrong would have erased the proof of it.
                 // Only the recognizer's copy is cleaned.
                 recordCaller(pcm, payload.length);
-                short[] cleanPcm = noiseCancellationEnabled
-                        ? noiseCanceller.process(pcm, payload.length) : pcm;
+                short[] cleanPcm = clean(pcm, payload.length);
                 for (AudioListener listener : listeners) {
                     listener.onAudio(cleanPcm, payload.length);
                 }
@@ -674,12 +700,53 @@ public class RtpEndpoint implements Closeable {
     }
 
     /**
+     * The recognizer's copy of a frame: neural when there is a working model, else the
+     * broadband gate, else as received.
+     */
+    private short[] clean(short[] pcm, int length) {
+        if (!noiseCancellationEnabled) {
+            return pcm;
+        }
+        NeuralDenoiseStream neural = neuralDenoiser;
+        if (neural != null && noiseCancellationMode != NoiseCancellationMode.OFF) {
+            short[] cleaned = neural.process(pcm, length);
+            if (cleaned != null) {
+                return cleaned;
+            }
+            neuralDenoiser = null;
+        }
+        return noiseCanceller.process(pcm, length);
+    }
+
+    private void recordCaller(short[] pcm, int length) {
+        if (recordingInbound) {
+            recordCallerSide(pcm, length);
+        }
+    }
+
+    /**
+     * Whether this leg's own inbound audio goes into the recording. Switched off while an
+     * operator is on the call: this leg then hears the client and the operator mixed, and the
+     * two are recorded from their own taps instead ({@link #recordCallerSide}, {@link #recordOtherSide}).
+     */
+    public void setRecordingInbound(boolean recordingInbound) {
+        this.recordingInbound = recordingInbound;
+    }
+
+    /** The other side of the recording — the right channel, where the bot's speech goes on an AI call. */
+    public void recordOtherSide(short[] pcm, int length) {
+        if (recorder != null && !recorderFailed) {
+            recorder.writeBot(pcm, length);
+        }
+    }
+
+    /**
      * The caller's side of the recording. A write failure — a full disk — used to throw out
      * of the packet's processing before the listeners ran, so STT and VAD lost every packet
      * of every call, with a warning logged fifty times a second each. Now the first failure
      * stops the recording for this call and is logged once; the call itself carries on.
      */
-    private void recordCaller(short[] pcm, int length) {
+    public void recordCallerSide(short[] pcm, int length) {
         if (recorder == null || recorderFailed) {
             return;
         }

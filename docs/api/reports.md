@@ -1,6 +1,6 @@
 # Hisobotlar va Tahlillar (Reports & Analytics) API
 
-`uz.murodjon.robotcallv2.report` · huquq: **REPORT_READ** / **REPORT_EDIT** (bulk); dashboard — **DASHBOARD_READ**, audit — **AUDIT_READ**; kontakt-markaz (navbat/operator) hisobotlari — **REPORT_READ**, qo'ng'iroq timeline'i — **CALL_READ**
+`uz.murodjon.robotcallv2.report` · huquq: **REPORT_READ** / **REPORT_EDIT** (bulk); dashboard — **DASHBOARD_READ**, audit — **AUDIT_READ**; kontakt-markaz (navbat/operator) hisobotlari — **REPORT_READ**, qo'ng'iroq timeline'i — **CALL_READ**; PREDICTIVE kampaniya natijalari — **REPORT_READ**; operator qo'ng'iroqlari sifati (`/api/reports/quality`) — **REPORT_READ**
 
 Qo'ng'iroqlar tarixi, to'liq transkriptlar, audio yozuvlar, dashboard KPI ko'rsatkichlari,
 dinamika, soatlik issiqlik xaritasi (Heatmap), kampaniyalarni taqqoslash, voronka, audit
@@ -72,7 +72,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
         "summary": "Mijoz qarzini tan oldi va 10-sentabrda to'lashga va'da berdi.",
         "promisedDate": "2026-09-10",
         "promisedAmount": 1500000.00,
-        "crmNoteId": 88123,
+        "crmNoteId": "f643bd38-00cb-436e-a7db-7c3c79834cf7",
         "clientName": "Sardor Alimov",
         "campaignName": "Kechikkan to'lovlar - Mart 2026",
         "operatorName": null
@@ -222,13 +222,20 @@ doim qo'llanadi (`ids` berilganda ham).
       "rtpPacketsLost": 12,
       "rtpJitterMs": 6,
       "rtpMos": 4.28
-    }
+    },
+    "talk": null
   },
   "message": null,
   "messageCode": null,
   "errors": null
 }
 ```
+
+Operator qo'ng'iroqlari
+(navbat, callback/softfon, preview, AI'dan operatorga uzatilgan qism) jonli transkripsiya qilinadi:
+mijoz va operator alohida tinglanadi, qatorlar `tsOffsetMs` (qo'ng'iroq boshidan) tartibida keladi.
+Operator qatorlarida karta raqami kabi ma'lumotlar yashiriladi. STT o'chirilgan bo'lsa, operator
+qo'ng'iroqlarida transkript bo'lmaydi.
 
 | Maydon | Turi | Izoh |
 |---|---|---|
@@ -237,9 +244,10 @@ doim qo'llanadi (`ids` berilganda ham).
 | `needsFollowUp` / `followUpNote` | boolean / string | AI keyingi qadam kerakligini belgilaganmi |
 | `escalated` | boolean | Qo'ng'iroq operatorga eskalatsiya qilinganmi |
 | `errorMessage` | string \| null | Texnik nosozlik matni |
-| `transcript[].role` | string | `"AGENT"` yoki `"CLIENT"` |
+| `transcript[].role` | string | `"AGENT"` (bot), `"CLIENT"` (mijoz) yoki `"OPERATOR"` (operator) |
 | `transcript[].tsOffsetMs` | number | Qo'ng'iroq boshidan millisekund — audio pleyerni shu qatordan boshlash uchun |
 | `transcript[].confidence` | float \| null | STT ishonchi; `AGENT` qatorlarida `null` |
+| `talk` | object \| null | Operator qo'ng'iroqda bo'lgan qism bo'yicha kim qancha gapirgani (mijoz va operator ovozi alohida, LLM'siz). Operatorsiz qo'ng'iroqda `null`. Maydonlar: `callId`; millisekundda — `analysedMs` — tahlil qilingan davr, `clientTalkMs`, `operatorTalkMs`, `overtalkMs` — ikkalasi bir vaqtda, `silenceMs` — hech kim gapirmagan, `longestSilenceMs` — eng uzun jimlik. 300 ms gacha pauza gap ichida hisoblanadi. Gapirish/tinglash nisbati = `operatorTalkMs / clientTalkMs` |
 
 **`technical` — qo'ng'iroq qaysi rejimda ketganiga qarab o'qiladi:**
 
@@ -855,3 +863,185 @@ qaytaradi: call flow tugunlari, navbat, operatorga taklif, hold, uzatish, monito
 | `CALLBACK_REQUESTED` | Mijoz qayta qo'ng'iroq so'radi | Navbatdan — `queueId`; flow tugunidan — `{}` |
 | `SURVEY_SCORE` | So'rovnoma bahosi qo'yildi | `score`, `userId` |
 | `MONITOR` | Supervayzer qo'shildi (telefoni jiringlagan payt) | `userId`, `mode` (`LISTEN` / `WHISPER` / `BARGE`) |
+
+---
+
+### `GET /api/reports/campaigns/{campaignId}/predictive` — PREDICTIVE kampaniya terish natijalari
+
+Huquq: **REPORT_READ**. Misol: `GET /api/reports/campaigns/12/predictive?from=2026-10-01&to=2026-10-07`.
+Davr — yuqoridagi `from` / `to` (qo'ng'iroq boshlangan vaqt, `call_attempt.started_at`). Kampaniyaning
+`[from, to)` dagi barcha qo'ng'iroqlari: nechtasi operatorga ulandi, nechtasini AI agent oldi
+(AI overflow — bo'sh operator yo'q yoki operator 15 soniyada ko'tarmadi), nechtasini mijoz kutib
+turib tashlab ketdi. Operatorlar bandligi (occupancy) — [`/api/reports/operators`](#get-apireportsoperators--operatorlar-boyicha-hisobot).
+
+**Xatolar:** `404 CAMPAIGN_NOT_FOUND` (kampaniya yo'q yoki boshqa kompaniyaniki), davr xatolari — yuqorida.
+
+```json
+{
+  "accept": true,
+  "data": {
+    "campaignId": 12,
+    "dialled": 420,
+    "answered": 150,
+    "toOperator": 118,
+    "aiOverflow": 27,
+    "abandoned": 5,
+    "voicemail": 31,
+    "aiOverflowPercent": 18.0,
+    "abandonRatePercent": 3.3333333333333335,
+    "averageOperatorWaitSeconds": 2.4
+  },
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `campaignId` | number | Kampaniya |
+| `dialled` | number | Terilgan qo'ng'iroqlar |
+| `answered` | number | Odam ko'targan: `toOperator + aiOverflow + abandoned` (avtojavobgich kirmaydi) |
+| `toOperator` | number | Operatorga ulangan (`operator_answered_at` bor) |
+| `aiOverflow` | number | AI agent olgan (`call_attempt.ai_overflow`) |
+| `abandoned` | number | Operator qidirilayotganda mijoz go'shakni qo'ygan |
+| `voicemail` | number | Avtojavobgich (`VOICEMAIL`) |
+| `aiOverflowPercent` | number \| null | `aiOverflow × 100 ÷ answered`, yaxlitlanmagan; `answered = 0` bo'lsa `null` |
+| `abandonRatePercent` | number \| null | `abandoned × 100 ÷ answered`; `answered = 0` bo'lsa `null` |
+| `averageOperatorWaitSeconds` | number \| null | Operatorga ulangan mijoz o'z operatorini o'rtacha necha soniya kutgani; ulangan bo'lmasa `null` |
+
+---
+
+## 6. Operator qo'ng'iroqlari sifati (`/api/reports/quality`)
+
+Huquq: **REPORT_READ**. Manba — operator qo'ng'iroqlarining baholash kartalari
+([scorecards.md](scorecards.md)): `call_scorecard`, uning javoblari va mavzulari, hamda
+`call_talk_metrics`. Ball va javoblar **amaldagi** qiymat: supervisor tuzatgan bo'lsa,
+tuzatilgani olinadi. Qo'ng'iroq davrga **baholangan vaqti** bo'yicha tushadi (qo'ng'iroq
+tugaganidan bir necha daqiqa keyin). `from` / `to` — [5-bo'limdagi](#davr--from--to) kabi:
+standart oxirgi 7 kun, xatolar ham o'sha.
+
+Ixtiyoriy `operatorUserId` (`/operators` dan tashqari hammasida) hisobotni bitta operatorning
+qo'ng'iroqlari bilan cheklaydi.
+
+### `GET /api/reports/quality/operators` — Operatorlar reytingi
+
+SIP akkaunti bor **har bir** operator qaytadi, davrda baholangan qo'ng'iroq bo'lmasa ham.
+Tartib: `averageScore` kamayish bo'yicha, bahosizlar oxirida, keyin ism bo'yicha.
+
+```json
+{
+  "accept": true,
+  "data": [
+    {
+      "userId": 9,
+      "name": "Dilnoza Karimova",
+      "scoredCalls": 42,
+      "averageScore": 86.4,
+      "flaggedCalls": 3,
+      "correctedCalls": 1,
+      "upsetClientCalls": 2,
+      "averageOperatorTalkPercent": 54.2,
+      "averageOvertalkPercent": 3.1,
+      "averageLongestSilenceSeconds": 6.8
+    }
+  ],
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+| Maydon | Turi | Ma'nosi |
+|---|---|---|
+| `scoredCalls` | number | Davrda baholangan qo'ng'iroqlari |
+| `averageScore` | number \| null | O'rtacha ball (0–100, yaxlitlanmagan); ball `null` bo'lgan qo'ng'iroqlar kirmaydi. Baholangan qo'ng'iroq bo'lmasa — `null` |
+| `flaggedCalls` | number | Tekshiruv inbox'iga tushganlari (`needsReview`) |
+| `correctedCalls` | number | Supervisor LLM bahosini tuzatganlari (`CORRECTED`) — hakam ishonchliligi |
+| `upsetClientCalls` | number | Mijoz kayfiyati `NEGATIVE` yoki `HOSTILE` bo'lganlari |
+| `averageOperatorTalkPercent` | number \| null | Suhbatda operator gapirgan ulush: `operatorTalk ÷ (clientTalk + operatorTalk) × 100`, baholangan va talk metrics'i bor qo'ng'iroqlar bo'yicha o'rtacha (`GET /api/reports/calls/{callId}` dagi `talk`). Bunday qo'ng'iroq bo'lmasa — `null` |
+| `averageOvertalkPercent` | number \| null | Ikkalasi bir vaqtda gapirgan vaqt, qo'ng'iroqning foizida |
+| `averageLongestSilenceSeconds` | number \| null | Qo'ng'iroqdagi eng uzun jimlik, o'rtacha, soniyada |
+
+### `GET /api/reports/quality/criteria-trend` — Mezonlar trendi
+
+Qo'shimcha parametr `bucket`: `DAY` (standart) yoki `WEEK` — kompaniya mintaqasidagi kun yoki
+dushanbadan boshlanadigan hafta. Har bir mezon × davr uchun bitta nuqta (javob bo'lmagan
+davrlar qaytmaydi). Tartib: mezon nomi, keyin `periodStart`.
+
+```json
+{
+  "accept": true,
+  "data": [
+    { "criterionId": 1, "criterionName": "Salomlashish", "periodStart": "2026-10-05", "applied": 40, "passed": 37, "passRatePercent": 92.5 },
+    { "criterionId": 1, "criterionName": "Salomlashish", "periodStart": "2026-10-06", "applied": 35, "passed": 30, "passRatePercent": 85.71428571428571 }
+  ],
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+| Maydon | Turi | Ma'nosi |
+|---|---|---|
+| `criterionId` | number \| null | Mezon; o'chirilgan mezon uchun `null` — u holda qatorlar baholash paytidagi nomi bo'yicha guruhlanadi |
+| `criterionName` | string | Mezonning eng so'nggi baholashdagi nomi (keyin nomi o'zgartirilgan bo'lsa ham bitta qator) |
+| `periodStart` | string (`YYYY-MM-DD`) | Kun yoki haftaning dushanbasi |
+| `applied` | number | `YES` + `NO` javoblar (`NOT_APPLICABLE` kirmaydi) |
+| `passed` | number | `YES` javoblar |
+| `passRatePercent` | number \| null | `passed × 100 ÷ applied`; `applied = 0` bo'lsa — `null` |
+
+`bucket` noto'g'ri bo'lsa — `400`.
+
+### `GET /api/reports/quality/failed-criteria` — Eng ko'p buzilgan mezonlar
+
+Davrda kamida bir marta qo'llangan har bir mezon; tartib — `failed` kamayish bo'yicha.
+
+```json
+{
+  "accept": true,
+  "data": [
+    { "criterionId": 2, "criterionName": "Mijozni tasdiqlash", "applied": 120, "failed": 31, "failRatePercent": 25.833333333333332 }
+  ],
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+| Maydon | Turi | Ma'nosi |
+|---|---|---|
+| `applied` | number | `YES` + `NO` javoblar |
+| `failed` | number | `NO` javoblar |
+| `failRatePercent` | number | `failed × 100 ÷ applied` |
+
+`criterionId` / `criterionName` — trenddagi kabi.
+
+### `GET /api/reports/quality/topics` — Mavzular
+
+Qo'ng'iroq nima haqida bo'lgani — baholashda LLM har bir qo'ng'iroqqa 1–3 ta qisqa teg qo'yadi
+(o'zbekcha, kichik harflarda, masalan `"to'lov muddati"`). Qo'shimcha parametr `limit`
+(standart `20`, `1–100` oralig'iga keltiriladi). Tartib — `calls` kamayish bo'yicha.
+
+```json
+{
+  "accept": true,
+  "data": [
+    { "topic": "to'lov muddati", "calls": 58, "averageScore": 81.2, "upsetClientCalls": 6 },
+    { "topic": "narx", "calls": 23, "averageScore": 88.0, "upsetClientCalls": 0 }
+  ],
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+| Maydon | Turi | Ma'nosi |
+|---|---|---|
+| `topic` | string | Teg |
+| `calls` | number | Shu tegli baholangan qo'ng'iroqlar |
+| `averageScore` | number \| null | Ularning o'rtacha bali |
+| `upsetClientCalls` | number | Ulardan mijoz `NEGATIVE` / `HOSTILE` bo'lganlari |
+
+> Teglar erkin matn: LLM bir mavzuni ba'zan turlicha nomlashi mumkin ("to'lov muddati" /
+> "to'lov sanasi"). Teglar V25 dan keyin baholangan qo'ng'iroqlarda bo'ladi.

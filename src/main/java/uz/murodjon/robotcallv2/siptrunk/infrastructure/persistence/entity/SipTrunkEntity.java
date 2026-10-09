@@ -56,6 +56,9 @@ public class SipTrunkEntity {
     @Column(name = "codecs")
     private List<String> codecs;
 
+    @Column(name = "max_cps")
+    private Integer maxCps;
+
     @Column(name = "is_default", nullable = false)
     private boolean isDefault;
 
@@ -155,6 +158,14 @@ public class SipTrunkEntity {
 
     public void setCodecs(List<String> codecs) {
         this.codecs = codecs;
+    }
+
+    public Integer getMaxCps() {
+        return maxCps;
+    }
+
+    public void setMaxCps(Integer maxCps) {
+        this.maxCps = maxCps;
     }
 
     public boolean isDefault() {

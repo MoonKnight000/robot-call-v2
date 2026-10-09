@@ -195,7 +195,8 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                         request.midCallSmsTemplate() != null ? request.midCallSmsTemplate() : behaviour.midCallSmsTemplate(),
                         request.transferPhoneNumber() != null ? request.transferPhoneNumber() : behaviour.transferPhoneNumber(),
                         request.transferMessage() != null ? request.transferMessage() : behaviour.transferMessage(),
-                        request.transferQueueId() != null ? request.transferQueueId() : behaviour.transferQueueId()),
+                        request.transferQueueId() != null ? request.transferQueueId() : behaviour.transferQueueId(),
+                        behaviour.preConversationAudioFileId()),
                 new AiAgentDataPolicy(
                         zeroPii,
                         storeAudio,

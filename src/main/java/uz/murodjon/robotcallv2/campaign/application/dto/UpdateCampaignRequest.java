@@ -4,11 +4,11 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
@@ -25,10 +25,13 @@ import java.util.Set;
  * <p>{@code version} is the one {@link CampaignRow} carried when the form was opened; a
  * campaign saved by someone else since is answered 409 instead of being overwritten.
  * Optional, so an older client that does not send it keeps working.
+ *
+ * <p>{@code dialMode} is fixed at creation like {@code type}; {@code aiAgentId} and
+ * {@code callQueueId} are checked against it as on create.
  */
 public record UpdateCampaignRequest(
         @NotBlank String name,
-        @NotNull Long aiAgentId,
+        Long aiAgentId,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
@@ -46,7 +49,10 @@ public record UpdateCampaignRequest(
         Instant endAt,
         @Min(1) Long budgetUzs,
         @Min(1) Long dailyBudgetUzs,
-        Long version) {
+        Long version,
+        Long callQueueId,
+        @Min(0) @Max(100) Integer maxAiOverflowPercent,
+        TargetOrdering targetOrdering) {
 
     public RecurrenceType recurrenceTypeOrDefault() {
         return recurrenceType != null ? recurrenceType : RecurrenceType.ONCE;

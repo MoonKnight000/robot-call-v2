@@ -11,6 +11,14 @@ import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
  *                         had to be asked a second time
  * @param completionTokens tokens the model wrote, thinking included
  * @param cachedTokens     of {@code promptTokens}, how many the provider served cached
+ * @param ownLlm           whether it ran on the company's own LLM, which the company pays its
+ *                         provider for — then nothing is billed for it
  */
-public record SummarizedCall(CallSummary summary, long promptTokens, long completionTokens, long cachedTokens) {
+public record SummarizedCall(CallSummary summary, long promptTokens, long completionTokens, long cachedTokens,
+                             boolean ownLlm) {
+
+    /** Made on the platform's model. */
+    public SummarizedCall(CallSummary summary, long promptTokens, long completionTokens, long cachedTokens) {
+        this(summary, promptTokens, completionTokens, cachedTokens, false);
+    }
 }

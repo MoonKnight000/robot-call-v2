@@ -6,7 +6,9 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.*;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.*;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionChange;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
@@ -90,6 +92,40 @@ public class AiAgentControllerImpl implements AiAgentController {
     @Override
     public ResponseEntity<ResponseData<AiAgentRow>> version(long companyId, long id, int version) {
         return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.findVersionRow(companyId, id, version)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<AgentVersionChange>>> diffVersions(long companyId, long id, int from,
+                                                                               Integer to) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentVersionUseCase.diffVersions(companyId, id, from, to)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentRolloutRow>> startRollout(long companyId, long id,
+                                                                      StartAgentRolloutRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentVersionUseCase.startRollout(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentRolloutRow>> updateRollout(long companyId, long id,
+                                                                       UpdateAgentRolloutRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentVersionUseCase.updateRollout(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentRolloutRow>> rollout(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentVersionUseCase.findRollout(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AiAgentVersionRow>> promoteRollout(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentVersionUseCase.promoteRollout(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<Void>> cancelRollout(long companyId, long id) {
+        aiAgentVersionUseCase.cancelRollout(companyId, id);
+        return ResponseEntity.ok(ResponseData.ok(null));
     }
 
     @Override
@@ -197,8 +233,9 @@ public class AiAgentControllerImpl implements AiAgentController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<AgentEvalRun>> evaluate(long companyId, long id, Integer version) {
-        return ResponseEntity.ok(ResponseData.ok(evaluationUseCase.evaluate(companyId, id, version)));
+    public ResponseEntity<ResponseData<AgentEvalRun>> evaluate(long companyId, long id, Integer version,
+                                                                 AgentEvalMode mode, int repeat) {
+        return ResponseEntity.ok(ResponseData.ok(evaluationUseCase.evaluate(companyId, id, version, mode, repeat)));
     }
 
     @Override

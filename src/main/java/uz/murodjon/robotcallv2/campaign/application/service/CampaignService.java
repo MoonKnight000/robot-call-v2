@@ -10,12 +10,15 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CallQueueLookupPort;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.*;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignStateMachine;
+import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -53,6 +56,8 @@ public class CampaignService implements CampaignUseCase {
     private final TtsWarmup ttsWarmup;
     private final CampaignTargetService campaignTargetService;
     private final CampaignOutcomeService campaignOutcomeService;
+    private final CampaignValidator campaignValidator;
+    private final CallQueueLookupPort callQueueLookupPort;
     private final Clock clock;
 
     public CampaignService(CampaignRepository campaignRepository, CampaignTargetRepository campaignTargetRepository,
@@ -60,7 +65,7 @@ public class CampaignService implements CampaignUseCase {
                            UserUseCase userUseCase, CompanyConfigUseCase companyConfigUseCase,
                            AuditUseCase auditUseCase, NotificationUseCase notificationUseCase, TtsWarmup ttsWarmup,
                            CampaignTargetService campaignTargetService, CampaignOutcomeService campaignOutcomeService,
-                           Clock clock) {
+                           CampaignValidator campaignValidator, CallQueueLookupPort callQueueLookupPort, Clock clock) {
         this.campaignRepository = campaignRepository;
         this.campaignTargetRepository = campaignTargetRepository;
         this.targetSourceRepository = targetSourceRepository;
@@ -72,6 +77,8 @@ public class CampaignService implements CampaignUseCase {
         this.ttsWarmup = ttsWarmup;
         this.campaignTargetService = campaignTargetService;
         this.campaignOutcomeService = campaignOutcomeService;
+        this.campaignValidator = campaignValidator;
+        this.callQueueLookupPort = callQueueLookupPort;
         this.clock = clock;
     }
 
@@ -79,7 +86,8 @@ public class CampaignService implements CampaignUseCase {
 
     @Override
     public CreateCampaignResponse createCampaign(long companyId, CreateCampaignRequest request) {
-        AiAgent agent = aiAgentUseCase.requireAgent(companyId, request.aiAgentId());
+        DialMode dialMode = request.dialModeOrDefault();
+        AiAgent agent = requireDialers(companyId, dialMode, request.aiAgentId(), request.callQueueId());
         int dailyCallCap = Math.max(0, request.dailyCallCap());
         LocalTime dialWindowStart = request.dialWindowStart() != null ? request.dialWindowStart() : LocalTime.of(9, 0);
         LocalTime dialWindowEnd = request.dialWindowEnd() != null ? request.dialWindowEnd() : LocalTime.of(20, 0);
@@ -96,7 +104,7 @@ public class CampaignService implements CampaignUseCase {
                 Math.max(0, request.retryIntervalMinutes()),
                 request.maxConcurrentCalls() > 0 ? request.maxConcurrentCalls() : 20,
                 dailyCallCap,
-                agent.id(),
+                agent != null ? agent.id() : null,
                 companyId,
                 null,
                 request.recurrenceTypeOrDefault(),
@@ -109,11 +117,19 @@ public class CampaignService implements CampaignUseCase {
                 request.startAt(),
                 request.endAt(),
                 request.budgetUzs(),
-                request.dailyBudgetUzs());
+                request.dailyBudgetUzs(),
+                0L,
+                dialMode,
+                request.callQueueId(),
+                request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
+                        : Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT,
+                request.targetOrdering());
         requireSchedule(request.startAt(), request.endAt());
         long id = campaignRepository.create(companyId, row);
         auditUseCase.record(companyId, "CAMPAIGN_CREATE", "campaign", String.valueOf(id),
-                request.name() + " (agent " + agent.name() + ", cap/day=" + dailyCallCap
+                request.name() + " (" + dialMode + ", agent " + (agent != null ? agent.name() : "-")
+                        + ", queue " + (request.callQueueId() != null ? request.callQueueId() : "-")
+                        + ", cap/day=" + dailyCallCap
                         + ", recurrence=" + request.recurrenceTypeOrDefault() + ")");
         return new CreateCampaignResponse(id, CampaignStatus.DRAFT);
     }
@@ -121,7 +137,8 @@ public class CampaignService implements CampaignUseCase {
     @Override
     public CampaignRow updateCampaign(long companyId, long id, UpdateCampaignRequest request) {
         Campaign existing = requireCampaign(companyId, id);
-        AiAgent agent = aiAgentUseCase.requireAgent(existing.companyId(), request.aiAgentId());
+        AiAgent agent = requireDialers(existing.companyId(), existing.dialMode(), request.aiAgentId(),
+                request.callQueueId());
         requireWindowWithinCompany(existing.companyId(), request.dialWindowStart(), request.dialWindowEnd());
         Campaign row = new Campaign(
                 id,
@@ -135,7 +152,7 @@ public class CampaignService implements CampaignUseCase {
                 Math.max(0, request.retryIntervalMinutes()),
                 request.maxConcurrentCalls(),
                 Math.max(0, request.dailyCallCap()),
-                agent.id(),
+                agent != null ? agent.id() : null,
                 existing.companyId(),
                 existing.createdBy(),
                 request.recurrenceTypeOrDefault(),
@@ -150,7 +167,12 @@ public class CampaignService implements CampaignUseCase {
                 request.budgetUzs(),
                 request.dailyBudgetUzs(),
                 // Not sent: the version just read, so a client that predates it edits as before.
-                request.version() != null ? request.version() : existing.version());
+                request.version() != null ? request.version() : existing.version(),
+                existing.dialMode(),
+                request.callQueueId(),
+                request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
+                        : existing.maxAiOverflowPercent(),
+                request.targetOrdering() != null ? request.targetOrdering() : existing.targetOrdering());
         requireSchedule(request.startAt(), request.endAt());
         if (!campaignRepository.update(companyId, id, row)) {
             throw new ConflictException(ErrorCode.ENTITY_VERSION_CONFLICT, "campaign", id);
@@ -187,10 +209,29 @@ public class CampaignService implements CampaignUseCase {
                 source.startAt(),
                 source.endAt(),
                 source.budgetUzs(),
-                source.dailyBudgetUzs());
+                source.dailyBudgetUzs(),
+                0L,
+                source.dialMode(),
+                source.callQueueId(),
+                source.maxAiOverflowPercent(),
+                source.targetOrdering());
         long newId = campaignRepository.create(companyId, row);
         auditUseCase.record(companyId, "CAMPAIGN_CLONE", "campaign", String.valueOf(newId), "from " + id);
         return requireCampaignRow(companyId, newId);
+    }
+
+    /**
+     * Checks that the campaign names who dials for its mode, and that what it names is the
+     * company's own — a queue id from another tenant would hand its clients to strangers.
+     *
+     * @return the named agent, or null when the campaign has none
+     */
+    private AiAgent requireDialers(long companyId, DialMode dialMode, Long aiAgentId, Long callQueueId) {
+        campaignValidator.validateDialMode(dialMode, aiAgentId, callQueueId);
+        if (callQueueId != null && !callQueueLookupPort.existsByCompanyIdAndId(companyId, callQueueId)) {
+            throw new NotFoundException(ErrorCode.CALL_QUEUE_NOT_FOUND, callQueueId);
+        }
+        return aiAgentId != null ? aiAgentUseCase.requireAgent(companyId, aiAgentId) : null;
     }
 
     private void requireWindowWithinCompany(long companyId, LocalTime start, LocalTime end) {
@@ -223,11 +264,11 @@ public class CampaignService implements CampaignUseCase {
         Set<Long> campaignIds = rows.stream().map(Campaign::id).collect(Collectors.toSet());
         Map<Long, CampaignTargetStats> statsMap = campaignTargetRepository.findStatsByCampaignIds(companyId, campaignIds);
         Map<Long, String> agentNames = aiAgentUseCase.findNamesByIds(
-                rows.stream().map(Campaign::aiAgentId).collect(Collectors.toSet()));
+                rows.stream().map(Campaign::aiAgentId).filter(Objects::nonNull).collect(Collectors.toSet()));
         Map<Long, String> creatorNames = userUseCase.findNamesByIds(companyId,
                 rows.stream().map(Campaign::createdBy).filter(Objects::nonNull).collect(Collectors.toSet()));
         return rows.stream()
-                .map(c -> CampaignRow.of(c, agentNames.get(c.aiAgentId()),
+                .map(c -> CampaignRow.of(c, c.aiAgentId() != null ? agentNames.get(c.aiAgentId()) : null,
                         c.createdBy() != null ? creatorNames.get(c.createdBy()) : null,
                         statsMap.getOrDefault(c.id(), CampaignTargetStats.ZERO)))
                 .toList();
@@ -236,7 +277,9 @@ public class CampaignService implements CampaignUseCase {
     @Override
     public CampaignRow requireCampaignRow(long companyId, long id) {
         Campaign c = requireCampaign(companyId, id);
-        String agentName = aiAgentUseCase.findNamesByIds(List.of(c.aiAgentId())).get(c.aiAgentId());
+        String agentName = c.aiAgentId() != null
+                ? aiAgentUseCase.findNamesByIds(List.of(c.aiAgentId())).get(c.aiAgentId())
+                : null;
         String createdByName = c.createdBy() != null
                 ? userUseCase.findNamesByIds(companyId, List.of(c.createdBy())).get(c.createdBy())
                 : null;
@@ -310,7 +353,7 @@ public class CampaignService implements CampaignUseCase {
         Campaign c = requireCampaign(companyId, campaignId);
         // Every dialer tick skips a campaign whose agent is disabled, so it would show
         // ACTIVE and never ring anyone.
-        if (!aiAgentUseCase.requireAgent(companyId, c.aiAgentId()).enabled()) {
+        if (c.aiAgentId() != null && !aiAgentUseCase.requireAgent(companyId, c.aiAgentId()).enabled()) {
             throw new ConflictException(ErrorCode.AI_AGENT_DISABLED, c.aiAgentId());
         }
         // A campaign with nothing to dial and no source that will fill it is not started,

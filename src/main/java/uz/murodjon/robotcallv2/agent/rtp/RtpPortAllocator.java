@@ -41,6 +41,11 @@ public class RtpPortAllocator {
         return port;
     }
 
+    /** Ports free right now — how many more calls this instance can carry media for. */
+    public synchronized int available() {
+        return free.size();
+    }
+
     public synchronized void release(int port) {
         if (port >= rangeStart && port <= rangeEnd && !free.contains(port)) {
             free.addLast(port);

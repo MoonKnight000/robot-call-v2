@@ -11,7 +11,8 @@ import java.time.LocalTime;
 import java.util.List;
 
 /**
- * The contact-policy fields, {@code humanLikePersonaAllowed} and {@code holidays} are optional: null keeps
+ * The contact-policy fields, {@code humanLikePersonaAllowed}, {@code holidays} and
+ * {@code scorecardReviewThreshold} are optional: null keeps
  * what the company already has, so a client written before they existed does not reset
  * them by omission.
  */
@@ -30,6 +31,7 @@ public record UpdateCompanyConfigRequest(
         @Min(0) @Max(90) Integer quietDaysAfterConversation,
         Boolean respectPromisedDate,
         Boolean humanLikePersonaAllowed,
-        @Size(max = 366) List<LocalDate> holidays
+        @Size(max = 366) List<LocalDate> holidays,
+        @Min(0) @Max(100) Integer scorecardReviewThreshold
 ) {
 }

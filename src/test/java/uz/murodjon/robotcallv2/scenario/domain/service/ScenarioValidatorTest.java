@@ -139,4 +139,17 @@ class ScenarioValidatorTest {
         List<String> errors = ScenarioValidator.validate(validDef);
         assertThat(errors).isEmpty();
     }
+
+    @Test
+    void aGlobalNodeWithoutAnAnswerReturnsError() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(new StageDef("START", "Start", List.of(), List.of())),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null, null, null,
+                List.of(new GlobalNode("Raqamimni qayerdan oldingiz?", " ")));
+
+        List<String> errors = ScenarioValidator.validate(def);
+        assertThat(errors).contains("a global node needs both 'question' and 'answer'");
+    }
 }

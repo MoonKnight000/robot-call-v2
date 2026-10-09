@@ -359,7 +359,7 @@ public class CallQueueDispatcher {
         try {
             AriService ari = ariProvider.getObject();
             String channelId = online
-                    ? ari.originateToStasis("PJSIP/" + account.endpointName(), appArgs(waiting, offer),
+                    ? ari.originateToStasis(ari.buildOperatorDialString(account.endpointName()), appArgs(waiting, offer),
                     waiting.queue().ringTimeoutSec(), callerIdOf(waiting))
                     : ari.originateExternalToStasis(companyId, account.forwardNumber(), appArgs(waiting, offer),
                     waiting.queue().ringTimeoutSec());
@@ -464,6 +464,7 @@ public class CallQueueDispatcher {
             call.endpoint().flushPlayback();
             ari.addToBridge(call.bridgeId(), channelId);
             forget(offer);
+            ari.recordOperatorLeg(call.channelId(), channelId);
             connectedByOperatorChannel.put(channelId, waiting);
             waiting.connected(channelId, offer.userId, clock.instant());
             call.setOperator(channelId, offer.userId);

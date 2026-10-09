@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.report.application.port.output;
 
 import uz.murodjon.robotcallv2.report.domain.entity.OperatorPerformance;
+import uz.murodjon.robotcallv2.report.domain.entity.PredictiveDialingStats;
 import uz.murodjon.robotcallv2.report.domain.entity.QueuePerformance;
 
 import java.time.Instant;
@@ -14,4 +15,7 @@ public interface ContactCenterReportRepository {
 
     /** Every operator's calls, misses and time in status in [from, to). */
     List<OperatorPerformance> findOperatorPerformance(long companyId, Instant from, Instant to);
+
+    /** The campaign's calls started in [from, to): how many reached an operator, the AI or nobody. */
+    PredictiveDialingStats findPredictiveDialingStats(long companyId, long campaignId, Instant from, Instant to);
 }

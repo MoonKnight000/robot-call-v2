@@ -20,11 +20,13 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUs
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.domain.service.ContactFrequencyPolicy;
+import uz.murodjon.robotcallv2.dialer.domain.service.DialWindow;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
@@ -82,6 +84,7 @@ public class DialerService {
     private final CallAttemptUseCase callAttemptUseCase;
     private final TrunkHealth trunkHealth;
     private final ClusterJobLock clusterJobLock;
+    private final CompanyConcurrencyService companyConcurrency;
 
     private final Map<Long, AtomicInteger> campaignTrunkCounters = new ConcurrentHashMap<>();
     /** Company id → when it was last told its balance is holding calls. */
@@ -99,7 +102,9 @@ public class DialerService {
                          GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock,
                          CampaignVariantUseCase campaignVariantUseCase, AiAgentUseCase aiAgentUseCase,
                          CallBillingUseCase callBilling, CallAttemptUseCase callAttemptUseCase, TrunkHealth trunkHealth,
-                         ClusterJobLock clusterJobLock) {
+                         ClusterJobLock clusterJobLock,
+                         CompanyConcurrencyService companyConcurrency) {
+        this.companyConcurrency = companyConcurrency;
         this.callAttemptUseCase = callAttemptUseCase;
         this.trunkHealth = trunkHealth;
         this.clusterJobLock = clusterJobLock;
@@ -132,11 +137,27 @@ public class DialerService {
         clusterJobLock.runExclusively("dialer.dispatch", this::dispatchDueTargets);
     }
 
+    /**
+     * Every instance, not only the one dispatching: the dispatcher sizes the platform's
+     * ceiling from what the cluster announced ({@link DialerState#countClusterCapacity}).
+     * A draining instance announces 0, so no new call is counted against its ports. Its
+     * live targets go with it, for whichever instance runs {@link #reclaimExpiredClaims}.
+     */
+    @Scheduled(fixedDelay = 10_000)
+    public void announceToCluster() {
+        state.announceCapacity(shutdown.isDraining() ? 0 : rtpProperties.mediaCapacity());
+        state.announceLiveTargets(registry.liveTargetIds());
+    }
+
     private void dispatchDueTargets() {
         if (!dialerProperties.enabled() || shutdown.isDraining()) {
             return; // no new calls while shutting down
         }
-        List<Campaign> active = campaignUseCase.findActiveCampaigns();
+        // Operator campaigns are dialled for their queue's operators, not by this loop — and
+        // left out before the priority split, so they take no share of the AI batch.
+        List<Campaign> active = campaignUseCase.findActiveCampaigns().stream()
+                .filter(campaign -> campaign.dialMode().placesAiCalls())
+                .toList();
         if (active.isEmpty()) {
             return;
         }
@@ -144,6 +165,8 @@ public class DialerService {
         // five lines for every one a priority-1 campaign gets. Every campaign keeps at
         // least one so a low priority is slow, never starved.
         int totalPriority = active.stream().mapToInt(Campaign::priority).sum();
+        // Every live instance's ports, read once per tick: it moves with instances, not with this sweep.
+        int clusterCapacity = state.countClusterCapacity(rtpProperties.mediaCapacity());
 
         for (Campaign campaign : active) {
             int perCampaign = Math.max(1, dialerProperties.dispatchBatch() * campaign.priority() / totalPriority);
@@ -186,20 +209,22 @@ public class DialerService {
 
             // The platform's ceiling is physical: past the RTP port range a call is
             // answered and then dropped for want of a port, which costs the subscriber a
-            // ring and us a connected minute.
-            int freePlatform = Math.min(dialerProperties.maxConcurrentCalls(), rtpProperties.mediaCapacity())
+            // ring and us a connected minute. The active count is the cluster's, so the
+            // ports it is measured against are every live instance's, not this one's.
+            int freePlatform = Math.min(dialerProperties.maxConcurrentCalls(), clusterCapacity)
                     - state.countActiveTotal();
             if (freePlatform <= 0) {
                 log.debug("Platform concurrency saturated (active={}/max={})",
                         state.countActiveTotal(), dialerProperties.maxConcurrentCalls());
                 return; // nothing can be dialled this tick, by anyone
             }
-            // The company's own share. `continue`, not `return`: one tenant filling its
-            // quota is not a reason for the next tenant in this sweep to dial nothing.
-            int freeCompany = dialerProperties.maxConcurrentCallsPerCompany() - state.countActive(campaign.companyId());
+            // The company's own share (its plan's limit, or the platform default). `continue`, not
+            // `return`: one tenant filling its quota is not a reason for the next tenant in this
+            // sweep to dial nothing.
+            int freeCompany = companyConcurrency.countFree(campaign.companyId());
             if (freeCompany <= 0) {
-                log.debug("Company {} concurrency saturated (active={}/max={})", campaign.companyId(),
-                        state.countActive(campaign.companyId()), dialerProperties.maxConcurrentCallsPerCompany());
+                log.debug("Company {} concurrency saturated (active={})", campaign.companyId(),
+                        state.countActive(campaign.companyId()));
                 continue;
             }
             // The campaign's own ceiling (campaign.maxConcurrentCalls) — 0 means no ceiling
@@ -252,7 +277,9 @@ public class DialerService {
                 candidateTrunks = healthy;
             }
 
-            List<CampaignTarget> due = campaignTargetUseCase.claimDueTargets(campaign.id(), batch);
+            List<CampaignTarget> due = campaign.targetOrdering() == TargetOrdering.SCORE
+                    ? campaignTargetUseCase.claimDueTargetsByScore(campaign.id(), batch, companyHour(campaign.companyId()))
+                    : campaignTargetUseCase.claimDueTargets(campaign.id(), batch);
             if (due.isEmpty()) {
                 log.debug("Campaign {} has no due targets to claim", campaign.id());
                 continue;
@@ -371,6 +398,12 @@ public class DialerService {
         return LocalDate.now(config != null ? clock.withZone(config.zoneId()) : clock);
     }
 
+    /** The hour a SCORE campaign's best-hour bonus is matched against: the company's, in its own zone. */
+    private int companyHour(long companyId) {
+        CompanyConfig config = companyConfigUseCase.find(companyId);
+        return LocalTime.now(config != null ? clock.withZone(config.zoneId()) : clock).getHour();
+    }
+
     private int remainingToday(Campaign campaign, LocalDate today) {
         int cap = campaign.dailyCallCap();
         if (cap <= 0) {
@@ -402,11 +435,12 @@ public class DialerService {
      * Takes back targets a crash or restart left IN_PROGRESS. claimDue stamps each claim
      * with next_attempt_at = now + 5 min as a lease, but nothing ever read it: after a
      * restart those targets were never dialled again, their campaign never completed — so
-     * a recurring one never re-ran — and their money stayed held. A target whose call this
+     * a recurring one never re-ran — and their money stayed held. A target whose call any
      * instance still tracks is left alone, since a long conversation outlives the lease.
      * Settled as FAILED, so the campaign's own retry policy decides whether it is dialled
      * again. The lock keeps two instances from settling the same target twice; the live set
-     * is still this instance's own, so it assumes calls are placed by one media node.
+     * is the cluster's ({@link DialerState#findClusterLiveTargetIds}), and when it cannot be
+     * read nothing is settled this round.
      */
     @Scheduled(fixedDelay = 60_000)
     public void reclaimExpiredClaims() {
@@ -414,7 +448,14 @@ public class DialerService {
     }
 
     private void settleExpiredClaims() {
-        Set<Long> live = registry.liveTargetIds();
+        Set<Long> live = state.findClusterLiveTargetIds().orElse(null);
+        if (live == null) {
+            log.warn("Expired claims not settled this round: the cluster's live calls are unknown");
+            return;
+        }
+        // This instance's own straight from memory, so a call placed since its last
+        // announcement is not missed.
+        live.addAll(registry.liveTargetIds());
         campaignTargetUseCase.findCompanyIdsOfExpiredClaims(Instant.now(clock).minus(CLAIM_GRACE)).forEach((targetId, companyId) -> {
             if (live.contains(targetId)) {
                 return;
@@ -440,11 +481,6 @@ public class DialerService {
         }
     }
 
-    /**
-     * Read in the company's own time zone: a window of 09:00–20:00 means the callee's
-     * morning and evening, not the server's, and a tenant in another zone is otherwise
-     * dialled at night.
-     */
     /**
      * Whether the campaign's settled spend has reached its total or daily budget (C.5). The
      * ledger is summed at most once a minute per campaign; a call already in flight when
@@ -476,26 +512,6 @@ public class DialerService {
 
     /** Also read by CallTaskConsumer, which re-checks it just before dialling a queued task. */
     boolean isWithinDialWindow(Campaign campaign) {
-        CompanyConfig config = companyConfigUseCase.find(campaign.companyId());
-        Clock local = config != null ? clock.withZone(config.zoneId()) : clock;
-        if (config != null && config.isHoliday(LocalDate.now(local))) {
-            return false; // a company holiday (NEXT-PLAN C.4)
-        }
-        Set<DayOfWeek> days = campaign.allowedDays();
-        if (days != null && !days.isEmpty() && !days.contains(LocalDate.now(local).getDayOfWeek())) {
-            return false;
-        }
-        LocalTime now = LocalTime.now(local);
-        if (!withinRange(now, campaign.dialWindowStart(), campaign.dialWindowEnd())) {
-            return false;
-        }
-        return config == null || withinRange(now, config.dialWindowStart(), config.dialWindowEnd());
-    }
-
-    private static boolean withinRange(LocalTime now, LocalTime start, LocalTime end) {
-        if (start == null || end == null) {
-            return true;
-        }
-        return !now.isBefore(start) && now.isBefore(end);
+        return DialWindow.isOpen(campaign, companyConfigUseCase.find(campaign.companyId()), clock);
     }
 }

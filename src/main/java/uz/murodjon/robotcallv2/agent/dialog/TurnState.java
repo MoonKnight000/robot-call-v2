@@ -92,6 +92,9 @@ class TurnState {
     /** When the recognizer last produced an interim — the caller was speaking then. */
     private volatile long lastInterimAtMs;
 
+    /** Keys have been pressed and the typed sequence has not been handed over as a turn yet. */
+    private volatile boolean typing;
+
     /**
      * A reply started while the caller was still speaking, waiting to find out whether
      * they said what the recognizer guessed they were saying ({@link Speculation}).
@@ -279,8 +282,15 @@ class TurnState {
         return unansweredClientText.getAndSet(null);
     }
 
-    /** Whether the recognizer has heard the caller within the last {@code withinMs}. */
+    /**
+     * Whether the recognizer has heard the caller within the last {@code withinMs} — or the
+     * caller is part-way through typing a number, which is input just as much and has no
+     * interims to show for it.
+     */
     boolean heardCallerWithin(long withinMs) {
+        if (typing) {
+            return true;
+        }
         long at = lastInterimAtMs;
         return at != 0 && System.currentTimeMillis() - at <= withinMs;
     }
@@ -322,6 +332,10 @@ class TurnState {
 
     int interimsThisTurn() {
         return interimsThisTurn.get();
+    }
+
+    void setTyping(boolean typing) {
+        this.typing = typing;
     }
 
     /** Why the last interim was not worth guessing on, or {@code null} if none was turned away. */

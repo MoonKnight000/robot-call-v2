@@ -120,7 +120,10 @@ public class TurnTools {
                 // Never declared, so never argued into — McpToolGuard's rule for MCP tools
                 // (UNIVERSAL-OPERATOR-PLAN B.3).
                 if (tool.effect() != ToolEffect.DESTRUCTIVE) {
-                    callbacks.add(httpToolExecutor.buildCallback(tool, s, callVars));
+                    // A simulation with canned answers: offered the same, never sent.
+                    callbacks.add(s.toolMocks() != null
+                            ? httpToolExecutor.buildMockCallback(tool, s)
+                            : httpToolExecutor.buildCallback(tool, s, callVars));
                 }
             }
         }
@@ -304,7 +307,27 @@ public class TurnTools {
      */
     public ChatOptions buildOptions(DialogSession s, List<ToolCallback> tools, String model) {
         EffectiveAiModelConfig aiModel = s.aiModel();
-        String selectedModel = model != null && !model.isBlank() ? model : aiModel.model();
+        if (aiModel.ownLlm() != null) {
+            // The company's own OpenAI-compatible endpoint serves its own models only: this
+            // turn's fast model (already the endpoint's, LlmTurnClient#resolveFastModel) or its
+            // main one — never a stage's id from the platform's catalog.
+            var builder = OpenAiChatOptions.builder()
+                    .toolCallbacks(tools)
+                    .model(model != null && !model.isBlank() ? model : aiModel.ownLlm().model());
+            if (aiModel.maxOutputTokens() != null) {
+                builder.maxTokens(aiModel.maxOutputTokens());
+            }
+            if (aiModel.temperature() != null) {
+                builder.temperature(aiModel.temperature());
+            }
+            return builder.build();
+        }
+        // This turn's own choice (the fast model on a one-word answer) first, then the
+        // stage's, then the company's.
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        String stageModel = stage != null ? stage.model() : null;
+        String selectedModel = model != null && !model.isBlank() ? model
+                : stageModel != null && !stageModel.isBlank() ? stageModel : aiModel.model();
         ChatModel chatModel = chatModelProvider != null ? chatModelProvider.getIfAvailable() : null;
         // A company without its own model must still name one here: GoogleGenAiChatOptions
         // turns a null model into its hardcoded gemini-2.5-flash, never the configured

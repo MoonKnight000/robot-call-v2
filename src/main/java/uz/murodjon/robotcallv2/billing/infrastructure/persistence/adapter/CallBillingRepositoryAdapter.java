@@ -59,6 +59,13 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
     }
 
     @Override
+    public void addOperatorAnalysisCharge(long callAttemptId, CallUsage analysisUsage, CallCostBreakdown cost) {
+        jpaRepository.addOperatorAnalysisCharge(callAttemptId, analysisUsage.promptTokens(),
+                analysisUsage.completionTokens(), analysisUsage.cachedTokens(), analysisUsage.extraSttSeconds(),
+                cost.llmUzs(), cost.sttUzs(), cost.totalUzs());
+    }
+
+    @Override
     public Optional<CallBilling> findOpenHold(long companyId, long targetId) {
         return jpaRepository
                 .findFirstByCompanyIdAndTargetIdAndStatusOrderByCreatedAtAsc(companyId, targetId, CallBillingStatus.RESERVED)

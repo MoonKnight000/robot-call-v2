@@ -50,6 +50,14 @@ public class AgentTestCaseEntity {
     @Column(name = "max_turns", nullable = false)
     private int maxTurns;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "tool_mocks", nullable = false, columnDefinition = "jsonb")
+    private String toolMocks;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "expect_tools", nullable = false, columnDefinition = "jsonb")
+    private String expectTools;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -135,6 +143,22 @@ public class AgentTestCaseEntity {
 
     public void setMustNotSay(String mustNotSay) {
         this.mustNotSay = mustNotSay;
+    }
+
+    public String getToolMocks() {
+        return toolMocks;
+    }
+
+    public void setToolMocks(String toolMocks) {
+        this.toolMocks = toolMocks;
+    }
+
+    public String getExpectTools() {
+        return expectTools;
+    }
+
+    public void setExpectTools(String expectTools) {
+        this.expectTools = expectTools;
     }
 
     public int getMaxTurns() {

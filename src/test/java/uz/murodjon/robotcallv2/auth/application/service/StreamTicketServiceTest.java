@@ -43,7 +43,7 @@ class StreamTicketServiceTest {
 
     @Test
     void ticketAuthenticatesAsTheSameCallerExactlyOnce() {
-        StreamTicketResponse issued = service.issue(OPERATOR);
+        StreamTicketResponse issued = service.create(OPERATOR);
 
         AuthenticatedUser first = service.consume(issued.ticket());
         AuthenticatedUser second = service.consume(issued.ticket());
@@ -57,7 +57,7 @@ class StreamTicketServiceTest {
 
     @Test
     void ticketLivesSixtySecondsAndIsStoredOnlyByItsHash() {
-        StreamTicketResponse issued = service.issue(OPERATOR);
+        StreamTicketResponse issued = service.create(OPERATOR);
 
         assertThat(issued.expiresAt()).isBetween(Instant.now().plusSeconds(55), Instant.now().plusSeconds(61));
         assertThat(store.ttl).isEqualTo(Duration.ofSeconds(60));
@@ -72,7 +72,7 @@ class StreamTicketServiceTest {
     /** A logout, block or role change after the ticket was issued makes it worthless too. */
     @Test
     void ticketOfAUserRevokedSinceIsRefused() {
-        StreamTicketResponse issued = service.issue(OPERATOR);
+        StreamTicketResponse issued = service.create(OPERATOR);
         when(revocation.isRevoked(eq(7L), any())).thenReturn(true);
 
         assertThat(service.consume(issued.ticket())).isNull();
@@ -84,7 +84,7 @@ class StreamTicketServiceTest {
         StreamTicketService withoutStore = new StreamTicketService(down,
                 new JwtTokenService(new JwtProperties(SECRET, 60), revocation));
 
-        assertThatThrownBy(() -> withoutStore.issue(OPERATOR)).isInstanceOf(ExternalServiceException.class);
+        assertThatThrownBy(() -> withoutStore.create(OPERATOR)).isInstanceOf(ExternalServiceException.class);
     }
 
     /** GETDEL semantics: a ticket read once is gone. */

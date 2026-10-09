@@ -60,13 +60,33 @@ class WhisperFeaturesTest {
         assertThat(features.extract(tone(1000, 128000), 128000)).hasSize(MELS * FRAMES);
     }
 
+    /**
+     * Whisper's own preprocessor — n_fft 400, hop 160, 80 mels, 800 frames for 8 s — is what
+     * the published Smart Turn v3 models declare. 400 is not a power of two, so it goes
+     * through Bluestein; a 1 kHz tone must still land where the Slaney scale puts it for 80
+     * bands (1 kHz = 15 mel, the bands are 0.56 mel apart: band 26).
+     */
     @Test
-    void anFftSizeThatIsNotAPowerOfTwoIsRefused() {
-        // Whisper's own 400 is the obvious value to try, and the radix-2 transform here
-        // cannot do it. Better to say so than to return a spectrogram of something else.
-        assertThatThrownBy(() -> new WhisperFeatures(RATE, 400, 160, 80, 800))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("power of two");
+    void whispersOwnFftSizeOf400Works() {
+        WhisperFeatures whisper = new WhisperFeatures(RATE, 400, 160, 80, 800);
+
+        float[] mel = whisper.extract(tone(1000, 128000), 128000);
+
+        assertThat(whisper.samples()).isEqualTo(128000);
+        assertThat(mel).hasSize(80 * 800);
+        int best = 0;
+        for (int band = 1; band < 80; band++) {
+            if (mel[band * 800 + 400] > mel[best * 800 + 400]) {
+                best = band;
+            }
+        }
+        assertThat(best).isBetween(25, 27);
+    }
+
+    @Test
+    void anFftSizeTooSmallToTransformIsRefused() {
+        assertThatThrownBy(() -> new WhisperFeatures(RATE, 1, 160, 80, 800))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -4,11 +4,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
 import uz.murodjon.robotcallv2.dialer.application.port.input.DialerSlotUseCase;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -23,6 +28,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * measured against; the total is what the machine's RTP port range is measured against
  * ({@code RtpProperties#mediaCapacity()}), so per-company limits added up can never
  * promise more media than exists.
+ *
+ * <p>With several instances (each with its own Asterisk) the total is the cluster's, so
+ * the media it is measured against is the cluster's too: every instance announces its own
+ * port capacity ({@link #announceCapacity}), and {@link #countClusterCapacity} adds up the
+ * ones heard from recently.
  */
 @Component
 public class DialerState implements DialerSlotUseCase {
@@ -36,11 +46,106 @@ public class DialerState implements DialerSlotUseCase {
     private static final Duration TTL = Duration.ofHours(6);
     private static final Duration DAILY_TTL = Duration.ofDays(2);
 
+    /** Hash of instance id → {@code capacity:announcedAtMillis}. */
+    private static final String CAPACITY_KEY = "dialer:media:capacity";
+    /** Three missed announcements: past this an instance is taken to be gone. */
+    private static final Duration CAPACITY_STALE_AFTER = Duration.ofSeconds(30);
+    /** Set of target ids per instance; outlives a few missed announcements, not a crash. */
+    private static final String LIVE_TARGETS_KEY_PREFIX = "dialer:live-targets:";
+    private static final Duration LIVE_TARGETS_TTL = Duration.ofSeconds(60);
+
     private final StringRedisTemplate redisTemplate;
     private final AtomicInteger localTotal = new AtomicInteger(0);
+    /** The name calls are routed to this instance by — one name per instance, everywhere. */
+    private final String instanceId;
 
-    public DialerState(StringRedisTemplate redisTemplate) {
+    public DialerState(StringRedisTemplate redisTemplate, CallRouteRegistry callRouteRegistry) {
         this.redisTemplate = redisTemplate;
+        this.instanceId = callRouteRegistry.instanceId();
+    }
+
+    /** Tell the cluster how many calls this instance can carry media for; 0 while it drains. */
+    public void announceCapacity(int capacity) {
+        try {
+            redisTemplate.opsForHash().put(CAPACITY_KEY, instanceId,
+                    capacity + ":" + System.currentTimeMillis());
+        } catch (Exception e) {
+            log.warn("Media capacity not announced to Redis: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Tell the cluster which targets this instance has a call ringing or on the line for.
+     * Replaced whole each time and left to expire, so a crashed instance's calls stop
+     * counting as live once nobody refreshes them.
+     */
+    public void announceLiveTargets(Set<Long> targetIds) {
+        String key = LIVE_TARGETS_KEY_PREFIX + instanceId;
+        try {
+            if (targetIds.isEmpty()) {
+                redisTemplate.delete(key);
+                return;
+            }
+            // Built aside and renamed into place: a reader between a delete and the add
+            // would see this instance's calls as none.
+            String next = key + ":next";
+            redisTemplate.delete(next);
+            redisTemplate.opsForSet().add(next, targetIds.stream().map(String::valueOf).toArray(String[]::new));
+            redisTemplate.expire(next, LIVE_TARGETS_TTL);
+            redisTemplate.rename(next, key);
+        } catch (Exception e) {
+            log.warn("Live targets not announced to Redis: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Targets with a call live on any instance of the cluster ({@link #announceLiveTargets}).
+     * Empty when Redis cannot be read — not "none", since settling a live call as failed is
+     * the mistake this exists to prevent.
+     */
+    public Optional<Set<Long>> findClusterLiveTargetIds() {
+        try {
+            Set<Long> live = new HashSet<>();
+            for (Object instance : redisTemplate.opsForHash().keys(CAPACITY_KEY)) {
+                Set<String> members = redisTemplate.opsForSet().members(LIVE_TARGETS_KEY_PREFIX + instance);
+                if (members != null) {
+                    members.forEach(member -> live.add(Long.parseLong(member)));
+                }
+            }
+            return Optional.of(live);
+        } catch (Exception e) {
+            log.warn("Cluster live targets unavailable: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Calls the instances heard from in the last {@link #CAPACITY_STALE_AFTER} can carry
+     * media for between them. Instances gone quiet are dropped from the hash on the way.
+     *
+     * @param localCapacity this instance's own — the answer when nobody has announced yet
+     *                      (the first tick after start) or Redis cannot be read
+     */
+    public int countClusterCapacity(int localCapacity) {
+        try {
+            long cutoff = System.currentTimeMillis() - CAPACITY_STALE_AFTER.toMillis();
+            int total = 0;
+            boolean heard = false;
+            for (Map.Entry<Object, Object> entry : redisTemplate.opsForHash().entries(CAPACITY_KEY).entrySet()) {
+                String[] parts = String.valueOf(entry.getValue()).split(":");
+                long announcedAt = parts.length == 2 ? Long.parseLong(parts[1]) : 0;
+                if (announcedAt < cutoff) {
+                    redisTemplate.opsForHash().delete(CAPACITY_KEY, entry.getKey());
+                    continue;
+                }
+                total += Integer.parseInt(parts[0]);
+                heard = true;
+            }
+            return heard ? total : localCapacity;
+        } catch (Exception e) {
+            log.warn("Cluster media capacity unavailable, using this instance's own: {}", e.getMessage());
+            return localCapacity;
+        }
     }
 
     /** Calls this company is holding right now. */

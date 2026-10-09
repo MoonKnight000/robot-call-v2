@@ -2,14 +2,25 @@ package uz.murodjon.robotcallv2.aimodel.domain.entity;
 
 /**
  * Merged runtime AI model configuration for a company.
+ *
+ * @param ownLlm the company's own LLM, or null on the platform's. While set, a call and its summary run on
+ *               {@code ownLlm.model()} and {@code model} — the catalog's — only serves what stays on the
+ *               platform ({@link #withoutOwnLlm})
  */
 public record EffectiveAiModelConfig(
         String model,
         Double temperature,
         Integer maxOutputTokens,
         int maxCallSeconds,
-        long maxTokensPerCall
+        long maxTokensPerCall,
+        OwnLlmEndpoint ownLlm
 ) {
+
+    /** On the platform's model. */
+    public EffectiveAiModelConfig(String model, Double temperature, Integer maxOutputTokens, int maxCallSeconds,
+                                  long maxTokensPerCall) {
+        this(model, temperature, maxOutputTokens, maxCallSeconds, maxTokensPerCall, null);
+    }
 
     /**
      * The same configuration with a scenario's own model settings laid over it.
@@ -34,11 +45,21 @@ public record EffectiveAiModelConfig(
                 scenarioTemperature != null ? scenarioTemperature : temperature,
                 scenarioMaxOutputTokens != null ? scenarioMaxOutputTokens : maxOutputTokens,
                 maxCallSeconds,
-                maxTokensPerCall);
+                maxTokensPerCall,
+                ownLlm);
+    }
+
+    /**
+     * The same configuration on the platform's model, for what the company's own LLM does not
+     * cover: simulations and the chat widget.
+     */
+    public EffectiveAiModelConfig withoutOwnLlm() {
+        return ownLlm == null ? this
+                : new EffectiveAiModelConfig(model, temperature, maxOutputTokens, maxCallSeconds, maxTokensPerCall);
     }
 
     /** The same configuration with a tighter call-length cap — the balance's, when it runs out sooner. */
     public EffectiveAiModelConfig withMaxCallSeconds(int seconds) {
-        return new EffectiveAiModelConfig(model, temperature, maxOutputTokens, seconds, maxTokensPerCall);
+        return new EffectiveAiModelConfig(model, temperature, maxOutputTokens, seconds, maxTokensPerCall, ownLlm);
     }
 }

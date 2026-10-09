@@ -57,6 +57,9 @@ public class HttpToolExecutor {
 
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
 
+    /** What a tool with no canned answer returns in a simulation (buildMockCallback). */
+    static final String MOCK_NOT_PROVIDED = "{\"error\":\"service unavailable\"}";
+
     /**
      * How much of the answer is read at all. An endpoint that streams a gigabyte would
      * otherwise be read into memory on a call thread, and none of it is a tool result.
@@ -109,6 +112,26 @@ public class HttpToolExecutor {
         return FunctionToolCallback
                 .<Map<String, Object>, String>builder(toolName, args -> execute(tool, session, callVariables, args))
                 .description(tool.requiresConfirmation() ? tool.description() + ToolConfirmation.CONFIRMATION_HINT : tool.description())
+                .inputSchema(toolSchemas.generateInputSchema(tool))
+                .inputType(Map.class)
+                .build();
+    }
+
+    /**
+     * The same tool as {@link #buildCallback} offers the model — name, description, input
+     * schema — answering from the simulation's canned responses instead: nothing is sent, no
+     * secret is read, no execution is logged. A tool with no canned answer says it is
+     * unavailable, so the agent's handling of a failed lookup is tested too.
+     */
+    public ToolCallback buildMockCallback(Tool tool, DialogSession session) {
+        String toolName = sanitizeToolName(tool.name());
+        return FunctionToolCallback
+                .<Map<String, Object>, String>builder(toolName, args -> {
+                    session.recordSimulatedToolCall("TOOL: " + tool.name() + " " + canonical(args));
+                    String answer = session.toolMocks().get(tool.name());
+                    return answer != null ? answer : MOCK_NOT_PROVIDED;
+                })
+                .description(tool.description())
                 .inputSchema(toolSchemas.generateInputSchema(tool))
                 .inputType(Map.class)
                 .build();
@@ -368,6 +391,10 @@ public class HttpToolExecutor {
 
         @Override
         public void setDoNotCallReason(String reason) {
+        }
+
+        @Override
+        public void setTransferReason(String reason) {
         }
 
         @Override

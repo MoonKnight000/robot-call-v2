@@ -45,6 +45,15 @@ public interface AiAgentUseCase {
      */
     AiAgent requirePublishedAgent(long companyId, long id);
 
+    /**
+     * The agent a call with this caller runs under: the published version, or — while a rollout
+     * runs — the candidate, for a staging number or a caller in its traffic share. The same
+     * number always gets the same version. Used where a call starts; elsewhere the published one.
+     *
+     * @param phone the caller's or the dialled number in any format; null stays on the published version
+     */
+    AiAgent requireCallAgent(long companyId, long id, String phone);
+
     /** A specific published version for a test call, or the draft when {@code version} is null. */
     AiAgent requireAgentVersion(long companyId, long id, Integer version);
 

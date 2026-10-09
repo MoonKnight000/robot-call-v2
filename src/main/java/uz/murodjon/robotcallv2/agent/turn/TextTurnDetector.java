@@ -112,8 +112,11 @@ public class TextTurnDetector {
         return probability >= 0 && probability >= textTurnProperties.earlyThreshold();
     }
 
-    /** p(end of turn) for {@code transcript}, or {@code -1} when it could not be scored. */
-    private float completion(String transcript) {
+    /**
+     * p(end of turn) for {@code transcript}, or {@code -1} when it could not be scored.
+     * Package-private for {@code TextTurnReplayTool}, which sweeps thresholds over it.
+     */
+    float completion(String transcript) {
         OrtSession current = session;
         if (current == null || transcript == null || transcript.isBlank()) {
             return -1f;

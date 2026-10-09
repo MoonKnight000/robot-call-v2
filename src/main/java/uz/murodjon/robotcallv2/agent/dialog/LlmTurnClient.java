@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
 
@@ -112,6 +113,12 @@ class LlmTurnClient {
         }
     }
 
+    /** The company's own LLM when the call runs on one, the platform's otherwise. */
+    private ChatClient clientFor(DialogSession s) {
+        ChatClient own = s.ownChatClient();
+        return own != null ? own : chatClient;
+    }
+
     /** Whether there is a model to send a turn to. */
     boolean isReady() {
         return chatClient != null;
@@ -130,7 +137,7 @@ class LlmTurnClient {
      * it is the worse of the two mistakes.
      */
     boolean isTakingTheFloor(DialogSession s, String botLine, String callerText) {
-        ChatClient client = chatClient;
+        ChatClient client = clientFor(s);
         if (client == null) {
             return true;
         }
@@ -239,7 +246,7 @@ class LlmTurnClient {
     Flux<ChatResponse> openSpeculativeStream(DialogSession s, String system, List<Message> messages,
                                              List<ToolCallback> tools, String model,
                                              AtomicReference<Disposable> upstream) {
-        return chatClient.prompt()
+        return clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
                 .options(turnTools.buildOptions(s, tools, model).mutate())
@@ -250,8 +257,8 @@ class LlmTurnClient {
     }
 
     /** A blocking request with no chat options, under the blocking-call deadline. */
-    ChatResponse callWithoutOptions(String system, List<Message> messages) {
-        return callWithDeadline(() -> chatClient.prompt()
+    ChatResponse callWithoutOptions(DialogSession s, String system, List<Message> messages) {
+        return callWithDeadline(() -> clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
                 .call()
@@ -320,8 +327,15 @@ class LlmTurnClient {
      * {@code llmModel} — there is no separate off switch, because "the cheap model is the
      * same as the careful one" already says it and one field cannot then disagree with
      * another.
+     *
+     * <p>On the company's own LLM it is that endpoint's fast model or none: neither the agent's
+     * nor the installation's id names a model the company's endpoint serves.
      */
     String resolveFastModel(DialogSession s) {
+        OwnLlmEndpoint ownLlm = s.aiModel() != null ? s.aiModel().ownLlm() : null;
+        if (ownLlm != null) {
+            return ownLlm.fastModel();
+        }
         String agentModel = s.fastModel();
         return agentModel != null && !agentModel.isBlank() ? agentModel : dialogProperties.fastModel();
     }
@@ -385,7 +399,7 @@ class LlmTurnClient {
         TokenUsage turnUsage = new TokenUsage();
         List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
 
-        StreamedReply reply = consume(s, speculated != null ? speculated : chatClient.prompt()
+        StreamedReply reply = consume(s, speculated != null ? speculated : clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
                 .options(turnTools.buildOptions(s, tools, model).mutate())
@@ -423,7 +437,7 @@ class LlmTurnClient {
         log.warn("[{}] empty LLM reply in {} — asking again for the spoken line",
                 s.channelId(), s.state());
         TokenUsage retryUsage = new TokenUsage();
-        StreamedReply retry = consume(s, chatClient.prompt()
+        StreamedReply retry = consume(s, clientFor(s).prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
                 .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)).mutate())
@@ -607,7 +621,7 @@ class LlmTurnClient {
     /** One turn in a single blocking call — the pre-streaming path, kept as a fallback. */
     private TurnResult blockingTurn(DialogSession s, String system, List<Message> messages,
                                     List<ToolCallback> tools, String model) {
-        ChatResponse response = callWithDeadline(() -> chatClient.prompt()
+        ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
                 .options(turnTools.buildOptions(s, tools, model).mutate())
@@ -677,7 +691,7 @@ class LlmTurnClient {
 
     /** Second attempt when a turn produced only tool calls: text, no tools. */
     private String retryForSpokenLine(DialogSession s, String system, List<Message> messages, String toolNote) {
-        ChatResponse response = callWithDeadline(() -> chatClient.prompt()
+        ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
                 .system(system)
                 .messages(spokenLineRetry(messages, toolNote))
                 // Fast model, no tools — same reasoning as the streaming path above.

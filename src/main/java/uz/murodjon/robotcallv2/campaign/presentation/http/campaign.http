@@ -16,6 +16,20 @@ Authorization: Bearer {{auth_token}}
   "aiAgentId": 1
 }
 
+### Create Operator Campaign (PREVIEW — operators of queue 1 dial it, no AI agent)
+POST http://localhost:8080/api/campaigns
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Sotuv - operatorlar",
+  "type": "SURVEY",
+  "dialMode": "PREVIEW",
+  "callQueueId": 1,
+  "dialWindowStart": "09:00:00",
+  "dialWindowEnd": "19:00:00"
+}
+
 ### Filter Campaigns
 POST http://localhost:8080/api/campaigns/filter
 Content-Type: application/json

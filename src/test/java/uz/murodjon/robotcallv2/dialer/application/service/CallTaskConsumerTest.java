@@ -9,7 +9,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.amqp.ImmediateRequeueAmqpException;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
+import uz.murodjon.robotcallv2.agent.rtp.RtpPortAllocator;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
@@ -42,6 +44,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -73,6 +76,8 @@ class CallTaskConsumerTest {
     private AiAgentUseCase aiAgents;
     @Mock
     private DialerService dialerService;
+    @Mock
+    private RtpPortAllocator portAllocator;
 
     private CallTaskConsumer consumer;
 
@@ -80,10 +85,25 @@ class CallTaskConsumerTest {
     void setUp() {
         consumer = new CallTaskConsumer(
                 ariService, callRegistry, campaignUseCase, campaignTargetUseCase,
-                crmClient, audit, dialerState, doNotCallUseCase, callRecordService,
-                clientMemoryService, mock(FactWebhookUseCase.class), aiAgents,
-                mock(CallBillingUseCase.class), dialerService, mock(CompanyUseCase.class), new ObjectMapper()
+                audit, dialerState, doNotCallUseCase, callRecordService,
+                new OutboundCallPreparer(crmClient, clientMemoryService, mock(FactWebhookUseCase.class), aiAgents,
+                        new ObjectMapper()),
+                mock(CallBillingUseCase.class), dialerService, mock(CompanyUseCase.class), portAllocator
         );
+    }
+
+    /** Ports all taken here, ringing calls included: the task goes back for another instance, undialled and unreleased. */
+    @Test
+    void aFullInstanceReturnsTheTaskToTheQueue() {
+        CallTask task = new CallTask(1L, 100L, 200L, "998901234567", "uz", "{}", 1L, 7L,
+                null, null, null, null, null);
+        when(portAllocator.available()).thenReturn(2);
+        when(callRegistry.countUnanswered()).thenReturn(2);
+
+        assertThrows(ImmediateRequeueAmqpException.class, () -> consumer.onMessage(task));
+
+        verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
+        verify(dialerState, never()).release(anyLong(), anyLong());
     }
 
     /** Paused while the task waited in the queue: nothing is dialled and the claim goes back, attempt and all. */
@@ -125,7 +145,7 @@ class CallTaskConsumerTest {
 
         ScenarioDefinition def = new ScenarioDefinition(List.of(), List.of(), List.of(), List.of(), "system prompt", List.of(), "disclosure");
         Scenario scenario = new Scenario(10L, "test-scenario", 1, "Test", "Desc", false, true, def, Instant.now(), 1L);
-        when(aiAgents.requirePublishedAgent(1L, 7L)).thenReturn(AiAgentFixtures.agent(7L, 1L, 10L, "uz", "dilfuza"));
+        when(aiAgents.requireCallAgent(1L, 7L, "998901234567")).thenReturn(AiAgentFixtures.agent(7L, 1L, 10L, "uz", "dilfuza"));
         when(aiAgents.resolveScenario(eq(1L), any())).thenReturn(scenario);
         when(crmClient.fetchClient(1L, 200L)).thenReturn(new CrmClientSnapshot("Ali", new BigDecimal("500000"), "UZS", LocalDate.now(), "CTR-1", "uz", null, null));
         when(ariService.originate(eq("998901234567"), eq(1L), any(OutboundCall.class))).thenReturn("chan-123");

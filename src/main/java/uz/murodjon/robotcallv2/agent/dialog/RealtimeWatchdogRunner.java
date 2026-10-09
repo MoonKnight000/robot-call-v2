@@ -42,6 +42,8 @@ public class RealtimeWatchdogRunner {
     /** Instructions to the engine — never heard by the caller; what they hear is the answer. */
     static final String STILL_THERE = "[TIZIM: mijoz bir necha soniyadan beri jim. Qisqa qilib "
             + "eshityaptimi deb so'rang va oxirgi savolingizni qisqa takrorlang.]";
+    static final String LAST_CALL = "[TIZIM: mijoz hamon jim. Bir gap bilan aloqadami deb so'rang va "
+            + "javob bo'lmasa qo'ng'iroqni yakunlashingizni ayting. endCall chaqirmang.]";
     static final String GIVE_UP = "[TIZIM: mijoz javob bermayapti. Bir gap bilan muloyim xayrlashing "
             + "va endCall chaqiring.]";
     static final String TIME_UP = "[TIZIM: qo'ng'iroq uchun ajratilgan vaqt tugadi. Bir gap bilan "
@@ -144,7 +146,7 @@ public class RealtimeWatchdogRunner {
                             log.info("[{}] no input for {}s — asking the engine to check on the caller ({}/{})",
                                     s.channelId(), dialogProperties.noInputSeconds(), watchdog.prompts(),
                                     dialogProperties.noInputMaxPrompts());
-                            engine.sendUserText(STILL_THERE);
+                            engine.sendUserText(watchdog.isLastPrompt() ? LAST_CALL : STILL_THERE);
                         }));
                     }
                 }

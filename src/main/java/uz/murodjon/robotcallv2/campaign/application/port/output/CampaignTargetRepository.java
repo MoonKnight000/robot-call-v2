@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.campaign.application.port.output;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TargetScore;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 
 import java.time.Instant;
@@ -33,6 +34,25 @@ public interface CampaignTargetRepository {
     long countActive(long campaignId);
 
     List<CampaignTarget> claimDue(long campaignId, int limit);
+
+    /**
+     * {@link #claimDue} ordered by score, highest first; a target whose best hour is
+     * {@code localHour} gets {@link TargetScore#BEST_HOUR_BONUS}, an unscored one counts as
+     * {@link TargetScore#NEUTRAL}.
+     */
+    List<CampaignTarget> claimDueByScore(long campaignId, int limit, int localHour);
+
+    /** Waiting targets never scored, or scored before {@code scoredBefore} — never-scored first. */
+    List<CampaignTarget> findToScore(long campaignId, Instant scoredBefore, int limit);
+
+    /** Target id → its new score; stamps when it was scored. */
+    void updateScores(long companyId, Map<Long, TargetScore> scores);
+
+    /** One due target, claimed for operator {@code userId}; null when none is due. */
+    CampaignTarget claimNextForOperator(long campaignId, long userId);
+
+    /** The IN_PROGRESS target operator {@code userId} holds in the campaign, or null. */
+    CampaignTarget findHeldByOperator(long campaignId, long userId);
 
     /**
      * Drops the booked next-attempt time of every waiting target, making them due at once.

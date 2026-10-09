@@ -1,0 +1,16 @@
+### 1. Webhook deliveries that failed their first try — newest first
+POST http://localhost:8080/api/webhook-deliveries/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20,
+  "status": "FAILED",
+  "source": "POST_CALL",
+  "from": "2026-10-01T00:00:00Z"
+}
+
+### 2. Send a FAILED delivery once more
+POST http://localhost:8080/api/webhook-deliveries/1/resend
+Authorization: Bearer {{auth_token}}

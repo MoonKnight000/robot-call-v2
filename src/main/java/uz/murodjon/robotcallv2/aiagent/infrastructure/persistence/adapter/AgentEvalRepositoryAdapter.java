@@ -36,10 +36,13 @@ public class AgentEvalRepositoryAdapter implements AgentEvalRepository {
         entity.setCompanyId(run.companyId());
         entity.setAgentId(run.agentId());
         entity.setAgentVersion(run.agentVersion());
+        entity.setMode(run.mode());
+        entity.setConfigHash(run.configHash());
         entity.setStatus(run.status());
         entity.setTotal(run.total());
         entity.setPassed(run.passed());
         entity.setStartedAt(run.startedAt());
+        entity.setRepeatCount(run.repeat());
         return runJpaRepository.save(entity).getId();
     }
 
@@ -83,6 +86,7 @@ public class AgentEvalRepositoryAdapter implements AgentEvalRepository {
         entity.setTranscript(result.transcript() == null ? "" : result.transcript());
         entity.setQaScore(result.qaScore());
         entity.setGuardrailViolation(result.guardrailViolation());
+        entity.setAttempt(result.attempt());
         entity.setCreatedAt(Instant.now());
         resultJpaRepository.save(entity);
     }

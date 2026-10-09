@@ -102,6 +102,7 @@ class CallSetupService {
     private final OperatorTransferService operatorTransferService;
     private final UnansweredCallSettler unansweredCallSettler;
     private final ObjectMapper objectMapper;
+    private final PreConversationAudio preConversationAudio;
 
     CallSetupService(ExecutorService callExecutor,
                      AriClient ariClient,
@@ -134,8 +135,10 @@ class CallSetupService {
                      AgentWebhookUseCase agentWebhookUseCase,
                      OperatorTransferService operatorTransferService,
                      UnansweredCallSettler unansweredCallSettler,
-                     ObjectMapper objectMapper) {
+                     ObjectMapper objectMapper,
+                     PreConversationAudio preConversationAudio) {
         this.objectMapper = objectMapper;
+        this.preConversationAudio = preConversationAudio;
         this.callExecutor = callExecutor;
         this.ariClient = ariClient;
         this.pbxLegService = pbxLegService;
@@ -203,6 +206,23 @@ class CallSetupService {
         }));
     }
 
+    /**
+     * Hands a channel already in Stasis and answered — a predictive client no operator took
+     * (docs/OPERATOR-DIALER-ANALYTICS-PLAN.md §1.4) — to {@code call}'s agent, as if it had been
+     * dialled for it: from here on the call is an outbound AI call, ended and settled by teardown.
+     */
+    void startOutboundAiCall(String channelId, String channelName, OutboundCall call) {
+        outboundCallTrackingUseCase.register(channelId, call);
+        callSessionRegistry.markSettingUp(channelId);
+        callExecutor.execute(() -> CallMdc.with(channelId, () -> {
+            try {
+                setupMedia(channelId, channelName, null, null);
+            } finally {
+                callSessionRegistry.finishSettingUp(channelId);
+            }
+        }));
+    }
+
     private void setupMedia(String channelId, String channelName, Channel channel, String inboundDid) {
         OutboundCall outbound = pendingCallRegistry.findOutboundProfile(channelId);
         boolean manual = pendingCallRegistry.isManual(channelId);
@@ -237,7 +257,8 @@ class CallSetupService {
             AiAgent inboundAgent = null;
             String inboundFacts = null;
             if (inboundRoute != null) {
-                inboundAgent = aiAgentService.requirePublishedAgent(inboundRoute.companyId(), inboundRoute.aiAgentId());
+                inboundAgent = aiAgentService.requireCallAgent(inboundRoute.companyId(), inboundRoute.aiAgentId(),
+                        ChannelNames.extractCallerNumber(channel));
                 inboundScenario = aiAgentService.resolveScenario(inboundRoute.companyId(), inboundAgent);
                 if (inboundScenario != null && inboundScenario.definition() != null && inboundScenario.definition().factWebhook() != null) {
                     inboundFacts = factWebhookUseCase.fetchFacts(inboundScenario.definition().factWebhook(),
@@ -452,7 +473,10 @@ class CallSetupService {
                 endpoint.setThinkingSound(agent.ambience().thinking(), agent.ambience().thinkingVolume());
                 endpoint.setNoiseCancellation(agent.ambience().noiseCancellationEnabled(), agent.ambience().noiseCancellationMode());
             }
+            audioPipelineAssembler.attachDenoiser(endpoint);
             if (dialogProperties.enabled() && startDialog) {
+                // Before the dialog, and before the check below: the caller may leave while it plays.
+                preConversationAudio.play(channelId, companyId, agent, endpoint);
                 // The test file and the initiation webhook take time, and StasisEnd may have
                 // claimed and torn the call down meanwhile: a dialog started now would talk
                 // to nobody until the reaper.

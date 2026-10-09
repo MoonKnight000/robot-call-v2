@@ -21,6 +21,7 @@ import uz.murodjon.robotcallv2.operator.domain.enums.OperatorStatus;
 import uz.murodjon.robotcallv2.operator.domain.enums.OperatorTableField;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.cluster.ClusterSignal;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.shared.stream.EventSink;
 import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
@@ -52,6 +53,8 @@ public class OperatorAccountService implements OperatorAccountUseCase {
     private static final String PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int PASSWORD_LENGTH = 20;
     private static final Pattern OPERATOR_ENDPOINT = Pattern.compile("op-(\\d+)");
+    /** Each instance writes the operators' endpoints into its own Asterisk's config. */
+    private static final String ENDPOINTS_CHANGED = "pjsip.operators";
 
     private final OperatorSipAccountRepository accountRepository;
     private final OperatorEndpointConfigPort endpointConfigPort;
@@ -62,12 +65,15 @@ public class OperatorAccountService implements OperatorAccountUseCase {
     private final CurrentUser currentUser;
     private final WebTestProperties webTestProperties;
     private final AuditUseCase auditService;
+    private final ClusterSignal clusterSignal;
 
     public OperatorAccountService(OperatorSipAccountRepository accountRepository,
                                   OperatorEndpointConfigPort endpointConfigPort, UserUseCase userUseCase,
                                   SecretCipher secretCipher, OperatorPresenceUseCase operatorPresenceUseCase,
                                   ContactCenterEventUseCase contactCenterEventUseCase, CurrentUser currentUser,
-                                  WebTestProperties webTestProperties, AuditUseCase auditService) {
+                                  WebTestProperties webTestProperties, AuditUseCase auditService,
+                                  ClusterSignal clusterSignal) {
+        this.clusterSignal = clusterSignal;
         this.accountRepository = accountRepository;
         this.endpointConfigPort = endpointConfigPort;
         this.userUseCase = userUseCase;
@@ -77,6 +83,7 @@ public class OperatorAccountService implements OperatorAccountUseCase {
         this.currentUser = currentUser;
         this.webTestProperties = webTestProperties;
         this.auditService = auditService;
+        clusterSignal.subscribe(ENDPOINTS_CHANGED, this::regenerateEndpointsLogged);
     }
 
     @Override
@@ -93,7 +100,7 @@ public class OperatorAccountService implements OperatorAccountUseCase {
         } else {
             accountRepository.update(companyId, userId, webrtc, forwardNumber);
         }
-        regenerateEndpoints();
+        regenerateEndpointsEverywhere();
         auditService.record(companyId, existing == null ? "OPERATOR_SIP_ACCOUNT_CREATE" : "OPERATOR_SIP_ACCOUNT_UPDATE",
                 "operator_sip_account", String.valueOf(userId), webrtc ? "webrtc" : "sip");
         return toRow(user, requireAccount(companyId, userId));
@@ -105,7 +112,7 @@ public class OperatorAccountService implements OperatorAccountUseCase {
         OperatorSipAccount account = requireAccount(companyId, userId);
         String password = generatePassword();
         accountRepository.updatePassword(companyId, userId, secretCipher.encrypt(password));
-        regenerateEndpoints();
+        regenerateEndpointsEverywhere();
         auditService.record(companyId, "OPERATOR_SIP_PASSWORD_RESET", "operator_sip_account", String.valueOf(userId), null);
         return new SipCredentialsResponse(account.endpointName(), password, webTestProperties.wsUrl(),
                 user.sipExtension(), account.webrtc());
@@ -116,7 +123,7 @@ public class OperatorAccountService implements OperatorAccountUseCase {
         requireAccount(companyId, userId);
         accountRepository.delete(companyId, userId);
         operatorPresenceUseCase.setStatus(companyId, userId, OperatorStatus.OFFLINE, null);
-        regenerateEndpoints();
+        regenerateEndpointsEverywhere();
         auditService.record(companyId, "OPERATOR_SIP_ACCOUNT_DELETE", "operator_sip_account", String.valueOf(userId), null);
     }
 
@@ -202,11 +209,22 @@ public class OperatorAccountService implements OperatorAccountUseCase {
     /** The file Asterisk reads survives a restart, but a key or a user may have changed meanwhile. */
     @EventListener(ApplicationReadyEvent.class)
     public void writeEndpointsOnStartup() {
+        regenerateEndpointsLogged();
+    }
+
+    /** At startup and on another instance's signal: nobody is waiting on it, so a failure is only logged. */
+    private void regenerateEndpointsLogged() {
         try {
             regenerateEndpoints();
         } catch (Exception e) {
-            log.warn("Could not write operator endpoints at startup: {}", e.getMessage());
+            log.warn("Could not write operator endpoints: {}", e.getMessage());
         }
+    }
+
+    /** An account changed: this instance's Asterisk now, every other instance's on the signal. */
+    private void regenerateEndpointsEverywhere() {
+        regenerateEndpoints();
+        clusterSignal.send(ENDPOINTS_CHANGED);
     }
 
     /**

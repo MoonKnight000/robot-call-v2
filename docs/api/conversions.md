@@ -8,6 +8,9 @@ A/B hisobotda doim g'olib bo'lib ko'rinardi. Bu bo'lim kompaniyaning o'z tizimig
 "mijoz haqiqatan to'ladi" deb aytish imkonini beradi va platforma buni qaysi
 qo'ng'iroq, qaysi kampaniya va qaysi A/B variant keltirganini o'zi aniqlaydi.
 
+Shu raqamning ochiq to'lov va'dasi bo'lsa, kelgan hodisa uni `KEPT` qiladi (atributsiya qilinmagan
+hodisa ham) — [payment-promises.md](payment-promises.md).
+
 Umumiy javob formati va xatolar uchun [README.md](README.md)ga qarang.
 
 ---

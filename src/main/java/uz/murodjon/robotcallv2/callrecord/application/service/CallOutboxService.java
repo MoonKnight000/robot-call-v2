@@ -120,7 +120,7 @@ public class CallOutboxService {
                 Scenario scenario = scenarioUseCase.requireScenario(companyId, p.scenarioId());
                 AiAgent agent = aiAgentUseCase.findAgent(companyId, p.agentId()) != null
                         ? aiAgentUseCase.requirePublishedAgent(companyId, p.agentId()) : null;
-                SummarizedCall summarized = summaryService.summarize(transcript, scenario.definition(), agent);
+                SummarizedCall summarized = summaryService.summarize(companyId, transcript, scenario.definition(), agent);
                 if (summarized == null) {
                     log.debug("Outbox: summary still unavailable for call {}", p.callId());
                     continue;

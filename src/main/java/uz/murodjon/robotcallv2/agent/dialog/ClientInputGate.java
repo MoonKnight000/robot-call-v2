@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
@@ -34,18 +35,37 @@ public class ClientInputGate {
     private static final Logger log = LoggerFactory.getLogger(ClientInputGate.class);
 
     /**
-     * Carrier voicemail/answering machine phrases. Only automated operator/machine greetings,
-     * not conversational phrases that a real human might say (e.g. "keyinroq qiling").
+     * Carrier announcements that the subscriber cannot be reached — phone off, out of
+     * coverage. Only automated greetings, never conversational phrases a real person might
+     * say (e.g. "keyinroq qiling"). Nothing records after these, so no message is left.
      */
-    private static final List<String> VOICEMAIL_PHRASES = List.of(
-            "apparati o'chirilgan", "xizmat doirasidan tashqarida", "ovozli xabar qoldiring",
-            "signal ovozidan so'ng", "signal ovozidan keyin", "telefon o'chirilgan",
-            "boshqa raqamga yo'naltirilgan", "chaqirilayotgan abonent apparati",
+    private static final List<String> UNREACHABLE_PHRASES = List.of(
+            "apparati o'chirilgan", "xizmat doirasidan tashqarida", "telefon o'chirilgan",
+            "chaqirilayotgan abonent apparati",
             "абонент недоступен", "аппарат абонента выключен", "находится вне зоны",
-            "оставьте сообщение", "после сигнала", "после звукового сигнала",
-            "автоответчик", "номер не существует", "данный вид связи недоступен",
-            "номер временно заблокирован", "not in service", "currently unavailable",
-            "switched off", "leave a message after the tone"
+            "данный вид связи недоступен", "номер временно заблокирован", "currently unavailable",
+            "switched off"
+    );
+
+    /**
+     * An answering machine or voicemail box inviting a message — the only case where
+     * leaving one ({@code VoicemailAction.LEAVE_MESSAGE}) reaches anybody.
+     */
+    private static final List<String> MESSAGE_PROMPT_PHRASES = List.of(
+            "ovozli xabar qoldiring", "signal ovozidan so'ng", "signal ovozidan keyin",
+            "boshqa raqamga yo'naltirilgan",
+            "оставьте сообщение", "после сигнала", "после звукового сигнала", "автоответчик",
+            "leave a message after the tone"
+    );
+
+    /**
+     * Carrier announcements that the dialled number does not exist — whole phrases, so a
+     * person saying a number is wrong in conversation is never matched.
+     */
+    private static final List<String> NO_SUCH_NUMBER_PHRASES = List.of(
+            "raqam mavjud emas", "raqam noto'g'ri terilgan", "noto'g'ri terilgan",
+            "номер не существует", "неправильно набран", "набран неверно", "номер не обслуживается",
+            "not in service", "does not exist"
     );
 
     /**
@@ -64,13 +84,19 @@ public class ClientInputGate {
     private final DialogExecutors executors;
     private final DialogTuningProperties dialogTuning;
     private final LlmTurnClient llmTurnClient;
+    private final VoicemailDrop voicemailDrop;
+    private final CallMetrics callMetrics;
 
     public ClientInputGate(DialogProperties dialogProperties, SttProperties sttProperties, LanguageDetector languageDetector,
                            DialogMetrics metrics, DialogTranscript transcript,
                            TurnRunner turnRunner, DialogExecutors executors,
-                           DialogTuningProperties dialogTuning, LlmTurnClient llmTurnClient) {
+                           DialogTuningProperties dialogTuning, LlmTurnClient llmTurnClient,
+                           VoicemailDrop voicemailDrop,
+                           CallMetrics callMetrics) {
+        this.callMetrics = callMetrics;
         this.dialogTuning = dialogTuning;
         this.llmTurnClient = llmTurnClient;
+        this.voicemailDrop = voicemailDrop;
         this.dialogProperties = dialogProperties;
         this.sttProperties = sttProperties;
         this.languageDetector = languageDetector;
@@ -106,7 +132,7 @@ public class ClientInputGate {
         if (s.isEnded()) {
             return;
         }
-        if (llmTurnClient.isTakingTheFloor(s, currentBotLine(s), text)) {
+        if (isTakingTheFloor(s, text)) {
             confirmBargeIn(s, true);
             handleFinal(s, text, true);
             return;
@@ -137,9 +163,24 @@ public class ClientInputGate {
         transcript.publishClientLine(s, text);
         s.touchActivity();
 
+        // A carrier saying the number does not exist: nobody will ever answer it, so it is
+        // closed as a wrong number — never retried, and no voicemail action applies.
+        if (!s.isInbound() && s.turnCount() <= 2 && containsAny(text, NO_SUCH_NUMBER_PHRASES)) {
+            log.info("[{}] carrier announced the number does not exist — closing as WRONG_NUMBER", s.channelId());
+            log.debug("[{}] announcement transcript: '{}'", s.channelId(), text);
+            s.setDisposition(Disposition.WRONG_NUMBER);
+            s.end(Disposition.WRONG_NUMBER);
+            if (s.hangup() != null) {
+                s.hangup().run();
+            }
+            return;
+        }
+
         // Check for Voicemail / Answering machine transcript in early turns (turn <= 2) on outbound calls only
-        if (!s.isInbound() && s.turnCount() <= 2 && isVoicemailTranscript(text)) {
+        boolean takesMessages = containsAny(text, MESSAGE_PROMPT_PHRASES);
+        if (!s.isInbound() && s.turnCount() <= 2 && (takesMessages || containsAny(text, UNREACHABLE_PHRASES))) {
             log.info("[{}] Voicemail phrase detected in client transcript", s.channelId());
+            callMetrics.voicemailDetected("transcript");
             log.debug("[{}] voicemail transcript: '{}'", s.channelId(), text);
             AiAgent agent = s.agent();
             // HANGUP only when there is no agent at all: it has no message to leave.
@@ -153,13 +194,15 @@ public class ClientInputGate {
                 log.info("[{}] Agent voicemailAction is IGNORE - continuing call despite voicemail phrase", s.channelId());
             } else {
                 s.setDisposition(Disposition.VOICEMAIL);
-                s.end(Disposition.VOICEMAIL);
                 String message = agent != null ? agent.callBehaviour().voicemailMessage() : null;
-                if (action == VoicemailAction.LEAVE_MESSAGE && message != null && !message.isBlank()) {
-                    log.info("[{}] Agent voicemailAction is LEAVE_MESSAGE - speaking voicemail message before hangup", s.channelId());
-                    executors.submit(() -> turnRunner.leaveVoicemailAndClose(s, message));
-                } else if (s.hangup() != null) {
-                    s.hangup().run();
+                if (action.leavesMessage() && takesMessages && message != null && !message.isBlank()) {
+                    log.info("[{}] Agent voicemailAction is LEAVE_MESSAGE - leaving the message after the beep", s.channelId());
+                    voicemailDrop.start(s, message);
+                } else {
+                    s.end(Disposition.VOICEMAIL);
+                    if (s.hangup() != null) {
+                        s.hangup().run();
+                    }
                 }
                 return;
             }
@@ -176,7 +219,7 @@ public class ClientInputGate {
             // word or two. Whether that was agreement — leave the cut-off reply to resume —
             // or an answer is the model's call, off the recognizer's thread.
             executors.submit(() -> {
-                if (llmTurnClient.isTakingTheFloor(s, currentBotLine(s), text)) {
+                if (isTakingTheFloor(s, text)) {
                     turnRunner.advance(s, text, true);
                     return;
                 }
@@ -228,6 +271,25 @@ public class ClientInputGate {
         log.info("[{}] caller speech over the bot — paused, waiting for words", s.channelId());
         executors.scheduleOnWorker(() -> resumeIfNoWords(s, token), BARGE_IN_CONFIRM_MS);
         return true;
+    }
+
+    /**
+     * The caller pressed a key. Unlike a sound on the line it cannot be a cough or an "aha",
+     * so it silences the bot outright instead of pausing it to wait for words — words are
+     * never coming, and the pause would resume the bot over a caller still typing. The
+     * typed sequence itself arrives later as one final ({@code DialogEngine#onKeypadInput}).
+     */
+    public void onKeypress(DialogSession s) {
+        s.touchActivity();
+        s.setTyping(true);
+        if (sensitivity(s) == InterruptionSensitivity.OFF) {
+            return;
+        }
+        boolean playing = s.endpoint().isPlaying();
+        boolean pending = s.settleBargeIn();
+        if ((playing || pending || s.busy().get()) && !s.isCancelled()) {
+            confirmBargeIn(s, playing);
+        }
     }
 
     /**
@@ -288,6 +350,20 @@ public class ClientInputGate {
         return words >= needed;
     }
 
+    /** Whether a caller who said a word or two over the bot is taking the floor — by {@link FloorRules} when the words settle it, else by the model. */
+    private boolean isTakingTheFloor(DialogSession s, String text) {
+        String botLine = currentBotLine(s);
+        Boolean byRule = FloorRules.decide(botLine, text);
+        metrics.floorDecided(byRule != null);
+        if (byRule != null) {
+            return byRule;
+        }
+        long startedAt = System.nanoTime();
+        boolean taking = llmTurnClient.isTakingTheFloor(s, botLine, text);
+        metrics.recordFloorModelLatency((System.nanoTime() - startedAt) / 1_000_000);
+        return taking;
+    }
+
     /** What the bot was saying when it was talked over — this turn's, else the last line. */
     private static String currentBotLine(DialogSession s) {
         String heard = s.spokenText();
@@ -339,14 +415,14 @@ public class ClientInputGate {
     }
 
     /**
-     * Checks if the given transcript matches known voicemail/answering machine patterns.
+     * Checks if the given transcript contains one of the given machine/carrier phrases.
      */
-    private boolean isVoicemailTranscript(String text) {
+    private boolean containsAny(String text, List<String> phrases) {
         if (text == null || text.isBlank()) {
             return false;
         }
         String normalized = text.toLowerCase(Locale.ROOT);
-        for (String phrase : VOICEMAIL_PHRASES) {
+        for (String phrase : phrases) {
             if (normalized.contains(phrase)) {
                 return true;
             }

@@ -5,12 +5,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.agent.ari.VoiceCallSimulator;
 import uz.murodjon.robotcallv2.agent.dialog.AgentSimulator;
 import uz.murodjon.robotcallv2.agent.dialog.SimulatedCall;
 import uz.murodjon.robotcallv2.agent.dialog.SimulationPersona;
 import uz.murodjon.robotcallv2.agent.dialog.SimulationProperties;
 import uz.murodjon.robotcallv2.agent.summary.CallQualityJudge;
 import uz.murodjon.robotcallv2.agent.summary.QualityVerdict;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentEvalCaseSummary;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentEvalRunDetail;
 import uz.murodjon.robotcallv2.aiagent.application.dto.SaveAgentTestCaseRequest;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUseCase;
@@ -21,13 +23,16 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalResult;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalRunStatus;
 import uz.murodjon.robotcallv2.aiagent.domain.event.AgentEvalFinishedEvent;
+import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentSnapshot;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -40,8 +45,9 @@ import java.util.stream.Collectors;
 /**
  * Plays an agent's test cases against it and keeps what happened (NEXT-PLAN A.2).
  *
- * <p>Each case is one {@link AgentSimulator} call: the agent — its draft, or the published
- * version asked for — against a second model playing the case's persona. A case passes
+ * <p>Each case is one {@link AgentSimulator} call — or, in {@link AgentEvalMode#VOICE}, one
+ * {@link VoiceCallSimulator} call through the real audio pipeline: the agent — its draft, or
+ * the published version asked for — against a second model playing the case's persona. A case passes
  * when the call ends where it should ({@code expectDisposition}, {@code expectStage}), the
  * agent said every {@code mustSay} phrase and none of the {@code mustNotSay} ones, the fact
  * guard caught nothing, and the quality judge found no guardrail violation.
@@ -58,11 +64,14 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
     private static final Duration STALE_RUN = Duration.ofMinutes(30);
     private static final int RUNS_LISTED = 20;
     private static final int MAX_ERROR_CHARS = 500;
+    /** Attempts per case in one run: enough to see a flaky case, few enough to stay a quick check. */
+    public static final int MAX_REPEAT = 10;
 
     private final AgentTestCaseRepository testCaseRepository;
     private final AgentEvalRepository evalRepository;
     private final AiAgentUseCase aiAgentUseCase;
     private final AgentSimulator simulator;
+    private final VoiceCallSimulator voiceSimulator;
     private final CallQualityJudge judge;
     private final AuditUseCase audit;
     private final SimulationProperties simulationProperties;
@@ -71,13 +80,15 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     public AgentEvaluationService(AgentTestCaseRepository testCaseRepository, AgentEvalRepository evalRepository,
-                                  AiAgentUseCase aiAgentUseCase, AgentSimulator simulator, CallQualityJudge judge,
+                                  AiAgentUseCase aiAgentUseCase, AgentSimulator simulator,
+                                  VoiceCallSimulator voiceSimulator, CallQualityJudge judge,
                                   AuditUseCase audit, SimulationProperties simulationProperties,
                                   ApplicationEventPublisher eventPublisher, Clock clock) {
         this.testCaseRepository = testCaseRepository;
         this.evalRepository = evalRepository;
         this.aiAgentUseCase = aiAgentUseCase;
         this.simulator = simulator;
+        this.voiceSimulator = voiceSimulator;
         this.judge = judge;
         this.audit = audit;
         this.simulationProperties = simulationProperties;
@@ -112,7 +123,11 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
     }
 
     @Override
-    public AgentEvalRun evaluate(long companyId, long agentId, Integer version) {
+    public AgentEvalRun evaluate(long companyId, long agentId, Integer version, AgentEvalMode mode, int repeat) {
+        AgentEvalMode effectiveMode = mode != null ? mode : AgentEvalMode.TEXT;
+        if (repeat < 1 || repeat > MAX_REPEAT) {
+            throw new ValidationException(ErrorCode.AGENT_EVAL_REPEAT_INVALID, MAX_REPEAT);
+        }
         AiAgent agent = aiAgentUseCase.requireAgentVersion(companyId, agentId, version);
         List<AgentTestCase> cases = testCaseRepository.findByAgent(companyId, agentId);
         if (cases.isEmpty()) {
@@ -123,10 +138,11 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
             throw new ConflictException(ErrorCode.AGENT_EVAL_ALREADY_RUNNING, agentId);
         }
         ScenarioDefinition scenario = aiAgentUseCase.resolveScenario(companyId, agent).definition();
-        long runId = evalRepository.createRun(AgentEvalRun.starting(companyId, agentId, version, cases.size(), now));
+        long runId = evalRepository.createRun(AgentEvalRun.starting(companyId, agentId, version, effectiveMode,
+                AiAgentSnapshot.fingerprint(agent, scenario), cases.size() * repeat, repeat, now));
         audit.record(companyId, "AGENT_EVAL_START", "ai_agent", String.valueOf(agentId),
-                "run " + runId + ", " + cases.size() + " cases, version " + (version != null ? version : "draft"));
-        executor.execute(() -> run(runId, companyId, agent, scenario, cases));
+                "run " + runId + ", " + effectiveMode + ", " + cases.size() + " cases x" + repeat + ", version " + (version != null ? version : "draft"));
+        executor.execute(() -> run(runId, companyId, agent, scenario, cases, effectiveMode, repeat));
         return evalRepository.findRun(companyId, agentId, runId);
     }
 
@@ -142,7 +158,8 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
         if (run == null) {
             throw new NotFoundException(ErrorCode.AGENT_EVAL_RUN_NOT_FOUND, runId);
         }
-        return new AgentEvalRunDetail(run, evalRepository.findResults(runId));
+        List<AgentEvalResult> results = evalRepository.findResults(runId);
+        return new AgentEvalRunDetail(run, summarizeCases(results), results);
     }
 
     @PreDestroy
@@ -150,30 +167,33 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
         executor.shutdownNow();
     }
 
-    private void run(long runId, long companyId, AiAgent agent, ScenarioDefinition scenario, List<AgentTestCase> cases) {
+    private void run(long runId, long companyId, AiAgent agent, ScenarioDefinition scenario, List<AgentTestCase> cases,
+                     AgentEvalMode mode, int repeat) {
         int passed = 0;
         int scored = 0;
         long scoreSum = 0;
         try {
             for (AgentTestCase testCase : cases) {
-                AgentEvalResult result = runCase(runId, companyId, agent, scenario, testCase);
-                evalRepository.addResult(result);
-                if (result.passed()) {
-                    passed++;
-                }
-                if (result.qaScore() != null) {
-                    scored++;
-                    scoreSum += result.qaScore();
+                for (int attempt = 1; attempt <= repeat; attempt++) {
+                    AgentEvalResult result = runCase(runId, companyId, agent, scenario, testCase, mode, attempt);
+                    evalRepository.addResult(result);
+                    if (result.passed()) {
+                        passed++;
+                    }
+                    if (result.qaScore() != null) {
+                        scored++;
+                        scoreSum += result.qaScore();
+                    }
                 }
             }
             evalRepository.finishRun(runId, AgentEvalRunStatus.DONE, passed, scored > 0 ? (int) (scoreSum / scored) : null,
                     clock.instant(), null);
-            log.info("Agent {} evaluation {} finished: {}/{} passed", agent.id(), runId, passed, cases.size());
-            announce(companyId, agent.id(), runId, AgentEvalRunStatus.DONE, passed, cases.size());
+            log.info("Agent {} evaluation {} finished: {}/{} attempts passed", agent.id(), runId, passed, cases.size() * repeat);
+            announce(companyId, agent.id(), runId, AgentEvalRunStatus.DONE, passed, cases.size() * repeat);
         } catch (RuntimeException e) {
             log.warn("Agent {} evaluation {} broke off: {}", agent.id(), runId, e.getMessage());
             evalRepository.finishRun(runId, AgentEvalRunStatus.FAILED, passed, null, clock.instant(), truncate(e.getMessage()));
-            announce(companyId, agent.id(), runId, AgentEvalRunStatus.FAILED, passed, cases.size());
+            announce(companyId, agent.id(), runId, AgentEvalRunStatus.FAILED, passed, cases.size() * repeat);
         }
     }
 
@@ -193,14 +213,17 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
 
     /** One case; a case that throws is a failed case, not a failed run. */
     private AgentEvalResult runCase(long runId, long companyId, AiAgent agent, ScenarioDefinition scenario,
-                                    AgentTestCase testCase) {
+                                    AgentTestCase testCase, AgentEvalMode mode, int attempt) {
         try {
             SimulationPersona persona = new SimulationPersona(testCase.name(), testCase.personaPrompt(),
                     withoutNulls(testCase.facts()), testCase.expectDisposition(), testCase.expectStage());
             String language = testCase.language() != null && !testCase.language().isBlank()
                     ? testCase.language() : agent.language();
-            SimulatedCall call = simulator.simulate(companyId, scenario, agent, language, persona,
-                    testCase.maxTurns(), simulationProperties.personaModel());
+            SimulatedCall call = mode == AgentEvalMode.VOICE
+                    ? voiceSimulator.simulate(companyId, scenario, agent, language, persona,
+                    testCase.maxTurns(), simulationProperties.personaModel())
+                    : simulator.simulate(companyId, scenario, agent, language, persona,
+                    testCase.maxTurns(), simulationProperties.personaModel(), toolMocksOf(testCase));
             List<String> problems = new ArrayList<>(call.problems());
             problems.addAll(expectationProblems(testCase, call));
             QualityVerdict verdict = call.transcript().isEmpty()
@@ -211,11 +234,11 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
             return new AgentEvalResult(null, runId, testCase.id(), testCase.name(), problems.isEmpty(),
                     call.disposition() != null ? call.disposition().name() : null, call.stage(), problems,
                     call.transcriptText(), verdict != null ? verdict.score() : null,
-                    verdict != null && verdict.guardrailViolation());
+                    verdict != null && verdict.guardrailViolation(), attempt);
         } catch (RuntimeException e) {
             log.warn("Evaluation case '{}' of agent {} failed: {}", testCase.name(), agent.id(), e.getMessage());
             return new AgentEvalResult(null, runId, testCase.id(), testCase.name(), false, null, null,
-                    List.of("error: " + truncate(e.getMessage())), "", null, false);
+                    List.of("error: " + truncate(e.getMessage())), "", null, false, attempt);
         }
     }
 
@@ -243,6 +266,11 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
                 problems.add("said what it must not: " + phrase.trim());
             }
         }
+        for (String tool : testCase.expectTools()) {
+            if (isSet(tool) && call.transcript().stream().noneMatch(line -> line.startsWith("TOOL: " + tool.trim() + " "))) {
+                problems.add("never called tool: " + tool.trim());
+            }
+        }
         return problems;
     }
 
@@ -256,7 +284,47 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
         return new AgentTestCase(null, companyId, agentId, request.name().trim(), request.personaPrompt().trim(),
                 request.facts(), blankToNull(request.language()), blankToNull(request.expectDisposition()),
                 blankToNull(request.expectStage()), request.mustSay(), request.mustNotSay(),
-                request.maxTurns() != null ? request.maxTurns() : AgentTestCase.DEFAULT_MAX_TURNS, null);
+                request.maxTurns() != null ? request.maxTurns() : AgentTestCase.DEFAULT_MAX_TURNS, null,
+                withoutBlankMocks(request.toolMocks()), request.expectTools());
+    }
+
+    /**
+     * The canned tool answers a TEXT simulation of this case runs with, or null when the case
+     * declares neither mocks nor expected tools — such a case runs as before, with no company
+     * tools offered, rather than with every tool suddenly answering "unavailable".
+     */
+    private static Map<String, String> toolMocksOf(AgentTestCase testCase) {
+        return testCase.toolMocks().isEmpty() && testCase.expectTools().isEmpty() ? null : testCase.toolMocks();
+    }
+
+    /** A mock needs a tool name and an answer; anything else is dropped. */
+    private static Map<String, String> withoutBlankMocks(Map<String, String> mocks) {
+        Map<String, String> clean = new LinkedHashMap<>();
+        if (mocks != null) {
+            mocks.forEach((tool, answer) -> {
+                if (isSet(tool) && answer != null) {
+                    clean.put(tool.trim(), answer);
+                }
+            });
+        }
+        return clean;
+    }
+
+    /** Each case's attempts, in the order the cases first appear. */
+    private static List<AgentEvalCaseSummary> summarizeCases(List<AgentEvalResult> results) {
+        Map<String, List<AgentEvalResult>> byCase = new LinkedHashMap<>();
+        for (AgentEvalResult result : results) {
+            String key = result.testCaseId() != null ? "id:" + result.testCaseId() : "name:" + result.caseName();
+            byCase.computeIfAbsent(key, k -> new ArrayList<>()).add(result);
+        }
+        List<AgentEvalCaseSummary> summaries = new ArrayList<>();
+        for (List<AgentEvalResult> attempts : byCase.values()) {
+            int passed = (int) attempts.stream().filter(AgentEvalResult::passed).count();
+            AgentEvalResult first = attempts.getFirst();
+            summaries.add(new AgentEvalCaseSummary(first.testCaseId(), first.caseName(), attempts.size(), passed,
+                    passed * 100.0 / attempts.size(), passed > 0 && passed < attempts.size()));
+        }
+        return summaries;
     }
 
     /** A persona's facts may not hold nulls; a fact the case left empty is simply absent. */

@@ -37,7 +37,8 @@ public class StreamTicketService implements StreamTicketUseCase {
         this.jwtTokenService = jwtTokenService;
     }
 
-    public StreamTicketResponse issue(AuthenticatedUser principal) {
+    @Override
+    public StreamTicketResponse create(AuthenticatedUser principal) {
         String ticket = Tokens.generate();
         String accessToken = jwtTokenService.issue(principal).token();
         if (!streamTicketStore.save(Tokens.hash(ticket), accessToken, TICKET_TTL)) {

@@ -37,6 +37,8 @@ public class TurnLatency {
     /** Above this a stamp is stale — a leftover from an earlier turn, not this one's. */
     private static final long MAX_PLAUSIBLE_MS = 60_000;
 
+    private static final String UNKNOWN_PROVIDER = "unknown";
+
     private static final String[] STAGES = {"eou", "stt_final", "llm_ttft", "tts_ttfb", "first_audio"};
 
     /**
@@ -57,6 +59,19 @@ public class TurnLatency {
     private volatile long firstAudioAt;
     /** Whether this turn's reply was adopted from a speculation — llm_ttft is then a replay. */
     private volatile boolean speculated;
+    /** The providers the call was set up with, so stages can be compared across vendors. */
+    private volatile String sttProvider = UNKNOWN_PROVIDER;
+    private volatile String ttsProvider = UNKNOWN_PROVIDER;
+
+    /**
+     * The STT and TTS providers chosen for this call. The choice, not necessarily the one
+     * that served a given turn: a mid-call failover, or a catalog voice owned by another
+     * vendor, still reports the chosen name.
+     */
+    public void providers(String stt, String tts) {
+        this.sttProvider = stt == null || stt.isBlank() ? UNKNOWN_PROVIDER : stt;
+        this.ttsProvider = tts == null || tts.isBlank() ? UNKNOWN_PROVIDER : tts;
+    }
 
     /**
      * The gate shut: the caller stopped speaking {@code eouWaitMs} ago and the recognizer
@@ -138,7 +153,7 @@ public class TurnLatency {
                 continue;
             }
             any = true;
-            metrics.recordTurnStage(stages[i], values[i]);
+            metrics.recordTurnStage(stages[i], sttProvider, ttsProvider, values[i]);
             line.append(' ').append(stages[i]).append('=').append(values[i]).append("ms");
         }
         if (!any) {

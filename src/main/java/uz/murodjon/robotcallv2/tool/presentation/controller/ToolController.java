@@ -8,6 +8,9 @@ import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.tool.application.dto.*;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecution;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecutionFilter;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecutionStats;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 
 import java.util.List;
@@ -79,4 +82,22 @@ public interface ToolController {
     ResponseEntity<ResponseData<ImportToolsResponse>> importTools(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody ImportToolsRequest request);
+
+    /**
+     * The request log: one row per request a tool sent on a call or from the Test button,
+     * newest first by default. The arguments are only a hash; a refused request keeps the
+     * start of the endpoint's answer in {@code error}.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @PostMapping("/executions/filter")
+    ResponseEntity<ResponseData<PageableData<ToolExecution>>> filterExecutions(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ToolExecutionFilter filter);
+
+    /** Per tool over the last {@code days} days (1–90): counts by outcome, average and p95 latency. */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/executions/stats")
+    ResponseEntity<ResponseData<List<ToolExecutionStats>>> executionStats(
+            @CurrentCompanyId long companyId,
+            @RequestParam(defaultValue = "7") int days);
 }

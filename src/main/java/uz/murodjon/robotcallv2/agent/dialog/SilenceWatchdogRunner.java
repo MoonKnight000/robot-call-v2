@@ -127,8 +127,14 @@ public class SilenceWatchdogRunner {
             // and that flag would silently swallow this prompt — the one moment the
             // caller most needs to hear something.
             s.setCancelled(false);
-            String line = DialogPhrases.stillThere(s.language());
-            String question = DialogLines.lastQuestion(s.lastAgentText());
+            // The last prompt warns instead of asking again, and does not repeat the
+            // question: the first prompt already did, and the point now is that the call
+            // is about to end.
+            boolean lastPrompt = s.watchdog().isLastPrompt();
+            String line = lastPrompt
+                    ? DialogPhrases.stillThereLastCall(s.language())
+                    : DialogPhrases.stillThere(s.language());
+            String question = lastPrompt ? null : DialogLines.lastQuestion(s.lastAgentText());
             log.info("[{}] no input for {}s — prompting ({}/{}){}", s.channelId(),
                     dialogProperties.noInputSeconds(), s.watchdog().prompts(), dialogProperties.noInputMaxPrompts(),
                     question != null ? ", repeating the question" : "");

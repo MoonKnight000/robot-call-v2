@@ -1,0 +1,57 @@
+; Cells of a cluster talking to each other (docs/VOICE-PIPELINE-PLAN.md 4.3b).
+;
+; Every app instance has an Asterisk of its own (a "cell"). The operators' phones sign in to
+; one of them only — the operator cell — and every other cell rings an operator through it:
+; the app there dials PJSIP/op-<userId>@operator-cell (AsteriskProperties#operatorTrunk,
+; ASTERISK_OPERATOR_TRUNK=operator-cell), and the operator cell's [from-cells] context
+; rings the operator's own endpoint.
+;
+; Copy to pjsip_cells.conf (pulled in by pjsip.conf with #tryinclude) and keep ONE of the
+; two halves below, with the hosts filled in. Internal network only: the cells know each
+; other by IP and do not authenticate.
+
+; ===========================================================================
+; A) On every cell EXCEPT the operator cell
+; ===========================================================================
+[operator-cell]
+type = endpoint
+transport = transport-lan
+; Nothing is expected from the operator cell; if something comes, [from-cells] only rings
+; an operator endpoint, and there is none on this cell.
+context = from-cells
+disallow = all
+allow = ulaw
+allow = alaw
+direct_media = no
+aors = operator-cell
+identify_by = ip
+
+[operator-cell]
+type = aor
+; transport-lan listens on 5062 (pjsip.conf).
+contact = sip:OPERATOR_CELL_HOST:5062
+qualify_frequency = 30
+
+[operator-cell-identify]
+type = identify
+endpoint = operator-cell
+match = OPERATOR_CELL_HOST
+
+; ===========================================================================
+; B) On the operator cell only
+; ===========================================================================
+;[cells]
+;type = endpoint
+;transport = transport-lan
+;context = from-cells
+;disallow = all
+;allow = ulaw
+;allow = alaw
+;direct_media = no
+;identify_by = ip
+;
+;[cells-identify]
+;type = identify
+;endpoint = cells
+;match = CELL_2_HOST
+;match = CELL_3_HOST

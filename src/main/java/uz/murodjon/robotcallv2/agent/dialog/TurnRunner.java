@@ -361,22 +361,6 @@ public class TurnRunner {
         }
     }
 
-    public void leaveVoicemailAndClose(DialogSession s, String message) {
-        if (s.isEnded() || !s.busy().compareAndSet(false, true)) {
-            return;
-        }
-        try {
-            MDC.put("channelId", s.channelId());
-            s.end(Disposition.VOICEMAIL);
-            transcript.recordAgentLine(s, message);
-            speech.speakChunk(s, message);
-            speech.finishWhenSpoken(s);
-        } finally {
-            s.busy().set(false);
-            MDC.remove("channelId");
-        }
-    }
-
     /** See {@link SpeculationManager#speculate}. */
     public void speculate(DialogSession s, String text) {
         speculationManager.speculate(s, text);

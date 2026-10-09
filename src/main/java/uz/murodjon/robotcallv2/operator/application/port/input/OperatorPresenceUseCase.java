@@ -28,4 +28,7 @@ public interface OperatorPresenceUseCase {
 
     /** The call ended; the operator wraps up for {@code wrapUpSec}, then is AVAILABLE again. */
     void markCallEnded(long userId, int wrapUpSec);
+
+    /** The operator recorded the call's result: a wrap-up still running ends now. */
+    void finishWrapUp(long userId);
 }

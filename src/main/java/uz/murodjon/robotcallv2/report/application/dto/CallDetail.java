@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.report.application.dto;
 
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
 import uz.murodjon.robotcallv2.report.domain.entity.CallTechnicalMetrics;
 import uz.murodjon.robotcallv2.report.domain.entity.TranscriptLine;
 import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
@@ -20,6 +21,7 @@ public record CallDetail(
         String followUpNote,
         boolean escalated,
         String errorMessage,
-        CallTechnicalMetrics technical
+        CallTechnicalMetrics technical,
+        CallTalkMetrics talk
 ) {
 }

@@ -1,5 +1,9 @@
 package uz.murodjon.robotcallv2.webhook.application.port.input;
 
+import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
+import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDeliveryFilter;
+
 import java.util.Map;
 
 /**
@@ -26,4 +30,17 @@ public interface WebhookDeliveryUseCase {
      */
     Map<String, Object> postForReply(String url, Map<String, String> headers, Map<String, Object> payload,
                                      String signingSecret);
+
+    /**
+     * The deliveries kept for retry: every webhook whose first try failed, until a week
+     * after it got through. A webhook delivered on its first try is not kept.
+     */
+    PageableData<WebhookDeliveryRow> filterDeliveries(long companyId, WebhookDeliveryFilter filter);
+
+    /**
+     * Sends a {@code FAILED} delivery once more, now, with the same {@code X-RobotCall-Delivery}
+     * id. The returned row says how it went: {@code DELIVERED}, or {@code FAILED} again with
+     * the new {@code lastError}.
+     */
+    WebhookDeliveryRow retryDelivery(long companyId, long id);
 }

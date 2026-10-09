@@ -27,6 +27,9 @@ public interface CompanyRepository {
 
     void updateStatus(long id, CompanyStatus status);
 
+    /** Null clears it back to the platform default. */
+    void updateMaxConcurrentCalls(long id, Integer maxConcurrentCalls);
+
     List<Company> findAllCompanies();
 
     /** One page of the filter's companies together with the total, from one list query and at most one count. */

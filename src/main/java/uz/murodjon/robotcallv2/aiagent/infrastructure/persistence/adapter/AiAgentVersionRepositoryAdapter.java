@@ -49,6 +49,55 @@ public class AiAgentVersionRepositoryAdapter implements AiAgentVersionRepository
     }
 
     @Override
+    @Transactional
+    public AiAgentVersion createCandidate(AiAgentVersion version) {
+        AiAgentVersionEntity entity = new AiAgentVersionEntity();
+        entity.setAgentId(version.agentId());
+        entity.setCompanyId(version.companyId());
+        entity.setVersion(jpaRepository.findMaxVersion(version.agentId()) + 1);
+        entity.setStatus(AgentVersionStatus.CANDIDATE);
+        entity.setSnapshot(mapper.writeSnapshotJson(version.snapshot()));
+        entity.setNote(version.note());
+        entity.setPublishedAt(Instant.now());
+        entity.setPublishedBy(version.publishedBy());
+        return mapper.toAiAgentVersion(jpaRepository.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public void promoteCandidate(long companyId, long agentId) {
+        jpaRepository.findByCompanyIdAndAgentIdAndStatus(companyId, agentId, AgentVersionStatus.CANDIDATE)
+                .ifPresent(candidate -> {
+                    // Archived and flushed first, like publish: the partial unique index allows one live version.
+                    jpaRepository.findByCompanyIdAndAgentIdAndStatus(companyId, agentId, AgentVersionStatus.PUBLISHED)
+                            .ifPresent(live -> {
+                                live.setStatus(AgentVersionStatus.ARCHIVED);
+                                jpaRepository.saveAndFlush(live);
+                            });
+                    candidate.setStatus(AgentVersionStatus.PUBLISHED);
+                    jpaRepository.save(candidate);
+                });
+    }
+
+    @Override
+    @Transactional
+    public void archiveCandidate(long companyId, long agentId) {
+        jpaRepository.findByCompanyIdAndAgentIdAndStatus(companyId, agentId, AgentVersionStatus.CANDIDATE)
+                .ifPresent(candidate -> {
+                    candidate.setStatus(AgentVersionStatus.ARCHIVED);
+                    jpaRepository.save(candidate);
+                });
+    }
+
+    @Override
+    public List<AgentVersionStats> findCallStatsSince(long companyId, long agentId, Instant since) {
+        return jpaRepository.findCallStatsSince(companyId, agentId, since).stream()
+                .map(row -> new AgentVersionStats(((Number) row[0]).intValue(),
+                        ((Number) row[1]).longValue(), ((Number) row[2]).longValue()))
+                .toList();
+    }
+
+    @Override
     public AiAgentVersion findPublished(long companyId, long agentId) {
         return jpaRepository.findByCompanyIdAndAgentIdAndStatus(companyId, agentId, AgentVersionStatus.PUBLISHED)
                 .map(mapper::toAiAgentVersion)

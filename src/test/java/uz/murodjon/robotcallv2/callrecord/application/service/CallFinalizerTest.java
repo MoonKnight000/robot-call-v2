@@ -28,6 +28,7 @@ import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCas
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.quality.application.port.input.CallQualityUseCase;
+import uz.murodjon.robotcallv2.quality.application.port.input.ScorecardUseCase;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -106,6 +107,7 @@ class CallFinalizerTest {
                 .thenReturn(NOTE_MESSAGE_ID);
 
         finalizer = new CallFinalizer(callRecordService, summaryService, mock(CallQualityUseCase.class),
+                mock(ScorecardUseCase.class),
                 recordingStoragePort, outboxDeliveryService, scenarioUseCase, campaignTargetUseCase,
                 notificationUseCase, mock(CallMetrics.class), mock(SttProperties.class), mock(TtsProperties.class),
                 mock(TtsVoiceUseCase.class), mock(VadProperties.class), memoryWriter, postCallActionExecutor,
@@ -215,7 +217,7 @@ class CallFinalizerTest {
 
     @Test
     void callHistoryIsQueuedEvenWhenNoSummaryCouldBeMade() {
-        when(summaryService.summarize(anyString(), any(), any())).thenThrow(new IllegalStateException("LLM down"));
+        when(summaryService.summarize(anyLong(), anyString(), any(), any())).thenThrow(new IllegalStateException("LLM down"));
 
         finalizeCall(Disposition.REFUSED, agent());
 
@@ -290,13 +292,31 @@ class CallFinalizerTest {
         assertTrue(usage.getValue().durationSec() >= 95);
     }
 
+    @Test
+    void onTheCompanysOwnLlmNeitherTheCallNorItsSummaryIsBilledForTokens() {
+        when(summaryService.summarize(anyLong(), eq(TRANSCRIPT), any(), any()))
+                .thenReturn(new SummarizedCall(SUMMARY, 1200, 300, 100, true));
+        DialogTechnicalSnapshot ownLlm = new DialogTechnicalSnapshot(4, 1000, 200, 50, 300,
+                null, null, null, null, null, "uz-UZ", null, "qwen3-32b", 0, 0, 0, true);
+
+        finalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, Disposition.REFUSED, CHANNEL, "trunk",
+                ownLlm, agent(), PHONE, null);
+
+        ArgumentCaptor<CallUsage> usage = ArgumentCaptor.forClass(CallUsage.class);
+        verify(callBilling).settleCall(eq(COMPANY_ID), eq(CALL_ID), eq(TARGET_ID), usage.capture());
+        verify(callBilling).chargeSummary(COMPANY_ID, CALL_ID, new CallUsage(0, 0, 0, 0, 0));
+        assertEquals(0, usage.getValue().promptTokens());
+        assertEquals(0, usage.getValue().completionTokens());
+        assertEquals(300, usage.getValue().ttsChars());
+    }
+
     private Disposition finalizeCall(Disposition disposition, AiAgent agent) {
         return finalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, disposition, CHANNEL, "trunk",
                 TECHNICAL, agent, PHONE, null);
     }
 
     private void summarizes(CallSummary summary) {
-        when(summaryService.summarize(eq(TRANSCRIPT), any(), any()))
+        when(summaryService.summarize(anyLong(), eq(TRANSCRIPT), any(), any()))
                 .thenReturn(new SummarizedCall(summary, 1200, 300, 100));
     }
 

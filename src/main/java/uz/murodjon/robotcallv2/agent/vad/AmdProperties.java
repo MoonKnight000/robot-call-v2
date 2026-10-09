@@ -18,11 +18,27 @@ package uz.murodjon.robotcallv2.agent.vad;
  * @param silenceToleranceMs      silence allowed inside one speech run before it
  *                                counts as a real pause (speech dips below the
  *                                threshold on plosives)
+ * @param beepSilenceMs           before a voicemail message: continuous quiet after which
+ *                                a box that never beeps is taken to be recording
+ *                                ({@code VoicemailBeepDetector}). Longer than a pause inside
+ *                                a greeting, or the message starts over its second half
+ * @param beepMaxWaitMs           before a voicemail message: how long to wait for the beep
+ *                                or that quiet before speaking anyway
  */
 public record AmdProperties(
         boolean enabled,
         int observeMs,
         int minContinuousSpeechMs,
-        int silenceToleranceMs
+        int silenceToleranceMs,
+        int beepSilenceMs,
+        int beepMaxWaitMs
 ) {
+    /** Used when {@code voice-agent.vad.amd} sets no beep waits of its own, or is not set at all. */
+    public static final int DEFAULT_BEEP_SILENCE_MS = 1500;
+    public static final int DEFAULT_BEEP_MAX_WAIT_MS = 10_000;
+
+    public AmdProperties {
+        beepSilenceMs = beepSilenceMs > 0 ? beepSilenceMs : DEFAULT_BEEP_SILENCE_MS;
+        beepMaxWaitMs = beepMaxWaitMs > 0 ? beepMaxWaitMs : DEFAULT_BEEP_MAX_WAIT_MS;
+    }
 }

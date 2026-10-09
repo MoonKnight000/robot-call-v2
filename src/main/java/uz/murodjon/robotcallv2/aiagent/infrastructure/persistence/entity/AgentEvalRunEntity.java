@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalRunStatus;
 
 import java.time.Instant;
@@ -23,6 +24,13 @@ public class AgentEvalRunEntity {
     private Integer agentVersion;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "mode", nullable = false, length = 8)
+    private AgentEvalMode mode = AgentEvalMode.TEXT;
+
+    @Column(name = "config_hash", length = 64)
+    private String configHash;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     private AgentEvalRunStatus status;
 
@@ -43,6 +51,9 @@ public class AgentEvalRunEntity {
 
     @Column(name = "finished_at")
     private Instant finishedAt;
+
+    @Column(name = "repeat_count", nullable = false)
+    private int repeatCount = 1;
 
     public Long getId() {
         return id;
@@ -120,11 +131,35 @@ public class AgentEvalRunEntity {
         this.startedAt = startedAt;
     }
 
+    public int getRepeatCount() {
+        return repeatCount;
+    }
+
+    public void setRepeatCount(int repeatCount) {
+        this.repeatCount = repeatCount;
+    }
+
     public Instant getFinishedAt() {
         return finishedAt;
     }
 
     public void setFinishedAt(Instant finishedAt) {
         this.finishedAt = finishedAt;
+    }
+
+    public AgentEvalMode getMode() {
+        return mode;
+    }
+
+    public void setMode(AgentEvalMode mode) {
+        this.mode = mode;
+    }
+
+    public String getConfigHash() {
+        return configHash;
+    }
+
+    public void setConfigHash(String configHash) {
+        this.configHash = configHash;
     }
 }

@@ -80,6 +80,14 @@ public final class DialogPhrases {
                 : "Alo, meni eshityapsizmi?";
     }
 
+    /** The last check on a quiet line, which says the call will end if it stays quiet. */
+    public static String stillThereLastCall(String language) {
+        if (english(language)) return "Are you still on the line? If I don't hear from you, I'll end the call.";
+        return russian(language)
+                ? "Вы на связи? Если вы не ответите, я завершу звонок."
+                : "Aloqadamisiz? Javob bo'lmasa, qo'ng'iroqni yakunlayman.";
+    }
+
     /**
      * First line of a call that lost its speech-to-speech engine mid-conversation and
      * carries on in the cascade pipeline — in a different voice, so it has to be said.
@@ -178,6 +186,7 @@ public final class DialogPhrases {
                 farewell(language),
                 didNotCatch(language),
                 stillThere(language),
+                stillThereLastCall(language),
                 transferring(language),
                 technicalError(language),
                 reconnected(language)

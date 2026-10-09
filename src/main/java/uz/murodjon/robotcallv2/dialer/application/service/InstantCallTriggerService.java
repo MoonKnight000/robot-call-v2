@@ -88,11 +88,16 @@ public class InstantCallTriggerService implements InstantCallUseCase {
             if (campaign.status() != CampaignStatus.ACTIVE) {
                 throw new ConflictException(ErrorCode.CAMPAIGN_NOT_ACTIVE, campaignId, campaign.status());
             }
+            // An instant call is the AI calling now; an operator campaign would only queue a card.
+            if (!campaign.dialMode().placesAiCalls()) {
+                throw new ConflictException(ErrorCode.CAMPAIGN_NOT_AI, campaignId, campaign.dialMode());
+            }
             return campaign;
         }
         List<Campaign> active = campaignUseCase.findActiveCampaigns();
         return active.stream()
                 .filter(campaign -> campaign.companyId() == companyId)
+                .filter(campaign -> campaign.dialMode().placesAiCalls())
                 .findFirst()
                 .orElseThrow(() -> new NotFoundException(ErrorCode.INSTANT_CALL_CAMPAIGN_NOT_FOUND));
     }

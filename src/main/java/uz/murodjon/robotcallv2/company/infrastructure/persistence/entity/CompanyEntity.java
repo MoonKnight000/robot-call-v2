@@ -34,6 +34,9 @@ public class CompanyEntity {
     @Column(name = "address")
     private String address;
 
+    @Column(name = "max_concurrent_calls")
+    private Integer maxConcurrentCalls;
+
     public Long getId() {
         return id;
     }
@@ -84,5 +87,13 @@ public class CompanyEntity {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    public Integer getMaxConcurrentCalls() {
+        return maxConcurrentCalls;
+    }
+
+    public void setMaxConcurrentCalls(Integer maxConcurrentCalls) {
+        this.maxConcurrentCalls = maxConcurrentCalls;
     }
 }

@@ -1,0 +1,34 @@
+### Ask the copilot — a new conversation (sessionId null)
+POST http://localhost:8080/api/copilot/ask
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "sessionId": null,
+  "message": "Oxirgi 7 kunda qaysi agentda transferlar ko'paydi va nega?"
+}
+
+### Continue the conversation
+POST http://localhost:8080/api/copilot/ask
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "sessionId": 1,
+  "message": "Shu agentning system prompt'iga transfer qoidasini qo'shib, qoralamaga yoz"
+}
+
+### My conversations
+POST http://localhost:8080/api/copilot/sessions/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "page": 0, "size": 20 }
+
+### One conversation in full (tool calls included)
+GET http://localhost:8080/api/copilot/sessions/1/messages
+Authorization: Bearer {{auth_token}}
+
+### Delete a conversation
+DELETE http://localhost:8080/api/copilot/sessions/1
+Authorization: Bearer {{auth_token}}

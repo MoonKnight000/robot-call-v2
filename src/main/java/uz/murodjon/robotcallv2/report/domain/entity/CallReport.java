@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.report.domain.entity;
 
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
 import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 
@@ -21,6 +22,7 @@ import java.util.List;
  * @param escalated     whether the call went to a human
  * @param errorMessage  technical failure recorded on the attempt, if any
  * @param technical     "Texnik" tab (§10.5) — null for calls that predate {@code call_technical}
+ * @param talk          who talked how much while an operator was on the call; null on calls without one
  */
 public record CallReport(
         ReportedCall call,
@@ -31,6 +33,7 @@ public record CallReport(
         String followUpNote,
         boolean escalated,
         String errorMessage,
-        CallTechnicalMetrics technical
+        CallTechnicalMetrics technical,
+        CallTalkMetrics talk
 ) {
 }

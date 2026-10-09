@@ -7,10 +7,12 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.event.AiAgentClonedEvent;
+import uz.murodjon.robotcallv2.aiagent.domain.service.AgentRolloutRouter;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentSnapshot;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentTemplates;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -25,6 +27,7 @@ import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Instant;
@@ -51,6 +54,8 @@ public class AiAgentService implements AiAgentUseCase {
     private final CurrentUser currentUser;
     /** Tells the features that keep something per agent — the tool links — that a clone was made. */
     private final ApplicationEventPublisher eventPublisher;
+    /** Which callers a running rollout sends to its candidate (requireCallAgent). */
+    private final AgentRolloutRepository rolloutRepository;
 
     public AiAgentService(
             AiAgentRepository repository,
@@ -62,8 +67,10 @@ public class AiAgentService implements AiAgentUseCase {
             UserUseCase userUseCase,
             AuditUseCase auditUseCase,
             CurrentUser currentUser,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            AgentRolloutRepository rolloutRepository
     ) {
+        this.rolloutRepository = rolloutRepository;
         this.repository = repository;
         this.versionRepository = versionRepository;
         this.drafts = drafts;
@@ -175,7 +182,8 @@ public class AiAgentService implements AiAgentUseCase {
                         request.midCallSmsTemplate(),
                         request.transferPhoneNumber(),
                         request.transferMessage(),
-                        request.transferQueueId()),
+                        request.transferQueueId(),
+                        request.preConversationAudioFileId()),
                 new AiAgentLimits(
                         request.maxConversationDurationSeconds(),
                         request.silenceEndCallTimeoutSeconds(),
@@ -327,7 +335,9 @@ public class AiAgentService implements AiAgentUseCase {
                         request.midCallSmsTemplate() != null ? request.midCallSmsTemplate() : behaviour.midCallSmsTemplate(),
                         request.transferPhoneNumber() != null ? request.transferPhoneNumber() : behaviour.transferPhoneNumber(),
                         request.transferMessage() != null ? request.transferMessage() : behaviour.transferMessage(),
-                        request.transferQueueId() != null ? request.transferQueueId() : behaviour.transferQueueId()),
+                        request.transferQueueId() != null ? request.transferQueueId() : behaviour.transferQueueId(),
+                        request.preConversationAudioFileId() != null
+                                ? request.preConversationAudioFileId() : behaviour.preConversationAudioFileId()),
                 new AiAgentLimits(
                         request.maxConversationDurationSeconds() != null ? request.maxConversationDurationSeconds() : limits.maxConversationDurationSeconds(),
                         request.silenceEndCallTimeoutSeconds() != null ? request.silenceEndCallTimeoutSeconds() : limits.silenceEndCallTimeoutSeconds(),
@@ -447,6 +457,18 @@ public class AiAgentService implements AiAgentUseCase {
     }
 
     @Override
+    public AiAgent requireCallAgent(long companyId, long id, String phone) {
+        AgentRollout rollout = rolloutRepository.findByAgentId(companyId, id);
+        if (rollout != null && AgentRolloutRouter.routesToCandidate(rollout, PhoneNumbers.normalize(phone))) {
+            AiAgentVersion candidate = versionRepository.findByAgentIdAndVersion(companyId, id, rollout.candidateVersion());
+            if (candidate != null) {
+                return candidate.snapshot().withEnabled(requireAgent(companyId, id).enabled());
+            }
+        }
+        return requirePublishedAgent(companyId, id);
+    }
+
+    @Override
     public AiAgent requireAgentVersion(long companyId, long id, Integer version) {
         AiAgent draft = requireAgent(companyId, id);
         return version == null ? draft : drafts.requireVersion(companyId, id, version).snapshot().withEnabled(draft.enabled());
@@ -552,7 +574,8 @@ public class AiAgentService implements AiAgentUseCase {
         }
         return new ScenarioDefinition(definition.stages(), definition.factSchema(), definition.tools(),
                 definition.outcomeSchema(), definition.rolePrompt(), List.copyOf(rules),
-                definition.disclosureText(), definition.factWebhook(), definition.styleExamples());
+                definition.disclosureText(), definition.factWebhook(), definition.styleExamples(),
+                definition.globalNodes());
     }
 
     /** The same for an agent whose whole script is its role prompt: the rule is a line of it. */

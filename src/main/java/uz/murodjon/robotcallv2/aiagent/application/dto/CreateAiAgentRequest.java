@@ -82,6 +82,7 @@ public record CreateAiAgentRequest(
         InterruptionSensitivity interruptionSensitivity,
         Integer endpointingDelayMs,
         Set<Long> sipTrunkIds,
-        Boolean enabled
+        Boolean enabled,
+        Long preConversationAudioFileId
 ) {
 }

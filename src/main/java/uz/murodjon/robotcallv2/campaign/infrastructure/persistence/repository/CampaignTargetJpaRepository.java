@@ -82,6 +82,66 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
             + ") RETURNING *", nativeQuery = true)
     List<CampaignTargetEntity> claimDue(@Param("campaignId") long campaignId, @Param("limit") int limit);
 
+    /**
+     * {@link #claimDue} for a SCORE campaign: the most likely payers first, a target whose best
+     * hour is {@code hour} lifted by {@code hourBonus}, an unscored one counted as {@code neutralScore}.
+     */
+    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, next_attempt_at = now() + INTERVAL '5 minute' "
+            + "WHERE id IN ("
+            + "  SELECT t.id FROM campaign_target t"
+            + "  WHERE t.campaign_id = :campaignId AND t.status = 'PENDING' AND t.do_not_call = false"
+            + "    AND NOT EXISTS (SELECT 1 FROM do_not_call_list d "
+            + "                    WHERE d.phone = t.phone AND d.company_id = t.company_id "
+            + "                    AND d.removed_at IS NULL)"
+            + "    AND (t.next_attempt_at IS NULL OR t.next_attempt_at <= now())"
+            + "  ORDER BY COALESCE(t.score, :neutralScore)"
+            + "           + CASE WHEN t.best_call_hour = :hour THEN :hourBonus ELSE 0 END DESC,"
+            + "           t.next_attempt_at NULLS FIRST, t.id"
+            + "  LIMIT :limit FOR UPDATE SKIP LOCKED"
+            + ") RETURNING *", nativeQuery = true)
+    List<CampaignTargetEntity> claimDueByScore(@Param("campaignId") long campaignId, @Param("limit") int limit,
+                                               @Param("hour") int hour, @Param("hourBonus") int hourBonus,
+                                               @Param("neutralScore") int neutralScore);
+
+    /** The campaign's waiting targets never scored or scored before {@code scoredBefore}, by id. */
+    @Query(value = "SELECT * FROM campaign_target WHERE campaign_id = :campaignId AND status = 'PENDING' "
+            + "AND (scored_at IS NULL OR scored_at < :scoredBefore) ORDER BY scored_at NULLS FIRST, id LIMIT :limit",
+            nativeQuery = true)
+    List<CampaignTargetEntity> findToScore(@Param("campaignId") long campaignId,
+                                           @Param("scoredBefore") Instant scoredBefore, @Param("limit") int limit);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE campaign_target SET score = :score, best_call_hour = :bestCallHour, scored_at = now() "
+            + "WHERE id = :id AND company_id = :companyId", nativeQuery = true)
+    void updateScore(@Param("companyId") long companyId, @Param("id") long id, @Param("score") int score,
+                     @Param("bestCallHour") Integer bestCallHour);
+
+    /**
+     * {@link #claimDue} for one operator of a PREVIEW campaign: one target, stamped with who
+     * holds it, on a lease long enough for the card to be read, dialled, talked through and
+     * wrapped up before the expired-claim sweep may take it back.
+     */
+    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, "
+            + "next_attempt_at = now() + make_interval(mins => :leaseMinutes), claimed_by_user_id = :userId "
+            + "WHERE id IN ("
+            + "  SELECT t.id FROM campaign_target t"
+            + "  WHERE t.campaign_id = :campaignId AND t.status = 'PENDING' AND t.do_not_call = false"
+            + "    AND NOT EXISTS (SELECT 1 FROM do_not_call_list d "
+            + "                    WHERE d.phone = t.phone AND d.company_id = t.company_id "
+            + "                    AND d.removed_at IS NULL)"
+            + "    AND (t.next_attempt_at IS NULL OR t.next_attempt_at <= now())"
+            + "  ORDER BY t.next_attempt_at NULLS FIRST, t.id"
+            + "  LIMIT 1 FOR UPDATE SKIP LOCKED"
+            + ") RETURNING *", nativeQuery = true)
+    List<CampaignTargetEntity> claimNextForOperator(@Param("campaignId") long campaignId, @Param("userId") long userId,
+                                                    @Param("leaseMinutes") int leaseMinutes);
+
+    /** The card an operator holds in a campaign: claimed by them and not settled yet. */
+    @Query(value = "SELECT * FROM campaign_target WHERE campaign_id = :campaignId "
+            + "AND claimed_by_user_id = :userId AND status = 'IN_PROGRESS' ORDER BY id LIMIT 1", nativeQuery = true)
+    List<CampaignTargetEntity> findHeldByOperator(@Param("campaignId") long campaignId, @Param("userId") long userId);
+
     /** The inverse of one row of {@link #claimDue}: waiting again, and the attempt given back. */
     @Modifying
     @Transactional

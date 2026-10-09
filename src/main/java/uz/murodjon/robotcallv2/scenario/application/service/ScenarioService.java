@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.scenario.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
@@ -13,9 +15,11 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioFilter;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioValidationResult;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
@@ -32,13 +36,16 @@ public class ScenarioService implements ScenarioUseCase {
     private final CurrentUser currentUser;
     private final UserUseCase userUseCase;
     private final AuditUseCase audit;
+    /** Where a stage's own model is checked against the catalog. */
+    private final AiModelUseCase aiModelUseCase;
 
     public ScenarioService(ScenarioRepository repository, CurrentUser currentUser, UserUseCase userUseCase,
-                           AuditUseCase audit) {
+                           AuditUseCase audit, AiModelUseCase aiModelUseCase) {
         this.repository = repository;
         this.currentUser = currentUser;
         this.userUseCase = userUseCase;
         this.audit = audit;
+        this.aiModelUseCase = aiModelUseCase;
     }
 
     @Override
@@ -157,10 +164,27 @@ public class ScenarioService implements ScenarioUseCase {
     }
 
     /** Every problem the validator found goes to the client as its own entry of {@code errors}. */
-    private static void requireValid(ScenarioDefinition definition) {
+    private void requireValid(ScenarioDefinition definition) {
         List<String> errors = ScenarioValidator.validate(definition);
         if (!errors.isEmpty()) {
             throw ValidationException.withErrors(ErrorCode.SCENARIO_DEFINITION_INVALID, errors, errors.size());
+        }
+        requireKnownStageModels(definition);
+    }
+
+    /**
+     * A stage's model is checked against the catalog here, so a typo is a 400 on save
+     * instead of a call that fails on the first turn of that stage. Cascade only: a stage
+     * model is read by the cascade dialog, a realtime engine keeps its own for the call.
+     */
+    private void requireKnownStageModels(ScenarioDefinition definition) {
+        for (StageDef stage : definition.stages()) {
+            String model = stage.model();
+            if (model != null && !model.isBlank()
+                    && !aiModelUseCase.isSelectable(AiModelKind.LLM, PipelineMode.CASCADE, model.trim())) {
+                throw new ValidationException(ErrorCode.AI_MODEL_UNKNOWN, model.trim(),
+                        aiModelUseCase.findSelectableIds(AiModelKind.LLM, PipelineMode.CASCADE));
+            }
         }
     }
 

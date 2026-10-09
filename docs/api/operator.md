@@ -88,7 +88,8 @@ kanal mavjudligi oshkor qilinmaydi). Kontekst hali yig'ilmagan bo'lsa —
   operatorda): faqat jonli kanalga `WHISPER` bildirishnomasi ketdi.
 
 Kanal kompaniyangizning jonli qo'ng'irog'i bo'lmasa — `409 CALL_NOT_ACTIVE`; boshqa instance'da
-bo'lsa — `409 CALL_ON_OTHER_INSTANCE` (bu uchala endpoint uchun ham amal qiladi).
+bo'lsa server so'rovni o'sha instance'ga uzatadi, unga yetib bo'lmasa — `409 CALL_ON_OTHER_INSTANCE`
+(bu uchala endpoint uchun ham amal qiladi; batafsil — [live.md](live.md)).
 
 `message` majburiy: bo'sh, faqat bo'shliqdan iborat yoki 1000 belgidan uzun bo'lsa — `400
 VALIDATION_FAILED` (`errors: ["message: must not be blank"]`), body'siz so'rov — `400

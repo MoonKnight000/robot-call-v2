@@ -1,0 +1,42 @@
+### 1. Turn the follow-up on: SMS a day before, call back two days after a missed date
+PUT http://localhost:8080/api/payment-promises/settings
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "reminderEnabled": true,
+  "reminderDaysBefore": 1,
+  "reminderTemplate": "Hurmatli mijoz, {date} gacha {amount} so'm to'lashga va'da bergansiz. Rahmat!",
+  "graceDays": 2,
+  "recallOnBroken": true,
+  "paymentGoalKey": "payment"
+}
+
+### 2. The company's settings
+GET http://localhost:8080/api/payment-promises/settings
+Authorization: Bearer {{auth_token}}
+
+### 3. Open promises due this month
+POST http://localhost:8080/api/payment-promises/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "page": 0, "size": 20, "status": "OPEN", "promisedFrom": "2026-10-01", "promisedTo": "2026-10-31" }
+
+### 4. Kept-promise rate for October
+GET http://localhost:8080/api/payment-promises/stats?from=2026-10-01&to=2026-10-31
+Authorization: Bearer {{auth_token}}
+
+### 5. A payment reported by the company's system (keeps the open promise of that number)
+POST http://localhost:8080/api/conversions
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "goalKey": "payment", "phone": "+998901234567", "occurredAt": "2026-10-09T12:00:00Z", "valueUzs": 500000, "dedupeKey": "pay-1001" }
+
+### 6. Mark promise 1 paid by hand
+POST http://localhost:8080/api/payment-promises/1/status
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "status": "KEPT" }

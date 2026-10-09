@@ -19,7 +19,6 @@ public class CallMetrics {
 
     private final MeterRegistry registry;
     private final Counter calls;
-    private final Counter voicemailsDetected;
     private final DistributionSummary qualityScore;
     private final Timer callDuration;
     private final AtomicInteger active = new AtomicInteger(0);
@@ -28,9 +27,6 @@ public class CallMetrics {
     public CallMetrics(MeterRegistry registry) {
         this.registry = registry;
         this.calls = Counter.builder("voice.calls.total").register(registry);
-        this.voicemailsDetected = Counter.builder("voice.calls.voicemail.detected")
-                .description("calls cut short because an answering machine picked up")
-                .register(registry);
         this.qualityScore = DistributionSummary.builder("voice.qa.score")
                 .description("automated quality review of a finished call, 0-100")
                 .publishPercentileHistogram()
@@ -63,9 +59,18 @@ public class CallMetrics {
                 .increment();
     }
 
-    /** An answering machine was detected and the call cut short (§8.6). */
-    public void voicemailDetected() {
-        voicemailsDetected.increment();
+    /**
+     * An answering machine was detected (§8.6). {@code by} says
+     * which detector caught it — {@code audio} (the speech-length heuristic) or
+     * {@code transcript} (a carrier or machine greeting in the words) — so the two can be
+     * compared before either is tuned.
+     */
+    public void voicemailDetected(String by) {
+        Counter.builder("voice.calls.voicemail.detected")
+                .description("calls an answering machine picked up")
+                .tag("by", by)
+                .register(registry)
+                .increment();
     }
 
     public void recordCallDuration(long seconds) {

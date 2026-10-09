@@ -33,6 +33,7 @@ class OperatorTransferService {
     private final NotificationUseCase notificationService;
     private final CallAttemptUseCase callAttemptUseCase;
     private final DialogRouter dialogRouter;
+    private final OperatorAcceptance operatorAcceptance;
 
     OperatorTransferService(CallSessionRegistry callSessionRegistry,
                             FlowCallService flowCallService,
@@ -41,7 +42,8 @@ class OperatorTransferService {
                             OperatorProperties operatorProperties,
                             NotificationUseCase notificationService,
                             CallAttemptUseCase callAttemptUseCase,
-                            DialogRouter dialogRouter) {
+                            DialogRouter dialogRouter,
+                            OperatorAcceptance operatorAcceptance) {
         this.callSessionRegistry = callSessionRegistry;
         this.flowCallService = flowCallService;
         this.ariClient = ariClient;
@@ -50,6 +52,7 @@ class OperatorTransferService {
         this.notificationService = notificationService;
         this.callAttemptUseCase = callAttemptUseCase;
         this.dialogRouter = dialogRouter;
+        this.operatorAcceptance = operatorAcceptance;
     }
 
     void transferToOperator(String channelId) {
@@ -81,7 +84,7 @@ class OperatorTransferService {
         }
         String targetEndpoint = null;
         if (toOperator) {
-            targetEndpoint = "PJSIP/" + operatorEndpoint.trim();
+            targetEndpoint = asteriskProperties.buildOperatorDialString(operatorEndpoint.trim());
         } else if (agent != null && agent.callBehaviour().transferPhoneNumber() != null && !agent.callBehaviour().transferPhoneNumber().isBlank()) {
             String num = agent.callBehaviour().transferPhoneNumber().trim();
             targetEndpoint = num.startsWith("PJSIP/") || num.startsWith("SIP/") ? num : ("PJSIP/" + num);
@@ -101,6 +104,8 @@ class OperatorTransferService {
                     .setAppArgs("operator," + session.bridgeId() + "," + channelId)
                     .setTimeout(operatorProperties.answerTimeoutSec())
                     .execute();
+            // A supervisor asked for the call; anyone else may still not take it.
+            operatorAcceptance.onOperatorDialled(channelId, !toOperator);
             log.info("Transferring {} to target {} (bridge {})",
                     channelId, targetEndpoint, session.bridgeId());
             // A warm transfer: the operator reads who is on the line and what has been said
@@ -125,6 +130,7 @@ class OperatorTransferService {
         }
         StringBuilder text = new StringBuilder();
         appendFact(text, "Mijoz", snapshot.clientName());
+        appendFact(text, "Sabab", snapshot.transferReason());
         appendFact(text, "Qarz", snapshot.debtAmount() == null ? null
                 : snapshot.debtAmount() + (snapshot.currency() != null ? " " + snapshot.currency() : ""));
         appendFact(text, "Muddat", snapshot.dueDate());

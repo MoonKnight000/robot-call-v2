@@ -65,6 +65,13 @@ public final class SpeechTextNormalizer {
      */
     private static final Pattern CLOCK = Pattern.compile("(?<![\\d:])([01]?\\d|2[0-3]):([0-5]\\d)(?![\\d:])");
 
+    /**
+     * A stage direction in square brackets — {@code [laugh]}, {@code [sound concerned]} —
+     * the delivery tags some voices act out. Letters and spaces only, so a system-note
+     * echo ({@code [TIZIM: ...]}) is not mistaken for one; that is dropped whole upstream.
+     */
+    private static final Pattern DELIVERY_TAG = Pattern.compile("\\[[\\p{L} ]{1,40}]\\s*");
+
     private static final int MAX_QUANTITY_DIGITS = 12;
 
     private static final String[] UZ_MONTHS = {
@@ -125,6 +132,9 @@ public final class SpeechTextNormalizer {
         if (text == null || text.isBlank()) {
             return text;
         }
+        // None of the voices here performs a delivery tag; read as text, "[laugh]" is the
+        // word "laugh" spoken in the middle of the line.
+        text = DELIVERY_TAG.matcher(text).replaceAll("").trim();
         String lang = (language == null ? "uz" : language).toLowerCase();
         if (lang.startsWith("uz")) {
             return normalizeUzbek(text);

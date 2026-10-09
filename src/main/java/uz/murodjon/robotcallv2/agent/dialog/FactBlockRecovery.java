@@ -46,7 +46,7 @@ class FactBlockRecovery {
                 + "faqat yuqorida berilgan qarz summasini ishlating. Tool chaqirmang.]"));
         String second = null;
         try {
-            ChatResponse response = llmTurnClient.callWithoutOptions(system, retryMessages);
+            ChatResponse response = llmTurnClient.callWithoutOptions(s, system, retryMessages);
             TokenUsage usage = new TokenUsage();
             usage.add(response);
             llmTurnClient.publishUsage(s, usage);

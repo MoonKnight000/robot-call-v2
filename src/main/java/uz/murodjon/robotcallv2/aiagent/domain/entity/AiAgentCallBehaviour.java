@@ -22,6 +22,8 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  * @param transferMessage         what the caller hears before being transferred
  * @param transferQueueId         the operator queue a handover joins; wins over
  *                                {@code transferPhoneNumber} (docs/INBOUND-PBX-PLAN.md §7.4)
+ * @param preConversationAudioFileId an uploaded WAV played as soon as the call is up, before the
+ *                                agent says anything — a recorded notice or a jingle; null = none
  */
 public record AiAgentCallBehaviour(
         InterruptionSensitivity interruptionSensitivity,
@@ -33,7 +35,8 @@ public record AiAgentCallBehaviour(
         String midCallSmsTemplate,
         String transferPhoneNumber,
         String transferMessage,
-        Long transferQueueId
+        Long transferQueueId,
+        Long preConversationAudioFileId
 ) {
     /** Long enough that a pause for breath is not an end of turn, short enough not to feel dead. */
     private static final int DEFAULT_ENDPOINTING_DELAY_MS = 700;
@@ -48,6 +51,14 @@ public record AiAgentCallBehaviour(
         if (endpointingDelayMs <= 0) {
             endpointingDelayMs = DEFAULT_ENDPOINTING_DELAY_MS;
         }
+    }
+
+    public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity, int endpointingDelayMs,
+                                boolean dtmfInputEnabled, VoicemailAction voicemailAction, String voicemailMessage,
+                                boolean midCallSmsEnabled, String midCallSmsTemplate, String transferPhoneNumber,
+                                String transferMessage, Long transferQueueId) {
+        this(interruptionSensitivity, endpointingDelayMs, dtmfInputEnabled, voicemailAction, voicemailMessage,
+                midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, null);
     }
 
     /** Whether this agent can hand the caller to a person at all. */

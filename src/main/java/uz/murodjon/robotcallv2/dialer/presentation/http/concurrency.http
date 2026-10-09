@@ -1,0 +1,3 @@
+### The company's concurrent dialer calls: limit, active, available
+GET http://localhost:8080/api/concurrency
+Authorization: Bearer {{auth_token}}

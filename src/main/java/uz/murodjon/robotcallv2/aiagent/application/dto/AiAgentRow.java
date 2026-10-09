@@ -91,7 +91,8 @@ public record AiAgentRow(
         String createdByName,
         Integer publishedVersion,
         boolean hasDraftChanges,
-        long version
+        long version,
+        Long preConversationAudioFileId
 ) {
 
     /**
@@ -181,7 +182,8 @@ public record AiAgentRow(
                 createdByName,
                 publishedVersion,
                 hasDraftChanges,
-                agent.version()
+                agent.version(),
+                agent.callBehaviour().preConversationAudioFileId()
         );
     }
 }

@@ -88,7 +88,8 @@ public class TtsWarmup {
      * Bypassed if the campaign's agent runs in REALTIME mode.
      */
     public void warmUpForCampaign(Campaign campaign) {
-        if (!ttsProperties.enabled() || !cache.prewarmEnabled()) {
+        // An operator campaign without an agent has no bot voice to warm.
+        if (!ttsProperties.enabled() || !cache.prewarmEnabled() || campaign.aiAgentId() == null) {
             return;
         }
         if (warmedCampaigns.contains(campaign.id())) {

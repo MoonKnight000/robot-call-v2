@@ -2,8 +2,13 @@ package uz.murodjon.robotcallv2.campaign.domain.entity;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 
+import java.time.Duration;
 import java.time.Instant;
 
+/**
+ * @param score        0–100, how likely the number is to pay ({@link TargetScore}); null until scored
+ * @param bestCallHour the company-local hour the number most often talks in; null when unknown
+ */
 public record CampaignTarget(
         long id,
         long campaignId,
@@ -14,8 +19,24 @@ public record CampaignTarget(
         TargetStatus status,
         int attempts,
         boolean doNotCall,
-        Instant nextAttemptAt
+        Instant nextAttemptAt,
+        Integer score,
+        Integer bestCallHour
 ) {
+
+    /**
+     * How long an operator holds a preview card. A claim sets {@code nextAttemptAt} to the
+     * claim time plus this, so the claim time is {@code nextAttemptAt} minus it.
+     */
+    public static final Duration OPERATOR_CLAIM_LEASE = Duration.ofHours(2);
+
+    /** The pre-V8 shape: not scored yet. */
+    public CampaignTarget(long id, long campaignId, long clientId, String phone, String language,
+                          String contextData, TargetStatus status, int attempts, boolean doNotCall,
+                          Instant nextAttemptAt) {
+        this(id, campaignId, clientId, phone, language, contextData, status, attempts, doNotCall, nextAttemptAt,
+                null, null);
+    }
 
     public CampaignTarget(long id, long campaignId, long clientId, String phone, String language,
                           String contextData, TargetStatus status, int attempts, boolean doNotCall) {

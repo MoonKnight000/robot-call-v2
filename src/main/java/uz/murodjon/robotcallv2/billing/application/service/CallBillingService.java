@@ -37,6 +37,7 @@ public class CallBillingService implements CallBillingUseCase {
     private static final Logger log = LoggerFactory.getLogger(CallBillingService.class);
 
     private static final String CALL_REFERENCE = "call_attempt";
+    private static final String COPILOT_REFERENCE = "copilot_message";
     private static final String TARGET_REFERENCE = "campaign_target";
     private static final int MIN_AFFORDABLE_CALL_SECONDS = 60;
 
@@ -194,31 +195,94 @@ public class CallBillingService implements CallBillingUseCase {
         if (summaryUsage == null || summaryUsage.promptTokens() + summaryUsage.completionTokens() == 0) {
             return;
         }
-        // The summary is added to the call's charge. With none — the settlement failed or
-        // never ran — charging the summary alone would bill a call that was never billed.
-        if (callBillingRepository.findByCallAttemptId(callAttemptId)
-                .filter(row -> row.status() == CallBillingStatus.SETTLED)
-                .isEmpty()) {
-            log.warn("[{}] summary tokens not charged: the call has no settled charge", callAttemptId);
-            return;
-        }
-
         CallCostBreakdown cost = CallCostCalculator.calculate(summaryUsage, billingRateProperties.rates());
-        long balanceBefore = balanceOf(companyId);
-        long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
-        // Its own key, so a summary retried by the outbox is charged once and the call's own
-        // settlement is not mistaken for it.
-        boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
-                LedgerEntryType.CALL_CHARGE, -chargedUzs, balanceBefore, balanceBefore - chargedUzs,
-                CALL_REFERENCE, String.valueOf(callAttemptId), "summary-charge:" + callAttemptId));
-        if (!written) {
+        long chargedUzs = chargeOnTop(companyId, callAttemptId, cost, "summary-charge:");
+        if (chargedUzs < 0) {
             return;
         }
-
-        companyBillingRepository.charge(companyId, 0, chargedUzs);
         callBillingRepository.addSummaryCharge(callAttemptId, summaryUsage, cost.totalUzs());
         log.info("[{}] charged {} UZS to company {} for the summary ({} tokens)",
                 callAttemptId, chargedUzs, companyId, summaryUsage.promptTokens() + summaryUsage.completionTokens());
+    }
+
+    @Override
+    @Transactional
+    public void chargeOperatorAnalysis(long companyId, long callAttemptId, CallUsage analysisUsage) {
+        if (analysisUsage == null || (analysisUsage.promptTokens() + analysisUsage.completionTokens() == 0
+                && analysisUsage.extraSttSeconds() == 0)) {
+            return;
+        }
+        CallCostBreakdown cost = CallCostCalculator.calculate(analysisUsage, billingRateProperties.rates());
+        long chargedUzs = chargeOnTop(companyId, callAttemptId, cost, "analysis-charge:");
+        if (chargedUzs < 0) {
+            return;
+        }
+        callBillingRepository.addOperatorAnalysisCharge(callAttemptId, analysisUsage, cost);
+        log.info("[{}] charged {} UZS to company {} for the operator call's analysis ({} tokens, {}s recognition)",
+                callAttemptId, chargedUzs, companyId, analysisUsage.promptTokens() + analysisUsage.completionTokens(),
+                analysisUsage.extraSttSeconds());
+    }
+
+    @Override
+    @Transactional
+    public long chargeReanalysis(long companyId, long callAttemptId, long jobId, CallUsage usage) {
+        if (usage == null || usage.promptTokens() + usage.completionTokens() == 0) {
+            return 0;
+        }
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
+        long chargedUzs = chargeOnTop(companyId, callAttemptId, cost, "reanalysis-charge:" + jobId + ":");
+        return Math.max(chargedUzs, 0);
+    }
+
+    @Override
+    @Transactional
+    public long chargeCopilotReply(long companyId, long messageId, CallUsage usage) {
+        if (usage == null || usage.promptTokens() + usage.completionTokens() == 0) {
+            return 0;
+        }
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
+        long balanceBefore = balanceOf(companyId);
+        long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
+        boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
+                LedgerEntryType.AI_CHARGE, -chargedUzs, balanceBefore, balanceBefore - chargedUzs,
+                COPILOT_REFERENCE, String.valueOf(messageId), "copilot-charge:" + messageId));
+        if (!written) {
+            return 0;
+        }
+        companyBillingRepository.charge(companyId, 0, chargedUzs);
+        return chargedUzs;
+    }
+
+    @Override
+    public long findUsageCostUzs(CallUsage usage) {
+        return CallCostCalculator.calculate(usage, billingRateProperties.rates()).totalUzs();
+    }
+
+    /**
+     * Takes {@code cost} off the balance on top of the call's settled charge, under its own
+     * ledger key ({@code keyPrefix + callAttemptId}), so a retry is charged once and the call's
+     * own settlement is not mistaken for it.
+     *
+     * @return what was taken, or -1 when nothing was: the call has no settled charge — and
+     *         charging this alone would bill a call that was never billed — or it was already charged
+     */
+    private long chargeOnTop(long companyId, long callAttemptId, CallCostBreakdown cost, String keyPrefix) {
+        if (callBillingRepository.findByCallAttemptId(callAttemptId)
+                .filter(row -> row.status() == CallBillingStatus.SETTLED)
+                .isEmpty()) {
+            log.warn("[{}] {} not charged: the call has no settled charge", callAttemptId, keyPrefix);
+            return -1;
+        }
+        long balanceBefore = balanceOf(companyId);
+        long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
+        boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
+                LedgerEntryType.CALL_CHARGE, -chargedUzs, balanceBefore, balanceBefore - chargedUzs,
+                CALL_REFERENCE, String.valueOf(callAttemptId), keyPrefix + callAttemptId));
+        if (!written) {
+            return -1;
+        }
+        companyBillingRepository.charge(companyId, 0, chargedUzs);
+        return chargedUzs;
     }
 
     /**

@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
 import uz.murodjon.robotcallv2.report.application.dto.OperatorReportRow;
 import uz.murodjon.robotcallv2.report.application.dto.QueueReportRow;
 import uz.murodjon.robotcallv2.report.application.port.input.ContactCenterReportUseCase;
+import uz.murodjon.robotcallv2.report.domain.entity.PredictiveDialingStats;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -27,6 +28,13 @@ public class ContactCenterReportControllerImpl implements ContactCenterReportCon
     @Override
     public ResponseEntity<ResponseData<List<OperatorReportRow>>> operators(long companyId, String from, String to) {
         return ResponseEntity.ok(ResponseData.ok(contactCenterReportUseCase.findOperatorReport(companyId, from, to)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<PredictiveDialingStats>> predictiveDialing(long companyId, long campaignId,
+                                                                                String from, String to) {
+        return ResponseEntity.ok(ResponseData.ok(
+                contactCenterReportUseCase.findPredictiveDialingStats(companyId, campaignId, from, to)));
     }
 
     @Override

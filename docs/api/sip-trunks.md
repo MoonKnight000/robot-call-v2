@@ -91,6 +91,7 @@ Birinchi marta ishga tushirilganda (`SipTrunkBootstrap`), agar default kompaniya
 | `transport` | managed | ❌ | bo'sh bo'lsa `UDP`. Hozircha faqat `UDP` qo'llab-quvvatlanadi |
 | `codecs` | ikkalasi | ❌ | `List<String>`. Bo'sh bo'lsa `["alaw", "ulaw"]`. Ruxsat etilganlar: `ulaw`, `alaw`, `g722`, `g729`, `gsm`, `opus`, `ilbc` (katta-kichik harf farqi yo'q). HD voice uchun `["g722", "opus", "ulaw", "alaw"]` |
 | `callerId` | ikkalasi | ❌ | Telefon raqam (`998712000001`, `+998712000001`). `null`/bo'sh bo'lsa global `voice-agent.asterisk.caller-id`ga qaytadi |
+| `maxCps` | ikkalasi | ❌ | Provayder qabul qiladigan sekundiga qo'ng'iroq soni (1–100). Ilova shu trunk orqali bundan tez terimaydi — ortiqchasi keyingi sekundni kutadi (butun klaster bo'yicha). `null` bo'lsa `voice-agent.dialer.default-trunk-cps` (default `2`). Chegaradan tashqari qiymat — `400 VALIDATION_FAILED`. `PUT` da yuborilmasa `null` bo'ladi |
 
 **Xatolar** (`POST` va `PUT` uchun):
 
@@ -125,6 +126,7 @@ Kompaniyaning **birinchi** trunki avtomatik default bo'ladi (`isDefault: true`),
     "ulaw",
     "alaw"
   ],
+  "maxCps": 2,
   "isDefault": false,
   "enabled": true,
   "createdAt": "2026-08-01T09:00:00Z"
@@ -198,6 +200,7 @@ Kompaniyaning barcha SIP trunk/telefonlari uchun jonli ro'yxatdan o'tish va ulan
     "ulaw",
     "alaw"
   ],
+  "maxCps": 2,
   "enabled": true
 }
 ```

@@ -53,6 +53,22 @@ class NoInputWatchdogTest {
     }
 
     @Test
+    void onlyTheFinalPromptIsTheLastOne() {
+        NoInputWatchdog w = watchdog(2);
+        assertThat(w.check(T0.plusSeconds(9), false, false)).isEqualTo(PROMPT);
+        assertThat(w.isLastPrompt()).isFalse();
+        assertThat(w.check(T0.plusSeconds(18), false, false)).isEqualTo(PROMPT);
+        assertThat(w.isLastPrompt()).isTrue();
+    }
+
+    @Test
+    void aSinglePromptIsNeverEscalated() {
+        NoInputWatchdog w = watchdog(1);
+        assertThat(w.check(T0.plusSeconds(9), false, false)).isEqualTo(PROMPT);
+        assertThat(w.isLastPrompt()).isFalse();
+    }
+
+    @Test
     void neverActsTwiceAfterEnding() {
         // The engine tears the call down on END; a second END would try to hang up a call
         // that is already gone.

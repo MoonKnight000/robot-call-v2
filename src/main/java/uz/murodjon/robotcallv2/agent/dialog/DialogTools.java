@@ -6,6 +6,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.service.StageBranchEvaluator;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
@@ -29,7 +30,7 @@ public class DialogTools {
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
             "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
             "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
-            "sendSmsPaymentLink", "requestPaymentExtension", "endCall", "sendDtmfTones",
+            "sendSmsPaymentLink", "requestPaymentExtension", "recordPaymentClaim", "endCall", "sendDtmfTones",
             "bookShowroomVisit", "sendLocationSms", "sendCatalogSms", "waitForCaller", "switchLanguage", "noteCallerMood"
     );
 
@@ -97,6 +98,34 @@ public class DialogTools {
     }
 
     /**
+     * Takes the stage's branches ({@code StageBranch}) on from {@code entered}, without the
+     * model, until a stage has none that holds. Bounded by the number of stages: branches
+     * that send the call round in a circle stop where the circle closes.
+     *
+     * @return the stage the call ended up in
+     */
+    private String followBranches(String entered) {
+        ScenarioDefinition scenario = session.scenario();
+        CallContext context = session.context();
+        if (scenario == null || scenario.stages() == null || context == null) {
+            return entered;
+        }
+        String current = entered;
+        for (int hop = 0; hop < scenario.stages().size(); hop++) {
+            StageDef stage = scenario.findStage(current);
+            String target = stage == null ? null
+                    : StageBranchEvaluator.findTarget(stage.branches(), context::fact);
+            if (target == null) {
+                break;
+            }
+            session.setState(target);
+            log.info("[{}] dialog state -> {} (branch of {})", session.channelId(), target, current);
+            current = target;
+        }
+        return current;
+    }
+
+    /**
      * The stages the scenario lets the current one move to, or empty when it names none.
      *
      * <p>Checked rather than trusted: a jump past these is only taken along the scenario's
@@ -160,6 +189,16 @@ public class DialogTools {
         boolean jump = !allowed.isEmpty() && !allowed.contains(nextStage);
         List<String> path = jump ? pathTo(nextStage) : null;
         if (path != null) {
+            // A stage with branches is a check the walk must not skip — the identity check
+            // before the debt is named. The walk stops there and the branches decide.
+            for (int i = 0; i < path.size() - 1; i++) {
+                StageDef between = session.scenario().findStage(path.get(i));
+                if (between != null && between.branches() != null && !between.branches().isEmpty()) {
+                    path = path.subList(0, i + 1);
+                    nextStage = path.get(i);
+                    break;
+                }
+            }
             walked = path.subList(0, path.size() - 1);
             log.warn("[{}] transition {} -> {} walked the skipped stages {}",
                     session.channelId(), session.state(), nextStage, walked);
@@ -175,12 +214,14 @@ public class DialogTools {
         recordReply(reply);
         session.setState(nextStage);
         log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
+        String landed = followBranches(nextStage);
         // Where it may go from here, in the answer. The cascade path re-states this every
         // turn in the prompt annex; a realtime call has no annex, so this tool result is
         // the only place the model is told again — and on a recorded call it spent three
         // turns guessing stage names it was not allowed to reach.
         List<String> next = allowedTransitions();
-        String moved = "Holat " + nextStage + " ga o'tkazildi"
+        String moved = "Holat " + landed + " ga o'tkazildi"
+                + (landed.equals(nextStage) ? "" : " (" + nextStage + " shartlari bo'yicha avtomatik)")
                 + (walked.isEmpty() ? "" : " (oraliq bosqichlar: " + String.join(", ", walked) + ")");
         return next.isEmpty()
                 ? moved
@@ -194,6 +235,8 @@ public class DialogTools {
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
             @ToolParam(description = "va'da qilingan sana, format yyyy-MM-dd") LocalDate promisedDate,
             @ToolParam(description = "va'da qilingan summa", required = false) BigDecimal amount,
+            @ToolParam(description = "mijoz aytgan to'lov kanali: CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL "
+                    + "yoki OTHER. Mijoz aytmagan bo'lsa bo'sh qoldiring", required = false) String paymentChannel,
             @ToolParam(description = "qo'shimcha izoh", required = false) String note) {
         if (promisedDate != null && promisedDate.isBefore(LocalDate.now())) {
             return "XATO: " + promisedDate + " o'tmishda. Bugun " + LocalDate.now()
@@ -202,9 +245,10 @@ public class DialogTools {
         recordReply(reply);
         session.recordOutcome("promisedDate", promisedDate);
         session.recordOutcome("promisedAmount", amount);
+        session.recordOutcome("paymentChannel", paymentChannel);
         session.setDisposition(Disposition.PROMISE_TO_PAY);
-        log.info("[{}] payment promise: date={}, amount={}, note={}",
-                session.channelId(), promisedDate, amount, note);
+        log.info("[{}] payment promise: date={}, amount={}, channel={}, note={}",
+                session.channelId(), promisedDate, amount, paymentChannel, note);
         return "To'lov va'dasi yozib olindi: " + promisedDate;
     }
 
@@ -242,6 +286,7 @@ public class DialogTools {
             finalReply = session.agent().callBehaviour().transferMessage();
         }
         recordReply(finalReply);
+        session.setTransferReason(reason);
         session.end(Disposition.TRANSFERRED);
         log.info("[{}] human transfer requested: {}", session.channelId(), reason);
         return "Operatorga o'tkazish so'raldi. Mijoz bilan xayrlashing.";
@@ -388,6 +433,31 @@ public class DialogTools {
         session.recordOutcome("extensionReason", reason);
         log.info("[{}] payment extension requested: {} days, reason: {}", session.channelId(), extensionDays, reason);
         return "To'lov muddatini uzaytirish bo'yicha ariza qayd etildi: " + extensionDays + " kun.";
+    }
+
+    /**
+     * "I already paid." Not argued with and not a refusal: the claim is filed, and
+     * {@link Disposition#PAYMENT_CLAIMED} keeps the dialer off the number for three days
+     * while the company checks it ({@code RetrySchedule}).
+     */
+    @Tool(description = "Mijoz qarzni ALLAQACHON to'laganini aytganda chaqiriladi. Avval qachon va qaysi "
+            + "to'lov tizimi orqali to'laganini so'rang. Mijoz bilan tortishmang: to'lov tekshirilguncha "
+            + "unga qo'ng'iroq qilinmasligini ayting")
+    public String recordPaymentClaim(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+                                     @ToolParam(description = "mijoz aytgan to'lov sanasi, format yyyy-MM-dd",
+                                             required = false) LocalDate paidDate,
+                                     @ToolParam(description = "to'lov kanali: CLICK, PAYME, UZUM, BANK_BRANCH, "
+                                             + "TERMINAL yoki OTHER", required = false) String paymentChannel) {
+        if (paidDate != null && paidDate.isAfter(LocalDate.now())) {
+            return "XATO: " + paidDate + " kelajakda. Bugun " + LocalDate.now()
+                    + ". To'langan sana bugun yoki undan oldin bo'ladi — mijozdan aniqlang.";
+        }
+        recordReply(reply);
+        session.recordOutcome("paidDate", paidDate);
+        session.recordOutcome("paymentChannel", paymentChannel);
+        session.setDisposition(Disposition.PAYMENT_CLAIMED);
+        log.info("[{}] payment claimed: date={}, channel={}", session.channelId(), paidDate, paymentChannel);
+        return "To'lov da'vosi yozib olindi. Tekshiruv tugaguncha 3 kun qo'ng'iroq qilinmaydi.";
     }
 
     /**

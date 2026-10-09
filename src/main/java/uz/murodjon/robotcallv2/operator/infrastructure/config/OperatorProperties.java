@@ -13,17 +13,26 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param answerTimeoutSec  seconds to wait for that endpoint to answer
  * @param sipConfigFileName the generated file holding the operators' own PJSIP endpoints,
  *                          written into {@code voice-agent.siptrunk.config-dir}
+ * @param requireAcceptance on a transfer without a queue, whether the operator who answers
+ *                          has to press 1 after the briefing before the caller is connected —
+ *                          a mobile's voicemail or a busy colleague otherwise takes the caller
+ * @param acceptTimeoutSec  how long that 1 is waited for; 10 when not set
  */
 @ConfigurationProperties(prefix = "voice-agent.operator")
 public record OperatorProperties(
         boolean enabled,
         String endpoint,
         int answerTimeoutSec,
-        String sipConfigFileName
+        String sipConfigFileName,
+        boolean requireAcceptance,
+        int acceptTimeoutSec
 ) {
     public OperatorProperties {
         if (sipConfigFileName == null || sipConfigFileName.isBlank()) {
             sipConfigFileName = "pjsip_operators.conf";
+        }
+        if (acceptTimeoutSec <= 0) {
+            acceptTimeoutSec = 10;
         }
     }
 }

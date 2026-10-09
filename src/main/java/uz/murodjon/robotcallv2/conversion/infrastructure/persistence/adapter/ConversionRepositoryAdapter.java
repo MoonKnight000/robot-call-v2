@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.mapper.Conv
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.repository.ConversionAttributionJpaRepository;
 import uz.murodjon.robotcallv2.conversion.infrastructure.persistence.repository.ConversionEventJpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -78,6 +79,14 @@ public class ConversionRepositoryAdapter implements ConversionRepository {
     public Optional<ConversionAttribution> findAttributionByEventId(long conversionEventId) {
         return attributionJpaRepository.findByConversionEventId(conversionEventId)
                 .map(attributionMapper::toConversionAttribution);
+    }
+
+    @Override
+    public boolean existsEventByPhoneSince(long companyId, String phone, String goalKey, Instant since) {
+        return goalKey == null
+                ? eventJpaRepository.existsByCompanyIdAndPhoneAndOccurredAtGreaterThanEqual(companyId, phone, since)
+                : eventJpaRepository.existsByCompanyIdAndPhoneAndGoalKeyAndOccurredAtGreaterThanEqual(
+                        companyId, phone, goalKey, since);
     }
 
     @Override

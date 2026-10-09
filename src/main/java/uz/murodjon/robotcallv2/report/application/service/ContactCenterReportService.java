@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
@@ -12,6 +13,7 @@ import uz.murodjon.robotcallv2.report.application.port.input.ContactCenterReport
 import uz.murodjon.robotcallv2.report.application.port.output.CallReportRepository;
 import uz.murodjon.robotcallv2.report.application.port.output.ContactCenterReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.DashboardRange;
+import uz.murodjon.robotcallv2.report.domain.entity.PredictiveDialingStats;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
@@ -30,12 +32,14 @@ public class ContactCenterReportService implements ContactCenterReportUseCase {
     private final ReportMapper reportMapper;
     private final CallEventUseCase callEventUseCase;
     private final CompanyConfigUseCase companyConfigUseCase;
+    private final CampaignUseCase campaignUseCase;
     private final Clock clock;
 
     public ContactCenterReportService(ContactCenterReportRepository contactCenterReportRepository,
                                       CallReportRepository callReportRepository, ReportMapper reportMapper,
                                       CallEventUseCase callEventUseCase, CompanyConfigUseCase companyConfigUseCase,
-                                      Clock clock) {
+                                      CampaignUseCase campaignUseCase, Clock clock) {
+        this.campaignUseCase = campaignUseCase;
         this.contactCenterReportRepository = contactCenterReportRepository;
         this.callReportRepository = callReportRepository;
         this.reportMapper = reportMapper;
@@ -58,6 +62,15 @@ public class ContactCenterReportService implements ContactCenterReportUseCase {
         return contactCenterReportRepository.findOperatorPerformance(companyId, range.from(), range.to()).stream()
                 .map(reportMapper::toOperatorReportRow)
                 .toList();
+    }
+
+    @Override
+    public PredictiveDialingStats findPredictiveDialingStats(long companyId, long campaignId, String from, String to) {
+        if (campaignUseCase.findCampaign(companyId, campaignId) == null) {
+            throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, campaignId);
+        }
+        DashboardRange range = findRange(companyId, from, to);
+        return contactCenterReportRepository.findPredictiveDialingStats(companyId, campaignId, range.from(), range.to());
     }
 
     @Override

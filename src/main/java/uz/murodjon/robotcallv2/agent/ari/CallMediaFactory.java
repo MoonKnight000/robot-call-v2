@@ -95,6 +95,61 @@ class CallMediaFactory {
         ariClient.destroyBridge(legs.bridgeId());
     }
 
+    /**
+     * What one leg's own person says, and nothing else: a snoop on {@code channelId} hearing
+     * its inbound direction, in a bridge of its own with an externalMedia that streams it to
+     * {@code sink}. The audio reaches the sink untouched — no noise cancellation — because it
+     * is recorded.
+     */
+    MediaTap openTap(ARI current, String channelId, AudioListener sink) throws Exception {
+        int port = portAllocator.allocate();
+        RtpEndpoint endpoint = new RtpEndpoint(channelId + "-tap", port, rtpProperties.codec(), null, List.of(sink),
+                rtpProperties.receiveQueueCapacity(), rtpProperties.maxQueuedPlaybackSeconds());
+        endpoint.setNoiseCancellation(false, null);
+        String snoopId = null;
+        String extMediaId = null;
+        String bridgeId = null;
+        try {
+            endpoint.bind(rtpEventLoopGroup);
+            extMediaId = current.channels()
+                    .externalMedia(asteriskProperties.appName(), rtpProperties.localIp() + ":" + port,
+                            rtpProperties.codec().asteriskFormat())
+                    .setEncapsulation("rtp")
+                    .setTransport("udp")
+                    .execute().getId();
+            snoopId = ariClient.snoop(channelId, "in", "none");
+            bridgeId = current.bridges().create().setType("mixing").execute().getId();
+            current.bridges().addChannel(bridgeId, extMediaId).execute();
+            current.bridges().addChannel(bridgeId, snoopId).execute();
+            return new MediaTap(snoopId, extMediaId, bridgeId, endpoint, port);
+        } catch (Exception e) {
+            releaseTap(current, new MediaTap(snoopId, extMediaId, bridgeId, endpoint, port));
+            throw e;
+        }
+    }
+
+    /** Asterisk's side first, then ours, then the port — as a call's teardown does. */
+    void releaseTap(ARI current, MediaTap tap) {
+        if (current != null) {
+            // The snoop is usually gone already: Asterisk ends it with the leg it listened to.
+            for (String channelId : new String[]{tap.snoopChannelId(), tap.extMediaChannelId()}) {
+                if (channelId == null) {
+                    continue;
+                }
+                try {
+                    current.channels().hangup(channelId).execute();
+                } catch (Exception e) {
+                    log.debug("Tap channel {} already gone: {}", channelId, e.getMessage());
+                }
+            }
+            if (tap.bridgeId() != null) {
+                ariClient.destroyBridge(tap.bridgeId());
+            }
+        }
+        tap.endpoint().close();
+        portAllocator.release(tap.port());
+    }
+
     void pointPlaybackAt(ARI current, String extMediaChannelId, RtpEndpoint endpoint) {
         try {
             String host = current.channels().getChannelVar(extMediaChannelId, "UNICASTRTP_LOCAL_ADDRESS")

@@ -20,11 +20,12 @@ Kompaniyaning umumiy balans holati, faol tarif rejasi, keyingi hisob-kitob sanas
 >
 > Kompaniyada hali `company_billing` qatori bo'lmasa, birinchi chaqiruvda **bo'sh qator
 > yaratiladi**: balans 0, auto-recharge o'chiq. `billing_usage` qatori esa tarif
-> limitlarini beradi (5000 daqiqa, 2 000 000 token, 1 000 000 TTS belgi, 30 kanal),
-> sarf ustunlari 0.
+> limitlarini beradi (5000 daqiqa, 2 000 000 token, 1 000 000 TTS belgi), sarf ustunlari 0.
 >
-> `concurrentChannels.used` hozircha to'ldirilmaydi (0 qaytadi) — parallel kanallar
-> soni faqat ish vaqtida ma'lum, u `live` bo'limida ko'rinadi.
+> `concurrentChannels` oylik qatordan emas: `used` — hozir dialer kompaniya uchun ushlab
+> turgan qo'ng'iroqlar, `limit` — kompaniyaning `maxConcurrentCalls` i (yo'q bo'lsa platforma
+> standarti). Batafsil — [concurrency.md](concurrency.md). `billing_usage.limit_channels`
+> endi o'qilmaydi.
 
 ### Request
 ```http
@@ -305,6 +306,9 @@ oldin band qilinadi, o'shanda `call_attempt` qatori hali yo'q.
 | Telefoniya | qo'ng'iroq davomiyligi | Trunk narxi |
 | Platforma | qo'ng'iroq davomiyligi | Ustama qo'llanilmaydi |
 | Post-call summary | summary so'rovining prompt / completion / cached tokenlari | Suhbatdan keyingi alohida LLM so'rovi, har qanday qo'ng'iroqda (realtime'da ham) matn-LLM narxida. Qo'ng'iroq hisoblangandan keyin alohida ledger yozuvi (`summary-charge:<callAttemptId>`) bilan yechiladi va `call_billing` qatorining LLM qatori va jamisiga qo'shiladi; tokenlar `summary_*_tokens` ustunlarida. `metrics.aiTokens` ularni ham sanaydi |
+| Operator qo'ng'irog'i tahlili | baholash kartasi so'rovining tokenlari + qo'shimcha STT soniyalari | Operator ishtirok etgan qo'ng'iroqda ([scorecards.md](scorecards.md)): LLM baholash matn-LLM narxida, mijoz va operator tomonini jonli transkripsiya qiluvchi ikki STT oqimi esa operator ulangan vaqt × 2 STT narxida. Qo'ng'iroq hisoblangandan keyin alohida ledger yozuvi (`analysis-charge:<callAttemptId>`) bilan yechiladi va `call_billing` qatorining LLM, STT qatorlari va jamisiga qo'shiladi; hajmi `analysis_prompt_tokens`, `analysis_completion_tokens`, `analysis_cached_tokens`, `analysis_stt_seconds` ustunlarida |
+| Qayta tahlil | qayta tahlil so'rovining prompt / completion / cached tokenlari | Eski qo'ng'iroqni agentning hozirgi tahlil sozlamalari bilan qayta tahlil qilish ([call-reanalyses.md](call-reanalyses.md)), matn-LLM narxida. Har qo'ng'iroq uchun alohida ledger yozuvi (`reanalysis-charge:<jobId>:<callAttemptId>`) bilan yechiladi; `call_billing` qatori o'zgarmaydi — bu qo'ng'iroqning bir qismi emas, alohida xizmat. Jami `call_reanalysis_job.charged_uzs` da |
+| Kompaniyaning o'z LLM'i | — | Kompaniya o'z OpenAI-compatible LLM'ini ulagan bo'lsa ([settings.md §2.1](settings.md#21-kompaniyaning-oz-llmi-own-llm)), cascade qo'ng'iroq, uning summary'si va qayta tahlil uchun **LLM qatori `0`** — kompaniya o'z provayderiga to'laydi. `call_billing` ga bunday qo'ng'iroqning tokenlari `0` bo'lib yoziladi; haqiqiy tokenlar `call_attempt` da (statistika uchun). STT, TTS, telefoniya va platforma qatorlari o'zgarmaydi. Qayta tahlilning oldindan narx bahosi hali platforma narxida hisoblanadi |
 
 Ustama (`markup-basis-points`) faqat provayder xarajatlariga qo'llanadi, platforma
 to'loviga emas. Har bir qator butun so'mgacha yaxlitlanadi va **jami — qatorlar yig'indisi**,
@@ -314,7 +318,9 @@ shuning uchun hisob-faktura qo'lda qo'shilganda ham to'g'ri chiqadi.
 
 Har bir balans harakati `billing_ledger` ga **faqat qo'shiladigan** qator sifatida
 yoziladi va `(company_id, idempotency_key)` bo'yicha unique. Qo'ng'iroq hisobining kaliti
-— `call-charge:<callAttemptId>`, uning summary'siniki — `summary-charge:<callAttemptId>`,
+— `call-charge:<callAttemptId>`, uning summary'siniki — `summary-charge:<callAttemptId>`, operator tahliliniki — `analysis-charge:<callAttemptId>`,
+qayta tahlilniki — `reanalysis-charge:<jobId>:<callAttemptId>`,
+copilot javobiniki — `copilot-charge:<messageId>` (yozuv turi `AI_CHARGE` — qo'ng'iroq emas, [copilot.md](copilot.md)),
 top-up'niki — `topup:<paymentId>`. Finalizer outbox orqali
 ishlaydi va qayta yetkazishi mumkin, to'lov provayderi ham callback'ni takrorlaydi; ikkinchi
 urinish kalitni band ko'radi va balansga tegmaydi.

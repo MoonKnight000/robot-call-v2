@@ -205,6 +205,15 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         outcomeLedger.setDoNotCallReason(reason);
     }
 
+    public String transferReason() {
+        return outcomeLedger.transferReason();
+    }
+
+    @Override
+    public void setTransferReason(String reason) {
+        outcomeLedger.setTransferReason(reason);
+    }
+
     /** See {@link DialogSession#setDtmfSender} — same wiring, speech-to-speech engine. */
     public void setMidCallSmsSender(Predicate<String> midCallSmsSender) {
         this.midCallSmsSender = midCallSmsSender;

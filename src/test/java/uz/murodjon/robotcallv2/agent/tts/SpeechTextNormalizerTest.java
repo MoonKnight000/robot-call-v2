@@ -50,6 +50,14 @@ class SpeechTextNormalizerTest {
     }
 
     @Test
+    void dropsDeliveryTagsInsteadOfReadingThem() {
+        assertThat(SpeechTextNormalizer.normalize("[sound concerned] Tushunaman, bu qiyin.", "uz-UZ"))
+                .isEqualTo("Tushunaman, bu qiyin.");
+        assertThat(SpeechTextNormalizer.normalize("Понимаю [sigh] давайте решим.", "ru-RU"))
+                .isEqualTo("Понимаю давайте решим.");
+    }
+
+    @Test
     void leavesOtherLanguagesAlone() {
         String line = "1500000 test do 2026-07-01";
         assertThat(SpeechTextNormalizer.normalize(line, "fr-FR")).isEqualTo(line);

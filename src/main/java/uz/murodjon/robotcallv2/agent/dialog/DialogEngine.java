@@ -3,7 +3,11 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.ai.chat.client.ChatClient;
+import uz.murodjon.robotcallv2.agent.provider.OwnLlmChatModels;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.agent.stt.SttProperties;
+import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
@@ -55,6 +59,10 @@ public class DialogEngine implements CallDialog {
     private final ToolUseCase toolUseCase;
     private final MidCallSmsSender midCallSmsSender;
     private final CallBillingUseCase callBillingUseCase;
+    private final VoicemailDrop voicemailDrop;
+    private final SttProperties sttProperties;
+    private final TtsProperties ttsProperties;
+    private final OwnLlmChatModels ownLlmChatModels;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
@@ -73,7 +81,11 @@ public class DialogEngine implements CallDialog {
                         DialogExecutors executors,
                         ToolUseCase toolUseCase,
                         MidCallSmsSender midCallSmsSender,
-                        CallBillingUseCase callBillingUseCase) {
+                        CallBillingUseCase callBillingUseCase,
+                        VoicemailDrop voicemailDrop,
+                        SttProperties sttProperties,
+                        TtsProperties ttsProperties,
+                        OwnLlmChatModels ownLlmChatModels) {
         this.dialogProperties = dialogProperties;
         this.callAttemptUseCase = callAttemptUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -90,6 +102,10 @@ public class DialogEngine implements CallDialog {
         this.toolUseCase = toolUseCase;
         this.midCallSmsSender = midCallSmsSender;
         this.callBillingUseCase = callBillingUseCase;
+        this.voicemailDrop = voicemailDrop;
+        this.sttProperties = sttProperties;
+        this.ttsProperties = ttsProperties;
+        this.ownLlmChatModels = ownLlmChatModels;
     }
 
     @Override
@@ -99,6 +115,19 @@ public class DialogEngine implements CallDialog {
 
     /** Starts the cascade conversation on {@code start}'s call; does nothing when the engine is unavailable. */
     public void startCall(CallStart start) {
+        begin(start, false);
+    }
+
+    /**
+     * The same conversation for a simulated caller ({@code VoiceCallSimulator}): the real
+     * audio pipeline, but none of the company's REST or MCP tools and no mid-call SMS — a
+     * test persona must never place a real order or text a real number.
+     */
+    public void startSimulatedCall(CallStart start) {
+        begin(start, true);
+    }
+
+    private void begin(CallStart start, boolean simulated) {
         String channelId = start.channelId();
         RtpEndpoint endpoint = start.endpoint();
         CallContext context = start.context();
@@ -125,6 +154,11 @@ public class DialogEngine implements CallDialog {
         // With the balance enforced the call ends before it costs more than the company has.
         EffectiveAiModelConfig aiModel = configured.withMaxCallSeconds(CallLimits.capByBalance(
                 configured.maxCallSeconds(), callBillingUseCase.findAffordableCallSeconds(companyId, false)));
+        // A company on its own LLM talks to nothing else: a key that cannot be read fails the
+        // call here rather than sending the conversation to the platform's model instead.
+        ChatClient ownChatClient = aiModel.ownLlm() != null
+                ? TurnTools.chatClient(ownLlmChatModels.createChatModel(companyId, aiModel.ownLlm()))
+                : null;
         // The agent picks the vendor that speaks it, the same way it picks its model;
         // the company setting is what an agent that chose none falls back to. A call
         // whose voice comes from the catalog still speaks through that voice's own
@@ -143,7 +177,7 @@ public class DialogEngine implements CallDialog {
         boolean emotionAdaptiveVoice = agent == null || agent.voice().emotionAdaptive();
         Map<String, String> languageVoices = agent != null ? agent.voice().perLanguage() : Map.of();
         List<Tool> tools = List.of();
-        if (agent != null && agent.id() != 0L) {
+        if (!simulated && agent != null && agent.id() != 0L) {
             try {
                 tools = toolUseCase.findAgentToolDefinitions(companyId, agent.id());
             } catch (Exception e) {
@@ -174,7 +208,9 @@ public class DialogEngine implements CallDialog {
                 .pronunciationRules(agent != null ? agent.pronunciationRules() : List.of())
                 .agent(agent)
                 .build();
-        if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
+        if (simulated) {
+            session.setMcpTools(List.of());
+        } else if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
             session.setMidCallSmsSender(smsText ->
                     midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), smsText));
         }
@@ -186,6 +222,11 @@ public class DialogEngine implements CallDialog {
         // own llmModel is: a survey agent and a collections agent share a deployment and
         // not a tolerance for a weaker model. Null leaves the installation default.
         session.setFastModel(agent != null ? agent.fastLlmModel() : null);
+        session.setOwnChatClient(ownChatClient);
+        String agentSttProvider = agent != null ? agent.speechEngine().sttProvider() : null;
+        session.latency().providers(
+                agentSttProvider != null && !agentSttProvider.isBlank() ? agentSttProvider.trim() : sttProperties.provider(),
+                voiceSettings.provider() != null ? voiceSettings.provider() : ttsProperties.provider());
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
@@ -312,6 +353,24 @@ public class DialogEngine implements CallDialog {
         turnRunner.speculate(session, text);
     }
 
+    /** A key on the caller's keypad — see {@link ClientInputGate#onKeypress}. */
+    public void notifyKeypress(String channelId) {
+        DialogSession session = sessions.get(channelId);
+        if (session == null || session.isEnded()) {
+            return;
+        }
+        inputGate.onKeypress(session);
+    }
+
+    /** The keys typed since the first {@link #notifyKeypress}, as one caller turn. */
+    public void onKeypadInput(String channelId, String digits) {
+        DialogSession session = sessions.get(channelId);
+        if (session != null) {
+            session.setTyping(false);
+        }
+        onClientFinal(channelId, digits);
+    }
+
     public boolean notifyBargeIn(String channelId) {
         DialogSession session = sessions.get(channelId);
         if (session == null || session.isEnded()) {
@@ -347,9 +406,19 @@ public class DialogEngine implements CallDialog {
                 session.avgTurnLatencyMs(), session.maxTurnLatencyMs(),
                 session.avgLlmLatencyMs(), session.maxLlmLatencyMs(),
                 session.ttsVoice(), session.language(),
-                null, session.aiModel() == null ? null : session.aiModel().model(),
+                null, llmModelOf(session),
                 session.bargeIns(), session.watchdog() != null ? session.watchdog().prompts() : 0,
-                session.lowConfidenceInputs());
+                session.lowConfidenceInputs(),
+                session.ownChatClient() != null);
+    }
+
+    /** The model the call ran on — the company's own endpoint's when it has one. */
+    private static String llmModelOf(DialogSession session) {
+        EffectiveAiModelConfig aiModel = session.aiModel();
+        if (aiModel == null) {
+            return null;
+        }
+        return aiModel.ownLlm() != null ? aiModel.ownLlm().model() : aiModel.model();
     }
 
     @Override
@@ -363,6 +432,21 @@ public class DialogEngine implements CallDialog {
         session.end(Disposition.VOICEMAIL);
         log.info("[{}] answering machine detected — ending call as VOICEMAIL", channelId);
         return true;
+    }
+
+    /**
+     * The audio heuristic found a voicemail on a call whose agent leaves a message: leave it
+     * after the beep, then hang up ({@link VoicemailDrop}).
+     *
+     * @return false when there is no live dialog to leave it from — the caller hangs up instead
+     */
+    public boolean leaveVoicemail(String channelId, String message) {
+        DialogSession session = sessions.get(channelId);
+        if (session == null || session.isEnded()) {
+            return false;
+        }
+        session.setDisposition(Disposition.VOICEMAIL);
+        return voicemailDrop.start(session, message);
     }
 
     @Override
@@ -417,6 +501,7 @@ public class DialogEngine implements CallDialog {
                 asString(c, "dueDate"),
                 asString(c, "contractNumber"),
                 s.state(),
+                s.transferReason(),
                 callTranscriptUseCase.findTranscriptText(s.callAttemptId()));
     }
 

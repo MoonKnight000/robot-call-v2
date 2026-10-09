@@ -6,12 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.campaign.application.dto.CreateCampaignRequest;
 import uz.murodjon.robotcallv2.campaign.application.dto.TargetImportResult;
 import uz.murodjon.robotcallv2.campaign.application.dto.UpdateCampaignRequest;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.output.CallQueueLookupPort;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort;
@@ -22,6 +24,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
@@ -64,6 +67,7 @@ class CampaignServiceTest {
     private NotificationUseCase notifications;
     private TtsWarmup ttsWarmup;
     private TargetSourceRepository targetSources;
+    private CallQueueLookupPort callQueues;
     private Clock clock;
     private CampaignService service;
     private CampaignTargetService targetService;
@@ -75,6 +79,7 @@ class CampaignServiceTest {
         doNotCallUseCase = mock(DoNotCallUseCase.class);
         aiAgents = mock(AiAgentUseCase.class);
         targetSources = mock(TargetSourceRepository.class);
+        callQueues = mock(CallQueueLookupPort.class);
         users = mock(UserUseCase.class);
         companyConfig = mock(CompanyConfigUseCase.class);
         retryProperties = new RetryProperties(180, 15, 1200, true);
@@ -89,7 +94,7 @@ class CampaignServiceTest {
                 notifications, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
                 mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper());
         service = new CampaignService(campaigns, targets, targetSources, aiAgents, users, companyConfig, audit,
-                notifications, ttsWarmup, targetService, outcomeService, clock);
+                notifications, ttsWarmup, targetService, outcomeService, new CampaignValidator(), callQueues, clock);
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
@@ -214,9 +219,51 @@ class CampaignServiceTest {
         assertThat(written.getValue().version()).isZero();
     }
 
+    @Test
+    void previewCampaignIsCreatedWithItsQueueAndNoAgent() {
+        when(callQueues.existsByCompanyIdAndId(1L, 5L)).thenReturn(true);
+
+        service.createCampaign(1L, createRequest(DialMode.PREVIEW, null, 5L));
+
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).create(eq(1L), written.capture());
+        assertThat(written.getValue().dialMode()).isEqualTo(DialMode.PREVIEW);
+        assertThat(written.getValue().callQueueId()).isEqualTo(5L);
+        assertThat(written.getValue().aiAgentId()).isNull();
+        verifyNoInteractions(aiAgents);
+    }
+
+    /** A queue id from another tenant would hand this company's clients to its operators. */
+    @Test
+    void campaignNamingAnotherCompanysQueueIsNotFound() {
+        when(callQueues.existsByCompanyIdAndId(1L, 5L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.createCampaign(1L, createRequest(DialMode.PREVIEW, null, 5L)))
+                .isInstanceOf(NotFoundException.class);
+        verify(campaigns, never()).create(anyLong(), any());
+    }
+
+    @Test
+    void campaignWithoutDialModeIsAnAiCampaign() {
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+
+        service.createCampaign(1L, createRequest(null, AI_AGENT_ID, null));
+
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).create(eq(1L), written.capture());
+        assertThat(written.getValue().dialMode()).isEqualTo(DialMode.AI);
+        assertThat(written.getValue().aiAgentId()).isEqualTo(AI_AGENT_ID);
+    }
+
+    private static CreateCampaignRequest createRequest(DialMode dialMode, Long aiAgentId, Long callQueueId) {
+        return new CreateCampaignRequest("c", CampaignType.SURVEY, aiAgentId, LocalTime.of(9, 0), LocalTime.of(20, 0),
+                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
+                null, null, null, null, dialMode, callQueueId, null, null);
+    }
+
     private static UpdateCampaignRequest updateRequest(Long version) {
         return new UpdateCampaignRequest("c", AI_AGENT_ID, LocalTime.of(9, 0), LocalTime.of(20, 0),
                 Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
-                null, null, null, null, version);
+                null, null, null, null, version, null, null, null);
     }
 }

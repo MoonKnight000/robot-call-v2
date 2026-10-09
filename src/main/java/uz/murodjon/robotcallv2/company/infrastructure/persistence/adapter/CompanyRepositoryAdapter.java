@@ -93,6 +93,14 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
     }
 
     @Override
+    public void updateMaxConcurrentCalls(long id, Integer maxConcurrentCalls) {
+        jpaRepository.findById(id).ifPresent(entity -> {
+            entity.setMaxConcurrentCalls(maxConcurrentCalls);
+            jpaRepository.save(entity);
+        });
+    }
+
+    @Override
     public List<Company> findAllCompanies() {
         return jpaRepository.findAll().stream().map(mapper::toCompany).toList();
     }

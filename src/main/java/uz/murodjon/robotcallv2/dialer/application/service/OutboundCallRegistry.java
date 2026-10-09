@@ -29,6 +29,8 @@ public class OutboundCallRegistry implements OutboundCallTrackingUseCase {
     }
 
     private final Map<String, Holder> byChannel = new ConcurrentHashMap<>();
+    /** Targets live with an operator rather than as a call here (predictive, §1.4). */
+    private final Set<Long> operatorTargetIds = ConcurrentHashMap.newKeySet();
 
     @Override
     public void register(String channelId, OutboundCall call) {
@@ -70,13 +72,34 @@ public class OutboundCallRegistry implements OutboundCallTrackingUseCase {
         return byChannel.remove(channelId, h) ? h.call : null;
     }
 
+    @Override
+    public void trackOperatorTarget(long targetId) {
+        operatorTargetIds.add(targetId);
+    }
+
+    @Override
+    public void untrackOperatorTarget(long targetId) {
+        operatorTargetIds.remove(targetId);
+    }
+
     /** Targets of every outbound call this instance still has ringing or on the line. */
     public Set<Long> liveTargetIds() {
-        Set<Long> targetIds = new HashSet<>();
+        Set<Long> targetIds = new HashSet<>(operatorTargetIds);
         for (Holder h : byChannel.values()) {
             targetIds.add(h.call.targetId());
         }
         return targetIds;
+    }
+
+    /** Calls this instance has ringing — each will want an RTP port the moment it is answered. */
+    public int countUnanswered() {
+        int ringing = 0;
+        for (Holder h : byChannel.values()) {
+            if (!h.answered) {
+                ringing++;
+            }
+        }
+        return ringing;
     }
 
     /** Channel ids dispatched but never answered within {@code olderThan} (to reclaim). */

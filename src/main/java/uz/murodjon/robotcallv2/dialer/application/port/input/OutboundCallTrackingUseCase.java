@@ -21,4 +21,13 @@ public interface OutboundCallTrackingUseCase {
 
     /** Removes and returns the call only if it never answered; {@code null} otherwise. */
     OutboundCall removeIfUnanswered(String channelId);
+
+    /**
+     * A target whose call is live outside this registry — a predictive client talking to an
+     * operator — so the expired-claim sweep does not settle it mid-call. Undone by
+     * {@link #untrackOperatorTarget}.
+     */
+    void trackOperatorTarget(long targetId);
+
+    void untrackOperatorTarget(long targetId);
 }

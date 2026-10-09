@@ -49,4 +49,19 @@ class EffectiveAiModelConfigTest {
         assertThat(merged.maxCallSeconds()).isEqualTo(300);
         assertThat(merged.maxTokensPerCall()).isEqualTo(40_000L);
     }
+
+    @Test
+    void theCompanysOwnLlmSurvivesEveryCopyUntilDroppedOnPurpose() {
+        OwnLlmEndpoint ownLlm = new OwnLlmEndpoint("https://llm.example.uz/v1", "qwen3-32b", null, "OWN_LLM_KEY");
+        EffectiveAiModelConfig company = new EffectiveAiModelConfig("gemini-2.5-pro", 0.4, 500, 300, 40_000L, ownLlm);
+
+        EffectiveAiModelConfig merged = company.withOverrides("gemini-2.5-flash", 0.9, null).withMaxCallSeconds(60);
+
+        assertThat(merged.ownLlm()).isEqualTo(ownLlm);
+        assertThat(merged.temperature()).isEqualTo(0.9);
+        assertThat(merged.maxCallSeconds()).isEqualTo(60);
+        assertThat(merged.withoutOwnLlm().ownLlm()).isNull();
+        assertThat(merged.withoutOwnLlm().model()).isEqualTo("gemini-2.5-flash");
+        assertThat(COMPANY.withoutOwnLlm()).isSameAs(COMPANY);
+    }
 }

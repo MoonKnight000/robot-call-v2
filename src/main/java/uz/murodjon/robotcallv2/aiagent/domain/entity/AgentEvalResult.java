@@ -10,6 +10,7 @@ import java.util.List;
  * @param transcript         the simulated call, one {@code AGENT:}/{@code CLIENT:} line each
  * @param qaScore            the judge's score, or null when it was not scored
  * @param guardrailViolation the judge found a figure, date or promise the facts do not support
+ * @param attempt            1…the run's {@code repeat}: which run of the case this was
  */
 public record AgentEvalResult(
         Long id,
@@ -22,7 +23,8 @@ public record AgentEvalResult(
         List<String> problems,
         String transcript,
         Integer qaScore,
-        boolean guardrailViolation
+        boolean guardrailViolation,
+        int attempt
 ) {
 
     public AgentEvalResult {

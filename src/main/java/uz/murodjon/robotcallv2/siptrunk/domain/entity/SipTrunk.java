@@ -21,6 +21,7 @@ public record SipTrunk(
         String sipPasswordEnc,
         SipTrunkTransport transport,
         List<String> codecs,
+        Integer maxCps,
         boolean isDefault,
         boolean enabled,
         Instant createdAt

@@ -51,6 +51,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                         one-leg prompt) checks whether it has finished. 0 means 100
  * @param playbackGraceMs  slack on top of a one-leg prompt's own length before it stops
  *                         waiting for playback to finish. 0 means 2000
+ * @param operatorTrunk    the PJSIP endpoint this Asterisk reaches the operators' Asterisk
+ *                         through, when the operators' phones sign in to another cell of
+ *                         the cluster (docs/VOICE-PIPELINE-PLAN.md 4.3b). Blank: they sign
+ *                         in here — the operator cell, or the only cell
  */
 @ConfigurationProperties(prefix = "voice-agent.asterisk")
 public record AsteriskProperties(
@@ -68,8 +72,19 @@ public record AsteriskProperties(
         int ghostCallFallbackSeconds,
         int ghostCallGraceSeconds,
         int playbackPollMs,
-        int playbackGraceMs
+        int playbackGraceMs,
+        String operatorTrunk
 ) {
+
+    /** Whether the operators' phones sign in to this Asterisk. */
+    public boolean isOperatorCell() {
+        return operatorTrunk == null || operatorTrunk.isBlank();
+    }
+
+    /** How this Asterisk dials the operator {@code endpointName}: directly, or over the operator trunk. */
+    public String buildOperatorDialString(String endpointName) {
+        return isOperatorCell() ? "PJSIP/" + endpointName : "PJSIP/" + endpointName + "@" + operatorTrunk.trim();
+    }
 
     public AsteriskProperties {
         if (ghostCallFallbackSeconds <= 0) {

@@ -60,6 +60,7 @@ class OutboundDialService {
     private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase audit;
     private final PendingCallRegistry pendingCallRegistry;
+    private final TrunkCallPacer trunkCallPacer;
 
     OutboundDialService(AsteriskProperties asteriskProperties,
                         AriClient ariClient,
@@ -74,7 +75,8 @@ class OutboundDialService {
                         ScenarioUseCase scenarioUseCase,
                         AiAgentUseCase aiAgentUseCase,
                         AuditUseCase audit,
-                        PendingCallRegistry pendingCallRegistry) {
+                        PendingCallRegistry pendingCallRegistry,
+                        TrunkCallPacer trunkCallPacer) {
         this.asteriskProperties = asteriskProperties;
         this.ariClient = ariClient;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -89,6 +91,7 @@ class OutboundDialService {
         this.aiAgentUseCase = aiAgentUseCase;
         this.audit = audit;
         this.pendingCallRegistry = pendingCallRegistry;
+        this.trunkCallPacer = trunkCallPacer;
     }
 
     String originate(String rawNumber, long companyId) {
@@ -131,6 +134,7 @@ class OutboundDialService {
         String dialNumber = !isLocalNumber(number) && number.startsWith("+")
                 ? number.substring(1)
                 : number;
+        awaitTrunkSlot(number, endpoint, trunk);
         try {
             // Inside the try on purpose: an ARI connection that is down is one more way
             // for the call never to happen, and it has to leave a row like the rest.
@@ -203,7 +207,7 @@ class OutboundDialService {
             scenarioUseCase.requireScenario(companyId, scenarioId);
         }
         // Loaded before dialling, so an unknown agent is a 404 rather than a phone that rings for nothing.
-        AiAgent agent = agentId != null ? aiAgentUseCase.requirePublishedAgent(companyId, agentId) : null;
+        AiAgent agent = agentId != null ? aiAgentUseCase.requireCallAgent(companyId, agentId, number) : null;
         String channelId = originate(number, companyId, sipTrunkId);
         if (agent != null) {
             pendingCallRegistry.registerManualAgent(channelId, agent, companyId);
@@ -264,6 +268,13 @@ class OutboundDialService {
         return trunk != null ? trunk.pjsipEndpoint() : asteriskProperties.trunkEndpoint();
     }
 
+    /** Under the trunk's calls-per-second limit; the local softphone has none. */
+    private void awaitTrunkSlot(String number, String endpoint, SipTrunkRow trunk) {
+        if (!isLocalNumber(number)) {
+            trunkCallPacer.awaitSlot(endpoint, trunk != null ? trunk.maxCps() : null);
+        }
+    }
+
     private String callerIdFor(SipTrunkRow trunk) {
         if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
             return trunk.callerId();
@@ -280,14 +291,16 @@ class OutboundDialService {
         SipTrunkRow trunk = isLocalNumber(number) ? null : resolveTrunkForCall(companyId, null);
         String endpoint = endpointFor(number, trunk);
         String dialNumber = !isLocalNumber(number) && number.startsWith("+") ? number.substring(1) : number;
+        awaitTrunkSlot(number, endpoint, trunk);
         return ariClient.originateToStasis("PJSIP/" + dialNumber + "@" + endpoint, appArgs, timeoutSec, callerIdFor(trunk));
     }
 
-    /** An outside number dialled for an operator (a callback, a softphone call) — booked as a call from the start. */
-    String originateClientCall(long companyId, String rawNumber, String appArgs, int timeoutSec, String language) {
+    /** An outside number dialled for an operator (a callback, a softphone call, a preview card) — booked as a call from the start. */
+    String originateClientCall(long companyId, String rawNumber, String appArgs, int timeoutSec, String language,
+                               long targetId) {
         String number = PhoneNumbers.require(rawNumber);
         String channelId = originateExternalToStasis(companyId, number, appArgs, timeoutSec);
-        callAttemptUseCase.startAttempt(companyId, CallAttempt.NO_TARGET, channelId, number, language, null, null);
+        callAttemptUseCase.startAttempt(companyId, targetId, channelId, number, language, null, null);
         return channelId;
     }
 }

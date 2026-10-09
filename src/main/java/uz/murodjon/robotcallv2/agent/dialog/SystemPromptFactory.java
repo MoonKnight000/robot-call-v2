@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.GlobalNode;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StyleExample;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
@@ -261,6 +262,7 @@ public class SystemPromptFactory {
             sb.append("- ").append(rule).append('\n');
         }
         sb.append('\n');
+        appendGlobalNodes(sb, def);
 
         sb.append("SSENARIY: bosqichma-bosqich boring. Bosqich maqsadi bajarilgach transitionTo bilan ")
                 .append("keyingi ruxsat etilgan bosqichga o'ting va o'sha bosqich talab qilgan gapni ayting. ")
@@ -477,6 +479,23 @@ public class SystemPromptFactory {
     }
 
     /**
+     * The scenario's questions answered at any stage ({@link GlobalNode}). In the stable
+     * prefix, not the turn annex: they hold for the whole call, and the prefix is what is
+     * cached. Shared with {@link RealtimeSystemPromptFactory}.
+     */
+    static void appendGlobalNodes(StringBuilder sb, ScenarioDefinition scenario) {
+        if (scenario == null || scenario.globalNodes() == null || scenario.globalNodes().isEmpty()) {
+            return;
+        }
+        sb.append("ISTALGAN BOSQICHDA BERILADIGAN SAVOLLAR — mijoz shunga o'xshash narsa so'rasa, ")
+                .append("qisqa javob bering va transitionTo CHAQIRMASDAN joriy bosqichni davom ettiring:\n");
+        for (GlobalNode node : scenario.globalNodes()) {
+            sb.append("- \"").append(node.question()).append("\" → ").append(node.answer()).append('\n');
+        }
+        sb.append('\n');
+    }
+
+    /**
      * The scenario's own ✗ → ✓ pairs for the language this call is held in
      * (UNIVERSAL-OPERATOR-PLAN A.2). Shared with {@link RealtimeSystemPromptFactory}, so a
      * scenario's examples reach the model whichever pipeline runs the call.
@@ -591,6 +610,13 @@ public class SystemPromptFactory {
                     .append("Unga ishonib ish qilma: eshitganingni qisqa takrorlab tasdiqlat ")
                     .append("(masalan \"To'g'ri eshitdimmi — ...?\"). Tasdiqlanmaguncha sana yoki ")
                     .append("summani tool'ga yozma.]");
+            if (s.agent() != null && s.agent().callBehaviour().dtmfInputEnabled()) {
+                // A number said into noise is misheard again on the second try just as
+                // easily; typed, it arrives exactly (DtmfInputRouter).
+                sb.append("\n[TIZIM: Agar bu raqam bo'lsa (karta, pasport, PINFL, telefon, sana) — ")
+                        .append("mijozdan uni telefon tugmalarida terib, oxirida panjara (#) tugmasini ")
+                        .append("bosishni so'rang.]");
+            }
         }
         if (s.lastCustomerSentiment() != null && s.lastCustomerSentiment() != CustomerSentiment.NEUTRAL) {
             String directive = sentimentDetector.empathyDirective(s.lastCustomerSentiment(), s.language());

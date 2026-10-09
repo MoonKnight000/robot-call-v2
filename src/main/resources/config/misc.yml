@@ -6,6 +6,9 @@ voice-agent:
   routing:
     instance-id: ${INSTANCE_ID:}
     ttl-minutes: ${ROUTING_TTL_MINUTES:30}
+    # Where the other instances reach this one (http://app-1:8080) — CallOwnerProxyFilter.
+    # Blank: requests about this instance's calls that land elsewhere get 409 CALL_ON_OTHER_INSTANCE.
+    internal-url: ${INSTANCE_INTERNAL_URL:}
 
   # ShutdownProperties — drain, then parallel teardown, then ARI event lanes (§12)
   shutdown:
@@ -40,7 +43,7 @@ voice-agent:
   # SpringAiPackGeneratorAdapter (UNIVERSAL-OPERATOR-PLAN E.1). Used only when somebody presses
   # "generate", so a larger model than the judge's is worth it: the draft is a whole scenario.
   pack-generator:
-    model: ${PACK_GENERATOR_MODEL:gemini-3.8-pro}
+    model: ${PACK_GENERATOR_MODEL:gemini-3.8-flash}
     max-tokens: ${PACK_GENERATOR_MAX_TOKENS:8192}
 
   # The nightly job that reads what the judge wrote and proposes what to change —
@@ -66,6 +69,20 @@ voice-agent:
     language: ${SIMULATION_LANGUAGE:uz-UZ}
     max-turns: ${SIMULATION_MAX_TURNS:12}
     persona-model: ${SIMULATION_PERSONA_MODEL:gemini-3.8-flash}
+    # VoiceSimulationProperties — evaluation runs with mode=VOICE (VOICE-PIPELINE-PLAN Bosqich 5):
+    # the persona is synthesized, put under noise and sent as RTP through the real pipeline.
+    # Spends TTS + STT on every case — on the deployment's default providers.
+    voice:
+      persona-voice: ${SIMULATION_VOICE_PERSONA_VOICE:}
+      snr-db: ${SIMULATION_VOICE_SNR_DB:15}
+      bot-quiet-ms: ${SIMULATION_VOICE_BOT_QUIET_MS:1500}
+      turn-timeout-ms: ${SIMULATION_VOICE_TURN_TIMEOUT_MS:30000}
+
+  # AgentEvalProperties — publish gate (VOICE-PIPELINE-PLAN Bosqich 5). TEXT or VOICE: an agent
+  # with test cases is published only after an evaluation of its current draft passed every
+  # case (VOICE accepts only voice runs). Empty = publishing is not gated.
+  agent-eval:
+    publish-gate: ${AGENT_EVAL_PUBLISH_GATE:}
 
   # Success rate, turnaround SLO and speculation hit rate — AlertingProperties
   alerting:

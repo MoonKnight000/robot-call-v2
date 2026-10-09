@@ -30,6 +30,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
+import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
 import uz.murodjon.robotcallv2.apikey.application.port.input.ApiKeyUseCase;
 import uz.murodjon.robotcallv2.auth.application.port.input.AccessTokenUseCase;
 import uz.murodjon.robotcallv2.auth.application.port.input.StreamTicketUseCase;
@@ -110,7 +111,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain apiSecurity(HttpSecurity http, ApiKeyUseCase apiKeyUseCase, RateLimiter rateLimiter,
                                            RateLimitProperties rateLimitProperties,
-                                           StreamTicketUseCase streamTicketUseCase) throws Exception {
+                                           StreamTicketUseCase streamTicketUseCase,
+                                           CallRouteRegistry callRouteRegistry) throws Exception {
         http
                 // Stateless header auth: no session to fix, no form to forge.
                 .csrf(csrf -> csrf.disable())
@@ -148,6 +150,10 @@ public class SecurityConfig {
                 // decided: a request carrying both a Bearer token and a key is the person,
                 // not the key.
                 .addFilterAfter(new ApiKeyAuthFilter(apiKeyUseCase), JwtAuthFilter.class)
+                // Once the caller is known, so only their company's calls are looked up; the
+                // instance holding the call authorizes the replayed request itself.
+                .addFilterAfter(new CallOwnerProxyFilter(callRouteRegistry, streamTicketUseCase),
+                        ApiKeyAuthFilter.class)
                 .authorizeHttpRequests(auth -> {
                     // Preflight carries no Authorization header by design (the browser sends it
                     // without credentials); it must clear the filter chain before the real request.

@@ -8,6 +8,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
  * <p>Whether a word or two said over the bot was a listener's "aha" or an answer is no
  * longer decided here from a word list — "ha" is either, depending on the line it was said
  * over, and the model reads it against that line ({@code LlmTurnClient#isTakingTheFloor}).
+ * Only the cases the words settle on their own skip the model ({@link FloorRules}).
  */
 final class Backchannels {
 

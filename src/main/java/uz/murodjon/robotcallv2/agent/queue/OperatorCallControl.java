@@ -137,7 +137,7 @@ public class OperatorCallControl {
             ari.addToBridge(consultation.bridgeId, operatorChannel);
             if (target.type() == TransferTargetType.USER) {
                 OperatorSipAccount account = operatorAccountUseCase.findSipAccount(companyId, target.targetId());
-                consultation.ringingChannelId = ari.originateToStasis("PJSIP/" + account.endpointName(),
+                consultation.ringingChannelId = ari.originateToStasis(ari.buildOperatorDialString(account.endpointName()),
                         "consult," + callerChannelId, CONSULT_RING_SEC, "\"Konsultatsiya\" <consult>");
             } else {
                 consultation.ringingChannelId = ari.originateExternalToStasis(companyId, target.number(),
@@ -185,6 +185,7 @@ public class OperatorCallControl {
         call.setOnHold(false);
         call.endpoint().flushPlayback();
         ari.addToBridge(call.bridgeId(), consultation.targetChannelId);
+        ari.recordOperatorLeg(call.channelId(), consultation.targetChannelId);
         if (previous != null) {
             ari.hangupChannel(previous);
         }

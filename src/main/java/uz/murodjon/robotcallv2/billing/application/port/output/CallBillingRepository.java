@@ -19,6 +19,13 @@ public interface CallBillingRepository {
      */
     void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, long costUzs);
 
+    /**
+     * Adds an operator call's analysis to its settled row: the scorecard's tokens and the
+     * operator side's recognition to their own analysis columns, their prices to the LLM and
+     * recognition lines and the total.
+     */
+    void addOperatorAnalysisCharge(long callAttemptId, CallUsage analysisUsage, CallCostBreakdown cost);
+
     /** The oldest hold still open for that target, if one was taken. */
     Optional<CallBilling> findOpenHold(long companyId, long targetId);
 

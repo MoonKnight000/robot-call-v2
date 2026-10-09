@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRe
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TargetScore;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.mapper.CampaignTargetEntityMapper;
@@ -130,6 +131,43 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<CampaignTarget> claimDue(long campaignId, int limit) {
         return campaignTargetJpaRepository.claimDue(campaignId, limit).stream().map(mapper::toCampaignTarget).toList();
+    }
+
+    @Override
+    // Its own short transaction, for the same reason as claimDue.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<CampaignTarget> claimDueByScore(long campaignId, int limit, int localHour) {
+        return campaignTargetJpaRepository.claimDueByScore(campaignId, limit, localHour,
+                        TargetScore.BEST_HOUR_BONUS, TargetScore.NEUTRAL).stream()
+                .map(mapper::toCampaignTarget).toList();
+    }
+
+    @Override
+    public List<CampaignTarget> findToScore(long campaignId, Instant scoredBefore, int limit) {
+        return campaignTargetJpaRepository.findToScore(campaignId, scoredBefore, limit).stream()
+                .map(mapper::toCampaignTarget).toList();
+    }
+
+    @Override
+    @Transactional
+    public void updateScores(long companyId, Map<Long, TargetScore> scores) {
+        scores.forEach((id, score) ->
+                campaignTargetJpaRepository.updateScore(companyId, id, score.score(), score.bestCallHour()));
+    }
+
+    @Override
+    // Its own short transaction, for the same reason as claimDue.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CampaignTarget claimNextForOperator(long campaignId, long userId) {
+        return campaignTargetJpaRepository.claimNextForOperator(campaignId, userId,
+                        (int) CampaignTarget.OPERATOR_CLAIM_LEASE.toMinutes()).stream()
+                .map(mapper::toCampaignTarget).findFirst().orElse(null);
+    }
+
+    @Override
+    public CampaignTarget findHeldByOperator(long campaignId, long userId) {
+        return campaignTargetJpaRepository.findHeldByOperator(campaignId, userId).stream()
+                .map(mapper::toCampaignTarget).findFirst().orElse(null);
     }
 
     @Override

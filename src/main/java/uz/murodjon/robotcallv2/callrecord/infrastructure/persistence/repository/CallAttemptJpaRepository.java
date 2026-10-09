@@ -12,7 +12,9 @@ import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.Call
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /** Spring Data repository for {@link CallAttemptEntity}. */
 @Repository
@@ -88,6 +90,10 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     void markAbandoned(@Param("id") long id, @Param("waitSeconds") int waitSeconds);
 
     @Modifying @Transactional
+    @Query(value = "UPDATE call_attempt SET ai_overflow = true, wait_seconds = :waitSeconds WHERE id = :id", nativeQuery = true)
+    void markAiOverflow(@Param("id") long id, @Param("waitSeconds") int waitSeconds);
+
+    @Modifying @Transactional
     @Query(value = "UPDATE call_attempt SET survey_score = :score WHERE id = :id", nativeQuery = true)
     void recordSurveyScore(@Param("id") long id, @Param("score") int score);
 
@@ -99,6 +105,13 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     /** Which company an in-flight call belongs to (§11 ai-model settings) — {@code DialogEngine} resolves this once per call. */
     @Query("SELECT a.company.id FROM CallAttemptEntity a WHERE a.id = :id")
     Long findCompanyIdById(@Param("id") long id);
+
+    Optional<CallAttemptEntity> findByIdAndCompanyId(long id, long companyId);
+
+    @Query("SELECT a.id FROM CallAttemptEntity a WHERE a.company.id = :companyId AND a.target.id = :targetId "
+            + "AND a.startedAt >= :since ORDER BY a.startedAt DESC, a.id DESC")
+    List<Long> findIdsByTargetIdSince(@Param("companyId") long companyId, @Param("targetId") long targetId,
+                                      @Param("since") Instant since, Pageable limit);
 
     /** Which target this call attempt belongs to. */
     @Query("SELECT a.target.id FROM CallAttemptEntity a WHERE a.id = :id")
@@ -157,6 +170,27 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
             + "('VOICEMAIL', 'NO_ANSWER', 'CARRIER_REJECTED', 'FAILED', 'WRONG_NUMBER', 'CALLBACK_REQUESTED'))",
             nativeQuery = true)
     Object findLastConversationAt(@Param("companyId") long companyId, @Param("phone") String phone);
+
+    /**
+     * Placed outbound calls to the numbers, one row per (phone, local answer hour): phone, the
+     * hour a reached call was answered in {@code zone} (null for the calls nobody talked on),
+     * placed, reached and refused counts. "Reached" leaves out what
+     * {@link #findLastConversationAt} leaves out, a callback request aside — that is a person.
+     */
+    @Query(value = "WITH a AS ("
+            + "  SELECT phone, disposition, answered_at, answered_at IS NOT NULL AND (disposition IS NULL "
+            + "         OR disposition NOT IN ('VOICEMAIL', 'NO_ANSWER', 'CARRIER_REJECTED', 'FAILED', 'WRONG_NUMBER'))"
+            + "         AS reached"
+            + "  FROM call_attempt"
+            + "  WHERE company_id = :companyId AND phone IN (:phones) AND inbound_route_id IS NULL"
+            + "    AND asterisk_channel IS NOT NULL AND started_at >= :since"
+            + ") SELECT phone,"
+            + "         CASE WHEN reached THEN CAST(EXTRACT(HOUR FROM answered_at AT TIME ZONE :zone) AS int) END,"
+            + "         count(*), count(*) FILTER (WHERE reached), count(*) FILTER (WHERE disposition = 'REFUSED')"
+            + "  FROM a GROUP BY 1, 2", nativeQuery = true)
+    List<Object[]> countPlacedByPhoneAndHour(@Param("companyId") long companyId,
+                                             @Param("phones") Collection<String> phones,
+                                             @Param("since") Instant since, @Param("zone") String zone);
 
     @Query(value = "SELECT max(r.promised_date) FROM call_result r JOIN call_attempt a ON a.id = r.call_id "
             + "WHERE a.company_id = :companyId AND a.phone = :phone", nativeQuery = true)

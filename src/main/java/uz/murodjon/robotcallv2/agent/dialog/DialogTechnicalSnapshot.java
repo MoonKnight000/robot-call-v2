@@ -31,6 +31,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
  *                          signals below go to {@code call_quality} (UNIVERSAL-OPERATOR-PLAN D.1)
  * @param noInputPromptCount times the silence watchdog asked whether the caller was still there
  * @param lowConfidenceCount caller utterances the recognizer was unsure of; 0 on a realtime call
+ * @param ownLlm            whether the call ran on the company's own LLM, which the company pays its
+ *                          provider for — its tokens are recorded but not billed
  */
 public record DialogTechnicalSnapshot(
         int turnCount,
@@ -40,8 +42,20 @@ public record DialogTechnicalSnapshot(
         Integer avgLlmLatencyMs, Integer maxLlmLatencyMs,
         String ttsVoice, String language,
         String engine, String llmModel,
-        int bargeInCount, int noInputPromptCount, int lowConfidenceCount) {
+        int bargeInCount, int noInputPromptCount, int lowConfidenceCount,
+        boolean ownLlm) {
 
     public static final DialogTechnicalSnapshot NONE =
             new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, null, null, 0, 0, 0);
+
+    /** On the platform's model — always so for a realtime call. */
+    public DialogTechnicalSnapshot(int turnCount, long promptTokens, long completionTokens, long cachedTokens,
+                                   long ttsChars, Integer avgTurnLatencyMs, Integer maxTurnLatencyMs,
+                                   Integer avgLlmLatencyMs, Integer maxLlmLatencyMs, String ttsVoice, String language,
+                                   String engine, String llmModel, int bargeInCount, int noInputPromptCount,
+                                   int lowConfidenceCount) {
+        this(turnCount, promptTokens, completionTokens, cachedTokens, ttsChars, avgTurnLatencyMs, maxTurnLatencyMs,
+                avgLlmLatencyMs, maxLlmLatencyMs, ttsVoice, language, engine, llmModel, bargeInCount,
+                noInputPromptCount, lowConfidenceCount, false);
+    }
 }

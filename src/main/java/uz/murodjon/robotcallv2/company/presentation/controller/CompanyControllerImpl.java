@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
+import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConcurrencyLimitRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConfigRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusRequest;
@@ -51,6 +52,12 @@ public class CompanyControllerImpl implements CompanyController {
     @Override
     public ResponseEntity<ResponseData<Company>> updateStatus(long id, UpdateCompanyStatusRequest request) {
         return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateStatus(id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<Company>> updateConcurrencyLimit(long id,
+                                                                        UpdateCompanyConcurrencyLimitRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateConcurrencyLimit(id, request)));
     }
 
     @Override

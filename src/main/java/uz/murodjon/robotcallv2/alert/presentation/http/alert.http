@@ -1,0 +1,43 @@
+### 1. Success rate under 40% over the last hour, for one agent
+POST http://localhost:8080/api/alert-rules
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qarz undirish — muvaffaqiyat tushdi",
+  "metric": "SUCCESS_RATE",
+  "comparator": "BELOW",
+  "threshold": 40,
+  "windowMinutes": 60,
+  "minCalls": 20,
+  "cooldownMinutes": 120,
+  "aiAgentId": 1
+}
+
+### 2. No calls in the last 30 minutes (the trunk or the dialer went quiet)
+POST http://localhost:8080/api/alert-rules
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qo'ng'iroqlar to'xtadi",
+  "metric": "CALL_COUNT",
+  "comparator": "BELOW",
+  "threshold": 1,
+  "windowMinutes": 30
+}
+
+### 3. What rule 1 sees right now
+GET http://localhost:8080/api/alert-rules/1/preview
+Authorization: Bearer {{auth_token}}
+
+### 4. The company's rules
+POST http://localhost:8080/api/alert-rules/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{ "page": 0, "size": 20, "enabled": true }
+
+### 5. Delete rule 2
+DELETE http://localhost:8080/api/alert-rules/2
+Authorization: Bearer {{auth_token}}

@@ -76,6 +76,37 @@ public interface CallBillingUseCase {
     void chargeSummary(long companyId, long callAttemptId, CallUsage summaryUsage);
 
     /**
+     * Charges an operator call's analysis to a call that has already been settled, as
+     * {@link #chargeSummary} does the summary: the scorecard's tokens and the second
+     * recognition stream on the operator's side ({@code extraSttSeconds}). Its own ledger
+     * entry ({@code analysis-charge:<callAttemptId>}), so it is safe to call twice; does
+     * nothing for a call that has no settled charge.
+     */
+    void chargeOperatorAnalysis(long companyId, long callAttemptId, CallUsage analysisUsage);
+
+    /**
+     * Charges one call's reanalysis (a {@code CallReanalysisJob}) on top of its settled charge,
+     * under its own ledger entry ({@code reanalysis-charge:<jobId>:<callAttemptId>}): safe to
+     * call twice, and a second job over the same call is charged again. The call's own charge
+     * row is left as it was — the reanalysis is a separate service, not part of the call.
+     *
+     * @return what was taken off the balance; 0 when nothing was — no tokens, no settled charge,
+     *         or already charged
+     */
+    long chargeReanalysis(long companyId, long callAttemptId, long jobId, CallUsage usage);
+
+    /**
+     * Charges the tokens one copilot reply used, under its own ledger entry
+     * ({@code copilot-charge:<messageId>}), so a retry is charged once.
+     *
+     * @return what was taken off the balance; 0 when nothing was — no tokens, or already charged
+     */
+    long chargeCopilotReply(long companyId, long messageId, CallUsage usage);
+
+    /** What {@code usage} costs at the current rates, in UZS. Charges nothing — for an estimate. */
+    long findUsageCostUzs(CallUsage usage);
+
+    /**
      * What the campaign's settled calls were charged since {@code since}, all of it when
      * {@code since} is null — read by the dialer's budget cap and the campaign report.
      */

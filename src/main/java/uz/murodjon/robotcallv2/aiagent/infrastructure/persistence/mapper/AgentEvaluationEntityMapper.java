@@ -20,6 +20,7 @@ public class AgentEvaluationEntityMapper {
     private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<String>> LIST_TYPE = new TypeReference<>() {};
+    private static final TypeReference<Map<String, String>> STRING_MAP_TYPE = new TypeReference<>() {};
 
     public AgentEvaluationEntityMapper(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -33,7 +34,8 @@ public class AgentEvaluationEntityMapper {
                 entity.getPersonaPrompt(), read(entity.getFacts(), MAP_TYPE, Map.of()), entity.getLanguage(),
                 entity.getExpectDisposition(), entity.getExpectStage(),
                 read(entity.getMustSay(), LIST_TYPE, List.of()), read(entity.getMustNotSay(), LIST_TYPE, List.of()),
-                entity.getMaxTurns(), entity.getCreatedAt());
+                entity.getMaxTurns(), entity.getCreatedAt(), read(entity.getToolMocks(), STRING_MAP_TYPE, Map.of()),
+                read(entity.getExpectTools(), LIST_TYPE, List.of()));
     }
 
     public AgentEvalRun toAgentEvalRun(AgentEvalRunEntity entity) {
@@ -41,8 +43,9 @@ public class AgentEvaluationEntityMapper {
             return null;
         }
         return new AgentEvalRun(entity.getId(), entity.getCompanyId(), entity.getAgentId(), entity.getAgentVersion(),
-                entity.getStatus(), entity.getTotal(), entity.getPassed(), entity.getAvgQaScore(), entity.getError(),
-                entity.getStartedAt(), entity.getFinishedAt());
+                entity.getMode(), entity.getConfigHash(), entity.getStatus(), entity.getTotal(), entity.getPassed(),
+                entity.getAvgQaScore(), entity.getError(),
+                entity.getStartedAt(), entity.getFinishedAt(), entity.getRepeatCount());
     }
 
     public AgentEvalResult toAgentEvalResult(AgentEvalResultEntity entity) {
@@ -52,7 +55,7 @@ public class AgentEvaluationEntityMapper {
         return new AgentEvalResult(entity.getId(), entity.getRunId(), entity.getTestCaseId(), entity.getCaseName(),
                 entity.isPassed(), entity.getDisposition(), entity.getStage(),
                 read(entity.getProblems(), LIST_TYPE, List.of()), entity.getTranscript(), entity.getQaScore(),
-                entity.isGuardrailViolation());
+                entity.isGuardrailViolation(), entity.getAttempt());
     }
 
     public String write(Object value) {

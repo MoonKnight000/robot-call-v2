@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.SaveAgentTestCaseRequest;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.insight.application.dto.RejectInsightRequest;
 import uz.murodjon.robotcallv2.insight.application.port.input.AgentInsightUseCase;
@@ -121,7 +122,7 @@ public class AgentInsightService implements AgentInsightUseCase {
         aiAgentUseCase.changeScenarioGuardrail(companyId, insight.aiAgentId(), rule, true);
         AgentEvalRun run;
         try {
-            run = agentEvaluationUseCase.evaluate(companyId, insight.aiAgentId(), null);
+            run = agentEvaluationUseCase.evaluate(companyId, insight.aiAgentId(), null, AgentEvalMode.TEXT, 1);
         } catch (RuntimeException e) {
             aiAgentUseCase.changeScenarioGuardrail(companyId, insight.aiAgentId(), rule, false);
             throw e;
@@ -135,7 +136,7 @@ public class AgentInsightService implements AgentInsightUseCase {
         String persona = requireSuggestion(insight);
         long caseId = agentEvaluationUseCase.createTestCase(companyId, insight.aiAgentId(),
                 new SaveAgentTestCaseRequest(insight.title(), persona, null, null, null, null,
-                        List.of(), List.of(), null)).id();
+                        List.of(), List.of(), null, null, null)).id();
         return repository.save(insight.accepted("Test holati " + caseId + " yaratildi", userId, now));
     }
 

@@ -35,6 +35,8 @@ public class DialogMetrics {
     private final Counter interjections;
     private final Counter fastPathTurns;
     private final Counter echoSuppressed;
+    private final Counter floorDecidedByRule;
+    private final Counter floorDecidedByModel;
     private final Timer turnaround;
 
     public DialogMetrics(MeterRegistry registry) {
@@ -110,6 +112,16 @@ public class DialogMetrics {
         // itself; the fix is on the Asterisk side, not here.
         this.echoSuppressed = Counter.builder("voice.dialog.echo.suppressed")
                 .description("caller transcripts dropped as an echo of the bot's own line")
+                .register(registry);
+        // A word or two said over the bot: decided from the words alone, or by a model call
+        // the paused bot waits for. The share by rule is the wait saved (FloorRules).
+        this.floorDecidedByRule = Counter.builder("voice.dialog.floor.decided")
+                .description("short caller utterances over the bot judged as yielding or taking the floor")
+                .tag("by", "rule")
+                .register(registry);
+        this.floorDecidedByModel = Counter.builder("voice.dialog.floor.decided")
+                .description("short caller utterances over the bot judged as yielding or taking the floor")
+                .tag("by", "model")
                 .register(registry);
         // The number §1.3 actually budgets (<1000ms): client stopped speaking -> first
         // bot audio on the wire. The LLM and TTS timers alone cannot show it, because
@@ -191,6 +203,11 @@ public class DialogMetrics {
         knowledgeBaseAnswers.increment();
     }
 
+    /** A short utterance over the bot was judged — from the words alone, or by the model. */
+    public void floorDecided(boolean byRule) {
+        (byRule ? floorDecidedByRule : floorDecidedByModel).increment();
+    }
+
     /** A caller transcript was dropped for echoing the bot's own line back at it. */
     public void echoSuppressed() {
         echoSuppressed.increment();
@@ -207,10 +224,25 @@ public class DialogMetrics {
      * dominates is the only question this answers, and it is the one worth asking before
      * anything in the pipeline is tuned.
      */
-    public void recordTurnStage(String stage, long millis) {
+    public void recordTurnStage(String stage, String sttProvider, String ttsProvider, long millis) {
         Timer.builder("voice.turn.stage.latency")
                 .description("one stage of the wait between the caller finishing and hearing the bot")
                 .tag("stage", stage)
+                .tag("stt", sttProvider)
+                .tag("tts", ttsProvider)
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(millis, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * How long the paused bot waited for the model to settle a barge-in
+     * ({@code LlmTurnClient#isTakingTheFloor}) — the silence {@code FloorRules} exists to
+     * avoid, so this is what says whether the model path is worth replacing.
+     */
+    public void recordFloorModelLatency(long millis) {
+        Timer.builder("voice.dialog.floor.model.latency")
+                .description("time the bot stayed paused while the model judged a barge-in")
                 .publishPercentileHistogram()
                 .register(registry)
                 .record(millis, TimeUnit.MILLISECONDS);

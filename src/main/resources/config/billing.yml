@@ -3,7 +3,7 @@
 voice-agent:
   billing:
     version: ${BILLING_RATE_VERSION:2026-09-v1}
-    enforce-balance: ${BILLING_ENFORCE_BALANCE:false}
+    enforce-balance: ${BILLING_ENFORCE_BALANCE:true}
     reservation-uzs: ${BILLING_RESERVATION_UZS:5000}
 
     rates:

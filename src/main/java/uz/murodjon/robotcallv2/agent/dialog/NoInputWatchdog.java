@@ -81,4 +81,14 @@ public class NoInputWatchdog {
     public synchronized int prompts() {
         return prompts;
     }
+
+    /**
+     * Whether the prompt just issued is the last one before the call is ended. That prompt
+     * says so — a caller who hears a second identical "alo?" has no reason to think the
+     * next silence costs them the call. With a single prompt there is nothing to escalate
+     * from, so it stays the plain question.
+     */
+    public synchronized boolean isLastPrompt() {
+        return maxPrompts > 1 && prompts == maxPrompts;
+    }
 }

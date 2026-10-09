@@ -24,6 +24,8 @@ import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -152,6 +154,9 @@ class WebTestCallService {
      */
     private OutboundCall buildWebTestProfile(long companyId, long campaignId, Long targetId, Integer agentVersion) {
         Campaign campaign = campaignUseCase.requireCampaign(companyId, campaignId);
+        if (campaign.aiAgentId() == null) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_NOT_AI, campaignId, campaign.dialMode());
+        }
         // The draft by default — a browser test is how an editor hears a change before publishing it.
         AiAgent agent = aiAgentService.requireAgentVersion(campaign.companyId(), campaign.aiAgentId(), agentVersion);
         Scenario scenario = aiAgentService.resolveScenario(campaign.companyId(), agent);

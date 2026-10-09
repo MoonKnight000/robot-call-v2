@@ -5,8 +5,12 @@ import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.tool.application.dto.*;
+import uz.murodjon.robotcallv2.tool.application.port.input.ToolExecutionUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolImportUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecution;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecutionFilter;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolExecutionStats;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 
 import java.util.List;
@@ -16,10 +20,13 @@ public class ToolControllerImpl implements ToolController {
 
     private final ToolUseCase toolUseCase;
     private final ToolImportUseCase toolImportUseCase;
+    private final ToolExecutionUseCase toolExecutionUseCase;
 
-    public ToolControllerImpl(ToolUseCase toolUseCase, ToolImportUseCase toolImportUseCase) {
+    public ToolControllerImpl(ToolUseCase toolUseCase, ToolImportUseCase toolImportUseCase,
+                              ToolExecutionUseCase toolExecutionUseCase) {
         this.toolUseCase = toolUseCase;
         this.toolImportUseCase = toolImportUseCase;
+        this.toolExecutionUseCase = toolExecutionUseCase;
     }
 
     @Override
@@ -66,5 +73,16 @@ public class ToolControllerImpl implements ToolController {
     @Override
     public ResponseEntity<ResponseData<ImportToolsResponse>> importTools(long companyId, ImportToolsRequest request) {
         return ResponseEntity.ok(ResponseData.ok(toolImportUseCase.importTools(companyId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<PageableData<ToolExecution>>> filterExecutions(long companyId,
+                                                                                       ToolExecutionFilter filter) {
+        return ResponseEntity.ok(ResponseData.ok(toolExecutionUseCase.filterExecutions(companyId, filter)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<ToolExecutionStats>>> executionStats(long companyId, int days) {
+        return ResponseEntity.ok(ResponseData.ok(toolExecutionUseCase.findExecutionStats(companyId, days)));
     }
 }

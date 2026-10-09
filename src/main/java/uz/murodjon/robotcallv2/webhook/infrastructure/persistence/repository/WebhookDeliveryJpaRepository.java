@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.webhook.infrastructure.persistence.repository;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,8 +12,12 @@ import uz.murodjon.robotcallv2.webhook.infrastructure.persistence.entity.Webhook
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
-public interface WebhookDeliveryJpaRepository extends JpaRepository<WebhookDeliveryEntity, Long> {
+public interface WebhookDeliveryJpaRepository extends JpaRepository<WebhookDeliveryEntity, Long>,
+        JpaSpecificationExecutor<WebhookDeliveryEntity> {
+
+    Optional<WebhookDeliveryEntity> findByCompanyIdAndId(Long companyId, Long id);
 
     List<WebhookDeliveryEntity> findByStatusAndNextAttemptAtLessThanEqualOrderById(
             WebhookDeliveryStatus status, Instant now, Pageable page);
@@ -36,4 +41,11 @@ public interface WebhookDeliveryJpaRepository extends JpaRepository<WebhookDeliv
     @Transactional
     @Query("DELETE FROM WebhookDeliveryEntity d WHERE d.status = :status AND d.deliveredAt < :cutoff")
     int deleteByStatusBefore(@Param("status") WebhookDeliveryStatus status, @Param("cutoff") Instant cutoff);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE WebhookDeliveryEntity d SET d.status = :to, d.nextAttemptAt = :lease "
+            + "WHERE d.id = :id AND d.status = :from")
+    int claimInStatus(@Param("id") long id, @Param("from") WebhookDeliveryStatus from,
+                      @Param("to") WebhookDeliveryStatus to, @Param("lease") Instant lease);
 }

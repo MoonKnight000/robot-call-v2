@@ -133,6 +133,13 @@ Huquq: **SCENARIO_EDIT**. Body (`CloneScenarioRequest`):
 
 `name` majburiy, `scenarioKey` ixtiyoriy. Javob — yangi `ScenarioRow`.
 
+### Boshqa serverga ko'chirish (export / import)
+
+Alohida endpoint yo'q — ikkita mavjud so'rov yetarli. `GET /api/scenarios/{id}` javobidagi
+`scenarioKey`, `name`, `description` va `definition` — aynan `POST /api/scenarios` body'si. Shu to'rt
+maydonni JSON faylga saqlab (Git'da versiyalash mumkin), boshqa serverga `POST /api/scenarios` bilan
+yuboriladi. `definition` saqlashdagi kabi to'liq tekshiriladi (`/validate`, bosqich modellari katalogi).
+
 ### `POST /api/scenarios/validate` — Definitionni tekshirish
 
 Huquq: **SCENARIO_EDIT**. Body — `ScenarioDefinition` ning **o'zi** (o'ramsiz).
@@ -149,7 +156,7 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 
 | Maydon | Turi | Izoh |
 |---|---|---|
-| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)) |
+| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`; ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi) |
 | `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required", "description" }` |
 | `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params` (`{ "name", "type", "required", "constraint" }[]`), `preToolSpeech` (tool ishlayotganda aytiladigan gap). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang |
 | `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description", "goal" }`. `goal: true` (ixtiyoriy, standart `false`) — ssenariy shu maydonni yozish uchun mavjud: qo'ng'iroq uni yozsa `GOAL_REACHED`, yozmasa `GOAL_NOT_REACHED` ([calls.md](calls.md)). Qiymat ssenariy tool'ining shu nomli argumentidan yoki kompaniya tool'ining `responseMapping` dagi shu nomli maydonidan keladi ([tools.md](tools.md)). Ko'pi bilan bitta maydon — aks holda `only one outcome field may be the goal` |
@@ -157,6 +164,7 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 | `guardrails` | `string[]` | Taqiqlar (§4.4) |
 | `styleExamples` | `StyleExample[]` | Ixtiyoriy. Promptdagi "✗ noto'g'ri → ✓ to'g'ri" misollari: `{ "language": "uz" \| "ru" \| null, "wrong", "right" }`. `language` qo'ng'iroq tilining prefiksi bilan solishtiriladi, `null` — hamma tillar. Ikkala pipeline'da (cascade va realtime) promptga qo'shiladi. `wrong` yoki `right` bo'sh bo'lsa — `a style example needs both 'wrong' and 'right'` |
 | `disclosureText` | string | Shu ssenariy uchun §11.1 ochiqlik matni — kompaniya matnidan ustun turadi |
+| `globalNodes` | `GlobalNode[]` | Ixtiyoriy. Istalgan bosqichda beriladigan savollar: `{ "question", "answer" }` ("Siz kimsiz?", "Raqamimni qayerdan oldingiz?"). Bot javob beradi va bosqich **o'zgarmaydi** — suhbat qolgan joyidan davom etadi. Ikkala pipeline'da promptga qo'shiladi. Bo'sh maydon — `a global node needs both 'question' and 'answer'` |
 | `factWebhook` | `FactWebhook` | Qo'ng'iroqdan oldin faktlarni yangilash — pastga qarang |
 | — | — | Ovoz, persona va AI model sozlamalari ssenariyda **emas** — ular [AI agent](ai-agents.md)da. Bitta senariyni bir nechta agent turli ovoz va personada gapirishi mumkin |
 
@@ -178,6 +186,9 @@ buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `
 | Kamida bitta yakuniy bosqich (`allowedTransitions` bo'sh) | `no terminal stage (…)` |
 | Har bosqichdan yakuniy bosqichga yo'l bor | `stage X cannot reach any terminal stage (deadlock)` |
 | `allowedTools` dagi nom — `tools` dan yoki universal tool'lardan biri | `stage X allows unknown tool Y` |
+| Birinchi bosqichda `branches` yo'q | `the first stage X cannot have branches` |
+| Branch'da `fact` va `operator` bor; `EXISTS`/`MISSING` dan boshqasida `value` bor | `a branch of stage X needs 'fact' and 'operator'`, `branch on F in stage X needs a 'value' for OP` |
+| Branch `goTo` — shu bosqichning `allowedTransitions` ichida | `branch of stage X goes to Y, which is not in its allowedTransitions` |
 | `tools[].name` universal nomlardan biri bo'lmaydi: `transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall` | `tool name 'X' is reserved …` |
 | Fakt / tool / tool parametri / outcome nomlari bo'sh emas va takrorlanmaydi | `a fact has a blank name`, `duplicate tool name: X`, … |
 | `outcomeSchema` kamida bitta maydon | `outcomeSchema must not be empty — …` |

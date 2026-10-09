@@ -42,6 +42,7 @@ public class BillingService implements BillingUseCase {
     private final InvoicePdfService pdfService;
     private final AuditUseCase audit;
     private final PaymentProperties paymentProperties;
+    private final ChannelUsagePort channelUsagePort;
     private final Clock clock;
 
     public BillingService(
@@ -55,6 +56,7 @@ public class BillingService implements BillingUseCase {
             InvoicePdfService pdfService,
             AuditUseCase audit,
             PaymentProperties paymentProperties,
+            ChannelUsagePort channelUsagePort,
             Clock clock
     ) {
         this.companyBillingRepository = companyBillingRepository;
@@ -67,6 +69,7 @@ public class BillingService implements BillingUseCase {
         this.pdfService = pdfService;
         this.audit = audit;
         this.paymentProperties = paymentProperties;
+        this.channelUsagePort = channelUsagePort;
         this.clock = clock;
     }
 
@@ -86,12 +89,14 @@ public class BillingService implements BillingUseCase {
         // The allowances come from the plan row; what has been used against them is summed
         // from the calls the company was actually charged for.
         PeriodUsage used = callBillingRepository.findUsageSince(companyId, startOfMonth());
+        // Channels are not a monthly allowance: what the company holds now against its plan limit.
+        ChannelUsage channels = channelUsagePort.findChannelUsage(companyId);
 
         BillingMetricsDto metrics = new BillingMetricsDto(
                 new BillingMetricItemDto(used.minutes(), limits.limitMinutes(), "daqiqa", limits.overagePriceMinute()),
                 new BillingMetricItemDto(used.totalTokens(), limits.limitTokens(), "token", limits.overagePriceToken()),
                 new BillingMetricItemDto(used.ttsChars(), limits.limitTtsChars(), "belgi", limits.overagePriceTts()),
-                new BillingMetricItemDto(limits.usedChannels(), limits.limitChannels(), "kanal", null)
+                new BillingMetricItemDto(channels.active(), channels.limit(), "kanal", null)
         );
 
         return new BillingOverviewResponse(

@@ -54,6 +54,13 @@ public class CampaignTargetEntity {
     @Column(name = "do_not_call", nullable = false)
     private boolean doNotCall;
 
+    /** Written only by the scoring update, never by a save; {@code scored_at} is not mapped at all. */
+    @Column(name = "score", insertable = false, updatable = false)
+    private Integer score;
+
+    @Column(name = "best_call_hour", insertable = false, updatable = false)
+    private Integer bestCallHour;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
     private CompanyEntity company;
@@ -152,6 +159,14 @@ public class CampaignTargetEntity {
 
     public void setDoNotCall(boolean doNotCall) {
         this.doNotCall = doNotCall;
+    }
+
+    public Integer getScore() {
+        return score;
+    }
+
+    public Integer getBestCallHour() {
+        return bestCallHour;
     }
 
     public CompanyEntity getCompany() {

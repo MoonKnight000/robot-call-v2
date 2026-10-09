@@ -326,8 +326,8 @@ public class RealtimeDialogEngine implements CallDialog {
     }
 
     /**
-     * The caller pressed a key. A speech-to-speech engine hears audio only, so the digit
-     * is told to it in words — the same IVR-style menu a cascade agent gets as a turn.
+     * The caller typed on the keypad. A speech-to-speech engine hears audio only, so the digits
+     * are told to it in words — the same IVR-style menu a cascade agent gets as a turn.
      */
     public void onDtmf(String channelId, String digit) {
         RealtimeDialogSession s = sessions.get(channelId);
@@ -336,7 +336,7 @@ public class RealtimeDialogEngine implements CallDialog {
             return;
         }
         s.touch();
-        engine.sendUserText("[TIZIM: mijoz telefon tugmasini bosdi: " + digit
+        engine.sendUserText("[TIZIM: mijoz telefon tugmalarida terdi: " + digit
                 + ". Buni menyu tanlovi yoki savolga javob sifatida qabul qiling.]");
     }
 
@@ -520,7 +520,7 @@ public class RealtimeDialogEngine implements CallDialog {
         return new OperatorSnapshot(channelId,
                 factText(c, "clientName"), factText(c, "debtAmount"), factText(c, "currency"),
                 factText(c, "dueDate"), factText(c, "contractNumber"),
-                s.state(), s.transcriptText());
+                s.state(), s.transferReason(), s.transcriptText());
     }
 
     private static String factText(CallContext c, String factName) {

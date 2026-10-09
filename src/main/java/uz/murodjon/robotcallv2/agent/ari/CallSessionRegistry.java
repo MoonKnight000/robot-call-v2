@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,11 @@ class CallSessionRegistry {
     private final Map<String, Integer> hangupCauses = new ConcurrentHashMap<>();
     /** Callers bridged to an operator by the legacy transfer — a human call, so the ghost reaper leaves it alone. */
     private final Set<String> operatorJoined = ConcurrentHashMap.newKeySet();
+    /**
+     * An outcome decided outside any dialog — a progressive call's answering machine found
+     * after the operator joined — for the teardown to use when the dialog has none.
+     */
+    private final Map<String, Disposition> decidedDispositions = new ConcurrentHashMap<>();
 
     CallSession find(String channelId) {
         return sessions.get(channelId);
@@ -152,6 +158,17 @@ class CallSessionRegistry {
 
     Integer removeHangupCause(String channelId) {
         return hangupCauses.remove(channelId);
+    }
+
+    /** Only for a live session: its teardown is what takes the entry back out. */
+    void rememberDisposition(String channelId, Disposition disposition) {
+        if (sessions.containsKey(channelId)) {
+            decidedDispositions.put(channelId, disposition);
+        }
+    }
+
+    Disposition removeDisposition(String channelId) {
+        return decidedDispositions.remove(channelId);
     }
 
     void markOperatorJoined(String channelId) {

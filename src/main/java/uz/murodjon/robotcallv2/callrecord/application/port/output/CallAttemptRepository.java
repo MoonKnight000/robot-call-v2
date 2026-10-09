@@ -3,15 +3,21 @@ package uz.murodjon.robotcallv2.callrecord.application.port.output;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.ContactHistory;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.PhoneCallHistory;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface CallAttemptRepository {
     Long findCompanyIdById(long id);
+    CallAttempt findByCompanyIdAndId(long companyId, long id);
+    Long findLatestIdByTargetIdSince(long companyId, long targetId, Instant since);
     Long findTargetIdById(long id);
     String findPhoneById(long id);
 
@@ -35,6 +41,13 @@ public interface CallAttemptRepository {
      * the last real conversation, and the latest promised payment date.
      */
     ContactHistory findContactHistory(long companyId, String phone, Instant since, int attemptLimit);
+
+    /**
+     * Outbound calls to each of {@code phones} that reached the trunk since {@code since}, with
+     * the hours (in {@code zone}) the reached ones were answered in. Numbers with none are left out.
+     */
+    Map<String, PhoneCallHistory> findPhoneCallHistories(long companyId, Collection<String> phones, Instant since,
+                                                         ZoneId zone);
     long create(CallAttempt attempt);
     Optional<Long> findIdByChannel(String channelId);
     long countEndedSince(Instant since);
@@ -54,6 +67,9 @@ public interface CallAttemptRepository {
 
     /** The caller hung up while still waiting. */
     void markAbandoned(long callId, int waitSeconds);
+
+    /** A predictive call no operator took after {@code waitSeconds}: the campaign's AI agent talks instead. */
+    void markAiOverflow(long callId, int waitSeconds);
 
     void recordSurveyScore(long callId, int score);
 

@@ -88,6 +88,7 @@ public record UpdateAiAgentRequest(
         Integer endpointingDelayMs,
         Set<Long> sipTrunkIds,
         Boolean enabled,
-        Long version
+        Long version,
+        Long preConversationAudioFileId
 ) {
 }

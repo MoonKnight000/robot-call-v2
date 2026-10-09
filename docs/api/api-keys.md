@@ -42,6 +42,8 @@ xatti-harakatini yoki narxini o'zgartira olmaydi.**
 | `KNOWLEDGE_BASE_READ`, `KNOWLEDGE_BASE_EDIT` | Bilimlar bazasini avtomatik yangilash |
 | `CALL_READ`, `REPORT_READ`, `DASHBOARD_READ`, `LIVE_READ` | Natijalarni o'qish |
 | `AI_AGENT_READ`, `SCENARIO_READ`, `INBOUND_ROUTE_READ` | Konfiguratsiyani **o'qish** |
+| `AGENT_EVAL_RUN` | CI: agent evalini ishga tushirish ([ai-agents.md §15](ai-agents.md)). Hech narsani o'zgartirmaydi, lekin LLM tokenlarini sarflaydi — kalitning "pul sarflamaydi" qoidasidan yagona istisno |
+| `AGENT_DRAFT_EDIT` | Claude Code/Cursor: [MCP server](mcp-server.md) orqali agent qoralamasini va test holatlarini yozish. Kalit yaratgan agent o'chiq holda yaratiladi; publish, rollout va agentni yoqish yopiq. REST endpoint'lar bu huquqni qabul qilmaydi |
 | `BILLING_READ` | Sarfni ko'rish |
 
 **Hech qachon berilmaydi** (ro'yxat kodda — `ApiKeyScopes`): `BILLING_EDIT`,

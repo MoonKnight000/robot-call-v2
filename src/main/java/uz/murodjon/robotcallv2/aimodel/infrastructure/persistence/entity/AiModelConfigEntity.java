@@ -42,6 +42,18 @@ public class AiModelConfigEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "own_llm_base_url", length = 500)
+    private String ownLlmBaseUrl;
+
+    @Column(name = "own_llm_model", length = 100)
+    private String ownLlmModel;
+
+    @Column(name = "own_llm_fast_model", length = 100)
+    private String ownLlmFastModel;
+
+    @Column(name = "own_llm_api_key_secret", length = 100)
+    private String ownLlmApiKeySecret;
+
     public Long getId() {
         return id;
     }
@@ -108,5 +120,37 @@ public class AiModelConfigEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getOwnLlmBaseUrl() {
+        return ownLlmBaseUrl;
+    }
+
+    public void setOwnLlmBaseUrl(String ownLlmBaseUrl) {
+        this.ownLlmBaseUrl = ownLlmBaseUrl;
+    }
+
+    public String getOwnLlmModel() {
+        return ownLlmModel;
+    }
+
+    public void setOwnLlmModel(String ownLlmModel) {
+        this.ownLlmModel = ownLlmModel;
+    }
+
+    public String getOwnLlmFastModel() {
+        return ownLlmFastModel;
+    }
+
+    public void setOwnLlmFastModel(String ownLlmFastModel) {
+        this.ownLlmFastModel = ownLlmFastModel;
+    }
+
+    public String getOwnLlmApiKeySecret() {
+        return ownLlmApiKeySecret;
+    }
+
+    public void setOwnLlmApiKeySecret(String ownLlmApiKeySecret) {
+        this.ownLlmApiKeySecret = ownLlmApiKeySecret;
     }
 }

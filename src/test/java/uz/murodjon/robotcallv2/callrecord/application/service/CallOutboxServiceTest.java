@@ -128,7 +128,7 @@ class CallOutboxServiceTest {
 
         service.sweep();
 
-        verify(summaryService).summarize(TRANSCRIPT, scenario.definition(), agent);
+        verify(summaryService).summarize(COMPANY_ID, TRANSCRIPT, scenario.definition(), agent);
         verify(callFinalizer).applySummary(COMPANY_ID, CALL_ID, LEAD_ID, PHONE, agent, scenario, Disposition.REFUSED,
                 REFUSAL, false);
         verify(callFinalizer).chargeSummary(COMPANY_ID, CALL_ID, summarized);
@@ -176,7 +176,7 @@ class CallOutboxServiceTest {
     @Test
     void callWhoseSummaryIsStillUnavailableIsLeftForTheNextSweep() {
         claim(pending(Disposition.REFUSED));
-        when(summaryService.summarize(anyString(), any(), any())).thenReturn(null);
+        when(summaryService.summarize(anyLong(), anyString(), any(), any())).thenReturn(null);
 
         service.sweep();
 
@@ -194,7 +194,7 @@ class CallOutboxServiceTest {
         service.sweep();
 
         verify(aiAgentUseCase, never()).requirePublishedAgent(anyLong(), anyLong());
-        verify(summaryService).summarize(TRANSCRIPT, scenario.definition(), null);
+        verify(summaryService).summarize(COMPANY_ID, TRANSCRIPT, scenario.definition(), null);
         verify(callFinalizer).applySummary(COMPANY_ID, CALL_ID, LEAD_ID, PHONE, null, scenario, Disposition.REFUSED,
                 REFUSAL, false);
     }
@@ -226,7 +226,7 @@ class CallOutboxServiceTest {
 
     private SummarizedCall summarizes(CallSummary summary) {
         SummarizedCall summarized = new SummarizedCall(summary, 800, 200, 0);
-        when(summaryService.summarize(eq(TRANSCRIPT), any(), any())).thenReturn(summarized);
+        when(summaryService.summarize(anyLong(), eq(TRANSCRIPT), any(), any())).thenReturn(summarized);
         return summarized;
     }
 

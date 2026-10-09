@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.webhook.application.port.output;
 
+import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDelivery;
+import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDeliveryFilter;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,4 +27,14 @@ public interface WebhookDeliveryRepository {
     void markFailed(long id, int attempts, String error);
 
     int deleteDeliveredBefore(Instant cutoff);
+
+    PageableData<WebhookDelivery> findPageByCompanyId(long companyId, WebhookDeliveryFilter filter);
+
+    WebhookDelivery findByCompanyIdAndId(long companyId, long id);
+
+    /**
+     * Takes a {@code FAILED} delivery for a manual resend by making it {@code PENDING} with its
+     * next try at {@code lease}, so the sweep leaves it alone; false when it is not failed any more.
+     */
+    boolean claimFailed(long id, Instant lease);
 }

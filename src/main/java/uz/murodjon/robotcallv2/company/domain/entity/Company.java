@@ -6,6 +6,9 @@ import java.time.Instant;
 
 /**
  * Domain record for company (ROADMAP B.1).
+ *
+ * @param maxConcurrentCalls how many dialer calls the company may hold at once, as its plan allows;
+ *                           null for the platform default
  */
 public record Company(
         long id,
@@ -13,16 +16,17 @@ public record Company(
         CompanyStatus status,
         Instant createdAt,
         Long logoFileId,
-        String address
+        String address,
+        Integer maxConcurrentCalls
 ) {
 
     /** A brand-new tenant: everything but the name is the storage layer's to fill in. */
     public static Company named(String name) {
-        return new Company(0, name, null, null, null, null);
+        return new Company(0, name, null, null, null, null, null);
     }
 
     /** The editable profile of an existing tenant, for a write. */
     public static Company profile(String name, String address) {
-        return new Company(0, name, null, null, null, address);
+        return new Company(0, name, null, null, null, address, null);
     }
 }

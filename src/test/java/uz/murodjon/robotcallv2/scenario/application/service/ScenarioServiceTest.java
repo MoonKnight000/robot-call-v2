@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.scenario.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
 import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
@@ -12,7 +14,9 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.security.CurrentUser;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Instant;
@@ -32,6 +36,7 @@ class ScenarioServiceTest {
     private CurrentUser currentUser;
     private UserUseCase users;
     private AuditService audit;
+    private AiModelUseCase aiModels;
     private ScenarioService scenarioService;
 
     @BeforeEach
@@ -40,10 +45,11 @@ class ScenarioServiceTest {
         currentUser = mock(CurrentUser.class);
         users = mock(UserUseCase.class);
         audit = mock(AuditService.class);
+        aiModels = mock(AiModelUseCase.class);
 
         when(currentUser.id()).thenReturn(Optional.of(1L));
 
-        scenarioService = new ScenarioService(repo, currentUser, users, audit);
+        scenarioService = new ScenarioService(repo, currentUser, users, audit, aiModels);
     }
 
     private ScenarioDefinition validDefinition() {
@@ -85,6 +91,27 @@ class ScenarioServiceTest {
         assertThat(created.id()).isEqualTo(10L);
         assertThat(created.scenarioKey()).isEqualTo("custom-key");
         verify(audit).record(eq(1L), eq("SCENARIO_CREATE"), eq("scenario"), eq("10"), eq("custom-key"));
+    }
+
+    @Test
+    void createRejectsAStageModelOutsideTheCatalog() {
+        ScenarioDefinition definition = new ScenarioDefinition(
+                List.of(
+                        new StageDef("START", "Salomlash", List.of("END"), List.of(), null, "no-such-model"),
+                        new StageDef("END", "Yakunla", List.of(), List.of())
+                ),
+                List.of(new FactField("name", "string", true)),
+                List.of(),
+                List.of(new OutcomeField("success", "boolean", "Natija")),
+                "System prompt",
+                List.of("Rule 1"),
+                null);
+        when(aiModels.isSelectable(AiModelKind.LLM, PipelineMode.CASCADE, "no-such-model")).thenReturn(false);
+
+        assertThatThrownBy(() -> scenarioService.create(1L,
+                new CreateScenarioRequest("custom-key", "My Scenario", "Desc", definition)))
+                .isInstanceOf(ValidationException.class);
+        verify(repo, never()).create(anyLong(), anyString(), anyString(), any(), anyBoolean(), any(), any());
     }
 
     @Test

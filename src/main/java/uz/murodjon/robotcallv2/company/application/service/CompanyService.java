@@ -4,6 +4,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
+import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConcurrencyLimitRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusRequest;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
@@ -78,6 +79,15 @@ public class CompanyService implements CompanyUseCase {
             eventPublisher.publishEvent(new CompanySuspendedEvent(id));
         }
         audit.record(id, "COMPANY_STATUS_UPDATE", "company", String.valueOf(id), request.status().name());
+        return requireCompanyUnscoped(id);
+    }
+
+    @Override
+    public Company updateConcurrencyLimit(long id, UpdateCompanyConcurrencyLimitRequest request) {
+        requireCompanyUnscoped(id);
+        repository.updateMaxConcurrentCalls(id, request.maxConcurrentCalls());
+        audit.record(id, "COMPANY_CONCURRENCY_LIMIT_UPDATE", "company", String.valueOf(id),
+                String.valueOf(request.maxConcurrentCalls()));
         return requireCompanyUnscoped(id);
     }
 

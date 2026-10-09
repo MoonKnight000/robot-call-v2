@@ -19,6 +19,8 @@ import java.util.Map;
  * @param mustSay           phrases the agent has to say (case-insensitive)
  * @param mustNotSay        phrases the agent must never say
  * @param maxTurns          turns before the call is cut off; null means 12
+ * @param toolMocks         what each company tool of the agent answers in a TEXT simulation, by tool name
+ * @param expectTools       tools the agent has to call at some point
  */
 public record SaveAgentTestCaseRequest(
         @NotBlank @Size(max = 200) String name,
@@ -29,6 +31,8 @@ public record SaveAgentTestCaseRequest(
         @Size(max = 100) String expectStage,
         @Size(max = 20) List<String> mustSay,
         @Size(max = 20) List<String> mustNotSay,
-        @Min(1) @Max(30) Integer maxTurns
+        @Min(1) @Max(30) Integer maxTurns,
+        @Size(max = 20) Map<@Size(max = 100) String, @Size(max = 4000) String> toolMocks,
+        @Size(max = 20) List<String> expectTools
 ) {
 }

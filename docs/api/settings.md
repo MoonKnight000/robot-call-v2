@@ -66,11 +66,14 @@ yozilgan model qo'ng'iroq paytida emas, PUT javobida `400 AI_MODEL_UNKNOWN` bila
     "maxOutputTokens": 250,
     "maxCallSeconds": 300,
     "maxTokensPerCall": 15000,
-    "createdAt": "2026-08-01T12:00:00Z"
+    "createdAt": "2026-08-01T12:00:00Z",
+    "ownLlm": null
   },
   "messageCode": null
 }
 ```
+
+`ownLlm` — kompaniyaning o'z LLM'i ([2.1](#21-kompaniyaning-oz-llmi-own-llm)); platforma modelida ishlasa `null`.
 
 ### `PUT /api/settings/ai-model` — AI sozlamalarini yangilash
 Ixtiyoriy maydon bo'sh (`null`) qoldirilsa, tizim standarti tiklanadi.
@@ -100,6 +103,91 @@ Ixtiyoriy maydon bo'sh (`null`) qoldirilsa, tizim standarti tiklanadi.
 `400 AI_MODEL_MAX_OUTPUT_TOKENS_NOT_POSITIVE`, `400 AI_MODEL_MAX_CALL_SECONDS_NOT_POSITIVE`,
 `400 AI_MODEL_MAX_TOKENS_PER_CALL_NOT_POSITIVE` (qiymat 0 yoki manfiy). Oxirgi to'rttasi ilgari umumiy
 `400 VALIDATION_FAILED` edi.
+
+### 2.1. Kompaniyaning o'z LLM'i (own LLM)
+
+Kompaniya o'zining OpenAI-compatible LLM endpoint'ini ulaydi (bank, on-prem, vLLM/Ollama/Azure va h.k.).
+Ulangandan keyin quyidagilar **faqat shu modelda** ishlaydi:
+- kompaniyaning cascade qo'ng'iroqlari — har bir turn, qisqa javoblar uchun fast model, barge-in qarori va
+  fact-guard qayta urinishi;
+- qo'ng'iroqdan keyingi xulosa (summary) va qayta tahlil (reanalysis).
+
+**Platforma modeliga zaxira (fallback) yo'q.** Kalit o'chirilgan yoki o'qib bo'lmasa, qo'ng'iroq boshlanmaydi
+(`OWN_LLM_API_KEY_MISSING`, qo'ng'iroq xatosi sifatida yoziladi), xulosa esa outbox orqali qayta urinadi.
+Suhbat platforma modeliga hech qachon jim ketmaydi.
+
+**Qamrovdan tashqari** — platforma modelida qoladi: agent simulyatsiyasi va eval'lar, vidjet text chat,
+sifat bahosi (judge), copilot va `REALTIME` pipeline'dagi agentlar (speech-to-speech engine o'z modelida ishlaydi).
+Bank "ma'lumot chiqmasin" desa, agentlar cascade pipeline'da bo'lishi kerak.
+
+**Narx:** o'z LLM'idagi qo'ng'iroq va xulosa tokenlari `call_attempt` da statistika uchun yoziladi, lekin
+billing'da LLM qatori **0** — kompaniya o'z provayderiga to'laydi. STT, TTS, telefoniya va platforma to'lovi
+odatdagidek olinadi.
+
+**Xavfsizlik:** API kalit so'rovda yuborilmaydi va bu yerda saqlanmaydi — avval
+[`POST /api/secrets`](secrets.md) bilan secret yaratiladi, bu yerda faqat uning nomi beriladi. Har bir so'rov
+SSRF himoyali client orqali ketadi (DNS faqat public manzilga, redirect'siz), manzil saqlashda ham tekshiriladi.
+
+### `PUT /api/settings/ai-model/own-llm` — o'z LLM'ini ulash yoki o'zgartirish
+Huquq: **AI_MODEL_EDIT**.
+
+**Request Body** (`UpdateOwnLlmRequest`):
+```json
+{
+  "baseUrl": "https://llm.bank.uz/v1",
+  "model": "qwen3-32b",
+  "fastModel": "qwen3-8b",
+  "apiKeySecret": "OWN_LLM_KEY"
+}
+```
+
+| Maydon | Turi | Majburiy | Izoh |
+|---|---|---|---|
+| `baseUrl` | `string` (≤500) | ✅ | OpenAI-compatible ildiz, `/v1` bilan birga (so'rovlar `<baseUrl>/chat/completions` ga ketadi). Faqat public `https`. Oxiridagi `/` olib tashlanadi |
+| `model` | `string` (≤100) | ✅ | Endpoint beradigan model id'si. Katalog bilan solishtirilmaydi — endpoint'niki |
+| `fastModel` | `string` (≤100) | ❌ | Bir-ikki so'zli javoblar va barge-in qarori uchun arzonroq model. `null` — hammasi `model` da. Agentning `fastLlmModel` i va bosqich (stage) modellari o'z LLM'ida e'tiborga olinmaydi |
+| `apiKeySecret` | `string` (≤100) | ✅ | Kalit saqlangan secret nomi. Kalit almashtirilsa, keyingi qo'ng'iroqdan kuchga kiradi |
+
+`temperature` va `maxOutputTokens` — yuqoridagi umumiy sozlamalardan (agent override'lari bilan) olinadi.
+
+**Response** — yangilangan `AiModelConfig`:
+```json
+{
+  "accept": true,
+  "data": {
+    "companyId": 1,
+    "model": "gemini-3.8-flash",
+    "temperature": 0.3,
+    "maxOutputTokens": 250,
+    "maxCallSeconds": 300,
+    "maxTokensPerCall": 15000,
+    "createdAt": "2026-08-01T12:00:00Z",
+    "ownLlm": {
+      "baseUrl": "https://llm.bank.uz/v1",
+      "model": "qwen3-32b",
+      "fastModel": "qwen3-8b",
+      "apiKeySecret": "OWN_LLM_KEY"
+    }
+  },
+  "messageCode": null
+}
+```
+
+`model` (katalogdagi) saqlanib qoladi — o'z LLM'i o'chirilganda va qamrovdan tashqari ishlarda shu ishlatiladi.
+
+**Xatolar:**
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 400 | `VALIDATION_FAILED` | Majburiy maydon bo'sh yoki juda uzun |
+| 400 | `OWN_LLM_BASE_URL_INVALID` | `baseUrl` public `https` manzil emas (ichki IP, `http`, noto'g'ri URL) |
+| 400 | `OWN_LLM_API_KEY_SECRET_UNKNOWN` | Bunday nomli secret yo'q |
+
+Audit: `AI_MODEL_OWN_LLM_UPDATE` (detail — `baseUrl`, kalitsiz).
+
+### `DELETE /api/settings/ai-model/own-llm` — platforma modeliga qaytish
+Huquq: **AI_MODEL_EDIT**. Javob — `ownLlm: null` bilan `AiModelConfig`. Secret o'chirilmaydi. Audit:
+`AI_MODEL_OWN_LLM_DELETE`.
 
 ## 3. TTS Ovoz Sozlamalari (`/api/settings/voice`)
 
@@ -153,7 +241,7 @@ Ikki ro'yxatdan iborat: **kanallar** (kanal qayerga yetkazadi va yoqilganmi) va
 | Enum | Qiymatlar |
 |---|---|
 | `NotificationChannelType` | `EMAIL`, `WEBHOOK`, `TELEGRAM` |
-| `NotificationType` | `CAMPAIGN_FINISHED`, `ERROR_OCCURRED`, `OPERATOR_REQUEST`, `DAILY_REPORT`, `MISSED_CALL`, `VOICEMAIL_RECEIVED`, `LOW_SURVEY_SCORE`, `CAMPAIGN_PAUSED`, `BALANCE_LOW`, `TARGET_SYNC_FAILED` ([notifications.md](notifications.md)) |
+| `NotificationType` | `CAMPAIGN_FINISHED`, `ERROR_OCCURRED`, `OPERATOR_REQUEST`, `DAILY_REPORT`, `MISSED_CALL`, `VOICEMAIL_RECEIVED`, `LOW_SURVEY_SCORE`, `CAMPAIGN_PAUSED`, `BALANCE_LOW`, `TARGET_SYNC_FAILED`, `SCORECARD_REVIEW`, `ALERT_TRIGGERED` ([notifications.md](notifications.md)) |
 
 ### `GET /api/settings/notifications` — Matritsani olish
 

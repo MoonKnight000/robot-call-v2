@@ -20,12 +20,13 @@ public record SipTrunkRow(
         String sipUsername,
         SipTrunkTransport transport,
         List<String> codecs,
+        Integer maxCps,
         boolean isDefault,
         boolean enabled,
         Instant createdAt
 ) {
     public static SipTrunkRow of(SipTrunk t) {
         return new SipTrunkRow(t.id(), t.name(), t.pjsipEndpoint(), t.callerId(), t.host() != null, t.host(),
-                t.port(), t.sipUsername(), t.transport(), t.codecs(), t.isDefault(), t.enabled(), t.createdAt());
+                t.port(), t.sipUsername(), t.transport(), t.codecs(), t.maxCps(), t.isDefault(), t.enabled(), t.createdAt());
     }
 }

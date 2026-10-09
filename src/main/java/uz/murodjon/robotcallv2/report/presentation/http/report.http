@@ -68,3 +68,23 @@ Content-Type: application/json
   "page": 0,
   "size": 10
 }
+
+### Operator quality: rating (best average score first)
+GET {{host}}/api/reports/quality/operators?from=2026-10-01&to=2026-10-07
+Authorization: Bearer {{token}}
+
+### Operator quality: each criterion's pass rate per week, for one operator
+GET {{host}}/api/reports/quality/criteria-trend?from=2026-09-01&to=2026-10-07&bucket=WEEK&operatorUserId=9
+Authorization: Bearer {{token}}
+
+### Operator quality: the criteria broken most often
+GET {{host}}/api/reports/quality/failed-criteria?from=2026-10-01&to=2026-10-07
+Authorization: Bearer {{token}}
+
+### Operator quality: what the calls were about
+GET {{host}}/api/reports/quality/topics?from=2026-10-01&to=2026-10-07&limit=10
+Authorization: Bearer {{token}}
+
+### PREDICTIVE campaign: dialled, answered, to operator, AI overflow, abandoned
+GET {{host}}/api/reports/campaigns/1/predictive?from=2026-10-01&to=2026-10-07
+Authorization: Bearer {{token}}

@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallRetentionUseCase;
 import uz.murodjon.robotcallv2.chat.application.port.input.ChatUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.quality.application.port.input.ScorecardUseCase;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort;
 import uz.murodjon.robotcallv2.storage.application.port.output.StoredFileRepository;
@@ -41,6 +42,7 @@ class RetentionServiceTest {
     private final ClientMemoryUseCase clientMemory = mock(ClientMemoryUseCase.class);
     private final ChatUseCase chatUseCase = mock(ChatUseCase.class);
     private final AuditUseCase audit = mock(AuditUseCase.class);
+    private final ScorecardUseCase scorecards = mock(ScorecardUseCase.class);
     private final ClusterJobLock clusterJobLock = mock(ClusterJobLock.class);
 
     private RetentionService service(int conversationDays, int summaryDays, int clientMemoryDays, int auditDays,
@@ -51,7 +53,7 @@ class RetentionServiceTest {
         RetentionProperties retentionProperties = new RetentionProperties("0 30 3 * * *", conversationDays,
                 Duration.ofHours(1), summaryDays, clientMemoryDays, auditDays, 30, batchSize);
         return new RetentionService(storedFileRepository, objectStorage, retentionProperties, callRetention,
-                clientMemory, chatUseCase, audit, rtpProperties, clusterJobLock);
+                clientMemory, chatUseCase, audit, scorecards, rtpProperties, clusterJobLock);
     }
 
     private void lockIsFree() {
@@ -71,6 +73,7 @@ class RetentionServiceTest {
         service(90, 0, 0, 0, 100).purge();
 
         verify(callRetention).deleteExpiredTranscripts(any(), eq(100));
+        verify(scorecards).deleteEvidenceWithoutTranscript(100);
         verify(callRetention, never()).deleteResultsCreatedBefore(any(), anyInt());
         verify(clientMemory, never()).deleteNotUpdatedSince(any(), anyInt());
         verify(audit, never()).deleteCreatedBefore(any(), anyInt());

@@ -6,7 +6,9 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
@@ -34,7 +36,7 @@ public record CampaignRow(
         int retryIntervalMinutes,
         int maxConcurrentCalls,
         int dailyCallCap,
-        long aiAgentId,
+        Long aiAgentId,
         String aiAgentName,
         long companyId,
         Long createdBy,
@@ -54,7 +56,11 @@ public record CampaignRow(
         long calledTargets,
         long pendingTargets,
         long completedTargets,
-        long version
+        long version,
+        DialMode dialMode,
+        Long callQueueId,
+        int maxAiOverflowPercent,
+        TargetOrdering targetOrdering
 ) {
 
     public static CampaignRow of(Campaign c, String aiAgentName, String createdByName) {
@@ -76,6 +82,10 @@ public record CampaignRow(
                 s.calledTargets(),
                 s.pendingTargets(),
                 s.completedTargets(),
-                c.version());
+                c.version(),
+                c.dialMode(),
+                c.callQueueId(),
+                c.maxAiOverflowPercent(),
+                c.targetOrdering());
     }
 }

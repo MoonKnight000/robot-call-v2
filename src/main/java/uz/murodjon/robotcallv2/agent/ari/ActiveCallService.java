@@ -28,7 +28,10 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -185,6 +188,18 @@ class ActiveCallService {
                 .filter(s -> isActiveCallOf(companyId, s.channelId()))
                 .map(this::toLiveCallRow)
                 .toList();
+    }
+
+    /** Every live call on this instance, by company — what it tells the cluster it holds ({@link ClusterLiveCalls}). */
+    Map<Long, List<LiveCallRow>> findLiveCallsByCompany() {
+        Map<Long, List<LiveCallRow>> byCompany = new HashMap<>();
+        for (LiveDialogSnapshot s : dialogRouter.liveDialogs()) {
+            CallSession session = callSessionRegistry.find(s.channelId());
+            if (session != null) {
+                byCompany.computeIfAbsent(session.companyId(), id -> new ArrayList<>()).add(toLiveCallRow(s));
+            }
+        }
+        return byCompany;
     }
 
     private LiveCallRow toLiveCallRow(LiveDialogSnapshot s) {

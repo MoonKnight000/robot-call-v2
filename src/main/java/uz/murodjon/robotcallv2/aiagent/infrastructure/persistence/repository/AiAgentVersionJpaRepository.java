@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVersionStatus;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentVersionEntity;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -34,4 +35,12 @@ public interface AiAgentVersionJpaRepository extends JpaRepository<AiAgentVersio
             + "FROM call_attempt WHERE company_id = :companyId AND ai_agent_id = :agentId "
             + "AND agent_version IS NOT NULL GROUP BY agent_version", nativeQuery = true)
     List<Object[]> findCallStats(@Param("companyId") long companyId, @Param("agentId") long agentId);
+
+    @Query(value = "SELECT agent_version, count(*), "
+            + "count(*) FILTER (WHERE disposition IN ('PROMISE_TO_PAY', 'GOAL_REACHED', 'COMPLETED')) "
+            + "FROM call_attempt WHERE company_id = :companyId AND ai_agent_id = :agentId "
+            + "AND agent_version IS NOT NULL AND started_at >= CAST(:since AS timestamptz) "
+            + "GROUP BY agent_version", nativeQuery = true)
+    List<Object[]> findCallStatsSince(@Param("companyId") long companyId, @Param("agentId") long agentId,
+                                      @Param("since") Instant since);
 }

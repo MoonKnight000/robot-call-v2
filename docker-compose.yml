@@ -343,6 +343,11 @@ services:
       VAD_MIN_SPEECH_MS: ${VAD_MIN_SPEECH_MS:-400}
       VAD_AMD_ENABLED: ${VAD_AMD_ENABLED:-true}
       VAD_AMD_MIN_SPEECH_MS: ${VAD_AMD_MIN_SPEECH_MS:-3500}
+      # Neural noise suppression on the caller's leg (GTCRN, docs/MODELS.md). Reads the
+      # model from the ./models mount below; off, or with the file missing, calls keep the
+      # broadband gate.
+      DENOISER_ENABLED: ${DENOISER_ENABLED:-false}
+      DENOISER_MODEL_PATH: ${DENOISER_MODEL_PATH:-/app/models/gtcrn_simple.onnx}
       TTS_YANDEX_API_KEY: ${TTS_YANDEX_API_KEY:-}
       TTS_YANDEX_FOLDER_ID: ${TTS_YANDEX_FOLDER_ID:-}
       TTS_YANDEX_VOICE: ${TTS_YANDEX_VOICE:-alena}
@@ -353,9 +358,16 @@ services:
       - "8080:8080"
     volumes:
       - ./recordings:/app/recordings
+      # Downloaded ONNX models (docs/MODELS.md) — GTCRN, Smart Turn, NAMO. Silero VAD is
+      # baked into the image and does not need this. Point TURN_MODEL_PATH /
+      # TEXT_TURN_MODEL_PATH / TEXT_TURN_TOKENIZER_PATH at /app/models/... to use the others.
+      - ./models:/app/models:ro
       # Rolling app log (logback-spring.xml) — the per-turn "turn latency:" lines live here
       # after `docker compose logs` has scrolled past them.
       - ./logs:/app/logs
+      # End-of-turn dataset from live calls (TurnDatasetProperties, TURN_DATASET_DIR is relative
+      # to /app) — caller words, kept on the host so a recreated container does not lose them.
+      - ./data/turn-dataset:/app/data/turn-dataset
       # Only the generated/ subdirectory of the asterisk config: the app writes
       # pjsip_trunks.conf and pjsip_operators.conf there and Asterisk #tryincludes them.
       # The rest of that directory (ARI/AMI/SIP credential files) stays out of this

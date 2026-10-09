@@ -33,4 +33,14 @@ public interface PackUseCase {
 
     /** Installs a pack that is not in the catalog — a generated draft, as the person edited it. */
     PackInstallResponse installDraft(long companyId, InstallDraftRequest request);
+
+    /**
+     * An agent as a pack — the same JSON {@code installDraft} takes, so an agent can be kept in git
+     * and installed into another company or environment. The scenario is the one the agent runs,
+     * a shared scenario copied in; the tools are the ones attached now, with every secret they
+     * read listed by key and never by value.
+     *
+     * @param version a published version, or null for the draft
+     */
+    VerticalPack exportAgent(long companyId, long agentId, Integer version);
 }

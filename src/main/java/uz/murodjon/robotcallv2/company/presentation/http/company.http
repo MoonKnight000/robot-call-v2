@@ -40,6 +40,15 @@ Authorization: Bearer {{auth_token}}
   "status": "ACTIVE"
 }
 
+### Set Company Concurrency Limit (SUPERADMIN; null — the platform default)
+PUT http://localhost:8080/api/companies/1/concurrency-limit
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "maxConcurrentCalls": 40
+}
+
 ### Get Company Config
 GET http://localhost:8080/api/companies/1/config
 Authorization: Bearer {{auth_token}}

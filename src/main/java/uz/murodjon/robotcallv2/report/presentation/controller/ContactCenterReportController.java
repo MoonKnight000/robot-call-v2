@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
 import uz.murodjon.robotcallv2.report.application.dto.OperatorReportRow;
 import uz.murodjon.robotcallv2.report.application.dto.QueueReportRow;
+import uz.murodjon.robotcallv2.report.domain.entity.PredictiveDialingStats;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -31,6 +32,18 @@ public interface ContactCenterReportController {
     @GetMapping("/operators")
     ResponseEntity<ResponseData<List<OperatorReportRow>>> operators(
             @CurrentCompanyId long companyId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to);
+
+    /**
+     * A PREDICTIVE campaign's calls: how many were answered, joined to an operator, taken by the
+     * AI agent (overflow) or abandoned, and how long a client waited for their operator.
+     */
+    @PreAuthorize("hasAuthority('REPORT_READ')")
+    @GetMapping("/campaigns/{campaignId}/predictive")
+    ResponseEntity<ResponseData<PredictiveDialingStats>> predictiveDialing(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to);
 

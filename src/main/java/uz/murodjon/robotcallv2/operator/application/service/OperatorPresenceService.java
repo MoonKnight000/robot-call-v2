@@ -136,6 +136,13 @@ public class OperatorPresenceService implements OperatorPresenceUseCase {
         }
     }
 
+    @Override
+    public void finishWrapUp(long userId) {
+        Instant now = clock.instant();
+        transitionFrom(userId, OperatorStatus.WRAP_UP,
+                current -> current.withStatus(OperatorStatus.AVAILABLE, null, now, null));
+    }
+
     /** Ends every wrap-up whose time is up. */
     @Scheduled(fixedDelay = 1000)
     void releaseWrapUps() {

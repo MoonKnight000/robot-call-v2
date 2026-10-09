@@ -2,8 +2,9 @@
 
 `uz.murodjon.robotcallv2.webhook` va `uz.murodjon.robotcallv2.sms`
 
-> ⚠️ **Bu yerda REST endpoint yo'q.** Ikkala mexanizm ham **chiquvchi**: platforma o'zi
-> tashqi manzilga so'rov yuboradi. `/api/webhooks` degan kontroller mavjud emas.
+> ⚠️ Ikkala mexanizm ham **chiquvchi**: platforma o'zi tashqi manzilga so'rov yuboradi.
+> `/api/webhooks` degan kontroller mavjud emas. Yagona REST qismi — qayta urinish navbatini
+> ko'rish va `FAILED` yozuvni qo'lda qayta yuborish: `/api/webhook-deliveries` (§1.3).
 > Webhook manzillari **kompaniya/agent sozlamalarida** beriladi (§1). `application.yml`
 > dagi kalitlar:
 >
@@ -68,6 +69,62 @@ Faqat `postCallWebhook` va post-call `WEBHOOK` action uchun:
 - Saqlangan URL va header'lar shifrlangan (secret vault kaliti bilan); kalit
   (`voice-agent.encryption.secret-key`) o'rnatilmagan bo'lsa qayta urinish bo'lmaydi.
 - Yetkazilgan yozuvlar 7 kundan keyin o'chiriladi.
+- `FAILED` yozuvni panel qayta yuborishi mumkin — §1.3.
+
+### 1.3. Yetkazishlar jurnali va qo'lda qayta yuborish — `/api/webhook-deliveries`
+
+Jurnalda faqat **birinchi urinishi muvaffaqiyatsiz bo'lgan** yetkazishlar bor (§1.2): birinchi
+urinishda yetkazilgan webhook saqlanmaydi. Javobda faqat `host` ko'rinadi — URL, header va payload
+qaytmaydi (ularda kalitlar va mijoz ma'lumoti bor).
+
+| Metod | URL | Permission | Tavsif |
+|---|---|---|---|
+| `POST` | `/api/webhook-deliveries/filter` | `AI_AGENT_READ` | Sahifalangan ro'yxat |
+| `POST` | `/api/webhook-deliveries/{id}/resend` | `AI_AGENT_EDIT` | `FAILED` yozuvni hozir yana bir marta yuborish |
+
+**`POST /api/webhook-deliveries/filter`** — barcha maydonlar ixtiyoriy:
+
+```json
+{
+  "page": 0,
+  "size": 20,
+  "orders": { "CREATED_AT": "DESC" },
+  "status": "FAILED",
+  "source": "POST_CALL",
+  "from": "2026-10-01T00:00:00Z",
+  "to": "2026-10-08T00:00:00Z"
+}
+```
+
+`orders` ustunlari: `CREATED_AT`, `ATTEMPTS` (default `CREATED_AT: DESC`). `status`: `PENDING` /
+`DELIVERED` / `FAILED`. `source`: `POST_CALL` / `POST_CALL_ACTION`. `from` kiradi, `to` kirmaydi.
+
+Javob — `PageableData<WebhookDeliveryRow>`:
+
+```json
+{
+  "id": 41,
+  "deliveryId": "6b1f0c7e-4c55-4a57-9a43-0e3f5b0c2d11",
+  "source": "POST_CALL",
+  "host": "crm.example.uz",
+  "status": "FAILED",
+  "attempts": 4,
+  "nextAttemptAt": null,
+  "lastError": "503 Service Unavailable",
+  "createdAt": "2026-10-07T09:12:44Z",
+  "deliveredAt": null
+}
+```
+
+**`POST /api/webhook-deliveries/{id}/resend`** — so'rov darhol, o'sha `X-RobotCall-Delivery` bilan
+yuboriladi va urinishlar soniga qo'shiladi. Natija qanday bo'lmasin `200`: qaytgan qatorning
+`status` i `DELIVERED` yoki yana `FAILED` (yangi `lastError` bilan). Muvaffaqiyatsiz qayta yuborish
+navbatga qo'yilmaydi va bildirishnoma yubormaydi — natija javobda ko'rinadi.
+
+| Xato | Qachon |
+|---|---|
+| `404 WEBHOOK_DELIVERY_NOT_FOUND` | Bunday yozuv yo'q yoki boshqa kompaniyaniki |
+| `409 WEBHOOK_DELIVERY_NOT_FAILED` | Yozuv `FAILED` emas (navbatda yoki yetkazilgan) yoki uni hozir boshqa so'rov qayta yubormoqda |
 
 ---
 

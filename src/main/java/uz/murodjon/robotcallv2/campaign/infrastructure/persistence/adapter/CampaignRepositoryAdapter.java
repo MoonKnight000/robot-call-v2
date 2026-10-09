@@ -161,8 +161,8 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
         return true;
     }
 
-    private AiAgentEntity aiAgentReference(long aiAgentId) {
-        return aiAgentJpaRepository.getReferenceById(aiAgentId);
+    private AiAgentEntity aiAgentReference(Long aiAgentId) {
+        return aiAgentId != null ? aiAgentJpaRepository.getReferenceById(aiAgentId) : null;
     }
 
     private Specification<CampaignEntity> buildSpecification(CampaignFilter filter, long companyId) {

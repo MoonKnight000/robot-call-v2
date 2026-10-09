@@ -34,6 +34,17 @@ public enum Permission {
 
     AI_AGENT_READ("aag.r", PermissionGroup.AI_AGENT),
     AI_AGENT_EDIT("aag.w", PermissionGroup.AI_AGENT),
+    /**
+     * Start an agent's evaluation run and nothing else — for CI with an API key. It changes no
+     * setting; it spends LLM tokens, which is why a key gets it only when granted it.
+     */
+    AGENT_EVAL_RUN("aag.e", PermissionGroup.AI_AGENT),
+    /**
+     * Write an agent's draft and its test cases without touching what callers hear — for an
+     * API key behind the MCP server (Claude Code, Cursor). Publish, rollout and switching an
+     * agent on stay with {@link #AI_AGENT_EDIT}; the MCP server enforces the rest (AgentDraftPolicy).
+     */
+    AGENT_DRAFT_EDIT("aag.d", PermissionGroup.AI_AGENT),
 
     SCENARIO_READ("scn.r", PermissionGroup.SCENARIO),
     SCENARIO_EDIT("scn.w", PermissionGroup.SCENARIO),

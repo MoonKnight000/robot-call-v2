@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
+import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConcurrencyLimitRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConfigRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusRequest;
@@ -48,6 +49,13 @@ public interface CompanyController {
     ResponseEntity<ResponseData<Company>> updateStatus(
             @PathVariable long id,
             @Valid @RequestBody UpdateCompanyStatusRequest request);
+
+    /** Platform-only: how many dialer calls the company may hold at once; null — the platform default. */
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
+    @PutMapping("/companies/{id}/concurrency-limit")
+    ResponseEntity<ResponseData<Company>> updateConcurrencyLimit(
+            @PathVariable long id,
+            @Valid @RequestBody UpdateCompanyConcurrencyLimitRequest request);
 
     @PreAuthorize("hasAuthority('COMPANY_EDIT')")
     @PostMapping("/companies/{id}/logo")

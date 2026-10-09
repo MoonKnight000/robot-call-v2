@@ -2,9 +2,12 @@ package uz.murodjon.robotcallv2.siptrunk.application.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.ami.AmiClient;
+import uz.murodjon.robotcallv2.shared.cluster.ClusterSignal;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
@@ -33,20 +36,42 @@ public class PjsipConfigWriter {
 
             """;
 
+    /** Each instance has an Asterisk of its own, and every one of them dials over these trunks. */
+    private static final String TRUNKS_CHANGED = "pjsip.trunks";
+
     private final SipTrunkRepository repository;
     private final SecretCipher cipher;
     private final PjsipConfigProperties pjsipConfigProperties;
     private final AmiClient ami;
+    private final ClusterSignal clusterSignal;
 
     public PjsipConfigWriter(SipTrunkRepository repository, SecretCipher cipher, PjsipConfigProperties pjsipConfigProperties,
-                              AmiClient ami) {
+                              AmiClient ami, ClusterSignal clusterSignal) {
         this.repository = repository;
         this.cipher = cipher;
         this.pjsipConfigProperties = pjsipConfigProperties;
         this.ami = ami;
+        this.clusterSignal = clusterSignal;
+        clusterSignal.subscribe(TRUNKS_CHANGED, this::regenerateHere);
     }
 
+    /** A trunk changed: this instance's Asterisk now, every other instance's on the signal. */
     public void regenerateAndReload() {
+        regenerateHere();
+        clusterSignal.send(TRUNKS_CHANGED);
+    }
+
+    /**
+     * The file survives a restart, but a trunk may have changed while this instance was
+     * down — and a new instance's Asterisk has no file at all until it is written here.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void writeOnStartup() {
+        regenerateHere();
+    }
+
+    /** Rewrites this instance's Asterisk's trunk file from the database and reloads it. */
+    public void regenerateHere() {
         if (!pjsipConfigProperties.enabled()) {
             return;
         }

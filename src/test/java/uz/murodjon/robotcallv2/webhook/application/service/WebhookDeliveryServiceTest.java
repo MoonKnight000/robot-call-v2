@@ -6,7 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.notification.application.service.NotificationService;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
+import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
+import uz.murodjon.robotcallv2.webhook.application.mapper.WebhookDeliveryMapper;
 import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookDeliveryRepository;
 import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookSenderPort;
 import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDelivery;
@@ -20,14 +23,17 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,7 +55,8 @@ class WebhookDeliveryServiceTest {
     private final SecretCipher cipher = mock(SecretCipher.class);
     private final NotificationService notificationService = mock(NotificationService.class);
     private final WebhookDeliveryService service = new WebhookDeliveryService(sender, repository, secretUseCase,
-            cipher, notificationService, Clock.fixed(NOW, ZoneOffset.UTC), new ObjectMapper());
+            cipher, notificationService, Clock.fixed(NOW, ZoneOffset.UTC), new ObjectMapper(),
+            new WebhookDeliveryMapper());
 
     @BeforeEach
     void setUp() {
@@ -104,6 +111,56 @@ class WebhookDeliveryServiceTest {
 
         verifyNoInteractions(sender);
         verify(repository).markRetry(eq(5L), eq(2), any(), contains("could not be decrypted"));
+    }
+
+    /** A manual resend keeps the delivery id, so a receiver that got an earlier try after all can still deduplicate. */
+    @Test
+    void aManualResendOfAFailedDeliveryKeepsItsDeliveryIdAndCountsTheTry() throws Exception {
+        UUID deliveryId = UUID.randomUUID();
+        WebhookDelivery failed = storedDelivery(deliveryId, WebhookDeliveryStatus.FAILED, 4);
+        when(repository.findByCompanyIdAndId(COMPANY_ID, 5L))
+                .thenReturn(failed, storedDelivery(deliveryId, WebhookDeliveryStatus.DELIVERED, 5));
+        when(repository.claimFailed(eq(5L), any())).thenReturn(true);
+        when(cipher.decrypt("sealed")).thenReturn("{\"url\":\"" + PUBLIC_URL + "\",\"headers\":{}}");
+
+        WebhookDeliveryRow row = service.retryDelivery(COMPANY_ID, 5L);
+
+        verify(sender).post(eq(PUBLIC_URL), eq(Map.of()), eq(Map.of()), isNull(), eq(deliveryId.toString()));
+        verify(repository).markDelivered(5L, 5, NOW);
+        assertThat(row.status()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+    }
+
+    /** Whoever pressed the button sees the failure in the answer; it is not queued or notified again. */
+    @Test
+    void aManualResendThatFailsAgainIsMarkedFailedWithoutANotification() throws Exception {
+        WebhookDelivery failed = storedDelivery(UUID.randomUUID(), WebhookDeliveryStatus.FAILED, 4);
+        when(repository.findByCompanyIdAndId(COMPANY_ID, 5L)).thenReturn(failed);
+        when(repository.claimFailed(eq(5L), any())).thenReturn(true);
+        when(cipher.decrypt("sealed")).thenReturn("{\"url\":\"" + PUBLIC_URL + "\",\"headers\":{}}");
+        doThrow(new RuntimeException("502 Bad Gateway")).when(sender).post(any(), any(), any(), any(), any());
+
+        service.retryDelivery(COMPANY_ID, 5L);
+
+        verify(repository).markFailed(eq(5L), eq(5), contains("502"));
+        verify(repository, never()).markRetry(anyLong(), anyInt(), any(), any());
+        verifyNoInteractions(notificationService);
+    }
+
+    /** A delivery the sweep still owns is not sent from the panel as well. */
+    @Test
+    void onlyAFailedDeliveryCanBeResent() {
+        WebhookDelivery pending = storedDelivery(UUID.randomUUID(), WebhookDeliveryStatus.PENDING, 2);
+        when(repository.findByCompanyIdAndId(COMPANY_ID, 5L)).thenReturn(pending);
+
+        assertThatThrownBy(() -> service.retryDelivery(COMPANY_ID, 5L)).isInstanceOf(ConflictException.class);
+
+        verifyNoInteractions(sender);
+        verify(repository, never()).claimFailed(anyLong(), any());
+    }
+
+    private static WebhookDelivery storedDelivery(UUID deliveryId, WebhookDeliveryStatus status, int attempts) {
+        return new WebhookDelivery(5L, deliveryId, COMPANY_ID, "POST_CALL", "hook.example", "sealed",
+                Map.of(), status, attempts, null, "503", NOW, null);
     }
 
     private void dueDelivery(UUID deliveryId, String url) throws Exception {

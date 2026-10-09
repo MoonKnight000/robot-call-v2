@@ -53,6 +53,7 @@ public final class CallCostCalculator {
                     .divide(CHARS_PER_THOUSAND, 6, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(rates.ttsPer1kCharsUzs()));
         }
+        stt = stt.add(minutes(usage.extraSttSeconds()).multiply(BigDecimal.valueOf(rates.sttPerMinuteUzs())));
         BigDecimal telephony = minutes.multiply(BigDecimal.valueOf(rates.telephonyPerMinuteUzs()));
 
         long llmUzs = withMarkup(llm, rates.markupBasisPoints());

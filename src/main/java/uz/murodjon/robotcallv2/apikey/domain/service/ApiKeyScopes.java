@@ -30,6 +30,11 @@ public final class ApiKeyScopes {
             Permission.DO_NOT_CALL_READ, Permission.DO_NOT_CALL_EDIT,
             Permission.KNOWLEDGE_BASE_READ, Permission.KNOWLEDGE_BASE_EDIT,
             Permission.AI_AGENT_READ,
+            // The one exception to "a key does not cost money": an evaluation run, so CI can gate a
+            // release on it. It edits nothing, and a key holds it only when granted it.
+            Permission.AGENT_EVAL_RUN,
+            // Drafts only, through the MCP server: publish, rollout and enabling stay with AI_AGENT_EDIT.
+            Permission.AGENT_DRAFT_EDIT,
             Permission.SCENARIO_READ,
             Permission.INBOUND_ROUTE_READ,
             Permission.LIVE_READ,

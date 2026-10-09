@@ -91,6 +91,36 @@ public class CampaignOutcomeService {
                 targetId, disposition, t.attempts(), maxAttempts, next);
     }
 
+    /**
+     * An operator's wrap-up, in target terms. Not routed through {@link #applyOutcome}: there
+     * a CALLBACK_REQUESTED with a future next_attempt_at keeps the target as it is, and an
+     * operator's claim always carries one — its lease.
+     */
+    void settleByOperator(long companyId, long targetId, TargetStatus status, Instant callbackAt) {
+        CampaignTarget t = campaignTargetRepository.find(companyId, targetId);
+        if (t == null) {
+            return;
+        }
+        if (status == TargetStatus.PENDING && callbackAt != null) {
+            scheduleCallback(companyId, targetId, callbackAt);
+            return;
+        }
+        Campaign c = campaignRepository.find(companyId, t.campaignId());
+        TargetStatus settled = status;
+        if (status == TargetStatus.PENDING && t.attempts() >= (c != null ? c.maxAttempts() : 3)) {
+            settled = TargetStatus.EXHAUSTED;
+        }
+        if (settled == TargetStatus.PENDING) {
+            Instant next = nextAttemptAt(Disposition.CALLBACK_REQUESTED, c);
+            campaignTargetRepository.updateStatus(targetId, TargetStatus.PENDING, next);
+            log.info("Target {} rescheduled by its operator -> {}", targetId, next);
+            return;
+        }
+        campaignTargetRepository.updateStatus(targetId, settled, null);
+        log.info("Target {} {} by its operator", targetId, settled);
+        checkCompletion(companyId, t.campaignId());
+    }
+
     void scheduleCallback(long companyId, long targetId, Instant callbackAt) {
         CampaignTarget t = campaignTargetRepository.find(companyId, targetId);
         if (t == null || callbackAt == null) {

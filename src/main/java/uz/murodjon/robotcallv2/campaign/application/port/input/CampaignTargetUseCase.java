@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TargetScore;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -58,6 +59,34 @@ public interface CampaignTargetUseCase {
 
     /** Claims up to {@code limit} of the campaign's due targets for the dialer. */
     List<CampaignTarget> claimDueTargets(long campaignId, int limit);
+
+    /**
+     * The same for a {@code SCORE} campaign: the likeliest payers first, a target whose best
+     * hour is {@code localHour} (the company's) ahead of an equal one whose is not.
+     */
+    List<CampaignTarget> claimDueTargetsByScore(long campaignId, int limit, int localHour);
+
+    /** The campaign's waiting targets never scored or scored before {@code scoredBefore}, never-scored first. */
+    List<CampaignTarget> findTargetsToScore(long campaignId, Instant scoredBefore, int limit);
+
+    /** Target id → its new score. */
+    void updateTargetScores(long companyId, Map<Long, TargetScore> scores);
+
+    /**
+     * Claims the company campaign's next due target for operator {@code userId} — counted as
+     * an attempt, as a dialer claim is. Null when nothing is due.
+     */
+    CampaignTarget claimNextForOperator(long companyId, long campaignId, long userId);
+
+    /** The target operator {@code userId} holds in the company campaign and has not settled, or null. */
+    CampaignTarget findHeldByOperator(long companyId, long campaignId, long userId);
+
+    /**
+     * Settles a target with what its operator said in the wrap-up: {@code DONE} or
+     * {@code EXHAUSTED} closes it, {@code PENDING} dials it again — at {@code callbackAt} when
+     * given, otherwise after the campaign's retry delay, unless its attempts are spent.
+     */
+    void settleByOperator(long companyId, long targetId, TargetStatus status, Instant callbackAt);
 
     /**
      * Gives a claimed target back — the attempt the claim counted included — because nothing

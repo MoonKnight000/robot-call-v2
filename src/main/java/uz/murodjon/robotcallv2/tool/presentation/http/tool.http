@@ -115,3 +115,21 @@ Authorization: Bearer {{auth_token}}
   "operationIds": ["listProducts", "createOrder", "getOrder"],
   "secretPrefix": "SHOP"
 }
+
+### 10. Tool request log — failed requests of one tool on one call
+POST http://localhost:8080/api/tools/executions/filter
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 50,
+  "toolId": 1,
+  "status": "HTTP_ERROR",
+  "from": "2026-10-01T00:00:00Z",
+  "orders": { "LATENCY_MS": "DESC" }
+}
+
+### 11. Per-tool stats for the last 7 days
+GET http://localhost:8080/api/tools/executions/stats?days=7
+Authorization: Bearer {{auth_token}}

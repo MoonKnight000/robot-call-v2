@@ -322,7 +322,7 @@ public class AuthService implements AuthUseCase {
     public StreamTicketResponse createStreamTicket(long companyId) {
         long userId = currentUser.id()
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
-        return streamTicketService.issue(buildPrincipal(userUseCase.requireUser(companyId, userId)));
+        return streamTicketService.create(buildPrincipal(userUseCase.requireUser(companyId, userId)));
     }
 
     private AuthenticatedUser buildPrincipal(User user) {

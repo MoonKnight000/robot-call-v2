@@ -158,6 +158,12 @@ public class ConversionService implements ConversionUseCase {
         return conversionRepository.findConversionsByVariant(companyId, campaignId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsEventByPhoneSince(long companyId, String phone, String goalKey, Instant since) {
+        return conversionRepository.existsEventByPhoneSince(companyId, PhoneNumbers.normalize(phone), goalKey, since);
+    }
+
     private ConversionResultResponse saveRejected(ConversionEvent event, String reason) {
         ConversionEvent saved = conversionRepository.saveEvent(event.reject(reason));
         log.info("Conversion '{}' for {} not attributed: {}", saved.goalKey(), PhoneMasker.mask(saved.phone()), reason);

@@ -52,7 +52,7 @@ public class CsvReportRenderer {
                     r.summary(),
                     r.promisedDate() != null ? DateTimeProperties.DATE_FORMATTER.format(r.promisedDate()) : "",
                     r.promisedAmount() != null ? r.promisedAmount().toString() : "",
-                    r.crmNoteId() != null ? String.valueOf(r.crmNoteId()) : "");
+                    r.crmNoteId() != null ? r.crmNoteId() : "");
         }
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }

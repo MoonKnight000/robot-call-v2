@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
 import uz.murodjon.robotcallv2.report.application.port.output.CallReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -16,7 +17,7 @@ import java.sql.SQLException;
 import java.util.List;
 
 import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
-
+//todo clean code
 /**
  * The call list, one call in full, and a number's history. Native SQL through
  * {@link JdbcClient}, every column read by its alias.
@@ -200,7 +201,8 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                 extras.followUpNote(),
                 extras.escalated(),
                 extras.errorMessage(),
-                findTechnicalMetrics(callId));
+                findTechnicalMetrics(callId),
+                findTalkMetrics(callId));
     }
 
     private CallTechnicalMetrics findTechnicalMetrics(long callId) {
@@ -226,6 +228,17 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                         intOrNull(rs, "rtp_packets_lost"),
                         intOrNull(rs, "rtp_jitter_ms"),
                         doubleOrNull(rs, "rtp_mos")))
+                .optional()
+                .orElse(null);
+    }
+
+    private CallTalkMetrics findTalkMetrics(long callId) {
+        return jdbc.sql("SELECT analysed_ms, client_talk_ms, operator_talk_ms, overtalk_ms, silence_ms, "
+                        + "longest_silence_ms FROM call_talk_metrics WHERE call_id = :callId")
+                .param("callId", callId)
+                .query((rs, n) -> new CallTalkMetrics(callId, rs.getInt("analysed_ms"), rs.getInt("client_talk_ms"),
+                        rs.getInt("operator_talk_ms"), rs.getInt("overtalk_ms"), rs.getInt("silence_ms"),
+                        rs.getInt("longest_silence_ms")))
                 .optional()
                 .orElse(null);
     }
@@ -273,7 +286,7 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                 rs.getString("summary"),
                 localDateOrNull(rs, "promised_date"),
                 rs.getBigDecimal("promised_amount"),
-                longOrNull(rs, "crm_note_id"),
+                rs.getString("crm_note_id"),
                 rs.getString("client_name"),
                 rs.getString("campaign_name"),
                 rs.getString("operator_name"));

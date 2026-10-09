@@ -8,6 +8,8 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.flow.FlowPrompter;
 import uz.murodjon.robotcallv2.agent.flow.PbxPhrases;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.missedcall.application.port.input.MissedCallUseCase;
 import uz.murodjon.robotcallv2.missedcall.domain.enums.MissedCallStatus;
@@ -15,6 +17,7 @@ import uz.murodjon.robotcallv2.operator.application.port.input.OperatorAccountUs
 import uz.murodjon.robotcallv2.operator.application.port.input.OperatorPresenceUseCase;
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorSipAccount;
 import uz.murodjon.robotcallv2.operator.domain.enums.OperatorStatus;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
@@ -64,6 +67,7 @@ public class OperatorFirstDialer {
     private final MissedCallUseCase missedCallUseCase;
     private final UserUseCase userUseCase;
     private final CallAttemptUseCase callAttemptUseCase;
+    private final CampaignTargetUseCase campaignTargetUseCase;
     private final FlowPrompter prompter;
     private final CompanyConfigUseCase companyConfig;
     private final ExecutorService callExecutor;
@@ -76,18 +80,22 @@ public class OperatorFirstDialer {
         private final String phone;
         private final Long missedCallId;
         private final boolean automatic;
+        /** The campaign target a preview card dials, or {@code CallAttempt.NO_TARGET}. */
+        private final long targetId;
         private final Instant createdAt = Instant.now();
         private volatile String operatorChannelId;
         private volatile String clientChannelId;
         private volatile boolean operatorAnswered;
 
-        private PendingCall(String token, long companyId, long userId, String phone, Long missedCallId, boolean automatic) {
+        private PendingCall(String token, long companyId, long userId, String phone, Long missedCallId, boolean automatic,
+                            long targetId) {
             this.token = token;
             this.companyId = companyId;
             this.userId = userId;
             this.phone = phone;
             this.missedCallId = missedCallId;
             this.automatic = automatic;
+            this.targetId = targetId;
         }
     }
 
@@ -100,14 +108,15 @@ public class OperatorFirstDialer {
 
     public OperatorFirstDialer(ObjectProvider<AriService> ariProvider, OperatorAccountUseCase operatorAccountUseCase,
                                OperatorPresenceUseCase operatorPresenceUseCase, MissedCallUseCase missedCallUseCase, UserUseCase userUseCase,
-                               CallAttemptUseCase callAttemptUseCase, FlowPrompter prompter,
-                               CompanyConfigUseCase companyConfig, ExecutorService callExecutor) {
+                               CallAttemptUseCase callAttemptUseCase, CampaignTargetUseCase campaignTargetUseCase,
+                               FlowPrompter prompter, CompanyConfigUseCase companyConfig, ExecutorService callExecutor) {
         this.ariProvider = ariProvider;
         this.operatorAccountUseCase = operatorAccountUseCase;
         this.operatorPresenceUseCase = operatorPresenceUseCase;
         this.missedCallUseCase = missedCallUseCase;
         this.userUseCase = userUseCase;
         this.callAttemptUseCase = callAttemptUseCase;
+        this.campaignTargetUseCase = campaignTargetUseCase;
         this.prompter = prompter;
         this.companyConfig = companyConfig;
         this.callExecutor = callExecutor;
@@ -121,6 +130,22 @@ public class OperatorFirstDialer {
      * @return the channel ringing the operator
      */
     public String dial(long companyId, long operatorUserId, String phone, Long missedCallId, boolean automatic) {
+        return ringOperator(companyId, operatorUserId, phone, missedCallId, automatic, CallAttempt.NO_TARGET);
+    }
+
+    /**
+     * A preview card: rings the operator, then dials the target's number. The client leg is
+     * booked on {@code targetId}; a client who never answers settles the target as NO_ANSWER,
+     * one who does is settled by the operator's wrap-up.
+     *
+     * @return the channel ringing the operator
+     */
+    public String dialTarget(long companyId, long operatorUserId, String phone, long targetId) {
+        return ringOperator(companyId, operatorUserId, phone, null, false, targetId);
+    }
+
+    private String ringOperator(long companyId, long operatorUserId, String phone, Long missedCallId, boolean automatic,
+                                long targetId) {
         OperatorSipAccount account = operatorAccountUseCase.findSipAccount(companyId, operatorUserId);
         if (account == null) {
             throw new ConflictException(ErrorCode.OPERATOR_NOT_REACHABLE, operatorUserId);
@@ -134,10 +159,10 @@ public class OperatorFirstDialer {
             throw new ConflictException(ErrorCode.OPERATOR_ON_CALL);
         }
         PendingCall call = new PendingCall(UUID.randomUUID().toString(), companyId, operatorUserId, number,
-                missedCallId, automatic);
+                missedCallId, automatic, targetId);
         pending.put(call.token, call);
         try {
-            String channelId = ariProvider.getObject().originateToStasis("PJSIP/" + account.endpointName(),
+            String channelId = ariProvider.getObject().originateToStasis(ariProvider.getObject().buildOperatorDialString(account.endpointName()),
                     "callback," + call.token, OPERATOR_RING_SEC, "\"Qayta qo'ng'iroq\" <" + digits(number) + ">");
             call.operatorChannelId = channelId;
             byChannel.put(channelId, call);
@@ -170,7 +195,7 @@ public class OperatorFirstDialer {
                 placeClientLeg(call);
             } catch (Exception e) {
                 log.warn("Callback to {} could not be placed: {}", PhoneMasker.mask(call.phone), e.getMessage());
-                clientUnreachable(call);
+                clientUnreachable(call, Disposition.FAILED);
             }
         });
     }
@@ -217,7 +242,7 @@ public class OperatorFirstDialer {
         }
         if (dialled.length() >= OUTSIDE_NUMBER_MIN_DIGITS) {
             PendingCall call = new PendingCall(UUID.randomUUID().toString(), caller.companyId(), caller.userId(),
-                    dialled, null, false);
+                    dialled, null, false, CallAttempt.NO_TARGET);
             call.operatorChannelId = channelId;
             call.operatorAnswered = true;
             pending.put(call.token, call);
@@ -231,7 +256,7 @@ public class OperatorFirstDialer {
                 } catch (Exception e) {
                     log.warn("Outside call to {} from operator {} failed: {}", PhoneMasker.mask(dialled), caller.userId(),
                             e.getMessage());
-                    clientUnreachable(call);
+                    clientUnreachable(call, Disposition.FAILED);
                 }
             });
             return;
@@ -285,22 +310,32 @@ public class OperatorFirstDialer {
             }
             reopen(call);
         } else if (channelId.equals(call.clientChannelId) && pending.remove(call.token) != null) {
-            clientUnreachable(call);
+            clientUnreachable(call, Disposition.NO_ANSWER);
         }
     }
 
     private void placeClientLeg(PendingCall call) {
         // Booked as a call the moment it is dialled: an unanswered callback is an attempt too.
         String clientChannel = ariProvider.getObject().originateClientCall(call.companyId, call.phone,
-                "callback-client," + call.token, CLIENT_RING_SEC, companyLanguage(call.companyId));
+                "callback-client," + call.token, CLIENT_RING_SEC, companyLanguage(call.companyId), call.targetId);
         call.clientChannelId = clientChannel;
         byChannel.put(clientChannel, call);
     }
 
-    /** The client never answered: the operator hears so, and the missed call goes back on the list. */
-    private void clientUnreachable(PendingCall call) {
+    /**
+     * The client never answered: the operator hears so, the missed call goes back on the
+     * list, and a preview card's target is settled as {@code why} — it has no wrap-up to wait for.
+     */
+    private void clientUnreachable(PendingCall call, Disposition why) {
         pending.remove(call.token);
         reopen(call);
+        if (call.targetId != CallAttempt.NO_TARGET) {
+            try {
+                campaignTargetUseCase.applyOutcome(call.companyId, call.targetId, why);
+            } catch (Exception e) {
+                log.warn("Target {} could not be settled as {}: {}", call.targetId, why, e.getMessage());
+            }
+        }
         String operatorChannel = call.operatorChannelId;
         if (operatorChannel == null) {
             return;
@@ -330,7 +365,7 @@ public class OperatorFirstDialer {
         colleagueBridges.put(callerChannelId, bridgeId);
         ari.ringChannel(callerChannelId);
         try {
-            ari.originateToStasis("PJSIP/" + target.endpointName(), "internal-answer," + callerChannelId,
+            ari.originateToStasis(ari.buildOperatorDialString(target.endpointName()), "internal-answer," + callerChannelId,
                     COLLEAGUE_RING_SEC, "\"" + caller.endpointName() + "\" <" + caller.endpointName() + ">");
         } catch (RuntimeException e) {
             colleagueBridges.remove(callerChannelId);

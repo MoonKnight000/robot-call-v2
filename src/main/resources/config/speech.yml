@@ -149,31 +149,44 @@ voice-agent:
   # Semantic end-of-turn (Smart Turn v3) — SmartTurnProperties.
   # Off: no ONNX model, and the published model does not cover uz-UZ.
   turn:
-    enabled: ${TURN_DETECTOR:false}
-    model-path: ${TURN_MODEL_PATH:}
+    enabled: ${TURN_DETECTOR:true}
+    model-path: ${TURN_MODEL_PATH:models/smart_turn_v3.onnx}
     languages: ${TURN_LANGUAGES:ru-RU}
     threshold: ${TURN_THRESHOLD:0.5}
     max-extend-ms: ${TURN_MAX_EXTEND_MS:500}
     early-wait-ms: ${TURN_EARLY_WAIT_MS:0}
     early-threshold: ${TURN_EARLY_THRESHOLD:0.9}
-    n-fft: ${TURN_N_FFT:512}
-    hop-samples: ${TURN_HOP_SAMPLES:256}
-    mels: ${TURN_MELS:128}
-    frames: ${TURN_FRAMES:500}
+    n-fft: ${TURN_N_FFT:400}
+    hop-samples: ${TURN_HOP_SAMPLES:160}
+    mels: ${TURN_MELS:80}
+    frames: ${TURN_FRAMES:800}
 
   # End of turn from the words (TextTurnProperties, NAMO Turn Detector v1 Multilingual).
   # Used only where Smart Turn is not installed for the call. uz-UZ is not among the
   # model's fine-tuned languages — add it to TEXT_TURN_LANGUAGES only after a replay run.
   text-turn:
-    enabled: ${TEXT_TURN_DETECTOR:false}
-    model-path: ${TEXT_TURN_MODEL_PATH:}
-    tokenizer-path: ${TEXT_TURN_TOKENIZER_PATH:}
+    enabled: ${TEXT_TURN_DETECTOR:true}
+    model-path: ${TEXT_TURN_MODEL_PATH:models/namo/model_quant.onnx}
+    tokenizer-path: ${TEXT_TURN_TOKENIZER_PATH:models/namo/tokenizer.json}
     languages: ${TEXT_TURN_LANGUAGES:ru-RU}
     threshold: ${TEXT_TURN_THRESHOLD:0.5}
     max-extend-ms: ${TEXT_TURN_MAX_EXTEND_MS:600}
     early-wait-ms: ${TEXT_TURN_EARLY_WAIT_MS:0}
     early-threshold: ${TEXT_TURN_EARLY_THRESHOLD:0.9}
     max-tokens: ${TEXT_TURN_MAX_TOKENS:128}
+  # TurnDatasetProperties — labelled end-of-turn examples from live calls (VOICE-PIPELINE-PLAN
+  # Bosqich 1): the interim at each speech-gate close + whether the caller carried on.
+  # Needs vad-gating + dynamic endpointing (the reopen grace is the label). Writes redacted
+  # caller words to disk — switch on only while a dataset is being gathered.
+  turn-dataset:
+    enabled: ${TURN_DATASET_ENABLED:true}
+    directory: ${TURN_DATASET_DIR:data/turn-dataset}
+  # DenoiserProperties — neural noise suppression on the caller's leg (VOICE-PIPELINE-PLAN
+  # Bosqich 6). Replaces the broadband gate for agents with noise cancellation on. The model
+  # is downloaded, not committed (see docs/VOICE-PIPELINE-PLAN.md Bosqich 6).
+  denoiser:
+    enabled: ${DENOISER_ENABLED:true}
+    model-path: ${DENOISER_MODEL_PATH:models/gtcrn_simple.onnx}
 
   # Synthesis — TtsProperties. The selectable voice catalog is in the tts_voice table
   # (§2.5); these are the deployment defaults behind it.
@@ -202,10 +215,11 @@ voice-agent:
       folder-id: ${TTS_YANDEX_FOLDER_ID:}
       voice: ${TTS_YANDEX_VOICE:alena}
       voices:
-        uz-UZ: ${TTS_YANDEX_VOICE_UZ:nigora}
+        uz- UZ: ${TTS_YANDEX_VOICE_UZ:zarina}
         ru-RU: ${TTS_YANDEX_VOICE_RU:alena}
       voice-roles:
         nigora: []
+        zarina: []
         alena: [neutral, good]
         omazh: [neutral, evil]
       host: ${TTS_YANDEX_HOST:tts.api.cloud.yandex.net}
@@ -269,3 +283,5 @@ voice-agent:
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}
       min-continuous-speech-ms: ${VAD_AMD_MIN_SPEECH_MS:3500}
       silence-tolerance-ms: ${VAD_AMD_SILENCE_TOLERANCE_MS:600}
+      beep-silence-ms: ${VAD_AMD_BEEP_SILENCE_MS:1500}
+      beep-max-wait-ms: ${VAD_AMD_BEEP_MAX_WAIT_MS:10000}

@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.mapper;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.entity.AiModelConfigEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
@@ -22,7 +23,9 @@ public class AiModelConfigEntityMapper {
                 entity.getMaxOutputTokens(),
                 entity.getMaxCallSeconds(),
                 entity.getMaxTokensPerCall(),
-                entity.getCreatedAt()
+                entity.getCreatedAt(),
+                entity.getOwnLlmBaseUrl() == null ? null : new OwnLlmEndpoint(entity.getOwnLlmBaseUrl(),
+                        entity.getOwnLlmModel(), entity.getOwnLlmFastModel(), entity.getOwnLlmApiKeySecret())
         );
     }
 

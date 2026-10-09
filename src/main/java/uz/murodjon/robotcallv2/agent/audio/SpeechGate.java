@@ -101,6 +101,11 @@ public class SpeechGate {
     /** The latest interim as said, for a detector that judges the words themselves. */
     private volatile String lastInterim = "";
 
+    /** Told how each close turned out; null when nobody is listening. */
+    private GateCloseListener closeListener;
+    /** The last interim when the gate last shut — what the close being judged was made on. */
+    private String closedTranscript = "";
+
     public SpeechGate(int sampleRate, int preRollMs, int postRollMs, int minSpeechMs,
                       int shortUtteranceMs, int shortPostRollMs,
                       int minPostRollMs, double emaAlpha, int reopenGraceMs) {
@@ -226,10 +231,11 @@ public class SpeechGate {
         continuationClause = false;
         confirmedQuickAnswer = false;
         completeCue = false;
+        closedTranscript = lastInterim;
         lastInterim = "";
         // Start judging this close: whether the caller carries on is what says the
         // wait that produced it was too short.
-        sinceCloseSamples = dynamic ? 0 : -1;
+        sinceCloseSamples = reopenGraceSamples > 0 ? 0 : -1;
     }
 
     /**
@@ -292,10 +298,12 @@ public class SpeechGate {
         if (sinceCloseSamples < 0) {
             return;
         }
-        if (sinceCloseSamples <= reopenGraceSamples) {
+        boolean continued = sinceCloseSamples <= reopenGraceSamples;
+        if (continued) {
             adaptTowards(hangoverSamples);
         }
         sinceCloseSamples = -1;
+        notifyCloseJudged(continued);
     }
 
     /**
@@ -307,11 +315,31 @@ public class SpeechGate {
         if (sinceCloseSamples > reopenGraceSamples) {
             adaptTowards(minHangoverSamples);
             sinceCloseSamples = -1;
+            notifyCloseJudged(false);
         }
     }
 
+    /** Moves the learned hangover; a gate that does not learn only judges, for the listener. */
     private void adaptTowards(int target) {
-        emaHangoverSamples += emaAlpha * (target - emaHangoverSamples);
+        if (dynamic) {
+            emaHangoverSamples += emaAlpha * (target - emaHangoverSamples);
+        }
+    }
+
+    /**
+     * Report how a close turned out — what it was made on and whether it held. This is the
+     * label a semantic end-of-turn model is trained on: the interim at the close, and
+     * whether the caller in fact carried on.
+     */
+    public void setCloseListener(GateCloseListener closeListener) {
+        this.closeListener = closeListener;
+    }
+
+    private void notifyCloseJudged(boolean continued) {
+        if (closeListener != null) {
+            closeListener.closeJudged(closedTranscript, lastCloseWaitMs, continued);
+        }
+        closedTranscript = "";
     }
 
     /**

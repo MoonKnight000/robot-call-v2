@@ -7,9 +7,12 @@ import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 
@@ -89,8 +92,23 @@ public class CampaignEntity {
     private CompanyEntity company;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ai_agent_id", nullable = false)
+    @JoinColumn(name = "ai_agent_id")
     private AiAgentEntity aiAgent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dial_mode", nullable = false)
+    private DialMode dialMode = DialMode.AI;
+
+    /** The operator queue of a non-AI campaign; a plain id, as {@code ai_agent.transfer_queue_id}. */
+    @Column(name = "call_queue_id")
+    private Long callQueueId;
+
+    @Column(name = "max_ai_overflow_percent", nullable = false)
+    private int maxAiOverflowPercent = Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_ordering", nullable = false)
+    private TargetOrdering targetOrdering = TargetOrdering.FIFO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "recurrence_type", nullable = false)
@@ -283,8 +301,40 @@ public class CampaignEntity {
         this.aiAgent = aiAgent;
     }
 
-    public long getAiAgentId() {
-        return aiAgent != null ? aiAgent.getId() : 0L;
+    public Long getAiAgentId() {
+        return aiAgent != null ? aiAgent.getId() : null;
+    }
+
+    public DialMode getDialMode() {
+        return dialMode;
+    }
+
+    public void setDialMode(DialMode dialMode) {
+        this.dialMode = dialMode != null ? dialMode : DialMode.AI;
+    }
+
+    public Long getCallQueueId() {
+        return callQueueId;
+    }
+
+    public void setCallQueueId(Long callQueueId) {
+        this.callQueueId = callQueueId;
+    }
+
+    public int getMaxAiOverflowPercent() {
+        return maxAiOverflowPercent;
+    }
+
+    public void setMaxAiOverflowPercent(int maxAiOverflowPercent) {
+        this.maxAiOverflowPercent = maxAiOverflowPercent;
+    }
+
+    public TargetOrdering getTargetOrdering() {
+        return targetOrdering;
+    }
+
+    public void setTargetOrdering(TargetOrdering targetOrdering) {
+        this.targetOrdering = targetOrdering;
     }
 
     public RecurrenceType getRecurrenceType() {

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -165,6 +166,19 @@ class AriClient {
             return endpoint != null && "online".equalsIgnoreCase(endpoint.getState());
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /** Every PJSIP endpoint with a registered, reachable contact — one request, not one per endpoint. */
+    List<String> findOnlineEndpointNames() {
+        try {
+            List<Endpoint> endpoints = requireConnection().endpoints().listByTech().setTech("PJSIP").execute();
+            return endpoints.stream()
+                    .filter(endpoint -> "online".equalsIgnoreCase(endpoint.getState()))
+                    .map(Endpoint::getResource)
+                    .toList();
+        } catch (Exception e) {
+            throw new ExternalServiceException(ErrorCode.ARI_ENDPOINTS_UNAVAILABLE, "asterisk", e, e.getMessage());
         }
     }
 

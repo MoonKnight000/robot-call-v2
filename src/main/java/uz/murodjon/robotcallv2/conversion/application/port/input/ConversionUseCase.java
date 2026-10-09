@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.conversion.application.dto.ReportConversionReques
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionGoal;
 import uz.murodjon.robotcallv2.conversion.domain.entity.VariantConversions;
 
+import java.time.Instant;
 import java.util.List;
 
 /** Conversion goals, and the events a company's own systems report against them. */
@@ -34,4 +35,10 @@ public interface ConversionUseCase {
      * its disposition-based columns alongside these rather than replacing them.
      */
     List<VariantConversions> findVariantConversions(long companyId, long campaignId);
+
+    /**
+     * Whether the company reported an event for this number at or after {@code since} — paid or
+     * not attributed to a call, it happened. {@code goalKey} null means any goal.
+     */
+    boolean existsEventByPhoneSince(long companyId, String phone, String goalKey, Instant since);
 }

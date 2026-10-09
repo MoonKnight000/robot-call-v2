@@ -17,6 +17,9 @@ import java.util.Map;
  * @param mustSay           phrases the agent has to say at some point (case-insensitive)
  * @param mustNotSay        phrases the agent must never say — "chegirma", a figure, a promise
  * @param maxTurns          turns before the simulated call is cut off
+ * @param toolMocks         what each of the agent's company tools answers in a simulation, by tool name;
+ *                          a tool not listed answers that it is unavailable. No request ever leaves.
+ * @param expectTools       tools the agent has to call at some point
  */
 public record AgentTestCase(
         Long id,
@@ -31,7 +34,9 @@ public record AgentTestCase(
         List<String> mustSay,
         List<String> mustNotSay,
         int maxTurns,
-        Instant createdAt
+        Instant createdAt,
+        Map<String, String> toolMocks,
+        List<String> expectTools
 ) {
 
     public static final int DEFAULT_MAX_TURNS = 12;
@@ -41,5 +46,7 @@ public record AgentTestCase(
         mustSay = mustSay == null ? List.of() : List.copyOf(mustSay);
         mustNotSay = mustNotSay == null ? List.of() : List.copyOf(mustNotSay);
         maxTurns = maxTurns > 0 ? maxTurns : DEFAULT_MAX_TURNS;
+        toolMocks = toolMocks == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(toolMocks));
+        expectTools = expectTools == null ? List.of() : List.copyOf(expectTools);
     }
 }

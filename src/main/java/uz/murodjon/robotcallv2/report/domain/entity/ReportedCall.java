@@ -44,7 +44,7 @@ public record ReportedCall(
         String summary,
         LocalDate promisedDate,
         BigDecimal promisedAmount,
-        Long crmNoteId,
+        String crmNoteId,
         String clientName,
         String campaignName,
         String operatorName

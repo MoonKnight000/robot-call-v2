@@ -10,7 +10,8 @@ import java.util.concurrent.BlockingQueue;
 
 /**
  * Streams both directions of a call to one 16-bit little-endian stereo WAV file: the
- * caller on the left channel, the bot's own speech on the right.
+ * caller on the left channel, the bot's own speech on the right. On a call with an operator
+ * the operator takes the bot's place ({@code OperatorCallRecorder}).
  *
  * <p>Both sides have to be there. This file is what §11.3 keeps as evidence in a
  * dispute, and a recording holding only the caller's half cannot show what the bot

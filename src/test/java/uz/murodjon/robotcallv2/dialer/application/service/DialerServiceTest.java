@@ -17,13 +17,18 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
+import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 import java.time.*;
@@ -71,6 +76,7 @@ class DialerServiceTest {
                 .thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 10L, "uz-UZ", "dilfuza"));
         when(state.countActive(anyLong())).thenReturn(0);
         when(state.countActiveTotal()).thenReturn(0);
+        when(state.countClusterCapacity(anyInt())).thenAnswer(call -> call.getArgument(0));
         when(state.countDispatchedToday(anyLong(), any())).thenReturn(OptionalInt.of(0));
         when(sipTrunks.findTrunksForCall(anyLong(), any())).thenReturn(List.of());
     }
@@ -78,7 +84,7 @@ class DialerServiceTest {
     private DialerService dialerAt(int hour) {
         ZonedDateTime now = ZonedDateTime.of(LocalDate.of(2026, 7, 1), LocalTime.of(hour, 0), ZONE);
         return new DialerService(
-                new DialerProperties(true, 5, 10, 5, 5, 60),
+                new DialerProperties(true, 5, 10, 5, 5, 60, 0),
                 RTP_PROPS, campaignUseCase, campaignTargetUseCase, mock(CompanyConfigUseCase.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class),
@@ -87,7 +93,13 @@ class DialerServiceTest {
                 mock(CallAttemptUseCase.class), mock(TrunkHealth.class), (jobName, job) -> {
                     job.run();
                     return true;
-                });
+                }, companyConcurrency());
+    }
+
+    /** The company limit from the same properties the dialer gets; no company has its own. */
+    private CompanyConcurrencyService companyConcurrency() {
+        return new CompanyConcurrencyService(new DialerProperties(true, 5, 10, 5, 5, 60, 0), state,
+                mock(CompanyUseCase.class), mock(NotificationUseCase.class), Clock.systemUTC());
     }
 
     private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
@@ -186,6 +198,21 @@ class DialerServiceTest {
     }
 
     @Test
+    void aScoreCampaignClaimsByScoreAtTheCompanysHour() {
+        when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(new Campaign(
+                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
+                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(DayOfWeek.WEDNESDAY), 3, 24, 5, 0, AI_AGENT_ID, 1L,
+                null, RecurrenceType.ONCE, null, null, false, null, Campaign.DEFAULT_PRIORITY, RetryPolicy.NONE,
+                null, null, null, null, 0L, DialMode.AI, null, Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT,
+                TargetOrdering.SCORE)));
+
+        dialerAt(14).dispatch();
+
+        verify(campaignTargetUseCase).claimDueTargetsByScore(CAMPAIGN_ID, 5, 14);
+        verify(campaignTargetUseCase, never()).claimDueTargets(anyLong(), anyInt());
+    }
+
+    @Test
     void everyDispatchIsCountedAgainstTheDailyCap() {
         givenActiveCampaign(5, Set.of(DayOfWeek.WEDNESDAY));
         givenDueTargets(2);
@@ -196,6 +223,19 @@ class DialerServiceTest {
         verify(state, times(2)).reserve(anyLong(), anyLong());
     }
 
+    /** The active count is the cluster's, so the ports it is held against are the cluster's too. */
+    @Test
+    void theClusterMediaCapacityBoundsTheBatch() {
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
+        givenDueTargets(5);
+        when(state.countClusterCapacity(anyInt())).thenReturn(3);
+        when(state.countActiveTotal()).thenReturn(2);
+
+        dialerAt(10).dispatch();
+
+        verify(rabbit, times(1)).convertAndSend(eq(CallTask.QUEUE), any(CallTask.class));
+    }
+
     @Test
     void drainingStopsDispatchEntirely() {
         givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
@@ -203,7 +243,7 @@ class DialerServiceTest {
         GracefulShutdownManager shutdown = mock(GracefulShutdownManager.class);
         when(shutdown.isDraining()).thenReturn(true);
         DialerService dialer = new DialerService(
-                new DialerProperties(true, 5, 10, 5, 5, 60),
+                new DialerProperties(true, 5, 10, 5, 5, 60, 0),
                 RTP_PROPS, campaignUseCase, campaignTargetUseCase, mock(CompanyConfigUseCase.class),
                 sipTrunks, rabbit, state,
                 mock(OutboundCallRegistry.class), mock(AriService.class), shutdown, ttsWarmup,
@@ -211,7 +251,7 @@ class DialerServiceTest {
                 mock(CallAttemptUseCase.class), mock(TrunkHealth.class), (jobName, job) -> {
                     job.run();
                     return true;
-                });
+                }, companyConcurrency());
 
         dialer.dispatch();
 

@@ -61,7 +61,11 @@ public class CampaignEntityMapper {
                 entity.getEndAt(),
                 entity.getBudgetUzs(),
                 entity.getDailyBudgetUzs(),
-                entity.getVersion());
+                entity.getVersion(),
+                entity.getDialMode(),
+                entity.getCallQueueId(),
+                entity.getMaxAiOverflowPercent(),
+                entity.getTargetOrdering());
     }
 
     public CampaignEntity toCampaignEntity(Campaign campaign, CompanyEntity company, UserEntity createdBy,
@@ -74,6 +78,7 @@ public class CampaignEntityMapper {
         entity.setScriptConfig("{}");
         entity.setType(campaign.type());
         entity.setStatus(campaign.status());
+        entity.setDialMode(campaign.dialMode());
         entity.setCompany(company);
         entity.setCreatedBy(createdBy);
         entity.setLastRunAt(campaign.lastRunAt());
@@ -85,6 +90,9 @@ public class CampaignEntityMapper {
     public void applyEditableFields(CampaignEntity entity, Campaign campaign, AiAgentEntity aiAgent) {
         entity.setName(campaign.name());
         entity.setAiAgent(aiAgent);
+        entity.setCallQueueId(campaign.callQueueId());
+        entity.setMaxAiOverflowPercent(campaign.maxAiOverflowPercent());
+        entity.setTargetOrdering(campaign.targetOrdering());
         entity.setDialWindowStart(campaign.dialWindowStart());
         entity.setDialWindowEnd(campaign.dialWindowEnd());
         entity.setDialDays(campaign.dialDays());

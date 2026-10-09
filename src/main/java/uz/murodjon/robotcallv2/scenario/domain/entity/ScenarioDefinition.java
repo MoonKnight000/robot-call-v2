@@ -23,7 +23,9 @@ public record ScenarioDefinition(
         /** Where to refresh {@code factSchema} values from just before dialling; null = don't. */
         FactWebhook factWebhook,
         /** The scenario's own ✗ → ✓ phrasing pairs for the prompt (UNIVERSAL-OPERATOR-PLAN A.2); null = none. */
-        List<StyleExample> styleExamples
+        List<StyleExample> styleExamples,
+        /** Questions answered at any stage without leaving it ({@link GlobalNode}); null = none. */
+        List<GlobalNode> globalNodes
 ) {
     /** A scenario whose facts come only from the campaign's own data and the CRM. */
     public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
@@ -37,6 +39,14 @@ public record ScenarioDefinition(
                               List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
                               String disclosureText, FactWebhook factWebhook) {
         this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, factWebhook, null);
+    }
+
+    /** A scenario with no questions answered at every stage. */
+    public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
+                              List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
+                              String disclosureText, FactWebhook factWebhook, List<StyleExample> styleExamples) {
+        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, factWebhook,
+                styleExamples, null);
     }
 
     /**
@@ -54,7 +64,7 @@ public record ScenarioDefinition(
             return this;
         }
         return new ScenarioDefinition(stages, factSchema, tools, outcomeSchema, prompt, guardrails,
-                disclosureText, factWebhook, styleExamples);
+                disclosureText, factWebhook, styleExamples, globalNodes);
     }
 
     public StageDef findStage(String id) {

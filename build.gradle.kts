@@ -106,7 +106,7 @@ dependencies {
 
     // VAD — Silero voice-activity model (ONNX) for barge-in (PROJECT.md §2.3, §7.2).
     // The silero_vad.onnx model file is supplied at runtime (voice-agent.vad.model-path).
-    implementation("com.microsoft.onnxruntime:onnxruntime:1.17.3")
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
     // Tokenizer for the text end-of-turn model (NAMO, voice-agent.text-turn); reads its tokenizer.json.
     implementation("ai.djl.huggingface:tokenizers:0.33.0")
 

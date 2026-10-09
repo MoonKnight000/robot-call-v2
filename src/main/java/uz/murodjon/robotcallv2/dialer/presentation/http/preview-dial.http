@@ -1,0 +1,25 @@
+### A PREVIEW campaign end to end, as an operator who is a member of the campaign's queue.
+### 1. Create the campaign and add targets as an admin (campaign.http — "Create Operator Campaign"),
+###    then start it: POST /api/campaigns/{id}/start
+
+### 2. Take the next card (or the one already held). data = null: nobody is due now.
+POST http://localhost:8080/api/operator/campaigns/1/next
+Authorization: Bearer {{operator_token}}
+
+### 3. Dial it — the operator's softphone rings first, then the client is dialled
+POST http://localhost:8080/api/operator/campaigns/1/targets/10/dial
+Authorization: Bearer {{operator_token}}
+
+### 3b. ...or put it back without dialling (due again in 15 minutes)
+POST http://localhost:8080/api/operator/campaigns/1/targets/10/skip
+Authorization: Bearer {{operator_token}}
+
+### 4. After the conversation: close the call. Its id is the card's callId — call next again once
+###    the client is dialled; the same card comes back, now with callId set.
+POST http://localhost:8080/api/calls/42/wrap-up
+Content-Type: application/json
+Authorization: Bearer {{operator_token}}
+
+{
+  "wrapUpCodeId": 1
+}

@@ -46,6 +46,8 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
 | `POST` | `/api/tools/{id}/test` | `AI_AGENT_EDIT` | Toolni bir marta sinab ko'rish: modelga nima qaytishini ko'rsatadi (§4.1) |
 | `POST` | `/api/tools/import/operations` | `AI_AGENT_EDIT` | OpenAPI 3 hujjatidagi amallar ro'yxati — qaysilari tool bo'lishi mumkin (§7). Hech narsa yaratmaydi |
 | `POST` | `/api/tools/import` | `AI_AGENT_EDIT` | Tanlangan amallardan tool'lar yaratish — hammasi yoki hech biri (§7) |
+| `POST` | `/api/tools/executions/filter` | `AI_AGENT_READ` | So'rovlar jurnali — sahifalangan, filtrli (§8) |
+| `GET` | `/api/tools/executions/stats` | `AI_AGENT_READ` | Har bir tool bo'yicha statistika: natijalar soni, o'rtacha va p95 latency (§8) |
 
 ---
 
@@ -249,8 +251,8 @@ Tarmoqqa chiqqan har bir so'rov uchun bitta qator yoziladi: `tool_id`, `call_att
 - Yuborilmagan chaqiruvlar yozilmaydi: tasdiq kutilayotgani, `maxCallsPerCall` oshgani va manzil
   rad etilgani.
 - §4.1 sinovlari ham yoziladi, `call_attempt_id` bo'sh qoladi.
-- Jurnalni o'qiydigan endpoint hozircha yo'q — undan qo'ng'iroq sifati (`toolErrorCount`,
-  [call-reviews.md](call-reviews.md)) va kunlik tahlil (D.3) foydalanadi.
+- Panel jurnalni §8 dagi endpointlar orqali o'qiydi; undan qo'ng'iroq sifati (`toolErrorCount`,
+  [call-reviews.md](call-reviews.md)) va kunlik tahlil (D.3) ham foydalanadi.
 
 ### 3.4. `auth` — OAuth 2.0 client credentials
 
@@ -502,3 +504,81 @@ qoladi. `responseMapping` qo'yilmaydi: javob 4000 belgigacha to'liq modelga bora
 | `400 OPENAPI_OPERATIONS_REQUIRED` | `/import` da `operationIds` bo'sh |
 | `400 OPENAPI_OPERATION_UNKNOWN` / `OPENAPI_OPERATION_UNSUPPORTED` | Bunday amal yo'q / tool bo'la olmaydi (sababi bilan) |
 | `502 OPENAPI_FETCH_FAILED` | Hujjatni yuklab bo'lmadi (tarmoq, `non-2xx`, 10 MB dan katta) |
+
+---
+
+## 8. So'rovlar jurnali va statistika — `/api/tools/executions`
+
+Jurnal qanday yozilishi — §3.3.
+
+### `POST /api/tools/executions/filter`
+
+Permission: `AI_AGENT_READ`. Barcha maydonlar ixtiyoriy; `null` — "istalgan".
+
+```json
+{
+  "page": 0,
+  "size": 50,
+  "orders": { "CREATED_AT": "DESC" },
+  "toolId": 12,
+  "callAttemptId": 9876,
+  "status": "HTTP_ERROR",
+  "from": "2026-10-01T00:00:00Z",
+  "to": "2026-10-08T00:00:00Z"
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `orders` | Ustunlar: `CREATED_AT`, `LATENCY_MS`. Default — `CREATED_AT: DESC` |
+| `toolId` | Bitta tool. O'chirilgan tool qatorlarida `toolId` — `null`, ularni `toolId` bilan topib bo'lmaydi |
+| `callAttemptId` | Bitta qo'ng'iroqning so'rovlari |
+| `status` | `OK` / `HTTP_ERROR` / `FAILED` |
+| `from` / `to` | `createdAt` oralig'i: `from` kiradi, `to` kirmaydi |
+
+Javob — `PageableData<ToolExecution>`:
+
+```json
+{
+  "id": 501,
+  "companyId": 1,
+  "toolId": 12,
+  "callAttemptId": 9876,
+  "toolName": "create_order",
+  "status": "HTTP_ERROR",
+  "httpStatus": 422,
+  "latencyMs": 840,
+  "argsHash": "9f2c…e1",
+  "error": "{\"error\":\"phone is required\"}",
+  "createdAt": "2026-10-07T09:12:44Z"
+}
+```
+
+`callAttemptId` — `null`: so'rov §4.1 sinovidan. `httpStatus` — `null`: javob kelmagan (`FAILED`).
+
+### `GET /api/tools/executions/stats?days=7`
+
+Permission: `AI_AGENT_READ`. `days` — 1 dan 90 gacha, default `7`. Oxirgi `days` kun ichida biror
+so'rov yuborgan har bir tool uchun bitta qator, eng ko'p so'rov yuborgani birinchi:
+
+```json
+[
+  {
+    "toolId": 12,
+    "toolName": "create_order",
+    "total": 320,
+    "ok": 301,
+    "httpError": 15,
+    "failed": 4,
+    "avgLatencyMs": 410,
+    "p95LatencyMs": 1180
+  }
+]
+```
+
+`p95LatencyMs` — so'rovlarning 95% shu vaqtdan tez tugagan (taymaut bo'lganlari ham hisobga kiradi).
+O'chirilgan tool'larning so'rovlari `toolId: null` bilan alohida qator bo'ladi.
+
+| Xato | Qachon |
+|---|---|
+| `400 TOOL_STATS_DAYS_INVALID` | `days` 1–90 oralig'ida emas |

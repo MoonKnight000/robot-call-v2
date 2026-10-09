@@ -43,6 +43,7 @@ public class DialogSessionBuilder {
     Map<String, String> languageVoices = Map.of();
     String firstMessage;
     List<Tool> tools = List.of();
+    Map<String, String> toolMocks;
     List<PronunciationRule> pronunciationRules = List.of();
     AiAgent agent;
 
@@ -143,6 +144,15 @@ public class DialogSessionBuilder {
 
     public DialogSessionBuilder tools(List<Tool> tools) {
         this.tools = tools;
+        return this;
+    }
+
+    /**
+     * A simulation's canned tool answers, by tool name: with these set, {@link #tools} are offered to
+     * the model but never called — each answers from here (TurnTools). Null on a real call.
+     */
+    public DialogSessionBuilder toolMocks(Map<String, String> toolMocks) {
+        this.toolMocks = toolMocks;
         return this;
     }
 

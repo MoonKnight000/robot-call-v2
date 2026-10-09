@@ -75,6 +75,21 @@ public class SttMetrics {
     }
 
     /**
+     * The speech gate's verdict on one of its closes, settled once the reopen grace has
+     * passed ({@link uz.murodjon.robotcallv2.agent.audio.SpeechGate}). {@code continued}
+     * means the caller spoke again inside the grace — the close cut a sentence in half, and
+     * the bot may already have answered the first half. Its share of all closes is the
+     * error rate any end-of-turn change has to hold or lower.
+     */
+    public void gateCloseJudged(boolean continued) {
+        Counter.builder("voice.stt.gate.close")
+                .description("speech gate closes, by whether the caller carried on within the reopen grace")
+                .tag("outcome", continued ? "continued" : "ended")
+                .register(registry)
+                .increment();
+    }
+
+    /**
      * A live call moved off a recognizer that kept failing
      * ({@link uz.murodjon.robotcallv2.agent.stt.SttStreamBridge}). Tagged both ways: the
      * question this answers during an incident is which vendor is down, and one that only

@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.SaveAgentTestCaseRequest;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentDataPolicy;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionGoalRequest;
@@ -16,6 +17,7 @@ import uz.murodjon.robotcallv2.pack.application.dto.PackRow;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackAgent;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackCatalogFeed;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
@@ -65,7 +67,14 @@ public class PackMapper {
                 null, null,                                    // mid-call SMS switch and template
                 null, null, null,                              // transfer phone, message, queue
                 null, null,                                    // interruptionSensitivity, endpointingDelayMs
-                null, null);                                   // sipTrunkIds, enabled
+                null, null,                                    // sipTrunkIds, enabled
+                null);                                         // preConversationAudioFileId
+    }
+
+    /** The reverse of {@link #toCreateAiAgentRequest}: only what a pack decides, with the scenario the agent runs. */
+    public PackAgent toPackAgent(AiAgent agent, ScenarioDefinition scenario) {
+        return new PackAgent(agent.name(), agent.description(), agent.language(), agent.script().firstMessage(),
+                agent.useRag(), agent.dataPolicy(), scenario, agent.dataNeeded(), agent.dataEvaluation());
     }
 
     public CreateToolRequest toCreateToolRequest(Tool tool) {
@@ -80,7 +89,8 @@ public class PackMapper {
     public SaveAgentTestCaseRequest toSaveAgentTestCaseRequest(AgentTestCase testCase) {
         return new SaveAgentTestCaseRequest(testCase.name(), testCase.personaPrompt(), testCase.facts(),
                 testCase.language(), testCase.expectDisposition(), testCase.expectStage(),
-                testCase.mustSay(), testCase.mustNotSay(), testCase.maxTurns());
+                testCase.mustSay(), testCase.mustNotSay(), testCase.maxTurns(), testCase.toolMocks(),
+                testCase.expectTools());
     }
 
     public ConversionGoalRequest toConversionGoalRequest(ConversionGoal goal) {

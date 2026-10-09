@@ -16,6 +16,9 @@ voice-agent:
     answer-timeout-sec: 30
     # adaptive | fixed | blank (off) — AsteriskProperties#jitterBuffer
     jitter-buffer: ${ASTERISK_JITTER_BUFFER:}
+    # Blank on the operator cell (or a single cell); elsewhere the PJSIP endpoint to the
+    # operators' Asterisk, e.g. operator-cell — AsteriskProperties#operatorTrunk, asterisk/etc/asterisk/pjsip_cells.conf.example
+    operator-trunk: ${ASTERISK_OPERATOR_TRUNK:}
 
     # Browser test calls (POST /api/calls/web-test) — WebTestProperties, docs/api/calls.md
     web-test:
@@ -60,9 +63,11 @@ voice-agent:
     enabled: ${DIALER_ENABLED:true}
     tick-seconds: ${DIALER_TICK_SECONDS:5}
     dispatch-batch: ${DIALER_DISPATCH_BATCH:3}
-    max-concurrent-calls: ${DIALER_MAX_CONCURRENT:5}
-    max-concurrent-calls-per-company: ${DIALER_MAX_CONCURRENT_PER_COMPANY:3}
+    max-concurrent-calls: ${DIALER_MAX_CONCURRENT:2}
+    max-concurrent-calls-per-company: ${DIALER_MAX_CONCURRENT_PER_COMPANY:2}
     reclaim-after-sec: ${DIALER_RECLAIM_AFTER_SEC:60}
+    # Calls per second per trunk, when the trunk sets no max_cps (Skyline: 2). 0 = no limit.
+    default-trunk-cps: ${DIALER_DEFAULT_TRUNK_CPS:1}
     retry:
       no-answer-minutes: ${DIALER_RETRY_NO_ANSWER_MINUTES:180}
       failed-minutes: ${DIALER_RETRY_FAILED_MINUTES:15}
@@ -76,3 +81,7 @@ voice-agent:
     answer-timeout-sec: ${OPERATOR_ANSWER_TIMEOUT:30}
     # The operators' generated PJSIP endpoints, next to pjsip_trunks.conf (voice-agent.siptrunk.config-dir)
     sip-config-file-name: ${OPERATOR_SIP_CONFIG_FILE:pjsip_operators.conf}
+    # Transfer without a queue: the operator presses 1 after the briefing before the caller is
+    # connected. Off by default — a softphone operator expects the call on answer.
+    require-acceptance: ${OPERATOR_REQUIRE_ACCEPTANCE:false}
+    accept-timeout-sec: ${OPERATOR_ACCEPT_TIMEOUT:10}

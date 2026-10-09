@@ -313,10 +313,10 @@ public final class TurnReplayTool {
         private int turnExtendMs = 500;
         private int earlyWaitMs = 0;
         private float earlyThreshold = 0.9f;
-        private int nFft = 512;
-        private int hopSamples = 256;
-        private int mels = 128;
-        private int frames = 500;
+        private int nFft = 400;
+        private int hopSamples = 160;
+        private int mels = 80;
+        private int frames = 800;
 
         private int expectedTurns = -1;
         private String manifest = null;

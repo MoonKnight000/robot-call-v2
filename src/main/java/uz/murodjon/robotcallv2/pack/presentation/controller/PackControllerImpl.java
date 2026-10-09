@@ -39,4 +39,9 @@ public class PackControllerImpl implements PackController {
                                                                          InstallDraftRequest request) {
         return ResponseEntity.ok(ResponseData.ok(packUseCase.installDraft(companyId, request)));
     }
+
+    @Override
+    public ResponseEntity<ResponseData<VerticalPack>> exportAgent(long companyId, long agentId, Integer version) {
+        return ResponseEntity.ok(ResponseData.ok(packUseCase.exportAgent(companyId, agentId, version)));
+    }
 }

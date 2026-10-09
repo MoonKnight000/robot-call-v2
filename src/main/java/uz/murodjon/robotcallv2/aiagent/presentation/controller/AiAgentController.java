@@ -7,7 +7,10 @@ import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.aiagent.application.dto.*;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionChange;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionChange;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -91,6 +94,54 @@ public interface AiAgentController {
             @CurrentCompanyId long companyId,
             @PathVariable long id,
             @PathVariable int version);
+
+    /**
+     * Settings that differ from version {@code from} to version {@code to}; without {@code to}, against
+     * the draft — what a publish would change.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/versions/diff")
+    ResponseEntity<ResponseData<List<AgentVersionChange>>> diffVersions(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @RequestParam int from,
+            @RequestParam(required = false) Integer to);
+
+    /** Publishes the draft as a candidate beside the live version and sends part of the traffic to it. */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/{id:\\d+}/rollout")
+    ResponseEntity<ResponseData<AgentRolloutRow>> startRollout(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody StartAgentRolloutRequest request);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/rollout")
+    ResponseEntity<ResponseData<AgentRolloutRow>> updateRollout(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateAgentRolloutRequest request);
+
+    /** The running rollout, with each version's calls and conversions since it started. */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/rollout")
+    ResponseEntity<ResponseData<AgentRolloutRow>> rollout(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /** The candidate goes live for every caller. */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/{id:\\d+}/rollout/promote")
+    ResponseEntity<ResponseData<AiAgentVersionRow>> promoteRollout(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /** The candidate is archived; every caller is back on the live version. */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @DeleteMapping("/{id:\\d+}/rollout")
+    ResponseEntity<ResponseData<Void>> cancelRollout(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping("/{id:\\d+}/clone")
@@ -224,12 +275,19 @@ public interface AiAgentController {
             @PathVariable long id,
             @PathVariable long caseId);
 
-    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    /**
+     * Starts an evaluation run. {@code repeat} plays each case that many times (1–10) to show a
+     * flaky one. Allowed to an API key holding {@code AGENT_EVAL_RUN}, for CI: it changes nothing
+     * about the agent, and the run is polled with {@code GET /eval-runs/{runId}}.
+     */
+    @PreAuthorize("hasAnyAuthority('AI_AGENT_EDIT', 'AGENT_EVAL_RUN')")
     @PostMapping("/{id:\\d+}/evaluate")
     ResponseEntity<ResponseData<AgentEvalRun>> evaluate(
             @CurrentCompanyId long companyId,
             @PathVariable long id,
-            @RequestParam(required = false) Integer version);
+            @RequestParam(required = false) Integer version,
+            @RequestParam(required = false) AgentEvalMode mode,
+            @RequestParam(defaultValue = "1") int repeat);
 
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/{id:\\d+}/eval-runs")

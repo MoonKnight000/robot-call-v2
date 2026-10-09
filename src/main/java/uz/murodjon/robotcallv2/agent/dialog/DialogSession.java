@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.tool.ToolCallback;
@@ -93,6 +94,11 @@ public class DialogSession implements DialogOutcomeSink {
      * every realtime call. Written once at startup, before any turn runs.
      */
     private volatile String fastModel;
+    /**
+     * The client on the company's own LLM ({@code EffectiveAiModelConfig#ownLlm}), or null on the
+     * platform's. Built once at startup, before any turn runs.
+     */
+    private volatile ChatClient ownChatClient;
     /** This call's company's TTS overrides (§11 settings/voice), resolved once. */
     private final EffectiveVoiceSettings voiceSettings;
     private final boolean emotionAdaptiveVoice;
@@ -103,6 +109,10 @@ public class DialogSession implements DialogOutcomeSink {
     private final AgentPersona agentPersona;
     private final String firstMessage;
     private final List<Tool> tools;
+    /** Canned tool answers of a simulation; null on a real call (DialogSessionBuilder#toolMocks). */
+    private final Map<String, String> toolMocks;
+    /** Tools a simulation answered from {@link #toolMocks}, in order, until the simulator drains them. */
+    private final List<String> simulatedToolCalls = new CopyOnWriteArrayList<>();
     private final List<PronunciationRule> pronunciationRules;
     private final AiAgent agent;
     private volatile Predicate<String> midCallSmsSender;
@@ -220,6 +230,7 @@ public class DialogSession implements DialogOutcomeSink {
         this.emotionAdaptiveVoice = builder.emotionAdaptiveVoice;
         this.firstMessage = builder.firstMessage;
         this.tools = builder.tools == null ? List.of() : List.copyOf(builder.tools);
+        this.toolMocks = builder.toolMocks == null ? null : Map.copyOf(builder.toolMocks);
         this.pronunciationRules = builder.pronunciationRules == null ? List.of() : List.copyOf(builder.pronunciationRules);
         this.agent = builder.agent;
         this.turnState = new TurnState();
@@ -292,6 +303,22 @@ public class DialogSession implements DialogOutcomeSink {
         return tools != null ? tools : List.of();
     }
 
+    /** Null on a real call; a simulation's canned tool answers otherwise. */
+    public Map<String, String> toolMocks() {
+        return toolMocks;
+    }
+
+    public void recordSimulatedToolCall(String line) {
+        simulatedToolCalls.add(line);
+    }
+
+    /** The tool calls answered since the last drain, oldest first; the list is emptied. */
+    public List<String> drainSimulatedToolCalls() {
+        List<String> calls = List.copyOf(simulatedToolCalls);
+        simulatedToolCalls.clear();
+        return calls;
+    }
+
     public AgentPersona agentPersona() {
         return agentPersona != null ? agentPersona : AgentPersona.AI_ASSISTANT;
     }
@@ -306,6 +333,14 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setFastModel(String fastModel) {
         this.fastModel = fastModel;
+    }
+
+    public ChatClient ownChatClient() {
+        return ownChatClient;
+    }
+
+    public void setOwnChatClient(ChatClient ownChatClient) {
+        this.ownChatClient = ownChatClient;
     }
 
     public EffectiveVoiceSettings voiceSettings() {
@@ -657,6 +692,15 @@ public class DialogSession implements DialogOutcomeSink {
         outcomeLedger.setDoNotCallReason(doNotCallReason);
     }
 
+    public String transferReason() {
+        return outcomeLedger.transferReason();
+    }
+
+    @Override
+    public void setTransferReason(String reason) {
+        outcomeLedger.setTransferReason(reason);
+    }
+
     /**
      * Wires this call's keypad. Set once by the engine when the call has a real Asterisk
      * channel behind it; left null for simulated runs, where {@link #sendDtmf} then tells
@@ -864,6 +908,11 @@ public class DialogSession implements DialogOutcomeSink {
     /** The recognizer delivered another interim hypothesis for the utterance in progress. */
     public void noteInterim() {
         turnState.noteInterim();
+    }
+
+    /** See {@link TurnState#heardCallerWithin}: true while a typed number is still coming in. */
+    public void setTyping(boolean typing) {
+        turnState.setTyping(typing);
     }
 
     public int interimsThisTurn() {

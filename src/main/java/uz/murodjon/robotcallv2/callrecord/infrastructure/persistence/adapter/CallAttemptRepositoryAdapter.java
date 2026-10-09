@@ -7,8 +7,10 @@ import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRep
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.ContactHistory;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.PhoneCallHistory;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.mapper.CallAttemptEntityMapper;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignVariantEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetJpaRepository;
@@ -20,7 +22,11 @@ import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.Sto
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -53,6 +59,19 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     @Override
     public Long findCompanyIdById(long id) {
         return callAttemptJpaRepository.findCompanyIdById(id);
+    }
+
+    @Override
+    public Long findLatestIdByTargetIdSince(long companyId, long targetId, Instant since) {
+        return callAttemptJpaRepository.findIdsByTargetIdSince(companyId, targetId, since, PageRequest.of(0, 1))
+                .stream().findFirst().orElse(null);
+    }
+
+    @Override
+    public CallAttempt findByCompanyIdAndId(long companyId, long id) {
+        return callAttemptJpaRepository.findByIdAndCompanyId(id, companyId)
+                .map(CallAttemptEntityMapper::toCallAttempt)
+                .orElse(null);
     }
 
     @Override
@@ -130,6 +149,29 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
         return new ContactHistory(attempts,
                 toInstant(callAttemptJpaRepository.findLastConversationAt(companyId, phone)),
                 toLocalDate(callAttemptJpaRepository.findLatestPromisedDate(companyId, phone)));
+    }
+
+    @Override
+    public Map<String, PhoneCallHistory> findPhoneCallHistories(long companyId, Collection<String> phones,
+                                                                Instant since, ZoneId zone) {
+        // Folds the (phone, hour) rows into one history per phone.
+        Map<String, int[]> counts = new HashMap<>();
+        Map<String, Map<Integer, Integer>> hours = new HashMap<>();
+        for (Object[] row : callAttemptJpaRepository.countPlacedByPhoneAndHour(companyId, phones, since, zone.getId())) {
+            String phone = (String) row[0];
+            int reached = ((Number) row[3]).intValue();
+            int[] sum = counts.computeIfAbsent(phone, p -> new int[3]);
+            sum[0] += ((Number) row[2]).intValue();
+            sum[1] += reached;
+            sum[2] += ((Number) row[4]).intValue();
+            if (row[1] != null && reached > 0) {
+                hours.computeIfAbsent(phone, p -> new HashMap<>()).put(((Number) row[1]).intValue(), reached);
+            }
+        }
+        Map<String, PhoneCallHistory> histories = new HashMap<>();
+        counts.forEach((phone, sum) ->
+                histories.put(phone, new PhoneCallHistory(sum[0], sum[1], sum[2], hours.get(phone))));
+        return histories;
     }
 
     /** A native timestamp column comes back as whichever type the driver prefers. */
@@ -214,6 +256,11 @@ public class CallAttemptRepositoryAdapter implements CallAttemptRepository {
     @Override
     public void markAbandoned(long callId, int waitSeconds) {
         callAttemptJpaRepository.markAbandoned(callId, waitSeconds);
+    }
+
+    @Override
+    public void markAiOverflow(long callId, int waitSeconds) {
+        callAttemptJpaRepository.markAiOverflow(callId, waitSeconds);
     }
 
     @Override

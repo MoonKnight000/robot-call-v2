@@ -17,7 +17,8 @@ public class CompanyEntityMapper {
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.getLogoFileId(),
-                entity.getAddress()
+                entity.getAddress(),
+                entity.getMaxConcurrentCalls()
         );
     }
 }

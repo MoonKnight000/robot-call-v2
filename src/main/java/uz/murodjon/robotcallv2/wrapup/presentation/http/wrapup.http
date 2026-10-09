@@ -1,0 +1,52 @@
+### Create Wrap-up Code
+POST http://localhost:8080/api/wrap-up-codes
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Qayta qo'ng'iroq",
+  "outcome": "RETRY",
+  "requiresCallbackAt": true
+}
+
+### List Enabled Wrap-up Codes (what the operator picks from)
+POST http://localhost:8080/api/wrap-up-codes/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 50,
+  "enabled": true
+}
+
+### Get Wrap-up Code
+GET http://localhost:8080/api/wrap-up-codes/1
+Authorization: Bearer {{auth_token}}
+
+### Update Wrap-up Code
+PUT http://localhost:8080/api/wrap-up-codes/1
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Keyinroq qo'ng'iroq qilish",
+  "outcome": "RETRY",
+  "requiresCallbackAt": true,
+  "enabled": true
+}
+
+### Delete Wrap-up Code
+DELETE http://localhost:8080/api/wrap-up-codes/1
+Authorization: Bearer {{auth_token}}
+
+### Wrap Up A Call (as the operator who handled call 42)
+POST http://localhost:8080/api/calls/42/wrap-up
+Content-Type: application/json
+Authorization: Bearer {{operator_token}}
+
+{
+  "wrapUpCodeId": 1,
+  "note": "Ertaga tushdan keyin qulay ekan",
+  "callbackAt": "2026-10-07T10:00:00Z"
+}

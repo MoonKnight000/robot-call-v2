@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TargetScore;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
@@ -467,6 +468,40 @@ public class CampaignTargetService implements CampaignTargetUseCase {
     @Override
     public List<CampaignTarget> claimDueTargets(long campaignId, int limit) {
         return campaignTargetRepository.claimDue(campaignId, limit);
+    }
+
+    @Override
+    public List<CampaignTarget> claimDueTargetsByScore(long campaignId, int limit, int localHour) {
+        return campaignTargetRepository.claimDueByScore(campaignId, limit, localHour);
+    }
+
+    @Override
+    public List<CampaignTarget> findTargetsToScore(long campaignId, Instant scoredBefore, int limit) {
+        return campaignTargetRepository.findToScore(campaignId, scoredBefore, limit);
+    }
+
+    @Override
+    public void updateTargetScores(long companyId, Map<Long, TargetScore> scores) {
+        if (!scores.isEmpty()) {
+            campaignTargetRepository.updateScores(companyId, scores);
+        }
+    }
+
+    @Override
+    public CampaignTarget claimNextForOperator(long companyId, long campaignId, long userId) {
+        requireCampaignExists(companyId, campaignId);
+        return campaignTargetRepository.claimNextForOperator(campaignId, userId);
+    }
+
+    @Override
+    public CampaignTarget findHeldByOperator(long companyId, long campaignId, long userId) {
+        requireCampaignExists(companyId, campaignId);
+        return campaignTargetRepository.findHeldByOperator(campaignId, userId);
+    }
+
+    @Override
+    public void settleByOperator(long companyId, long targetId, TargetStatus status, Instant callbackAt) {
+        campaignOutcomeService.settleByOperator(companyId, targetId, status, callbackAt);
     }
 
     /**

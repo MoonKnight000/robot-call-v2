@@ -65,3 +65,7 @@ Authorization: Bearer {{auth_token}}
     "secrets": []
   }
 }
+
+### Agentni paket JSON'i sifatida olish (git'da saqlash, boshqa muhitga ko'chirish)
+GET http://localhost:8080/api/packs/agents/1/export
+Authorization: Bearer {{auth_token}}

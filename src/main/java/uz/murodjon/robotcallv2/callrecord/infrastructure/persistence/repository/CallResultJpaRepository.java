@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +12,8 @@ import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.Call
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
 
 /** Spring Data repository for {@link CallResultEntity}. */
 @Repository
@@ -40,4 +43,33 @@ public interface CallResultJpaRepository extends JpaRepository<CallResultEntity,
     @Query(value = "DELETE FROM call_result WHERE id IN "
             + "(SELECT id FROM call_result WHERE created_at < :cutoff LIMIT :batchSize)", nativeQuery = true)
     int deleteCreatedBefore(@Param("cutoff") Instant cutoff, @Param("batchSize") int batchSize);
+
+    @Query("SELECT a.id AS id, a.startedAt AS startedAt FROM CallAttemptEntity a "
+            + "WHERE a.company.id = :companyId AND a.aiAgentId = :aiAgentId "
+            + "AND a.startedAt >= :from AND a.startedAt < :to AND a.id > :afterCallId "
+            + "AND EXISTS (SELECT 1 FROM CallResultEntity r WHERE r.call = a) "
+            + "AND EXISTS (SELECT 1 FROM CallTranscriptEntity t WHERE t.call = a) "
+            + "ORDER BY a.id")
+    List<CallReanalysisTargetProjection> findReanalysisTargets(@Param("companyId") long companyId,
+                                                               @Param("aiAgentId") long aiAgentId,
+                                                               @Param("from") Instant from, @Param("to") Instant to,
+                                                               @Param("afterCallId") long afterCallId, Pageable page);
+
+    @Query(value = "SELECT COUNT(*) AS callCount, COALESCE(SUM(t.chars), 0) AS transcriptChars "
+            + "FROM call_attempt a JOIN call_result r ON r.call_id = a.id "
+            + "JOIN LATERAL (SELECT SUM(length(ct.text)) AS chars FROM call_transcript ct "
+            + "WHERE ct.call_id = a.id) t ON t.chars IS NOT NULL "
+            + "WHERE a.company_id = :companyId AND a.ai_agent_id = :aiAgentId "
+            + "AND a.started_at >= :from AND a.started_at < :to", nativeQuery = true)
+    CallReanalysisScopeProjection summarizeReanalysisScope(@Param("companyId") long companyId,
+                                                           @Param("aiAgentId") long aiAgentId,
+                                                           @Param("from") Instant from, @Param("to") Instant to);
+
+    @Query(value = "SELECT CAST(outcome AS text) FROM call_result WHERE call_id = :callId", nativeQuery = true)
+    Optional<String> findOutcomeJsonByCallId(@Param("callId") long callId);
+
+    @Modifying @Transactional
+    @Query(value = "UPDATE call_result SET outcome = CAST(:outcome AS jsonb) WHERE call_id = :callId",
+            nativeQuery = true)
+    void updateOutcome(@Param("callId") long callId, @Param("outcome") String outcome);
 }

@@ -31,6 +31,7 @@ public class CompanyConfigEntityMapper {
                 entity.isRespectPromisedDate(),
                 entity.isHumanLikePersonaAllowed(),
                 parseHolidays(entity.getHolidays()),
+                entity.getScorecardReviewThreshold(),
                 entity.getCreatedAt()
         );
     }

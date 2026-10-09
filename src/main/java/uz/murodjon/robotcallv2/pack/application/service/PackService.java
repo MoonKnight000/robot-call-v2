@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
@@ -18,6 +19,7 @@ import uz.murodjon.robotcallv2.pack.domain.entity.PackCatalogFeed;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 import uz.murodjon.robotcallv2.pack.domain.service.PackSecrets;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
 import uz.murodjon.robotcallv2.secret.application.dto.SecretRow;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
@@ -132,6 +134,19 @@ public class PackService implements PackUseCase {
         requireInstallable(request.pack());
         return install(companyId, request.pack(),
                 new InstallPackRequest(request.catalogUrl(), request.catalogItemsPath()));
+    }
+
+    @Override
+    public VerticalPack exportAgent(long companyId, long agentId, Integer version) {
+        AiAgent agent = aiAgentUseCase.requireAgentVersion(companyId, agentId, version);
+        ScenarioDefinition scenario = aiAgentUseCase.resolveScenario(companyId, agent).definition();
+        List<Tool> tools = toolUseCase.findAgentToolDefinitions(companyId, agentId);
+        auditUseCase.record(companyId, "PACK_EXPORT", "ai_agent", String.valueOf(agentId),
+                "version " + (version != null ? version : "draft"));
+        // A catalog feed's address and a conversion goal belong to the company, not to the agent.
+        return new VerticalPack("agent-" + agentId, agent.name(), agent.description(), null,
+                mapper.toPackAgent(agent, scenario), tools, null, null,
+                agentEvaluationUseCase.findTestCases(companyId, agentId), PackSecrets.of(tools));
     }
 
     /**

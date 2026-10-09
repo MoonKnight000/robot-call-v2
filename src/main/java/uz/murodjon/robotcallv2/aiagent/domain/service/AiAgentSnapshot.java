@@ -2,9 +2,12 @@ package uz.murodjon.robotcallv2.aiagent.domain.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.util.Tokens;
 
 /**
  * An {@link AiAgent} as the JSON snapshot a published version stores — also the text a
@@ -40,8 +43,29 @@ public final class AiAgentSnapshot {
     }
 
     /** Whether publishing {@code draft} would change anything a call sees. The on/off switch is not versioned. */
+    /** The agent as a JSON tree, keys sorted, with the fields {@link #toJson} drops left out. */
+    public static JsonNode toTree(AiAgent agent) {
+        return JSON.valueToTree(agent.withPublishedVersion(null).withVersion(0));
+    }
+
     public static boolean isSameConfiguration(AiAgent draft, AiAgent published) {
         return toJson(draft).equals(toJson(published.withEnabled(draft.enabled())));
+    }
+
+    /**
+     * A short, stable digest of everything a call with this agent would say and do: the
+     * agent as {@link #toJson} writes it (enabled or not) plus the scenario it resolves to,
+     * which a shared scenario can change without the agent changing. Two equal fingerprints
+     * mean an evaluation of one holds for the other.
+     */
+    public static String fingerprint(AiAgent agent, ScenarioDefinition scenario) {
+        try {
+            String text = toJson(agent.withEnabled(true)) + "\n" + JSON.writeValueAsString(scenario);
+            return Tokens.hash(text);
+        } catch (JsonProcessingException e) {
+            // The scenario is a record of plain values.
+            throw new IllegalStateException("Agent " + agent.id() + " cannot be fingerprinted", e);
+        }
     }
 
     public static AiAgent fromJson(String json) {

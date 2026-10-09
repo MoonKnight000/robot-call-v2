@@ -1,14 +1,12 @@
 package uz.murodjon.robotcallv2.dialer.application.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.ImmediateRequeueAmqpException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
-import uz.murodjon.robotcallv2.agent.dialog.CallContext;
-import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.agent.rtp.RtpPortAllocator;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
@@ -19,18 +17,9 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
-import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
-import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
-import uz.murodjon.robotcallv2.dialer.domain.service.CallContextFactory;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
-import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
-import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
-import uz.murodjon.robotcallv2.scenario.application.port.input.FactWebhookUseCase;
-import uz.murodjon.robotcallv2.scenario.domain.entity.FactWebhookRequest;
-import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
-import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 
@@ -45,53 +34,69 @@ public class CallTaskConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(CallTaskConsumer.class);
 
+    /** How long a full instance waits before handing a task back to the queue. */
+    private static final long REQUEUE_PAUSE_MS = 1000;
+
     private final AriService ariService;
     private final OutboundCallRegistry registry;
     private final CampaignUseCase campaignUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
-    private final CrmUseCase crmUseCase;
     private final AuditUseCase audit;
     private final DialerState dialerState;
     private final DoNotCallUseCase doNotCallUseCase;
     private final CallAttemptUseCase callAttemptUseCase;
-    private final ClientMemoryUseCase clientMemoryUseCase;
-    private final FactWebhookUseCase factWebhookUseCase;
-    private final AiAgentUseCase aiAgentUseCase;
+    private final OutboundCallPreparer outboundCallPreparer;
     private final CallBillingUseCase callBilling;
     /** Whose dial window the task is re-checked against at the last moment. */
     private final DialerService dialerService;
     private final CompanyUseCase companyUseCase;
-    private final ObjectMapper objectMapper;
+    /** This instance's media ports — what a call answered here will need one of. */
+    private final RtpPortAllocator portAllocator;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
                             CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
-                            CrmUseCase crmUseCase, AuditUseCase audit, DialerState dialerState,
+                            AuditUseCase audit, DialerState dialerState,
                             DoNotCallUseCase doNotCallUseCase, CallAttemptUseCase callAttemptUseCase,
-                            ClientMemoryUseCase clientMemoryUseCase, FactWebhookUseCase factWebhookUseCase,
-                            AiAgentUseCase aiAgentUseCase, CallBillingUseCase callBilling, DialerService dialerService,
-                            CompanyUseCase companyUseCase,
-                            ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+                            OutboundCallPreparer outboundCallPreparer, CallBillingUseCase callBilling,
+                            DialerService dialerService, CompanyUseCase companyUseCase,
+                            RtpPortAllocator portAllocator) {
         this.dialerService = dialerService;
         this.companyUseCase = companyUseCase;
         this.ariService = ariService;
         this.registry = registry;
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
-        this.crmUseCase = crmUseCase;
         this.audit = audit;
         this.dialerState = dialerState;
         this.doNotCallUseCase = doNotCallUseCase;
         this.callAttemptUseCase = callAttemptUseCase;
-        this.clientMemoryUseCase = clientMemoryUseCase;
-        this.factWebhookUseCase = factWebhookUseCase;
-        this.aiAgentUseCase = aiAgentUseCase;
+        this.outboundCallPreparer = outboundCallPreparer;
         this.callBilling = callBilling;
+        this.portAllocator = portAllocator;
     }
 
     @RabbitListener(queues = CallTask.QUEUE)
     public void onMessage(CallTask task) {
+        if (!hasMediaHeadroom()) {
+            // The dispatcher counts the cluster's ports, so the call fits somewhere — just
+            // not here: answered on this instance it would be dropped for want of a port.
+            // Back to the queue for another instance. The pause keeps this one from taking
+            // it straight back, and stops it consuming until a call of its own has ended.
+            log.info("No free RTP port for target {} on this instance — returning it to the queue",
+                    task.targetId());
+            try {
+                Thread.sleep(REQUEUE_PAUSE_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            throw new ImmediateRequeueAmqpException("no free RTP port on this instance");
+        }
         process(task, dialerState);
+    }
+
+    /** A free port for this call once the ones already ringing here have taken theirs. */
+    private boolean hasMediaHeadroom() {
+        return portAllocator.available() - registry.countUnanswered() > 0;
     }
 
     public void process(CallTask task, DialerState state) {
@@ -141,51 +146,16 @@ public class CallTaskConsumer {
                 return;
             }
 
-            // Ahead of everything else, because it decides the script the facts are read
-            // against and the voice the call is warmed up for.
-            AiAgent agent = aiAgentUseCase.requirePublishedAgent(task.companyId(), task.aiAgentId());
-            Scenario scenario = aiAgentUseCase.resolveScenario(task.companyId(), agent);
-            CrmClientSnapshot crm = crmUseCase.fetchClient(task.companyId(), task.clientId());
-            ClientMemory memory = clientMemoryUseCase.findByCompanyIdAndPhone(task.companyId(), task.phone());
-            CallContext context = CallContextFactory.mergeCrmFacts(
-                    CallContextFactory.readContextData(objectMapper, task.contextData(), null, scenario.definition().factSchema()), crm)
-                    .withMemory(memory);
-            // Last and freshest. Deliberately here rather than once the call is up: the
-            // number has not been dialled yet, so a slow endpoint costs this call's place in
-            // the queue and not a silence the person who answered has to sit through.
-            if (scenario.definition().factWebhook() != null) {
-                context = CallContextFactory.overlayWebhookFacts(objectMapper, context,
-                        factWebhookUseCase.fetchFacts(scenario.definition().factWebhook(),
-                                FactWebhookRequest.outbound(task.phone(), task.clientId(), task.campaignId())),
-                        scenario.definition().factSchema());
-            }
-            String language = resolveLanguage(task, crm, memory);
-            // A variant that named a voice is testing that voice, so it wins over the
-            // agent's per-language map outright — otherwise the map would silently pick the
-            // agent's voice back up and the variant would differ in name only.
-            String voice = task.ttsVoiceOverride() != null && !task.ttsVoiceOverride().isBlank()
-                    ? task.ttsVoiceOverride()
-                    : agent.voiceFor(language);
-
-            // The target's own opening line (agentOverrides.firstMessage, NEXT-PLAN A.8).
-            String firstMessage = CallContextFactory.readFirstMessageOverride(objectMapper, task.contextData());
-            if (firstMessage != null) {
-                agent = agent.withFirstMessage(firstMessage);
-            }
-
-            OutboundCall outboundCall = new OutboundCall(
-                    task.campaignId(), task.targetId(), task.clientId(), task.phone(),
-                    language, voice, context, agent, task.companyId(), task.sipTrunkId(),
-                    task.variantId(), task.promptOverride(), task.pipelineModeOverride());
+            OutboundCall outboundCall = outboundCallPreparer.prepare(task);
 
             // Originate with atomic registry pre-arming to eliminate StasisStart race condition
             originateReached = true;
             String channelId = ariService.originate(task.phone(), task.companyId(), outboundCall);
 
             audit.record(task.companyId(), "CALL_ORIGINATE", "call", channelId,
-                    "target " + task.targetId() + " -> " + task.phone() + " (" + language + ")");
+                    "target " + task.targetId() + " -> " + task.phone() + " (" + outboundCall.language() + ")");
             log.info("Originated target {} -> channel {} (lang={}, trunkId={})",
-                    task.targetId(), channelId, language, task.sipTrunkId());
+                    task.targetId(), channelId, outboundCall.language(), task.sipTrunkId());
         } catch (Exception e) {
             log.warn("Originate failed for target {} ({}): {}", task.targetId(), PhoneMasker.mask(task.phone()),
                     e.getMessage());
@@ -200,18 +170,5 @@ public class CallTaskConsumer {
             }
             campaignTargetUseCase.applyOutcome(task.companyId(), task.targetId(), Disposition.FAILED);
         }
-    }
-
-    /**
-     * Full BCP-47 as the last resort, not a bare "uz": {@code AiAgent.voiceFor} looks the
-     * language up in a map keyed the way {@code ai_agent_voice} stores it, so a
-     * two-letter tag missed every per-language voice and quietly fell back to the agent's
-     * single one.
-     */
-    private static String resolveLanguage(CallTask task, CrmClientSnapshot crm, ClientMemory memory) {
-        return CallLanguage.resolve(
-                crm != null ? crm.preferredLanguage() : null,
-                memory != null ? memory.preferredLanguage() : null,
-                task.language() != null ? task.language() : "uz-UZ");
     }
 }

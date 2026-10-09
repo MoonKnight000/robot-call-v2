@@ -197,6 +197,17 @@ public final class PbxPhrases {
                 "Incoming company call. Press 1 to accept.");
     }
 
+    /**
+     * Said to a caller whose transfer found nobody: no operator answered, or the one who did
+     * declined. Promises no callback — an inbound caller gets none.
+     */
+    public static String operatorsBusy(String language) {
+        return pick(language,
+                "Kechirasiz, hozir barcha operatorlarimiz band. Iltimos, birozdan so'ng qayta bog'laning.",
+                "Извините, сейчас все операторы заняты. Пожалуйста, свяжитесь с нами чуть позже.",
+                "Sorry, all our operators are busy right now. Please get in touch a little later.");
+    }
+
     /** Said to the operator before a callback dials the client. */
     public static String callingClient(String phone, String language) {
         return pick(language, "Mijozga qo'ng'iroq qilinmoqda: " + phone + ".",

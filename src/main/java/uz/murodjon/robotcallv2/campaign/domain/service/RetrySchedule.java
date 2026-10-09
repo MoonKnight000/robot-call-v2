@@ -18,6 +18,9 @@ public final class RetrySchedule {
     /** What a retry waits when neither the campaign nor the disposition has an opinion. */
     private static final int DEFAULT_MINUTES = 24 * 60;
 
+    /** How long a debtor who says they paid is left alone while the payment is checked. */
+    static final Duration PAYMENT_CLAIM_HOLD = Duration.ofDays(3);
+
     private RetrySchedule() {
     }
 
@@ -30,6 +33,11 @@ public final class RetrySchedule {
                                     int campaignRetryMinutes, RetryRule rule) {
         if (rule != null && rule.delayMinutes() != null && rule.delayMinutes() > 0) {
             return Duration.ofMinutes(rule.delayMinutes());
+        }
+        // Ahead of the campaign's flat interval: an hourly retry would call about a payment
+        // the company has not had time to check yet. Only a rule for it says otherwise.
+        if (disposition == Disposition.PAYMENT_CLAIMED) {
+            return PAYMENT_CLAIM_HOLD;
         }
         return delayFor(disposition, retry, campaignRetryMinutes);
     }

@@ -23,5 +23,11 @@ public enum NotificationType {
     /** A post-call webhook failed every retry (NEXT-PLAN S.6). */
     WEBHOOK_DELIVERY_FAILED,
     /** An accepted improvement passed the agent's test cases and is waiting to be published (D.4). */
-    AGENT_INSIGHT_READY
+    AGENT_INSIGHT_READY,
+    /** An operator call scored below the company's threshold, or the client was upset (§2.3b). */
+    SCORECARD_REVIEW,
+    /** A company's own alert rule crossed its threshold (alert feature). */
+    ALERT_TRIGGERED,
+    /** Every concurrent call the company may hold is in use; the dialer waits for a free slot. */
+    CONCURRENCY_LIMIT_REACHED
 }

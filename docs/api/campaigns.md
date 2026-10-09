@@ -1,4 +1,4 @@
-﻿# Kampaniyalar API
+| `aiAgentId` | `number` | `AI` va `PREDICTIVE` da ✅ |`dialMode` `AI` yoki `PREDICTIVE` da berilmasa — `400 CAMPAIGN_AI_AGENT_REQUIRED` (`PREDICTIVE` da operator topilmagan mijozni shu agent qabul qiladi); `PREVIEW`/`PROGRESSIVE` da ixtiyoriy |﻿# Kampaniyalar API
 
 `uz.murodjon.robotcallv2.campaign` · huquq: **CAMPAIGN_READ** / **CAMPAIGN_EDIT**
 
@@ -40,7 +40,9 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 |---|---|---|---|
 | `name` | `string` | ✅ (`@NotBlank`) | Kampaniya nomi |
 | `type` | `CampaignType` | ✅ (`@NotNull`) | `DEBT_COLLECTION` yoki `SURVEY`. **Majburiy** — berilmasa `400` (avval jimgina `DEBT_COLLECTION` ga tushardi) |
-| `aiAgentId` | `number` | ✅ (`@NotNull`) | [`GET /api/ai-agents`](ai-agents.md) dagi agent. **Senariy, ovoz, persona, LLM model va SIP trunklar shu agentdan olinadi.** Keyin `PUT` bilan boshqa agentga o'tkazsa bo'ladi |
+| `dialMode` | `DialMode` | ❌ | Mijoz bilan kim gaplashadi: `AI` (standart) — kampaniya agenti; `PREVIEW` — operator mijoz kartasini ko'rib o'zi teradi; `PROGRESSIVE` — har bo'sh operatorga bitta qo'ng'iroq; `PREDICTIVE` — bo'sh operatorlardan ko'proq qo'ng'iroq, operator yetmasa mijozni AI agent qabul qiladi. **Yaratilgandan keyin o'zgarmaydi.** `AI` kampaniyalarni dialer teradi, `PREVIEW` ni operatorlar ([preview-dialing.md](preview-dialing.md)), `PROGRESSIVE` ni dialer navbatning bo'sh operatorlari uchun ([pastda](#progressive-kampaniya-qanday-teriladi)); `PREDICTIVE` ni dialer javob ulushiga qarab oldindan ([pastda](#predictive-kampaniya-qanday-teriladi)) |
+| `aiAgentId` | `number` | `AI` da ✅ | [`GET /api/ai-agents`](ai-agents.md) dagi agent. **Senariy, ovoz, persona, LLM model va SIP trunklar shu agentdan olinadi.** Keyin `PUT` bilan boshqa agentga o'tkazsa bo'ladi. `dialMode=AI` da berilmasa — `400 CAMPAIGN_AI_AGENT_REQUIRED`; operator rejimlarida ixtiyoriy |
+| `callQueueId` | `number` | `AI` dan boshqasida ✅ | Qo'ng'iroqlarni oladigan operatorlar navbati ([call-queues.md](call-queues.md)). `dialMode` `AI` bo'lmasa va berilmasa — `400 CAMPAIGN_CALL_QUEUE_REQUIRED`; boshqa kompaniyaning yoki mavjud bo'lmagan navbat — `404 CALL_QUEUE_NOT_FOUND`. Navbat o'chirilsa, maydon `null` bo'lib qoladi |
 | `dialWindowStart` / `dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)) |
 | `dialDays` | `array<DayOfWeek>` | ❌ | `["MONDAY", ...]`. Bo'sh/berilmasa — barcha kunlar |
 | `maxAttempts` | `number` | ❌ | Bitta nishonga urinishlar soni |
@@ -57,6 +59,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `endAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan tugash: `ACTIVE` kampaniya shu vaqtda nishonlar qolgan bo'lsa ham `COMPLETED` qilinadi (`CAMPAIGN_FINISHED` bildirishnomasi). `endAt` `startAt`dan keyin bo'lishi shart — `400 CAMPAIGN_SCHEDULE_INVALID`; o'tib ketgan `endAt` bilan `start` — `409 CAMPAIGN_END_PASSED` |
 | `budgetUzs` | `number` | ❌ | Butun kampaniya uchun xarajat tavani (so'm). Yakunlangan (`SETTLED`) qo'ng'iroqlar summasi shunga yetganda dialer kampaniyani `PAUSED` qiladi va `CAMPAIGN_PAUSED` bildirishnomasi (`BUDGET_CAP`) yuboradi; davom ettirish — `start`. Tekshiruv daqiqada bir marta, shuning uchun bitta tick'ning batch'i qadar oshib ketishi mumkin |
 | `dailyBudgetUzs` | `number` | ❌ | Xuddi shu, lekin kompaniya vaqt zonasidagi bir kun uchun (yarim tundan boshlab) |
+| `maxAiOverflowPercent` | `number` (0–100) | ❌ | Faqat `PREDICTIVE`: so'nggi 30 daqiqada javob berilgan qo'ng'iroqlarning necha foizini AI agent olishi mumkin. Shunga yetganda dialer har bo'sh operatorga bittadan teradi (PROGRESSIVE tezligi); 75% iga yetganda oldindan terish yarimga tushadi. `0` — hech qachon oldindan termaydi. Standart `20`. `PUT` da berilmasa — avvalgi qiymat qoladi |
+| `targetOrdering` | `string` | ❌ | Kutayotgan nishonlardan qaysilari birinchi teriladi: `FIFO` (standart — navbatga eng oldin tushgani) yoki `SCORE` (to'lash ehtimoli yuqorisi birinchi, raqam odatda gaplashadigan soatda bonus bilan) — [SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi). `AI` va `PREDICTIVE` kampaniyalarda ishlaydi. `PUT` da berilmasa — avvalgi qiymat qoladi |
 
 > ⚠️ **Muhim o'zgarish.** Kampaniya endi faqat *kimga va qachon* qo'ng'iroq qilishni
 > ushlaydi. `scenarioId`, `defaultLanguage`, `ttsVoice`, `languageVoices`, `agentPersona`,
@@ -85,9 +89,10 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 ### `PUT /api/campaigns/{id}` — Kampaniyani tahrirlash
 
-Body (`UpdateCampaignRequest`) — `CreateCampaignRequest` bilan bir xil, faqat **`type`
-yo'q** (u yaratilgandan keyin o'zgarmaydi). `aiAgentId` esa o'zgartirilishi mumkin:
-kampaniyani boshqa ovoz yoki boshqa skript bilan yuritish uchun uni klonlash shart emas.
+Body (`UpdateCampaignRequest`) — `CreateCampaignRequest` bilan bir xil, faqat **`type` va
+`dialMode` yo'q** (ular yaratilgandan keyin o'zgarmaydi). `aiAgentId` va `callQueueId` esa
+o'zgartirilishi mumkin: kampaniyani boshqa ovoz yoki boshqa skript bilan yuritish uchun uni
+klonlash shart emas. Ular kampaniyaning `dialMode`iga qarab yaratishdagidek tekshiriladi.
 
 Javob — yangilangan `CampaignRow`.
 
@@ -141,7 +146,11 @@ dialer tufayli `409` olmaydi (tahrir bu ustunlarni yozmaydi ham).
     "calledTargets": 750,
     "pendingTargets": 450,
     "completedTargets": 700,
-    "version": 4
+    "version": 4,
+    "dialMode": "AI",
+    "callQueueId": null,
+    "maxAiOverflowPercent": 20,
+    "targetOrdering": "FIFO"
   },
   "message": null,
   "messageCode": null,
@@ -150,6 +159,7 @@ dialer tufayli `409` olmaydi (tahrir bu ustunlarni yozmaydi ham).
 ```
 
 `version` — optimistik qulf hisoblagichi: `PUT /api/campaigns/{id}` da shu qiymat qaytariladi.
+Operator kampaniyasida `aiAgentId` va `aiAgentName` `null` bo'lishi mumkin.
 
 Kampaniya holati (`CampaignStatus`): `DRAFT`, `SCHEDULED` (`startAt` kutilmoqda), `ACTIVE`,
 `PAUSED`, `COMPLETED` (barcha nishonlar yakunlandi yoki `endAt` keldi), `ARCHIVED`.
@@ -213,6 +223,98 @@ Qatorni o'chirmaydi — kampaniyani `ARCHIVED` holatiga o'tkazadi.
 
 Barcha sozlamalar (agent, oyna, urinishlar, recurrence) bilan yangi kampaniya
 yaratadi. Javob — yangi `CampaignRow`.
+
+---
+
+### PROGRESSIVE kampaniya qanday teriladi
+
+Alohida endpoint yo'q — kampaniya `ACTIVE` bo'lsa, dialer har tick'da (`voice-agent.dialer.tick-seconds`)
+navbatning ([call-queues.md](call-queues.md)) har bir **bo'sh** operatori uchun bitta mijozni teradi.
+Bo'sh operator — holati `AVAILABLE` va softfoni ulangan bo'lishi kerak. Bir vaqtda terilayotgan
+qo'ng'iroqlar soni bo'sh operatorlar sonidan oshmaydi.
+
+```
+operator band qilinadi (RINGING) ──► mijoz teriladi
+  ├─ ko'tarmadi ──► operator darhol AVAILABLE, target NO_ANSWER/… (retry qoidasi)
+  └─ ko'tardi ──┬─► operator softfoni jiringlaydi ──► ko'tardi ──► yozib olinadigan suhbat ──► wrap-up
+                └─► shu payt mijoz tomonida AMD (≤5 s)
+                      └─ avtojavobgich ──► qo'ng'iroq uziladi, target VOICEMAIL, wrap-up kerak emas
+```
+
+- Operator ko'targuncha mijoz **jimlik** eshitadi. Softfonda auto-answer
+  (`Call-Info: answer-after=0`) yoqilsa, bu vaqt deyarli nolga tushadi.
+- AMD mijoz tomonidagi uzluksiz nutq bo'yicha ishlaydi (`VAD_AMD_*` sozlamalari, AI qo'ng'iroqlar
+  bilan bir xil). Operator avtojavobgich salomlashuvining 1–3 soniyasini eshitib qolishi mumkin.
+- Operator 15 s ichida ko'tarmasa, u o'tkazib yuborgan hisoblanadi (ketma-ket ikki marta bo'lsa
+  `BREAK`). Mijozning qo'ng'irog'i shu bilan tugaydi: `abandoned`, target `FAILED` bilan qayta
+  navbatga qo'yiladi.
+- Operator ulanmasdan mijoz go'shakni qo'ysa — `abandoned`, `HUNG_UP`.
+- Operator ko'targan suhbatlar preview'dagidek [wrap-up](wrap-up-codes.md) bilan yopiladi. Operator
+  kutish vaqti `call_attempt` da saqlanadi (mijoz ko'targandan operator ko'targunicha).
+- DNC, kontakt chastotasi siyosati, dial oynasi va balans — preview bilan bir xil;
+  `maxConcurrentCalls`, `dailyCallCap` va budjet **qo'llanmaydi**.
+
+### PREDICTIVE kampaniya qanday teriladi
+
+Alohida endpoint yo'q — kampaniya `ACTIVE` bo'lsa, dialer har tick'da navbatning bo'sh operatorlari
+(`AVAILABLE` + softfon ulangan) sonidan **ko'proq** mijozni teradi. Operator mijoz ko'targandan
+keyingina tanlanadi; operator topilmasa mijozga kampaniyaning AI agenti (`aiAgentId`, majburiy) javob beradi.
+
+**Nechta teriladi:** `bo'sh operatorlar × nisbat − hali hal bo'lmagan (jiringlayotgan yoki operator
+kutayotgan) qo'ng'iroqlar`. Nisbat = `terilgan ÷ javob berilgan` so'nggi 30 daqiqa bo'yicha, eng ko'pi 3.
+20 tadan kam qo'ng'iroq bo'lsa yoki AI olgan ulush `maxAiOverflowPercent` ga yetsa — nisbat 1
+(PROGRESSIVE tezligi); ulush chegaraning 75% iga yetganda ortiqcha qism yarimga tushadi. Statistika
+xotirada: server qayta ishga tushsa nisbat yana 1 dan boshlanadi.
+
+```
+mijoz teriladi (30 s)
+  ├─ ko'tarmadi ──► target NO_ANSWER/… (retry qoidasi)
+  └─ ko'tardi ──┬─► AMD (≤5 s) ──► avtojavobgich ──► uziladi, target VOICEMAIL
+                └─► bo'sh operator bormi?
+                      ├─ ha ──► operator 15 s jiringlaydi
+                      │          ├─ ko'tardi ──► yozib olinadigan suhbat ──► wrap-up
+                      │          └─ ko'tarmadi (RONA) ──► AI agent oladi
+                      └─ yo'q ──► AI agent oladi (call_attempt.ai_overflow = true)
+```
+
+- AI olgan qo'ng'iroq oddiy AI qo'ng'iroqdek davom etadi: senariy, natija (disposition), xulosa,
+  billing va target natijasi — `AI` kampaniyadagidek. Mijoz uchun go'shak qo'yilmaydi.
+- Operator 15 s ichida ko'tarmasa — o'tkazib yuborgan hisoblanadi (ketma-ket ikki marta — `BREAK`).
+- Operator topilguncha mijoz go'shakni qo'ysa — `abandoned`, `HUNG_UP`.
+- Har terilgan raqam dialer'ning parallel kanal chegaralarini (platforma, kompaniya,
+  `maxConcurrentCalls`) egallaydi. DNC, kontakt chastotasi siyosati, dial oynasi, balans va agent
+  `enabled`/nashr qilinganligi tekshiriladi; `dailyCallCap` va budjet **qo'llanmaydi**.
+- Qo'ng'iroqlar AI agentning SIP trunklari orqali emas, kompaniyaning standart trunki orqali ketadi.
+- Natijalar: [`GET /api/reports/campaigns/{id}/predictive`](reports.md#get-apireportscampaignscampaignidpredictive--predictive-kampaniya-terish-natijalari).
+
+### SCORE tartibi — nishonlar qaysi tartibda teriladi
+
+`targetOrdering: "SCORE"` bo'lgan `ACTIVE` kampaniyaning kutayotgan (`PENDING`) nishonlari har 10 daqiqada
+baholanadi (bitta yurishda kampaniya uchun 20 000 tagacha; avval hech baholanmaganlar, keyin 12 soatdan
+oldin baholanganlar). Ball kompaniyaning shu raqam bilan **so'nggi 180 kunlik** tarixidan, qoida bo'yicha:
+
+| Omil | Ta'siri |
+|---|---|
+| Tarix yo'q | `50` (neytral) |
+| Gaplashish ulushi — `(gaplashilgan + 1) ÷ (terilgan + 2)` | ±20 (50% atrofida) |
+| Har `REFUSED` qo'ng'iroq | −5, ko'pi bilan −15 |
+| Har bajarilgan (`KEPT`) to'lov va'dasi | +15, ko'pi bilan +30 |
+| Har buzilgan (`BROKEN`) va'da | −15, ko'pi bilan −30 |
+
+Natija `0–100`. "Terilgan" — trunk'ka chiqqan chiquvchi qo'ng'iroq; "gaplashilgan" — ulardan
+ko'tarilgan va natijasi `VOICEMAIL`, `NO_ANSWER`, `CARRIER_REJECTED`, `FAILED`, `WRONG_NUMBER` bo'lmagani.
+`bestCallHour` — gaplashilgan qo'ng'iroqlar eng ko'p bo'lgan soat (kompaniya vaqt zonasida; teng bo'lsa —
+ertarog'i).
+
+Dialer (`AI` va `PREDICTIVE`) navbatdan nishonlarni `ball + 20 (agar bestCallHour = hozirgi soat)`
+kamayish tartibida oladi; hali baholanmagan nishon `50` hisoblanadi. **Hech kim kutib turilmaydi** —
+tartib faqat sig'im cheklangan paytda (`dailyCallCap`, `maxConcurrentCalls`, kanal limitlari) ta'sir
+qiladi. DNC, kontakt chastotasi siyosati, dial oynasi va retry qoidalari o'zgarmaydi. `PREVIEW` va
+`PROGRESSIVE` kampaniyalarda operator kartasi hali ham `FIFO` tartibida beriladi.
+
+**A/B solishtirish:** ro'yxatni ikki kampaniyaga bo'ling (biri `FIFO`, biri `SCORE`; bir xil agent va
+`dailyCallCap`), so'ng undirishni [conversion](conversions.md) va [to'lov va'dalari](payment-promises.md)
+hisobotlarida kampaniya bo'yicha solishtiring.
 
 ---
 
@@ -372,12 +474,17 @@ Javob — `PageableData<CampaignTarget>`:
   "contextData": "{\"clientName\":\"Aziz Karimov\",\"debtAmount\":1500000}",
   "status": "PENDING",
   "attempts": 0,
-  "doNotCall": false
+  "doNotCall": false,
+  "nextAttemptAt": null,
+  "score": 63,
+  "bestCallHour": 10
 }
 ```
 
 `status` (`TargetStatus`): `PENDING`, `IN_PROGRESS`, `DONE`, `FAILED`, `EXHAUSTED`
 (urinishlar limiti tugadi). `contextData` — **string** ichidagi JSON, obyekt emas.
+`score` (0–100) va `bestCallHour` (0–23) — `SCORE` kampaniyada nishon baholangandan keyin to'ladi
+([SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi)), aks holda `null`.
 
 ---
 

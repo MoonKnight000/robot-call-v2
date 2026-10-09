@@ -24,6 +24,7 @@ public class SipTrunkEntityMapper {
                 entity.getSipPasswordEnc(),
                 entity.getTransport(),
                 entity.getCodecs(),
+                entity.getMaxCps(),
                 entity.isDefault(),
                 entity.isEnabled(),
                 entity.getCreatedAt()

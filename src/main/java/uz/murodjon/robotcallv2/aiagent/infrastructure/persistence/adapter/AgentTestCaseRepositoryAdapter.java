@@ -71,5 +71,7 @@ public class AgentTestCaseRepositoryAdapter implements AgentTestCaseRepository {
         entity.setMustSay(mapper.write(testCase.mustSay()));
         entity.setMustNotSay(mapper.write(testCase.mustNotSay()));
         entity.setMaxTurns(testCase.maxTurns());
+        entity.setToolMocks(mapper.write(testCase.toolMocks()));
+        entity.setExpectTools(mapper.write(testCase.expectTools()));
     }
 }

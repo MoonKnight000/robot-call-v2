@@ -56,4 +56,15 @@ public interface PackController {
     ResponseEntity<ResponseData<PackInstallResponse>> installDraft(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody InstallDraftRequest request);
+
+    /**
+     * The agent as a pack: the JSON {@code /install-draft} takes back, for keeping an agent in git
+     * and moving it between companies or environments. Secrets are listed by key, never by value.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/agents/{agentId:\\d+}/export")
+    ResponseEntity<ResponseData<VerticalPack>> exportAgent(
+            @CurrentCompanyId long companyId,
+            @PathVariable long agentId,
+            @RequestParam(required = false) Integer version);
 }

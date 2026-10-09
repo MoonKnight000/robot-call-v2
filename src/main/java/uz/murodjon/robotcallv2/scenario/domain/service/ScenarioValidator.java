@@ -28,12 +28,14 @@ public final class ScenarioValidator {
             return errors;
         }
         checkStages(def.stages(), errors);
+        checkBranches(def.stages(), errors);
         checkNamesUnique("fact", def.factSchema() == null ? List.of()
                 : def.factSchema().stream().map(FactField::name).toList(), errors);
         checkTools(def.tools(), errors);
         checkStageTools(def.stages(), def.tools(), errors);
         checkOutcome(def.outcomeSchema(), errors);
         checkStyleExamples(def.styleExamples(), errors);
+        checkGlobalNodes(def.globalNodes(), errors);
         checkDisclosure(def.disclosureText(), errors);
         checkFactWebhook(def.factWebhook(), def.factSchema(), errors);
         return errors;
@@ -78,6 +80,38 @@ public final class ScenarioValidator {
         if (!Disclosure.discloses(disclosureText)) {
             errors.add("disclosureText must state that the call is automated and that it is recorded (§11.1) "
                     + "— leave it empty to use the company's own wording");
+        }
+    }
+
+    /**
+     * A branch is a transition the code takes instead of the model, so it may only take one
+     * the graph already allows. The first stage cannot branch: the call opens on it with
+     * the greeting already spoken, before any transition the branches would ride on.
+     */
+    private static void checkBranches(List<StageDef> stages, List<String> errors) {
+        if (stages == null || stages.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < stages.size(); i++) {
+            StageDef s = stages.get(i);
+            if (s.branches() == null || s.branches().isEmpty()) {
+                continue;
+            }
+            if (i == 0) {
+                errors.add("the first stage " + s.id() + " cannot have branches");
+                continue;
+            }
+            for (StageBranch branch : s.branches()) {
+                if (branch == null || branch.fact() == null || branch.fact().isBlank() || branch.operator() == null) {
+                    errors.add("a branch of stage " + s.id() + " needs 'fact' and 'operator'");
+                } else if (branch.operator().needsValue() && (branch.value() == null || branch.value().isBlank())) {
+                    errors.add("branch on " + branch.fact() + " in stage " + s.id() + " needs a 'value' for "
+                            + branch.operator());
+                } else if (s.allowedTransitions() == null || !s.allowedTransitions().contains(branch.goTo())) {
+                    errors.add("branch of stage " + s.id() + " goes to " + branch.goTo()
+                            + ", which is not in its allowedTransitions");
+                }
+            }
         }
     }
 
@@ -205,6 +239,18 @@ public final class ScenarioValidator {
             if (example == null || example.wrong() == null || example.wrong().isBlank()
                     || example.right() == null || example.right().isBlank()) {
                 errors.add("a style example needs both 'wrong' and 'right'");
+            }
+        }
+    }
+
+    private static void checkGlobalNodes(List<GlobalNode> nodes, List<String> errors) {
+        if (nodes == null) {
+            return;
+        }
+        for (GlobalNode node : nodes) {
+            if (node == null || node.question() == null || node.question().isBlank()
+                    || node.answer() == null || node.answer().isBlank()) {
+                errors.add("a global node needs both 'question' and 'answer'");
             }
         }
     }

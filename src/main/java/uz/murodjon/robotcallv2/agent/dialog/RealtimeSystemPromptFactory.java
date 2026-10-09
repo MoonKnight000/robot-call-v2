@@ -182,6 +182,7 @@ public class RealtimeSystemPromptFactory {
         for (String rule : REALTIME_RULES) {
             sb.append("- ").append(rule).append('\n');
         }
+        SystemPromptFactory.appendGlobalNodes(sb, def);
 
         boolean russian = s.language() != null && s.language().toLowerCase().startsWith("ru");
         sb.append("\nUSLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")

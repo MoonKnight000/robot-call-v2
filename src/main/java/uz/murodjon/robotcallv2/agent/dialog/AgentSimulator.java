@@ -17,10 +17,13 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One scripted caller against the real conversation stack — the core of
@@ -54,10 +57,13 @@ public class AgentSimulator {
     private final TextTurnEngine textTurnEngine;
     private final AiModelConfigUseCase aiModelConfigUseCase;
     private final VoiceSettingsUseCase voiceSettingsUseCase;
+    /** The agent's company tools, for a simulation that answers them from canned responses. */
+    private final ToolUseCase toolUseCase;
 
     public AgentSimulator(ObjectProvider<ChatModel> chatModelProvider, TextTurnEngine textTurnEngine,
                           AiModelConfigUseCase aiModelConfigUseCase,
-                          VoiceSettingsUseCase voiceSettingsUseCase) {
+                          VoiceSettingsUseCase voiceSettingsUseCase, ToolUseCase toolUseCase) {
+        this.toolUseCase = toolUseCase;
         this.chatModelProvider = chatModelProvider;
         this.textTurnEngine = textTurnEngine;
         this.aiModelConfigUseCase = aiModelConfigUseCase;
@@ -79,13 +85,27 @@ public class AgentSimulator {
      */
     public SimulatedCall simulate(long companyId, ScenarioDefinition scenario, AiAgent agent, String language,
                                   SimulationPersona persona, int maxTurns, String personaModel) {
+        return simulate(companyId, scenario, agent, language, persona, maxTurns, personaModel, null);
+    }
+
+    /**
+     * The same call with the agent's company tools offered and answered from {@code toolMocks}
+     * (by tool name; an unlisted tool answers that it is unavailable). Nothing reaches the
+     * company's API. Each answered call lands in the transcript as a {@code TOOL:} line, before
+     * the agent line that followed it.
+     *
+     * @param toolMocks null — no company tools at all, as {@link #simulate} without it
+     */
+    public SimulatedCall simulate(long companyId, ScenarioDefinition scenario, AiAgent agent, String language,
+                                  SimulationPersona persona, int maxTurns, String personaModel,
+                                  Map<String, String> toolMocks) {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
             return SimulatedCall.failed("no LLM ChatModel is configured (GEMINI_API_KEY or OPENAI_API_KEY)");
         }
         ChatClient agentClient = TurnTools.chatClient(chatModel);
         ChatClient callerClient = ChatClient.create(chatModel);
-        DialogSession session = newSession(companyId, persona, scenario, agent, language);
+        DialogSession session = newSession(companyId, persona, scenario, agent, language, toolMocks);
         List<String> transcript = new ArrayList<>();
         List<Message> callerHistory = new ArrayList<>();
         List<String> problems = new ArrayList<>();
@@ -101,6 +121,7 @@ public class AgentSimulator {
             } else {
                 agentLine = agentTurn(agentClient, session, clientText, problems);
             }
+            transcript.addAll(session.drainSimulatedToolCalls());
             if (agentLine == null || agentLine.isBlank()) {
                 problems.add("turn " + turn + ": the agent said nothing");
                 break;
@@ -138,6 +159,19 @@ public class AgentSimulator {
         return turn.line();
     }
 
+    /**
+     * The persona's next line, for a simulation that carries it to the agent some other
+     * way — as audio, in {@code VoiceCallSimulator}. {@code callerHistory} holds the agent's
+     * lines as assistant messages and the persona's own as user messages, as here.
+     */
+    public String callerReply(SimulationPersona persona, List<Message> callerHistory, String personaModel) {
+        ChatModel chatModel = chatModelProvider.getIfAvailable();
+        if (chatModel == null) {
+            return null;
+        }
+        return callerTurn(ChatClient.create(chatModel), persona, callerHistory, personaModel);
+    }
+
     /** One caller turn: the persona answers whatever the agent just said. */
     private String callerTurn(ChatClient caller, SimulationPersona persona, List<Message> callerHistory,
                               String personaModel) {
@@ -172,8 +206,9 @@ public class AgentSimulator {
      * telephony, no company REST tools and no MCP tools.
      */
     private DialogSession newSession(long companyId, SimulationPersona persona, ScenarioDefinition scenario,
-                                     AiAgent agent, String language) {
-        EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(companyId);
+                                     AiAgent agent, String language, Map<String, String> toolMocks) {
+        // A simulation stays on the platform's model even for a company on its own LLM (3.14 covers calls).
+        EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(companyId).withoutOwnLlm();
         if (agent != null) {
             aiModel = aiModel.withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
         }
@@ -186,9 +221,17 @@ public class AgentSimulator {
                 .disclosureEnabled(false)
                 .aiModel(aiModel)
                 .voiceSettings(voiceSettingsUseCase.findEffectiveByCompanyId(companyId))
+                .tools(toolMocks != null ? companyToolsOf(companyId, agent) : List.of())
+                .toolMocks(toolMocks)
                 .build();
         session.setMcpTools(List.of());
         return session;
+    }
+
+    /** The tools a real call of this agent would be offered; none for a bare scenario run. */
+    private List<Tool> companyToolsOf(long companyId, AiAgent agent) {
+        return agent != null && agent.id() != null && agent.id() != 0L
+                ? toolUseCase.findAgentToolDefinitions(companyId, agent.id()) : List.of();
     }
 
     private static String textOf(ChatResponse response) {

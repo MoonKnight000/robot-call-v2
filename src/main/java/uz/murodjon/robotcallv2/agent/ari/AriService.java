@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.callrecord.application.dto.SayResponse;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.api.AudioStreamWriter;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -58,6 +59,7 @@ public class AriService implements SmartLifecycle {
     private final FlowCallService flowCallService;
     private final PbxLegService pbxLegService;
     private final CallMediaFactory callMediaFactory;
+    private final OperatorCallRecorder operatorCallRecorder;
     private final AriClient ariClient;
     private final CallSessionRegistry callSessionRegistry;
     private final CallTeardownService callTeardownService;
@@ -65,6 +67,11 @@ public class AriService implements SmartLifecycle {
     private final DialogRouter dialogRouter;
     private final GracefulShutdownManager shutdownManager;
     private final ShutdownProperties shutdownProperties;
+    private final ClusterLiveCalls clusterLiveCalls;
+    private final AnsweringMachineWatcher answeringMachineWatcher;
+    private final ClusterOperatorPresence clusterOperatorPresence;
+    private final AsteriskProperties asteriskProperties;
+    private final CallSetupService callSetupService;
 
     public AriService(OutboundDialService outboundDialService,
                       WebTestCallService webTestCallService,
@@ -73,13 +80,24 @@ public class AriService implements SmartLifecycle {
                       FlowCallService flowCallService,
                       PbxLegService pbxLegService,
                       CallMediaFactory callMediaFactory,
+                      OperatorCallRecorder operatorCallRecorder,
                       AriClient ariClient,
                       CallSessionRegistry callSessionRegistry,
                       CallTeardownService callTeardownService,
                       AriEventLanes ariEventLanes,
                       DialogRouter dialogRouter,
                       GracefulShutdownManager shutdownManager,
-                      ShutdownProperties shutdownProperties) {
+                      ShutdownProperties shutdownProperties,
+                      ClusterLiveCalls clusterLiveCalls,
+                      AnsweringMachineWatcher answeringMachineWatcher,
+                      ClusterOperatorPresence clusterOperatorPresence,
+                      AsteriskProperties asteriskProperties,
+                      CallSetupService callSetupService) {
+        this.callSetupService = callSetupService;
+        this.clusterOperatorPresence = clusterOperatorPresence;
+        this.asteriskProperties = asteriskProperties;
+        this.answeringMachineWatcher = answeringMachineWatcher;
+        this.clusterLiveCalls = clusterLiveCalls;
         this.outboundDialService = outboundDialService;
         this.webTestCallService = webTestCallService;
         this.activeCallService = activeCallService;
@@ -87,6 +105,7 @@ public class AriService implements SmartLifecycle {
         this.flowCallService = flowCallService;
         this.pbxLegService = pbxLegService;
         this.callMediaFactory = callMediaFactory;
+        this.operatorCallRecorder = operatorCallRecorder;
         this.ariClient = ariClient;
         this.callSessionRegistry = callSessionRegistry;
         this.callTeardownService = callTeardownService;
@@ -156,9 +175,13 @@ public class AriService implements SmartLifecycle {
         return outboundDialService.originateExternalToStasis(companyId, rawNumber, appArgs, timeoutSec);
     }
 
-    /** An outside number dialled for an operator (a callback, a softphone call) — booked as a call from the start. */
-    public String originateClientCall(long companyId, String rawNumber, String appArgs, int timeoutSec, String language) {
-        return outboundDialService.originateClientCall(companyId, rawNumber, appArgs, timeoutSec, language);
+    /**
+     * An outside number dialled for an operator (a callback, a softphone call, a preview
+     * card) — booked as a call from the start, on {@code targetId} or {@code CallAttempt.NO_TARGET}.
+     */
+    public String originateClientCall(long companyId, String rawNumber, String appArgs, int timeoutSec, String language,
+                                      long targetId) {
+        return outboundDialService.originateClientCall(companyId, rawNumber, appArgs, timeoutSec, language, targetId);
     }
 
     // ---------------------------------------------------------------------------------
@@ -189,9 +212,9 @@ public class AriService implements SmartLifecycle {
         return activeCallService.listen(channelId);
     }
 
-    /** The calls of {@code companyId} still in conversation — never another tenant's. */
+    /** The calls of {@code companyId} still in conversation, on every instance — never another tenant's. */
     public List<LiveCallRow> findLiveCalls(long companyId) {
-        return activeCallService.findLiveCalls(companyId);
+        return clusterLiveCalls.findLiveCalls(companyId);
     }
 
     /** Whether {@code channelId} is a live call of {@code companyId}. */
@@ -256,6 +279,30 @@ public class AriService implements SmartLifecycle {
         ariClient.hangup(channelId);
     }
 
+    /**
+     * Hangs up a call whose outcome was decided outside any dialog; once it is a live session,
+     * its teardown records {@code disposition} in place of what the hangup cause would say.
+     */
+    public void hangupChannelWithDisposition(String channelId, Disposition disposition) {
+        callSessionRegistry.rememberDisposition(channelId, disposition);
+        ariClient.hangup(channelId);
+    }
+
+    /** See {@link AnsweringMachineWatcher#watch}. */
+    public boolean watchForAnsweringMachine(String channelId, Runnable onMachine) {
+        return answeringMachineWatcher.watch(channelId, onMachine);
+    }
+
+    /** See {@link AnsweringMachineWatcher#stop}. */
+    public void stopWatchingForAnsweringMachine(String channelId) {
+        answeringMachineWatcher.stop(channelId);
+    }
+
+    /** See {@link CallSetupService#startOutboundAiCall}. */
+    public void startOutboundAiCall(String channelId, String channelName, OutboundCall call) {
+        callSetupService.startOutboundAiCall(channelId, channelName, call);
+    }
+
     public void answerChannel(String channelId) {
         ariClient.answer(channelId);
     }
@@ -270,9 +317,17 @@ public class AriService implements SmartLifecycle {
         ariClient.ring(channelId);
     }
 
-    /** Whether a PJSIP endpoint has a registered, reachable contact — a softphone that is signed in. */
+    /**
+     * Whether an operator's PJSIP endpoint has a registered, reachable contact — a softphone
+     * that is signed in — wherever in the cluster it signs in ({@link ClusterOperatorPresence}).
+     */
     public boolean isEndpointOnline(String endpointName) {
-        return ariClient.isEndpointOnline(endpointName);
+        return clusterOperatorPresence.isOnline(endpointName);
+    }
+
+    /** See {@link AsteriskProperties#buildOperatorDialString}. */
+    public String buildOperatorDialString(String endpointName) {
+        return asteriskProperties.buildOperatorDialString(endpointName);
     }
 
     /** See {@link AriClient#snoop}. */
@@ -305,6 +360,11 @@ public class AriService implements SmartLifecycle {
     /** See {@link CallMediaFactory#playToChannel}. */
     public void playToChannel(String channelId, short[] pcm) {
         callMediaFactory.playToChannel(channelId, pcm);
+    }
+
+    /** See {@link OperatorCallRecorder#attach}. */
+    public void recordOperatorLeg(String clientChannelId, String operatorChannelId) {
+        operatorCallRecorder.attach(clientChannelId, operatorChannelId);
     }
 
     /** See {@link PbxLegService#bridgeWithRecording}. */

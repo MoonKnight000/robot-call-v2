@@ -17,7 +17,8 @@ public enum Disposition {
     FAILED,              // technical failure
     COMPLETED,           // scenario finished normally with no debt-specific outcome (ROADMAP A.3)
     GOAL_REACHED,        // the scenario's goal outcome field was recorded (OutcomeField.goal)
-    GOAL_NOT_REACHED;    // the scenario names a goal and the call ended without recording it
+    GOAL_NOT_REACHED,    // the scenario names a goal and the call ended without recording it
+    PAYMENT_CLAIMED;     // the debtor says the debt is already paid; held off while it is verified
 
     /**
      * Whether this outcome is the one the call was placed to get — what an A/B test counts

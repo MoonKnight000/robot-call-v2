@@ -60,6 +60,7 @@ class CallTeardownService {
     private final RealtimeDialogEngine realtimeDialogEngine;
     private final AriClient ariClient;
     private final RtpPortAllocator portAllocator;
+    private final OperatorCallRecorder operatorCallRecorder;
     private final RtpProperties rtpProperties;
     private final CallMetrics callMetrics;
     private final RtpMetrics rtpMetrics;
@@ -83,6 +84,7 @@ class CallTeardownService {
                         RealtimeDialogEngine realtimeDialogEngine,
                         AriClient ariClient,
                         RtpPortAllocator portAllocator,
+                        OperatorCallRecorder operatorCallRecorder,
                         RtpProperties rtpProperties,
                         CallMetrics callMetrics,
                         RtpMetrics rtpMetrics,
@@ -104,6 +106,7 @@ class CallTeardownService {
         this.realtimeDialogEngine = realtimeDialogEngine;
         this.ariClient = ariClient;
         this.portAllocator = portAllocator;
+        this.operatorCallRecorder = operatorCallRecorder;
         this.rtpProperties = rtpProperties;
         this.callMetrics = callMetrics;
         this.rtpMetrics = rtpMetrics;
@@ -214,7 +217,11 @@ class CallTeardownService {
     }
 
     private void teardown(CallSession session, DialogOutcome outcome, Integer cause, DialogTechnicalSnapshot technical) {
-        Disposition disposition = outcome.disposition();
+        Disposition decided = callSessionRegistry.removeDisposition(session.channelId());
+        // What the call machinery decided after the dialog wins over the dialog's own word:
+        // a transfer nobody took is filed CALLBACK_REQUESTED, not the TRANSFERRED the dialog
+        // ended on (OperatorAcceptance).
+        Disposition disposition = decided != null ? decided : outcome.disposition();
         if (disposition == null) {
             disposition = HangupCause.toDisposition(cause);
             if (disposition != null) {
@@ -239,6 +246,8 @@ class CallTeardownService {
                 log.debug("Bridge {} already gone: {}", session.bridgeId(), e.getMessage());
             }
         }
+        // Before the endpoint closes its recorder, which the taps still write into.
+        operatorCallRecorder.release(session.channelId());
         session.endpoint().close();
         RtpQuality mediaQuality = reportRtpQuality(session);
         portAllocator.release(session.rtpPort());

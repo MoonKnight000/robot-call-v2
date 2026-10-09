@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.callrecord.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
@@ -13,6 +14,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseC
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.*;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.*;
+import uz.murodjon.robotcallv2.callrecord.domain.event.PaymentPromisedEvent;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
@@ -21,6 +23,8 @@ import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -38,11 +42,14 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
 
     private static final Logger log = LoggerFactory.getLogger(CallRecordService.class);
     private final ObjectMapper objectMapper;
+    /** Tells the promise feature a call recorded a promise to pay (PaymentPromisedEvent). */
+    private final ApplicationEventPublisher eventPublisher;
 
     private final CallAttemptRepository callAttemptRepository;
     private final CallTranscriptRepository callTranscriptRepository;
     private final CallResultRepository callResultRepository;
     private final CallTechnicalRepository callTechnicalRepository;
+    private final CallTalkMetricsRepository callTalkMetricsRepository;
     private final CompanyProperties companyProperties;
     /** Where the call's CRM note is queued, in the transaction that stores its result. */
     private final OutboxMessageRepository outboxMessageRepository;
@@ -54,14 +61,18 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
                              CallTranscriptRepository callTranscriptRepository,
                              CallResultRepository callResultRepository,
                              CallTechnicalRepository callTechnicalRepository,
+                             CallTalkMetricsRepository callTalkMetricsRepository,
                              CompanyProperties companyProperties,
                              OutboxMessageRepository outboxMessageRepository,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             ApplicationEventPublisher eventPublisher) {
         this.objectMapper = objectMapper;
+        this.eventPublisher = eventPublisher;
         this.callAttemptRepository = callAttemptRepository;
         this.callTranscriptRepository = callTranscriptRepository;
         this.callResultRepository = callResultRepository;
         this.callTechnicalRepository = callTechnicalRepository;
+        this.callTalkMetricsRepository = callTalkMetricsRepository;
         this.companyProperties = companyProperties;
         this.outboxMessageRepository = outboxMessageRepository;
     }
@@ -81,6 +92,16 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         // guessing filed one tenant's call — and posted its CRM note — under another.
         Long cid = callAttemptRepository.findCompanyIdById(callAttemptId);
         return cid != null ? cid : companyProperties.defaultId();
+    }
+
+    @Override
+    public CallAttempt findAttemptByCompanyIdAndId(long companyId, long callId) {
+        return callAttemptRepository.findByCompanyIdAndId(companyId, callId);
+    }
+
+    @Override
+    public Long findLatestAttemptIdByTargetIdSince(long companyId, long targetId, Instant since) {
+        return callAttemptRepository.findLatestIdByTargetIdSince(companyId, targetId, since);
     }
 
     /**
@@ -117,6 +138,21 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         } catch (Exception e) {
             log.warn("findContactHistory failed for {}: {}", PhoneMasker.mask(phone), e.getMessage());
             return ContactHistory.NONE;
+        }
+    }
+
+    /** Fail-open like {@link #findContactHistory}: an unreadable history scores every number as unknown. */
+    @Override
+    public Map<String, PhoneCallHistory> findPhoneCallHistories(long companyId, Collection<String> phones,
+                                                                Instant since, ZoneId zone) {
+        if (phones.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            return callAttemptRepository.findPhoneCallHistories(companyId, phones, since, zone);
+        } catch (Exception e) {
+            log.warn("findPhoneCallHistories failed for company {}: {}", companyId, e.getMessage());
+            return Map.of();
         }
     }
 
@@ -270,6 +306,20 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         }
     }
 
+    @Override
+    public void recordTalkMetrics(CallTalkMetrics metrics) {
+        try {
+            callTalkMetricsRepository.upsert(metrics);
+        } catch (Exception e) {
+            log.warn("recordTalkMetrics failed for call {}: {}", metrics.callId(), e.getMessage());
+        }
+    }
+
+    /** Null when no operator was on the call. */
+    public CallTalkMetrics findTalkMetricsByCallId(long callId) {
+        return callTalkMetricsRepository.findByCallId(callId);
+    }
+
     /** Stamp the moment the call was picked up. */
     @Override
     public void markAnswered(long callId) {
@@ -403,6 +453,12 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         guarded(callId, "markAbandoned", () -> callAttemptRepository.markAbandoned(callId, waitSeconds));
     }
 
+    /** A predictive call no operator took: the AI agent talks instead. */
+    @Override
+    public void markAiOverflow(long callId, int waitSeconds) {
+        guarded(callId, "markAiOverflow", () -> callAttemptRepository.markAiOverflow(callId, waitSeconds));
+    }
+
     /** The 1-5 rating the caller gave after the operator hung up. */
     @Override
     public void recordSurveyScore(long callId, int score) {
@@ -491,12 +547,14 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         if (callId == 0 || s == null) {
             return null;
         }
+        LocalDate promisedDate = asDate(s.outcome().get("promisedDate"));
+        BigDecimal promisedAmount = asAmount(s.outcome().get("promisedAmount"));
         callResultRepository.insertIgnoringConflict(CallResult.summaryOf(
                 callId,
                 s.summary() != null ? s.summary() : "",
                 asReasonCode(s.outcome().get("reasonCode")),
-                asDate(s.outcome().get("promisedDate")),
-                asAmount(s.outcome().get("promisedAmount")),
+                promisedDate,
+                promisedAmount,
                 s.sentiment(),
                 s.needsFollowUp(),
                 s.followUpNote(),
@@ -504,7 +562,25 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
                 null,
                 toJson(s.outcome())));
         log.info("call_result written for call {} (disposition-escalated={})", callId, escalated);
+        if (promisedDate != null) {
+            publishPromise(companyId, callId, promisedDate, promisedAmount);
+        }
         return crmNote != null ? outboxMessageRepository.enqueue(companyId, crmNote) : null;
+    }
+
+    /**
+     * Inside the result's transaction, like every listener here: a promise is kept exactly when
+     * its result is. The number and target are read off the attempt, so the listener needs no
+     * second trip into this feature.
+     */
+    private void publishPromise(long companyId, long callId, LocalDate promisedDate, BigDecimal promisedAmount) {
+        CallAttempt attempt = callAttemptRepository.findByCompanyIdAndId(companyId, callId);
+        if (attempt == null || attempt.phone() == null) {
+            return;
+        }
+        Long targetId = attempt.targetId() != CallAttempt.NO_TARGET ? attempt.targetId() : null;
+        eventPublisher.publishEvent(new PaymentPromisedEvent(companyId, callId, targetId, attempt.phone(),
+                promisedDate, promisedAmount));
     }
 
     /**

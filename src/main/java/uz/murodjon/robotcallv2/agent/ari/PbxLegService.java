@@ -13,6 +13,8 @@ import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.queue.CallQueueDispatcher;
 import uz.murodjon.robotcallv2.agent.queue.OperatorCallControl;
 import uz.murodjon.robotcallv2.agent.queue.OperatorFirstDialer;
+import uz.murodjon.robotcallv2.agent.queue.PredictiveDialer;
+import uz.murodjon.robotcallv2.agent.queue.ProgressiveDialer;
 import uz.murodjon.robotcallv2.agent.queue.SupervisorMonitor;
 import uz.murodjon.robotcallv2.agent.routing.CallRouteRegistry;
 import uz.murodjon.robotcallv2.agent.rtp.RtpPortAllocator;
@@ -43,10 +45,13 @@ class PbxLegService {
     private final ExecutorService callExecutor;
     private final CallQueueDispatcher callQueueDispatcher;
     private final OperatorFirstDialer operatorFirstDialer;
+    private final ProgressiveDialer progressiveDialer;
+    private final PredictiveDialer predictiveDialer;
     private final SupervisorMonitor supervisorMonitor;
     private final OperatorCallControl operatorCallControl;
     private final AriClient ariClient;
     private final CallMediaFactory callMediaFactory;
+    private final OperatorCallRecorder operatorCallRecorder;
     private final CallSessionRegistry callSessionRegistry;
     private final CallAttemptUseCase callAttemptUseCase;
     private final CallMetrics metrics;
@@ -55,6 +60,7 @@ class PbxLegService {
     private final CallTeardownService callTeardownService;
     private final DialogRouter dialogRouter;
     private final ObjectProvider<FlowPrompter> flowPrompterProvider;
+    private final OperatorAcceptance operatorAcceptance;
 
     /** Two legs of one person-to-person call: when either ends, the other is hung up (and their bridge destroyed). */
     private final Map<String, String> linkedLegs = new ConcurrentHashMap<>();
@@ -63,10 +69,13 @@ class PbxLegService {
     PbxLegService(ExecutorService callExecutor,
                   CallQueueDispatcher callQueueDispatcher,
                   OperatorFirstDialer operatorFirstDialer,
+                  ProgressiveDialer progressiveDialer,
+                  PredictiveDialer predictiveDialer,
                   SupervisorMonitor supervisorMonitor,
                   OperatorCallControl operatorCallControl,
                   AriClient ariClient,
                   CallMediaFactory callMediaFactory,
+                  OperatorCallRecorder operatorCallRecorder,
                   CallSessionRegistry callSessionRegistry,
                   CallAttemptUseCase callAttemptUseCase,
                   CallMetrics metrics,
@@ -74,14 +83,18 @@ class PbxLegService {
                   RtpPortAllocator portAllocator,
                   CallTeardownService callTeardownService,
                   DialogRouter dialogRouter,
-                  ObjectProvider<FlowPrompter> flowPrompterProvider) {
+                  ObjectProvider<FlowPrompter> flowPrompterProvider,
+                  OperatorAcceptance operatorAcceptance) {
         this.callExecutor = callExecutor;
         this.callQueueDispatcher = callQueueDispatcher;
         this.operatorFirstDialer = operatorFirstDialer;
+        this.progressiveDialer = progressiveDialer;
+        this.predictiveDialer = predictiveDialer;
         this.supervisorMonitor = supervisorMonitor;
         this.operatorCallControl = operatorCallControl;
         this.ariClient = ariClient;
         this.callMediaFactory = callMediaFactory;
+        this.operatorCallRecorder = operatorCallRecorder;
         this.callSessionRegistry = callSessionRegistry;
         this.callAttemptUseCase = callAttemptUseCase;
         this.metrics = metrics;
@@ -90,6 +103,7 @@ class PbxLegService {
         this.callTeardownService = callTeardownService;
         this.dialogRouter = dialogRouter;
         this.flowPrompterProvider = flowPrompterProvider;
+        this.operatorAcceptance = operatorAcceptance;
     }
 
     /**
@@ -108,6 +122,10 @@ class PbxLegService {
                     : () -> handleOperatorJoin(channel, args);
             case "callback" -> () -> operatorFirstDialer.onOperatorAnswered(argument, channelId);
             case "callback-client" -> () -> operatorFirstDialer.onClientAnswered(argument, channelId, channel.getName());
+            case "progressive-client" -> () -> progressiveDialer.onClientAnswered(argument, channelId, channel.getName());
+            case "progressive-operator" -> () -> progressiveDialer.onOperatorAnswered(argument, channelId);
+            case "predictive-client" -> () -> predictiveDialer.onClientAnswered(argument, channelId, channel.getName());
+            case "predictive-operator" -> () -> predictiveDialer.onOperatorAnswered(argument, channelId);
             case "internal" -> () -> operatorFirstDialer.onOperatorDialled(channelId, channel.getName(), argument);
             case "internal-answer" -> () -> operatorFirstDialer.onColleagueAnswered(argument, channelId);
             case "consult" -> () -> operatorCallControl.onConsultAnswered(argument, channelId);
@@ -128,40 +146,55 @@ class PbxLegService {
         try {
             ARI current = ariClient.requireConnection();
             current.channels().answer(operatorChannel.getId()).execute();
+            operatorAcceptance.onOperatorAnswered(callerId);
             CallSession caller = callSessionRegistry.find(callerId);
-            if (caller != null) {
-                try {
-                    current.channels().hangup(caller.extMediaChannelId()).execute();
-                } catch (Exception e) {
-                    log.debug("extMedia {} already gone: {}", caller.extMediaChannelId(), e.getMessage());
-                }
-            }
+            String language = (caller != null && caller.agent() != null && caller.agent().language() != null)
+                    ? caller.agent().language() : "uz-UZ";
             OperatorSnapshot snapshot = dialogRouter.operatorSnapshot(callerId);
             FlowPrompter prompter = flowPrompterProvider.getIfAvailable();
             if (snapshot != null && prompter != null) {
                 String whisper = buildOperatorWhisper(snapshot);
                 if (!whisper.isBlank()) {
-                    String language = (caller != null && caller.agent() != null && caller.agent().language() != null)
-                            ? caller.agent().language() : "uz-UZ";
                     short[] pcm = prompter.speech(whisper, language);
                     if (pcm.length > 0) {
                         callMediaFactory.playToChannel(operatorChannel.getId(), pcm);
                     }
                 }
             }
+            if (!operatorAcceptance.awaitAcceptance(callerId, operatorChannel.getId(), language)) {
+                ariClient.hangup(operatorChannel.getId());
+                operatorAcceptance.fallBack(callerId);
+                return;
+            }
             if (caller == null || !callSessionRegistry.contains(callerId)) {
                 log.info("Caller {} hung up before operator join completed; hanging up operator {}", callerId, operatorChannel.getId());
+                operatorAcceptance.settle(callerId);
                 ariClient.hangup(operatorChannel.getId());
                 return;
+            }
+            if (!operatorAcceptance.settle(callerId)) {
+                // The watchdog let the caller go first.
+                log.info("Caller {} was already let go; hanging up operator {}", callerId, operatorChannel.getId());
+                ariClient.hangup(operatorChannel.getId());
+                return;
+            }
+            // Only now: until the operator is in, the caller's media leg is what tells them,
+            // should it come to that, that nobody could take the call.
+            try {
+                current.channels().hangup(caller.extMediaChannelId()).execute();
+            } catch (Exception e) {
+                log.debug("extMedia {} already gone: {}", caller.extMediaChannelId(), e.getMessage());
             }
             current.bridges().addChannel(bridgeId, operatorChannel.getId()).execute();
             // A person is on the line now: without this the reaper cut the customer off
             // mid-conversation once the AI call's limit (maxCallSeconds + 60) had passed.
             callSessionRegistry.markOperatorJoined(callerId);
+            operatorCallRecorder.attach(callerId, operatorChannel.getId());
             log.info("Operator {} joined bridge {} for caller {}", operatorChannel.getId(), bridgeId, callerId);
         } catch (Exception e) {
             log.error("Operator join failed for bridge {}: {}", bridgeId, e.getMessage());
             ariClient.hangup(operatorChannel.getId());
+            operatorAcceptance.fallBack(callerId);
         }
     }
 
@@ -172,6 +205,11 @@ class PbxLegService {
         StringBuilder sb = new StringBuilder();
         if (snapshot.clientName() != null && !snapshot.clientName().isBlank()) {
             sb.append("Mijoz: ").append(snapshot.clientName()).append(". ");
+        }
+        if (snapshot.transferReason() != null && !snapshot.transferReason().isBlank()) {
+            // Why the caller is being handed over is the one thing the operator cannot read
+            // off the facts — without it the caller has to explain everything again.
+            sb.append("Sabab: ").append(snapshot.transferReason()).append(". ");
         }
         if (snapshot.dialogState() != null && !snapshot.dialogState().isBlank()) {
             sb.append("Holat: ").append(snapshot.dialogState()).append(". ");
@@ -245,6 +283,7 @@ class PbxLegService {
                 return attemptId;
             }
             linkLegs(clientChannelId, operatorChannelId, null);
+            operatorCallRecorder.attach(clientChannelId, operatorChannelId);
             return attemptId;
         } catch (Exception e) {
             if (!registered) {
@@ -262,9 +301,12 @@ class PbxLegService {
 
     /** A leg ended: the components that own PBX legs clean up theirs, and a linked leg follows it. */
     void notifyPbxLegGone(String channelId, Integer cause) {
+        operatorCallRecorder.release(channelId);
         try {
             callQueueDispatcher.onChannelGone(channelId, cause);
             operatorFirstDialer.onChannelGone(channelId);
+            progressiveDialer.onChannelGone(channelId, cause);
+            predictiveDialer.onChannelGone(channelId, cause);
             supervisorMonitor.onChannelGone(channelId);
             operatorCallControl.onChannelGone(channelId);
         } catch (Exception e) {

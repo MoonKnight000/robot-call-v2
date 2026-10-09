@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.company.infrastructure.persistence.entity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.domain.enums.Language;
 
 import java.time.Instant;
@@ -66,6 +67,9 @@ public class CompanyConfigEntity {
     /** Days nothing is dialled on: ISO dates, comma-separated (NEXT-PLAN C.4). */
     @Column(name = "holidays", nullable = false)
     private String holidays = "";
+
+    @Column(name = "scorecard_review_threshold", nullable = false)
+    private int scorecardReviewThreshold = CompanyConfig.DEFAULT_SCORECARD_REVIEW_THRESHOLD;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -186,6 +190,14 @@ public class CompanyConfigEntity {
 
     public void setHolidays(String holidays) {
         this.holidays = holidays;
+    }
+
+    public int getScorecardReviewThreshold() {
+        return scorecardReviewThreshold;
+    }
+
+    public void setScorecardReviewThreshold(int scorecardReviewThreshold) {
+        this.scorecardReviewThreshold = scorecardReviewThreshold;
     }
 
     public Instant getCreatedAt() {

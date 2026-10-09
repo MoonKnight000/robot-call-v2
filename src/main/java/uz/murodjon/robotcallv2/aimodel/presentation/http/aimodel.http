@@ -31,3 +31,20 @@ Authorization: Bearer {{auth_token}}
   "maxCallSeconds": 300,
   "maxTokensPerCall": 10000
 }
+
+### Own LLM — calls and summaries move to the company's OpenAI-compatible endpoint
+### (create the secret first: POST /api/secrets {"key":"OWN_LLM_KEY","value":"..."})
+PUT http://localhost:8080/api/settings/ai-model/own-llm
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "baseUrl": "https://llm.example.uz/v1",
+  "model": "qwen3-32b",
+  "fastModel": "qwen3-8b",
+  "apiKeySecret": "OWN_LLM_KEY"
+}
+
+### Back to the platform's model
+DELETE http://localhost:8080/api/settings/ai-model/own-llm
+Authorization: Bearer {{auth_token}}

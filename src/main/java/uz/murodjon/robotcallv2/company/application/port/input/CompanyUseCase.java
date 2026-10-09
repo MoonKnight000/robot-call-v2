@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.company.application.port.input;
 
 import uz.murodjon.robotcallv2.company.application.dto.CreateCompanyRequest;
+import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConcurrencyLimitRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyRequest;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyStatusRequest;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
@@ -17,6 +18,9 @@ public interface CompanyUseCase {
     Company update(long callerCompanyId, long id, UpdateCompanyRequest request);
 
     Company updateStatus(long id, UpdateCompanyStatusRequest request);
+
+    /** Platform-only: the company's plan allowance of concurrent dialer calls. */
+    Company updateConcurrencyLimit(long id, UpdateCompanyConcurrencyLimitRequest request);
 
     Company uploadLogo(long callerCompanyId, long id, UploadedFile file);
 

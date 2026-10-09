@@ -54,8 +54,8 @@ import java.util.List;
  * @param earlyThreshold probability required for that. Deliberately far above
  *                    {@link #threshold()}: extending a wait on a wrong answer costs a few
  *                    hundred milliseconds, cutting one costs the caller their sentence
- * @param nFft        STFT size for the log-mel features the graph expects. Must be a power
- *                    of two
+ * @param nFft        STFT size for the log-mel features the graph expects — 400 for the
+ *                    published Smart Turn v3 (Whisper's own); any size works
  * @param hopSamples  STFT hop. With {@code nFft} and {@code frames} it has to reproduce the
  *                    model's declared input shape, which is checked at startup
  * @param mels        mel bands, i.e. the middle dimension of {@code input_features}

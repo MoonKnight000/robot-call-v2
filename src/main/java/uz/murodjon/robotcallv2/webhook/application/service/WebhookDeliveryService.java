@@ -10,15 +10,21 @@ import uz.murodjon.robotcallv2.notification.application.port.input.NotificationU
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.secret.domain.service.SecretPlaceholders;
+import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
+import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
+import uz.murodjon.robotcallv2.webhook.application.mapper.WebhookDeliveryMapper;
 import uz.murodjon.robotcallv2.webhook.application.port.input.WebhookDeliveryUseCase;
 import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookDeliveryRepository;
 import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookSenderPort;
 import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDelivery;
+import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDeliveryFilter;
+import uz.murodjon.robotcallv2.webhook.domain.enums.WebhookDeliveryStatus;
 import uz.murodjon.robotcallv2.webhook.domain.service.WebhookSigningSecret;
 
 import java.net.URI;
@@ -67,12 +73,14 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
     private final SecretCipher cipher;
     private final NotificationUseCase notificationService;
     private final Clock clock;
+    private final WebhookDeliveryMapper mapper;
 
     public WebhookDeliveryService(WebhookSenderPort sender, WebhookDeliveryRepository repository,
                                   SecretUseCase secretUseCase, SecretCipher cipher,
                                   NotificationUseCase notificationService, Clock clock,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper, WebhookDeliveryMapper mapper) {
         this.objectMapper = objectMapper;
+        this.mapper = mapper;
         this.sender = sender;
         this.repository = repository;
         this.secretUseCase = secretUseCase;
@@ -132,16 +140,7 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
         Map<String, String> secrets = Map.of();
         try {
             secrets = secretUseCase.findDecryptedSecrets(delivery.companyId());
-            Map<String, Object> target = unseal(delivery);
-            String url = (String) target.get("url");
-            // Screened again on every try: the address was public when the first try was
-            // made, and minutes later its name may point inside the network. A refusal
-            // counts as a failed try, like any other.
-            if (PublicUrlGuard.parsePublic(url) == null) {
-                throw new ValidationException(ErrorCode.WEBHOOK_URL_INVALID, delivery.host());
-            }
-            sender.post(url, headersOf(target), delivery.payload(), WebhookSigningSecret.findIn(secrets),
-                    delivery.deliveryId().toString());
+            sendStored(delivery, secrets);
             repository.markDelivered(delivery.id(), attempt, now);
             log.info("Webhook {} to {} delivered on try {}", delivery.id(), delivery.host(), attempt);
         } catch (RuntimeException e) {
@@ -159,6 +158,58 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
             log.warn("Webhook {} to {} failed on try {}, next in {}: {}", delivery.id(), delivery.host(),
                     attempt, BACKOFF.get(attempt - 1), error);
         }
+    }
+
+    @Override
+    public PageableData<WebhookDeliveryRow> filterDeliveries(long companyId, WebhookDeliveryFilter filter) {
+        PageableData<WebhookDelivery> page = repository.findPageByCompanyId(companyId, filter);
+        return new PageableData<>(page.totalPages(), page.currentPage(), page.totalElements(),
+                page.data().stream().map(mapper::toWebhookDeliveryRow).toList());
+    }
+
+    /**
+     * One try, on the caller's thread, counted with the others. The row is claimed first, so
+     * a double click sends once and the sweep never picks it up halfway. A failure is not
+     * scheduled again and does not notify: whoever pressed the button sees it in the answer.
+     */
+    @Override
+    public WebhookDeliveryRow retryDelivery(long companyId, long id) {
+        WebhookDelivery delivery = repository.findByCompanyIdAndId(companyId, id);
+        if (delivery == null) {
+            throw new NotFoundException(ErrorCode.WEBHOOK_DELIVERY_NOT_FOUND, id);
+        }
+        Instant now = clock.instant();
+        if (delivery.status() != WebhookDeliveryStatus.FAILED
+                || !repository.claimFailed(id, now.plus(CLAIM_LEASE))) {
+            throw new ConflictException(ErrorCode.WEBHOOK_DELIVERY_NOT_FAILED, id, delivery.status());
+        }
+        int attempt = delivery.attempts() + 1;
+        Map<String, String> secrets = Map.of();
+        try {
+            secrets = secretUseCase.findDecryptedSecrets(companyId);
+            sendStored(delivery, secrets);
+            repository.markDelivered(id, attempt, now);
+            log.info("Webhook {} to {} delivered on manual resend", id, delivery.host());
+        } catch (RuntimeException e) {
+            String error = errorOf(e, secrets);
+            repository.markFailed(id, attempt, error);
+            log.warn("Webhook {} to {} failed on manual resend: {}", id, delivery.host(), error);
+        }
+        return mapper.toWebhookDeliveryRow(repository.findByCompanyIdAndId(companyId, id));
+    }
+
+    /** POSTs a kept delivery to its stored target with its own delivery id; throws when it does not get through. */
+    private void sendStored(WebhookDelivery delivery, Map<String, String> secrets) {
+        Map<String, Object> target = unseal(delivery);
+        String url = (String) target.get("url");
+        // Screened again on every try: the address was public when the first try was
+        // made, and minutes later its name may point inside the network. A refusal
+        // counts as a failed try, like any other.
+        if (PublicUrlGuard.parsePublic(url) == null) {
+            throw new ValidationException(ErrorCode.WEBHOOK_URL_INVALID, delivery.host());
+        }
+        sender.post(url, headersOf(target), delivery.payload(), WebhookSigningSecret.findIn(secrets),
+                delivery.deliveryId().toString());
     }
 
     /** The URL and headers, encrypted; null when there is no key to encrypt with. */

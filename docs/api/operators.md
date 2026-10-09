@@ -55,7 +55,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `AVAILABLE` | ✋ operator / tizim | Qo'ng'iroq olishga tayyor — navbat **faqat** shu statusdagilarga taklif qiladi |
 | `RINGING` | tizim | Unga navbat qo'ng'irog'i jiringlayapti |
 | `ON_CALL` | tizim | Suhbatda |
-| `WRAP_UP` | tizim | Suhbatdan keyingi dam (`wrapUpSec`), tugagach avtomatik `AVAILABLE` |
+| `WRAP_UP` | tizim | Suhbatdan keyingi dam (`wrapUpSec`), tugagach avtomatik `AVAILABLE`. Operator qo'ng'iroq natijasini yuborsa ([`POST /api/calls/{callId}/wrap-up`](wrap-up-codes.md)) — darhol `AVAILABLE` |
 | `BREAK` | ✋ operator / tizim | Tanaffus (`reason`: `"tushlik"` va h.k.). Tizim ham qo'yadi — **RONA**: operator ketma-ket 2 ta taklifni ko'tarmasa, `reason: "javob bermadi"` bilan |
 
 Operator o'zi faqat `AVAILABLE`, `BREAK`, `OFFLINE` ni tanlay oladi

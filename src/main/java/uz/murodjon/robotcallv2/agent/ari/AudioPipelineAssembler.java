@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.agent.dialog.*;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
+import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
 import uz.murodjon.robotcallv2.agent.stt.*;
@@ -25,6 +26,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptU
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
 import uz.murodjon.robotcallv2.live.infrastructure.config.LiveProperties;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -68,6 +70,9 @@ class AudioPipelineAssembler {
     private final CallSessionRegistry callSessionRegistry;
     private final AriClient ariClient;
     private final ExecutorService callExecutor;
+    private final TurnDatasetRecorder turnDatasetRecorder;
+    private final ObjectProvider<NeuralDenoiser> neuralDenoiserProvider;
+    private final RealtimeVoicemailDrop realtimeVoicemailDrop;
 
     AudioPipelineAssembler(VadProperties vadProperties,
                            ObjectProvider<SileroVad> vadProvider,
@@ -90,7 +95,10 @@ class AudioPipelineAssembler {
                            AriEventLanes ariEventLanes,
                            CallSessionRegistry callSessionRegistry,
                            AriClient ariClient,
-                           ExecutorService callExecutor) {
+                           ExecutorService callExecutor,
+                           TurnDatasetRecorder turnDatasetRecorder,
+                           ObjectProvider<NeuralDenoiser> neuralDenoiserProvider,
+                           RealtimeVoicemailDrop realtimeVoicemailDrop) {
         this.vadProperties = vadProperties;
         this.vadProvider = vadProvider;
         this.sttProperties = sttProperties;
@@ -113,6 +121,9 @@ class AudioPipelineAssembler {
         this.callSessionRegistry = callSessionRegistry;
         this.ariClient = ariClient;
         this.callExecutor = callExecutor;
+        this.turnDatasetRecorder = turnDatasetRecorder;
+        this.neuralDenoiserProvider = neuralDenoiserProvider;
+        this.realtimeVoicemailDrop = realtimeVoicemailDrop;
     }
 
     /**
@@ -164,6 +175,17 @@ class AudioPipelineAssembler {
     }
 
     /**
+     * Gives the call its own neural denoiser state when the deployment has the model
+     * (VOICE-PIPELINE-PLAN Bosqich 6); without it the endpoint keeps the broadband gate.
+     */
+    void attachDenoiser(RtpEndpoint endpoint) {
+        NeuralDenoiser denoiser = neuralDenoiserProvider.getIfAvailable();
+        if (denoiser != null && denoiser.available()) {
+            endpoint.setNeuralDenoiser(denoiser.newStream());
+        }
+    }
+
+    /**
      * The call's listeners, in a list the caller may still add to. A non-null
      * {@code realtimeBridge} builds the chain of a realtime call, which has no speech
      * recognizer of its own.
@@ -197,6 +219,10 @@ class AudioPipelineAssembler {
                             learning ? dynamic.emaAlpha() : 0d,
                             learning ? dynamic.reopenGraceMs() : 0);
                     speechGate.setTranscriptCues(adaptive ? endpointing.completeSilenceMs() : 0);
+                    speechGate.setCloseListener((text, waitMs, continued) -> {
+                        sttMetrics.gateCloseJudged(continued);
+                        turnDatasetRecorder.record(language, text, waitMs, continued);
+                    });
                     if (!installTurnDetector(listeners, speechGate, language)) {
                         installTextTurnDetector(speechGate, language);
                     }
@@ -217,7 +243,7 @@ class AudioPipelineAssembler {
                 listeners.add(new VadStream(vad, vadProperties, channelId,
                         realtime ? () -> realtimeDialogEngine.notifyCallerSpeaking(channelId)
                                 : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
-                        buildAmd(channelId), onSpeechEnd, botLevelSupplier));
+                        buildAmd(channelId, realtime), onSpeechEnd, botLevelSupplier));
             } else if (!realtime && sttProperties.vadGating() != null && sttProperties.vadGating().enabled()) {
                 log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }
@@ -356,18 +382,19 @@ class AudioPipelineAssembler {
         }
     }
 
-    private AnsweringMachineDetector buildAmd(String channelId) {
+    private AnsweringMachineDetector buildAmd(String channelId, boolean realtime) {
         AmdProperties amd = vadProperties.amd();
         if (amd == null || !amd.enabled()) {
             return null;
         }
         return new AnsweringMachineDetector(channelId, CallMediaFactory.SAMPLE_RATE, amd.observeMs(),
                 amd.minContinuousSpeechMs(), amd.silenceToleranceMs(),
-                () -> handleVoicemail(channelId));
+                () -> handleVoicemail(channelId, realtime));
     }
 
-    private void handleVoicemail(String channelId) {
-        callMetrics.voicemailDetected();
+    /** @param realtime whether the call is on a realtime engine, which has no voice of ours to leave a message with */
+    private void handleVoicemail(String channelId, boolean realtime) {
+        callMetrics.voicemailDetected("audio");
         CallSession session = callSessionRegistry.find(channelId);
         AiAgent agent = session != null ? session.agent() : null;
         // HANGUP only for a call with no agent behind it at all — there is no message to
@@ -378,6 +405,23 @@ class AudioPipelineAssembler {
 
         if (action == VoicemailAction.IGNORE) {
             log.info("[{}] Voicemail detected, but agent voicemailAction is IGNORE - continuing call", channelId);
+            return;
+        }
+
+        String message = agent != null ? agent.callBehaviour().voicemailMessage() : null;
+        boolean leaveMessage = action.leavesMessage() && message != null && !message.isBlank();
+        if (leaveMessage && !realtime && dialogEngine.leaveVoicemail(channelId, message)) {
+            // The dialog hangs up once the message has been spoken after the beep.
+            return;
+        }
+        if (leaveMessage && realtime && session != null) {
+            // The engine would keep talking over the message, so it goes first; with its
+            // session gone, teardown reads the outcome from the registry instead.
+            callSessionRegistry.rememberDisposition(channelId, Disposition.VOICEMAIL);
+            callExecutor.execute(() -> CallMdc.with(channelId, () -> {
+                realtimeDialogEngine.endCall(channelId);
+                realtimeVoicemailDrop.start(channelId, session.endpoint(), agent, message);
+            }));
             return;
         }
 

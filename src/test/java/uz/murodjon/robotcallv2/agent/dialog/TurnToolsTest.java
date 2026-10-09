@@ -12,6 +12,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 
 import java.util.List;
 
@@ -87,5 +88,22 @@ class TurnToolsTest {
         assertThat(googleOptions.getModel()).isEqualTo("gemini-2.5-flash");
         assertThat(googleOptions.getTemperature()).isEqualTo(0.7);
         assertThat(googleOptions.getMaxOutputTokens()).isEqualTo(100);
+    }
+
+    @Test
+    void onTheCompanysOwnLlmTheTurnRunsOnItsModelNotTheCatalogs() {
+        EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
+                "gemini-3.8-flash", 0.4, 300, 300, 100000L,
+                new OwnLlmEndpoint("https://llm.example.uz/v1", "qwen3-32b", "qwen3-8b", "OWN_LLM_KEY")
+        );
+        when(session.aiModel()).thenReturn(aiModel);
+
+        OpenAiChatOptions main = (OpenAiChatOptions) turnTools.buildOptions(session, List.of());
+        OpenAiChatOptions fast = (OpenAiChatOptions) turnTools.buildOptions(session, List.of(), "qwen3-8b");
+
+        assertThat(main.getModel()).isEqualTo("qwen3-32b");
+        assertThat(main.getMaxTokens()).isEqualTo(300);
+        assertThat(main.getTemperature()).isEqualTo(0.4);
+        assertThat(fast.getModel()).isEqualTo("qwen3-8b");
     }
 }

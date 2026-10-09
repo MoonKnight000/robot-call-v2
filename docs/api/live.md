@@ -16,7 +16,9 @@ oqimi bundan mustasno**, pastga qarang.
 ## `GET /api/calls/live` — jonli qo'ng'iroqlar ro'yxati (bir martalik) {#get-apicallslive}
 
 Hozir suhbatda bo'lgan har bir qo'ng'iroq — **faqat token kompaniyasiniki**. Boshqa
-kompaniyaning qo'ng'iroqlari ro'yxatga umuman tushmaydi (`AriService.liveCalls(companyId)`).
+kompaniyaning qo'ng'iroqlari ro'yxatga umuman tushmaydi (`AriService.findLiveCalls(companyId)`).
+Bir nechta instance bo'lsa — hammasining qo'ng'iroqlari (boshqa instance'larniki ~2 soniya
+kechikish bilan), `startedAt` bo'yicha tartiblangan.
 
 **Response** — `List<LiveCallRow>`, `ResponseData` ichida:
 
@@ -58,6 +60,10 @@ o'zini parse qilib bo'lmaydigan holga keltiradi.
 Oqim tokendagi kompaniyaga bog'lanadi: `KPI`, `LIVE_CALLS`, `TRANSCRIPT`, `AUDIO_LEVEL`
 va `NOTIFICATION` — hammasi faqat shu kompaniyaning qo'ng'iroqlari bo'yicha. `KPI.activeCalls`
 ham butun server emas, shu kompaniya liniyasidagi qo'ng'iroqlar soni.
+
+Oqim qaysi instance'ga ulangan bo'lmasin, kompaniyaning **barcha instance'lardagi** qo'ng'iroqlari
+keladi: `TRANSCRIPT`, `AUDIO_LEVEL`, `NOTIFICATION` boshqa instance'lardan Redis pub/sub orqali,
+`LIVE_CALLS`/`KPI` esa klaster bo'yicha birlashtirilgan ro'yxatdan.
 
 ### Muhim: browser'ning tayyor `EventSource`i ishlamaydi
 
@@ -152,8 +158,11 @@ allaqachon tugagan yoki **boshqa kompaniyaniki** bo'lsa — `409 CALL_NOT_ACTIVE
 bir xil javob oladi, kanal mavjudligi oshkor qilinmaydi).
 
 Bir nechta instance ishlayotganda qo'ng'iroq boshqa instance'da bo'lsa (Redis'dagi
-`call:route:{channelId}` yozuvi, faqat o'z kompaniyangizniki uchun) — `409 CALL_ON_OTHER_INSTANCE`,
-xabarda o'sha instance nomi bor: so'rovni o'sha instance'ga yuboring.
+`call:route:{channelId}` yozuvi, faqat o'z kompaniyangizniki uchun), server so'rovni o'zi o'sha
+instance'ga uzatadi va uning javobini qaytaradi — frontend hech narsa qilmaydi (`?ticket=` bilan
+kelgan so'rovga yangi ticket qo'yiladi). O'sha instance'ga yetib bo'lmasa (yoki u
+`voice-agent.routing.internal-url` e'lon qilmagan bo'lsa) — `409 CALL_ON_OTHER_INSTANCE`, xabarda
+o'sha instance nomi bor.
 
 ### `POST /api/calls/live/{channelId}/whisper` — Botga yashirin yo'l-yo'riq berish (Whisper Injection)
 

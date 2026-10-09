@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.report.application.port.output.ContactCenterReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.OperatorPerformance;
+import uz.murodjon.robotcallv2.report.domain.entity.PredictiveDialingStats;
 import uz.murodjon.robotcallv2.report.domain.entity.QueuePerformance;
 
 import java.sql.ResultSet;
@@ -135,6 +136,34 @@ public class ContactCenterReportRepositoryAdapter implements ContactCenterReport
     }
 
     /** The company and a [from, to) period, the bounds both reports share. */
+    @Override
+    public PredictiveDialingStats findPredictiveDialingStats(long companyId, long campaignId, Instant from, Instant to) {
+        Map<String, Object> params = periodParams(companyId, from, to);
+        params.put("campaignId", campaignId);
+        return jdbc.sql("SELECT count(a.id) AS dialled, "
+                        + "count(a.operator_answered_at) AS to_operator, "
+                        + "count(a.id) FILTER (WHERE a.ai_overflow) AS ai_overflow, "
+                        + "count(a.id) FILTER (WHERE a.abandoned) AS abandoned, "
+                        + "count(a.id) FILTER (WHERE a.disposition = 'VOICEMAIL') AS voicemail, "
+                        + "avg(a.wait_seconds) FILTER (WHERE a.operator_answered_at IS NOT NULL) AS avg_wait "
+                        + "FROM call_attempt a JOIN campaign_target t ON t.id = a.target_id "
+                        + "WHERE a.company_id = :companyId AND t.campaign_id = :campaignId "
+                        + "AND a.started_at >= :from AND a.started_at < :to")
+                .params(params)
+                .query((rs, n) -> {
+                    long toOperator = rs.getLong("to_operator");
+                    long aiOverflow = rs.getLong("ai_overflow");
+                    long abandoned = rs.getLong("abandoned");
+                    long answered = toOperator + aiOverflow + abandoned;
+                    return new PredictiveDialingStats(campaignId, rs.getLong("dialled"), answered, toOperator,
+                            aiOverflow, abandoned, rs.getLong("voicemail"),
+                            answered > 0 ? aiOverflow * 100.0 / answered : null,
+                            answered > 0 ? abandoned * 100.0 / answered : null,
+                            doubleOrNull(rs, "avg_wait"));
+                })
+                .single();
+    }
+
     private static Map<String, Object> periodParams(long companyId, Instant from, Instant to) {
         Map<String, Object> params = new HashMap<>();
         params.put("companyId", companyId);

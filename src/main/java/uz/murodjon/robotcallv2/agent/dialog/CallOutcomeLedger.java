@@ -31,6 +31,8 @@ final class CallOutcomeLedger {
     private volatile Disposition disposition;
     /** Why the client asked not to be called again (§11.4); null unless they did. */
     private volatile String doNotCallReason;
+    /** Why the model handed the call to a person — told to the operator who picks it up; null otherwise. */
+    private volatile String transferReason;
 
     void recordOutcome(String key, Object value) {
         if (value != null) {
@@ -56,6 +58,14 @@ final class CallOutcomeLedger {
 
     void setDoNotCallReason(String doNotCallReason) {
         this.doNotCallReason = doNotCallReason;
+    }
+
+    String transferReason() {
+        return transferReason;
+    }
+
+    void setTransferReason(String transferReason) {
+        this.transferReason = transferReason;
     }
 
     void recordToolFigures(Collection<BigDecimal> figures) {

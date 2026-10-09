@@ -90,11 +90,13 @@ public class CompanyConfigService implements CompanyConfigUseCase {
             throw new ForbiddenException(ErrorCode.HUMAN_LIKE_PERSONA_PLATFORM_ONLY);
         }
         List<LocalDate> holidays = request.holidays() != null ? request.holidays() : existing.holidays();
+        int reviewThreshold = request.scorecardReviewThreshold() != null
+                ? request.scorecardReviewThreshold() : existing.scorecardReviewThreshold();
 
         companyConfigRepository.update(companyId, CompanyConfig.settings(
                 request.dialWindowStart(), request.dialWindowEnd(), request.timezone(),
                 request.defaultLanguage(), request.supportedLanguages(), request.disclosureText(),
-                maxAttempts, quietDays, respectPromise, humanLike, holidays));
+                maxAttempts, quietDays, respectPromise, humanLike, holidays, reviewThreshold));
         // Who allowed the company's agents to pass as a person is the one line in this
         // record a regulator would ask for, so it is written out whenever it changes.
         String persona = humanLike != existing.humanLikePersonaAllowed()

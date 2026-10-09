@@ -2,7 +2,9 @@ package uz.murodjon.robotcallv2.campaign.domain.entity;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -19,7 +21,8 @@ import java.util.Set;
  * Russian voice required cloning the whole campaign, and an inbound call, having no
  * campaign at all, could not be given those settings by any means.
  *
- * @param aiAgentId   the agent whose voice and script this campaign's calls run under
+ * @param aiAgentId   the agent whose voice and script this campaign's calls run under; required
+ *                    for {@link DialMode#AI}, optional for the operator modes
  * @param priority    1 (low) … 5 (urgent): the dialer splits each tick's batch between the
  *                    active campaigns in proportion to it, so a debt campaign at 5 gets
  *                    five lines for every one a survey at 1 gets
@@ -30,6 +33,11 @@ import java.util.Set;
  * @param dailyBudgetUzs the same per company-local day; the pause lifts on the operator's resume
  * @param version     the optimistic-lock counter the row had when read; an edit is written only
  *                    while the row still has it (0 for a campaign not saved yet)
+ * @param dialMode    who talks to the clients; {@link DialMode#AI} when not given
+ * @param callQueueId the operator queue whose members take the calls; required for every mode but AI
+ * @param maxAiOverflowPercent PREDICTIVE: the share of answered calls the AI agent may take, over the
+ *                    last half hour, before the dialer slows to one call per free operator
+ * @param targetOrdering which due targets the dialer claims first; {@link TargetOrdering#FIFO} when not given
  */
 public record Campaign(
         long id,
@@ -43,7 +51,7 @@ public record Campaign(
         int retryIntervalMinutes,
         int maxConcurrentCalls,
         int dailyCallCap,
-        long aiAgentId,
+        Long aiAgentId,
         long companyId,
         Long createdBy,
         RecurrenceType recurrenceType,
@@ -57,16 +65,66 @@ public record Campaign(
         Instant endAt,
         Long budgetUzs,
         Long dailyBudgetUzs,
-        long version
+        long version,
+        DialMode dialMode,
+        Long callQueueId,
+        int maxAiOverflowPercent,
+        TargetOrdering targetOrdering
 ) {
 
     public static final int DEFAULT_PRIORITY = 3;
     public static final int MIN_PRIORITY = 1;
     public static final int MAX_PRIORITY = 5;
+    public static final int DEFAULT_MAX_AI_OVERFLOW_PERCENT = 20;
 
     public Campaign {
         priority = priority < MIN_PRIORITY || priority > MAX_PRIORITY ? DEFAULT_PRIORITY : priority;
         retryPolicy = retryPolicy == null ? RetryPolicy.NONE : retryPolicy;
+        dialMode = dialMode == null ? DialMode.AI : dialMode;
+        targetOrdering = targetOrdering == null ? TargetOrdering.FIFO : targetOrdering;
+    }
+
+    /** The pre-V8 shape: due targets claimed oldest first. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    Long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
+                    Long budgetUzs, Long dailyBudgetUzs, long version, DialMode dialMode, Long callQueueId,
+                    int maxAiOverflowPercent) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
+                budgetUzs, dailyBudgetUzs, version, dialMode, callQueueId, maxAiOverflowPercent, TargetOrdering.FIFO);
+    }
+
+    /** The pre-§1.4 shape: the default AI overflow share. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    Long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
+                    Long budgetUzs, Long dailyBudgetUzs, long version, DialMode dialMode, Long callQueueId) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
+                budgetUzs, dailyBudgetUzs, version, dialMode, callQueueId, DEFAULT_MAX_AI_OVERFLOW_PERCENT);
+    }
+
+    /** The pre-V19 shape: an AI campaign, no operator queue. */
+    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
+                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
+                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
+                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
+                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
+                    Long budgetUzs, Long dailyBudgetUzs, long version) {
+        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
+                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
+                budgetUzs, dailyBudgetUzs, version, DialMode.AI, null);
     }
 
     /** The pre-V23 shape: default priority, no per-disposition rules. */

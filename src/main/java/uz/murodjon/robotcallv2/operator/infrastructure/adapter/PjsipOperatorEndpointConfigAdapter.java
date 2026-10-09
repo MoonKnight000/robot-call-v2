@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.ami.AmiClient;
+import uz.murodjon.robotcallv2.agent.ari.AsteriskProperties;
 import uz.murodjon.robotcallv2.operator.application.port.output.OperatorEndpointConfigPort;
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorSipEndpoint;
 import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
@@ -40,12 +41,15 @@ public class PjsipOperatorEndpointConfigAdapter implements OperatorEndpointConfi
     private final PjsipConfigProperties pjsipConfigProperties;
     private final OperatorProperties operatorProperties;
     private final AmiClient amiClient;
+    private final AsteriskProperties asteriskProperties;
 
     public PjsipOperatorEndpointConfigAdapter(PjsipConfigProperties pjsipConfigProperties,
-                                              OperatorProperties operatorProperties, AmiClient amiClient) {
+                                              OperatorProperties operatorProperties, AmiClient amiClient,
+                                              AsteriskProperties asteriskProperties) {
         this.pjsipConfigProperties = pjsipConfigProperties;
         this.operatorProperties = operatorProperties;
         this.amiClient = amiClient;
+        this.asteriskProperties = asteriskProperties;
     }
 
     @Override
@@ -57,14 +61,18 @@ public class PjsipOperatorEndpointConfigAdapter implements OperatorEndpointConfi
             return;
         }
         Path file = Path.of(pjsipConfigProperties.configDir(), operatorProperties.sipConfigFileName());
+        // Phones sign in to the operator cell only; any other cell reaches them over its
+        // operator trunk. Written empty rather than skipped, so endpoints left from before
+        // the cell was assigned stop accepting registrations.
+        List<OperatorSipEndpoint> here = asteriskProperties.isOperatorCell() ? endpoints : List.of();
         try {
-            Files.writeString(file, render(endpoints), StandardCharsets.UTF_8);
+            Files.writeString(file, render(here), StandardCharsets.UTF_8);
         } catch (IOException e) {
             log.warn("Could not write {}: {}", file, e.getMessage());
             return;
         }
         boolean reloaded = amiClient.reloadPjsip();
-        log.info("Regenerated {} ({} operator endpoint(s)) — Asterisk reload {}", file, endpoints.size(),
+        log.info("Regenerated {} ({} operator endpoint(s)) — Asterisk reload {}", file, here.size(),
                 reloaded ? "ok" : "skipped/failed, will retry on next change");
     }
 

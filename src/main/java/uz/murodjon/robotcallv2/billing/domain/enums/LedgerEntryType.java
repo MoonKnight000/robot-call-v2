@@ -16,5 +16,8 @@ public enum LedgerEntryType {
     CALL_CHARGE,
 
     /** A correction somebody made by hand; the reason belongs in {@code reference_id}. */
-    ADJUSTMENT
+    ADJUSTMENT,
+
+    /** Tokens a panel AI service used — the copilot. No call is behind it. */
+    AI_CHARGE
 }

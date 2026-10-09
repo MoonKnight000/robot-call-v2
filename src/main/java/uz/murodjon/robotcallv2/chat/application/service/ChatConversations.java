@@ -246,7 +246,9 @@ class ChatConversations {
      * and the MCP tool set is left unbuilt so the turn builds it exactly as a call does.
      */
     private DialogSession newDialogSession(ChatSession session, AiAgent agent, ScenarioDefinition scenario) {
+        // The chat widget stays on the platform's model even for a company on its own LLM (3.14 covers calls).
         EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(session.companyId())
+                .withoutOwnLlm()
                 .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
         Company company = companyUseCase.findById(session.companyId());
         List<Tool> tools = toolUseCase.findAgentToolDefinitions(session.companyId(), agent.id());

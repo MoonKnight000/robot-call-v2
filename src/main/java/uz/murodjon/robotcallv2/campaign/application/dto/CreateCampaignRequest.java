@@ -9,7 +9,9 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
@@ -25,9 +27,16 @@ import java.util.Set;
  * <p>Only who is called and when. The voice, the persona, the scenario, the model and the
  * trunks come from the {@code aiAgentId} — see {@code POST /api/ai-agents}.
  *
- * @param aiAgentId    required: the agent from {@code GET /api/ai-agents} whose voice and
- *                     scenario this campaign's calls run under. Changeable later — an
- *                     agent is a way of speaking, not the campaign's identity
+ * @param aiAgentId    the agent from {@code GET /api/ai-agents} whose voice and scenario this
+ *                     campaign's calls run under — required when {@code dialMode} is AI
+ *                     or PREDICTIVE (whose overflow it takes).
+ *                     Changeable later: an agent is a way of speaking, not the campaign's identity
+ * @param dialMode     who talks to the clients: AI (default), PREVIEW, PROGRESSIVE or
+ *                     PREDICTIVE. Fixed once the campaign exists
+ * @param callQueueId  the operator queue whose members take the calls — required for every
+ *                     dialMode but AI
+ * @param maxAiOverflowPercent PREDICTIVE: 0–100, default 20 — see {@code Campaign}
+ * @param targetOrdering which due targets are dialled first: FIFO (default) or SCORE — see {@code TargetOrdering}
  * @param dialDays     days this campaign may dial on ({@code ["MONDAY", ...]}); omit
  *                     or leave empty for every day of the week (§11.2)
  * @param dailyCallCap most calls this campaign may place in one day; 0 or omitted for
@@ -51,7 +60,7 @@ import java.util.Set;
 public record CreateCampaignRequest(
         @NotBlank String name,
         @NotNull CampaignType type,
-        @NotNull Long aiAgentId,
+        Long aiAgentId,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         Set<DayOfWeek> dialDays,
@@ -68,7 +77,15 @@ public record CreateCampaignRequest(
         Instant startAt,
         Instant endAt,
         @Min(1) Long budgetUzs,
-        @Min(1) Long dailyBudgetUzs) {
+        @Min(1) Long dailyBudgetUzs,
+        DialMode dialMode,
+        Long callQueueId,
+        @Min(0) @Max(100) Integer maxAiOverflowPercent,
+        TargetOrdering targetOrdering) {
+
+    public DialMode dialModeOrDefault() {
+        return dialMode != null ? dialMode : DialMode.AI;
+    }
 
     public RecurrenceType recurrenceTypeOrDefault() {
         return recurrenceType != null ? recurrenceType : RecurrenceType.ONCE;

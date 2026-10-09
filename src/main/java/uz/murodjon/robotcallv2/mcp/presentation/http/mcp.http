@@ -30,3 +30,24 @@ Authorization: Bearer {{auth_token}}
 ### 6. O'chirish
 DELETE http://localhost:8080/api/mcp/connections/1
 Authorization: Bearer {{auth_token}}
+
+### Platformaning o'z MCP serveri — initialize (Claude Code shunday ulanadi)
+POST http://localhost:8080/api/mcp-server
+Content-Type: application/json
+X-Api-Key: {{api_key}}
+
+{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "http-file", "version": "1"}}}
+
+### MCP server — kalit ko'radigan tool'lar
+POST http://localhost:8080/api/mcp-server
+Content-Type: application/json
+X-Api-Key: {{api_key}}
+
+{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+
+### MCP server — evalni boshlash (keyin get_evaluation_run)
+POST http://localhost:8080/api/mcp-server
+Content-Type: application/json
+X-Api-Key: {{api_key}}
+
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "run_evaluation", "arguments": {"agentId": 1, "repeat": 3}}}

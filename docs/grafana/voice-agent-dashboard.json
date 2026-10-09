@@ -147,6 +147,47 @@
         { "legendFormat": "tts chars synthesized", "expr": "sum(increase(voice_tts_chars_synthesized_total[1h]))" },
         { "legendFormat": "tts chars saved", "expr": "sum(increase(voice_tts_chars_saved_total[1h]))" }
       ]
+    },
+
+    { "type": "row", "title": "Turn-taking baseline (VOICE-PIPELINE-PLAN Bosqich 0)", "gridPos": { "x": 0, "y": 48, "w": 24, "h": 1 } },
+    {
+      "type": "table", "title": "Stage p50 / p95 by STT × TTS provider (24h)", "gridPos": { "x": 0, "y": 49, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2 } },
+      "targets": [
+        { "refId": "p50", "format": "table", "instant": true, "legendFormat": "p50", "expr": "histogram_quantile(0.5, sum(increase(voice_turn_stage_latency_seconds_bucket[24h])) by (le, stage, stt, tts))" },
+        { "refId": "p95", "format": "table", "instant": true, "legendFormat": "p95", "expr": "histogram_quantile(0.95, sum(increase(voice_turn_stage_latency_seconds_bucket[24h])) by (le, stage, stt, tts))" },
+        { "refId": "turns", "format": "table", "instant": true, "legendFormat": "turns", "expr": "sum(increase(voice_turn_stage_latency_seconds_count[24h])) by (stage, stt, tts)" }
+      ],
+      "transformations": [
+        { "id": "merge" },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #p50": "p50", "Value #p95": "p95", "Value #turns": "turns" } } }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Speech gate closes the caller talked through (%)", "gridPos": { "x": 0, "y": 58, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [
+        { "legendFormat": "continued / all closes", "expr": "sum(increase(voice_stt_gate_close_total{outcome=\"continued\"}[1h])) / sum(increase(voice_stt_gate_close_total[1h]))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Barge-in: decided by rule vs model, model wait p50 / p95", "gridPos": { "x": 8, "y": 58, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "by {{by}} / h", "expr": "sum(increase(voice_dialog_floor_decided_total[1h])) by (by)" },
+        { "legendFormat": "model wait p50 (s)", "expr": "histogram_quantile(0.5, sum(rate(voice_dialog_floor_model_latency_seconds_bucket[1h])) by (le))" },
+        { "legendFormat": "model wait p95 (s)", "expr": "histogram_quantile(0.95, sum(rate(voice_dialog_floor_model_latency_seconds_bucket[1h])) by (le))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Answering machines by detector / calls by disposition", "gridPos": { "x": 16, "y": 58, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "legendFormat": "AMD {{by}}", "expr": "sum(increase(voice_calls_voicemail_detected_total[1h])) by (by)" },
+        { "legendFormat": "{{disposition}}", "expr": "sum(increase(voice_calls_disposition_total{disposition=~\"VOICEMAIL|WRONG_NUMBER|NO_ANSWER\"}[1h])) by (disposition)" }
+      ]
     }
   ]
 }

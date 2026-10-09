@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallRetentionUs
 import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
 import uz.murodjon.robotcallv2.chat.application.port.input.ChatUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.quality.application.port.input.ScorecardUseCase;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.storage.application.port.output.ObjectStoragePort;
 import uz.murodjon.robotcallv2.storage.application.port.output.StoredFileRepository;
@@ -54,6 +55,7 @@ public class RetentionService {
     private final ClientMemoryUseCase clientMemoryUseCase;
     private final ChatUseCase chatUseCase;
     private final AuditUseCase auditUseCase;
+    private final ScorecardUseCase scorecardUseCase;
     private final Path recordingDir;
     private final ClusterJobLock clusterJobLock;
 
@@ -63,6 +65,7 @@ public class RetentionService {
                             ClientMemoryUseCase clientMemoryUseCase,
                             ChatUseCase chatUseCase,
                             AuditUseCase auditUseCase,
+                            ScorecardUseCase scorecardUseCase,
                             RtpProperties rtpProperties, ClusterJobLock clusterJobLock) {
         this.storedFileRepository = storedFileRepository;
         this.objectStorage = objectStorage;
@@ -71,6 +74,7 @@ public class RetentionService {
         this.clientMemoryUseCase = clientMemoryUseCase;
         this.chatUseCase = chatUseCase;
         this.auditUseCase = auditUseCase;
+        this.scorecardUseCase = scorecardUseCase;
         this.recordingDir = Path.of(rtpProperties.recordingDir());
         this.clusterJobLock = clusterJobLock;
     }
@@ -102,6 +106,9 @@ public class RetentionService {
                         .toList());
         int transcripts = deleteInBatches("transcript", batchSize,
                 () -> callRetentionUseCase.deleteExpiredTranscripts(conversations, batchSize));
+        // A scorecard's evidence quotes the client's words, so it goes with the transcript.
+        int evidence = deleteInBatches("scorecard evidence", batchSize,
+                () -> scorecardUseCase.deleteEvidenceWithoutTranscript(batchSize));
         int otherAudio = retentionProperties.conversationDays() <= 0 ? 0
                 : removeFilesInBatches("audio file", batchSize,
                         () -> storedFileRepository.findOlderThanExceptCallRecordings(FileCategory.AUDIO,
@@ -120,11 +127,13 @@ public class RetentionService {
         int outboxRows = deleteOlderThan("outbox message", retentionProperties.outboxDays(), now, batchSize,
                 cutoff -> callRetentionUseCase.deleteFinishedOutboxMessagesBefore(cutoff, batchSize));
 
-        if (recordings + transcripts + otherAudio + summaries + memories + auditRows + outboxRows + chats > 0) {
-            log.info("Retention: {} call recording(s), {} transcript line(s), {} other audio file(s), "
-                            + "{} call summary(ies), {} client memory row(s), {} audit row(s), "
-                            + "{} finished outbox message(s), {} chat(s)",
-                    recordings, transcripts, otherAudio, summaries, memories, auditRows, outboxRows, chats);
+        if (recordings + transcripts + evidence + otherAudio + summaries + memories + auditRows + outboxRows
+                + chats > 0) {
+            log.info("Retention: {} call recording(s), {} transcript line(s), {} scorecard evidence quote(s), "
+                            + "{} other audio file(s), {} call summary(ies), {} client memory row(s), "
+                            + "{} audit row(s), {} finished outbox message(s), {} chat(s)",
+                    recordings, transcripts, evidence, otherAudio, summaries, memories, auditRows, outboxRows,
+                    chats);
         }
     }
 

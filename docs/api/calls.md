@@ -30,6 +30,7 @@ Qo'ng'iroq ulanishi bilan (`StasisStart` / go'shak ko'tarilganda), bot darhol ga
 | `COMPLETED` | Muloqot normal yakunlandi |
 | `GOAL_REACHED` | Ssenariy maqsadi bajarildi: `outcomeSchema` dagi `"goal": true` maydon qo'ng'iroqda yozildi (masalan tool javobidagi `orderId`) — [scenarios.md](scenarios.md) |
 | `GOAL_NOT_REACHED` | Ssenariyda maqsad maydoni bor, lekin qo'ng'iroq uni yozmay tugadi |
+| `PAYMENT_CLAIMED` | Mijoz qarzni allaqachon to'laganini aytdi (`recordPaymentClaim`). Nishon 3 kunga muzlatiladi — kampaniyaning `retryPolicy` dagi shu disposition qoidasi bo'lsa, o'sha kechikish ishlaydi |
 
 `GOAL_REACHED`/`GOAL_NOT_REACHED` ni model emas, kod belgilaydi: model "maqsadga erishdim"
 desa ham maqsad maydoni yozilmagan bo'lsa — `GOAL_NOT_REACHED`; maqsad yozilib, mijoz
@@ -210,7 +211,7 @@ Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer 
 }
 ```
 
-**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba yoki `targetId`/`agentVersion` `campaignId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `SCENARIO_NOT_FOUND`
+**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba yoki `targetId`/`agentVersion` `campaignId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `SCENARIO_NOT_FOUND`, `409 CAMPAIGN_NOT_AI` (kampaniyada AI agent yo'q — operator kampaniyasi)
 (`scenarioId` boshqa kompaniyaniki bo'lsa ham — test qo'ng'irog'i endi doim chaqiruvchi kompaniya nomidan ishlaydi), `403 COMPANY_SUSPENDED`,
 `409 CALL_BALANCE_INSUFFICIENT` (faqat `BILLING_ENFORCE_BALANCE=true` bo'lganda), `409 WEB_TEST_NOT_CONFIGURED` (serverda `ws-url` bo'sh).
 
@@ -262,8 +263,9 @@ Saytda yangi ariza (Lead) tushgan zahoti, webhook yoki CRM orqali 5-10 soniya ic
 Nishon navbatga qo'yiladi va dialerning keyingi tik'i (`voice-agent.dialer.tick-seconds`, standart 5 s)
 uni birinchi bo'lib oladi — endpoint endi o'zi dispatch sikli ishga tushirmaydi. `campaignId` berilsa,
 kampaniya `ACTIVE` bo'lishi shart: aks holda `409 CAMPAIGN_NOT_ACTIVE` (ilgari to'xtatilgan kampaniyaga
-ham "queued" deb javob berardi, qo'ng'iroq esa hech qachon chiqmasdi). `campaignId` berilmasa —
-kompaniyaning birinchi `ACTIVE` kampaniyasi, topilmasa `404 INSTANT_CALL_CAMPAIGN_NOT_FOUND`.
+ham "queued" deb javob berardi, qo'ng'iroq esa hech qachon chiqmasdi). Operatorlar teradigan
+kampaniya (`dialMode` ≠ `AI`) — `409 CAMPAIGN_NOT_AI`. `campaignId` berilmasa —
+kompaniyaning birinchi `ACTIVE` AI kampaniyasi, topilmasa `404 INSTANT_CALL_CAMPAIGN_NOT_FOUND`.
 
 **Request Body** (`InstantCallRequest`):
 ```json
@@ -311,7 +313,7 @@ shuning uchun `agentOverrides` faqat JSON orqali (bu endpoint yoki nishon qo'shi
 
 ## `GET /api/calls/live` — Jonli faol qo'ng'iroqlar monitoringi
 
-Ayni paytda suhbatda bo'lgan **token kompaniyasining** qo'ng'iroqlari ro'yxatini, jumladan qaysi SIP trunkdan qo'ng'iroq ketayotganini qaytaradi. Boshqa kompaniyaning qo'ng'iroqlari ro'yxatga tushmaydi.
+Ayni paytda suhbatda bo'lgan **token kompaniyasining** qo'ng'iroqlari ro'yxatini, jumladan qaysi SIP trunkdan qo'ng'iroq ketayotganini qaytaradi. Boshqa kompaniyaning qo'ng'iroqlari ro'yxatga tushmaydi. Bir nechta instance bo'lsa — hammasining qo'ng'iroqlari ([live.md](live.md#get-apicallslive)).
 
 **Response** (`List<LiveCallRow>`):
 ```json
@@ -471,7 +473,9 @@ tushadi (kutish musiqasi, navbatdagi o'rni, operatorga whisper). Bo'lmasa agentn
 `transferPhoneNumber` endpointi, u ham bo'lmasa serverdagi `voice-agent.operator.endpoint`
 jiringlaydi. **Hech biri sozlanmagan bo'lsa qo'ng'iroq uziladi.** Kanalda shu kompaniyaning
 jonli AI suhbati bo'lmasa — `409 CALL_NOT_ACTIVE`. Aks holda javob doim `200 TRANSFERRING`:
-uzatish keyin amalga oshmasa, kanal uziladi. Operator ulangan qo'ng'iroqni uzatayotganda doim
+uzatish keyin amalga oshmasa, kanal uziladi. Navbatsiz yo'lda operator ko'tarmasa yoki qabul qilmasa,
+mijozga "operatorlar band" aytilib qo'ng'iroq `CALLBACK_REQUESTED` bilan yopiladi
+([ai-agents.md](ai-agents.md) — navbatsiz transfer). Operator ulangan qo'ng'iroqni uzatayotganda doim
 body bering.
 
 **Body bilan — operator qo'ng'iroqni boshqa joyga uzatadi:**

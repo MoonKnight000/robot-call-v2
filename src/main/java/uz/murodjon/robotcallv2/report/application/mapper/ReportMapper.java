@@ -18,7 +18,7 @@ public class ReportMapper {
     public CallDetail toCallDetail(CallReport report) {
         return new CallDetail(toCallRow(report.call()), report.transcript(), report.reasonCode(), report.sentiment(),
                 report.needsFollowUp(), report.followUpNote(), report.escalated(), report.errorMessage(),
-                report.technical());
+                report.technical(), report.talk());
     }
 
     public CampaignComparisonRow toCampaignComparisonRow(CampaignComparison comparison) {

@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionAttribution;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionEvent;
 import uz.murodjon.robotcallv2.conversion.domain.entity.VariantConversions;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,4 +30,7 @@ public interface ConversionRepository {
      * plus a row with a null variant for calls that ran none.
      */
     List<VariantConversions> findConversionsByVariant(long companyId, long campaignId);
+
+    /** {@code goalKey} null means any goal. */
+    boolean existsEventByPhoneSince(long companyId, String phone, String goalKey, Instant since);
 }

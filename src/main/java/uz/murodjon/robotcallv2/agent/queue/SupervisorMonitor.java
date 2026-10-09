@@ -76,7 +76,7 @@ public class SupervisorMonitor {
         }
         Session session = new Session(UUID.randomUUID().toString(), callerChannelId, mode);
         byToken.put(session.token, session);
-        String channelId = ari.originateToStasis("PJSIP/" + account.endpointName(), "monitor," + session.token,
+        String channelId = ari.originateToStasis(ari.buildOperatorDialString(account.endpointName()), "monitor," + session.token,
                 RING_SEC, "\"Monitoring\" <" + mode.name().toLowerCase() + ">");
         session.supervisorChannelId = channelId;
         bySupervisorChannel.put(channelId, session);

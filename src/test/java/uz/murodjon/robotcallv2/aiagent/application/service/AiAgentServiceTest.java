@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
@@ -77,7 +78,8 @@ class AiAgentServiceTest {
                 mock(TtsProviderSelector.class), mock(RealtimeProviderRegistry.class), mock(TtsVoiceUseCase.class),
                 mock(AiModelUseCase.class), companyConfigUseCase);
         service = new AiAgentService(repository, versionRepository, drafts, engineGuard, mock(ScenarioUseCase.class),
-                companyConfigUseCase, mock(UserUseCase.class), auditUseCase, currentUser, eventPublisher);
+                companyConfigUseCase, mock(UserUseCase.class), auditUseCase, currentUser, eventPublisher,
+                mock(AgentRolloutRepository.class));
         when(companyConfigUseCase.resolveLanguage(eq(COMPANY_ID), any())).thenReturn("uz-UZ");
     }
 
@@ -275,7 +277,8 @@ class AiAgentServiceTest {
                 null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
-                transferQueueId, null, null, null, null);
+                transferQueueId, null, null, null, null,
+                null);
     }
 
     /** Only the name and the lock version; everything else left as the agent has it. */
@@ -294,7 +297,7 @@ class AiAgentServiceTest {
                 null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
-                version);
+                version, null);
     }
 
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {

@@ -6,5 +6,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.enums;
  */
 public enum AgentVersionStatus {
     PUBLISHED,
+    /** Published for a rollout: runs on part of the traffic and on the staging numbers until promoted or cancelled. */
+    CANDIDATE,
     ARCHIVED
 }

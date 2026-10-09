@@ -210,6 +210,25 @@ class CallBillingServiceTest {
         verify(callBilling, never()).addSummaryCharge(anyLong(), any(), anyLong());
     }
 
+    /** An operator call's analysis: the scorecard's tokens at the LLM rate, and the extra recognition at the STT rate. */
+    @Test
+    void chargesTheOperatorAnalysisOnTopOfASettledCall() {
+        when(callBilling.findByCallAttemptId(CALL)).thenReturn(Optional.of(settledCall()));
+        when(companyBilling.findBalanceForUpdate(COMPANY)).thenReturn(Optional.of(100_000L));
+        when(ledger.append(any())).thenReturn(true);
+        CallUsage analysis = new CallUsage(0, 100_000, 10_000, 0, 0, 0, 120);
+
+        // Tokens 100 + 100, and 120s of STT = 2 minutes @ 60.
+        service(true).chargeOperatorAnalysis(COMPANY, CALL, analysis);
+
+        ArgumentCaptor<LedgerEntry> entry = ArgumentCaptor.forClass(LedgerEntry.class);
+        verify(ledger).append(entry.capture());
+        assertThat(entry.getValue().idempotencyKey()).isEqualTo("analysis-charge:" + CALL);
+        assertThat(entry.getValue().amountUzs()).isEqualTo(-320L);
+        verify(companyBilling).charge(COMPANY, 0L, 320L);
+        verify(callBilling).addOperatorAnalysisCharge(eq(CALL), eq(analysis), any());
+    }
+
     private static CallBilling settledCall() {
         return new CallBilling(1L, CALL, TARGET, COMPANY, CallBillingStatus.SETTLED, "test-v1", 0,
                 CallUsage.NONE, CallCostBreakdown.FREE, null, null);

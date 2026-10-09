@@ -20,6 +20,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizatio
 import uz.murodjon.robotcallv2.callrecord.application.port.output.RecordingStoragePort;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
@@ -30,6 +31,8 @@ import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.quality.application.port.input.CallQualityUseCase;
+import uz.murodjon.robotcallv2.quality.application.port.input.ScorecardUseCase;
+import uz.murodjon.robotcallv2.quality.domain.entity.CallScorecard;
 import uz.murodjon.robotcallv2.quality.domain.entity.FinishedCall;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
@@ -58,6 +61,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
     private final CallRecordService callRecordService;
     private final SummaryService summaryService;
     private final CallQualityUseCase callQualityUseCase;
+    private final ScorecardUseCase scorecardUseCase;
     private final RecordingStoragePort recordingStoragePort;
     /** Where the CRM note and call history go: queued, then delivered from the outbox. */
     private final OutboxDeliveryService outboxDeliveryService;
@@ -80,6 +84,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
 
     public CallFinalizer(CallRecordService callRecordService, SummaryService summaryService,
                          CallQualityUseCase callQualityUseCase,
+                         ScorecardUseCase scorecardUseCase,
                          RecordingStoragePort recordingStoragePort, OutboxDeliveryService outboxDeliveryService,
                          ScenarioUseCase scenarioUseCase,
                          CampaignTargetUseCase campaignTargetUseCase, NotificationUseCase notificationUseCase,
@@ -93,6 +98,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
         this.callRecordService = callRecordService;
         this.summaryService = summaryService;
         this.callQualityUseCase = callQualityUseCase;
+        this.scorecardUseCase = scorecardUseCase;
         this.recordingStoragePort = recordingStoragePort;
         this.outboxDeliveryService = outboxDeliveryService;
         this.scenarioUseCase = scenarioUseCase;
@@ -176,7 +182,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
                     scenarioRow = scenarioUseCase.requireScenario(companyId, scenarioId);
                     scenario = scenarioRow.definition();
                     // The agent is what asks for dataNeeded / dataEvaluation; without it those were never extracted.
-                    summarized = summaryService.summarize(transcript, scenario, agent);
+                    summarized = summaryService.summarize(companyId, transcript, scenario, agent);
                     summary = summarized != null ? summarized.summary() : null;
                     if (disposition == null && promised(summary)) {
                         disposition = Disposition.PROMISE_TO_PAY;
@@ -189,9 +195,15 @@ public class CallFinalizer implements CallFinalizationUseCase {
                     log.warn("[{}] summary failed: {}", callAttemptId, e.getMessage());
                 }
             }
+            try {
+                postCallActionExecutor.sendVoicemailSms(companyId, callAttemptId, phone, agent, disposition);
+            } catch (Exception e) {
+                log.warn("[{}] voicemail SMS failed: {}", callAttemptId, e.getMessage());
+            }
             if (scenario != null) {
                 recordQuality(companyId, callAttemptId, agent, disposition, transcript, scenario, technical);
             }
+            CallScorecard scorecard = recordOperatorScorecard(companyId, callAttemptId);
 
             // Before the summary, and outside the block below: the conversation happened
             // whether or not an LLM managed to summarise it, and a missing call-history row
@@ -227,6 +239,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
 
             settle(callAttemptId, companyId, durationSec, technical);
             chargeSummary(companyId, callAttemptId, summarized);
+            chargeOperatorAnalysis(companyId, callAttemptId, scorecard);
         } catch (Exception e) {
             log.warn("Finalization failed for call {}: {}", callAttemptId, e.getMessage());
         }
@@ -338,6 +351,46 @@ public class CallFinalizer implements CallFinalizationUseCase {
         }
     }
 
+    /**
+     * The operator's scorecard (docs/OPERATOR-DIALER-ANALYTICS-PLAN.md §2.3), on a call an
+     * operator took — whether or not an AI agent had it first.
+     */
+    private CallScorecard recordOperatorScorecard(long companyId, long callAttemptId) {
+        try {
+            CallAttempt attempt = callRecordService.findAttemptByCompanyIdAndId(companyId, callAttemptId);
+            if (attempt == null || attempt.operatorUserId() == null) {
+                return null;
+            }
+            return scorecardUseCase.recordCallScorecard(companyId, callAttemptId, attempt.operatorUserId(),
+                    callRecordService.findTranscriptText(callAttemptId));
+        } catch (Exception e) {
+            log.warn("[{}] operator scorecard failed: {}", callAttemptId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Charges what analysing the operator's part of the call cost, after its settlement
+     * ({@link CallBillingUseCase#chargeOperatorAnalysis}): the scorecard's tokens, and the two
+     * recognition streams — client and operator side — that ran while the operator was on.
+     * Best effort, like the settlement.
+     */
+    private void chargeOperatorAnalysis(long companyId, long callAttemptId, CallScorecard scorecard) {
+        try {
+            CallTalkMetrics talk = callRecordService.findTalkMetricsByCallId(callAttemptId);
+            int sttSeconds = sttProperties.enabled() && talk != null ? 2 * (talk.analysedMs() / 1000) : 0;
+            if (scorecard == null && sttSeconds == 0) {
+                return;
+            }
+            callBilling.chargeOperatorAnalysis(companyId, callAttemptId, new CallUsage(0,
+                    scorecard != null ? scorecard.promptTokens() : 0,
+                    scorecard != null ? scorecard.completionTokens() : 0,
+                    scorecard != null ? scorecard.cachedTokens() : 0, 0, 0, sttSeconds));
+        } catch (Exception e) {
+            log.warn("[{}] operator analysis billing failed: {}", callAttemptId, e.getMessage());
+        }
+    }
+
     /** The same number's answered calls of the last day, this one left out; none for a withheld number. */
     private List<Long> findEarlierCallIds(long companyId, long callAttemptId) {
         String phone = callRecordService.findPhoneByAttemptId(callAttemptId);
@@ -368,9 +421,11 @@ public class CallFinalizer implements CallFinalizationUseCase {
             // A call that ran on a speech-to-speech engine is priced on its minutes; its
             // tokens are recorded but not priced (CallCostCalculator).
             int realtimeSeconds = counted.engine() != null ? durationSec : 0;
+            CallUsage usage = new CallUsage(durationSec, counted.promptTokens(), counted.completionTokens(),
+                    counted.cachedTokens(), counted.ttsChars(), realtimeSeconds);
+            // On the company's own LLM the tokens stay on the call record but off the bill.
             callBilling.settleCall(companyId, callAttemptId, targetId > 0 ? targetId : null,
-                    new CallUsage(durationSec, counted.promptTokens(), counted.completionTokens(),
-                            counted.cachedTokens(), counted.ttsChars(), realtimeSeconds));
+                    counted.ownLlm() ? usage.withoutLlm() : usage);
         } catch (Exception e) {
             log.warn("[{}] billing settlement failed: {}", callAttemptId, e.getMessage());
         }
@@ -386,8 +441,9 @@ public class CallFinalizer implements CallFinalizationUseCase {
             return;
         }
         try {
-            callBilling.chargeSummary(companyId, callAttemptId, new CallUsage(0, summarized.promptTokens(),
-                    summarized.completionTokens(), summarized.cachedTokens(), 0));
+            CallUsage usage = new CallUsage(0, summarized.promptTokens(), summarized.completionTokens(),
+                    summarized.cachedTokens(), 0);
+            callBilling.chargeSummary(companyId, callAttemptId, summarized.ownLlm() ? usage.withoutLlm() : usage);
         } catch (Exception e) {
             log.warn("[{}] summary billing failed: {}", callAttemptId, e.getMessage());
         }

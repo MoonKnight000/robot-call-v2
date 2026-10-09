@@ -57,8 +57,12 @@ Yaratilgan kompaniya `status: "ACTIVE"` bilan va yuqorida aytilgan default
 
 ```json
 { "id": 2, "name": "Ikkinchi kompaniya", "status": "ACTIVE", "createdAt": "2026-08-01T09:00:00Z",
-  "logoFileId": null, "address": null }
+  "logoFileId": null, "address": null, "maxConcurrentCalls": null }
 ```
+
+`maxConcurrentCalls` — kompaniyaning parallel dialer qo'ng'iroqlari limiti (tarif); `null` —
+platforma standarti. Faqat `SUPERADMIN` o'zgartiradi
+([pastda](#put-apicompaniesidconcurrency-limit--parallel-qongiroqlar-limiti)).
 
 ---
 
@@ -135,6 +139,29 @@ Javob — yangilangan `Company`.
 
 ---
 
+## `PUT /api/companies/{id}/concurrency-limit` — parallel qo'ng'iroqlar limiti
+
+**SUPERADMIN-only** — kompaniya tarifiga ko'ra bir vaqtda nechta dialer qo'ng'irog'ini ushlab
+tura olishi. Kompaniyaning o'z ADMINi o'zgartira olmaydi (`403`).
+
+**Request body** (`UpdateCompanyConcurrencyLimitRequest`):
+
+```json
+{ "maxConcurrentCalls": 40 }
+```
+
+| Maydon | Turi | Majburiy | Izoh |
+|---|---|---|---|
+| `maxConcurrentCalls` | `number` (1–10000) \| `null` | ❌ | `null` — platforma standartiga qaytarish (`voice-agent.dialer.max-concurrent-calls-per-company`) |
+
+Javob — yangilangan `Company`. Keyingi dialer tick'idan (≈5 s) kuchga kiradi. Platformaning umumiy
+chegarasi (RTP portlar) bundan ustun turadi — limit shundan katta bo'lsa ham ortig'i terilmaydi.
+Hozirgi holat — [`GET /api/concurrency`](concurrency.md). Audit: `COMPANY_CONCURRENCY_LIMIT_UPDATE`.
+
+Xatolar: `400 VALIDATION_FAILED` (1 dan kichik yoki 10000 dan katta), `404` (kompaniya yo'q).
+
+---
+
 ## `POST /api/companies/{id}/logo` — logotip yuklash
 
 `ADMIN`, faqat o'z kompaniyasi. `multipart/form-data`, maydon nomi `file`.
@@ -171,6 +198,7 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
   "respectPromisedDate": true,
   "humanLikePersonaAllowed": false,
   "holidays": ["2026-03-21", "2026-09-01"],
+  "scorecardReviewThreshold": 60,
   "createdAt": "2026-08-01T09:00:00Z"
 }
 ```
@@ -260,5 +288,6 @@ yaratilganda avtomatik config oladi.
 | `respectPromisedDate` | ❌ | `null` — o'zgarmaydi |
 | `humanLikePersonaAllowed` | ❌ | `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY`. O'zgarishi audit log'ga yoziladi |
 | `holidays` | ❌ | Sanalar (`YYYY-MM-DD`, ko'pi bilan 366 ta). Shu kunlari kampaniyalar umuman termaydi, retry va callback esa keyingi ruxsat etilgan kunga suriladi. Kun kompaniyaning `timezone`ida hisoblanadi. `null` — o'zgarmaydi, `[]` — tozalaydi |
+| `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)). `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
 
 **Response** — yangilangan `CompanyConfig`.

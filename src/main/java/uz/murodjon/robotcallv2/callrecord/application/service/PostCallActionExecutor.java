@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCas
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallAction;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.PostCallActionType;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
@@ -95,6 +96,25 @@ public class PostCallActionExecutor {
                         callAttemptId, action.name(), action.actionType(), e.getMessage());
             }
         }
+    }
+
+    /**
+     * {@link VoicemailAction#LEAVE_MESSAGE_AND_SMS}: the voicemail message, sent as an SMS too.
+     * From the call's finalization, not from {@link #executeActions} — those wait for a
+     * summary, and a call that reached a voicemail box often has nothing to summarise.
+     */
+    public void sendVoicemailSms(long companyId, long callAttemptId, String phone, AiAgent agent,
+                                 Disposition disposition) {
+        if (agent == null || disposition != Disposition.VOICEMAIL
+                || agent.callBehaviour().voicemailAction() != VoicemailAction.LEAVE_MESSAGE_AND_SMS) {
+            return;
+        }
+        String message = agent.callBehaviour().voicemailMessage();
+        if (phone == null || phone.isBlank() || message == null || message.isBlank()) {
+            return;
+        }
+        boolean sent = smsUseCase.sendSms(companyId, new SmsSendRequest(phone, message));
+        log.info("[{}] Voicemail SMS sent: status={}", callAttemptId, sent);
     }
 
     private boolean matchesTrigger(PostCallAction action, Disposition disposition, CallSummary summary) {

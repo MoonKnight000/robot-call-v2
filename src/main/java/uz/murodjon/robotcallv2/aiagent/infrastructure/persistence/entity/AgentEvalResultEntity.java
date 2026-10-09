@@ -45,6 +45,9 @@ public class AgentEvalResultEntity {
     @Column(name = "guardrail_violation", nullable = false)
     private boolean guardrailViolation;
 
+    @Column(name = "attempt", nullable = false)
+    private int attempt = 1;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -122,6 +125,14 @@ public class AgentEvalResultEntity {
 
     public void setQaScore(Integer qaScore) {
         this.qaScore = qaScore;
+    }
+
+    public int getAttempt() {
+        return attempt;
+    }
+
+    public void setAttempt(int attempt) {
+        this.attempt = attempt;
     }
 
     public boolean isGuardrailViolation() {

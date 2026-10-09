@@ -15,6 +15,7 @@ o'rnatilgandan keyin hosil bo'lgan agent va tool'lar oddiy agent/tool kabi tahri
 | `POST` | `/api/packs/{key}/install` | `AI_AGENT_EDIT` | Paketni kompaniyaga o'rnatish |
 | `POST` | `/api/packs/generate` | `AI_AGENT_EDIT` | Biznes tavsifidan yangi paket qoralamasi (hech narsa yaratmaydi) |
 | `POST` | `/api/packs/install-draft` | `AI_AGENT_EDIT` | Qoralamani o'rnatish |
+| `GET` | `/api/packs/agents/{agentId}/export?version=` | `AI_AGENT_READ` | Mavjud agentni paket JSON'i sifatida olish (config-as-code) |
 
 ---
 
@@ -413,6 +414,35 @@ raqam o'rniga so'z aytadi, ruscha narx haqida savol beradi.
 
 ---
 
+## `debt_collection` — Bank/MFO muddati o'tgan qarz (Soft Collection)
+
+Chiquvchi qo'ng'iroq, **tashqi tool'siz va secrets'siz**. Bosqichlar: `RPC_VERIFY` (o'zi ekanini
+tasdiqlash — begonaga qarz haqida hech narsa aytilmaydi, `recordWrongPerson`) → `IDENTITY_CHECK`
+(faqat `birthYear` fakti bo'lsa) → `DEBT_NOTICE` → `PTP_NEGOTIATION` / `SETTLEMENT` /
+`OBJECTION_HANDLING` → `CONFIRMATION` → `CLOSING`. Maqsad maydoni — `promisedDate`.
+
+| Ssenariy tool'i | Natija |
+|---|---|
+| `recordPaymentPromise(promisedDate, amount, paymentChannel, note)` | `PROMISE_TO_PAY` — nishon yopiladi |
+| `recordPaymentClaim(paidDate, paymentChannel)` | `PAYMENT_CLAIMED` — nishon 3 kunga muzlatiladi ([calls.md](calls.md)) |
+| `recordRefusalReason(reason, detail)` | `REFUSED` |
+| `requestPaymentExtension(extensionDays, reason)` | faqat natijaga yoziladi |
+| `scheduleCallback(callbackTime, reason)` | `CALLBACK_REQUESTED` |
+| `sendSmsPaymentLink(note)` | `paymentLink` fakti bo'lsa SMS ketadi ([webhooks.md](webhooks.md)) |
+
+`paymentChannel` qiymatlari: `CLICK`, `PAYME`, `UZUM`, `BANK_BRANCH`, `TERMINAL`, `OTHER`.
+
+**Faktlar:** majburiy — `clientName`, `contractNumber`, `debtAmount`, `currency`, `dueDate`. Ixtiyoriy —
+`birthYear` (identifikatsiya), `settlementAmount` + `settlementDeadlineHours` (chegirma),
+`installmentMonths` + `installmentMonthly` (bo'lib to'lash), `paymentLink`. Chegirma yoki bo'lib
+to'lash fakti berilmasa bot ularni **taklif qilmaydi**; berilgan summani FactGuard nazorat qiladi.
+
+**Test holatlari (6):** turmush o'rtog'i ko'tardi (`WRONG_NUMBER`, "qarz" so'zi aytilmasligi kerak),
+ertaga Click orqali (`PROMISE_TO_PAY`), kecha to'lagan (`PAYMENT_CLAIMED`), ishsiz qolgan,
+kreditni olmaganini aytadi (`TRANSFERRED`), ruscha "boshqa qo'ng'iroq qilmang" (`DO_NOT_CALL`).
+
+---
+
 ## `POST /api/packs/generate` — tavsifdan paket qoralamasi
 
 Katalogda paketi yo'q biznes uchun paketni **model yozadi** (UNIVERSAL-OPERATOR-PLAN E.1). Hech narsa
@@ -475,3 +505,37 @@ o'rnatiladigan narsa odam ko'rgan narsa bo'lishi kerak, model birinchi yozgan na
 
 Ssenariy bu yerda ham tekshiriladi (`PACK_DRAFT_INVALID`), agent/tool/test holatlari esa o'z
 feature'lari orqali — qo'lda yaratilgani bilan bir xil.
+
+---
+
+## `GET /api/packs/agents/{agentId}/export` — agentni paketga aylantirish
+
+Mavjud agentni `install-draft` qabul qiladigan **aynan o'sha** `VerticalPack` JSON'i ko'rinishida
+qaytaradi. Maqsad — agentni git'da saqlash (config-as-code) va boshqa kompaniya yoki muhitga
+(staging → prod) ko'chirish: JSON'ni `POST /api/packs/install-draft` ga `{"pack": …}` qilib yuborsangiz,
+yangi agent yaratiladi.
+
+| Parametr | Ma'nosi |
+|---|---|
+| `version` | E'lon qilingan versiya raqami; berilmasa — qoralama |
+
+Paketga nimalar kiradi:
+
+| Qism | Qayerdan |
+|---|---|
+| `agent` | Nom, tavsif, til, `firstMessage`, `useRag`, `dataPolicy`, `dataNeeded`, `dataEvaluation` va agent **ishlatadigan** ssenariy. Umumiy ssenariy (`scenarioId`) bo'lsa, uning ta'rifi paket ichiga ko'chiriladi. Ovoz, engine, limitlar va webhook'lar kirmaydi — ular kompaniyaniki |
+| `tools` | Agentga hozir ulangan tool'lar (versiyaga bog'liq emas — tool'lar versiyalanmaydi) |
+| `testCases` | Agentning eval test holatlari, `toolMocks`/`expectTools` bilan |
+| `secrets` | Tool'lar o'qiydigan `{{secrets.KEY}}` kalitlari — faqat **kalit**, qiymat hech qachon chiqmaydi |
+| `catalogFeed`, `conversionGoal` | Har doim `null`: feed manzili va konversiya maqsadi kompaniyaniki |
+
+`key` — `agent-{agentId}`, `industry` — `null`. `id`, `companyId`, `createdAt` kabi saqlash
+maydonlari tool va test holatlarida qoladi, lekin o'rnatishda e'tiborga olinmaydi. Har bir export
+audit'ga `PACK_EXPORT` bo'lib yoziladi.
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| `404` | `AI_AGENT_NOT_FOUND` | Agent yo'q yoki boshqa kompaniyaniki |
+| `404` | `AI_AGENT_VERSION_NOT_FOUND` | Bunday `version` yo'q |
+
+MCP server orqali ham olinadi: `export_agent` va `import_agent_pack` ([mcp-server.md](mcp-server.md)).

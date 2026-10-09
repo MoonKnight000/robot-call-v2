@@ -19,6 +19,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                                     other tenants dial nothing; {@code 0} falls back to
  *                                     {@code maxConcurrentCalls}, i.e. no per-company
  *                                     limit at all
+ * @param defaultTrunkCps              calls per second a trunk is dialled at when it sets no
+ *                                     {@code max_cps} of its own — the platform trunk always.
+ *                                     Counted per PJSIP endpoint across the cluster; past it a
+ *                                     provider answers 503 or drops the INVITE. 0 = no limit
  */
 @ConfigurationProperties(prefix = "voice-agent.dialer")
 public record DialerProperties(
@@ -27,7 +31,8 @@ public record DialerProperties(
         int dispatchBatch,
         int maxConcurrentCalls,
         int maxConcurrentCallsPerCompany,
-        int reclaimAfterSec
+        int reclaimAfterSec,
+        int defaultTrunkCps
 ) {
 
     /** The per-company limit, or the platform's when none is configured. */

@@ -71,6 +71,9 @@ class BillingServiceTest {
     @Mock
     private AuditService audit;
 
+    @Mock
+    private ChannelUsagePort channelUsagePort;
+
     private BillingService service;
 
     @BeforeEach
@@ -86,6 +89,7 @@ class BillingServiceTest {
                 pdfService,
                 audit,
                 PAYMENTS,
+                channelUsagePort,
                 Clock.systemUTC()
         );
     }
@@ -104,6 +108,7 @@ class BillingServiceTest {
         // 7200s = 120 minutes charged this month.
         when(callBillingRepo.findUsageSince(eq(1L), any()))
                 .thenReturn(new PeriodUsage(7200, 45_000, 12_000, 380_000));
+        when(channelUsagePort.findChannelUsage(1L)).thenReturn(new ChannelUsage(3, 40));
 
         BillingOverviewResponse response = service.findOverview(1L);
 
@@ -112,6 +117,8 @@ class BillingServiceTest {
         assertThat(response.metrics().minutes().used()).isEqualTo(120);
         assertThat(response.metrics().minutes().limit()).isEqualTo(5000);
         assertThat(response.metrics().aiTokens().used()).isEqualTo(45_000);
+        assertThat(response.metrics().concurrentChannels().used()).isEqualTo(3);
+        assertThat(response.metrics().concurrentChannels().limit()).isEqualTo(40);
     }
 
     @Test
@@ -182,7 +189,7 @@ class BillingServiceTest {
     void invoicePdfSuccess() {
         Invoice inv = new Invoice("INV-001", 1L, "Mart 2026", 1450000L, InvoiceStatus.PAID, Instant.now(), null, Instant.now());
         when(invoiceRepo.findById("INV-001")).thenReturn(Optional.of(inv));
-        when(companyUseCase.findById(1L)).thenReturn(new Company(1L, "Acme Corp", CompanyStatus.ACTIVE, Instant.now(), null, "Tashkent"));
+        when(companyUseCase.findById(1L)).thenReturn(new Company(1L, "Acme Corp", CompanyStatus.ACTIVE, Instant.now(), null, "Tashkent", null));
         when(pdfService.generateInvoicePdf(eq(inv), eq("Acme Corp"))).thenReturn(new byte[]{1, 2, 3});
 
         byte[] bytes = service.renderInvoicePdf(1L, "INV-001");

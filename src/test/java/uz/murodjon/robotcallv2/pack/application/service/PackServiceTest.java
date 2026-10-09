@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUseCase;
@@ -19,13 +20,16 @@ import uz.murodjon.robotcallv2.knowledgebase.application.dto.CreateKnowledgeSour
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeSourceRow;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeSourceUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
+import uz.murodjon.robotcallv2.pack.application.dto.InstallDraftRequest;
 import uz.murodjon.robotcallv2.pack.application.dto.InstallPackRequest;
 import uz.murodjon.robotcallv2.pack.application.dto.PackInstallResponse;
 import uz.murodjon.robotcallv2.pack.application.port.output.PackGeneratorPort;
 import uz.murodjon.robotcallv2.pack.application.mapper.PackMapper;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
+import uz.murodjon.robotcallv2.pack.domain.service.PackSecrets;
 import uz.murodjon.robotcallv2.pack.infrastructure.adapter.ClasspathJsonPackCatalogAdapter;
+import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.secret.application.dto.SecretRow;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
@@ -80,7 +84,7 @@ class PackServiceTest {
         when(toolUseCase.createTool(eq(COMPANY_ID), any())).thenReturn(tool);
         when(agentEvaluationUseCase.createTestCase(eq(COMPANY_ID), eq(AGENT_ID), any())).thenReturn(
                 new AgentTestCase(9L, COMPANY_ID, AGENT_ID, "case", "persona", null, null, null, null,
-                        null, null, 0, null));
+                        null, null, 0, null, null, null));
         when(conversionUseCase.upsertGoal(eq(COMPANY_ID), any())).thenAnswer(invocation -> {
             ConversionGoalRequest request = invocation.getArgument(1);
             return goal(request.goalKey());
@@ -160,6 +164,25 @@ class PackServiceTest {
         PackInstallResponse response = service.installPack(COMPANY_ID, "ecommerce", null);
 
         assertThat(response.missingSecrets()).containsExactlyElementsOf(declared.subList(1, declared.size()));
+    }
+
+    @Test
+    void anExportedAgentInstallsBackWithTheSameScenarioToolsAndSecrets() {
+        when(aiAgentUseCase.requireAgentVersion(COMPANY_ID, AGENT_ID, null))
+                .thenReturn(AiAgentFixtures.agent(AGENT_ID, COMPANY_ID, 3L, "uz", null));
+        when(aiAgentUseCase.resolveScenario(eq(COMPANY_ID), any())).thenReturn(new Scenario(3L, "s", 1, "S", "",
+                false, true, ecommerce.agent().scenario(), null, null));
+        when(toolUseCase.findAgentToolDefinitions(COMPANY_ID, AGENT_ID)).thenReturn(ecommerce.tools());
+
+        VerticalPack exported = service.exportAgent(COMPANY_ID, AGENT_ID, null);
+
+        // A secret is named by its key; its value never leaves the secrets store.
+        assertThat(exported.secrets()).isEqualTo(PackSecrets.of(ecommerce.tools()));
+        service.installDraft(COMPANY_ID, new InstallDraftRequest(exported, null, null));
+        ArgumentCaptor<CreateAiAgentRequest> agentRequest = ArgumentCaptor.forClass(CreateAiAgentRequest.class);
+        verify(aiAgentUseCase).createAgent(eq(COMPANY_ID), agentRequest.capture());
+        assertThat(agentRequest.getValue().scenarioDefinition()).isEqualTo(ecommerce.agent().scenario());
+        verify(toolUseCase, times(ecommerce.tools().size())).attachTool(COMPANY_ID, AGENT_ID, TOOL_ID);
     }
 
     private static ConversionGoal goal(String key) {

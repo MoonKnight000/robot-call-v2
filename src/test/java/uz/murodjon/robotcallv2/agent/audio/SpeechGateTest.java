@@ -529,4 +529,41 @@ class SpeechGateTest {
 
         assertThat(gate.isOpen()).isTrue();
     }
+
+    @Test
+    void aCloseTheCallerTalksThroughIsReportedAsContinuedWithItsWords() {
+        SpeechGate gate = learningGate();
+        java.util.List<String> verdicts = new java.util.ArrayList<>();
+        gate.setCloseListener((text, waitMs, continued) -> verdicts.add(text + "|" + continued));
+
+        feed(gate, true, 300);
+        gate.onInterimTranscript("ertaga to'layman lekin");
+        feed(gate, false, 1100);   // closes after the 1000 ms hangover
+        feed(gate, true, 300);     // back within the 900 ms grace
+
+        assertThat(verdicts).containsExactly("ertaga to'layman lekin|true");
+    }
+
+    @Test
+    void aCloseThatOutlastsTheGraceIsReportedAsEnded() {
+        SpeechGate gate = learningGate();
+        java.util.List<Boolean> verdicts = new java.util.ArrayList<>();
+        gate.setCloseListener((text, waitMs, continued) -> verdicts.add(continued));
+
+        cleanTurn(gate);
+
+        assertThat(verdicts).containsExactly(false);
+    }
+
+    @Test
+    void aGateWithoutAGraceJudgesNothing() {
+        SpeechGate gate = gate();
+        java.util.List<Boolean> verdicts = new java.util.ArrayList<>();
+        gate.setCloseListener((text, waitMs, continued) -> verdicts.add(continued));
+
+        cleanTurn(gate);
+        feed(gate, true, 300);
+
+        assertThat(verdicts).isEmpty();
+    }
 }

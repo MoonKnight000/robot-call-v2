@@ -17,9 +17,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.TokenUsage;
+import uz.murodjon.robotcallv2.agent.provider.OwnLlmChatModels;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
+import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
@@ -75,14 +78,19 @@ public class SummaryService {
     private final String reasoningEffort;
     private final int maxTokens;
     private final long timeoutMs;
+    private final AiModelConfigUseCase aiModelConfigUseCase;
+    private final OwnLlmChatModels ownLlmChatModels;
 
     /** Runs the summary requests, so {@link #ask} can stop waiting on one. */
     private static final ExecutorService SUMMARY_CALLS = Executors.newVirtualThreadPerTaskExecutor();
 
     private volatile ChatClient chatClient;
 
-    public SummaryService(ObjectProvider<ChatModel> chatModelProvider, SummaryProperties summaryProperties) {
+    public SummaryService(ObjectProvider<ChatModel> chatModelProvider, SummaryProperties summaryProperties,
+                          AiModelConfigUseCase aiModelConfigUseCase, OwnLlmChatModels ownLlmChatModels) {
         this.chatModelProvider = chatModelProvider;
+        this.aiModelConfigUseCase = aiModelConfigUseCase;
+        this.ownLlmChatModels = ownLlmChatModels;
         this.enabled = summaryProperties.enabled();
         this.model = summaryProperties.model();
         this.reasoningEffort = summaryProperties.reasoningEffort();
@@ -105,9 +113,14 @@ public class SummaryService {
         }
     }
 
+    /** Whether summaries can be made at all: enabled, with a chat model to make them. */
+    public boolean isAvailable() {
+        return chatClient != null;
+    }
+
     /** Summarize {@code transcript} against {@code scenario}'s outcomeSchema; {@code null} on empty input or failure. */
-    public SummarizedCall summarize(String transcript, ScenarioDefinition scenario) {
-        return summarize(transcript, scenario, null);
+    public SummarizedCall summarize(long companyId, String transcript, ScenarioDefinition scenario) {
+        return summarize(companyId, transcript, scenario, null);
     }
 
     /**
@@ -117,22 +130,43 @@ public class SummaryService {
      * @return the summary with the tokens it took, which are charged to the call; {@code null}
      *         on empty input or failure
      */
-    public SummarizedCall summarize(String transcript, ScenarioDefinition scenario, AiAgent agent) {
-        if (chatClient == null || transcript == null || transcript.isBlank()) {
+    public SummarizedCall summarize(long companyId, String transcript, ScenarioDefinition scenario, AiAgent agent) {
+        return summarize(companyId, transcript, scenario, agent, java.time.LocalDateTime.now());
+    }
+
+    /**
+     * As {@link #summarize(long, String, ScenarioDefinition, AiAgent)}, with relative dates in the
+     * transcript ("ertaga") read from {@code callTime} — when the call took place — rather
+     * than from now: a reanalysis of last month's call must not move its dates to this month.
+     */
+    public SummarizedCall summarize(long companyId, String transcript, ScenarioDefinition scenario, AiAgent agent,
+                                    java.time.LocalDateTime callTime) {
+        if (!enabled || transcript == null || transcript.isBlank()) {
             return null;
         }
         TokenUsage tokens = new TokenUsage();
         try {
-            ChatOptions options = options();
-            String system = systemPrompt(scenario, agent) + "\nBUGUNGI SANA VA VAQT: " + java.time.LocalDateTime.now() + ".";
-            Map<String, Object> raw = ask(options, system, transcript, tokens);
+            // A company on its own LLM is summarized there too — never on the platform's model,
+            // so a key that cannot be read leaves the summary for the outbox to retry.
+            OwnLlmEndpoint ownLlm = aiModelConfigUseCase.findEffectiveByCompanyId(companyId).ownLlm();
+            ChatClient client = ownLlm != null
+                    ? ChatClient.create(ownLlmChatModels.createChatModel(companyId, ownLlm))
+                    : chatClient;
+            if (client == null) {
+                return null;
+            }
+            ChatOptions options = ownLlm != null
+                    ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
+                    : options();
+            String system = systemPrompt(scenario, agent) + "\nBUGUNGI SANA VA VAQT: " + callTime + ".";
+            Map<String, Object> raw = ask(client, options, system, transcript, tokens);
             List<String> invalid = invalidExtractions(raw, agent);
             if (!invalid.isEmpty()) {
                 // One more try, told exactly which fields came back in the wrong shape. The
                 // first answer stays if the retry fails: it is still a usable summary.
                 log.info("Summary: {} extracted field(s) had the wrong type, asking once more: {}", invalid.size(), invalid);
                 try {
-                    raw = ask(options, system + "\nOLDINGI JAVOBDA QUYIDAGI MAYDONLAR NOTO'G'RI TURDA EDI: "
+                    raw = ask(client, options, system + "\nOLDINGI JAVOBDA QUYIDAGI MAYDONLAR NOTO'G'RI TURDA EDI: "
                             + String.join(", ", invalid)
                             + ". Ularni ko'rsatilgan turda qaytaring yoki null qoldiring.", transcript, tokens);
                 } catch (Exception e) {
@@ -141,7 +175,7 @@ public class SummaryService {
             }
             CallSummary summary = toCallSummary(raw, scenario, agent);
             return summary == null ? null : new SummarizedCall(summary,
-                    tokens.promptTokens(), tokens.completionTokens(), tokens.cachedTokens());
+                    tokens.promptTokens(), tokens.completionTokens(), tokens.cachedTokens(), ownLlm != null);
         } catch (Exception e) {
             log.warn("Summary generation failed: {}", e.getMessage());
             return null;
@@ -153,10 +187,11 @@ public class SummaryService {
      * call has no deadline of its own, and the call's outcome waits on this one. What the
      * request cost is added to {@code tokens}.
      */
-    private Map<String, Object> ask(ChatOptions options, String system, String transcript, TokenUsage tokens)
+    private Map<String, Object> ask(ChatClient client, ChatOptions options, String system, String transcript,
+                                    TokenUsage tokens)
             throws Exception {
         CompletableFuture<ResponseEntity<ChatResponse, Map<String, Object>>> pending =
-                CompletableFuture.supplyAsync(() -> chatClient.prompt()
+                CompletableFuture.supplyAsync(() -> client.prompt()
                         .options(options.mutate())
                         .system(system)
                         .user(transcript)
@@ -276,6 +311,20 @@ public class SummaryService {
             }
         }
         return new CallSummary(summary, outcome, sentiment, needsFollowUp, followUpNote, callbackAt, qaScore, commitmentScore);
+    }
+
+    /**
+     * The {@code outcome} keys {@code agent}'s analysis writes: its {@code dataNeeded} keys,
+     * {@code evaluation} and {@code extractionErrors}. What a reanalysis replaces.
+     */
+    public static List<String> findAnalysisKeys(AiAgent agent) {
+        List<String> keys = new ArrayList<>();
+        for (DataExtractionField f : agent.dataNeeded()) {
+            keys.add(fieldKey(f));
+        }
+        keys.add(EVALUATION_KEY);
+        keys.add(EXTRACTION_ERRORS_KEY);
+        return keys;
     }
 
     /** {@code dataNeeded} keys whose value came back but cannot be read in the declared type. */

@@ -1,8 +1,11 @@
 package uz.murodjon.robotcallv2.campaign.domain.service;
 
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.EnumSet;
@@ -67,5 +70,17 @@ class RetryScheduleTest {
     @Test
     void aZeroCampaignIntervalStillWaitsDefault24Hours() {
         assertThat(RetrySchedule.delayFor(null, null, 0).toHours()).isEqualTo(24);
+    }
+
+    @Test
+    void aPaymentClaimHoldsThreeDaysOverTheCampaignInterval() {
+        assertThat(RetrySchedule.delayFor(Disposition.PAYMENT_CLAIMED, null, 60, null))
+                .isEqualTo(Duration.ofDays(3));
+    }
+
+    @Test
+    void aRuleForPaymentClaimWins() {
+        assertThat(RetrySchedule.delayFor(Disposition.PAYMENT_CLAIMED, null, 60, new RetryRule(null, 24 * 60)))
+                .isEqualTo(Duration.ofDays(1));
     }
 }

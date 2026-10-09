@@ -1,0 +1,52 @@
+### Operator call scorecards (docs/api/scorecards.md). Configure criteria as a user with QUALITY_REVIEW_EDIT.
+
+### Create a criterion
+POST http://localhost:8080/api/scorecard-criteria
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Salomlashish",
+  "instruction": "Operator suhbat boshida salomlashdimi va o'zini hamda kompaniyani tanishtirdimi",
+  "weight": 2
+}
+
+### List criteria
+POST http://localhost:8080/api/scorecard-criteria/list
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "page": 0, "size": 50, "enabled": true }
+
+### Edit a criterion (full replace)
+PUT http://localhost:8080/api/scorecard-criteria/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Salomlashish",
+  "instruction": "Operator suhbat boshida salomlashdimi va o'zini hamda kompaniyani tanishtirdimi",
+  "weight": 3,
+  "enabled": true
+}
+
+### A finished operator call's scorecard (404 until it has been scored)
+GET http://localhost:8080/api/calls/42/scorecard
+Authorization: Bearer {{token}}
+
+### The review inbox: scored operator calls waiting for a supervisor
+POST http://localhost:8080/api/call-scorecards/list
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "page": 0, "size": 20, "status": "PENDING" }
+
+### Review a scorecard: correct one answer (ids from answers[].id), or send no corrections to confirm
+POST http://localhost:8080/api/call-scorecards/42/review
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "corrections": [ { "answerId": 7, "answer": "YES" } ],
+  "note": "Operator salomlashgan, transkriptda tushib qolgan"
+}

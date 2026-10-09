@@ -43,6 +43,9 @@ public class AiAgentCallBehaviourEntity {
     @Column(name = "transfer_queue_id")
     private Long transferQueueId;
 
+    @Column(name = "pre_conversation_audio_file_id")
+    private Long preConversationAudioFileId;
+
     protected AiAgentCallBehaviourEntity() {
     }
 
@@ -50,7 +53,8 @@ public class AiAgentCallBehaviourEntity {
                                       boolean dtmfInputEnabled, VoicemailAction voicemailAction,
                                       String voicemailMessage, boolean midCallSmsEnabled,
                                       String midCallSmsTemplate, String transferPhoneNumber,
-                                      String transferMessage, Long transferQueueId) {
+                                      String transferMessage, Long transferQueueId,
+                                      Long preConversationAudioFileId) {
         this.interruptionSensitivity = interruptionSensitivity != null
                 ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
         this.endpointingDelayMs = endpointingDelayMs > 0 ? endpointingDelayMs : 700;
@@ -62,6 +66,7 @@ public class AiAgentCallBehaviourEntity {
         this.transferPhoneNumber = transferPhoneNumber;
         this.transferMessage = transferMessage;
         this.transferQueueId = transferQueueId;
+        this.preConversationAudioFileId = preConversationAudioFileId;
     }
 
     public InterruptionSensitivity getInterruptionSensitivity() {
@@ -102,5 +107,9 @@ public class AiAgentCallBehaviourEntity {
 
     public Long getTransferQueueId() {
         return transferQueueId;
+    }
+
+    public Long getPreConversationAudioFileId() {
+        return preConversationAudioFileId;
     }
 }

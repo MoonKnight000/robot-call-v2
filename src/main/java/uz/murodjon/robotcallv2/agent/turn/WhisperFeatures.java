@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.agent.turn;
 
+import java.util.Arrays;
+
 /**
  * The log-mel spectrogram a Whisper encoder expects, computed in Java.
  *
@@ -13,18 +15,19 @@ package uz.murodjon.robotcallv2.agent.turn;
  * and the two normalizations Whisper applies afterwards — an 8-decade floor relative to
  * the loudest bin, then a shift into roughly [-1, 1].
  *
- * <p>The defaults ({@code nFft} 512, {@code hop} 256, 128 mels) are the ones that produce
- * the 500 frames Smart Turn v3 declares for 8 seconds of 16 kHz audio: reflect padding
- * adds {@code nFft} samples, so {@code 128000 / 256} frames come out once Whisper drops
+ * <p>The defaults ({@code nFft} 400, {@code hop} 160, 80 mels — Whisper's own) are the ones
+ * that produce the 800 frames the published Smart Turn v3 declares for 8 seconds of 16 kHz
+ * audio: reflect padding adds {@code nFft} samples, so {@code 128000 / 160} frames come out once Whisper drops
  * the trailing one. They are settings rather than constants because a re-export with a
  * different preprocessor config would change them, and a mismatch here is invisible —
  * the model returns a number either way, just not a meaningful one.
  * {@link SmartTurnDetector} checks the shape against the graph for that reason.
  *
- * <p>{@code nFft} must be a power of two: the transform below is a plain radix-2 FFT, and
- * an arbitrary size would need Bluestein's algorithm to stay exact. Whisper's own 400 is
- * not a power of two, so a model exported with the stock config cannot be served here —
- * which the detector says out loud rather than silently returning noise.
+ * <p>Any {@code nFft} works. A power of two goes straight through the radix-2 FFT; any
+ * other size — Whisper's own 400, which the published Smart Turn v3 models use — goes
+ * through Bluestein's algorithm, which computes the exact {@code nFft}-point DFT as a
+ * circular convolution on the next power of two. Zero-padding 400 to 512 instead would put
+ * the bins at other frequencies, and the model would score a spectrogram of something else.
  *
  * <p>Thread-safe: every {@link #extract} allocates its own FFT scratch. The one instance
  * belongs to the detector, and the detector serves every call at once — with shared
@@ -48,9 +51,20 @@ final class WhisperFeatures {
     private final double[] window;
     private final double[][] melFilters;
 
+    /** Length of the radix-2 transforms one frame takes: {@code nFft}, or the Bluestein size. */
+    private final int fftSize;
+    /**
+     * Bluestein's chirp {@code e^(-iπk²/nFft)} and the FFT of its conjugate, laid out for a
+     * circular convolution of {@link #fftSize}; all null when {@code nFft} is a power of two.
+     */
+    private final double[] chirpRe;
+    private final double[] chirpIm;
+    private final double[] kernelRe;
+    private final double[] kernelIm;
+
     WhisperFeatures(int sampleRate, int nFft, int hop, int nMels, int frames) {
-        if (Integer.bitCount(nFft) != 1) {
-            throw new IllegalArgumentException("nFft must be a power of two, was " + nFft);
+        if (nFft < 2) {
+            throw new IllegalArgumentException("nFft must be at least 2, was " + nFft);
         }
         this.nFft = nFft;
         this.hop = hop;
@@ -60,6 +74,37 @@ final class WhisperFeatures {
         this.samples = frames * hop;
         this.window = hann(nFft);
         this.melFilters = melFilterbank(sampleRate, nFft, nMels);
+        if (Integer.bitCount(nFft) == 1) {
+            this.fftSize = nFft;
+            this.chirpRe = null;
+            this.chirpIm = null;
+            this.kernelRe = null;
+            this.kernelIm = null;
+            return;
+        }
+        int size = 1;
+        while (size < 2 * nFft - 1) {
+            size <<= 1;
+        }
+        this.fftSize = size;
+        this.chirpRe = new double[nFft];
+        this.chirpIm = new double[nFft];
+        this.kernelRe = new double[size];
+        this.kernelIm = new double[size];
+        for (int k = 0; k < nFft; k++) {
+            // k² taken modulo 2·nFft first: the chirp is periodic in it, and the raw square
+            // would cost the angle its precision long before k reaches nFft.
+            double angle = -Math.PI * ((long) k * k % (2L * nFft)) / nFft;
+            chirpRe[k] = Math.cos(angle);
+            chirpIm[k] = Math.sin(angle);
+            kernelRe[k] = chirpRe[k];
+            kernelIm[k] = -chirpIm[k];
+            if (k > 0) {
+                kernelRe[size - k] = chirpRe[k];
+                kernelIm[size - k] = -chirpIm[k];
+            }
+        }
+        fft(kernelRe, kernelIm);
     }
 
     /** How much 16 kHz audio one call consumes; anything shorter is padded with silence. */
@@ -89,8 +134,8 @@ final class WhisperFeatures {
         double loudest = Double.NEGATIVE_INFINITY;
         // One frame's real and imaginary parts and power spectrum, reused across this
         // extract's frames only — see the class note on thread safety.
-        double[] re = new double[nFft];
-        double[] im = new double[nFft];
+        double[] re = new double[fftSize];
+        double[] im = new double[fftSize];
         double[] power = new double[bins];
 
         for (int frame = 0; frame < frames; frame++) {
@@ -140,6 +185,10 @@ final class WhisperFeatures {
 
     /** One frame's |FFT|² into {@code power}, using {@code re}/{@code im} as scratch. */
     private void powerSpectrum(double[] signal, int offset, double[] re, double[] im, double[] power) {
+        if (chirpRe != null) {
+            bluesteinPowerSpectrum(signal, offset, re, im, power);
+            return;
+        }
         for (int i = 0; i < nFft; i++) {
             re[i] = signal[offset + i] * window[i];
             im[i] = 0;
@@ -147,6 +196,33 @@ final class WhisperFeatures {
         fft(re, im);
         for (int bin = 0; bin < bins; bin++) {
             power[bin] = re[bin] * re[bin] + im[bin] * im[bin];
+        }
+    }
+
+    /**
+     * One frame's |DFT|² for an {@code nFft} that is not a power of two (Bluestein). The
+     * spectrum is {@code chirp · IFFT(FFT(x · chirp) · kernel)}; the chirp has modulus one,
+     * so for the power the outer multiplication drops out and only the convolution is needed.
+     */
+    private void bluesteinPowerSpectrum(double[] signal, int offset, double[] re, double[] im, double[] power) {
+        for (int i = 0; i < nFft; i++) {
+            double x = signal[offset + i] * window[i];
+            re[i] = x * chirpRe[i];
+            im[i] = x * chirpIm[i];
+        }
+        Arrays.fill(re, nFft, fftSize, 0);
+        Arrays.fill(im, nFft, fftSize, 0);
+        fft(re, im);
+        for (int i = 0; i < fftSize; i++) {
+            double r = re[i] * kernelRe[i] - im[i] * kernelIm[i];
+            double m = re[i] * kernelIm[i] + im[i] * kernelRe[i];
+            re[i] = r;
+            im[i] = -m;   // conjugate: the inverse FFT as conj(FFT(conj(z)))
+        }
+        fft(re, im);
+        double scale = (double) fftSize * fftSize;
+        for (int bin = 0; bin < bins; bin++) {
+            power[bin] = (re[bin] * re[bin] + im[bin] * im[bin]) / scale;
         }
     }
 

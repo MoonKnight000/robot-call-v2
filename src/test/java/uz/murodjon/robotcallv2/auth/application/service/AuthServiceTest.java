@@ -234,7 +234,7 @@ class AuthServiceTest {
 
         authService.createStreamTicket(1L);
 
-        verify(streamTicketService).issue(new AuthenticatedUser(1L, 1L, ADMIN_ROLE.id(), ADMIN_ROLE.code(),
+        verify(streamTicketService).create(new AuthenticatedUser(1L, 1L, ADMIN_ROLE.id(), ADMIN_ROLE.code(),
                 ADMIN_ROLE.permissions(), "Ali Valiyev", "ali@example.com"));
     }
 

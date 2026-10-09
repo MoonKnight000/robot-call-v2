@@ -234,9 +234,9 @@ class FlowCallService {
         }
         try {
             long companyId = call.companyId();
-            AiAgent agent = aiAgentUseCase.requirePublishedAgent(companyId, agentId);
-            Scenario scenario = aiAgentUseCase.resolveScenario(companyId, agent);
             String callerNumber = call.callerNumber();
+            AiAgent agent = aiAgentUseCase.requireCallAgent(companyId, agentId, callerNumber);
+            Scenario scenario = aiAgentUseCase.resolveScenario(companyId, agent);
             CrmClientSnapshot crm = callerNumber != null ? crmUseCase.findByPhone(companyId, callerNumber) : null;
             ClientMemory memory = callerNumber != null
                     ? clientMemoryUseCase.findByCompanyIdAndPhone(companyId, callerNumber) : null;

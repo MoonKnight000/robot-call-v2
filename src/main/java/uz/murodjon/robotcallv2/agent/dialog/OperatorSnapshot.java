@@ -12,6 +12,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
  * @param dueDate        original due date (as text)
  * @param contractNumber contract reference
  * @param dialogState    FSM state when the transfer happened
+ * @param transferReason why the model handed the call over, in its own words; null when it
+ *                       gave none or the transfer came from elsewhere (a supervisor, a flow)
  * @param transcript     conversation so far ({@code ROLE: text} lines)
  */
 public record OperatorSnapshot(
@@ -22,6 +24,7 @@ public record OperatorSnapshot(
         String dueDate,
         String contractNumber,
         String dialogState,
+        String transferReason,
         String transcript
 ) {
 }

@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.campaign.domain.service;
 
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSourceStep;
+import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -12,6 +13,20 @@ import java.util.List;
 
 @Component
 public class CampaignValidator {
+
+    /**
+     * An AI campaign needs the agent that speaks; an operator campaign needs the queue whose
+     * members take its calls, and may name an agent too. PREDICTIVE needs both: the agent takes
+     * every answered client no operator is left for.
+     */
+    public void validateDialMode(DialMode dialMode, Long aiAgentId, Long callQueueId) {
+        if ((dialMode.placesAiCalls() || dialMode == DialMode.PREDICTIVE) && aiAgentId == null) {
+            throw new ValidationException(ErrorCode.CAMPAIGN_AI_AGENT_REQUIRED);
+        }
+        if (!dialMode.placesAiCalls() && callQueueId == null) {
+            throw new ValidationException(ErrorCode.CAMPAIGN_CALL_QUEUE_REQUIRED, dialMode);
+        }
+    }
 
     public void validateDialWindow(LocalTime start, LocalTime end) {
         if (start == null || end == null) {

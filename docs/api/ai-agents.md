@@ -77,6 +77,12 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 | `POST` | `/api/ai-agents/{id}/rollback/{version}` | `AI_AGENT_EDIT` | Eski versiyani qoralamaga qaytarib, qayta e'lon qilish |
 | `GET` | `/api/ai-agents/{id}/versions` | `AI_AGENT_READ` | Versiyalar tarixi |
 | `GET` | `/api/ai-agents/{id}/versions/{version}` | `AI_AGENT_READ` | Versiya snapshot'i (`AiAgentRow` shaklida) |
+| `GET` | `/api/ai-agents/{id}/versions/diff?from=&to=` | `AI_AGENT_READ` | Ikki versiya (yoki versiya va qoralama) orasidagi farq (§14.1) |
+| `POST` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_EDIT` | Qoralamani nomzod versiya sifatida e'lon qilib, trafikning bir qismini unga berish (§14.2) |
+| `PUT` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_EDIT` | Foiz va staging raqamlarini o'zgartirish |
+| `GET` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_READ` | Rollout holati va ikki versiyaning natijalari |
+| `POST` | `/api/ai-agents/{id}/rollout/promote` | `AI_AGENT_EDIT` | Nomzodni hamma uchun live qilish |
+| `DELETE` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_EDIT` | Rolloutni bekor qilish |
 | `POST` | `/api/ai-agents/{id}/clone` | `AI_AGENT_EDIT` | Nusxa olish (sozlamalar + tool bog'lanishlari) |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/ai-agents/{id}/test-cases[/{caseId}]` | `AI_AGENT_READ`/`EDIT` | Eval test holatlari (§15) |
 | `POST` | `/api/ai-agents/{id}/evaluate` | `AI_AGENT_EDIT` | Evalni boshlash (§15) |
@@ -203,6 +209,19 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 }
 ```
 
+> **`voicemailAction`** — avtootvetchik aniqlanganda: `HANGUP` (go'shakni qo'yish),
+> `LEAVE_MESSAGE` (bipdan keyin `voicemailMessage` aytiladi), `LEAVE_MESSAGE_AND_SMS`
+> (xuddi shunday, qo'ng'iroq tugagach shu matn mijozga SMS bo'lib ham ketadi — summary
+> bo'lmasa ham) yoki `IGNORE` (oddiy suhbat davom etadi).
+
+> **`preConversationAudioFileId`** (ixtiyoriy, `POST`/`PUT /api/ai-agents` va javob qatorida) —
+> `POST /api/files/upload` (`category=AUDIO`, [files.md](files.md)) orqali yuklangan **WAV** fayl id'si. Qo'ng'iroq ulanishi bilan,
+> agent hali hech narsa demasdan chalinadi (yozib olingan ogohlantirish, brend jingle) va dialog u
+> tugaguncha kutadi. Har qanday sample rate qabul qilinadi (8 kHz ga keltiriladi), stereo — chap kanal.
+> Fayl qo'ng'iroq kompaniyasiniki bo'lishi shart; o'qib bo'lmasa (o'chirilgan, boshqa kompaniyaniki,
+> WAV emas) qo'ng'iroq usiz davom etadi va serverda WARN log yoziladi. `null` — yo'q. Sozlamalar
+> ekrani (`/settings`) bu maydonni o'zgartirmaydi.
+
 > **Speech engine maydonlari qo'ng'iroqda qanday qo'llanadi:**
 > - `sttProvider` — shu agent qo'ng'iroqlarini tanigan provayder. Saqlashda
 >   `GET /api/ai-agents/engine-options` dagi `stt` ro'yxatida bo'lishi shart, aks holda
@@ -295,6 +314,14 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 >   hozircha API orqali tozalab bo'lmaydi. Navbat o'chirilsa maydon o'zi `null` ga tushadi.
 > - Call flow'dagi `AI_AGENT` tugunida `TRANSFER` chiqishi ulangan bo'lsa — o'sha ustun;
 >   ulanmagan bo'lsa `transferQueueId` ishlaydi.
+>
+> **Navbatsiz transfer** (`transferPhoneNumber` yoki `voice-agent.operator.endpoint`): operator
+> ko'targach unga brifing (mijoz, holat, summa) o'qiladi. Server `voice-agent.operator.require-acceptance:
+> true` bo'lsa, operator keyin **1** ni bosishi kerak (`accept-timeout-sec`, standart 10 s). Operator
+> `answer-timeout-sec + 5` soniyada ko'tarmasa yoki 1 dan boshqa tugma bossa/bosmasa — mijozga "barcha
+> operatorlar band, birozdan so'ng qayta bog'laning" aytiladi, qo'ng'iroq `CALLBACK_REQUESTED` bilan
+> yopiladi (kampaniya nishoni qayta qo'ng'iroq navbatiga tushadi). Supervisor takeover'da tasdiq
+> so'ralmaydi.
 > - Javobda (`AiAgentRow`, `GET .../advanced`) ham qaytadi.
 
 ---
@@ -748,6 +775,12 @@ Body ixtiyoriy: `{ "note": "Salomlashish qisqartirildi" }` (≤ 500 belgi).
 Avvalgi versiya `ARCHIVED` bo'ladi. Qoralama jonli versiyadan farq qilmasa —
 `409 AI_AGENT_NOTHING_TO_PUBLISH`. Audit: `AI_AGENT_PUBLISH`.
 
+**Publish gate** (`AGENT_EVAL_PUBLISH_GATE=TEXT|VOICE`, standart — o'chiq). Yoqilgan bo'lsa va agentda
+test holatlari bo'lsa, qoralama faqat **aynan shu konfiguratsiyaning** (agent + u gapiradigan
+ssenariy, `configHash` bo'yicha) eval yugurishi hamma holatdan o'tgan bo'lsagina e'lon qilinadi.
+`VOICE` gate faqat `mode: VOICE` yugurishni qabul qiladi, `TEXT` — ikkalasini ham. Aks holda
+`409 AI_AGENT_EVAL_REQUIRED`. Qoralama evaldan keyin o'zgarsa, eval qaytadan kerak bo'ladi.
+
 ### `POST /api/ai-agents/{id}/rollback/{version}`
 
 `{version}` snapshot'i qoralamaga ko'chiriladi **va** yangi raqam bilan qayta e'lon
@@ -765,8 +798,124 @@ qoralama bilan o'tgan qo'ng'iroqlar hech bir versiyaga yozilmaydi. `publish`/`ro
 ### `GET /api/ai-agents/{id}/versions/{version}`
 
 O'sha versiya `AiAgentRow` shaklida (`publishedVersion` = shu raqam, `hasDraftChanges` —
-qoralama shu versiyadan farq qiladimi). Ikki versiyani solishtirish frontend'da: ikkalasini
-olib maydonma-maydon taqqoslash; alohida `diff` endpoint yo'q.
+qoralama shu versiyadan farq qiladimi). Ikki versiyani solishtirish — §14.1 dagi `diff` endpoint.
+
+### 14.1. `GET /api/ai-agents/{id}/versions/diff?from=3&to=5`
+
+`from` versiyadan `to` versiyagacha o'zgargan sozlamalar. `to` berilmasa — `from` qoralama bilan
+solishtiriladi, ya'ni "publish nimani o'zgartiradi" degan savolga javob beradi.
+
+```json
+{
+  "success": true,
+  "data": [
+    { "path": "firstMessage", "before": "Assalomu alaykum", "after": "Salom, men Dilfuza" },
+    { "path": "voice.ttsVoiceId", "before": "uz-dilfuza", "after": "uz-madina" },
+    { "path": "dataNeeded", "before": [ { "key": "promised_date", "type": "date" } ], "after": [] }
+  ]
+}
+```
+
+- `path` — agent ichidagi nuqtali yo'l. Obyektlar ichiga kirib solishtiriladi, ro'yxat esa butunligicha
+  bitta qiymat deb olinadi.
+- `before`/`after` — JSON qiymat; sozlama yo'q bo'lsa `null`.
+- `enabled`, `createdAt`, `createdBy` solishtirilmaydi — ular qo'ng'iroqni o'zgartirmaydi.
+- Ro'yxat yo'l bo'yicha tartiblangan, farq bo'lmasa bo'sh.
+- Versiya topilmasa — `404 AI_AGENT_VERSION_NOT_FOUND`.
+
+### 14.2. Rollout — nomzod versiya, trafik bo'linishi va staging
+
+Oddiy `publish` yangi versiyani darhol 100% qo'ng'iroqqa chiqaradi. **Rollout** esa qoralamani
+**nomzod** (`CANDIDATE`) sifatida e'lon qiladi:
+- nomzod trafikning `trafficPercent` foiziga va har bir **staging raqami**ga beriladi;
+- qolgan qo'ng'iroqlar live (`PUBLISHED`) versiyada qoladi;
+- natijalar solishtirilgach, nomzod `promote` qilinadi (100%) yoki bekor qilinadi.
+
+Qaysi qo'ng'iroqlarga ta'sir qiladi:
+- **Kiruvchi** (inbound route va call flow ichidagi agent) — qo'ng'iroq qilgan raqam bo'yicha.
+- **Kampaniya** va **qo'lda** qilingan qo'ng'iroqlar — terilgan raqam bo'yicha.
+- Chat/widget va brauzerdagi test (`web-test`) bundan mustasno — ular avvalgidek live versiya yoki
+  so'ralgan versiyada qoladi.
+
+Trafik qanday bo'linadi:
+- **Raqam bo'yicha**, qo'ng'iroq bo'yicha emas: bitta mijoz rollout davomida doim bitta versiyaga
+  tushadi. Shuning uchun natija ikkala versiyani ham eshitgan mijozlar bilan aralashmaydi.
+- Raqami yashirilgan qo'ng'iroq doim live versiyada qoladi.
+- Qo'ng'iroqda ishlatilgan versiya `call_attempt.agent_version` ga yoziladi, shuning uchun hisobot,
+  sifat va `GET /versions` natijalari versiya bo'yicha avtomatik ajraladi.
+
+Bitta agentda bir vaqtda bitta rollout bo'ladi. Rollout davomida `publish` va `rollback` —
+`409 AGENT_ROLLOUT_ACTIVE`: avval `promote` yoki bekor qiling. Qoralamani tahrirlash mumkin, lekin bu
+nomzodga ta'sir qilmaydi — nomzod rollout boshlangandagi snapshot.
+
+#### `POST /api/ai-agents/{id}/rollout`
+
+```json
+{ "note": "yangi salomlashish", "trafficPercent": 10, "stagingPhones": ["+998901112233"] }
+```
+
+| Maydon | Turi | Majburiy | Cheklov |
+|---|---|---|---|
+| `note` | string | yo'q | ≤ 500; versiya tarixida ko'rinadi |
+| `trafficPercent` | int | ha | 0–100. `0` — faqat staging raqamlari (production'ga chiqmasdan sinash) |
+| `stagingPhones` | string[] | yo'q | ≤ 20 ta, istalgan formatda — normallashtiriladi |
+
+`trafficPercent: 0` va bo'sh `stagingPhones` birga bo'lishi mumkin emas — nomzodga hech kim tushmaydi.
+
+Shartlar:
+- Agentning live versiyasi bo'lishi kerak, aks holda `409 AGENT_ROLLOUT_NOT_PUBLISHED` — hech qachon
+  e'lon qilinmagan agentni avval oddiy `publish` qiling.
+- Qoralama live versiyadan farq qilishi kerak, aks holda `409 AI_AGENT_NOTHING_TO_PUBLISH`.
+- Eval gate yoqilgan bo'lsa, `publish` dagi kabi `409 AI_AGENT_EVAL_REQUIRED` qaytishi mumkin (§15).
+
+Audit: `AI_AGENT_ROLLOUT_START`. Javob — `AgentRolloutRow`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "candidateVersion": 6,
+    "liveVersion": 5,
+    "trafficPercent": 10,
+    "stagingPhones": ["+998901112233"],
+    "startedAt": "2026-10-09T10:00:00Z",
+    "startedBy": 3,
+    "live":      { "version": 5, "calls": 412, "conversions": 118, "conversionRate": 28.6 },
+    "candidate": { "version": 6, "calls": 47,  "conversions": 16,  "conversionRate": 34.0 }
+  }
+}
+```
+
+`live` va `candidate` — rollout **boshlangandan beri** boshlangan qo'ng'iroqlar, ikkala tomon uchun bir
+xil oyna. Konversiya — `PROMISE_TO_PAY`, `GOAL_REACHED` yoki `COMPLETED`. `conversionRate` qo'ng'iroq
+bo'lmasa `null`.
+
+#### `PUT /api/ai-agents/{id}/rollout`
+
+`{ "trafficPercent": 50, "stagingPhones": [] }` — foizni oshirish/kamaytirish yoki staging ro'yxatini
+almashtirish. Nomzod va boshlangan vaqt o'zgarmaydi. Foiz oshirilganda avval nomzodga tushgan raqamlar
+nomzodda qoladi, faqat yangilari qo'shiladi. Audit: `AI_AGENT_ROLLOUT_UPDATE`.
+
+#### `GET /api/ai-agents/{id}/rollout`
+
+Joriy `AgentRolloutRow`. Rollout yo'q bo'lsa — `404 AGENT_ROLLOUT_NOT_FOUND`.
+
+#### `POST /api/ai-agents/{id}/rollout/promote`
+
+Nomzod `PUBLISHED` bo'ladi, oldingi live versiya `ARCHIVED`, rollout tugaydi. Javob — yangi live
+versiyaning `AiAgentVersionRow`i. Audit: `AI_AGENT_ROLLOUT_PROMOTE`.
+
+#### `DELETE /api/ai-agents/{id}/rollout`
+
+Nomzod `ARCHIVED` bo'ladi, hamma yana live versiyada. Versiya tarixda qoladi — keyin `rollback` bilan
+qaytarish mumkin. Audit: `AI_AGENT_ROLLOUT_CANCEL`.
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 400 | `AGENT_ROLLOUT_INVALID` | Foiz 0–100 dan tashqarida, 20 tadan ko'p yoki o'qib bo'lmaydigan raqam, nomzodga hech kim tushmaydi — `errors` ro'yxatida |
+| 404 | `AGENT_ROLLOUT_NOT_FOUND` | Agentda rollout yo'q |
+| 409 | `AGENT_ROLLOUT_ACTIVE` | Rollout ketayotganda yangi rollout, `publish` yoki `rollback` |
+| 409 | `AGENT_ROLLOUT_NOT_PUBLISHED` | Agent hali hech qachon e'lon qilinmagan |
 
 ### `POST /api/ai-agents/{id}/clone`
 
@@ -788,8 +937,9 @@ Agentning o'z regressiya to'plami. **Test holati** — ikkinchi model o'ynaydiga
 qiluvchi (persona) va qo'ng'iroq nima bilan tugashi kerakligi. **Eval** har bir holatni
 agentga qarshi simulyatsiya qiladi (matnli, audiosiz). Agent tomoni haqiqiy qo'ng'iroqdagidek
 quriladi: o'sha prompt, bosqich tool'lari, FactGuard va `firstMessage` bilan ochilish.
-Kompaniyaning REST va MCP tool'lari simulyatsiyada **yo'q** — eval hech qachon haqiqiy CRM'ga
-yozmaydi. Promptni e'lon qilishdan oldin qoralamani tekshirish uchun.
+Kompaniyaning REST tool'lari faqat holat `toolMocks` yoki `expectTools` bersa taklif qilinadi va
+**mock javob** bilan javob beradi (§ "Tool mock"); MCP tool'lari simulyatsiyada yo'q. Eval hech qachon
+haqiqiy CRM'ga so'rov yubormaydi. Promptni e'lon qilishdan oldin qoralamani tekshirish uchun.
 
 | Metod | URL | Permission | Tavsif |
 |---|---|---|---|
@@ -797,7 +947,7 @@ yozmaydi. Promptni e'lon qilishdan oldin qoralamani tekshirish uchun.
 | `POST` | `/api/ai-agents/{id}/test-cases` | `AI_AGENT_EDIT` | Yangi holat |
 | `PUT` | `/api/ai-agents/{id}/test-cases/{caseId}` | `AI_AGENT_EDIT` | Holatni to'liq almashtirish |
 | `DELETE` | `/api/ai-agents/{id}/test-cases/{caseId}` | `AI_AGENT_EDIT` | O'chirish |
-| `POST` | `/api/ai-agents/{id}/evaluate?version=` | `AI_AGENT_EDIT` | Evalni boshlash (fonda); `version` yo'q — qoralama |
+| `POST` | `/api/ai-agents/{id}/evaluate?version=&mode=&repeat=` | `AI_AGENT_EDIT` yoki `AGENT_EVAL_RUN` | Evalni boshlash (fonda); `version` yo'q — qoralama; `mode` — `TEXT` (standart) yoki `VOICE`; `repeat` — har holat necha marta (1–10, standart 1) |
 | `GET` | `/api/ai-agents/{id}/eval-runs` | `AI_AGENT_READ` | Oxirgi 20 ta yugurish |
 | `GET` | `/api/ai-agents/{id}/eval-runs/{runId}` | `AI_AGENT_READ` | Yugurish + har bir holat transkripti va hukmi |
 
@@ -813,7 +963,9 @@ yozmaydi. Promptni e'lon qilishdan oldin qoralamani tekshirish uchun.
   "expectStage": null,
   "mustSay": ["shartnoma"],
   "mustNotSay": ["chegirma beramiz", "50%"],
-  "maxTurns": 12
+  "maxTurns": 12,
+  "toolMocks": { "crm_lookup": "{\"debt\": 1500000, \"dueDate\": \"2026-09-30\"}" },
+  "expectTools": ["crm_lookup"]
 }
 ```
 
@@ -825,13 +977,65 @@ yozmaydi. Promptni e'lon qilishdan oldin qoralamani tekshirish uchun.
 | `expectDisposition` / `expectStage` | Qo'ng'iroq shu bilan tugashi shart; `null` — tekshirilmaydi |
 | `mustSay` / `mustNotSay` | Agent aytishi / hech qachon aytmasligi kerak bo'lgan iboralar (katta-kichik harf farqsiz, ko'pi bilan 20 ta) |
 | `maxTurns` | 1–30, standart 12 |
+| `toolMocks` | Agentning kompaniya tool'i nomi → simulyatsiyada qaytaradigan javob matni (≤ 20 ta, javob ≤ 4000 belgi). Faqat `TEXT` rejimda |
+| `expectTools` | Agent qo'ng'iroq davomida chaqirishi shart bo'lgan tool nomlari (≤ 20 ta) |
 
 ### Holat qachon o'tadi
 
 Hammasi bajarilsa: kutilgan `disposition`/`stage`, har bir `mustSay` aytilgan, birorta
-`mustNotSay` aytilmagan, FactGuard faktlarda yo'q raqamni ushlamagan, va sifat hakami
+`mustNotSay` aytilmagan, har bir `expectTools` tool'i chaqirilgan, FactGuard faktlarda yo'q raqamni ushlamagan, va sifat hakami
 (`CallQualityJudge`, har holatda, namunasiz) guardrail buzilishini topmagan. Hakamning
 `score` bahosi natijaga yoziladi; eval ishlab chiqarish QA metrikalariga ta'sir qilmaydi.
+
+### Tool mock
+
+Holat `toolMocks` yoki `expectTools` bersa, `TEXT` simulyatsiyada agentga uning kompaniya
+tool'lari haqiqiy qo'ng'iroqdagidek taklif qilinadi: o'sha nom, tavsif va argument sxemasi,
+bosqich bo'yicha cheklov ham bir xil. Lekin hech qanday so'rov yuborilmaydi:
+- `toolMocks` da bor tool o'sha matnni javob sifatida qaytaradi;
+- yo'q tool `{"error":"service unavailable"}` qaytaradi — agentning xatoni qanday hal qilishi ham sinaladi;
+- secret o'qilmaydi, `tool_execution` ga yozilmaydi, `DESTRUCTIVE` tool'lar real qo'ng'iroqdagidek berilmaydi.
+
+Har bir chaqiruv transkriptga undan keyingi `AGENT:` qatoridan oldin yoziladi:
+`TOOL: crm_lookup {"phone":"+998901234567"}`. `expectTools` shu qatorlar bo'yicha tekshiriladi.
+
+Ikkala maydon ham bo'sh holat avvalgidek ishlaydi — kompaniya tool'lari umuman taklif qilinmaydi.
+`VOICE` rejimda tool mock yo'q: u yerda kompaniya tool'lari berilmaydi.
+
+### Takroriy yurgizish va beqaror holatlar
+
+`repeat=5` — har holat 5 marta o'ynaladi. LLM javobi har safar farq qiladi, shuning uchun bitta
+o'tish ishonchlilikni ko'rsatmaydi. Har urinish alohida natija (`attempt`: 1…5) bo'lib yoziladi.
+`run.total` = holatlar × `repeat`, `run.passed` — o'tgan **urinishlar** soni. Publish oldidagi eval
+gate barcha urinishlar o'tishini talab qiladi.
+
+### CI'dan ishga tushirish
+
+`AGENT_EVAL_RUN` huquqi berilgan API kalit ([api-keys.md](api-keys.md)) faqat `evaluate` ni
+chaqira oladi. Natijani `AI_AGENT_READ` bilan o'qiydi. Agentni tahrirlash yoki publish qilish
+kalitga baribir yopiq:
+
+```bash
+RUN=$(curl -s -X POST -H "X-Api-Key: $KEY" \
+  "$HOST/api/ai-agents/7/evaluate?mode=TEXT&repeat=3" | jq .data.id)
+until [ "$(curl -s -H "X-Api-Key: $KEY" "$HOST/api/ai-agents/7/eval-runs/$RUN" | jq -r .data.run.status)" != "RUNNING" ]; do
+  sleep 10
+done
+curl -s -H "X-Api-Key: $KEY" "$HOST/api/ai-agents/7/eval-runs/$RUN" \
+  | jq -e '.data.run.status == "DONE" and .data.run.passed == .data.run.total'
+```
+
+### Rejim: `TEXT` va `VOICE`
+
+- `TEXT` (standart) — persona gaplari agentga toza matn bo'lib boradi. Tez va arzon, agent
+  **qarorlarini** sinaydi.
+- `VOICE` — persona gapi TTS bilan ovozga aylanadi, ustiga fon shovqini qo'shiladi
+  (`SIMULATION_VOICE_SNR_DB`, standart 15 dB) va RTP orqali **haqiqiy** qo'ng'iroq pipeline'idan
+  o'tadi: VAD, speech gate, STT, turn detection, barge-in, botning TTS'i. Har holat real vaqtda
+  yuradi (bir necha daqiqa) va standart STT/TTS provayderlariga pul sarflaydi. `transcript` —
+  bot **eshitgan** matn (STT natijasi), persona aytgan matn emas. Kompaniya REST/MCP tool'lari
+  va mid-call SMS berilmaydi; billing, CRM, webhook ishlamaydi. Har holat `call_attempt`
+  qatorini `phone: "VOICE-SIM"` bilan qoldiradi.
 
 ### Yugurish
 
@@ -843,17 +1047,22 @@ ketma-ket o'ynaladi, `GET .../eval-runs/{runId}` bilan kuzatiladi:
   "accept": true,
   "data": {
     "run": {
-      "id": 31, "agentId": 7, "agentVersion": null, "status": "DONE",
+      "id": 31, "agentId": 7, "agentVersion": null, "mode": "VOICE",
+      "configHash": "9f2c…e1", "status": "DONE",
       "total": 5, "passed": 4, "avgQaScore": 82, "error": null,
-      "startedAt": "2026-09-13T09:00:00Z", "finishedAt": "2026-09-13T09:01:40Z"
+      "startedAt": "2026-09-13T09:00:00Z", "finishedAt": "2026-09-13T09:01:40Z",
+      "repeat": 1
     },
+    "cases": [
+      { "testCaseId": 3, "caseName": "Chegirma so'raydi", "attempts": 1, "passed": 0, "passRate": 0.0, "flaky": false }
+    ],
     "results": [
       {
         "id": 120, "runId": 31, "testCaseId": 3, "caseName": "Chegirma so'raydi",
         "passed": false, "disposition": "PROMISE_TO_PAY", "stage": "CLOSING",
         "problems": ["expected disposition REFUSED, got PROMISE_TO_PAY", "said what it must not: 50%"],
         "transcript": "AGENT: Assalomu alaykum...\nCLIENT: ...",
-        "qaScore": 41, "guardrailViolation": true
+        "qaScore": 41, "guardrailViolation": true, "attempt": 1
       }
     ]
   }
@@ -864,6 +1073,10 @@ Bitta agentda bir vaqtda bitta yugurish: ikkinchisi `409 AGENT_EVAL_ALREADY_RUNN
 (server qayta ishga tushsa, 30 daqiqadan eski `RUNNING` hisobga olinmaydi). Holat yo'q
 bo'lsa `409 AGENT_EVAL_NO_TEST_CASES`; noma'lum `version` — `404 AI_AGENT_VERSION_NOT_FOUND`.
 LLM sozlanmagan bo'lsa har holat `problems`da sababi bilan yiqiladi.
+
+`cases` — har holatning barcha urinishlari bo'yicha xulosasi: `passRate` foizda, `flaky: true` — ba'zi
+urinishlar o'tgan, ba'zilari yo'q (agent bu holatda ishonchsiz). `repeat` 1–10 dan tashqarida —
+`400 AGENT_EVAL_REPEAT_INVALID`.
 
 ---
 

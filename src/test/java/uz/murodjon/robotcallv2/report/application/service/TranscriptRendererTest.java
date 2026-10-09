@@ -30,7 +30,7 @@ class TranscriptRendererTest {
                 new TranscriptLine(3, "AGENT", "Qarzdorlik bo'yicha bezovta qilmoqdamiz.", "DEBT_NOTICE", 65000, null)
         );
 
-        CallDetail detail = new CallDetail(callRow, lines, null, null, false, null, false, null, null);
+        CallDetail detail = new CallDetail(callRow, lines, null, null, false, null, false, null, null, null);
 
         String content = new String(renderer.renderBytes(detail), StandardCharsets.UTF_8);
 

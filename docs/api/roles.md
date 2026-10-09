@@ -111,7 +111,7 @@ bo'lmaydi.
   "data": [
     { "group": "DASHBOARD", "permissions": ["DASHBOARD_READ"] },
     { "group": "CAMPAIGN", "permissions": ["CAMPAIGN_READ", "CAMPAIGN_EDIT"] },
-    { "group": "AI_AGENT", "permissions": ["AI_AGENT_READ", "AI_AGENT_EDIT"] },
+    { "group": "AI_AGENT", "permissions": ["AI_AGENT_READ", "AI_AGENT_EDIT", "AGENT_EVAL_RUN", "AGENT_DRAFT_EDIT"] },
     { "group": "SCENARIO", "permissions": ["SCENARIO_READ", "SCENARIO_EDIT", "KNOWLEDGE_BASE_READ", "KNOWLEDGE_BASE_EDIT"] }
   ],
   "message": null,
@@ -193,7 +193,7 @@ so'rovda `401` olib, qayta login qiladilar.
 | `LIVE` | `LIVE_READ` | `LIVE_EDIT`, `CALL_MONITOR` |
 | `OPERATOR` | `OPERATOR_READ` | `OPERATOR_EDIT` |
 | `CONTACT` | `CONTACT_READ` | `CONTACT_EDIT` |
-| `AI_AGENT` | `AI_AGENT_READ` | `AI_AGENT_EDIT` |
+| `AI_AGENT` | `AI_AGENT_READ` | `AI_AGENT_EDIT`, `AGENT_EVAL_RUN` (faqat evalni ishga tushirish — CI kalitlari uchun), `AGENT_DRAFT_EDIT` (faqat qoralama, MCP server orqali) |
 | `SCENARIO` | `SCENARIO_READ`, `KNOWLEDGE_BASE_READ` | `SCENARIO_EDIT`, `KNOWLEDGE_BASE_EDIT` |
 | `REPORT` | `REPORT_READ` | `REPORT_EDIT` |
 | `AUDIT` | `AUDIT_READ` | — |

@@ -105,4 +105,23 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
     int addSummaryCharge(@Param("callAttemptId") long callAttemptId, @Param("promptTokens") long promptTokens,
                          @Param("completionTokens") long completionTokens, @Param("cachedTokens") long cachedTokens,
                          @Param("costUzs") long costUzs);
+
+    /** An operator call's analysis — scorecard tokens and the operator side's recognition — added to its settled row (V24). */
+    @Modifying @Transactional
+    @Query(value = """
+            UPDATE call_billing
+               SET analysis_prompt_tokens     = :promptTokens,
+                   analysis_completion_tokens = :completionTokens,
+                   analysis_cached_tokens     = :cachedTokens,
+                   analysis_stt_seconds       = :sttSeconds,
+                   llm_cost_uzs               = llm_cost_uzs + :llmCostUzs,
+                   stt_cost_uzs               = stt_cost_uzs + :sttCostUzs,
+                   total_uzs                  = total_uzs + :totalCostUzs
+             WHERE call_attempt_id = :callAttemptId
+            """, nativeQuery = true)
+    int addOperatorAnalysisCharge(@Param("callAttemptId") long callAttemptId, @Param("promptTokens") long promptTokens,
+                                  @Param("completionTokens") long completionTokens,
+                                  @Param("cachedTokens") long cachedTokens, @Param("sttSeconds") int sttSeconds,
+                                  @Param("llmCostUzs") long llmCostUzs, @Param("sttCostUzs") long sttCostUzs,
+                                  @Param("totalCostUzs") long totalCostUzs);
 }

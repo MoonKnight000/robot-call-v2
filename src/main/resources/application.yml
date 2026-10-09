@@ -40,6 +40,11 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:uysot}
     password: ${RABBITMQ_PASSWORD}
+    # One unacknowledged task per consumer: with Spring's default of 250 the first instance
+    # to connect took the whole queue, and the others' free ports went unused (CallTaskConsumer).
+    listener:
+      simple:
+        prefetch: ${RABBITMQ_PREFETCH:1}
 
   data:
     redis:

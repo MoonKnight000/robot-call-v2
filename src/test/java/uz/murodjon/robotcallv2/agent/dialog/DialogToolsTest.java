@@ -3,10 +3,16 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageBranch;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.enums.BranchOperator;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -64,7 +70,7 @@ class DialogToolsTest {
     void rejectsAPromiseInThePast() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
-        String result = tools.recordPaymentPromise("Yaxshi, yozib qo'ydim.", yesterday, null, null);
+        String result = tools.recordPaymentPromise("Yaxshi, yozib qo'ydim.", yesterday, null, null, null);
 
         assertThat(result).startsWith("XATO:");
         // The line confirmed a promise the guardrail refused — it must not be spoken.
@@ -80,12 +86,13 @@ class DialogToolsTest {
     void acceptsAPromiseFromToday() {
         LocalDate today = LocalDate.now();
 
-        tools.recordPaymentPromise("Kelishdik, belgilab qo'ydim.", today, new BigDecimal("500000"), "yarim to'lov");
+        tools.recordPaymentPromise("Kelishdik, belgilab qo'ydim.", today, new BigDecimal("500000"), "CLICK", "yarim to'lov");
 
         // What the caller hears on a tool-only turn, without a second LLM round trip.
         assertThat(session.toolReplies()).isEqualTo("Kelishdik, belgilab qo'ydim.");
         assertThat(session.outcome().get("promisedDate")).isEqualTo(today);
         assertThat((BigDecimal) session.outcome().get("promisedAmount")).isEqualByComparingTo("500000");
+        assertThat(session.outcome().get("paymentChannel")).isEqualTo("CLICK");
         assertThat(session.disposition()).isEqualTo(Disposition.PROMISE_TO_PAY);
     }
 
@@ -184,6 +191,46 @@ class DialogToolsTest {
         // The model has to be told what it passed, or it keeps asking for those stages.
         assertThat(result).doesNotStartWith("XATO:").contains("IDENTITY_CHECK");
         assertThat(session.toolReplies()).isEqualTo("Sizning qarzingiz bor.");
+    }
+
+    @Test
+    void aBranchSkipsTheStageWhenTheFactIsMissing() {
+        DialogTools branching = toolsFor(Map.of("clientName", "Aziz"));
+
+        branching.transitionTo(null, "IDENTITY_CHECK");
+
+        assertThat(branchingSession.state()).isEqualTo("DEBT_NOTICE");
+    }
+
+    @Test
+    void aWalkStopsAtAStageWithBranchesThatDoNotHold() {
+        // Jumping from GREETING straight to the debt would skip the identity check.
+        DialogTools branching = toolsFor(Map.of("clientName", "Aziz", "birthYear", 1990));
+
+        branching.transitionTo(null, "DEBT_NOTICE");
+
+        assertThat(branchingSession.state()).isEqualTo("IDENTITY_CHECK");
+    }
+
+    private DialogSession branchingSession;
+
+    private DialogTools toolsFor(Map<String, Object> facts) {
+        ScenarioDefinition scenario = new ScenarioDefinition(
+                List.of(
+                        new StageDef("GREETING", "Salom", List.of("IDENTITY_CHECK"), List.of()),
+                        new StageDef("IDENTITY_CHECK", "Yilni so'rash", List.of("DEBT_NOTICE"), List.of(), null, null,
+                                List.of(new StageBranch("birthYear", BranchOperator.MISSING, null, "DEBT_NOTICE"))),
+                        new StageDef("DEBT_NOTICE", "Qarz", List.of("END_CALL"), List.of()),
+                        new StageDef("END_CALL", "Tamom", List.of(), List.of())),
+                List.of(), List.of(), List.of(new OutcomeField("res", "string", "Natija")),
+                "Prompt", List.of(), null);
+        branchingSession = DialogSession.builder("chan-2", "uz-UZ")
+                .context(new CallContext(facts, "goal"))
+                .scenario(scenario)
+                .callAttemptId(43L)
+                .companyId(1L)
+                .build();
+        return new DialogTools(branchingSession);
     }
 
     @Test
