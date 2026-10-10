@@ -129,7 +129,7 @@ public enum ErrorCode {
     REFRESH_TOKEN_MISSING("send the refresh token in the refresh_token cookie or in the request body"),
     SCENARIO_DEFINITION_INVALID("Invalid scenario definition: %s problem(s), listed in errors"),
     SCENARIO_HAS_NO_STAGES("Scenario %s has no stages to continue the call with"),
-    WEB_TEST_SOURCE_INVALID("give at most one of campaignId, scenarioId or definition; targetId needs campaignId"),
+    WEB_TEST_SOURCE_INVALID("give at most one of campaignId, aiAgentId, scenarioId or definition; targetId needs campaignId, agentVersion needs campaignId or aiAgentId"),
     CALL_SOURCE_INVALID("give at most one of scenarioId or agentId — an agent already runs its own scenario"),
     CAMPAIGN_DIAL_WINDOW_INVALID("dialWindowStart must be before dialWindowEnd"),
     CAMPAIGN_DIAL_WINDOW_OUT_OF_RANGE(

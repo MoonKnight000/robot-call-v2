@@ -198,9 +198,21 @@ class PredictiveDialServiceTest {
     }
 
     private static Campaign campaign() {
-        return new Campaign(CAMPAIGN_ID, "Predictive", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 0, 0, AGENT_ID, COMPANY_ID, null,
-                RecurrenceType.ONCE, null, null, false, null, Campaign.DEFAULT_PRIORITY, null, null, null, null, null,
-                0L, DialMode.PREDICTIVE, QUEUE_ID, Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT);
+        return Campaign.builder()
+                .id(CAMPAIGN_ID)
+                .name("Predictive")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of())
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .aiAgentId(AGENT_ID)
+                .companyId(COMPANY_ID)
+                .recurrenceType(RecurrenceType.ONCE)
+                .dialMode(DialMode.PREDICTIVE)
+                .callQueueId(QUEUE_ID)
+                .build();
     }
 }

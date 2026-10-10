@@ -180,13 +180,14 @@ Kampaniyani (yoki ssenariyni) telefon va trunk daqiqasisiz, **to'g'ridan-to'g'ri
 
 Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer o'zi ulanishi uchun kerak bo'lgan hamma narsani qaytaradi. Sessiya 5 daqiqa ichida terilmasa unutiladi.
 
-**Request Body** (`WebTestCallRequest`) — `campaignId`, `scenarioId`, `definition` dan **ko'pi bilan bittasi**; hech biri berilmasa standart test ssenariysi:
+**Request Body** (`WebTestCallRequest`) — `campaignId`, `aiAgentId`, `scenarioId`, `definition` dan **ko'pi bilan bittasi**; hech biri berilmasa standart test ssenariysi:
 
 | Maydon | Turi | Izoh |
 |---|---|---|
 | `campaignId` | number | Kampaniya [agentining](ai-agents.md) to'liq profili bilan: ssenariy, tillar bo'yicha ovozlar, persona, ambient sound, disclosure, DTMF |
+| `aiAgentId` | number | Agentni kampaniyasiz, o'z to'liq profili bilan sinash (ovoz, persona, LLM, ssenariy). Faktlar — `voice-agent.dialog.test-context`. Boshqa kompaniyaning agenti — `404 AI_AGENT_NOT_FOUND` |
 | `targetId` | number | Ixtiyoriy, faqat `campaignId` bilan. Shu target faktlari (contextData + CRM + memory) ishlatiladi; berilmasa `voice-agent.dialog.test-context` faktlari |
-| `agentVersion` | number | Ixtiyoriy, faqat `campaignId` bilan. Kampaniya agentining qaysi [versiyasi](ai-agents.md#14-versiyalar--draft--publish--rollback) bilan gaplashish: e'lon qilingan raqam yoki `null` — **qoralama** (e'lon qilishdan oldin sinash uchun). Noma'lum raqam `404 AI_AGENT_VERSION_NOT_FOUND` |
+| `agentVersion` | number | Ixtiyoriy, faqat `campaignId` yoki `aiAgentId` bilan. Agentning qaysi [versiyasi](ai-agents.md#14-versiyalar--draft--publish--rollback) bilan gaplashish: e'lon qilingan raqam yoki `null` — **qoralama** (e'lon qilishdan oldin sinash uchun). Noma'lum raqam `404 AI_AGENT_VERSION_NOT_FOUND` |
 | `scenarioId` | number | Saqlangan ssenariyni standart sozlamalar bilan sinash (`POST /api/calls?scenarioId=` kabi) |
 | `definition` | `ScenarioDefinition` | Saqlanmagan qoralama (`POST /api/calls/test` kabi) |
 
@@ -211,7 +212,7 @@ Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer 
 }
 ```
 
-**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba yoki `targetId`/`agentVersion` `campaignId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `SCENARIO_NOT_FOUND`, `409 CAMPAIGN_NOT_AI` (kampaniyada AI agent yo'q — operator kampaniyasi)
+**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba, `targetId` `campaignId`siz yoki `agentVersion` `campaignId`/`aiAgentId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `SCENARIO_NOT_FOUND` / `AI_AGENT_NOT_FOUND` / `AI_AGENT_VERSION_NOT_FOUND`, `409 CAMPAIGN_NOT_AI` (kampaniyada AI agent yo'q — operator kampaniyasi)
 (`scenarioId` boshqa kompaniyaniki bo'lsa ham — test qo'ng'irog'i endi doim chaqiruvchi kompaniya nomidan ishlaydi), `403 COMPANY_SUSPENDED`,
 `409 CALL_BALANCE_INSUFFICIENT` (faqat `BILLING_ENFORCE_BALANCE=true` bo'lganda), `409 WEB_TEST_NOT_CONFIGURED` (serverda `ws-url` bo'sh).
 

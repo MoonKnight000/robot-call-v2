@@ -16,7 +16,13 @@ class VoiceEmotionResolverTest {
 
     private static DialogSession createSession(String stageId, String stageEmotion, String ttsVoice,
                                                EffectiveVoiceSettings voiceSettings, boolean emotionAdaptive) {
-        StageDef stage = new StageDef(stageId, "Purpose of " + stageId, List.of(), List.of(), stageEmotion);
+        StageDef stage = StageDef.builder()
+                .id(stageId)
+                .purpose("Purpose of " + stageId)
+                .allowedTransitions(List.of())
+                .allowedTools(List.of())
+                .emotion(stageEmotion)
+                .build();
         ScenarioDefinition scenario = new ScenarioDefinition(
                 List.of(stage),
                 List.of(),

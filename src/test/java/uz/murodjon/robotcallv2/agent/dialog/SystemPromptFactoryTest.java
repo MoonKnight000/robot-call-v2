@@ -3,6 +3,9 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -101,6 +104,7 @@ class SystemPromptFactoryTest {
                 .contains("Aziz aka")
                 .contains("xushmuomala gaplashing")
                 .contains("2026-08-20")
+                .contains("mavzu: debt-collection")
                 .contains("PROMISE_TO_PAY")
                 .contains("dushanba kuni to'lashga va'da bergandi")
                 .contains("2026-08-25");
@@ -127,6 +131,146 @@ class SystemPromptFactoryTest {
 
         assertThat(annex).contains("JORIY BOSQICH: " + stageId);
         assertThat(annex).contains("Ruxsat etilgan keyingi bosqichlar:");
+    }
+
+    private static DialogSession sessionWithWarmth(SpeakingWarmth warmth) {
+        AiAgent base = AiAgentFixtures.agent(3L, 1L, 10L, "uz-UZ", "nigora");
+        AiAgent agent = base.withAdvanced(base.ambience(), base.callBehaviour(), base.dataPolicy(),
+                base.voice().withWarmth(warmth), base.preemptiveGeneration(), base.ivrNavigationEnabled(),
+                base.useRag(), base.initiationWebhook(), base.postCallWebhook());
+        return DialogSession.builder("chan-1", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(1L)
+                .companyId(1L)
+                .agent(agent)
+                .build();
+    }
+
+    @Test
+    void aReservedAgentKeepsTheOneWordReaction() {
+        String prompt = factory.stablePrefix(sessionWithWarmth(SpeakingWarmth.RESERVED));
+
+        assertThat(prompt)
+                .contains("Munosabat BIR SO'Z bo'lsin")
+                .doesNotContain("Jonli og'zaki ohangda")
+                .contains("juda afsusdaman");
+    }
+
+    @Test
+    void aBalancedAgentReactsToWhatWasSaidButStagesNoSympathy() {
+        // The one-word rule read as a machine on the Uzbek voices, which have no emotional
+        // roles; the ban on staged sympathy it was written for stays.
+        String prompt = factory.stablePrefix(sessionWithWarmth(SpeakingWarmth.BALANCED));
+
+        assertThat(prompt)
+                .doesNotContain("Munosabat BIR SO'Z bo'lsin")
+                .contains("Ha, ish bo'lmasa qiyin")
+                .contains("Jonli og'zaki ohangda")
+                .contains("Sahnaviy hamdardlik taqiqlanadi")
+                .contains("juda afsusdaman");
+    }
+
+    @Test
+    void aFriendlyCallerIsAnsweredInKindOnlyByAnAgentThatIsNotReserved() {
+        SentimentDetector detector = new SentimentDetector();
+
+        assertThat(detector.empathyDirective(CustomerSentiment.POSITIVE, "uz-UZ", SpeakingWarmth.BALANCED))
+                .contains("sal iliqroq");
+        assertThat(detector.empathyDirective(CustomerSentiment.POSITIVE, "uz-UZ", SpeakingWarmth.RESERVED))
+                .isEmpty();
+        assertThat(detector.empathyDirective(CustomerSentiment.FRUSTRATED, "uz-UZ", SpeakingWarmth.RESERVED))
+                .contains("bitta qisqa so'z");
+    }
+
+    @Test
+    void anOutboundCallIsFramedAsOneTheAgentMade() {
+        String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
+
+        assertThat(prompt)
+                .contains("QO'NG'IROQ TURI: CHIQUVCHI")
+                .contains("kompaniyasi nomidan qo'ng'iroq qilyapsiz");
+    }
+
+    @Test
+    void anInboundCallIsFramedAsOneTheClientMade() {
+        // A client who rang in was being opened on like a debtor being dialled: "calling on
+        // behalf of", then "am I speaking with Aziz aka?".
+        DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
+        s.setInbound(true);
+
+        String prompt = factory.stablePrefix(s);
+
+        assertThat(prompt)
+                .contains("QO'NG'IROQ TURI: KIRUVCHI")
+                .contains("kompaniyasi nomidan qo'ng'iroqni qabul qilyapsiz")
+                .contains("Sizga qanday yordam bera olaman?")
+                .doesNotContain("nomidan qo'ng'iroq qilyapsiz")
+                .doesNotContain("CHIQUVCHI");
+    }
+
+    @Test
+    void theScenariosCallPurposeIsStatedWithItsFactsFilledIn() {
+        ScenarioDefinition d = ScenarioFixtures.debtCollection();
+        ScenarioDefinition withPurpose = d.toBuilder().callPurpose("{{clientName}} saytda ariza qoldirgan").build();
+        DialogSession s = DialogSession.builder("chan-1", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(withPurpose)
+                .callAttemptId(1L)
+                .companyId(1L)
+                .build();
+
+        assertThat(factory.stablePrefix(s)).contains("QO'NG'IROQ SABABI: Aziz Karimov saytda ariza qoldirgan");
+    }
+
+    @Test
+    void theAnnexHandsTheNextStagesReadyMadeLineWithItsFactsFilledIn() {
+        ScenarioDefinition scenario = new ScenarioDefinition(
+                List.of(
+                        new StageDef("GREETING", "Salomlashing", List.of("DEBT_NOTICE"), List.of()),
+                        StageDef.builder()
+                                .id("DEBT_NOTICE")
+                                .purpose("Qarzni ayting")
+                                .allowedTransitions(List.of("END_CALL"))
+                                .allowedTools(List.of())
+                                .staticLine("{{clientName}} aka, shartnoma bo'yicha to'lov kechikdi.")
+                                .build(),
+                        new StageDef("END_CALL", "Tamom", List.of(), List.of())),
+                List.of(), List.of(), List.of(), "Agent", List.of(), null);
+        DialogSession s = DialogSession.builder("chan-1", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(scenario)
+                .callAttemptId(1L)
+                .companyId(1L)
+                .build();
+
+        assertThat(factory.turnAnnex(s)).contains(
+                "DEBT_NOTICE ga o'tsangiz, gapingiz AYNAN shu bo'lsin: «Aziz Karimov aka, shartnoma bo'yicha to'lov kechikdi.»");
+    }
+
+    @Test
+    void theAnnexListsWhatTheCallHasRecorded() {
+        DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
+        s.setState("PAYMENT_DATE");
+        assertThat(factory.turnAnnex(s)).doesNotContain("ANIQLANGAN");
+
+        s.recordOutcome("promisedDate", LocalDate.of(2026, 10, 15));
+
+        assertThat(factory.turnAnnex(s)).contains("ANIQLANGAN").contains("promisedDate = 2026-10-15");
+    }
+
+    @Test
+    void anAllowedTransitionCarriesItsCondition() {
+        StageDef askTime = StageDef.builder()
+                .id("ASK_TIME")
+                .purpose("Vaqti bormi so'rang")
+                .allowedTransitions(List.of("HAS_TIME", "RESCHEDULE"))
+                .allowedTools(List.of())
+                .transitionConditions(Map.of("HAS_TIME", "mijoz vaqtim bor desa"))
+                .build();
+
+        assertThat(SystemPromptFactory.describeTransitions(askTime))
+                .isEqualTo("HAS_TIME (agar: mijoz vaqtim bor desa), RESCHEDULE");
     }
 
     @Test

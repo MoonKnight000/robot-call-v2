@@ -40,6 +40,10 @@ AgentAdvancedDto:
       $ref: '#/NoiseCancellationMode'
     emotionAdaptiveVoice:
       type: boolean
+    speakingWarmth:
+      type: string
+      enum: [RESERVED, BALANCED, WARM]
+      description: how much warmth the agent's wording carries; BALANCED by default
     dtmfInputEnabled:
       type: boolean
     voicemailAction:
@@ -239,6 +243,9 @@ AgentScenarioDto:
         $ref: scenario.yaml#/FactField
     disclosureText:
       type: string
+    callPurpose:
+      type: string
+      description: what the call is about, in a sentence; stated to the model first
 AgentTemplate:
   type: string
   enum:
@@ -535,6 +542,10 @@ AiAgentRow:
       $ref: '#/NoiseCancellationMode'
     emotionAdaptiveVoice:
       type: boolean
+    speakingWarmth:
+      type: string
+      enum: [RESERVED, BALANCED, WARM]
+      description: how much warmth the agent's wording carries; BALANCED by default
     dtmfInputEnabled:
       type: boolean
     voicemailAction:
@@ -809,6 +820,10 @@ CreateAiAgentRequest:
       $ref: '#/NoiseCancellationMode'
     emotionAdaptiveVoice:
       type: boolean
+    speakingWarmth:
+      type: string
+      enum: [RESERVED, BALANCED, WARM]
+      description: how much warmth the agent's wording carries; BALANCED by default
     dtmfInputEnabled:
       type: boolean
     voicemailAction:
@@ -1246,6 +1261,10 @@ UpdateAiAgentRequest:
       $ref: '#/NoiseCancellationMode'
     emotionAdaptiveVoice:
       type: boolean
+    speakingWarmth:
+      type: string
+      enum: [RESERVED, BALANCED, WARM]
+      description: how much warmth the agent's wording carries; BALANCED by default
     dtmfInputEnabled:
       type: boolean
     voicemailAction:

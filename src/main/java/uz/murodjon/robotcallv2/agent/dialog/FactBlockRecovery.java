@@ -43,7 +43,7 @@ class FactBlockRecovery {
         List<Message> retryMessages = new ArrayList<>(messages);
         retryMessages.add(new UserMessage("[TIZIM: Oxirgi javobingizda kontekstda berilmagan pul "
                 + "summasi bor edi, shuning uchun u mijozga AYTILMADI. Javobni qaytadan yozing va "
-                + "faqat yuqorida berilgan qarz summasini ishlating. Tool chaqirmang.]"));
+                + "faqat yuqorida berilgan summalarni ishlating. Tool chaqirmang.]"));
         String second = null;
         try {
             ChatResponse response = llmTurnClient.callWithoutOptions(s, system, retryMessages);

@@ -84,50 +84,19 @@ public record Campaign(
         targetOrdering = targetOrdering == null ? TargetOrdering.FIFO : targetOrdering;
     }
 
-    /** The pre-V8 shape: due targets claimed oldest first. */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
-                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
-                    Long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
-                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
-                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
-                    Long budgetUzs, Long dailyBudgetUzs, long version, DialMode dialMode, Long callQueueId,
-                    int maxAiOverflowPercent) {
-        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
-                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
-                budgetUzs, dailyBudgetUzs, version, dialMode, callQueueId, maxAiOverflowPercent, TargetOrdering.FIFO);
+    public static CampaignBuilder builder() {
+        return new CampaignBuilder();
     }
 
-    /** The pre-§1.4 shape: the default AI overflow share. */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
-                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
-                    Long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
-                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
-                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
-                    Long budgetUzs, Long dailyBudgetUzs, long version, DialMode dialMode, Long callQueueId) {
-        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
-                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
-                budgetUzs, dailyBudgetUzs, version, dialMode, callQueueId, DEFAULT_MAX_AI_OVERFLOW_PERCENT);
+    /** A builder that starts from this campaign, for changing a few of its fields. */
+    public CampaignBuilder toBuilder() {
+        return new CampaignBuilder(this);
     }
 
-    /** The pre-V19 shape: an AI campaign, no operator queue. */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
-                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
-                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
-                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
-                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
-                    Long budgetUzs, Long dailyBudgetUzs, long version) {
-        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
-                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
-                budgetUzs, dailyBudgetUzs, version, DialMode.AI, null);
-    }
-
-    /** The pre-V23 shape: default priority, no per-disposition rules. */
+    /**
+     * The pre-V23 shape, kept only for the integration tests that still build a campaign this
+     * way; everything else uses {@link #builder()}.
+     */
     public Campaign(long id, String name, CampaignType type, CampaignStatus status,
                     LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
                     int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
@@ -136,46 +105,9 @@ public record Campaign(
                     Instant lastRunAt) {
         this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
                 maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, DEFAULT_PRIORITY, RetryPolicy.NONE);
-    }
-
-    /** The pre-V25 shape: no start/end moment. */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
-                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
-                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
-                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
-                    Instant lastRunAt, int priority, RetryPolicy retryPolicy) {
-        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
-                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, null, null);
-    }
-
-    /** The pre-V26 shape: no budget. */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
-                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
-                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
-                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
-                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt) {
-        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
-                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
-                null, null);
-    }
-
-    /** The pre-V3 shape: a campaign not saved yet, version 0. */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
-                    LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
-                    int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
-                    long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
-                    Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
-                    Instant lastRunAt, int priority, RetryPolicy retryPolicy, Instant startAt, Instant endAt,
-                    Long budgetUzs, Long dailyBudgetUzs) {
-        this(id, name, type, status, dialWindowStart, dialWindowEnd, dialDays, maxAttempts, retryIntervalMinutes,
-                maxConcurrentCalls, dailyCallCap, aiAgentId, companyId, createdBy, recurrenceType,
-                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, priority, retryPolicy, startAt, endAt,
-                budgetUzs, dailyBudgetUzs, 0L);
+                recurringDayOfMonth, cronExpression, autoResetTargets, lastRunAt, DEFAULT_PRIORITY,
+                RetryPolicy.NONE, null, null, null, null, 0L, DialMode.AI, null,
+                DEFAULT_MAX_AI_OVERFLOW_PERCENT, TargetOrdering.FIFO);
     }
 
     public Set<DayOfWeek> allowedDays() {

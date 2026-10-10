@@ -18,8 +18,8 @@ final class ScenarioFixtures {
     }
 
     static ScenarioDefinition debtCollection() {
-        return new ScenarioDefinition(
-                List.of(
+        return ScenarioDefinition.builder()
+                .stages(List.of(
                         new StageDef("GREETING", "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.",
                                 List.of("IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"), List.of()),
                         new StageDef("IDENTITY_CHECK", "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?').",
@@ -55,8 +55,8 @@ final class ScenarioFixtures {
                                 List.of("END_CALL"), List.of()),
                         new StageDef("END_CALL", "Qo'ng'iroqni yakunlash: endCall tool'ini chaqir, boshqa hech narsa aytma.",
                                 List.of(), List.of())
-                ),
-                List.of(
+                ))
+                .factSchema(List.of(
                         new FactField("clientName", "string", true),
                         new FactField("debtAmount", "number", true),
                         new FactField("currency", "string", true),
@@ -64,22 +64,22 @@ final class ScenarioFixtures {
                         new FactField("contractNumber", "string", false),
                         new FactField("penaltyAmount", "number", false),
                         new FactField("contractCancelDays", "number", false)
-                ),
-                List.of(
+                ))
+                .tools(List.of(
                         new ToolDef("recordPaymentPromise", "Mijoz to'lov sanasini va'da qilganda chaqiring", List.of(
                                 new ToolParamDef("date", "date", true, "kelajakda bo'lishi shart"),
                                 new ToolParamDef("amount", "number", false, null),
                                 new ToolParamDef("note", "string", false, null))),
                         new ToolDef("recordRefusalReason", "Mijoz to'lovni rad etganda sababini yozib oling", List.of(
                                 new ToolParamDef("reason", "string", true, null)))
-                ),
-                List.of(
+                ))
+                .outcomeSchema(List.of(
                         new OutcomeField("promisedDate", "date", "Mijoz va'da qilgan to'lov sanasi"),
                         new OutcomeField("promisedAmount", "number", "Mijoz va'da qilgan summa"),
                         new OutcomeField("reasonCode", "string", "Rad etish sababi")
-                ),
-                "Siz \"Uysot\" kompaniyasining avtomatik qarz undirish ovozli agentisiz.",
-                List.of(
+                ))
+                .rolePrompt("Siz \"Uysot\" kompaniyasining avtomatik qarz undirish ovozli agentisiz.")
+                .guardrails(List.of(
                         "Qarz summasini HECH QACHON o'zgartirma. Faqat berilgan raqamni ayt.",
                         "Chegirma, imtiyoz yoki qarz kechirishni HECH QACHON taklif qilma.",
                         "To'lov muddatini o'zing uzaytirma — faqat mijoz aytgan sanani yozib ol.",
@@ -105,10 +105,8 @@ final class ScenarioFixtures {
                                 + "1500000 so'm to'lay olasizmi?\") — mijoz sanani allaqachon aytdi. Yakuniy gap "
                                 + "savol emas, XABAR bo'lsin: sana va summani takrorlab, to'lovni kutayotganingni "
                                 + "ayt va xayrlash."
-                ),
-                null,
-                null,
-                List.of(
+                ))
+                .styleExamples(List.of(
                         new StyleExample("uz", "\"Ushbu to'lov qachon amalga oshirilishi kutilmoqda?\"",
                                 "\"Qachon to'lay olasiz?\""),
                         new StyleExample("uz", "\"Sizning A56 shartnomangiz bo'yicha 1500000 so'm qarzingiz bor ekan, "
@@ -135,8 +133,8 @@ final class ScenarioFixtures {
                                 "\"Когда сможете оплатить?\""),
                         new StyleExample("ru", "(ответ клиента не разобран) \"Я вас не совсем понял. Когда сможете "
                                 + "оплатить?\"", "\"Плохо слышно. Почему не оплачено?\"")
-                )
-        );
+                ))
+                .build();
     }
 
     /** Every fact the seed's schema declares, as a target that carries all of them would. */

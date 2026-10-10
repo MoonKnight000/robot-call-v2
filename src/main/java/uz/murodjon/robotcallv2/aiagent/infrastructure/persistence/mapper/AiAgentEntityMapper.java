@@ -47,21 +47,21 @@ public class AiAgentEntityMapper {
         AiAgentCallBehaviourEntity callBehaviour = entity.getCallBehaviour();
         AiAgentLimitsEntity limits = entity.getLimits();
         AiAgentDataPolicyEntity dataPolicy = entity.getDataPolicy();
-        return new AiAgent(
-                entity.getId(),
-                entity.getCompanyId(),
-                entity.getName(),
-                entity.getDescription(),
-                entity.getLanguage(),
-                entity.getPersona(),
-                new AiAgentScript(
+        return AiAgent.builder()
+                .id(entity.getId())
+                .companyId(entity.getCompanyId())
+                .name(entity.getName())
+                .description(entity.getDescription())
+                .language(entity.getLanguage())
+                .persona(entity.getPersona())
+                .script(new AiAgentScript(
                         entity.getTemplateId(),
                         entity.getScenarioId(),
                         entity.getScenarioMode(),
                         read(entity.getScenarioDefinition(), SCENARIO_DEF_TYPE, null),
                         entity.getFirstMessage(),
-                        entity.getSystemPrompt()),
-                new AiAgentSpeechEngine(
+                        entity.getSystemPrompt()))
+                .speechEngine(new AiAgentSpeechEngine(
                         speechEngine.getPipelineMode(),
                         speechEngine.getRealtimeProvider(),
                         speechEngine.getPipecatStt(),
@@ -70,24 +70,25 @@ public class AiAgentEntityMapper {
                         speechEngine.getSttProvider(),
                         speechEngine.getSttModel(),
                         speechEngine.getTtsProvider(),
-                        speechEngine.getTtsModel()),
-                new AiAgentVoice(
+                        speechEngine.getTtsModel()))
+                .voice(new AiAgentVoice(
                         voice.getTtsVoice(),
                         voice.getVoiceSpeed(),
                         voice.getVoiceStability(),
                         voice.getVoiceSimilarityBoost(),
                         entity.getLanguageVoiceIds(),
                         read(voice.getVoiceSpeedPerLanguage(), SPEED_PER_LANGUAGE_TYPE, Map.of()),
-                        voice.isEmotionAdaptiveVoice()),
-                new AiAgentAmbience(
+                        voice.isEmotionAdaptiveVoice(),
+                        voice.getSpeakingWarmth()))
+                .ambience(new AiAgentAmbience(
                         ambience.getAmbientSound(),
                         ambience.getAmbientSoundVolume(),
                         ambience.getAmbientSoundFadeInSeconds(),
                         ambience.getThinkingSound(),
                         ambience.getThinkingSoundVolume(),
                         ambience.isNoiseCancellationEnabled(),
-                        ambience.getNoiseCancellationMode()),
-                new AiAgentCallBehaviour(
+                        ambience.getNoiseCancellationMode()))
+                .callBehaviour(new AiAgentCallBehaviour(
                         callBehaviour.getInterruptionSensitivity(),
                         callBehaviour.getEndpointingDelayMs(),
                         callBehaviour.isDtmfInputEnabled(),
@@ -98,37 +99,37 @@ public class AiAgentEntityMapper {
                         callBehaviour.getTransferPhoneNumber(),
                         callBehaviour.getTransferMessage(),
                         callBehaviour.getTransferQueueId(),
-                        callBehaviour.getPreConversationAudioFileId()),
-                new AiAgentLimits(
+                        callBehaviour.getPreConversationAudioFileId()))
+                .limits(new AiAgentLimits(
                         limits.getMaxConversationDurationSeconds(),
                         limits.getSilenceEndCallTimeoutSeconds(),
                         limits.getTurnTimeoutSeconds(),
                         limits.getConcurrentCallsLimit(),
-                        limits.getDailyCallsLimit()),
-                new AiAgentDataPolicy(
+                        limits.getDailyCallsLimit()))
+                .dataPolicy(new AiAgentDataPolicy(
                         dataPolicy.isZeroPiiRetention(),
                         dataPolicy.isStoreCallAudio(),
                         dataPolicy.getConversationRetentionDays(),
-                        dataPolicy.getRealtimeFactsDelivery()),
-                entity.getLlmModel(),
-                entity.getFastLlmModel(),
-                entity.getTemperature(),
-                entity.getMaxOutputTokens(),
-                entity.isPreemptiveGeneration(),
-                entity.isIvrNavigationEnabled(),
-                entity.isUseRag(),
-                read(entity.getDataNeeded(), DATA_NEEDED_TYPE, List.of()),
-                read(entity.getDataEvaluation(), DATA_EVALUATION_TYPE, List.of()),
-                read(entity.getInitiationWebhook(), WEBHOOK_TYPE, null),
-                read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null),
-                read(entity.getPronunciationRules(), PRONUNCIATION_RULES_TYPE, List.of()),
-                read(entity.getPostCallActions(), POST_CALL_ACTIONS_TYPE, List.of()),
-                entity.getSipTrunkIds(),
-                entity.isEnabled(),
-                entity.getCreatedAt(),
-                entity.getCreatedBy(),
-                null,
-                entity.getVersion());
+                        dataPolicy.getRealtimeFactsDelivery()))
+                .llmModel(entity.getLlmModel())
+                .fastLlmModel(entity.getFastLlmModel())
+                .temperature(entity.getTemperature())
+                .maxOutputTokens(entity.getMaxOutputTokens())
+                .preemptiveGeneration(entity.isPreemptiveGeneration())
+                .ivrNavigationEnabled(entity.isIvrNavigationEnabled())
+                .useRag(entity.isUseRag())
+                .dataNeeded(read(entity.getDataNeeded(), DATA_NEEDED_TYPE, List.of()))
+                .dataEvaluation(read(entity.getDataEvaluation(), DATA_EVALUATION_TYPE, List.of()))
+                .initiationWebhook(read(entity.getInitiationWebhook(), WEBHOOK_TYPE, null))
+                .postCallWebhook(read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null))
+                .pronunciationRules(read(entity.getPronunciationRules(), PRONUNCIATION_RULES_TYPE, List.of()))
+                .postCallActions(read(entity.getPostCallActions(), POST_CALL_ACTIONS_TYPE, List.of()))
+                .sipTrunkIds(entity.getSipTrunkIds())
+                .enabled(entity.isEnabled())
+                .createdAt(entity.getCreatedAt())
+                .createdBy(entity.getCreatedBy())
+                .version(entity.getVersion())
+                .build();
     }
 
     /** Everything an edit may change; identity and creation stamps stay with the adapter. */
@@ -192,7 +193,8 @@ public class AiAgentEntityMapper {
                 voice.stability(),
                 voice.similarityBoost(),
                 voice.perLanguageSpeed().isEmpty() ? null : write(voice.perLanguageSpeed(), null),
-                voice.emotionAdaptive());
+                voice.emotionAdaptive(),
+                voice.warmth());
     }
 
     private static AiAgentAmbienceEntity toAmbienceEntity(AiAgentAmbience ambience) {

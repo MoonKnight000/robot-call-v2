@@ -92,38 +92,36 @@ public class CampaignService implements CampaignUseCase {
         LocalTime dialWindowStart = request.dialWindowStart() != null ? request.dialWindowStart() : LocalTime.of(9, 0);
         LocalTime dialWindowEnd = request.dialWindowEnd() != null ? request.dialWindowEnd() : LocalTime.of(20, 0);
         requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
-        Campaign row = new Campaign(
-                0,
-                request.name(),
-                request.type(),
-                CampaignStatus.DRAFT,
-                dialWindowStart,
-                dialWindowEnd,
-                request.dialDays() != null && !request.dialDays().isEmpty() ? request.dialDays() : DEFAULT_DIAL_DAYS,
-                request.maxAttempts() > 0 ? request.maxAttempts() : 3,
-                Math.max(0, request.retryIntervalMinutes()),
-                request.maxConcurrentCalls() > 0 ? request.maxConcurrentCalls() : 20,
-                dailyCallCap,
-                agent != null ? agent.id() : null,
-                companyId,
-                null,
-                request.recurrenceTypeOrDefault(),
-                request.recurringDayOfMonth(),
-                request.cronExpression(),
-                request.autoResetTargetsOrDefault(),
-                null,
-                request.priorityOrDefault(),
-                request.retryPolicyOrNone(),
-                request.startAt(),
-                request.endAt(),
-                request.budgetUzs(),
-                request.dailyBudgetUzs(),
-                0L,
-                dialMode,
-                request.callQueueId(),
-                request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
-                        : Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT,
-                request.targetOrdering());
+        Campaign row = Campaign.builder()
+                .name(request.name())
+                .type(request.type())
+                .status(CampaignStatus.DRAFT)
+                .dialWindowStart(dialWindowStart)
+                .dialWindowEnd(dialWindowEnd)
+                .dialDays(request.dialDays() != null && !request.dialDays().isEmpty()
+                        ? request.dialDays() : DEFAULT_DIAL_DAYS)
+                .maxAttempts(request.maxAttempts() > 0 ? request.maxAttempts() : 3)
+                .retryIntervalMinutes(Math.max(0, request.retryIntervalMinutes()))
+                .maxConcurrentCalls(request.maxConcurrentCalls() > 0 ? request.maxConcurrentCalls() : 20)
+                .dailyCallCap(dailyCallCap)
+                .aiAgentId(agent != null ? agent.id() : null)
+                .companyId(companyId)
+                .recurrenceType(request.recurrenceTypeOrDefault())
+                .recurringDayOfMonth(request.recurringDayOfMonth())
+                .cronExpression(request.cronExpression())
+                .autoResetTargets(request.autoResetTargetsOrDefault())
+                .priority(request.priorityOrDefault())
+                .retryPolicy(request.retryPolicyOrNone())
+                .startAt(request.startAt())
+                .endAt(request.endAt())
+                .budgetUzs(request.budgetUzs())
+                .dailyBudgetUzs(request.dailyBudgetUzs())
+                .dialMode(dialMode)
+                .callQueueId(request.callQueueId())
+                .maxAiOverflowPercent(request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
+                        : Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT)
+                .targetOrdering(request.targetOrdering())
+                .build();
         requireSchedule(request.startAt(), request.endAt());
         long id = campaignRepository.create(companyId, row);
         auditUseCase.record(companyId, "CAMPAIGN_CREATE", "campaign", String.valueOf(id),
@@ -140,39 +138,35 @@ public class CampaignService implements CampaignUseCase {
         AiAgent agent = requireDialers(existing.companyId(), existing.dialMode(), request.aiAgentId(),
                 request.callQueueId());
         requireWindowWithinCompany(existing.companyId(), request.dialWindowStart(), request.dialWindowEnd());
-        Campaign row = new Campaign(
-                id,
-                request.name(),
-                existing.type(),
-                existing.status(),
-                request.dialWindowStart(),
-                request.dialWindowEnd(),
-                request.dialDays(),
-                request.maxAttempts(),
-                Math.max(0, request.retryIntervalMinutes()),
-                request.maxConcurrentCalls(),
-                Math.max(0, request.dailyCallCap()),
-                agent != null ? agent.id() : null,
-                existing.companyId(),
-                existing.createdBy(),
-                request.recurrenceTypeOrDefault(),
-                request.recurringDayOfMonth(),
-                request.cronExpression(),
-                request.autoResetTargetsOrDefault(),
-                existing.lastRunAt(),
-                request.priorityOrDefault(),
-                request.retryPolicyOrNone(),
-                request.startAt(),
-                request.endAt(),
-                request.budgetUzs(),
-                request.dailyBudgetUzs(),
+        // The type, status, company, creator, last run and dial mode stay the existing campaign's.
+        Campaign row = existing.toBuilder()
+                .name(request.name())
+                .dialWindowStart(request.dialWindowStart())
+                .dialWindowEnd(request.dialWindowEnd())
+                .dialDays(request.dialDays())
+                .maxAttempts(request.maxAttempts())
+                .retryIntervalMinutes(Math.max(0, request.retryIntervalMinutes()))
+                .maxConcurrentCalls(request.maxConcurrentCalls())
+                .dailyCallCap(Math.max(0, request.dailyCallCap()))
+                .aiAgentId(agent != null ? agent.id() : null)
+                .recurrenceType(request.recurrenceTypeOrDefault())
+                .recurringDayOfMonth(request.recurringDayOfMonth())
+                .cronExpression(request.cronExpression())
+                .autoResetTargets(request.autoResetTargetsOrDefault())
+                .priority(request.priorityOrDefault())
+                .retryPolicy(request.retryPolicyOrNone())
+                .startAt(request.startAt())
+                .endAt(request.endAt())
+                .budgetUzs(request.budgetUzs())
+                .dailyBudgetUzs(request.dailyBudgetUzs())
                 // Not sent: the version just read, so a client that predates it edits as before.
-                request.version() != null ? request.version() : existing.version(),
-                existing.dialMode(),
-                request.callQueueId(),
-                request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
-                        : existing.maxAiOverflowPercent(),
-                request.targetOrdering() != null ? request.targetOrdering() : existing.targetOrdering());
+                .version(request.version() != null ? request.version() : existing.version())
+                .callQueueId(request.callQueueId())
+                .maxAiOverflowPercent(request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
+                        : existing.maxAiOverflowPercent())
+                .targetOrdering(request.targetOrdering() != null ? request.targetOrdering()
+                        : existing.targetOrdering())
+                .build();
         requireSchedule(request.startAt(), request.endAt());
         if (!campaignRepository.update(companyId, id, row)) {
             throw new ConflictException(ErrorCode.ENTITY_VERSION_CONFLICT, "campaign", id);
@@ -184,37 +178,14 @@ public class CampaignService implements CampaignUseCase {
     @Override
     public CampaignRow clone(long companyId, long id) {
         Campaign source = requireCampaign(companyId, id);
-        Campaign row = new Campaign(
-                0,
-                source.name() + " (nusxa)",
-                source.type(),
-                CampaignStatus.DRAFT,
-                source.dialWindowStart(),
-                source.dialWindowEnd(),
-                source.dialDays(),
-                source.maxAttempts(),
-                source.retryIntervalMinutes(),
-                source.maxConcurrentCalls(),
-                source.dailyCallCap(),
-                source.aiAgentId(),
-                source.companyId(),
-                null,
-                source.recurrenceType(),
-                source.recurringDayOfMonth(),
-                source.cronExpression(),
-                source.autoResetTargets(),
-                null,
-                source.priority(),
-                source.retryPolicy(),
-                source.startAt(),
-                source.endAt(),
-                source.budgetUzs(),
-                source.dailyBudgetUzs(),
-                0L,
-                source.dialMode(),
-                source.callQueueId(),
-                source.maxAiOverflowPercent(),
-                source.targetOrdering());
+        Campaign row = source.toBuilder()
+                .id(0)
+                .name(source.name() + " (nusxa)")
+                .status(CampaignStatus.DRAFT)
+                .createdBy(null)
+                .lastRunAt(null)
+                .version(0L)
+                .build();
         long newId = campaignRepository.create(companyId, row);
         auditUseCase.record(companyId, "CAMPAIGN_CLONE", "campaign", String.valueOf(newId), "from " + id);
         return requireCampaignRow(companyId, newId);

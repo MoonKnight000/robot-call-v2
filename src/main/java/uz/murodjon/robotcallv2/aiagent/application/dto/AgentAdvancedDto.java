@@ -21,6 +21,7 @@ public record AgentAdvancedDto(
         Boolean noiseCancellationEnabled,
         NoiseCancellationMode noiseCancellationMode,
         Boolean emotionAdaptiveVoice,
+        SpeakingWarmth speakingWarmth,
         Boolean dtmfInputEnabled,
         VoicemailAction voicemailAction,
         String voicemailMessage,

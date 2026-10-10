@@ -25,28 +25,29 @@ public record ScenarioDefinition(
         /** The scenario's own ✗ → ✓ phrasing pairs for the prompt (UNIVERSAL-OPERATOR-PLAN A.2); null = none. */
         List<StyleExample> styleExamples,
         /** Questions answered at any stage without leaving it ({@link GlobalNode}); null = none. */
-        List<GlobalNode> globalNodes
+        List<GlobalNode> globalNodes,
+        /**
+         * What this call is about, in a sentence: "the client left a loan request on the site;
+         * go through it". Said to the model ahead of everything else, so a debt call, a
+         * reminder and a lead follow-up cannot be told apart only by guessing from the role
+         * prompt; null = the role prompt and the stages are all it has.
+         */
+        String callPurpose
 ) {
+    public static ScenarioDefinitionBuilder builder() {
+        return new ScenarioDefinitionBuilder();
+    }
+
+    /** A builder that starts from this scenario, for changing a few of its fields. */
+    public ScenarioDefinitionBuilder toBuilder() {
+        return new ScenarioDefinitionBuilder(this);
+    }
+
     /** A scenario whose facts come only from the campaign's own data and the CRM. */
     public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
                               List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
                               String disclosureText) {
-        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, null);
-    }
-
-    /** A scenario with no phrasing examples of its own. */
-    public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
-                              List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
-                              String disclosureText, FactWebhook factWebhook) {
-        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, factWebhook, null);
-    }
-
-    /** A scenario with no questions answered at every stage. */
-    public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
-                              List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
-                              String disclosureText, FactWebhook factWebhook, List<StyleExample> styleExamples) {
-        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, factWebhook,
-                styleExamples, null);
+        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, null, null, null, null);
     }
 
     /**
@@ -63,8 +64,7 @@ public record ScenarioDefinition(
         if (prompt == null || prompt.isBlank()) {
             return this;
         }
-        return new ScenarioDefinition(stages, factSchema, tools, outcomeSchema, prompt, guardrails,
-                disclosureText, factWebhook, styleExamples, globalNodes);
+        return toBuilder().rolePrompt(prompt).build();
     }
 
     public StageDef findStage(String id) {

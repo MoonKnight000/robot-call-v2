@@ -111,10 +111,21 @@ class CallTaskConsumerTest {
     void aTaskForAPausedCampaignIsGivenBackWithoutDialling() {
         CallTask task = new CallTask(1L, 100L, 200L, "998901234567", "uz", "{}", 1L, 7L,
                 null, null, null, null, null);
-        when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(new Campaign(
-                1L, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.PAUSED,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 5, 0, 7L, 1L, null,
-                RecurrenceType.ONCE, null, null, false, null));
+        when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(Campaign.builder()
+                .id(1L)
+                .name("c")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.PAUSED)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of())
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .aiAgentId(7L)
+                .companyId(1L)
+                .recurrenceType(RecurrenceType.ONCE)
+                .build());
 
         consumer.process(task, dialerState);
 
@@ -183,10 +194,21 @@ class CallTaskConsumerTest {
     void defersCallWhenOutsideRecipientDialWindow() {
         CallTask task = new CallTask(1L, 102L, 202L, "+998901234567", "uz", "{}", 1L, 7L,
                 null, null, null, null, null);
-        Campaign activeCampaign = new Campaign(
-                1L, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 5, 0, 7L, 1L, null,
-                RecurrenceType.ONCE, null, null, false, null);
+        Campaign activeCampaign = Campaign.builder()
+                .id(1L)
+                .name("c")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of())
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .aiAgentId(7L)
+                .companyId(1L)
+                .recurrenceType(RecurrenceType.ONCE)
+                .build();
         when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(activeCampaign);
         when(dialerService.isWithinDialWindow(activeCampaign)).thenReturn(true);
         when(dialerService.isWithinDialWindowForRecipient(activeCampaign, "+998901234567")).thenReturn(false);

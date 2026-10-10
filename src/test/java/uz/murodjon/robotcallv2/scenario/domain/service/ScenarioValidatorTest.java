@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -142,14 +143,146 @@ class ScenarioValidatorTest {
 
     @Test
     void aGlobalNodeWithoutAnAnswerReturnsError() {
-        ScenarioDefinition def = new ScenarioDefinition(
-                List.of(new StageDef("START", "Start", List.of(), List.of())),
-                List.of(), List.of(),
-                List.of(new OutcomeField("res", "string", "Desc")),
-                "Prompt", List.of(), null, null, null,
-                List.of(new GlobalNode("Raqamimni qayerdan oldingiz?", " ")));
+        ScenarioDefinition def = ScenarioDefinition.builder()
+                .stages(List.of(new StageDef("START", "Start", List.of(), List.of())))
+                .factSchema(List.of())
+                .tools(List.of())
+                .outcomeSchema(List.of(new OutcomeField("res", "string", "Desc")))
+                .rolePrompt("Prompt")
+                .guardrails(List.of())
+                .globalNodes(List.of(new GlobalNode("Raqamimni qayerdan oldingiz?", " ")))
+                .build();
 
         List<String> errors = ScenarioValidator.validate(def);
         assertThat(errors).contains("a global node needs both 'question' and 'answer'");
+    }
+
+    @Test
+    void aTransitionConditionOnAStageTheGraphDoesNotLeadToReturnsError() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        StageDef.builder()
+                                .id("ASK_TIME")
+                                .purpose("Vaqti bormi so'rang")
+                                .allowedTransitions(List.of("END"))
+                                .allowedTools(List.of())
+                                .transitionConditions(Map.of("RESCHEDULE", "mijoz bandman desa"))
+                                .build(),
+                        new StageDef("END", "Yakunla", List.of(), List.of())
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        List<String> errors = ScenarioValidator.validate(def);
+        assertThat(errors).contains(
+                "transition condition of stage ASK_TIME is for RESCHEDULE, which is not in its allowedTransitions");
+    }
+
+    @Test
+    void aBlankTransitionConditionReturnsError() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        StageDef.builder()
+                                .id("ASK_TIME")
+                                .purpose("Vaqti bormi so'rang")
+                                .allowedTransitions(List.of("END"))
+                                .allowedTools(List.of())
+                                .transitionConditions(Map.of("END", " "))
+                                .build(),
+                        new StageDef("END", "Yakunla", List.of(), List.of())
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        List<String> errors = ScenarioValidator.validate(def);
+        assertThat(errors).contains("transition condition of stage ASK_TIME for END must not be empty");
+    }
+
+    @Test
+    void transitionConditionsOnAllowedStagesAreValid() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        StageDef.builder()
+                                .id("ASK_TIME")
+                                .purpose("Vaqti bormi so'rang")
+                                .allowedTransitions(List.of("HAS_TIME", "RESCHEDULE"))
+                                .allowedTools(List.of())
+                                .transitionConditions(
+                                        Map.of("HAS_TIME", "mijoz vaqtim bor desa", "RESCHEDULE", "mijoz bandman desa"))
+                                .build(),
+                        new StageDef("HAS_TIME", "Taklifni ayting", List.of(), List.of()),
+                        new StageDef("RESCHEDULE", "Qachon qulay ekanini so'rang", List.of(), List.of())
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        assertThat(ScenarioValidator.validate(def)).isEmpty();
+    }
+
+    @Test
+    void theFirstStageCannotHaveAStaticLine() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        StageDef.builder()
+                                .id("GREETING")
+                                .purpose("Salom")
+                                .allowedTransitions(List.of("END"))
+                                .allowedTools(List.of())
+                                .staticLine("Assalomu alaykum!")
+                                .build(),
+                        new StageDef("END", "Yakunla", List.of(), List.of())
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "the first stage GREETING cannot have a staticLine — the agent's firstMessage opens the call");
+    }
+
+    @Test
+    void aTerminalStageCannotRequireOutcomes() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        new StageDef("START", "Salom", List.of("END"), List.of()),
+                        StageDef.builder()
+                                .id("END")
+                                .purpose("Yakunla")
+                                .allowedTransitions(List.of())
+                                .allowedTools(List.of())
+                                .requiredOutcomes(List.of("promisedDate"))
+                                .build()
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "terminal stage END cannot have requiredOutcomes — the call never leaves it");
+    }
+
+    @Test
+    void aStaticLineAndRequiredOutcomesOnALaterStageAreValid() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        new StageDef("START", "Salom", List.of("ASK_DATE"), List.of()),
+                        StageDef.builder()
+                                .id("ASK_DATE")
+                                .purpose("Sanani so'rang")
+                                .allowedTransitions(List.of("END"))
+                                .allowedTools(List.of())
+                                .staticLine("{{clientName}} aka, qachon to'lay olasiz?")
+                                .requiredOutcomes(List.of("promisedDate", "reasonCode"))
+                                .build(),
+                        new StageDef("END", "Yakunla", List.of(), List.of())
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        assertThat(ScenarioValidator.validate(def)).isEmpty();
     }
 }

@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
@@ -19,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Builds the per-turn prompt from a session's bound scenario, facts and FSM stage
@@ -82,7 +85,7 @@ public class SystemPromptFactory {
                     + "\"demak siz...\", \"tushundim, siz...\" shakllari bilan mijoz aytmagan sababni "
                     + "to'qish — eng og'ir xato. Mijozning javobi savolingizga javob bo'lmasa, bo'shliqni "
                     + "o'zingizdan to'ldirmang: savolni qayta bering.",
-            "Mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\", \"qaytaring\" desa yoki tushunmaganini bildirsa — keyingi bosqichga o'tib ketmang, transitionTo chaqirmang. Eshitmagan bo'lsa — oxirgi aytgan xabaringizni (qarz summasi, muddat yoki savol) xushmuomala qilib qaytadan aniq takrorlang. Tushunmagan bo'lsa — so'zma-so'z takrorlamang, o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntiring."
+            "Mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\", \"qaytaring\" desa yoki tushunmaganini bildirsa — keyingi bosqichga o'tib ketmang, transitionTo chaqirmang. Eshitmagan bo'lsa — oxirgi aytgan xabaringizni (fakt, sana yoki savol) xushmuomala qilib qaytadan aniq takrorlang. Tushunmagan bo'lsa — so'zma-so'z takrorlamang, o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntiring."
     );
 
     /**
@@ -93,6 +96,8 @@ public class SystemPromptFactory {
      */
     private static final int MAX_PASSAGE_CHARS = 1200;
     private static final int MAX_SOURCE_NAME_CHARS = 80;
+    /** A recorded outcome is a date, a code or a short note — enough for the model to see it is in. */
+    private static final int MAX_RECORDED_CHARS = 120;
 
     /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
     /**
@@ -112,8 +117,13 @@ public class SystemPromptFactory {
         if (memory == null || memory.isEmpty()) {
             return;
         }
+        // The topic of each remembered call is named because the same phone gets more than
+        // one kind of call: a debt call's summary handed to a lead follow-up, untagged, read
+        // as what this call was about.
         sb.append("\nMULTI-CALL MEMORY (Mijoz bilan avvalgi suhbatlar xotirasi va operator eslatmalari — ")
-                .append("bulardan tabiiy foydalaning, lekin \"bazamizda yozilgan\" deb aytmang):\n");
+                .append("bulardan tabiiy foydalaning, lekin \"bazamizda yozilgan\" deb aytmang. ")
+                .append("Avvalgi suhbatlar BOSHQA mavzuda bo'lgan bo'lishi mumkin: joriy qo'ng'iroq mavzusi — ")
+                .append("QO'NG'IROQ TURI va SABABIda yozilgani. Boshqa mavzudagi gapni mijoz o'zi so'ramasa boshlamang):\n");
         if (memory.preferredName() != null) {
             sb.append("- Mijozga qulay murojaat: ").append(memory.preferredName()).append('\n');
         }
@@ -125,6 +135,9 @@ public class SystemPromptFactory {
             if (call.at() != null) {
                 sb.append(" (").append(LocalDate.ofInstant(call.at(), CALLER_ZONE)).append(')');
             }
+            if (call.scenarioKey() != null && !call.scenarioKey().isBlank()) {
+                sb.append(", mavzu: ").append(call.scenarioKey());
+            }
             if (call.disposition() != null) {
                 sb.append(", natija: ").append(call.disposition());
             }
@@ -133,6 +146,65 @@ public class SystemPromptFactory {
         memory.facts().forEach((name, value) -> sb.append("- ")
                 .append(FACT_LABELS.getOrDefault(name, name)).append(" (avvalgi suhbatdan): ")
                 .append(value).append('\n'));
+    }
+
+    /**
+     * Which way the call went and what it is about, said right after the role. Both used
+     * to be left for the model to infer: the prompt said "you are calling" on every call,
+     * so a client who rang in about a lead was greeted like a debtor being dialled, and a
+     * debt call, a reminder and a lead follow-up differed only in the role prompt's wording.
+     * Shared with {@link RealtimeSystemPromptFactory} so both pipelines frame a call the same way.
+     *
+     * @param callPurpose the scenario's {@code callPurpose}, may carry {@code {{fact}}} templates; null = not stated
+     * @param goal        the campaign's goal for this call; null = none
+     */
+    static void appendCallFrame(StringBuilder sb, boolean inbound, String callPurpose, String goal,
+                                Map<String, Object> facts) {
+        if (inbound) {
+            sb.append("QO'NG'IROQ TURI: KIRUVCHI — mijoz O'ZI kompaniyaga qo'ng'iroq qildi, siz qabul qilyapsiz. ")
+                    .append("Avval u nima uchun qo'ng'iroq qilganini tinglang. Mijoz aytmagan mavzuni (qarz, to'lov, ")
+                    .append("eslatma va h.k.) o'zingizdan boshlamang. \"Men [Ism] aka bilan gaplashayapmanmi?\" deb ")
+                    .append("so'ramang — ismini bilish kerak bo'lsa, \"Ismingizni bilsam bo'ladimi?\" deb so'rang.\n");
+        } else {
+            sb.append("QO'NG'IROQ TURI: CHIQUVCHI — mijozga siz O'ZINGIZ qo'ng'iroq qildingiz. U nima uchun ")
+                    .append("qo'ng'iroq qilinganini bilmaydi — sababni siz aytasiz.\n");
+        }
+        if (callPurpose != null && !callPurpose.isBlank()) {
+            sb.append("QO'NG'IROQ SABABI: ")
+                    .append(PromptTemplateEngine.render(callPurpose.trim(), facts == null ? Map.of() : facts))
+                    .append("\nSuhbat faqat shu mavzuda boradi.\n");
+        }
+        if (goal != null && !goal.isBlank()) {
+            sb.append("KAMPANIYA MAQSADI: ").append(goal).append('\n');
+        }
+        sb.append('\n');
+    }
+
+    /** Who the agent speaks for — the one company name it may introduce itself with. */
+    static void appendCompany(StringBuilder sb, String companyName, boolean inbound) {
+        if (companyName == null || companyName.isBlank()) {
+            return;
+        }
+        sb.append("KOMPANIYA: siz \"").append(companyName.trim()).append("\" kompaniyasi nomidan ")
+                .append(inbound ? "qo'ng'iroqni qabul qilyapsiz" : "qo'ng'iroq qilyapsiz")
+                .append(". O'zingizni tanishtirganda faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
+    }
+
+    /**
+     * How a call the client made opens. The outbound opening goes straight to an identity
+     * check — "am I speaking with Aziz aka?" — which a caller who has just rung the company
+     * hears as the agent not knowing who called whom.
+     *
+     * @param greeted whether the greeting and the disclosure were already spoken
+     */
+    static String inboundOpening(boolean greeted) {
+        return greeted
+                ? "[TIZIM: Salomlashuv va ogohlantirish allaqachon aytildi — qayta salomlashmang, o'zingizni "
+                        + "qayta tanishtirmang. Mijoz nima uchun qo'ng'iroq qilganini tinglang va javobingizni shunga "
+                        + "moslang; hali aytmagan bo'lsa \"Sizga qanday yordam bera olaman?\" deb so'rang.]\n"
+                : "[TIZIM: Birinchi javobingizda qisqa salomlashing, kompaniya nomini ayting va \"Sizga qanday "
+                        + "yordam bera olaman?\" deb so'rang. Mijoz nima uchun qo'ng'iroq qilganini aytgach, ssenariy "
+                        + "bo'yicha davom eting.]\n";
     }
 
     static final Map<String, String> FACT_LABELS = Map.of(
@@ -177,11 +249,8 @@ public class SystemPromptFactory {
                 .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
                 .append(" tilida tabiiy suhbatlashasiz.\n\n");
 
-        if (s.companyName() != null && !s.companyName().isBlank()) {
-            sb.append("KOMPANIYA: siz \"").append(s.companyName().trim())
-                    .append("\" kompaniyasi nomidan qo'ng'iroq qilyapsiz. O'zingizni tanishtirganda ")
-                    .append("faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
-        }
+        appendCallFrame(sb, s.isInbound(), def.callPurpose(), c.goal(), c.facts());
+        appendCompany(sb, s.companyName(), s.isInbound());
 
         if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
             String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
@@ -218,17 +287,15 @@ public class SystemPromptFactory {
                         .append(orDash(c.fact(f.name()))).append('\n');
             }
         }
-        if (c.goal() != null && !c.goal().isBlank()) {
-            sb.append("- Kampaniya maqsadi: ").append(c.goal()).append('\n');
-        }
-
         appendMemory(sb, c.memory());
 
         Object nameObj = c != null ? c.fact("clientName") : null;
         String clientName = nameObj != null && !nameObj.toString().isBlank() ? nameObj.toString().trim() : null;
         String sampleIdentityUz = clientName != null ? "Men " + clientName + " aka bilan gaplashayapmanmi?" : "Men Murodjon aka bilan gaplashayapmanmi?";
 
-        if (s.isDisclosureSpoken()) {
+        if (s.isInbound()) {
+            sb.append('\n').append(inboundOpening(s.isDisclosureSpoken()));
+        } else if (s.isDisclosureSpoken()) {
             sb.append("\n[TIZIM: Salomlashuv va \"avtomatik xizmat, suhbat yozib olinmoqda\" ")
                     .append("ogohlantirishi allaqachon aytildi — mijoz ularni eshitib bo'ldi.\n")
                     .append("Shuning uchun QO'NG'IROQNING HECH BIR JOYIDA — na birinchi javobda, ")
@@ -288,7 +355,7 @@ public class SystemPromptFactory {
         // oshirilishi kutilmoqda?", two banned words in a sentence whose form was banned too.
         sb.append("GAPIRISH QOIDALARI — har bir javobdan oldin shu ro'yxatdan o'tkazing:\n");
         int n = 1;
-        for (String rule : speechRules(isRussian(s.language()))) {
+        for (String rule : speechRules(isRussian(s.language()), warmthOf(s.agent()))) {
             sb.append(n++).append(". ").append(rule).append('\n');
         }
         sb.append('\n').append(examples(def, s.language())).append('\n');
@@ -343,11 +410,62 @@ public class SystemPromptFactory {
             O'tib ketgan vaqtni taklif qilmang: bugungi kun uchun faqat HOZIRGI VAQTdan keyingi soatlar.
             """;
 
+    /** The agent's {@link SpeakingWarmth}; a call without an agent (a test call) speaks {@code BALANCED}. */
+    static SpeakingWarmth warmthOf(AiAgent agent) {
+        return agent != null ? agent.voice().warmth() : SpeakingWarmth.BALANCED;
+    }
+
+    /**
+     * How big a reaction to what the caller said may be. RESERVED is the original rule: it
+     * was written against staged sympathy, and overshot into a bot that only ever said
+     * "Tushunarli" — on the Uzbek Yandex voices, which have no emotional roles, the
+     * wording is all the warmth a call has.
+     */
+    private static String reactionSize(SpeakingWarmth warmth, boolean russian) {
+        return switch (warmth) {
+            case RESERVED -> "Munosabat BIR SO'Z bo'lsin — hissiyot bildiruvchi alohida gap qo'shmang.";
+            case BALANCED -> "Munosabat — bir so'z yoki mijoz aytgan narsaga bog'langan qisqa ibora "
+                    + (russian ? "(\"Да, без работы непросто\", \"Хорошо, тогда так и сделаем\")"
+                            : "(\"Ha, ish bo'lmasa qiyin\", \"Yaxshi, unda shunday qilamiz\")") + ".";
+            case WARM -> "Munosabat — mijoz aytgan narsaga bog'langan bitta qisqa samimiy gap "
+                    + (russian ? "(\"Да, сейчас многим непросто, понимаю\")"
+                            : "(\"Ha, hozir ko'pchilikka oson emas, tushunaman\")") + ".";
+        };
+    }
+
+    /** How a worry or a complaint is acknowledged before going back to the task. */
+    private static String acknowledgementSize(SpeakingWarmth warmth, boolean russian) {
+        return switch (warmth) {
+            case RESERVED -> "ko'pi bilan ikki so'z bilan tan oling " + (russian ? "(\"Понимаю.\")" : "(\"Tushunaman.\")");
+            case BALANCED -> "bitta qisqa gap bilan, mijozning o'z so'zini ishlatib tan oling "
+                    + (russian ? "(\"Понимаю, сроки поджимают.\")" : "(\"Tushunaman, muddat yaqin qolgan.\")");
+            case WARM -> "bir-ikki qisqa iliq gap bilan tan oling "
+                    + (russian ? "(\"Понимаю, ситуация неприятная. Давайте вместе решим.\")"
+                            : "(\"Tushunaman, vaziyat yoqimsiz. Keling, birga hal qilamiz.\")");
+        };
+    }
+
+    /**
+     * The spoken register a BALANCED or WARM agent talks in. Shared with {@link
+     * RealtimeSystemPromptFactory}; null for RESERVED, which keeps the original style.
+     */
+    static String warmthStyleLine(SpeakingWarmth warmth, boolean russian) {
+        if (warmth == SpeakingWarmth.RESERVED) {
+            return null;
+        }
+        return "Jonli og'zaki ohangda gapiring, odamdek: "
+                + (russian ? "\"ну\", \"хорошо, тогда\", \"-то\", \"давайте\"" : "\"mayli\", \"xo'sh\", \"unda\", \"-da\", \"-ku\"")
+                + " kabi so'zlarni tabiiy joyda ishlating, gaplaringiz uzunligi bir xil bo'lmasin. "
+                + (warmth == SpeakingWarmth.WARM
+                        ? "Ohangingiz iliq va samimiy bo'lsin, lekin ishdan chalg'imang."
+                        : "Ohangingiz xotirjam va do'stona bo'lsin — ortiqcha hayajon va maqtovsiz.");
+    }
+
     /**
      * The style rules, one line each. Numbered by the caller, so the uz-only entries can
      * drop out of a Russian call without leaving a hole in the list.
      */
-    private static List<String> speechRules(boolean russian) {
+    private static List<String> speechRules(boolean russian, SpeakingWarmth warmth) {
         List<String> rules = new ArrayList<>();
         rules.add("Hech qachon inglizcha texnik so'zlar, kodlar, o'zgaruvchi nomlari yoki placeholderlar "
                 + "(masalan: dynamic_thought_or_fallback, thought, undefined) ishlatmang. Faqat jonli "
@@ -370,8 +488,8 @@ public class SystemPromptFactory {
                 + ", lekin ketma-ket ikki javobda bir xilini takrorlamang. Mijoz shunchaki tasdiqlasa "
                 + (russian ? "(\"да\", \"ага\", \"хорошо\")" : "(\"ha\", \"aha\", \"xo'p\", \"shunday\")")
                 + " — munosabat bildirmang, to'g'ridan-to'g'ri ishga o'ting: tasdiqni qayta "
-                + "tasdiqlash robotdek eshitiladi. Munosabat BIR SO'Z bo'lsin — hissiyot "
-                + "bildiruvchi alohida gap qo'shmang "
+                + "tasdiqlash robotdek eshitiladi. " + reactionSize(warmth, russian) + " Sahnaviy hamdardlik "
+                + "taqiqlanadi "
                 + (russian ? "(\"я вас прекрасно понимаю\", \"мне очень жаль\")" : "(\"vaziyatni to'g'ri tushunaman\", \"sizni juda yaxshi tushunib turibman\", \"juda afsusdaman\")")
                 + ": o'ynalgan hamdardlik samimiy emas, sun'iy eshitiladi.");
         rules.add("Allaqachon aytgan faktingizni (raqam, summa, sana) qayta aytmang va "
@@ -384,7 +502,7 @@ public class SystemPromptFactory {
                 + "bildirsa (masalan "
                 + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"a\", \"nima?\", \"labbay?\", \"nima dedingiz\", \"nima deyishdi\", \"eshitmadim\", \"qaytaring\"")
                 + ") — yangi savolga yoki keyingi bosqichga o'tmang! transitionTo chaqirmang! "
-                + "Oxirgi aytgan xabaringizni (qarz summasi, shartnoma yoki savol) o'sha mazmunda, tushunarli qilib qaytaring: "
+                + "Oxirgi aytgan xabaringizni (fakt, sana yoki savol) o'sha mazmunda, tushunarli qilib qaytaring: "
                 + (russian ? "\"Плохо слышно? Повторяю: ...\"" : "\"Eshitilmadimi? Qaytadan aytaman: ...\"")
                 + " deb aniq takrorlang. Mijoz gapini endigina boshlab o'ylanib qolgan "
                 + "bo'lsa (faqat o'ylanish tovushi yoki chala jumla, davomi kelishi aniq) — "
@@ -434,11 +552,13 @@ public class SystemPromptFactory {
         rules.add("Joriy yildagi sanada yilni aytmang — \"3-sentabr\" yetarli. Mijoz \"ertaga\" yoki "
                 + "\"dushanba\" desa, tasdiqlaganda ham o'sha tabiiy shaklni saqlang "
                 + "(\"ertaga, 3-sentabrda\"); to'liq yyyy-MM-dd sana faqat tool parametriga yoziladi.");
-        rules.add("Mijoz xavotir yoki norozilik bildirsa — ko'pi bilan ikki so'z bilan tan oling "
-                + (russian ? "(\"Понимаю.\")" : "(\"Tushunaman.\")")
+        rules.add("Mijoz xavotir yoki norozilik bildirsa — " + acknowledgementSize(warmth, russian)
                 + " va darhol ishga qayting. Hamdardlikni cho'zmang: uzun kechirim so'rash yoki "
                 + "his-tuyg'u haqidagi alohida gap mijozni tinchlantirmaydi, faqat qo'ng'iroqni "
                 + "uzaytiradi.");
+        if (warmth != SpeakingWarmth.RESERVED) {
+            rules.add(warmthStyleLine(warmth, russian));
+        }
         rules.add("Suhbatni yakunlaydigan gapni (\"xayr\", \"salomat bo'ling\", \"kuningiz xayrli o'tsin\") "
                 + "FAQAT endCall tool'i orqali ayting. Natijani yozib bo'lganingizdan keyin mijoz "
                 + "\"rahmat\" desa — javob bermang, boshqa tool chaqirmang: endCall bilan xayrlashing. "
@@ -537,6 +657,8 @@ public class SystemPromptFactory {
         sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
         sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(stage)).append('\n');
+        appendStaticLines(sb, s.scenario(), stage, s.context() != null ? s.context().facts() : Map.of());
+        appendRecorded(sb, s.outcome());
         // The FSM refuses an edge that is not in `allowedNext`, and a model that spoke a
         // later stage's content first then tried to jump there got the refusal mid-turn
         // and started reasoning aloud about which tool to call instead — the caller heard
@@ -642,7 +764,7 @@ public class SystemPromptFactory {
             }
         }
         if (s.lastCustomerSentiment() != null && s.lastCustomerSentiment() != CustomerSentiment.NEUTRAL) {
-            String directive = sentimentDetector.empathyDirective(s.lastCustomerSentiment(), s.language());
+            String directive = sentimentDetector.empathyDirective(s.lastCustomerSentiment(), s.language(), warmthOf(s.agent()));
             if (directive != null && !directive.isBlank()) {
                 sb.append(directive);
             }
@@ -732,10 +854,76 @@ public class SystemPromptFactory {
     }
 
     private static String allowedNext(StageDef stage) {
-        if (stage == null || stage.allowedTransitions() == null || stage.allowedTransitions().isEmpty()) {
-            return "(yakuniy holat)";
+        String next = describeTransitions(stage);
+        return next.isEmpty() ? "(yakuniy holat)" : next;
+    }
+
+    /**
+     * The ready-made first line of each stage the call may move to next ({@link
+     * StageDef#staticLine}), facts filled in. Listed for the next stages rather than the
+     * current one because the model speaks a stage's line in the same turn it transitions
+     * into it — by the time the state says "here", the line has been said.
+     */
+    private static void appendStaticLines(StringBuilder sb, ScenarioDefinition scenario, StageDef stage,
+                                          Map<String, Object> facts) {
+        if (scenario == null || stage == null || stage.allowedTransitions() == null) {
+            return;
         }
-        return String.join(", ", stage.allowedTransitions());
+        for (String target : stage.allowedTransitions()) {
+            String line = renderStaticLine(scenario.findStage(target), facts);
+            if (line != null) {
+                sb.append("- ").append(target).append(" ga o'tsangiz, gapingiz AYNAN shu bo'lsin: «")
+                        .append(line).append("»\n");
+            }
+        }
+    }
+
+    /** {@code stage}'s {@link StageDef#staticLine} with the facts filled in, or null when it has none. */
+    static String renderStaticLine(StageDef stage, Map<String, Object> facts) {
+        if (stage == null || stage.staticLine() == null || stage.staticLine().isBlank()) {
+            return null;
+        }
+        return PromptTemplateEngine.render(stage.staticLine().trim(), facts == null ? Map.of() : facts);
+    }
+
+    /**
+     * What the call's tools have recorded so far. On a long call the model looked for these
+     * in the history and asked again for a date it had been given three turns before.
+     */
+    private static void appendRecorded(StringBuilder sb, Map<String, Object> outcome) {
+        if (outcome == null || outcome.isEmpty()) {
+            return;
+        }
+        StringBuilder recorded = new StringBuilder();
+        new TreeMap<>(outcome).forEach((name, value) -> {
+            if (!recorded.isEmpty()) {
+                recorded.append("; ");
+            }
+            recorded.append(name).append(" = ").append(PromptSafeText.sanitize(String.valueOf(value), MAX_RECORDED_CHARS));
+        });
+        sb.append("ANIQLANGAN (qayta so'ramang; mijoz o'zgartirsa qayta yozing): ").append(recorded).append('\n');
+    }
+
+    /**
+     * The stages {@code stage} may move to, each with its {@link StageDef#transitionConditions
+     * condition} — {@code "A (agar: …), B"} — or empty when it names none.
+     */
+    static String describeTransitions(StageDef stage) {
+        if (stage == null || stage.allowedTransitions() == null || stage.allowedTransitions().isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String target : stage.allowedTransitions()) {
+            if (!sb.isEmpty()) {
+                sb.append(", ");
+            }
+            sb.append(target);
+            String condition = stage.transitionConditions() == null ? null : stage.transitionConditions().get(target);
+            if (condition != null && !condition.isBlank()) {
+                sb.append(" (agar: ").append(condition.trim()).append(')');
+            }
+        }
+        return sb.toString();
     }
 
     private static String languageName(String code) {

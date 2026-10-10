@@ -39,7 +39,8 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                 def != null ? def.stages() : List.of(),
                 def != null ? def.guardrails() : List.of(),
                 def != null ? def.factSchema() : List.of(),
-                def != null ? def.disclosureText() : null
+                def != null ? def.disclosureText() : null,
+                def != null ? def.callPurpose() : null
         );
     }
 
@@ -53,19 +54,24 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
 
         List<StageDef> stages = request.stagesOrEmpty();
         if (stages.isEmpty()) {
-            stages = List.of(new StageDef("CONVERSATION", "Engage in natural conversation based on agent instructions", List.of(), List.of()));
+            stages = List.of(StageDef.builder()
+                    .id("CONVERSATION")
+                    .purpose("Engage in natural conversation based on agent instructions")
+                    .allowedTransitions(List.of())
+                    .allowedTools(List.of())
+                    .build());
         }
 
-        ScenarioDefinition def = new ScenarioDefinition(
-                stages,
-                request.factSchemaOrEmpty(),
-                List.of(),
-                List.of(),
-                rolePrompt != null ? rolePrompt : "",
-                request.guardrailsOrEmpty(),
-                request.disclosureText(),
-                null
-        );
+        ScenarioDefinition def = ScenarioDefinition.builder()
+                .stages(stages)
+                .factSchema(request.factSchemaOrEmpty())
+                .tools(List.of())
+                .outcomeSchema(List.of())
+                .rolePrompt(rolePrompt != null ? rolePrompt : "")
+                .guardrails(request.guardrailsOrEmpty())
+                .disclosureText(request.disclosureText())
+                .callPurpose(request.callPurpose())
+                .build();
 
         AiAgent updated = existing.withScenario(new AiAgentScript(
                 existing.script().templateId(), existing.script().scenarioId(), mode, def, firstMessage, rolePrompt));
@@ -149,6 +155,7 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                 agent.ambience().noiseCancellationEnabled(),
                 agent.ambience().noiseCancellationMode(),
                 agent.voice().emotionAdaptive(),
+                agent.voice().warmth(),
                 agent.callBehaviour().dtmfInputEnabled(),
                 agent.callBehaviour().voicemailAction(),
                 agent.callBehaviour().voicemailMessage(),
@@ -203,7 +210,8 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                         request.conversationRetentionDays() != null ? request.conversationRetentionDays() : existing.dataPolicy().conversationRetentionDays(),
                         request.realtimeFactsDelivery() != null ? request.realtimeFactsDelivery() : existing.dataPolicy().realtimeFactsDelivery()),
                 voice.withEmotionAdaptive(
-                        request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive()),
+                        request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive())
+                        .withWarmth(request.speakingWarmth() != null ? request.speakingWarmth() : voice.warmth()),
                 request.preemptiveGeneration() != null ? request.preemptiveGeneration() : existing.preemptiveGeneration(),
                 request.ivrNavigationEnabled() != null ? request.ivrNavigationEnabled() : existing.ivrNavigationEnabled(),
                 request.useRag() != null ? request.useRag() : existing.useRag(),

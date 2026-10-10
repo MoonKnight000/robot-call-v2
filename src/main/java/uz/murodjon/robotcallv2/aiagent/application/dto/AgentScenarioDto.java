@@ -16,7 +16,8 @@ public record AgentScenarioDto(
         List<StageDef> stages,
         List<String> guardrails,
         List<FactField> factSchema,
-        String disclosureText
+        String disclosureText,
+        String callPurpose
 ) {
     public ScenarioMode scenarioModeOrDefault() {
         return scenarioMode != null ? scenarioMode : ScenarioMode.PROMPT;

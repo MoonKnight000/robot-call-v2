@@ -98,11 +98,21 @@ class CampaignServiceTest {
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
-        return new Campaign(
-                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(DayOfWeek.MONDAY), maxAttempts,
-                retryIntervalMinutes, 5, 0, AI_AGENT_ID, 1L, null,
-                RecurrenceType.ONCE, null, null, false, null);
+        return Campaign.builder()
+                .id(CAMPAIGN_ID)
+                .name("c")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of(DayOfWeek.MONDAY))
+                .maxAttempts(maxAttempts)
+                .retryIntervalMinutes(retryIntervalMinutes)
+                .maxConcurrentCalls(5)
+                .aiAgentId(AI_AGENT_ID)
+                .companyId(1L)
+                .recurrenceType(RecurrenceType.ONCE)
+                .build();
     }
 
     @Test

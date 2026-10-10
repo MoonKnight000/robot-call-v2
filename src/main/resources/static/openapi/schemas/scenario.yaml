@@ -141,6 +141,9 @@ ScenarioDefinition:
       type: array
       items:
         $ref: '#/StyleExample'
+    callPurpose:
+      type: string
+      description: what the call is about, in a sentence; stated to the model first, `{{fact}}` templates allowed
 ScenarioFilter:
   type: object
   description: Pagination + filter + sort for POST /api/scenarios/list (§10.7).
@@ -304,6 +307,19 @@ StageDef:
         type: string
     emotion:
       type: string
+    transitionConditions:
+      type: object
+      description: when the model takes each allowed transition, in plain words — next stage id → condition
+      additionalProperties:
+        type: string
+    staticLine:
+      type: string
+      description: the stage's ready-made first line, `{{fact}}` templates filled in by the code; not allowed on the first stage
+    requiredOutcomes:
+      type: array
+      description: outcome names of which at least one must be recorded before the call may leave the stage
+      items:
+        type: string
 StyleExample:
   type: object
   description: One ✗ → ✓ pair of phrasing a scenario teaches its agent by — the domain's own examples, so the platform prompt stops carrying one domain's sentences into every scenario's calls (UNIVERSAL-OPERATOR-PLAN A.2).

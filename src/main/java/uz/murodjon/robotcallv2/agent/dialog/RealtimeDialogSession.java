@@ -131,6 +131,8 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
      * cleared once it has been confirmed spoken or re-requested.
      */
     private volatile String pendingDisclosure;
+    /** Whether this call was received as inbound rather than dialled outbound. */
+    private volatile boolean inbound;
     /** What the engine said before the disclosure was checked. Guarded by {@code this}. */
     private final StringBuilder openingSpeech = new StringBuilder();
 
@@ -217,6 +219,14 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     /** See {@link DialogSession#setDtmfSender} — same wiring, speech-to-speech engine. */
     public void setMidCallSmsSender(Predicate<String> midCallSmsSender) {
         this.midCallSmsSender = midCallSmsSender;
+    }
+
+    public boolean isInbound() {
+        return inbound;
+    }
+
+    public void setInbound(boolean inbound) {
+        this.inbound = inbound;
     }
 
     @Override
@@ -339,6 +349,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         return outcomeLedger.doNotCallReason();
     }
 
+    @Override
     public Map<String, Object> outcome() {
         return outcomeLedger.outcome();
     }

@@ -229,8 +229,13 @@ class DialogToolsTest {
         ScenarioDefinition scenario = new ScenarioDefinition(
                 List.of(
                         new StageDef("GREETING", "Salom", List.of("IDENTITY_CHECK"), List.of()),
-                        new StageDef("IDENTITY_CHECK", "Yilni so'rash", List.of("DEBT_NOTICE"), List.of(), null, null,
-                                List.of(new StageBranch("birthYear", BranchOperator.MISSING, null, "DEBT_NOTICE"))),
+                        StageDef.builder()
+                                .id("IDENTITY_CHECK")
+                                .purpose("Yilni so'rash")
+                                .allowedTransitions(List.of("DEBT_NOTICE"))
+                                .allowedTools(List.of())
+                                .branches(List.of(new StageBranch("birthYear", BranchOperator.MISSING, null, "DEBT_NOTICE")))
+                                .build(),
                         new StageDef("DEBT_NOTICE", "Qarz", List.of("END_CALL"), List.of()),
                         new StageDef("END_CALL", "Tamom", List.of(), List.of())),
                 List.of(), List.of(), List.of(new OutcomeField("res", "string", "Natija")),
@@ -242,6 +247,66 @@ class DialogToolsTest {
                 .companyId(1L)
                 .build();
         return new DialogTools(branchingSession);
+    }
+
+    private DialogSession requiredSession;
+
+    private DialogTools toolsWithARequiredOutcome() {
+        ScenarioDefinition scenario = new ScenarioDefinition(
+                List.of(
+                        new StageDef("GREETING", "Salom", List.of("ASK_DATE"), List.of()),
+                        StageDef.builder()
+                                .id("ASK_DATE")
+                                .purpose("Sanani so'rang")
+                                .allowedTransitions(List.of("CONFIRM"))
+                                .allowedTools(List.of())
+                                .requiredOutcomes(List.of("promisedDate", "reasonCode"))
+                                .build(),
+                        new StageDef("CONFIRM", "Tasdiqlang", List.of("END_CALL"), List.of()),
+                        new StageDef("END_CALL", "Tamom", List.of(), List.of())),
+                List.of(), List.of(), List.of(new OutcomeField("res", "string", "Natija")),
+                "Prompt", List.of(), null);
+        requiredSession = DialogSession.builder("chan-3", "uz-UZ")
+                .context(new CallContext(Map.of(), "goal"))
+                .scenario(scenario)
+                .callAttemptId(44L)
+                .companyId(1L)
+                .build();
+        return new DialogTools(requiredSession);
+    }
+
+    @Test
+    void aStageDoesNotEndBeforeItsRequiredOutcomeIsRecorded() {
+        DialogTools required = toolsWithARequiredOutcome();
+        requiredSession.setState("ASK_DATE");
+
+        String result = required.transitionTo("Kelishdik.", "CONFIRM");
+
+        assertThat(result).startsWith("XATO:").contains("promisedDate").contains("reasonCode");
+        assertThat(requiredSession.state()).isEqualTo("ASK_DATE");
+    }
+
+    @Test
+    void aStageEndsOnceAnyOfItsRequiredOutcomesIsRecorded() {
+        // Any of, not all of: a client who refuses gives a reason instead of a date and
+        // must still be able to move on.
+        DialogTools required = toolsWithARequiredOutcome();
+        requiredSession.setState("ASK_DATE");
+        requiredSession.recordOutcome("reasonCode", "NO_MONEY");
+
+        required.transitionTo("Tushunarli.", "CONFIRM");
+
+        assertThat(requiredSession.state()).isEqualTo("CONFIRM");
+    }
+
+    @Test
+    void aWalkStopsAtAStageStillWaitingForItsOutcome() {
+        DialogTools required = toolsWithARequiredOutcome();
+        requiredSession.setState("GREETING");
+
+        required.transitionTo(null, "CONFIRM");
+
+        assertThat(requiredSession.state()).isEqualTo("ASK_DATE");
     }
 
     @Test

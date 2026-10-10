@@ -155,10 +155,22 @@ class PreviewDialServiceTest {
     }
 
     private static Campaign campaign(CampaignStatus status) {
-        return new Campaign(CAMPAIGN_ID, "Preview", CampaignType.DEBT_COLLECTION, status,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 5, 0, null, COMPANY_ID, null,
-                RecurrenceType.ONCE, null, null, false, null, Campaign.DEFAULT_PRIORITY, null, null, null, null, null,
-                0L, DialMode.PREVIEW, QUEUE_ID);
+        return Campaign.builder()
+                .id(CAMPAIGN_ID)
+                .name("Preview")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(status)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of())
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .companyId(COMPANY_ID)
+                .recurrenceType(RecurrenceType.ONCE)
+                .dialMode(DialMode.PREVIEW)
+                .callQueueId(QUEUE_ID)
+                .build();
     }
 
     private static CallQueue queue(long memberUserId) {

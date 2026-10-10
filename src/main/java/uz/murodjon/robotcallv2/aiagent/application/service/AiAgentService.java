@@ -132,21 +132,21 @@ public class AiAgentService implements AiAgentUseCase {
         // Everything the request left out is defaulted by the group it belongs to, so what
         // is written here is only what a create means beyond those defaults.
         Instant now = Instant.now();
-        AiAgent agent = new AiAgent(
-                0L,
-                companyId,
-                request.name().trim(),
-                request.description() != null ? request.description().trim() : null,
-                language,
-                request.persona(),
-                new AiAgentScript(
+        AiAgent agent = AiAgent.builder()
+                .id(0L)
+                .companyId(companyId)
+                .name(request.name().trim())
+                .description(request.description() != null ? request.description().trim() : null)
+                .language(language)
+                .persona(request.persona())
+                .script(new AiAgentScript(
                         request.templateId(),
                         request.scenarioId(),
                         request.scenarioMode(),
                         request.scenarioDefinition(),
                         firstMessage,
-                        systemPrompt),
-                new AiAgentSpeechEngine(
+                        systemPrompt))
+                .speechEngine(new AiAgentSpeechEngine(
                         pipelineMode,
                         realtimeProvider,
                         trimmed(request.pipecatStt()),
@@ -155,24 +155,25 @@ public class AiAgentService implements AiAgentUseCase {
                         engineGuard.requireKnownSttProvider(request.sttProvider()),
                         engineGuard.requireKnownSttModel(request.sttProvider(), request.sttModel()),
                         engineGuard.requireKnownTtsProvider(request.ttsProvider()),
-                        engineGuard.requireKnownTtsModel(request.ttsProvider(), request.ttsModel())),
-                new AiAgentVoice(
+                        engineGuard.requireKnownTtsModel(request.ttsProvider(), request.ttsModel())))
+                .voice(new AiAgentVoice(
                         ttsVoice,
                         request.voiceSpeed(),
                         request.voiceStability(),
                         request.voiceSimilarityBoost(),
                         checkedLanguageVoices,
                         request.languageVoiceSpeeds(),
-                        request.emotionAdaptiveVoice() != null && request.emotionAdaptiveVoice()),
-                new AiAgentAmbience(
+                        request.emotionAdaptiveVoice() != null && request.emotionAdaptiveVoice(),
+                        request.speakingWarmth()))
+                .ambience(new AiAgentAmbience(
                         request.ambientSound(),
                         request.ambientSoundVolume(),
                         request.ambientSoundFadeInSeconds(),
                         request.thinkingSound(),
                         request.thinkingSoundVolume(),
                         request.noiseCancellationEnabled() == null || request.noiseCancellationEnabled(),
-                        request.noiseCancellationMode()),
-                new AiAgentCallBehaviour(
+                        request.noiseCancellationMode()))
+                .callBehaviour(new AiAgentCallBehaviour(
                         request.interruptionSensitivity(),
                         request.endpointingDelayMs() != null ? request.endpointingDelayMs() : 0,
                         request.dtmfInputEnabled() == null || request.dtmfInputEnabled(),
@@ -183,38 +184,33 @@ public class AiAgentService implements AiAgentUseCase {
                         request.transferPhoneNumber(),
                         request.transferMessage(),
                         request.transferQueueId(),
-                        request.preConversationAudioFileId()),
-                new AiAgentLimits(
+                        request.preConversationAudioFileId()))
+                .limits(new AiAgentLimits(
                         request.maxConversationDurationSeconds(),
                         request.silenceEndCallTimeoutSeconds(),
                         request.turnTimeoutSeconds(),
                         request.concurrentCallsLimit(),
-                        request.dailyCallsLimit()),
-                new AiAgentDataPolicy(
+                        request.dailyCallsLimit()))
+                .dataPolicy(new AiAgentDataPolicy(
                         request.zeroPiiRetention() != null && request.zeroPiiRetention(),
                         request.storeCallAudio() == null || request.storeCallAudio(),
                         request.conversationRetentionDays(),
-                        request.realtimeFactsDelivery()),
-                llmModel,
-                fastLlmModel,
-                request.temperature(),
-                request.maxOutputTokens(),
-                request.preemptiveGeneration() != null && request.preemptiveGeneration(),
-                request.ivrNavigationEnabled() == null || request.ivrNavigationEnabled(),
-                request.useRag() != null && request.useRag(),
-                dataNeeded,
-                dataEvaluation,
-                request.initiationWebhook(),
-                request.postCallWebhook(),
-                List.of(),
-                List.of(),
-                request.sipTrunkIds(),
-                request.enabled() == null || request.enabled(),
-                now,
-                null,
-                null,
-                0L
-        );
+                        request.realtimeFactsDelivery()))
+                .llmModel(llmModel)
+                .fastLlmModel(fastLlmModel)
+                .temperature(request.temperature())
+                .maxOutputTokens(request.maxOutputTokens())
+                .preemptiveGeneration(request.preemptiveGeneration() != null && request.preemptiveGeneration())
+                .ivrNavigationEnabled(request.ivrNavigationEnabled() == null || request.ivrNavigationEnabled())
+                .useRag(request.useRag() != null && request.useRag())
+                .dataNeeded(dataNeeded)
+                .dataEvaluation(dataEvaluation)
+                .initiationWebhook(request.initiationWebhook())
+                .postCallWebhook(request.postCallWebhook())
+                .sipTrunkIds(request.sipTrunkIds())
+                .enabled(request.enabled() == null || request.enabled())
+                .createdAt(now)
+                .build();
 
         AiAgentDrafts.requireCompatibleDataPolicy(agent.dataPolicy().zeroPiiRetention(), agent.dataPolicy().storeCallAudio());
         long id = repository.create(drafts.validate(companyId, agent));
@@ -283,21 +279,21 @@ public class AiAgentService implements AiAgentUseCase {
         AiAgentLimits limits = existing.limits();
         AiAgentDataPolicy dataPolicy = existing.dataPolicy();
 
-        AiAgent updated = new AiAgent(
-                id,
-                companyId,
-                request.name() != null ? request.name().trim() : existing.name(),
-                request.description() != null ? request.description().trim() : existing.description(),
-                language,
-                request.persona() != null ? request.persona() : existing.persona(),
-                new AiAgentScript(
+        // The pronunciation rules, post-call actions, creator, creation time and published version
+        // stay the existing agent's: this request does not carry them.
+        AiAgent updated = existing.toBuilder()
+                .name(request.name() != null ? request.name().trim() : existing.name())
+                .description(request.description() != null ? request.description().trim() : existing.description())
+                .language(language)
+                .persona(request.persona() != null ? request.persona() : existing.persona())
+                .script(new AiAgentScript(
                         request.templateId() != null ? request.templateId() : script.templateId(),
                         scenarioId,
                         request.scenarioMode() != null ? request.scenarioMode() : script.mode(),
                         request.scenarioDefinition() != null ? request.scenarioDefinition() : script.definition(),
                         request.firstMessage() != null ? request.firstMessage().trim() : script.firstMessage(),
-                        request.systemPrompt() != null ? request.systemPrompt().trim() : script.systemPrompt()),
-                new AiAgentSpeechEngine(
+                        request.systemPrompt() != null ? request.systemPrompt().trim() : script.systemPrompt()))
+                .speechEngine(new AiAgentSpeechEngine(
                         pipelineMode,
                         realtimeProvider,
                         request.pipecatStt() != null ? trimmed(request.pipecatStt()) : speechEngine.pipecatStt(),
@@ -308,24 +304,25 @@ public class AiAgentService implements AiAgentUseCase {
                                 ? engineGuard.requireKnownSttModel(sttProvider, request.sttModel()) : speechEngine.sttModel(),
                         ttsProvider,
                         request.ttsModel() != null
-                                ? engineGuard.requireKnownTtsModel(ttsProvider, request.ttsModel()) : speechEngine.ttsModel()),
-                new AiAgentVoice(
+                                ? engineGuard.requireKnownTtsModel(ttsProvider, request.ttsModel()) : speechEngine.ttsModel()))
+                .voice(new AiAgentVoice(
                         ttsVoice,
                         request.voiceSpeed() != null ? request.voiceSpeed() : voice.speed(),
                         request.voiceStability() != null ? request.voiceStability() : voice.stability(),
                         request.voiceSimilarityBoost() != null ? request.voiceSimilarityBoost() : voice.similarityBoost(),
                         languageVoices,
                         request.languageVoiceSpeeds() != null ? request.languageVoiceSpeeds() : voice.perLanguageSpeed(),
-                        request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive()),
-                new AiAgentAmbience(
+                        request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive(),
+                        request.speakingWarmth() != null ? request.speakingWarmth() : voice.warmth()))
+                .ambience(new AiAgentAmbience(
                         request.ambientSound() != null ? request.ambientSound() : ambience.background(),
                         request.ambientSoundVolume() != null ? request.ambientSoundVolume() : ambience.backgroundVolume(),
                         request.ambientSoundFadeInSeconds() != null ? request.ambientSoundFadeInSeconds() : ambience.backgroundFadeInSeconds(),
                         request.thinkingSound() != null ? request.thinkingSound() : ambience.thinking(),
                         request.thinkingSoundVolume() != null ? request.thinkingSoundVolume() : ambience.thinkingVolume(),
                         request.noiseCancellationEnabled() != null ? request.noiseCancellationEnabled() : ambience.noiseCancellationEnabled(),
-                        request.noiseCancellationMode() != null ? request.noiseCancellationMode() : ambience.noiseCancellationMode()),
-                new AiAgentCallBehaviour(
+                        request.noiseCancellationMode() != null ? request.noiseCancellationMode() : ambience.noiseCancellationMode()))
+                .callBehaviour(new AiAgentCallBehaviour(
                         request.interruptionSensitivity() != null ? request.interruptionSensitivity() : behaviour.interruptionSensitivity(),
                         request.endpointingDelayMs() != null ? request.endpointingDelayMs() : behaviour.endpointingDelayMs(),
                         request.dtmfInputEnabled() != null ? request.dtmfInputEnabled() : behaviour.dtmfInputEnabled(),
@@ -337,39 +334,34 @@ public class AiAgentService implements AiAgentUseCase {
                         request.transferMessage() != null ? request.transferMessage() : behaviour.transferMessage(),
                         request.transferQueueId() != null ? request.transferQueueId() : behaviour.transferQueueId(),
                         request.preConversationAudioFileId() != null
-                                ? request.preConversationAudioFileId() : behaviour.preConversationAudioFileId()),
-                new AiAgentLimits(
+                                ? request.preConversationAudioFileId() : behaviour.preConversationAudioFileId()))
+                .limits(new AiAgentLimits(
                         request.maxConversationDurationSeconds() != null ? request.maxConversationDurationSeconds() : limits.maxConversationDurationSeconds(),
                         request.silenceEndCallTimeoutSeconds() != null ? request.silenceEndCallTimeoutSeconds() : limits.silenceEndCallTimeoutSeconds(),
                         request.turnTimeoutSeconds() != null ? request.turnTimeoutSeconds() : limits.turnTimeoutSeconds(),
                         request.concurrentCallsLimit() != null ? request.concurrentCallsLimit() : limits.concurrentCallsLimit(),
-                        request.dailyCallsLimit() != null ? request.dailyCallsLimit() : limits.dailyCallsLimit()),
-                new AiAgentDataPolicy(
+                        request.dailyCallsLimit() != null ? request.dailyCallsLimit() : limits.dailyCallsLimit()))
+                .dataPolicy(new AiAgentDataPolicy(
                         request.zeroPiiRetention() != null ? request.zeroPiiRetention() : dataPolicy.zeroPiiRetention(),
                         request.storeCallAudio() != null ? request.storeCallAudio() : dataPolicy.storeCallAudio(),
                         request.conversationRetentionDays() != null ? request.conversationRetentionDays() : dataPolicy.conversationRetentionDays(),
-                        request.realtimeFactsDelivery() != null ? request.realtimeFactsDelivery() : dataPolicy.realtimeFactsDelivery()),
-                llmModel,
-                fastLlmModel,
-                request.temperature() != null ? request.temperature() : existing.temperature(),
-                request.maxOutputTokens() != null ? request.maxOutputTokens() : existing.maxOutputTokens(),
-                request.preemptiveGeneration() != null ? request.preemptiveGeneration() : existing.preemptiveGeneration(),
-                request.ivrNavigationEnabled() != null ? request.ivrNavigationEnabled() : existing.ivrNavigationEnabled(),
-                request.useRag() != null ? request.useRag() : existing.useRag(),
-                request.dataNeeded() != null ? request.dataNeeded() : existing.dataNeeded(),
-                request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation(),
-                request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook(),
-                request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook(),
-                existing.pronunciationRules(),
-                existing.postCallActions(),
-                request.sipTrunkIds() != null ? request.sipTrunkIds() : existing.sipTrunkIds(),
-                request.enabled() != null ? request.enabled() : existing.enabled(),
-                existing.createdAt(),
-                existing.createdBy(),
-                existing.publishedVersion(),
+                        request.realtimeFactsDelivery() != null ? request.realtimeFactsDelivery() : dataPolicy.realtimeFactsDelivery()))
+                .llmModel(llmModel)
+                .fastLlmModel(fastLlmModel)
+                .temperature(request.temperature() != null ? request.temperature() : existing.temperature())
+                .maxOutputTokens(request.maxOutputTokens() != null ? request.maxOutputTokens() : existing.maxOutputTokens())
+                .preemptiveGeneration(request.preemptiveGeneration() != null ? request.preemptiveGeneration() : existing.preemptiveGeneration())
+                .ivrNavigationEnabled(request.ivrNavigationEnabled() != null ? request.ivrNavigationEnabled() : existing.ivrNavigationEnabled())
+                .useRag(request.useRag() != null ? request.useRag() : existing.useRag())
+                .dataNeeded(request.dataNeeded() != null ? request.dataNeeded() : existing.dataNeeded())
+                .dataEvaluation(request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation())
+                .initiationWebhook(request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook())
+                .postCallWebhook(request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook())
+                .sipTrunkIds(request.sipTrunkIds() != null ? request.sipTrunkIds() : existing.sipTrunkIds())
+                .enabled(request.enabled() != null ? request.enabled() : existing.enabled())
                 // Not sent: the version just read, so a client that predates it edits as before.
-                request.version() != null ? request.version() : existing.version()
-        );
+                .version(request.version() != null ? request.version() : existing.version())
+                .build();
 
         AiAgentDrafts.requireCompatibleDataPolicy(updated.dataPolicy().zeroPiiRetention(), updated.dataPolicy().storeCallAudio());
         drafts.update(companyId, id, updated);
@@ -514,17 +506,20 @@ public class AiAgentService implements AiAgentUseCase {
         String rolePrompt = (agent.script().systemPrompt() != null && !agent.script().systemPrompt().isBlank())
                 ? agent.script().systemPrompt()
                 : ("Siz " + agent.name() + " sun'iy intellekt yordamchisiz. Mijoz bilan xushmuomala suhbatlashing.");
-        StageDef defaultStage = new StageDef("CONVERSATION", "Engage in natural conversation based on agent instructions", List.of(), List.of());
-        ScenarioDefinition definition = new ScenarioDefinition(
-                List.of(defaultStage),
-                List.of(),
-                List.of(),
-                List.of(),
-                rolePrompt,
-                List.of(),
-                null,
-                null
-        );
+        StageDef defaultStage = StageDef.builder()
+                .id("CONVERSATION")
+                .purpose("Engage in natural conversation based on agent instructions")
+                .allowedTransitions(List.of())
+                .allowedTools(List.of())
+                .build();
+        ScenarioDefinition definition = ScenarioDefinition.builder()
+                .stages(List.of(defaultStage))
+                .factSchema(List.of())
+                .tools(List.of())
+                .outcomeSchema(List.of())
+                .rolePrompt(rolePrompt)
+                .guardrails(List.of())
+                .build();
         return new Scenario(
                 0L,
                 "agent-" + agent.id(),
@@ -572,10 +567,7 @@ public class AiAgentService implements AiAgentUseCase {
         } else {
             rules.remove(rule);
         }
-        return new ScenarioDefinition(definition.stages(), definition.factSchema(), definition.tools(),
-                definition.outcomeSchema(), definition.rolePrompt(), List.copyOf(rules),
-                definition.disclosureText(), definition.factWebhook(), definition.styleExamples(),
-                definition.globalNodes());
+        return definition.toBuilder().guardrails(List.copyOf(rules)).build();
     }
 
     /** The same for an agent whose whole script is its role prompt: the rule is a line of it. */

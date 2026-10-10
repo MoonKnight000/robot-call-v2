@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
+
 import java.util.Map;
 
 /**
@@ -18,6 +20,8 @@ import java.util.Map;
  * @param perLanguageSpeed language code → speed for calls in that language; never null.
  *                        A language without an entry speaks at {@code speed}
  * @param emotionAdaptive whether the delivery follows the detected sentiment of the call
+ * @param warmth          how much warmth the wording carries; never null, {@link SpeakingWarmth#BALANCED}
+ *                        unless said otherwise
  */
 public record AiAgentVoice(
         String defaultVoice,
@@ -26,7 +30,8 @@ public record AiAgentVoice(
         Double similarityBoost,
         Map<String, String> perLanguage,
         Map<String, Double> perLanguageSpeed,
-        boolean emotionAdaptive
+        boolean emotionAdaptive,
+        SpeakingWarmth warmth
 ) {
     public AiAgentVoice {
         if (speed == null) {
@@ -40,11 +45,27 @@ public record AiAgentVoice(
         }
         perLanguage = perLanguage == null ? Map.of() : Map.copyOf(perLanguage);
         perLanguageSpeed = perLanguageSpeed == null ? Map.of() : Map.copyOf(perLanguageSpeed);
+        if (warmth == null) {
+            warmth = SpeakingWarmth.BALANCED;
+        }
+    }
+
+    public AiAgentVoice(String defaultVoice, Double speed, Double stability, Double similarityBoost,
+                        Map<String, String> perLanguage, Map<String, Double> perLanguageSpeed,
+                        boolean emotionAdaptive) {
+        this(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed, emotionAdaptive, null);
     }
 
     /** The same voice, following the call's sentiment or not. */
     public AiAgentVoice withEmotionAdaptive(boolean newEmotionAdaptive) {
-        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed, newEmotionAdaptive);
+        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed,
+                newEmotionAdaptive, warmth);
+    }
+
+    /** The same voice, its wording as warm as {@code newWarmth}. */
+    public AiAgentVoice withWarmth(SpeakingWarmth newWarmth) {
+        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed,
+                emotionAdaptive, newWarmth);
     }
 
     /** The voice a call in {@code language} speaks with; the agent's default otherwise. */

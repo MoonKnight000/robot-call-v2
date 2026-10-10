@@ -237,7 +237,7 @@ TransferTargetType:
     - `EXTERNAL` — A phone number over the trunk.
 WebTestCallRequest:
   type: object
-  description: What to test from the browser — at most one of `campaignId`, `scenarioId`, `definition`; none means the configured default test scenario.
+  description: What to test from the browser — at most one of `campaignId`, `aiAgentId`, `scenarioId`, `definition`; none means the configured default test scenario.
   properties:
     campaignId:
       type: integer
@@ -249,12 +249,16 @@ WebTestCallRequest:
     agentVersion:
       type: integer
       format: int32
-      description: 'which version of the campaign''s agent to talk to (needs `campaignId`): a published number, or null for the draft — what an editor tests before publishing'
+      description: 'which version of the agent to talk to (needs `campaignId` or `aiAgentId`): a published number, or null for the draft — what an editor tests before publishing'
     scenarioId:
       type: integer
       format: int64
     definition:
       $ref: scenario.yaml#/ScenarioDefinition
+    aiAgentId:
+      type: integer
+      format: int64
+      description: an agent tested on its own, with its full profile and the test-context facts
 WebTestCallResponse:
   type: object
   description: 'Everything the browser needs to dial in: connect a SIP-over-WebSocket client to `wsUrl` as `sipUser`/`sipPassword` and INVITE `dialNumber` with the header `sessionHeader: sessionId`.'

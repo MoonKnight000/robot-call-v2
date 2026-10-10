@@ -141,6 +141,23 @@ public class DialogTools {
     }
 
     /**
+     * The outcomes {@code stage} waits for when none of them is recorded yet, or empty when it
+     * waits for none or one is in ({@link StageDef#requiredOutcomes} — any of, not all of).
+     */
+    private List<String> findUnmetRequiredOutcomes(StageDef stage) {
+        if (stage == null || stage.requiredOutcomes() == null || stage.requiredOutcomes().isEmpty()) {
+            return List.of();
+        }
+        Map<String, Object> recorded = session.outcome();
+        for (String name : stage.requiredOutcomes()) {
+            if (recorded.containsKey(name)) {
+                return List.of();
+            }
+        }
+        return stage.requiredOutcomes();
+    }
+
+    /**
      * The stages from the current one to {@code target} along the scenario's transitions,
      * the shortest way — {@code target} last, the current stage left out — or null when
      * the graph does not lead there.
@@ -185,6 +202,15 @@ public class DialogTools {
             recordReply(reply);
             return "Holat o'zgarishsiz: joriy " + session.state() + " bosqichida qolindi.";
         }
+        List<String> required = findUnmetRequiredOutcomes(
+                session.scenario() == null ? null : session.scenario().findStage(session.state()));
+        if (!required.isEmpty()) {
+            log.warn("[{}] refused transition {} -> {}: no required outcome {} recorded yet",
+                    session.channelId(), session.state(), nextStage, required);
+            return "XATO: " + session.state() + " bosqichi hali tugamadi — avval " + String.join(" yoki ", required)
+                    + " natijasini yozing (tegishli tool bilan). Mijoz javob berishni rad etsa — endCall yoki "
+                    + "requestHumanTransfer. Bu bosqichda aytib bo'lgan gapingizni qayta aytmang.";
+        }
         List<String> allowed = allowedTransitions();
         List<String> walked = List.of();
         // A refused jump strands the call: on a recorded realtime call every jump was
@@ -195,10 +221,12 @@ public class DialogTools {
         List<String> path = jump ? pathTo(nextStage) : null;
         if (path != null) {
             // A stage with branches is a check the walk must not skip — the identity check
-            // before the debt is named. The walk stops there and the branches decide.
+            // before the debt is named. The walk stops there and the branches decide. A stage
+            // that still waits for its required outcome is the same kind of check.
             for (int i = 0; i < path.size() - 1; i++) {
                 StageDef between = session.scenario().findStage(path.get(i));
-                if (between != null && between.branches() != null && !between.branches().isEmpty()) {
+                boolean branching = between != null && between.branches() != null && !between.branches().isEmpty();
+                if (branching || !findUnmetRequiredOutcomes(between).isEmpty()) {
                     path = path.subList(0, i + 1);
                     nextStage = path.get(i);
                     break;
@@ -224,13 +252,14 @@ public class DialogTools {
         // turn in the prompt annex; a realtime call has no annex, so this tool result is
         // the only place the model is told again — and on a recorded call it spent three
         // turns guessing stage names it was not allowed to reach.
-        List<String> next = allowedTransitions();
+        String next = SystemPromptFactory.describeTransitions(
+                session.scenario() == null ? null : session.scenario().findStage(landed));
         String moved = "Holat " + landed + " ga o'tkazildi"
                 + (landed.equals(nextStage) ? "" : " (" + nextStage + " shartlari bo'yicha avtomatik)")
                 + (walked.isEmpty() ? "" : " (oraliq bosqichlar: " + String.join(", ", walked) + ")");
         return next.isEmpty()
                 ? moved
-                : moved + ". Bu bosqichdan keyin faqat " + String.join(", ", next) + " ga o'tish mumkin.";
+                : moved + ". Bu bosqichdan keyin faqat " + next + " ga o'tish mumkin.";
     }
 
     @Tool(description = "Mijoz ANIQ KUNni o'zi aytganda chaqiriladi (masalan \"10-oktabr\", \"ertaga\"). "

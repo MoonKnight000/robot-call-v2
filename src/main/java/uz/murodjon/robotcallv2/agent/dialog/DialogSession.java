@@ -627,6 +627,7 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     /** Everything tools have recorded so far this call — for the live operator/monitoring view. */
+    @Override
     public Map<String, Object> outcome() {
         return outcomeLedger.outcome();
     }

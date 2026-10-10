@@ -42,7 +42,10 @@ public class RealtimeSystemPromptFactory {
             // here drop Russian words into Uzbek sentences all the time, and answering each
             // of those in Russian is heard as the bot not understanding them.
             "Mijoz butunlay boshqa tilda (masalan rus tilida) gapira boshlasa, o'sha tilga o't. "
-                    + "Gapiga bir-ikki ruscha so'z aralashsa, suhbat tilini o'zgartirma."
+                    + "Gapiga bir-ikki ruscha so'z aralashsa, suhbat tilini o'zgartirma.",
+            "Mijoz O'ZBEK tilida gapiradi. Mijozning barcha qisqa tovush va so'zlarini "
+                    + "(masalan «ha», «eshitaman», «menman», «ha menman», «labay», «yo'q», «to'g'ri», «alo») "
+                    + "qat'iy o'zbek tilida tushuning, aslo begona tillar (koreys, yapon va h.k.) deb adashmang."
     );
 
     /**
@@ -66,14 +69,13 @@ public class RealtimeSystemPromptFactory {
         String rolePrompt = PromptTemplateEngine.render(def.rolePrompt(), facts);
         sb.append(rolePrompt).append(' ')
                 .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
-                .append(" tilida tabiiy suhbatlashasiz. Ovozingiz to'g'ridan-to'g'ri mijozga ")
+                .append(" tilida tabiiy suhbatlashasiz. Mijoz ham ").append(languageName(s.language()))
+                .append(" tilida gapiradi. Ovozingiz to'g'ridan-to'g'ri mijozga ")
                 .append("eshitiladi.\n\n");
 
-        if (companyName != null && !companyName.isBlank()) {
-            sb.append("KOMPANIYA: siz \"").append(companyName.trim())
-                    .append("\" kompaniyasi nomidan qo'ng'iroq qilyapsiz. O'zingizni tanishtirganda ")
-                    .append("faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
-        }
+        SystemPromptFactory.appendCallFrame(sb, s.isInbound(), def.callPurpose(),
+                context != null ? context.goal() : null, facts);
+        SystemPromptFactory.appendCompany(sb, companyName, s.isInbound());
 
         if (persona == AgentPersona.HUMAN_LIKE) {
             String personaName = SystemPromptFactory.resolveVoicePersonaName(voice, s.language());
@@ -102,17 +104,19 @@ public class RealtimeSystemPromptFactory {
                 .append(SystemPromptFactory.TIME_ANCHORS).append('\n');
 
         appendFacts(sb, s, factsInPrompt);
-        if (context.goal() != null && !context.goal().isBlank()) {
-            sb.append("- Kampaniya maqsadi: ").append(context.goal()).append('\n');
-        }
         SystemPromptFactory.appendMemory(sb, context.memory());
 
         sb.append("\nSUHBAT BOSQICHLARI (transitionTo tool'i bilan o'tasiz):\n");
         for (StageDef stage : def.stages()) {
             String purpose = PromptTemplateEngine.render(stage.purpose(), facts);
             sb.append("- ").append(stage.id()).append(": ").append(purpose);
-            if (stage.allowedTransitions() != null && !stage.allowedTransitions().isEmpty()) {
-                sb.append(" → ").append(String.join(", ", stage.allowedTransitions()));
+            String staticLine = SystemPromptFactory.renderStaticLine(stage, facts);
+            if (staticLine != null) {
+                sb.append(" Birinchi gap (AYNAN shu): «").append(staticLine).append("»");
+            }
+            String next = SystemPromptFactory.describeTransitions(stage);
+            if (!next.isEmpty()) {
+                sb.append(" → ").append(next);
             }
             sb.append('\n');
         }
@@ -166,7 +170,11 @@ public class RealtimeSystemPromptFactory {
             String renderedDisclosure = PromptTemplateEngine.render(disclosureText.trim(), facts);
             sb.append("\n[TIZIM: Suhbat boshlanganda dastlab qisqa salom berib, quyidagi qonuniy ogohlantirishni ayting: \"")
                     .append(renderedDisclosure)
-                    .append("\". Shundan so'ng darhol ssenariyning keyingi bosqichiga o'ting.]\n");
+                    .append(s.isInbound()
+                            ? "\". Shundan so'ng \"Sizga qanday yordam bera olaman?\" deb so'rang.]\n"
+                            : "\". Shundan so'ng darhol ssenariyning keyingi bosqichiga o'ting.]\n");
+        } else if (s.isInbound()) {
+            sb.append('\n').append(SystemPromptFactory.inboundOpening(false));
         }
 
         sb.append("\nQAT'IY QOIDALAR:\n");
@@ -188,18 +196,26 @@ public class RealtimeSystemPromptFactory {
         sb.append("\nUSLUB: qisqa, hurmatli, tabiiy jumlalar. Bir vaqtda bitta savol ber. ")
                 .append("Mijoz gapiga avval bir og'iz munosabat bildir, keyin davom et — lekin ")
                 .append("har safar har xil. HECH QACHON \"suhbatdoshim\", \"suhbatdosh\", \"mijoz\" deb murojaat qilma. \n");
+        String warmthLine = SystemPromptFactory.warmthStyleLine(SystemPromptFactory.warmthOf(s.agent()), russian);
+        if (warmthLine != null) {
+            // No per-turn annex here to carry the caller's mood, so the matching is asked for once.
+            sb.append(warmthLine).append(' ')
+                    .append("Mijoz kayfiyatiga moslashing: asabiy bo'lsa — xotirjam, sekinroq va qisqa; ")
+                    .append("iliq bo'lsa — siz ham sal iliqroq. Sahnaviy hamdardlik (\"juda afsusdaman\") yo'q.\n");
+        }
         if (!russian) {
             sb.append("MUROJAAT VA SHAXSNI ANIQLASH (QAT'IY): \n")
                     .append("QAT'IYAN TAQIQLANGAN: \"Siz [Ism]misiz?\", \"Siz falonchimisiz?\" deb so'rash. Bu robotdek va qo'pol. \n")
                     .append("TO'G'RI SHAKL: Shaxsni aniqlash bosqichida xuddi tirik operator kabi faqat: ")
                     .append("\"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra (ayol kishi bo'lsa \"opa\", erkak kishi bo'lsa \"aka\" qo'sh). \n")
-                    .append("Ism bilan murojaat qilganda doim o'zbekona hurmat bilan \"aka\"/\"opa\" qo'shib gapir (masalan: \"Murodjon aka\"), familiyani aytma.\n");
+                    .append("Ism bilan murojaat qilganda doim o'zbekona hurmat bilan \"aka\"/\"opa\" qo'shib gapir (masalan: \"Murodjon aka\"), familiyani aytma.\n")
+                    .append("SHAXSNI TASDIQLASH: Mijoz «ha», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «shunday» yoki shunga o'xshash tasdiq bildirsa — shaxs tasdiqlandi deb biling. Aslo «ovoz yaxshi eshitilmadi» deb turib olmang, darhol transitionTo chaqirib keyingi bosqichga o'ting.\n");
         }
         sb.append("Suhbatda allaqachon aytgan faktingni (raqam, ")
                 .append("summa, sana) qayta aytma. ")
                 .append("LEKIN mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\" desa yoki qayta aytishni so'rasa — ")
                 .append("keyingi bosqichga o'tib ketma, transitionTo chaqirma! ")
-                .append("Eshitmagan bo'lsa — oxirgi aytgan gapingni (qarz summasi, sana, savol) xushmuomala qilib qaytadan aniq takrorla: ")
+                .append("Eshitmagan bo'lsa — oxirgi aytgan gapingni (fakt, sana yoki savol) xushmuomala qilib qaytadan aniq takrorla: ")
                 .append("\"Eshitilmadimi? Qaytadan aytaman: ...\". ")
                 .append("Tushunmagan bo'lsa (\"aaa?\", \"qanaqa?\", \"tushunmadim\") — so'zma-so'z takrorlama, ")
                 .append("o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntir: \"Kechirasiz, tushuntiray: ...\".\n");

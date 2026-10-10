@@ -17,10 +17,8 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
-import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
-import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
@@ -103,10 +101,22 @@ class DialerServiceTest {
     }
 
     private void givenActiveCampaign(int dailyCallCap, Set<DayOfWeek> dialDays) {
-        when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(new Campaign(
-                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays, 3, 24, 5, dailyCallCap, AI_AGENT_ID, 1L, null,
-                RecurrenceType.ONCE, null, null, false, null)));
+        when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(Campaign.builder()
+                .id(CAMPAIGN_ID)
+                .name("c")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(dialDays)
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .dailyCallCap(dailyCallCap)
+                .aiAgentId(AI_AGENT_ID)
+                .companyId(1L)
+                .recurrenceType(RecurrenceType.ONCE)
+                .build()));
     }
 
     private void givenDueTargets(int count) {
@@ -199,12 +209,22 @@ class DialerServiceTest {
 
     @Test
     void aScoreCampaignClaimsByScoreAtTheCompanysHour() {
-        when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(new Campaign(
-                CAMPAIGN_ID, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(DayOfWeek.WEDNESDAY), 3, 24, 5, 0, AI_AGENT_ID, 1L,
-                null, RecurrenceType.ONCE, null, null, false, null, Campaign.DEFAULT_PRIORITY, RetryPolicy.NONE,
-                null, null, null, null, 0L, DialMode.AI, null, Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT,
-                TargetOrdering.SCORE)));
+        when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(Campaign.builder()
+                .id(CAMPAIGN_ID)
+                .name("c")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of(DayOfWeek.WEDNESDAY))
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .aiAgentId(AI_AGENT_ID)
+                .companyId(1L)
+                .recurrenceType(RecurrenceType.ONCE)
+                .targetOrdering(TargetOrdering.SCORE)
+                .build()));
 
         dialerAt(14).dispatch();
 

@@ -115,6 +115,15 @@ public record AiAgent(
         return voice.forLanguage(callLanguage);
     }
 
+    public static AiAgentBuilder builder() {
+        return new AiAgentBuilder();
+    }
+
+    /** A builder that starts from this agent, for changing a few of its fields. */
+    public AiAgentBuilder toBuilder() {
+        return new AiAgentBuilder(this);
+    }
+
     public AiAgent withFirstMessage(String newFirstMessage) {
         return withScript(script.withFirstMessage(newFirstMessage));
     }
@@ -125,23 +134,11 @@ public record AiAgent(
 
     public AiAgent withAnalysis(List<DataExtractionField> newDataNeeded,
                                 List<DataEvaluationCriterion> newDataEvaluation) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                newDataNeeded, newDataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder().dataNeeded(newDataNeeded).dataEvaluation(newDataEvaluation).build();
     }
 
     public AiAgent withLimits(AiAgentLimits newLimits) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, newLimits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder().limits(newLimits).build();
     }
 
     /** Everything the "advanced" settings screen owns, in one write. */
@@ -154,88 +151,55 @@ public record AiAgent(
                                 boolean newUseRag,
                                 AgentWebhookConfig newInitiationWebhook,
                                 AgentWebhookConfig newPostCallWebhook) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, newVoice, newAmbience, newCallBehaviour, limits, newDataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                newPreemptiveGeneration, newIvrNavigationEnabled, newUseRag,
-                dataNeeded, dataEvaluation, newInitiationWebhook, newPostCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder()
+                .ambience(newAmbience)
+                .callBehaviour(newCallBehaviour)
+                .dataPolicy(newDataPolicy)
+                .voice(newVoice)
+                .preemptiveGeneration(newPreemptiveGeneration)
+                .ivrNavigationEnabled(newIvrNavigationEnabled)
+                .useRag(newUseRag)
+                .initiationWebhook(newInitiationWebhook)
+                .postCallWebhook(newPostCallWebhook)
+                .build();
     }
 
     public AiAgent withPronunciationRules(List<PronunciationRule> rules) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                rules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder().pronunciationRules(rules).build();
     }
 
     /** The same configuration as a new, unsaved, never-published agent called {@code newName}. */
     public AiAgent asCopy(String newName, Instant now, Long copiedBy) {
-        return new AiAgent(
-                0L, companyId, newName, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, now, copiedBy, null, 0L);
+        return toBuilder()
+                .id(0L)
+                .name(newName)
+                .createdAt(now)
+                .createdBy(copiedBy)
+                .publishedVersion(null)
+                .version(0L)
+                .build();
     }
 
     public AiAgent withPublishedVersion(Integer newPublishedVersion) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, newPublishedVersion,
-                version);
+        return toBuilder().publishedVersion(newPublishedVersion).build();
     }
 
     /** The same agent at optimistic-lock {@code newVersion} — a restored snapshot takes the draft row's. */
     public AiAgent withVersion(long newVersion) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion,
-                newVersion);
+        return toBuilder().version(newVersion).build();
     }
 
     /** The published snapshot with the draft row's on/off switch — that switch is not versioned. */
     public AiAgent withEnabled(boolean newEnabled) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, newEnabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder().enabled(newEnabled).build();
     }
 
     public AiAgent withPostCallActions(List<PostCallAction> actions) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                script, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, actions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder().postCallActions(actions).build();
     }
 
     private AiAgent withScript(AiAgentScript newScript) {
-        return new AiAgent(
-                id, companyId, name, description, language, persona,
-                newScript, speechEngine, voice, ambience, callBehaviour, limits, dataPolicy,
-                llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag,
-                dataNeeded, dataEvaluation, initiationWebhook, postCallWebhook,
-                pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy, publishedVersion, version);
+        return toBuilder().script(newScript).build();
     }
 
 }

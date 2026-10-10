@@ -389,6 +389,65 @@ public class CampaignControllerImpl implements CampaignController {
 }
 ```
 
+### 3.7. Builder — qachon kerak, qachon yo'q
+
+Builder — **ko'p maydonli domain record'ni qurish va "bir-ikki maydonini almashtirib nusxa olish"** uchun.
+U har bir klassga qo'yiladigan odat emas; quyidagi savolga javob bering.
+
+**Builder kerak, agar quyidagilardan kamida bittasi bo'lsa:**
+
+| Belgi | Misol | Nega muammo |
+|---|---|---|
+| 10+ komponent va ko'pi `null`/default bo'ladi | `StageDef` (10), `ScenarioDefinition` (11), `Campaign` (30), `AiAgent` (32) | `new X(a, b, null, null, null, 5, null, "x")` — qaysi `null` nima ekanini o'qib bo'lmaydi |
+| Telescoping konstruktorlar (har yangi maydon uchun yangi overload) | eski `Campaign`da 7 ta overload | Overload'lar faqat tip farqi bilan ajraladi (`long` / `Long`) — noto'g'ri biri jimgina tanlanadi |
+| Bir xil tipli maydonlar ketma-ket keladi | `int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap` | Argumentlar o'rni almashsa compile xato bermaydi |
+| `withX(...)` metodlari butun maydon ro'yxatini qayta yozadi | eski `AiAgent`da 10 ta `withX`, har biri 32 argument | Yangi maydon qo'shilsa 10 joyni o'zgartirish kerak, birini unutish — jim xato |
+
+**Builder KERAK EMAS:**
+
+- 2–6 maydonli oddiy record (`new CallRow(...)`, `new OutcomeField(name, type, desc)`): record konstruktori yetarli.
+- Request/Response DTO: Jackson o'zi quradi.
+- JPA `*Entity`: ularni `*EntityMapper` to'ldiradi.
+- `*Properties`: Spring bind qiladi.
+- Exception'lar: `ErrorCode` + `args...`.
+- Maydonlarning hammasi majburiy va ularda default yo'q bo'lsa, builder faqat uzunroq yozuv beradi.
+
+**Qoidalar:**
+
+1. **Alohida fayl** (§1): `<Domain>Builder`, record bilan bir paketda (`domain.entity`) — `CampaignBuilder`, `StageDefBuilder`. `public` nested type taqiqlangani uchun `Campaign.Builder` emas.
+2. **Kirish nuqtasi record'da:** `X.builder()` va `x.toBuilder()`. Builder konstruktori package-private — tashqaridan faqat shu ikki metod orqali olinadi.
+3. **Default qiymatlar record'ning compact konstruktorida**, builder'da emas. Builder faqat o'z maydonlarini tashiydi. Istisno: nol bo'lmagan default (`Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT`) — u builder maydonida turadi, chunki `int` uchun `0` ham haqiqiy qiymat.
+4. **Builder validatsiya qilmaydi.** Tekshiruv — compact konstruktorda yoki `<Feature>Validator`da. `build()` faqat `new X(...)` ni chaqiradi.
+5. **`toBuilder()` — nusxa olishning yagona yo'li.** `withX` metodi yozilsa, tanasi bitta qator bo'ladi: `return toBuilder().limits(newLimits).build();`. Maydon ro'yxatini qo'lda qayta yozmang.
+6. **Metod nomi maydon nomi bilan bir xil** (`.maxAttempts(3)`, `setMaxAttempts` emas) — loyihadagi `DialogSessionBuilder` uslubi.
+7. **Eski overload qo'shilmaydi.** Yangi maydon kelsa — builder'ga bitta metod, record'ga bitta komponent. Yangi konstruktor overload'i yozish taqiqlanadi.
+8. **Qisqa "asos" konstruktor ruxsat:** hamma argumenti majburiy va `null` to'ldirishi yo'q bo'lsa (`new StageDef(id, purpose, transitions, tools)`), uni qoldirish mumkin; u asosiy konstruktorga to'g'ridan-to'g'ri ulanadi.
+
+**Qaysi biri qachon ishlatiladi:**
+
+```java
+// Yangi obyekt, ko'p maydon: builder
+Campaign row = Campaign.builder()
+        .name(request.name())
+        .type(request.type())
+        .status(CampaignStatus.DRAFT)
+        .companyId(companyId)
+        .build();
+
+// Mavjudini o'zgartirish: toBuilder() — o'zgarmaydigan maydonlar o'zi ko'chadi
+Campaign copy = source.toBuilder()
+        .id(0)
+        .name(source.name() + " (nusxa)")
+        .version(0L)
+        .build();
+
+// Qisqa, hamma maydoni majburiy: oddiy konstruktor
+new StageDef("END", "Yakunla", List.of(), List.of());
+
+// ✗ Yoyilgan null'lar — builder'ga o'ting
+new StageDef("ASK", "Sana", List.of("END"), List.of(), null, null, null, null, "line", null);
+```
+
 ---
 
 ## 4. `robot-call-v2` Modullarini Shu Strukturaga O'tkazish Ketma-Ketligi

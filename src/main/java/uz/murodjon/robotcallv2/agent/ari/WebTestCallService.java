@@ -92,13 +92,16 @@ class WebTestCallService {
      * Registers a browser test call ({@code POST /api/calls/web-test}) and returns the
      * session id the browser must dial in with. With a {@code campaignId} the call runs
      * under that campaign's full profile (scenario, voices, persona, ambient sound, ...)
-     * and, given a {@code targetId}, that target's facts; otherwise it is a manual test
-     * call of the draft, the scenario, or the default test scenario.
+     * and, given a {@code targetId}, that target's facts; with an {@code aiAgentId} it runs
+     * under that agent's profile with the test facts; otherwise it is a manual test call of
+     * the draft, the scenario, or the default test scenario.
      */
-    String prepareWebTest(long companyId, Long campaignId, Long targetId, Integer agentVersion,
+    String prepareWebTest(long companyId, Long campaignId, Long targetId, Long aiAgentId, Integer agentVersion,
                           Long scenarioId, ScenarioDefinition definition) {
         pendingCallRegistry.purgeExpiredWebTests();
-        OutboundCall outbound = campaignId != null ? buildWebTestProfile(companyId, campaignId, targetId, agentVersion) : null;
+        OutboundCall outbound = campaignId != null ? buildWebTestProfile(companyId, campaignId, targetId, agentVersion)
+                : aiAgentId != null ? buildAgentWebTestProfile(companyId, aiAgentId, agentVersion)
+                : null;
         // The scenario has to be the caller's own, and the session carries the company: it
         // used to carry neither, so a scenario test ran as the default company — any tenant
         // could run company 1's private scenarios and bill their tests to it.
@@ -109,7 +112,8 @@ class WebTestCallService {
         String sessionId = UUID.randomUUID().toString();
         pendingCallRegistry.registerWebTest(sessionId, new WebTestCall(outbound, definition, scenarioId, companyId, Instant.now()));
         audit.record(companyId, "CALL_WEB_TEST", "call", sessionId,
-                campaignId != null ? "campaign " + campaignId + (targetId != null ? " target " + targetId : "") : null);
+                campaignId != null ? "campaign " + campaignId + (targetId != null ? " target " + targetId : "")
+                        : aiAgentId != null ? "agent " + aiAgentId : null);
         return sessionId;
     }
 
@@ -175,6 +179,20 @@ class WebTestCallService {
         }
         return new OutboundCall(campaign.id(), CallAttempt.NO_TARGET, null, WEB_TEST_PHONE,
                 language, agent.voiceFor(language), context, agent, campaign.companyId(),
+                null, null, null, null);
+    }
+
+    /**
+     * An agent's call profile for a browser test, without a campaign: its voice, persona and
+     * models, its scenario, and the configured test facts — how an editor hears the agent
+     * before any campaign points at it.
+     */
+    private OutboundCall buildAgentWebTestProfile(long companyId, long aiAgentId, Integer agentVersion) {
+        AiAgent agent = aiAgentService.requireAgentVersion(companyId, aiAgentId, agentVersion);
+        Scenario scenario = aiAgentService.resolveScenario(companyId, agent);
+        String language = agent.language();
+        return new OutboundCall(null, CallAttempt.NO_TARGET, null, WEB_TEST_PHONE,
+                language, agent.voiceFor(language), buildTestContext(scenario.definition()), agent, companyId,
                 null, null, null, null);
     }
 

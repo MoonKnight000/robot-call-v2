@@ -275,7 +275,7 @@ class AiAgentServiceTest {
                 null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
-                null, null, null, null, null,
+                null, null, null, null, null, null,
                 null, null, null, null, null,
                 transferQueueId, null, null, null, null,
                 null);
@@ -294,7 +294,7 @@ class AiAgentServiceTest {
                 null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
-                null, null, null, null, null,
+                null, null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
                 version, null);

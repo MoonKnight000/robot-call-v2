@@ -156,11 +156,12 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 
 | Maydon | Turi | Izoh |
 |---|---|---|
-| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`; ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi) |
+| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`; ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi), `transitionConditions` (ixtiyoriy, LLM qaror qiladigan o'tish sharti: `{ "<keyingi bosqich id>": "<tabiiy tildagi shart>" }` — pastga qarang), `staticLine` (ixtiyoriy, bosqichga kirgandagi tayyor gap, `{{fact}}` bilan), `requiredOutcomes` (ixtiyoriy, bosqichdan chiqish uchun kamida bittasi yozilishi kerak bo'lgan natija nomlari) — ikkalasi "Tayyor gap va chiqish sharti" bo'limida |
 | `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required", "description" }` |
 | `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params` (`{ "name", "type", "required", "constraint" }[]`), `preToolSpeech` (tool ishlayotganda aytiladigan gap). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang |
 | `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description", "goal" }`. `goal: true` (ixtiyoriy, standart `false`) — ssenariy shu maydonni yozish uchun mavjud: qo'ng'iroq uni yozsa `GOAL_REACHED`, yozmasa `GOAL_NOT_REACHED` ([calls.md](calls.md)). Qiymat ssenariy tool'ining shu nomli argumentidan yoki kompaniya tool'ining `responseMapping` dagi shu nomli maydonidan keladi ([tools.md](tools.md)). Ko'pi bilan bitta maydon — aks holda `only one outcome field may be the goal` |
 | `rolePrompt` | string | Agentning roli va ohangi |
+| `callPurpose` | string | Ixtiyoriy. Qo'ng'iroq **nima haqida** — bir gap: "Mijoz saytda kredit bo'yicha ariza qoldirgan; arizani aniqlashtirish". Promptning eng boshida, rol'dan keyin `QO'NG'IROQ SABABI:` bo'lib turadi; `{{fact}}` shablonlari ishlaydi. Pastdagi "Qo'ng'iroq turi va sababi" ga qarang |
 | `guardrails` | `string[]` | Taqiqlar (§4.4) |
 | `styleExamples` | `StyleExample[]` | Ixtiyoriy. Promptdagi "✗ noto'g'ri → ✓ to'g'ri" misollari: `{ "language": "uz" \| "ru" \| null, "wrong", "right" }`. `language` qo'ng'iroq tilining prefiksi bilan solishtiriladi, `null` — hamma tillar. Ikkala pipeline'da (cascade va realtime) promptga qo'shiladi. `wrong` yoki `right` bo'sh bo'lsa — `a style example needs both 'wrong' and 'right'` |
 | `disclosureText` | string | Shu ssenariy uchun §11.1 ochiqlik matni — kompaniya matnidan ustun turadi |
@@ -189,6 +190,9 @@ buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `
 | Birinchi bosqichda `branches` yo'q | `the first stage X cannot have branches` |
 | Branch'da `fact` va `operator` bor; `EXISTS`/`MISSING` dan boshqasida `value` bor | `a branch of stage X needs 'fact' and 'operator'`, `branch on F in stage X needs a 'value' for OP` |
 | Branch `goTo` — shu bosqichning `allowedTransitions` ichida | `branch of stage X goes to Y, which is not in its allowedTransitions` |
+| Birinchi bosqichda `staticLine` yo'q (qo'ng'iroqni agentning `firstMessage` i ochadi) | `the first stage X cannot have a staticLine — …` |
+| `requiredOutcomes` yakuniy bosqichda yo'q, nomlari bo'sh emas | `terminal stage X cannot have requiredOutcomes — …`, `stage X has a blank required outcome` |
+| `transitionConditions` kaliti — shu bosqichning `allowedTransitions` ichida, qiymati bo'sh emas | `transition condition of stage X is for Y, which is not in its allowedTransitions`, `transition condition of stage X for Y must not be empty` |
 | `tools[].name` universal nomlardan biri bo'lmaydi: `transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall` | `tool name 'X' is reserved …` |
 | Fakt / tool / tool parametri / outcome nomlari bo'sh emas va takrorlanmaydi | `a fact has a blank name`, `duplicate tool name: X`, … |
 | `outcomeSchema` kamida bitta maydon | `outcomeSchema must not be empty — …` |
@@ -196,6 +200,132 @@ buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `
 | `styleExamples[]` da `wrong` va `right` ikkalasi ham bor | `a style example needs both 'wrong' and 'right'` |
 | `disclosureText` berilsa — avtomatik qo'ng'iroq va yozib olinishini aytadi (yoki bo'sh qoldiring) | `disclosureText must state …` |
 | `factWebhook`: `url` `http(s)://` bilan, `method` `GET`/`POST`, `timeoutMs` ≤ 2000, `factSchema` bo'sh emas | `factWebhook.url must …`, `factWebhook.method must be GET or POST`, … |
+
+---
+
+## 🔀 `transitionConditions` — Mijoz javobiga qarab tarmoqlanish
+
+"Vaqtingiz bormi?" deb so'ralgan bosqichdan "ha desa — taklifga, yo'q desa — qulay vaqtni
+so'rashga" o'tish. Ikki xil tarmoqlanish bor, ularni adashtirmang:
+
+| | `branches` | `transitionConditions` |
+|---|---|---|
+| Kim qaror qiladi | Kod, LLM'siz | LLM |
+| Nimaga qarab | Qo'ng'iroqdan oldin ma'lum bo'lgan fakt (`birthYear` yo'q) | Mijozning shu suhbatdagi javobi |
+| Qachon | Bosqichga kirishi bilan | Mijoz javob bergach, `transitionTo` tool'i bilan |
+
+```json
+{
+  "stages": [
+    { "id": "GREETING", "purpose": "Salomlashing, hol-ahvol so'rang", "allowedTransitions": ["ASK_TIME"], "allowedTools": [] },
+    { "id": "ASK_TIME", "purpose": "Hozir 2 daqiqa gaplashishga vaqti bormi, so'rang",
+      "allowedTransitions": ["OFFER", "RESCHEDULE"], "allowedTools": [],
+      "transitionConditions": {
+        "OFFER": "mijoz vaqtim bor, gapiring desa",
+        "RESCHEDULE": "mijoz hozir bandman, keyinroq desa"
+      } },
+    { "id": "OFFER", "purpose": "Taklifni qisqa tushuntiring", "allowedTransitions": ["CLOSING"], "allowedTools": [] },
+    { "id": "RESCHEDULE", "purpose": "Qachon qo'ng'iroq qilish qulayligini so'rang", "allowedTransitions": ["CLOSING"], "allowedTools": [] },
+    { "id": "CLOSING", "purpose": "Xayrlashing", "allowedTransitions": [], "allowedTools": ["endCall"] }
+  ]
+}
+```
+
+- Shart promptga `Ruxsat etilgan keyingi bosqichlar: OFFER (agar: …), RESCHEDULE (agar: …)` bo'lib
+  tushadi — ikkala pipeline'da (cascade annex va realtime bosqichlar ro'yxati) va `transitionTo`
+  javobida.
+- Shartsiz qoldirilgan o'tish ham ruxsat — LLM uni keyingi bosqichning `purpose` iga qarab tanlaydi.
+- Ruxsat etilgan o'tishlar grafi o'zgarmaydi: shart faqat *qachon* ni aytadi, *qayerga* ni
+  `allowedTransitions` belgilaydi.
+
+---
+
+## 🎯 Tayyor gap (`staticLine`) va chiqish sharti (`requiredOutcomes`)
+
+Qo'ng'iroq davomida xato gapirmaslik va bosqichni tashlab ketmaslik uchun (Bland "Static Text" va
+"loop condition" g'oyasi):
+
+```json
+{ "id": "DEBT_NOTICE", "purpose": "Qarzni xabar qiling",
+  "staticLine": "{{clientName}} aka, shartnoma bo'yicha {{debtAmount}} so'm to'lov {{dueDate}} da kechikdi.",
+  "allowedTransitions": ["PAYMENT_DATE"], "allowedTools": [] },
+{ "id": "PAYMENT_DATE", "purpose": "Aniq to'lov sanasini oling",
+  "requiredOutcomes": ["promisedDate", "reasonCode"],
+  "allowedTransitions": ["CONFIRMATION"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"] }
+```
+
+**`staticLine`** — muhim gapning matni kompaniyaniki, modelniki emas. Faktlarni kod qo'yadi,
+model gapni so'zma-so'z aytadi:
+- cascade'da keyingi bosqichlarning tayyor gapi annex'da: `DEBT_NOTICE ga o'tsangiz, gapingiz AYNAN shu bo'lsin: «…»`;
+- realtime'da bosqichlar ro'yxatida: `Birinchi gap (AYNAN shu): «…»`.
+
+> ⚠️ Gapni kod emas, model aytadi: pipeline'da bosqich gapi o'tish bilan bir turnda tuziladi.
+> Pul summalarini baribir `FactGuard` tekshiradi. Birinchi bosqichda ruxsat yo'q — uni agentning `firstMessage` i ochadi.
+
+**`requiredOutcomes`** — bosqichdan chiqish uchun ro'yxatdagi natijalardan **kamida bittasi**
+(`recordPaymentPromise` → `promisedDate`, `recordRefusalReason` → `reasonCode`, …) shu qo'ng'iroqda yozilgan
+bo'lishi kerak. Bittasi yetarli: rad etgan mijoz sana o'rniga sabab beradi va baribir davom etadi.
+- Tekshiruv kodda (`transitionTo`, ikkala pipeline'da): yozilmagan bo'lsa o'tish rad etiladi va model qaysi
+  natijani yozishi kerakligini eshitadi. `endCall` va `requestHumanTransfer` doim ishlaydi.
+- Model bir necha bosqichni sakrab o'tmoqchi bo'lsa, natijasi yozilmagan oraliq bosqichda to'xtatiladi.
+- Natija nomlari validatorda tekshirilmaydi (tool'lar ularni kodda yozadi) — tool yozadigan nomni aynan yozing.
+
+**"ANIQLANGAN" bloki** (cascade) — annex'da har turn shu qo'ng'iroqda yozilgan natijalar:
+`ANIQLANGAN (qayta so'ramang; …): promisedDate = 2026-10-15; reasonCode = NO_MONEY`. Model yozilgan sanani qayta so'ramaydi.
+
+---
+
+## 🧭 Qo'ng'iroq turi va sababi — AI mavzuni adashtirmasligi uchun
+
+Har bir qo'ng'iroq promptining boshida (rol'dan keyin, ikkala pipeline'da) shu blok turadi:
+
+```
+QO'NG'IROQ TURI: CHIQUVCHI — mijozga siz O'ZINGIZ qo'ng'iroq qildingiz…
+   yoki
+QO'NG'IROQ TURI: KIRUVCHI — mijoz O'ZI kompaniyaga qo'ng'iroq qildi, siz qabul qilyapsiz…
+QO'NG'IROQ SABABI: <ssenariyning callPurpose'i>
+KAMPANIYA MAQSADI: <kampaniya goal'i, bo'lsa>
+```
+
+- **Yo'nalish avtomatik**: qo'ng'iroq kiruvchi marshrut ([inbound-routes.md](inbound-routes.md))
+  orqali kelgan bo'lsa — KIRUVCHI. Kiruvchida bot "…nomidan qo'ng'iroq qilyapman" demaydi,
+  "Men [Ism] aka bilan gaplashayapmanmi?" deb so'ramaydi, "Sizga qanday yordam bera olaman?"
+  bilan boshlaydi va mijoz aytmagan mavzuni (qarz, eslatma) o'zi boshlamaydi.
+- **Mavzu = ssenariy.** Bitta ssenariy — bitta mavzu (qarz undirish, eslatma, lid). `callPurpose`
+  ni to'ldiring — usiz model mavzuni faqat `rolePrompt` dan taxmin qiladi.
+- **Xotira** (`MULTI-CALL MEMORY`): har bir avvalgi suhbat yonida `mavzu: <scenarioKey>` yoziladi va
+  model boshqa mavzudagi gapni mijoz so'ramasa boshlamaydi — qarz qo'ng'irog'i bo'lgan raqamga
+  lid bo'yicha qo'ng'iroq qilinsa, qarz mavzusi o'z-o'zidan chiqmaydi.
+
+### Bitta kiruvchi raqamga turli mavzuda qo'ng'iroq qilinsa
+
+Kiruvchi marshrut bitta agentga (demak bitta ssenariyga) ulanadi. Mijoz qarz, ariza yoki
+eslatma bo'yicha qo'ng'iroq qilishi mumkin bo'lsa — avval mavzuni aniqlovchi `TRIAGE` bosqichi,
+keyin `transitionConditions` bilan tarmoqlanish:
+
+```json
+{
+  "callPurpose": "Mijoz kompaniyaga o'zi qo'ng'iroq qildi — nima uchun ekanini aniqlab, yordam berish",
+  "stages": [
+    { "id": "TRIAGE", "purpose": "Mijoz nima uchun qo'ng'iroq qilganini tinglang, kerak bo'lsa so'rang",
+      "allowedTransitions": ["DEBT_HELP", "LEAD", "REMINDER", "ESCALATE"], "allowedTools": [],
+      "transitionConditions": {
+        "DEBT_HELP": "mijoz to'lov, qarz yoki shartnoma haqida so'rasa",
+        "LEAD": "mijoz xizmat, narx yoki qoldirgan arizasi haqida so'rasa",
+        "REMINDER": "mijoz uchrashuv, qabul yoki eslatma haqida so'rasa",
+        "ESCALATE": "mavzu yuqoridagilarning hech biriga to'g'ri kelmasa"
+      } },
+    { "id": "DEBT_HELP", "purpose": "…", "allowedTransitions": ["CLOSING"], "allowedTools": [] },
+    { "id": "LEAD", "purpose": "…", "allowedTransitions": ["CLOSING"], "allowedTools": [] },
+    { "id": "REMINDER", "purpose": "…", "allowedTransitions": ["CLOSING"], "allowedTools": [] },
+    { "id": "ESCALATE", "purpose": "Operatorga ulashni ayting", "allowedTransitions": [], "allowedTools": ["requestHumanTransfer"] },
+    { "id": "CLOSING", "purpose": "Xayrlashing", "allowedTransitions": [], "allowedTools": ["endCall"] }
+  ]
+}
+```
+
+Chiquvchi qo'ng'iroqda bunday triage kerak emas: kampaniya bitta mavzuli agent/ssenariyni
+ishlatadi — qarz kampaniyasi qarz ssenariysini, eslatma kampaniyasi eslatma ssenariysini.
 
 ---
 

@@ -2,8 +2,11 @@ package uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
 
 /**
  * The ai_agent columns behind {@code AiAgentVoice}. The per-language voices are a join table,
@@ -32,18 +35,23 @@ public class AiAgentVoiceEntity {
     @Column(name = "emotion_adaptive_voice", nullable = false)
     private boolean emotionAdaptiveVoice;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "speaking_warmth", nullable = false, length = 16)
+    private SpeakingWarmth speakingWarmth = SpeakingWarmth.BALANCED;
+
     protected AiAgentVoiceEntity() {
     }
 
     public AiAgentVoiceEntity(String ttsVoice, Double voiceSpeed, Double voiceStability,
                               Double voiceSimilarityBoost, String voiceSpeedPerLanguage,
-                              boolean emotionAdaptiveVoice) {
+                              boolean emotionAdaptiveVoice, SpeakingWarmth speakingWarmth) {
         this.ttsVoice = ttsVoice;
         this.voiceSpeed = voiceSpeed;
         this.voiceStability = voiceStability;
         this.voiceSimilarityBoost = voiceSimilarityBoost;
         this.voiceSpeedPerLanguage = voiceSpeedPerLanguage;
         this.emotionAdaptiveVoice = emotionAdaptiveVoice;
+        this.speakingWarmth = speakingWarmth;
     }
 
     public String getTtsVoice() {
@@ -68,5 +76,9 @@ public class AiAgentVoiceEntity {
 
     public boolean isEmotionAdaptiveVoice() {
         return emotionAdaptiveVoice;
+    }
+
+    public SpeakingWarmth getSpeakingWarmth() {
+        return speakingWarmth;
     }
 }

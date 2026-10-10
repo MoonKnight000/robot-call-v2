@@ -198,6 +198,7 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
   "noiseCancellationEnabled": true,
   "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
   "emotionAdaptiveVoice": true,
+  "speakingWarmth": "BALANCED",
   "dtmfInputEnabled": true,
   "voicemailAction": "LEAVE_MESSAGE",
   "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
@@ -289,6 +290,17 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 >   ishlaydi**; boshqa qiymat kompaniyanikidan ustun turadi. Faqat `CASCADE`da: realtime engine
 >   ovozi o'z tempida gapiradi. Mijoz kayfiyatiga moslashuv (`emotionAdaptiveVoice`) shu tezlikdan
 >   hisoblanadi.
+> - `speakingWarmth` — agent gapining iliqlik darajasi (standart `BALANCED`). O'zbek Yandex ovozlarida
+>   (`nigora`, `zarina`) hissiyot rejimlari yo'q, shuning uchun jonlilikni faqat **matn** beradi:
+>   - `RESERVED` — bir so'zli munosabat ("Tushunarli"), hamdardlik ko'pi bilan ikki so'z. Eski uslub; qat'iy
+>     ohang kerak bo'lgan agent uchun.
+>   - `BALANCED` — mijoz aytgan narsaga bog'langan qisqa munosabat ("Ha, ish bo'lmasa qiyin"), jonli og'zaki
+>     so'zlar ("mayli", "xo'sh", "unda"), xotirjam do'stona ohang; asabiy mijozga bitta samimiy gap, iliq
+>     mijozga sal iliqroq javob.
+>   - `WARM` — bir-ikki qisqa iliq gap, keyin ishga qaytadi.
+>
+>   Har uchala darajada sahnaviy hamdardlik ("juda afsusdaman", "sizni juda yaxshi tushunib turibman")
+>   taqiqlangan. Ikkala pipeline'da ishlaydi (realtime'da bir martalik ko'rsatma sifatida).
 > - `languageVoiceSpeeds` — til → tezlik (`{"ru-RU": 1.1}`). Qo'ng'iroq shu tilda boshlansa yoki
 >   shu tilga o'tsa shu tezlikda gapiradi; ro'yxatda yo'q til `voiceSpeed`da qoladi. Tahrirda `null`
 >   — o'zgarmaydi, `{}` — tozalaydi. Chegaradan tashqari qiymat (`voiceSpeed` ham) —
@@ -424,6 +436,13 @@ Agent prompt orqali (`PROMPT` rejimi) yoki bosqichma-bosqich FSM holat mashinasi
 
 ### `PUT /api/ai-agents/{id}/scenario`
 Yuqoridagi maydonlarni yuborish orqali agentning ssenariy va xulq-atvorini yangilash mumkin.
+
+`callPurpose` (ixtiyoriy) — qo'ng'iroq nima haqida, bir gap; ssenariydagi `callPurpose` bilan bir xil
+([scenarios.md](scenarios.md#-qongiroq-turi-va-sababi--ai-mavzuni-adashtirmasligi-uchun)).
+
+`stages[]` — ssenariydagi `StageDef` ning aynan o'zi: `branches` va mijoz javobiga qarab
+o'tish shartlari (`transitionConditions`) ham shu yerda yuboriladi —
+[scenarios.md](scenarios.md#-transitionconditions--mijoz-javobiga-qarab-tarmoqlanish).
 
 ---
 
@@ -587,6 +606,7 @@ qo'shimcha so'rov ketmaydi.
     "noiseCancellationEnabled": true,
     "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
     "emotionAdaptiveVoice": true,
+    "speakingWarmth": "BALANCED",
     "dtmfInputEnabled": true,
     "voicemailAction": "LEAVE_MESSAGE",
     "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
@@ -928,7 +948,8 @@ Javob — yangi agentning `AiAgentRow`i. Audit: `AI_AGENT_CLONE`.
 
 `POST /api/calls/web-test` `{ "campaignId": 12, "agentVersion": null }` — kampaniya
 agentining **qoralamasi** bilan brauzerdan gaplashish (standart); `"agentVersion": 3` —
-aynan 3-versiya. Batafsil — [calls.md](calls.md).
+aynan 3-versiya. Kampaniyasiz, agentning o'zi: `{ "aiAgentId": 5, "agentVersion": null }`
+(faktlar — `voice-agent.dialog.test-context`). Batafsil — [calls.md](calls.md).
 
 ---
 

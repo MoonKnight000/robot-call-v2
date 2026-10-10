@@ -122,6 +122,10 @@ gapirishi mumkin.
 
 ## 🎭 Dinamik Hissiyotlar va Moslashuvchan Ovoz (Voice Emotion Resolution)
 
+> ⚠️ O'zbek Yandex ovozlarida (`nigora`, `zarina`) rol yo'q (`voice-agent.tts.yandex.voice-roles`) — ularda
+> quyidagi rol tanlovi ovozni o'zgartirmaydi, faqat tezlik ishlaydi. O'zbek qo'ng'irog'ida jonlilikni agentning
+> `speakingWarmth` sozlamasi (gap matni) beradi — [ai-agents.md](ai-agents.md).
+
 Agar [AI agentda](ai-agents.md) `"emotionAdaptiveVoice": true` (odatiy holatda `true`) bo'lsa yoki ssenariy bosqichida `emotion` belgilangan bo'lsa, `VoiceEmotionResolver` har bir dialog replikasida ovozning xarakteri va tezligini quyidagicha moslashtiradi:
 
 1. **Ssenariy bosqichi bo'yicha moslashuv**:

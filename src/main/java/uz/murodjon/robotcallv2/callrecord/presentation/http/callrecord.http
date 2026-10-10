@@ -41,6 +41,14 @@ Content-Type: application/json
 
 { "campaignId": 1 }
 
+### Browser test call — an agent on its own (draft), no campaign
+POST http://localhost:8080/api/calls/web-test
+Authorization: Bearer {{auth_token}}
+X-Company-Id: 1
+Content-Type: application/json
+
+{ "aiAgentId": 1 }
+
 ### Reanalysis — how many calls and roughly what it would cost
 POST http://localhost:8080/api/call-reanalyses/preview
 Authorization: Bearer {{auth_token}}

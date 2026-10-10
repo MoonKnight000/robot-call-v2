@@ -76,6 +76,7 @@ public record UpdateAiAgentRequest(
         Boolean noiseCancellationEnabled,
         NoiseCancellationMode noiseCancellationMode,
         Boolean emotionAdaptiveVoice,
+        SpeakingWarmth speakingWarmth,
         Boolean dtmfInputEnabled,
         VoicemailAction voicemailAction,
         @Size(max = 500) String voicemailMessage,

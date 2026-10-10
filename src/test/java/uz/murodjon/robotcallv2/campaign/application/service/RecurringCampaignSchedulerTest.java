@@ -47,11 +47,24 @@ class RecurringCampaignSchedulerTest {
             LocalTime windowEnd,
             CampaignStatus status
     ) {
-        return new Campaign(
-                id, "Test Recurring", CampaignType.DEBT_COLLECTION, status,
-                windowStart, windowEnd, dialDays, 3, 0, 10, 0, 7L, 1L, 1L,
-                recurrenceType, recurringDayOfMonth, cronExpression, true, null
-        );
+        return Campaign.builder()
+                .id(id)
+                .name("Test Recurring")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(status)
+                .dialWindowStart(windowStart)
+                .dialWindowEnd(windowEnd)
+                .dialDays(dialDays)
+                .maxAttempts(3)
+                .maxConcurrentCalls(10)
+                .aiAgentId(7L)
+                .companyId(1L)
+                .createdBy(1L)
+                .recurrenceType(recurrenceType)
+                .recurringDayOfMonth(recurringDayOfMonth)
+                .cronExpression(cronExpression)
+                .autoResetTargets(true)
+                .build();
     }
 
     @Test

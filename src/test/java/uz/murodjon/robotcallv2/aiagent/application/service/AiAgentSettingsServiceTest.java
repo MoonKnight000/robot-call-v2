@@ -145,7 +145,7 @@ class AiAgentSettingsServiceTest {
     @Test
     void updateScenarioWithoutStagesSpeaksOneConversationStage() {
         service.updateScenario(COMPANY_ID, AGENT_ID,
-                new AgentScenarioDto(null, " Assalomu alaykum ", " Siz yordamchisiz ", null, null, null, null));
+                new AgentScenarioDto(null, " Assalomu alaykum ", " Siz yordamchisiz ", null, null, null, null, null));
 
         AiAgent written = written();
         assertThat(written.script().mode()).isEqualTo(ScenarioMode.PROMPT);
@@ -189,7 +189,7 @@ class AiAgentSettingsServiceTest {
                 null, null, null, storeCallAudio, zeroPiiRetention,
                 null, null, null, null,
                 null, null, null, null, null, null, null,
-                null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
                 null, null, transferQueueId, null, null);
     }
 

@@ -214,6 +214,7 @@ public class RealtimeDialogEngine implements CallDialog {
         RealtimeDialogSession session = new RealtimeDialogSession(channelId, language, callAttemptId,
                 companyId, agent, scenario, context, endpoint, hangup, transfer);
         session.setDtmfSender(dtmf);
+        session.setInbound(callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null);
         if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
             session.setMidCallSmsSender(text -> midCallSmsSender.send(companyId, callAttemptId, channelId, context, text));
         }

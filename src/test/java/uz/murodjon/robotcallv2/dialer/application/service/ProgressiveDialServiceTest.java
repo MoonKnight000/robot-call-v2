@@ -174,10 +174,22 @@ class ProgressiveDialServiceTest {
     }
 
     private static Campaign campaign(DialMode dialMode) {
-        return new Campaign(CAMPAIGN_ID, "Progressive", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 5, 0, null, COMPANY_ID, null,
-                RecurrenceType.ONCE, null, null, false, null, Campaign.DEFAULT_PRIORITY, null, null, null, null, null,
-                0L, dialMode, QUEUE_ID);
+        return Campaign.builder()
+                .id(CAMPAIGN_ID)
+                .name("Progressive")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(LocalTime.of(9, 0))
+                .dialWindowEnd(LocalTime.of(20, 0))
+                .dialDays(Set.of())
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .companyId(COMPANY_ID)
+                .recurrenceType(RecurrenceType.ONCE)
+                .dialMode(dialMode)
+                .callQueueId(QUEUE_ID)
+                .build();
     }
 
     private static CallQueue queue(Long... memberUserIds) {

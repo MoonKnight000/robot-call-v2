@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.Map;
 
 /**
  * What a tool does to the call it was called on: move the FSM, record an outcome, settle
@@ -50,6 +51,9 @@ public interface DialogOutcomeSink {
 
     /** Record one named result of the conversation, written to {@code call_result} at teardown. */
     void recordOutcome(String key, Object value);
+
+    /** Everything recorded so far this call — what a stage's {@code requiredOutcomes} are checked against. */
+    Map<String, Object> outcome();
 
     /** Settle the disposition without ending the call — the conversation carries on. */
     void setDisposition(Disposition disposition);

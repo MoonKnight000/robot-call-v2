@@ -29,6 +29,9 @@ public final class ScenarioValidator {
         }
         checkStages(def.stages(), errors);
         checkBranches(def.stages(), errors);
+        checkTransitionConditions(def.stages(), errors);
+        checkStaticLines(def.stages(), errors);
+        checkRequiredOutcomes(def.stages(), errors);
         checkNamesUnique("fact", def.factSchema() == null ? List.of()
                 : def.factSchema().stream().map(FactField::name).toList(), errors);
         checkTools(def.tools(), errors);
@@ -110,6 +113,64 @@ public final class ScenarioValidator {
                 } else if (s.allowedTransitions() == null || !s.allowedTransitions().contains(branch.goTo())) {
                     errors.add("branch of stage " + s.id() + " goes to " + branch.goTo()
                             + ", which is not in its allowedTransitions");
+                }
+            }
+        }
+    }
+
+    /**
+     * A condition only says when an allowed transition is taken; one on a stage the graph
+     * does not lead to would read to the model as permission to go there, and be refused.
+     */
+    private static void checkTransitionConditions(List<StageDef> stages, List<String> errors) {
+        if (stages == null) {
+            return;
+        }
+        for (StageDef s : stages) {
+            if (s.transitionConditions() == null) {
+                continue;
+            }
+            for (Map.Entry<String, String> condition : s.transitionConditions().entrySet()) {
+                if (s.allowedTransitions() == null || !s.allowedTransitions().contains(condition.getKey())) {
+                    errors.add("transition condition of stage " + s.id() + " is for " + condition.getKey()
+                            + ", which is not in its allowedTransitions");
+                } else if (condition.getValue() == null || condition.getValue().isBlank()) {
+                    errors.add("transition condition of stage " + s.id() + " for " + condition.getKey()
+                            + " must not be empty");
+                }
+            }
+        }
+    }
+
+    /**
+     * The call opens on the first stage with the agent's own first message already spoken,
+     * so a line of its own there would either never be said or be said twice.
+     */
+    private static void checkStaticLines(List<StageDef> stages, List<String> errors) {
+        if (stages == null || stages.isEmpty()) {
+            return;
+        }
+        StageDef first = stages.get(0);
+        if (first.staticLine() != null && !first.staticLine().isBlank()) {
+            errors.add("the first stage " + first.id() + " cannot have a staticLine — the agent's firstMessage opens the call");
+        }
+    }
+
+    /** A stage with nowhere to go has nothing to hold the call back from. */
+    private static void checkRequiredOutcomes(List<StageDef> stages, List<String> errors) {
+        if (stages == null) {
+            return;
+        }
+        for (StageDef s : stages) {
+            if (s.requiredOutcomes() == null || s.requiredOutcomes().isEmpty()) {
+                continue;
+            }
+            if (s.allowedTransitions() == null || s.allowedTransitions().isEmpty()) {
+                errors.add("terminal stage " + s.id() + " cannot have requiredOutcomes — the call never leaves it");
+            }
+            for (String name : s.requiredOutcomes()) {
+                if (name == null || name.isBlank()) {
+                    errors.add("stage " + s.id() + " has a blank required outcome");
                 }
             }
         }

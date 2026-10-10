@@ -150,9 +150,10 @@ public class AriService implements SmartLifecycle {
     }
 
     /** See {@link WebTestCallService#prepareWebTest}. */
-    public String prepareWebTest(long companyId, Long campaignId, Long targetId, Integer agentVersion,
+    public String prepareWebTest(long companyId, Long campaignId, Long targetId, Long aiAgentId, Integer agentVersion,
                                  Long scenarioId, ScenarioDefinition definition) {
-        return webTestCallService.prepareWebTest(companyId, campaignId, targetId, agentVersion, scenarioId, definition);
+        return webTestCallService.prepareWebTest(companyId, campaignId, targetId, aiAgentId, agentVersion,
+                scenarioId, definition);
     }
 
     /** See {@link WebTestCallService#prepareWidgetCall}. */

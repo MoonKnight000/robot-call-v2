@@ -26,11 +26,21 @@ class DialWindowTest {
     private final ZoneId tashkentZone = ZoneId.of("Asia/Tashkent");
 
     private Campaign createCampaign(LocalTime start, LocalTime end) {
-        return new Campaign(
-                1L, "Test Campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
-                start, end, Set.of(), 3, 24, 5, 0, 7L, 1L, null,
-                RecurrenceType.ONCE, null, null, false, null
-        );
+        return Campaign.builder()
+                .id(1L)
+                .name("Test Campaign")
+                .type(CampaignType.DEBT_COLLECTION)
+                .status(CampaignStatus.ACTIVE)
+                .dialWindowStart(start)
+                .dialWindowEnd(end)
+                .dialDays(Set.of())
+                .maxAttempts(3)
+                .retryIntervalMinutes(24)
+                .maxConcurrentCalls(5)
+                .aiAgentId(7L)
+                .companyId(1L)
+                .recurrenceType(RecurrenceType.ONCE)
+                .build();
     }
 
     @Test

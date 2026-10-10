@@ -10,6 +10,48 @@ Bosqichlar tarixi: `docs/claude/CLAUDE.md`
 
 ---
 
+# DOMEN ATAMALARI — Campaign · AI Agent · Scenario
+
+Uchalasi bir-birini almashtirmaydi; har biri qo'ng'iroqning **bitta savoliga** javob beradi.
+Yangi sozlama qo'shishdan oldin "bu qaysi savolga tegishli?" deb so'ra va faqat o'sha joyga qo'sh.
+
+```
+Campaign ──aiAgentId──▶ AiAgent ──script.scenarioId──▶ Scenario
+(kimga, qachon)          (kim, qanday ovozda)            (nima deydi, qaysi tartibda)
+```
+
+| | **Campaign** (`campaign`) | **AI Agent** (`aiagent`) | **Scenario** (`scenario`) |
+|---|---|---|---|
+| Savol | Kimga va qachon qo'ng'iroq qilinadi? | Kim gapiradi, qanday ovozda, qaysi model bilan? | Nima deydi, qaysi bosqichlarda, qayerga o'tadi? |
+| Saqlaydi | targetlar (CSV/CRM/`TargetSource`), dial oynasi va kunlari, `maxAttempts`, `RetryPolicy`, concurrency, kunlik limit, budjet, `priority`, `startAt/endAt`, takrorlanish, `dialMode` (AI yoki operator rejimlari), `callQueueId`, A/B `CampaignVariant` | til, `persona`, ovoz (`AiAgentVoice`), STT/TTS (`AiAgentSpeechEngine`), LLM (`llmModel`, `fastLlmModel`, temperature), fon tovushi, `callBehaviour`, limitlar, data policy, `firstMessage`, initiation/post-call webhook, `dataNeeded`/`dataEvaluation`, talaffuz qoidalari, SIP trunklar, versiyalar/publish | `StageDef` bosqichlar (`purpose`, `allowedTransitions`, `transitionConditions`, `branches`, `staticLine`, `requiredOutcomes`, `allowedTools`, `emotion`, bosqich `model` i), `GlobalNode`, `factSchema`, `outcomeSchema`, `tools`, `rolePrompt`, `guardrails`, `styleExamples`, `disclosureText`, `factWebhook` |
+| SAQLAMAYDI | ovoz, model, ssenariy matni | kimga/qachon qo'ng'iroq qilish; bosqichlar grafi (agar `scenarioId` bo'lsa) | ovoz, persona, model tanlovi, kompaniya sozlamalari |
+| Egasi / umumiylik | Kompaniyaniki | Kompaniyaniki, draft + published snapshot | Umumiy va **versiyalangan** (`scenarioKey` + `version`), built-in shablonlar bor |
+
+**Agent ssenariyni qayerdan oladi** (`AiAgentService.resolveScenario`, ustuvorlik tartibida):
+1. `script.scenarioId` — umumiy `Scenario` qatori (bir nechta agent bitta ssenariyni turli ovozda gapira oladi);
+2. `script.definition` — agentning o'ziga ichki (embedded) `ScenarioDefinition` (`PUT /api/ai-agents/{id}/scenario`);
+3. ikkalasi ham yo'q — `systemPrompt` dan bitta `CONVERSATION` bosqichli ssenariy yasaladi (`ScenarioMode.PROMPT`).
+
+**Qaysi biri qayerga:**
+- "Bosqich qo'shish", "ha desa X, yo'q desa Y" → Scenario (`StageDef.transitionConditions`); faktga qarab LLM'siz → `StageDef.branches`.
+- "Istalgan bosqichda 'siz kimsiz?' ga javob" → Scenario (`GlobalNode`).
+- "Ovozni/tilni/modelni almashtirish" → AI Agent.
+- "Ertaga 9:00–18:00 da shu ro'yxatga, 3 marta urinib" → Campaign.
+- "Bir xil kampaniyada ikki xil prompt/agentni sinash" → `CampaignVariant` (`promptOverride` faqat `rolePrompt` ni almashtiradi, `aiAgentId` — boshqa agent).
+- Kiruvchi qo'ng'iroq Campaign'siz ishlaydi: `InboundRoute` to'g'ridan-to'g'ri `aiAgentId` (yoki `callFlowId`) ga ishora qiladi.
+- **Mavzu va yo'nalish — ikki xil o'q.** Mavzu (qarz / eslatma / lid) = Scenario, uni
+  `ScenarioDefinition.callPurpose` bir gapda aytadi; bitta ssenariy — bitta mavzu. Yo'nalish
+  (kiruvchi / chiquvchi) ssenariyda emas, qo'ng'iroqning o'zida (`DialogSession`/`RealtimeDialogSession.isInbound()`).
+  Ikkalasi promptga `SystemPromptFactory.appendCallFrame` orqali tushadi. Ko'p mavzuli kiruvchi
+  liniya — `TRIAGE` bosqichi + `transitionConditions` (`docs/api/scenarios.md`).
+
+**Adashtirilmaydigan yana bitta atama — CallFlow** (`callflow`, ijrosi `agent/flow`): kiruvchi
+qo'ng'iroqning IVR/PBX grafi — `PLAY`, `MENU` (DTMF), `SCHEDULE`, `QUEUE`, `RING_GROUP`, `VOICEMAIL`,
+`AI_AGENT` (qo'ng'iroqni agentga beradi) va h.k. Bu **LLM suhbati emas**; suhbat bosqichlari doim
+Scenario'da. CallFlow'ning `AI_AGENT` tuguni → AiAgent → Scenario.
+
+---
+
 # ISH USLUBI
 
 Bu bo'lim — *qanday ishlash* haqida, keyingisi — *kod qanday ko'rinishi* haqida.
@@ -364,6 +406,20 @@ bir nechta bo'lsa **nima bilan ishlashi prefiks bo'ladi** (`aiModelConfigService
    `@ConfigurationProperties(prefix = "...")` record/klass yaratilishi shart (masalan,
    `AlertingProperties`). Nomlash: `<Prefix/Feature>Properties`, maydonda to'liq
    nom ishlatiladi (`alertingProperties`, qisqartmasiz).
+
+## 9. Builder — ko'p maydonli domain record uchun
+
+Batafsil: `CODE_STRUCTURE.md` §3.7.
+
+- **Builder kerak:** 10+ komponentli, ko'pi `null`/default bo'ladigan domain record
+  (`Campaign`, `AiAgent`, `StageDef`, `ScenarioDefinition`). Bunday record uchun yangi
+  konstruktor overload'i **yozilmaydi** — yangi maydon = record'ga komponent + builder'ga metod.
+- **Builder kerak emas:** kichik record, DTO, JPA entity, `*Properties`, exception.
+- `<Domain>Builder` — alohida fayl, record bilan bir paketda (§1: `public` nested yo'q);
+  kirish `X.builder()` va `x.toBuilder()`. Default'lar record'ning compact konstruktorida,
+  validatsiya builder'da emas.
+- Nusxa olish (`withX`, clone) — `toBuilder()...build()`; maydon ro'yxatini qo'lda
+  qayta yozma.
 
 ---
 

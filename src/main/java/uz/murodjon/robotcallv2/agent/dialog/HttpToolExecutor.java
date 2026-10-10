@@ -382,6 +382,11 @@ public class HttpToolExecutor {
         }
 
         @Override
+        public Map<String, Object> outcome() {
+            return Map.of();
+        }
+
+        @Override
         public void setDisposition(Disposition disposition) {
         }
 

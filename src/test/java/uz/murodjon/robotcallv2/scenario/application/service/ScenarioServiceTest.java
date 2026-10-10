@@ -97,7 +97,13 @@ class ScenarioServiceTest {
     void createRejectsAStageModelOutsideTheCatalog() {
         ScenarioDefinition definition = new ScenarioDefinition(
                 List.of(
-                        new StageDef("START", "Salomlash", List.of("END"), List.of(), null, "no-such-model"),
+                        StageDef.builder()
+                                .id("START")
+                                .purpose("Salomlash")
+                                .allowedTransitions(List.of("END"))
+                                .allowedTools(List.of())
+                                .model("no-such-model")
+                                .build(),
                         new StageDef("END", "Yakunla", List.of(), List.of())
                 ),
                 List.of(new FactField("name", "string", true)),

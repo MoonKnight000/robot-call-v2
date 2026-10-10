@@ -35,37 +35,38 @@ public class CampaignEntityMapper {
         if (entity == null) {
             return null;
         }
-        return new Campaign(
-                entity.getId(),
-                entity.getName(),
-                entity.getType(),
-                entity.getStatus(),
-                entity.getDialWindowStart(),
-                entity.getDialWindowEnd(),
-                entity.getDialDays(),
-                entity.getMaxAttempts(),
-                entity.getRetryIntervalMinutes(),
-                entity.getMaxConcurrentCalls(),
-                entity.getDailyCallCap(),
-                entity.getAiAgentId(),
-                entity.getCompanyId(),
-                entity.getCreatedById(),
-                entity.getRecurrenceType(),
-                entity.getRecurringDayOfMonth(),
-                entity.getCronExpression(),
-                entity.isAutoResetTargets(),
-                entity.getLastRunAt(),
-                entity.getPriority(),
-                toRetryPolicy(entity.getRetryPolicy()),
-                entity.getStartAt(),
-                entity.getEndAt(),
-                entity.getBudgetUzs(),
-                entity.getDailyBudgetUzs(),
-                entity.getVersion(),
-                entity.getDialMode(),
-                entity.getCallQueueId(),
-                entity.getMaxAiOverflowPercent(),
-                entity.getTargetOrdering());
+        return Campaign.builder()
+                .id(entity.getId())
+                .name(entity.getName())
+                .type(entity.getType())
+                .status(entity.getStatus())
+                .dialWindowStart(entity.getDialWindowStart())
+                .dialWindowEnd(entity.getDialWindowEnd())
+                .dialDays(entity.getDialDays())
+                .maxAttempts(entity.getMaxAttempts())
+                .retryIntervalMinutes(entity.getRetryIntervalMinutes())
+                .maxConcurrentCalls(entity.getMaxConcurrentCalls())
+                .dailyCallCap(entity.getDailyCallCap())
+                .aiAgentId(entity.getAiAgentId())
+                .companyId(entity.getCompanyId())
+                .createdBy(entity.getCreatedById())
+                .recurrenceType(entity.getRecurrenceType())
+                .recurringDayOfMonth(entity.getRecurringDayOfMonth())
+                .cronExpression(entity.getCronExpression())
+                .autoResetTargets(entity.isAutoResetTargets())
+                .lastRunAt(entity.getLastRunAt())
+                .priority(entity.getPriority())
+                .retryPolicy(toRetryPolicy(entity.getRetryPolicy()))
+                .startAt(entity.getStartAt())
+                .endAt(entity.getEndAt())
+                .budgetUzs(entity.getBudgetUzs())
+                .dailyBudgetUzs(entity.getDailyBudgetUzs())
+                .version(entity.getVersion())
+                .dialMode(entity.getDialMode())
+                .callQueueId(entity.getCallQueueId())
+                .maxAiOverflowPercent(entity.getMaxAiOverflowPercent())
+                .targetOrdering(entity.getTargetOrdering())
+                .build();
     }
 
     public CampaignEntity toCampaignEntity(Campaign campaign, CompanyEntity company, UserEntity createdBy,

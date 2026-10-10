@@ -62,7 +62,7 @@ public class PackMapper {
                 null, null, null, null, null,                  // duration, silence, turn, concurrent and daily limits
                 null, null,                                    // initiation and post-call webhooks
                 null, null, null, null, null, null, null,      // ambient and thinking sound, noise cancellation
-                null, null,                                    // emotionAdaptiveVoice, dtmfInputEnabled
+                null, null, null,                              // emotionAdaptiveVoice, speakingWarmth, dtmfInputEnabled
                 null, null,                                    // voicemail action and message
                 null, null,                                    // mid-call SMS switch and template
                 null, null, null,                              // transfer phone, message, queue
