@@ -32,7 +32,7 @@ voice-agent:
       model: ${GEMINI_LIVE_MODEL:gemini-3.8-live-extended-thinking}
       voice: ${GEMINI_LIVE_VOICE:Aoede}
       connect-timeout-seconds: ${REALTIME_GEMINI_CONNECT_TIMEOUT_SECONDS:15}
-      start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:LOW}
+      start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:HIGH}
       end-of-speech-sensitivity: ${REALTIME_GEMINI_END_SENSITIVITY:}
       prefix-padding-ms: ${REALTIME_GEMINI_PREFIX_PADDING_MS:0}
       silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:0}
