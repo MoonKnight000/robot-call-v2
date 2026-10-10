@@ -82,7 +82,8 @@ public final class RealtimeEchoTool {
                         15,
                         env("REALTIME_GEMINI_START_SENSITIVITY", "LOW"),
                         env("REALTIME_GEMINI_END_SENSITIVITY", ""),
-                        0, 0, 0, false, false),
+                        0, 0, 0, false, false,
+                        env("REALTIME_GEMINI_THINKING_LEVEL", "")),
                 null, null, null, null), new ObjectMapper());
         provider.init();
 

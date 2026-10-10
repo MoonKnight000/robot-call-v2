@@ -1,4 +1,4 @@
-﻿# Bilim bazasi (Knowledge Base) API
+# Bilim bazasi (Knowledge Base) API
 
 `uz.murodjon.robotcallv2.knowledgebase` · huquq: **KNOWLEDGE_BASE_READ** / **KNOWLEDGE_BASE_EDIT**
 
@@ -229,14 +229,15 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Bitta so'rovda bir nechta hujjat yuboriladi.
 | `agentId` | number | ❌ | Berilsa — agent shu kompaniyaniki ekani tekshiriladi (`404 AI_AGENT_NOT_FOUND`). `null` — kompaniyaning barcha agentlari uchun |
 | `documents` | array | ✅ (`@NotEmpty`) | Kamida bitta hujjat |
 | `documents[].name` | string | ✅ (≤200) | UI da ko'rinadigan nom |
-| `documents[].sourceType` | enum | ✅ | `PDF`, `TXT`, `DOCX`, `CSV`, `XLSX`, `XLS`, `URL`, `STRUCTURED_FEED` (§Katalog) |
-| `documents[].url` | string | `sourceType=URL` bo'lsa ✅ | Aks holda `400 KNOWLEDGE_SOURCE_URL_REQUIRED` |
-| `documents[].storedFileId` | number | `URL` bo'lmasa ✅ | `POST /api/files?category=DOCUMENT` qaytargan `data.id`. Berilmasa `400 KNOWLEDGE_SOURCE_FILE_REQUIRED` |
+| `documents[].sourceType` | enum | ✅ | `PDF`, `TXT`, `DOCX`, `CSV`, `XLSX`, `XLS`, `URL`, `SITEMAP` (§Sitemap), `STRUCTURED_FEED` (§Katalog) |
+| `documents[].url` | string | `sourceType=URL` yoki `SITEMAP` bo'lsa ✅ | Aks holda `400 KNOWLEDGE_SOURCE_URL_REQUIRED` |
+| `documents[].storedFileId` | number | `URL` yoki `SITEMAP` bo'lmasa ✅ | `POST /api/files?category=DOCUMENT` qaytargan `data.id`. Berilmasa `400 KNOWLEDGE_SOURCE_FILE_REQUIRED` |
 | `documents[].originalFileName` | string | ❌ (≤255) | Foydalanuvchi yuklagan fayl nomi |
 | `documents[].feedItemsPath` | string | ❌ (≤200) | Faqat `STRUCTURED_FEED`: JSON javobdagi mahsulotlar massivining JSONPath'i (`$.data.items`). Bo'sh — butun javob massiv |
 | `documents[].feedKeyField` | string | ❌ (≤100) | Faqat `STRUCTURED_FEED`: kalit ustun (SKU). Standart `sku`, katta-kichik harf farqi yo'q |
-| `documents[].refreshMinutes` | int | ❌ (≥15) | Faqat URL'li `STRUCTURED_FEED`: feed necha daqiqada qayta yuklanadi. Bo'sh — faqat qo'lda (`/retry`) |
+| `documents[].refreshMinutes` | int | ❌ (≥15) | Faqat URL'li `STRUCTURED_FEED` yoki `SITEMAP`: manba necha daqiqada avtomatik qayta yuklanadi. Bo'sh — faqat qo'lda (`/retry`) |
 
+`SITEMAP` turi berilgan sitemap XML yoki sitemap index manzilidan sahifalar havolalarini avtomatik ajratib oladi va har bir sahifa matnini indekslaydi.
 `STRUCTURED_FEED` uchun `url` yoki `storedFileId` dan biri kerak — ikkalasi ham bo'lmasa `400 KNOWLEDGE_FEED_LOCATION_REQUIRED`.
 `KnowledgeSourceRow` javobida ham `feedItemsPath`, `feedKeyField`, `refreshMinutes` qaytadi; katalog uchun `chunkCount` — mahsulotlar soni.
 

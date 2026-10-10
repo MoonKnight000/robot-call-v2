@@ -163,4 +163,38 @@ class CallTaskConsumerTest {
 
         verify(audit).record(eq(1L), eq("CALL_ORIGINATE"), eq("call"), eq("chan-123"), anyString());
     }
+
+    @Test
+    void scrubsInvalidPhoneNumberBeforeOrigination() {
+        // +99801 is an unallocated/impossible prefix in Uzbekistan
+        CallTask task = new CallTask(1L, 101L, 201L, "+998011234567", "uz", "{}", 1L, 7L,
+                null, null, null, null, null);
+
+        consumer.process(task, dialerState);
+
+        verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
+        verify(dialerState).release(1L, 1L);
+        verify(callRecordService).recordUnplacedAttempt(eq(1L), eq(101L), eq("+998011234567"),
+                eq("uz"), eq(Disposition.CARRIER_REJECTED), contains("scrubbed"));
+        verify(campaignTargetUseCase).applyOutcome(1L, 101L, Disposition.CARRIER_REJECTED);
+    }
+
+    @Test
+    void defersCallWhenOutsideRecipientDialWindow() {
+        CallTask task = new CallTask(1L, 102L, 202L, "+998901234567", "uz", "{}", 1L, 7L,
+                null, null, null, null, null);
+        Campaign activeCampaign = new Campaign(
+                1L, "c", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
+                LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of(), 3, 24, 5, 0, 7L, 1L, null,
+                RecurrenceType.ONCE, null, null, false, null);
+        when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(activeCampaign);
+        when(dialerService.isWithinDialWindow(activeCampaign)).thenReturn(true);
+        when(dialerService.isWithinDialWindowForRecipient(activeCampaign, "+998901234567")).thenReturn(false);
+
+        consumer.process(task, dialerState);
+
+        verify(dialerState).release(1L, 1L);
+        verify(campaignTargetUseCase).releaseClaim(eq(102L), any(Instant.class));
+        verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
+    }
 }

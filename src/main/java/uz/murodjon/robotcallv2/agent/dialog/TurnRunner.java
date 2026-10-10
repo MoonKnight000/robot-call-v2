@@ -50,9 +50,13 @@ public class TurnRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TurnRunner.class);
 
-    /** Bootstraps the opening turn — the bot speaks first (there is no client input yet). */
+    /** Bootstraps the opening turn when disclosure was already spoken. */
+    private static final String GREETING_BOOTSTRAP_DISCLOSURE_SPOKEN =
+            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Avtomatik salomlashuv va ogohlantirish allaqachon aytildi — qayta salomlashmang! To'g'ridan-to'g'ri ssenariy bo'yicha keyingi qadamni boshlang.]";
+
+    /** Bootstraps the opening turn — the bot speaks first without automated disclosure. */
     private static final String GREETING_BOOTSTRAP =
-            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Rejaga muvofiq salomlashing.]";
+            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Qisqa salomlashib, o'zingizni tanishtiring va darhol ssenariy bo'yicha keyingi qadamga o'ting.]";
 
     /**
      * How many messages to drop at once when the history cap is reached. Trimming in
@@ -125,7 +129,8 @@ public class TurnRunner {
             transcript.recordAgentLine(s, opening);
             return;
         }
-        advance(s, GREETING_BOOTSTRAP, false);
+        String bootstrap = s.isDisclosureSpoken() ? GREETING_BOOTSTRAP_DISCLOSURE_SPOKEN : GREETING_BOOTSTRAP;
+        advance(s, bootstrap, false);
     }
 
     /**

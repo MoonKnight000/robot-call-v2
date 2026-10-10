@@ -121,7 +121,7 @@ public class AiAgentService implements AiAgentUseCase {
         String realtimeProvider = engineGuard.requireKnownRealtimeProvider(pipelineMode, request.realtimeProvider());
         String ttsVoice = engineGuard.requireKnownVoice(pipelineMode, request.ttsVoice());
         String llmModel = engineGuard.requireKnownModel(pipelineMode, realtimeProvider, request.llmModel());
-        String fastLlmModel = engineGuard.requireKnownModel(pipelineMode, realtimeProvider, request.fastLlmModel());
+        String fastLlmModel = engineGuard.requireKnownFastModel(request.fastLlmModel());
         Map<String, String> checkedLanguageVoices =
                 engineGuard.requireKnownVoicePerLanguage(companyId, pipelineMode, request.languageVoices());
 
@@ -255,7 +255,7 @@ public class AiAgentService implements AiAgentUseCase {
                 : existing.llmModel();
 
         String fastLlmModel = (request.fastLlmModel() != null)
-                ? engineGuard.requireKnownModel(pipelineMode, realtimeProvider, request.fastLlmModel())
+                ? engineGuard.requireKnownFastModel(request.fastLlmModel())
                 : existing.fastLlmModel();
 
         Map<String, String> languageVoices = (request.languageVoices() != null)

@@ -81,7 +81,8 @@ public class SystemPromptFactory {
                     + "mijozning o'zi ochiq aytgan bo'lsa takrorlang. \"...deng\", \"...demoqchisiz\", "
                     + "\"demak siz...\", \"tushundim, siz...\" shakllari bilan mijoz aytmagan sababni "
                     + "to'qish — eng og'ir xato. Mijozning javobi savolingizga javob bo'lmasa, bo'shliqni "
-                    + "o'zingizdan to'ldirmang: savolni qayta bering."
+                    + "o'zingizdan to'ldirmang: savolni qayta bering.",
+            "Mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\", \"qaytaring\" desa yoki tushunmaganini bildirsa — keyingi bosqichga o'tib ketmang, transitionTo chaqirmang. Eshitmagan bo'lsa — oxirgi aytgan xabaringizni (qarz summasi, muddat yoki savol) xushmuomala qilib qaytadan aniq takrorlang. Tushunmagan bo'lsa — so'zma-so'z takrorlamang, o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntiring."
     );
 
     /**
@@ -223,6 +224,10 @@ public class SystemPromptFactory {
 
         appendMemory(sb, c.memory());
 
+        Object nameObj = c != null ? c.fact("clientName") : null;
+        String clientName = nameObj != null && !nameObj.toString().isBlank() ? nameObj.toString().trim() : null;
+        String sampleIdentityUz = clientName != null ? "Men " + clientName + " aka bilan gaplashayapmanmi?" : "Men Murodjon aka bilan gaplashayapmanmi?";
+
         if (s.isDisclosureSpoken()) {
             sb.append("\n[TIZIM: Salomlashuv va \"avtomatik xizmat, suhbat yozib olinmoqda\" ")
                     .append("ogohlantirishi allaqachon aytildi — mijoz ularni eshitib bo'ldi.\n")
@@ -232,20 +237,28 @@ public class SystemPromptFactory {
                     .append("\"Salom\", \"Men ... kompaniyasidanman\", \"... sun'iy intellekt ")
                     .append("yordamchisiman\", \"Suhbat yozib olinmoqda\" — hech biri). Bularni faqat ")
                     .append("mijozning o'zi so'raganda ayt. Birinchi javobing ")
-                    .append("to'g'ridan-to'g'ri ssenariyning navbatdagi bosqichiga o'tib, jonli, tabiiy insondek boshlansin: ")
-                    .append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra ")
-                    .append("(QAT'IYAN TAQIQLANADI: \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" yoki \"mijoz\" deb aytish). Agar shaxsni so'rash kerak bo'lmasa, muloyimlik bilan maqsadga o't.]\n");
+                    .append("to'g'ridan-to'g'ri ssenariyning navbatdagi bosqichiga o'tib, jonli, tabiiy insondek boshlansin: ");
+            if (clientName != null) {
+                sb.append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi faqat: \"Men ").append(clientName)
+                        .append(" aka bilan gaplashayapmanmi?\" yoki \"").append(clientName).append(" aka, sizmisiz?\" deb so'ra ");
+            } else {
+                sb.append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra ")
+                        .append("(DIQQAT: agar ism noma'lum bo'lsa, 'men kimligingizni so'ramoqchiman' yoki 'kimsiz' deb aslo aljiramang, to'g'ridan-to'g'ri muloyim murojaat qilib maqsadga o'ting) ");
+            }
+            sb.append("(QAT'IYAN TAQIQLANADI: \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" yoki \"mijoz\" deb aytish). Agar shaxsni so'rash kerak bo'lmasa, muloyimlik bilan maqsadga o't.]\n");
         } else {
             if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
                 String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
                 sb.append("\n[TIZIM: Birinchi javobingizda salomlashing, o'zingizni odamdek tanishtiring: \"Salom, mening ismim ")
                         .append(personaName).append(". ")
                         .append(s.companyName() != null ? s.companyName().trim() + " kompaniyasidan qo'ng'iroq qilyapman. " : "")
-                        .append("\" hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki asosiy maqsadga) o'ting: ")
+                        .append("\" hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"")
+                        .append(sampleIdentityUz).append("\" yoki asosiy maqsadga) o'ting: ")
                         .append("gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. Shunchaki salomlashib to'xtab qolmang.]\n");
             } else {
             sb.append("\n[TIZIM: Birinchi javobingizda qisqa salomlashing, o'zingizni va kompaniyani tanishtiring ")
-                    .append("hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki asosiy maqsadga) ")
+                    .append("hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"")
+                    .append(sampleIdentityUz).append("\" yoki asosiy maqsadga) ")
                     .append("o'ting: gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. ")
                     .append("Shunchaki salomlashib to'xtab qolmang. QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\" deb so'rash.]\n");
             }
@@ -369,9 +382,11 @@ public class SystemPromptFactory {
         // a thinking noise — the conversation around it can.
         rules.add("Mijoz sizni eshitmagani yoki qayta aytishni so'raganini qanday shaklda bo'lsa ham "
                 + "bildirsa (masalan "
-                + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"nima?\", \"labbay?\", \"nima dedingiz\"")
-                + ") — yangi savolga o'tmang va uzr bilan cho'zmang: oxirgi savolingizni o'sha "
-                + "mazmunda, qisqaroq qilib qaytaring. Mijoz gapini endigina boshlab o'ylanib qolgan "
+                + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"a\", \"nima?\", \"labbay?\", \"nima dedingiz\", \"nima deyishdi\", \"eshitmadim\", \"qaytaring\"")
+                + ") — yangi savolga yoki keyingi bosqichga o'tmang! transitionTo chaqirmang! "
+                + "Oxirgi aytgan xabaringizni (qarz summasi, shartnoma yoki savol) o'sha mazmunda, tushunarli qilib qaytaring: "
+                + (russian ? "\"Плохо слышно? Повторяю: ...\"" : "\"Eshitilmadimi? Qaytadan aytaman: ...\"")
+                + " deb aniq takrorlang. Mijoz gapini endigina boshlab o'ylanib qolgan "
                 + "bo'lsa (faqat o'ylanish tovushi yoki chala jumla, davomi kelishi aniq) — "
                 + "waitForCaller chaqiring va hech narsa demang.");
         // A garbled answer used to cost the whole question: on a real call the caller's
@@ -403,8 +418,9 @@ public class SystemPromptFactory {
                     + "\"ma'lumot beraman\" emas — \"aytaman\".");
             rules.add("Murojaat: faqat ismga \"aka\"/\"opa\" qo'shing (\"Murodjon aka\", \"Shahnoza opa\") — "
                     + "familiya yoki to'liq ism-sharifni hech qachon aytmang.");
-            rules.add("QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\". Shaxsni "
-                    + "aniqlashda faqat: \"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\".");
+            rules.add("QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\", yoki 'men kimligingizni so'ramoqchiman' deb aljirash. Shaxsni "
+                    + "aniqlashda faqat: \"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\". "
+                    + "Agar ism noma'lum bo'lsa, shaxsni g'alati surishtirmay to'g'ridan-to'g'ri maqsadga o'ting.");
             rules.add("O'zbek adabiy tilida yozing; o' va g' harflarini doim apostrof bilan "
                     + "(so'm, to'lov, bo'yicha, qo'yaymanmi). So'zni bo'lib yubormang va harfini "
                     + "tushirib qoldirmang — buzuq yozilgan so'z ovozda ham buzuq eshitiladi.");
@@ -536,12 +552,19 @@ public class SystemPromptFactory {
         // REASON_INQUIRY's annex arrived on the turn the agent was asking for the date,
         // and the reason it was supposed to collect was never collected. Pairing the text
         // and the transitionTo on the same stage in the same turn is what removes the lag.
-        sb.append("Bu javobda ikki yo'ldan biri: yo shu bosqichning gapini aytasiz, yo yuqoridagi ")
-                .append("ruxsat etilgan bosqichlardan BIRIGA o'tib, o'shaning gapini aytasiz. ")
-                .append("O'tayotgan bo'lsangiz — matn va transitionTo bitta javobda va bitta bosqichga ")
-                .append("tegishli bo'lsin: avval o'sha bosqichning matnini yozing, so'ng transitionTo ")
-                .append("bilan aynan o'sha bosqichga o'ting. Undan narigi bosqichlarning mazmuniga ")
-                .append("(savol, taklif, xulosa) sakramang — har bosqich o'z navbatida aytiladi.\n");
+        if (s.isDisclosureSpoken() && "GREETING".equalsIgnoreCase(s.state())) {
+            sb.append("DIQQAT: Salomlashuv va tizim ogohlantirishi mijozga allaqachon aytildi. ")
+                    .append("GREETING gapini QAYTARMANG! Qayta salomlashmasdan, darhol yuqoridagi ruxsat etilgan ")
+                    .append("bosqichlardan BIRIGA o'ting: avval o'sha bosqichning matnini yozing, ")
+                    .append("so'ng transitionTo bilan aynan o'sha bosqichga o'ting.\n");
+        } else {
+            sb.append("Bu javobda: agar keyingi bosqichga o'tayotgan bo'lsangiz — yuqoridagi ruxsat etilgan ")
+                    .append("bosqichlardan BIRIGA o'ting: avval o'sha bosqichning matnini yozing, so'ng transitionTo ")
+                    .append("bilan aynan o'sha bosqichga o'ting. ")
+                    .append("Agar joriy bosqichning o'zida qolayotgan bo'lsangiz (masalan mijoz savol berdi, eshitmadi yoki tushuntirish so'radi) — ")
+                    .append("transitionTo chaqirmang, faqat mijozga javob matnini yozing. ")
+                    .append("Undan narigi bosqichlarning mazmuniga (savol, taklif, xulosa) sakramang — har bosqich o'z navbatida aytiladi.\n");
+        }
         // Text first, tool second — this is a latency rule, not a style one. A line carried
         // in a tool argument arrives in one chunk when the whole reply is finished (this
         // provider does not stream tool arguments), so synthesis cannot start until

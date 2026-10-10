@@ -34,6 +34,15 @@ public record OutboundCall(
         Long sipTrunkId,
         Long variantId,
         String promptOverride,
-        PipelineMode pipelineModeOverride
+        PipelineMode pipelineModeOverride,
+        Long callerIdPoolId
 ) {
+
+    public OutboundCall(Long campaignId, Long targetId, Long clientId, String phone, String language,
+                        String ttsVoice, CallContext context, AiAgent agent, Long companyId,
+                        Long sipTrunkId, Long variantId, String promptOverride,
+                        PipelineMode pipelineModeOverride) {
+        this(campaignId, targetId, clientId, phone, language, ttsVoice, context, agent,
+                companyId, sipTrunkId, variantId, promptOverride, pipelineModeOverride, null);
+    }
 }

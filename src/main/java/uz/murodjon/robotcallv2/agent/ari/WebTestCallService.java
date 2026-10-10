@@ -199,24 +199,36 @@ class WebTestCallService {
     /** The configured test facts ({@code voice-agent.dialog.test-context}), limited to those the scenario declares. */
     CallContext buildTestContext(ScenarioDefinition scenario) {
         TestContextProperties t = dialogProperties.testContext();
-        if (t == null) {
-            return new CallContext(Map.of(), null);
-        }
         Map<String, Object> facts = new HashMap<>();
-        putIfDeclared(facts, scenario, "clientName", t.clientName());
-        putIfDeclared(facts, scenario, "debtAmount", t.debtAmount());
-        putIfDeclared(facts, scenario, "currency", t.currency());
-        putIfDeclared(facts, scenario, "contractNumber", t.contractNumber());
-        putIfDeclared(facts, scenario, "penaltyAmount", t.penaltyAmount());
-        putIfDeclared(facts, scenario, "contractCancelDays", t.contractCancelDays());
-        if (t.dueDate() != null && !t.dueDate().isBlank()) {
+        String clientName = t != null && t.clientName() != null ? t.clientName() : "Murodjon";
+        java.math.BigDecimal debtAmount = t != null && t.debtAmount() != null ? t.debtAmount() : new java.math.BigDecimal("1500000");
+        String currency = t != null && t.currency() != null ? t.currency() : "so'm";
+        String contractNumber = t != null && t.contractNumber() != null ? t.contractNumber() : "12345";
+        String goal = t != null && t.goal() != null ? t.goal() : "Qarzdorlik bo'yicha to'lov sanasini kelishish";
+
+        putIfDeclared(facts, scenario, "clientName", clientName);
+        putIfDeclared(facts, scenario, "debtAmount", debtAmount);
+        putIfDeclared(facts, scenario, "currency", currency);
+        putIfDeclared(facts, scenario, "contractNumber", contractNumber);
+
+        LocalDate dueDate = null;
+        if (t != null && t.dueDate() != null && !t.dueDate().isBlank()) {
             try {
-                putIfDeclared(facts, scenario, "dueDate", LocalDate.parse(t.dueDate()));
+                dueDate = LocalDate.parse(t.dueDate());
             } catch (Exception e) {
                 log.warn("Invalid voice-agent.dialog.test-context.due-date '{}': {}", t.dueDate(), e.getMessage());
             }
         }
-        return new CallContext(facts, t.goal());
+        if (dueDate == null) {
+            dueDate = LocalDate.now().minusDays(10);
+        }
+        putIfDeclared(facts, scenario, "dueDate", dueDate);
+
+        if (t != null) {
+            putIfDeclared(facts, scenario, "penaltyAmount", t.penaltyAmount());
+            putIfDeclared(facts, scenario, "contractCancelDays", t.contractCancelDays());
+        }
+        return new CallContext(facts, goal);
     }
 
     private static void putIfDeclared(Map<String, Object> facts, ScenarioDefinition scenario,

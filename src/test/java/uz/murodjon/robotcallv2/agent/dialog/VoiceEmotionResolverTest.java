@@ -117,4 +117,40 @@ class VoiceEmotionResolverTest {
         assertThat(resolver.mapEmotionToRole(VoiceEmotion.STRICT)).isEqualTo("strict");
         assertThat(resolver.mapEmotionToRole(VoiceEmotion.NEUTRAL)).isEqualTo("neutral");
     }
+
+    @Test
+    void agentWithNullCompanySpeedDoesNotThrowNpe() {
+        DialogSession session = createSession("GREETING", "cheerful", "nigora", EffectiveVoiceSettings.NONE, true);
+        uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent agent =
+                uz.murodjon.robotcallv2.aiagent.AiAgentFixtures.agent(1L, 1L, 1L, "uz-UZ", "nigora");
+        session = DialogSession.builder("chan-test", "uz-UZ")
+                .ttsVoice("nigora")
+                .scenario(session.scenario())
+                .agent(agent)
+                .voiceSettings(EffectiveVoiceSettings.NONE)
+                .emotionAdaptiveVoice(true)
+                .build();
+        session.setState("GREETING");
+
+        EffectiveVoiceSettings settings = resolver.resolve(session);
+
+        assertThat(settings.speed()).isNull();
+        assertThat(settings.role()).isEqualTo("cheerful");
+    }
+
+    @Test
+    void isRealtimeModelIdentifiesWebSocketLiveModelsCorrectly() {
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gemini-3.8-live-extended-thinking")).isTrue();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gemini-3.8-live")).isTrue();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gpt-realtime-2.1")).isTrue();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("qwen-omni-turbo")).isTrue();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("moshi")).isTrue();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gemini-2.5-flash-native-audio-latest")).isTrue();
+
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gemini-3.8-flash")).isFalse();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gemini-2.5-pro")).isFalse();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("gpt-5.6-sol")).isFalse();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel(null)).isFalse();
+        assertThat(uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel.isRealtimeModel("")).isFalse();
+    }
 }

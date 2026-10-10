@@ -55,6 +55,8 @@ public class DocumentTextExtractorAdapter implements DocumentTextExtractorPort {
                 case TXT, CSV -> truncate(new String(in.readAllBytes(), StandardCharsets.UTF_8));
                 // Unreachable: the indexer reads a URL source with extractFromUrl.
                 case URL -> throw new IllegalStateException("a URL source is read with extractFromUrl");
+                // Unreachable: the indexer reads a sitemap source with sitemap discovery.
+                case SITEMAP -> throw new IllegalStateException("a sitemap source is read with sitemap discovery");
                 // Unreachable: the indexer reads a catalog feed through CatalogFeedReaderPort.
                 case STRUCTURED_FEED -> throw new IllegalStateException("a catalog feed is read as rows, not text");
             };

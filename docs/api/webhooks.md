@@ -81,6 +81,7 @@ qaytmaydi (ularda kalitlar va mijoz ma'lumoti bor).
 |---|---|---|---|
 | `POST` | `/api/webhook-deliveries/filter` | `AI_AGENT_READ` | Sahifalangan ro'yxat |
 | `POST` | `/api/webhook-deliveries/{id}/resend` | `AI_AGENT_EDIT` | `FAILED` yozuvni hozir yana bir marta yuborish |
+| `GET` | `/api/webhook-deliveries/listen` | `AI_AGENT_READ` | Jonli SSE stream: webhook yetkazish urinishlarini real-vaqt rejimida kuzatish |
 
 **`POST /api/webhook-deliveries/filter`** — barcha maydonlar ixtiyoriy:
 
@@ -125,6 +126,28 @@ navbatga qo'yilmaydi va bildirishnoma yubormaydi — natija javobda ko'rinadi.
 |---|---|
 | `404 WEBHOOK_DELIVERY_NOT_FOUND` | Bunday yozuv yo'q yoki boshqa kompaniyaniki |
 | `409 WEBHOOK_DELIVERY_NOT_FAILED` | Yozuv `FAILED` emas (navbatda yoki yetkazilgan) yoki uni hozir boshqa so'rov qayta yubormoqda |
+
+**`GET /api/webhook-deliveries/listen`** — dasturchilar uchun jonli SSE (Server-Sent Events) oqimi (Vapi CLI / listen analogi).
+Lokal muhitda webhook'larni ngrok/tunnel ochmasdan to'g'ridan-to'g'ri kuzatish yoki frontend monitoring uchun mo'ljallangan.
+
+- **Content-Type:** `text/event-stream`
+- **Hodisalar:**
+  - `connected`: ulanish o'rnatilganda (payload: subscription id)
+  - `webhook`: chiquvchi webhook yetkazish urinishi amalga oshirilganda (har bir urinish, ham muvaffaqiyatli, ham xatoli):
+    ```json
+    {
+      "deliveryId": "6b1f0c7e-4c55-4a57-9a43-0e3f5b0c2d11",
+      "companyId": 1,
+      "source": "POST_CALL",
+      "url": "https://api.example.uz/webhook",
+      "headers": { "Content-Type": "application/json" },
+      "payload": { "callId": 123, "disposition": "GOAL_REACHED" },
+      "timestamp": "2026-10-09T22:20:00Z",
+      "success": true,
+      "error": null
+    }
+    ```
+  - Har 20 soniyada `:ping` heartbeat yuboriladi. Aloqa uzilganda abonent avtomatik o'chiriladi.
 
 ---
 

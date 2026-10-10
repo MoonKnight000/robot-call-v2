@@ -18,6 +18,7 @@ import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -328,12 +329,23 @@ public class TurnTools {
         String stageModel = stage != null ? stage.model() : null;
         String selectedModel = model != null && !model.isBlank() ? model
                 : stageModel != null && !stageModel.isBlank() ? stageModel : aiModel.model();
+        if (AiModel.isRealtimeModel(selectedModel)) {
+            log.warn("[{}] Realtime model '{}' cannot be used in turn-based ChatModel — falling back to cascade chat model",
+                    s.channelId(), selectedModel);
+            selectedModel = null;
+        }
         ChatModel chatModel = chatModelProvider != null ? chatModelProvider.getIfAvailable() : null;
         // A company without its own model must still name one here: GoogleGenAiChatOptions
         // turns a null model into its hardcoded gemini-2.5-flash, never the configured
         // spring.ai.google.genai.chat model — and 2.5 rejects thinkingLevel outright.
-        if ((selectedModel == null || selectedModel.isBlank()) && chatModel != null) {
-            selectedModel = chatModel.getOptions().getModel();
+        if ((selectedModel == null || selectedModel.isBlank()) && chatModel != null && chatModel.getOptions() != null) {
+            String defaultModel = chatModel.getOptions().getModel();
+            if (!AiModel.isRealtimeModel(defaultModel)) {
+                selectedModel = defaultModel;
+            }
+        }
+        if (selectedModel == null || selectedModel.isBlank() || AiModel.isRealtimeModel(selectedModel)) {
+            selectedModel = "gemini-3.8-flash";
         }
 
         boolean isOpenAi = (chatModel instanceof OpenAiChatModel)

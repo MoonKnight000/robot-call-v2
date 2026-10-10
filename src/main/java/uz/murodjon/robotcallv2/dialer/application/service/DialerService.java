@@ -299,6 +299,13 @@ public class DialerService {
                             t.id(), PhoneMasker.mask(t.phone()), campaign.id(), heldUntil);
                     continue;
                 }
+                // Check recipient's local timezone quiet hours (08:00 - 20:00)
+                if (!DialWindow.isOpenForRecipient(campaign, contactPolicy, t.phone(), clock)) {
+                    campaignTargetUseCase.releaseClaim(t.id(), Instant.now(clock).plus(Duration.ofMinutes(30)));
+                    log.info("Target {} ({}) of campaign {} held: outside recipient local dial window",
+                            t.id(), PhoneMasker.mask(t.phone()), campaign.id());
+                    continue;
+                }
                 // The money before the slot: a hold that cannot be taken means this number
                 // is not dialled at all, and holding a concurrency slot for it would keep
                 // the next tenant's call out of a line nobody is using.
@@ -513,5 +520,10 @@ public class DialerService {
     /** Also read by CallTaskConsumer, which re-checks it just before dialling a queued task. */
     boolean isWithinDialWindow(Campaign campaign) {
         return DialWindow.isOpen(campaign, companyConfigUseCase.find(campaign.companyId()), clock);
+    }
+
+    /** Re-checks dial window considering both company configuration and recipient's local timezone. */
+    boolean isWithinDialWindowForRecipient(Campaign campaign, String recipientPhone) {
+        return DialWindow.isOpenForRecipient(campaign, companyConfigUseCase.find(campaign.companyId()), recipientPhone, clock);
     }
 }

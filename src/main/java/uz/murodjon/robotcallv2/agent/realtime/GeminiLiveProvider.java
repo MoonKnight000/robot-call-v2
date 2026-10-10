@@ -171,8 +171,8 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * instructed at connect time, not per turn, so everything the cascade pipeline
      * rebuilds on every turn — instructions, tools, language — is settled here.
      */
-    private String setupMessage(RealtimeCallConfig config, GeminiLiveProperties live,
-                                       String resumptionHandle) {
+    String setupMessage(RealtimeCallConfig config, GeminiLiveProperties live,
+                        String resumptionHandle) {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode setup = root.putObject("setup");
         String model = resolveModelName(config.modelOr(live.model()));
@@ -197,6 +197,10 @@ public class GeminiLiveProvider implements RealtimeProvider {
         }
         if (config.language() != null && !config.language().isBlank()) {
             speech.put("languageCode", config.language());
+        }
+        String thinkingLevel = resolveThinkingLevel(model, live);
+        if (thinkingLevel != null && !thinkingLevel.isBlank()) {
+            generation.putObject("thinkingConfig").put("thinkingLevel", thinkingLevel.toUpperCase());
         }
         if (live.affectiveDialog()) {
             generation.put("enableAffectiveDialog", true);
@@ -255,6 +259,21 @@ public class GeminiLiveProvider implements RealtimeProvider {
         return root.toString();
     }
 
+    /** The setup as it may be logged: the instructions carry the caller's facts, so only their length stays. */
+    private String redactForLog(String setupJson) {
+        try {
+            JsonNode root = objectMapper.readTree(setupJson);
+            for (JsonNode part : root.path("setup").path("systemInstruction").path("parts")) {
+                if (part instanceof ObjectNode node && node.has("text")) {
+                    node.put("text", "<" + node.get("text").asText().length() + " chars>");
+                }
+            }
+            return root.toString();
+        } catch (Exception e) {
+            return "<setup unreadable: " + e.getMessage() + ">";
+        }
+    }
+
     /** {@code HIGH}/{@code LOW} as configured, or null for blank or anything the API would reject. */
     private static String sensitivity(String configured) {
         if (configured == null || configured.isBlank()) {
@@ -286,6 +305,16 @@ public class GeminiLiveProvider implements RealtimeProvider {
     /** See {@link #ASYNC_TOOL_MODEL_PREFIX}; takes the already resolved model name. */
     private static boolean supportsAsyncTools(String model) {
         return model.startsWith(ASYNC_TOOL_MODEL_PREFIX);
+    }
+
+    static String resolveThinkingLevel(String model, GeminiLiveProperties live) {
+        if (live.thinkingLevel() != null && !live.thinkingLevel().isBlank()) {
+            return live.thinkingLevel().trim();
+        }
+        if (model != null && (model.contains("extended-thinking") || model.contains("thinking"))) {
+            return "LOW";
+        }
+        return null;
     }
 
     /**
@@ -647,7 +676,9 @@ public class GeminiLiveProvider implements RealtimeProvider {
             // RTP thread reach the new connection ahead of its setup message on a resume.
             // Nothing may be sent before the acknowledgement, and a call is already ringing
             // (or already talking) while this waits — so it is bounded by the connect timeout.
-            socket.sendText(setupMessage(config, live, handle), true)
+            String setup = setupMessage(config, live, handle);
+            log.info("[{}] Gemini Live setup: {}", config.channelId(), redactForLog(setup));
+            socket.sendText(setup, true)
                     .get(live.connectTimeoutSeconds(), TimeUnit.SECONDS);
             // The handler also releases the latch when the socket closes or fails, so a
             // released latch alone is not an acknowledgement — a dead connection is not a

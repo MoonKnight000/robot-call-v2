@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
@@ -22,6 +23,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
@@ -147,10 +149,25 @@ public class DialogEngine implements CallDialog {
         callAttemptUseCase.recordAgent(callAttemptId, agent);
         // The agent's own model settings sit over the company's: one company runs a cheap
         // model for a survey and a careful one for collections, on the same day.
+        // A realtime model (e.g. gemini-3.8-live-extended-thinking) cannot be called via turn-based
+        // HTTP ChatModel and must be ignored when running on the cascade pipeline.
+        String agentLlmModel = agent != null ? agent.llmModel() : null;
+        if (agentLlmModel != null && (AiModel.isRealtimeModel(agentLlmModel)
+                || (agent != null && agent.speechEngine() != null && agent.speechEngine().mode() == PipelineMode.REALTIME))) {
+            log.warn("[{}] Agent {} is configured with realtime model '{}' but call is running in DialogEngine (cascade); ignoring realtime model override",
+                    channelId, agent.id(), agentLlmModel);
+            agentLlmModel = null;
+        }
         EffectiveAiModelConfig configured = aiModelConfigUseCase.findEffectiveByCompanyId(companyId)
-                .withOverrides(agent != null ? agent.llmModel() : null,
+                .withOverrides(agentLlmModel,
                         agent != null ? agent.temperature() : null,
                         agent != null ? agent.maxOutputTokens() : null);
+        if (AiModel.isRealtimeModel(configured.model())) {
+            log.warn("[{}] Company configured model '{}' is a realtime model; resetting to default cascade chat model",
+                    channelId, configured.model());
+            configured = new EffectiveAiModelConfig(null, configured.temperature(), configured.maxOutputTokens(),
+                    configured.maxCallSeconds(), configured.maxTokensPerCall(), configured.ownLlm());
+        }
         // With the balance enforced the call ends before it costs more than the company has.
         EffectiveAiModelConfig aiModel = configured.withMaxCallSeconds(CallLimits.capByBalance(
                 configured.maxCallSeconds(), callBillingUseCase.findAffordableCallSeconds(companyId, false)));
@@ -221,7 +238,11 @@ public class DialogEngine implements CallDialog {
         // Which model a one-word turn is answered on is the agent's call, the same way its
         // own llmModel is: a survey agent and a collections agent share a deployment and
         // not a tolerance for a weaker model. Null leaves the installation default.
-        session.setFastModel(agent != null ? agent.fastLlmModel() : null);
+        String agentFastModel = agent != null ? agent.fastLlmModel() : null;
+        if (agentFastModel != null && AiModel.isRealtimeModel(agentFastModel)) {
+            agentFastModel = null;
+        }
+        session.setFastModel(agentFastModel);
         session.setOwnChatClient(ownChatClient);
         String agentSttProvider = agent != null ? agent.speechEngine().sttProvider() : null;
         session.latency().providers(

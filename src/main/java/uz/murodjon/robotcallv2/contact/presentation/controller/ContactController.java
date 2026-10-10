@@ -76,4 +76,10 @@ public interface ContactController {
             @CurrentCompanyId long companyId,
             @RequestParam String phone,
             @RequestParam(defaultValue = "false") boolean confirm);
+
+    @PreAuthorize("hasAuthority('CONTACT_READ')")
+    @PostMapping("/contacts/scrub")
+    ResponseEntity<ResponseData<ContactScrubResponse>> scrub(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ContactScrubRequest request);
 }

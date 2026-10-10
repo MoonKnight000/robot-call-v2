@@ -27,4 +27,21 @@ public record AiModel(
         PipelineMode mode,
         String label
 ) {
+
+    /**
+     * Determines whether a given model identifier belongs to a realtime / speech-to-speech engine
+     * (e.g. Gemini Live, OpenAI Realtime, Qwen Omni) that only communicates via WebSockets (bidiGenerateContent),
+     * and therefore CANNOT be called via standard text turn-based ChatModel HTTP endpoints.
+     */
+    public static boolean isRealtimeModel(String modelId) {
+        if (modelId == null || modelId.isBlank()) {
+            return false;
+        }
+        String lower = modelId.trim().toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("-live")
+                || lower.contains("realtime")
+                || lower.contains("omni")
+                || lower.equals("moshi")
+                || lower.contains("native-audio");
+    }
 }

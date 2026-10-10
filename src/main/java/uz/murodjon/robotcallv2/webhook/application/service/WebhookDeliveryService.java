@@ -15,9 +15,13 @@ import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.stream.EventSink;
+import uz.murodjon.robotcallv2.shared.stream.EventStreamHub;
+import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
+import uz.murodjon.robotcallv2.webhook.application.dto.WebhookLiveEvent;
 import uz.murodjon.robotcallv2.webhook.application.mapper.WebhookDeliveryMapper;
 import uz.murodjon.robotcallv2.webhook.application.port.input.WebhookDeliveryUseCase;
 import uz.murodjon.robotcallv2.webhook.application.port.output.WebhookDeliveryRepository;
@@ -74,6 +78,7 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
     private final NotificationUseCase notificationService;
     private final Clock clock;
     private final WebhookDeliveryMapper mapper;
+    private final EventStreamHub<Long> streamHub = new EventStreamHub<>("webhook-stream");
 
     public WebhookDeliveryService(WebhookSenderPort sender, WebhookDeliveryRepository repository,
                                   SecretUseCase secretUseCase, SecretCipher cipher,
@@ -97,9 +102,13 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
         UUID deliveryId = UUID.randomUUID();
         try {
             sender.post(url, headers, payload, WebhookSigningSecret.findIn(secrets), deliveryId.toString());
+            streamHub.publish(cId -> cId == companyId, "webhook", new WebhookLiveEvent(
+                    deliveryId, companyId, source, url, headers, payload, clock.instant(), true, null));
             return true;
         } catch (RuntimeException e) {
             String error = errorOf(e, secrets);
+            streamHub.publish(cId -> cId == companyId, "webhook", new WebhookLiveEvent(
+                    deliveryId, companyId, source, url, headers, payload, clock.instant(), false, error));
             String sealed = seal(url, headers);
             if (sealed == null) {
                 log.warn("Webhook to {} failed and cannot be kept for retry — no encryption key is set: {}",
@@ -111,6 +120,16 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
             log.warn("Webhook to {} failed, retrying in {}: {}", hostOf(url), BACKOFF.getFirst(), error);
             return false;
         }
+    }
+
+    @Override
+    public EventSubscription subscribe(long companyId, EventSink sink) {
+        return streamHub.subscribe(companyId, sink);
+    }
+
+    @Scheduled(fixedDelay = 20_000)
+    public void sendHeartbeats() {
+        streamHub.sendHeartbeat();
     }
 
     @Override

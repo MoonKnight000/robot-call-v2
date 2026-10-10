@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.ari;
 import ch.loway.oss.ari4java.generated.models.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
@@ -29,6 +30,7 @@ import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
+import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 import java.util.LinkedHashSet;
@@ -61,6 +63,7 @@ class OutboundDialService {
     private final AuditUseCase audit;
     private final PendingCallRegistry pendingCallRegistry;
     private final TrunkCallPacer trunkCallPacer;
+    private final ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider;
 
     OutboundDialService(AsteriskProperties asteriskProperties,
                         AriClient ariClient,
@@ -76,7 +79,8 @@ class OutboundDialService {
                         AiAgentUseCase aiAgentUseCase,
                         AuditUseCase audit,
                         PendingCallRegistry pendingCallRegistry,
-                        TrunkCallPacer trunkCallPacer) {
+                        TrunkCallPacer trunkCallPacer,
+                        ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider) {
         this.asteriskProperties = asteriskProperties;
         this.ariClient = ariClient;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -92,6 +96,7 @@ class OutboundDialService {
         this.audit = audit;
         this.pendingCallRegistry = pendingCallRegistry;
         this.trunkCallPacer = trunkCallPacer;
+        this.callerIdPoolUseCaseProvider = callerIdPoolUseCaseProvider;
     }
 
     String originate(String rawNumber, long companyId) {
@@ -130,7 +135,7 @@ class OutboundDialService {
             throw e;
         }
         String endpoint = endpointFor(number, trunk);
-        String callerId = callerIdFor(trunk);
+        String callerId = callerIdFor(trunk, outboundCall, companyId);
         String dialNumber = !isLocalNumber(number) && number.startsWith("+")
                 ? number.substring(1)
                 : number;
@@ -210,9 +215,9 @@ class OutboundDialService {
         AiAgent agent = agentId != null ? aiAgentUseCase.requireCallAgent(companyId, agentId, number) : null;
         String channelId = originate(number, companyId, sipTrunkId);
         if (agent != null) {
-            pendingCallRegistry.registerManualAgent(channelId, agent, companyId);
+            pendingCallRegistry.registerManualAgent(channelId, agent, companyId, number);
         } else {
-            pendingCallRegistry.registerManualScenario(channelId, scenarioId, companyId);
+            pendingCallRegistry.registerManualScenario(channelId, scenarioId, companyId, number);
         }
         audit.record(companyId, "CALL_ORIGINATE_MANUAL", "call", channelId, number);
         return new CallOriginateResponse(number, channelId);
@@ -225,7 +230,7 @@ class OutboundDialService {
     CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition,
                                             Long sipTrunkId) {
         String channelId = originate(number, companyId, sipTrunkId);
-        pendingCallRegistry.registerManualDefinition(channelId, definition, companyId);
+        pendingCallRegistry.registerManualDefinition(channelId, definition, companyId, number);
         audit.record(companyId, "CALL_ORIGINATE_TEST", "call", channelId, number);
         return new CallOriginateResponse(number, channelId);
     }
@@ -275,7 +280,17 @@ class OutboundDialService {
         }
     }
 
-    private String callerIdFor(SipTrunkRow trunk) {
+    private String callerIdFor(SipTrunkRow trunk, OutboundCall outboundCall, long companyId) {
+        if (outboundCall != null && outboundCall.callerIdPoolId() != null) {
+            CallerIdPoolUseCase poolUseCase = callerIdPoolUseCaseProvider.getIfAvailable();
+            if (poolUseCase != null) {
+                try {
+                    return poolUseCase.acquireCallerId(companyId, outboundCall.callerIdPoolId());
+                } catch (RuntimeException e) {
+                    log.warn("Failed to acquire caller ID from pool {}: {}", outboundCall.callerIdPoolId(), e.getMessage());
+                }
+            }
+        }
         if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
             return trunk.callerId();
         }
@@ -292,7 +307,7 @@ class OutboundDialService {
         String endpoint = endpointFor(number, trunk);
         String dialNumber = !isLocalNumber(number) && number.startsWith("+") ? number.substring(1) : number;
         awaitTrunkSlot(number, endpoint, trunk);
-        return ariClient.originateToStasis("PJSIP/" + dialNumber + "@" + endpoint, appArgs, timeoutSec, callerIdFor(trunk));
+        return ariClient.originateToStasis("PJSIP/" + dialNumber + "@" + endpoint, appArgs, timeoutSec, callerIdFor(trunk, null, companyId));
     }
 
     /** An outside number dialled for an operator (a callback, a softphone call, a preview card) — booked as a call from the start. */

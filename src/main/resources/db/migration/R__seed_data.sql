@@ -11,8 +11,8 @@
 
 -- Bootstrap tenant every other row below belongs to. Explicit id=1 so it matches
 -- voice-agent.company.default-id's own default.
-INSERT INTO company (id, name, status) VALUES (1, 'Default', 'ACTIVE')
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO company (id, name, status) VALUES (1, 'Uysot', 'ACTIVE')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name WHERE company.name = 'Default';
 SELECT setval(pg_get_serial_sequence('company', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM company), 1), true);
 
@@ -215,8 +215,8 @@ $def$
 {
   "stages": [
     {"id": "GREETING", "purpose": "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.", "allowedTransitions": ["IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
-    {"id": "IDENTITY_CHECK", "purpose": "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?').", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
-    {"id": "DEBT_NOTICE", "purpose": "Qarz miqdori va muddatini xushmuomala yetkaz VA o'sha javobning o'zida nima uchun to'lanmaganini so'ra. Faqat xabar aytib, tasdiq so'rab ('bu haqda xabaringiz bormidi?') alohida turn sarflama. Shu gapni aytding — bosqich tugadi: keyingi qadamda REASON_INQUIRY ga o't va sabab savolini ikkinchi marta berma.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
+    {"id": "IDENTITY_CHECK", "purpose": "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?'). Faqat aniq tasdiq — 'ha', 'ha, menman', 'ha, [Ism]', 'men' — bo'lsa DEBT_NOTICE ga o't. 'Xo'sh', 'alo', 'aha', 'labbay', 'a?', 'eshitaman', 'kim bu?' tasdiq EMAS: o'zingni qisqa tanishtir va ismini yana bir bor so'ra. Shaxs aniq tasdiqlanmaguncha qarz, summa yoki muddat haqida hech narsa aytma.", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
+    {"id": "DEBT_NOTICE", "purpose": "Qarz miqdori va muddatini xushmuomala yetkaz VA o'sha javobning o'zida nima uchun to'lanmaganini so'ra. Faqat xabar aytib, tasdiq so'rab ('bu haqda xabaringiz bormidi?') alohida turn sarflama. Shu gapni aytding va mijoz eshitgan bo'lsa — keyingi qadamda REASON_INQUIRY ga o't. Agar mijoz eshitmagan bo'lsa ('a?', 'eshitmadim', 'qaytaring') — qarz va muddatni qaytadan aniq ayt. Agar tushunmagan bo'lsa ('aaa?', 'qanaqa qarz?', 'tushunmadim') — o'sha gapni so'zma-so'z takrorlama: qarz nimadan kelib chiqqanini soddaroq so'zlar bilan qisqa tushuntir ('Kechirasiz, tushuntiray: ...'). Ikkala holatda ham mijoz javob bermaguncha keyingi bosqichga o'tma.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "REASON_INQUIRY", "purpose": "Sabab savoli DEBT_NOTICE da berilgan — uni qayta berma. Mijozning javobini tinglab sababni yozib ol; mijoz sababni umuman aytmagan bo'lsagina bir marta so'ra.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "PAYMENT_DATE", "purpose": "Mijozdan aniq to'lov sanasini ol.", "allowedTransitions": ["CONFIRMATION", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "CONFIRMATION", "purpose": "Kelishilgan sana va summani BITTA xabar gapi bilan takrorla (savol emas, qayta tasdiqlatma) va xayrlash.", "allowedTransitions": ["CLOSING", "PAYMENT_DATE", "ESCALATE_TO_HUMAN"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},

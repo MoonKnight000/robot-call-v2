@@ -18,7 +18,10 @@ class FloorRulesTest {
         assertThat(FloorRules.decide(STATEMENT, "ha")).isFalse();
         assertThat(FloorRules.decide(STATEMENT, "xo'p, xo'p")).isFalse();
         assertThat(FloorRules.decide(STATEMENT, "xoʻp")).isFalse();
+        assertThat(FloorRules.decide(STATEMENT, "eshityapman")).isFalse();
+        assertThat(FloorRules.decide(STATEMENT, "davom eting")).isFalse();
         assertThat(FloorRules.decide(STATEMENT, "угу")).isFalse();
+        assertThat(FloorRules.decide(STATEMENT, "продолжайте")).isFalse();
     }
 
     @Test

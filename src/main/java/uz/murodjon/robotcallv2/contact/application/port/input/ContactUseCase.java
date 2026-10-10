@@ -35,4 +35,7 @@ public interface ContactUseCase {
 
     /** Deletes or anonymizes everything held about {@code phone}; {@code confirm} must be true. */
     ContactErasureResponse eraseSubjectData(long companyId, String phone, boolean confirm);
+
+    /** Pre-call carrier, format, and Do-Not-Call scrubbing for a batch of telephone numbers. */
+    ContactScrubResponse scrubPhones(long companyId, ContactScrubRequest request);
 }

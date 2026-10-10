@@ -53,3 +53,18 @@ Aziz Karimov,+998901234567,Toshkent,vip,Doimiy mijoz
 ### Add Contact to DNC
 POST http://localhost:8080/api/contacts/1/dnc
 Authorization: Bearer {{auth_token}}
+
+### Batch Scrub Contacts (Format, Carrier/Prefix & Do-Not-Call check)
+POST http://localhost:8080/api/contacts/scrub
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "phones": [
+    "+998901234567",
+    "+998011234567",
+    "998931112233",
+    "+12125551234",
+    "invalid-phone"
+  ]
+}

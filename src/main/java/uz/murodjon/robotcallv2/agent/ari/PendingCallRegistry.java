@@ -59,6 +59,9 @@ class PendingCallRegistry {
      */
     private final Map<String, Long> pendingManualCompanies = new ConcurrentHashMap<>();
 
+    /** Dialed phone numbers of manual calls before StasisStart answers. */
+    private final Map<String, String> pendingManualPhones = new ConcurrentHashMap<>();
+
     /**
      * Browser test calls handed out by {@link WebTestCallService#prepareWebTest}, keyed by
      * session id until the browser dials in with it (extensions.conf passes it as the second
@@ -78,19 +81,26 @@ class PendingCallRegistry {
         this.outboundCallTrackingUseCase = outboundCallTrackingUseCase;
     }
 
-    void registerManualScenario(String channelId, Long scenarioId, long companyId) {
+    void registerManualScenario(String channelId, Long scenarioId, long companyId, String phone) {
         pendingManualScenarios.put(channelId, scenarioId != null ? scenarioId : NO_EXPLICIT_SCENARIO);
-        pendingManualCompanies.put(channelId, companyId);
+        rememberManualCall(channelId, companyId, phone);
     }
 
-    void registerManualDefinition(String channelId, ScenarioDefinition definition, long companyId) {
+    void registerManualDefinition(String channelId, ScenarioDefinition definition, long companyId, String phone) {
         pendingManualDefinitions.put(channelId, definition);
-        pendingManualCompanies.put(channelId, companyId);
+        rememberManualCall(channelId, companyId, phone);
     }
 
-    void registerManualAgent(String channelId, AiAgent agent, long companyId) {
+    void registerManualAgent(String channelId, AiAgent agent, long companyId, String phone) {
         pendingManualAgents.put(channelId, agent);
+        rememberManualCall(channelId, companyId, phone);
+    }
+
+    private void rememberManualCall(String channelId, long companyId, String phone) {
         pendingManualCompanies.put(channelId, companyId);
+        if (phone != null && !phone.isBlank()) {
+            pendingManualPhones.put(channelId, phone.trim());
+        }
     }
 
     void purgeExpiredWebTests() {
@@ -149,6 +159,10 @@ class PendingCallRegistry {
         return pendingManualScenarios.remove(channelId);
     }
 
+    String takeManualPhone(String channelId) {
+        return pendingManualPhones.remove(channelId);
+    }
+
     /** The campaign profile behind a channel: a dialer call, or a browser test of a campaign. */
     OutboundCall findOutboundProfile(String channelId) {
         OutboundCall outbound = outboundCallTrackingUseCase.peek(channelId);
@@ -164,6 +178,7 @@ class PendingCallRegistry {
         pendingManualDefinitions.remove(channelId);
         pendingManualAgents.remove(channelId);
         pendingManualCompanies.remove(channelId);
+        pendingManualPhones.remove(channelId);
         webTestCalls.remove(channelId);
     }
 

@@ -21,7 +21,7 @@ class CsvReportRendererTest {
                 1L, 10L, "+998901234567", "uz-UZ",
                 Instant.parse("2026-09-01T10:00:00Z"), Instant.parse("2026-09-01T10:01:00Z"), 60,
                 Disposition.PROMISE_TO_PAY, "NORMAL_CLEARING", true, "Kelishildi\nyangi sana",
-                null, null, 100L, "Ali, Valiyev", "Qarz \"Undirish\"", "Bot");
+                null, null, "100", "Ali, Valiyev", "Qarz \"Undirish\"", "Bot");
 
         String csv = new String(renderer.renderCalls(List.of(row1)), StandardCharsets.UTF_8);
 

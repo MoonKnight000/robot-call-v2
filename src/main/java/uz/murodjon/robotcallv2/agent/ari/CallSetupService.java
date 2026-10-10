@@ -344,8 +344,14 @@ class CallSetupService {
                 scenarioRow = agent != null
                         ? aiAgentService.resolveScenario(companyId, agent)
                         : webTestCallService.resolveManualScenario(companyId, channelId);
-                context = webTestCallService.buildTestContext(scenarioRow.definition());
-                phone = "MANUAL";
+                String manualPhone = pendingCallRegistry.takeManualPhone(channelId);
+                phone = (manualPhone != null && !manualPhone.isBlank()) ? manualPhone : "MANUAL";
+                CrmClientSnapshot crm = PhoneNumbers.isValid(phone)
+                        ? crmUseCase.findByPhone(companyId, phone) : null;
+                ClientMemory memory = PhoneNumbers.isValid(phone)
+                        ? clientMemoryUseCase.findByCompanyIdAndPhone(companyId, phone) : null;
+                CallContext testContext = webTestCallService.buildTestContext(scenarioRow.definition());
+                context = CallContextFactory.mergeCrmFacts(testContext, crm).withMemory(memory);
             } else {
                 // The same object an outbound call reads its voice and persona from. Before
                 // the agent existed an inbound call had no campaign to read them from, so it

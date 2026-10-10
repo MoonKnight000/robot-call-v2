@@ -67,7 +67,7 @@ public record KnowledgeSource(
      * interval gone since it was last indexed. A failed feed is not — it waits for a retry.
      */
     public boolean isDueForRefresh(Instant now) {
-        return sourceType == KnowledgeSourceType.STRUCTURED_FEED
+        return (sourceType == KnowledgeSourceType.STRUCTURED_FEED || sourceType == KnowledgeSourceType.SITEMAP)
                 && url != null && !url.isBlank()
                 && refreshMinutes != null && refreshMinutes > 0
                 && status == KnowledgeSourceStatus.INDEXED

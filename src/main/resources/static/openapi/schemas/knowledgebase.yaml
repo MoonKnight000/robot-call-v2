@@ -271,6 +271,7 @@ KnowledgeSourceType:
   - XLSX
   - XLS
   - URL
+  - SITEMAP
   - STRUCTURED_FEED
   description: |-
     Supported knowledge source document types.

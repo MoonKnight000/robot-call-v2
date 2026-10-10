@@ -31,7 +31,8 @@ public class DialogTools {
             "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
             "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
             "sendSmsPaymentLink", "requestPaymentExtension", "recordPaymentClaim", "endCall", "sendDtmfTones",
-            "bookShowroomVisit", "sendLocationSms", "sendCatalogSms", "waitForCaller", "switchLanguage", "noteCallerMood"
+            "bookShowroomVisit", "sendLocationSms", "sendCatalogSms", "waitForCaller", "switchLanguage", "noteCallerMood",
+            "bookAppointment", "checkCalendarAvailability", "cancelAppointment"
     );
 
     /**
@@ -180,6 +181,10 @@ public class DialogTools {
     @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
     public String transitionTo(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                @ToolParam(description = "keyingi bosqich id'si") String nextStage) {
+        if (nextStage != null && nextStage.trim().equalsIgnoreCase(session.state())) {
+            recordReply(reply);
+            return "Holat o'zgarishsiz: joriy " + session.state() + " bosqichida qolindi.";
+        }
         List<String> allowed = allowedTransitions();
         List<String> walked = List.of();
         // A refused jump strands the call: on a recorded realtime call every jump was
@@ -614,6 +619,67 @@ public class DialogTools {
         session.recordOutcome("catalogSmsSent", true);
         log.info("[{}] catalog SMS sent successfully", session.channelId());
         return "Katalog havolasi mijozga SMS orqali yuborildi. Mijozga SMS kelganini ma'lum qiling.";
+    }
+
+    @Tool(description = "Mijoz xizmat, konsultatsiya yoki uchrashuvga yozilishga (band qilishga) rozi bo'lganda chaqiriladi. "
+            + "Uchrashuv sanasi, vaqti, mijoz ismi va xizmat turini yozib oladi va maqsadga yetilganini belgilaydi.")
+    public String bookAppointment(
+            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+            @ToolParam(description = "uchrashuv sanasi (masalan '2026-10-15' yoki 'ertaga')") String appointmentDate,
+            @ToolParam(description = "uchrashuv vaqti (masalan '14:00' yoki '15:30')") String appointmentTime,
+            @ToolParam(description = "mijoz ismi", required = false) String attendeeName,
+            @ToolParam(description = "xizmat yoki konsultatsiya turi", required = false) String serviceType,
+            @ToolParam(description = "qo'shimcha izoh yoki talablar", required = false) String note) {
+        if (appointmentDate == null || appointmentDate.isBlank()) {
+            return "XATO: Uchrashuv sanasi ko'rsatilmadi. Mijozdan qaysi kunga yozilishni xohlashini so'rang.";
+        }
+        if (appointmentTime == null || appointmentTime.isBlank()) {
+            return "XATO: Uchrashuv vaqti ko'rsatilmadi. Mijozdan qaysi soatga yozilishni xohlashini so'rang.";
+        }
+        recordReply(reply);
+        session.recordOutcome("appointmentBooked", true);
+        session.recordOutcome("appointmentDate", appointmentDate.trim());
+        session.recordOutcome("appointmentTime", appointmentTime.trim());
+        recordIfPresent("appointmentAttendee", attendeeName);
+        recordIfPresent("appointmentService", serviceType);
+        recordIfPresent("appointmentNote", note);
+        session.setDisposition(Disposition.GOAL_REACHED);
+        log.info("[{}] appointment booked: date={}, time={}, attendee={}, service={}",
+                session.channelId(), appointmentDate, appointmentTime, attendeeName, serviceType);
+        return "Uchrashuv muvaffaqiyatli band qilindi: " + appointmentDate.trim() + " soat " + appointmentTime.trim()
+                + ". Mijozga uchrashuv belgilanganini tasdiqlang va kelishini kutishingizni bildiring.";
+    }
+
+    @Tool(description = "Mijoz uchrashuv uchun bo'sh vaqtlarni so'raganda taqvimdagi mavjud vaqtlarni tekshiradi va qaytaradi.")
+    public String checkCalendarAvailability(
+            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+            @ToolParam(description = "tekshirilayotgan sana (masalan '2026-10-15' yoki 'bugun', 'ertaga')") String date,
+            @ToolParam(description = "xizmat turi", required = false) String serviceType) {
+        if (date == null || date.isBlank()) {
+            return "XATO: Sana ko'rsatilmadi. Mijozdan qaysi sanadagi bo'sh vaqtlar qiziqtirayotganini so'rang.";
+        }
+        recordReply(reply);
+        Object customSlots = session.context() != null ? session.context().fact("availableSlots") : null;
+        String slots = customSlots instanceof String s && !s.isBlank() ? s : "10:00, 11:30, 14:00, 16:30";
+        log.info("[{}] checked calendar availability for date={}: slots={}", session.channelId(), date, slots);
+        return date.trim() + " sanasi uchun quyidagi bo'sh vaqtlar mavjud: " + slots
+                + ". Mijozga ushbu vaqtlardan birini tanlashni taklif qiling.";
+    }
+
+    @Tool(description = "Mijoz avval belgilangan uchrashuvni bekor qilishni so'raganda chaqiriladi.")
+    public String cancelAppointment(
+            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+            @ToolParam(description = "bekor qilinayotgan uchrashuv sanasi", required = false) String appointmentDate,
+            @ToolParam(description = "bekor qilinayotgan uchrashuv vaqti", required = false) String appointmentTime,
+            @ToolParam(description = "bekor qilish sababi", required = false) String reason) {
+        recordReply(reply);
+        session.recordOutcome("appointmentCancelled", true);
+        recordIfPresent("cancelledAppointmentDate", appointmentDate);
+        recordIfPresent("cancelledAppointmentTime", appointmentTime);
+        recordIfPresent("cancellationReason", reason);
+        log.info("[{}] appointment cancelled: date={}, time={}, reason={}",
+                session.channelId(), appointmentDate, appointmentTime, reason);
+        return "Uchrashuv muvaffaqiyatli bekor qilindi. Mijozga uchrashuv bekor qilinganini xushmuomalalik bilan ma'lum qiling.";
     }
 
     private void recordIfPresent(String key, String value) {

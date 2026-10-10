@@ -58,6 +58,7 @@ public class KnowledgeIndexingService {
     private final RabbitTemplate rabbitTemplate;
     private final CatalogFeedReaderPort feedReader;
     private final CatalogItemRepository catalogItemRepository;
+    private final SitemapDiscoveryPort sitemapDiscovery;
 
     public KnowledgeIndexingService(KnowledgeSourceRepository sourceRepository,
                                     KnowledgeChunkRepository chunkRepository,
@@ -67,7 +68,8 @@ public class KnowledgeIndexingService {
                                     KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
                                     RabbitTemplate rabbitTemplate,
                                     CatalogFeedReaderPort feedReader,
-                                    CatalogItemRepository catalogItemRepository) {
+                                    CatalogItemRepository catalogItemRepository,
+                                    SitemapDiscoveryPort sitemapDiscovery) {
         this.sourceRepository = sourceRepository;
         this.chunkRepository = chunkRepository;
         this.textExtractor = textExtractor;
@@ -77,6 +79,7 @@ public class KnowledgeIndexingService {
         this.rabbitTemplate = rabbitTemplate;
         this.feedReader = feedReader;
         this.catalogItemRepository = catalogItemRepository;
+        this.sitemapDiscovery = sitemapDiscovery;
     }
 
     /**
@@ -210,8 +213,35 @@ public class KnowledgeIndexingService {
         if (source.sourceType() == KnowledgeSourceType.URL) {
             return textExtractor.extractFromUrl(requirePublicUrl(source.url()));
         }
+        if (source.sourceType() == KnowledgeSourceType.SITEMAP) {
+            return readSitemapText(source);
+        }
         DownloadableFile file = fileStorage.download(source.companyId(), source.storedFileId());
         return textExtractor.extract(file.content(), source.sourceType());
+    }
+
+    private String readSitemapText(KnowledgeSource source) {
+        URI sitemapUri = requirePublicUrl(source.url());
+        List<URI> pageUris = sitemapDiscovery.discoverUrls(sitemapUri, 50);
+        if (pageUris.isEmpty()) {
+            return "";
+        }
+        StringBuilder combined = new StringBuilder();
+        for (URI pageUri : pageUris) {
+            try {
+                String pageText = textExtractor.extractFromUrl(pageUri);
+                if (pageText != null && !pageText.isBlank()) {
+                    if (!combined.isEmpty()) {
+                        combined.append("\n\n");
+                    }
+                    combined.append("=== Sahifa: ").append(pageUri).append(" ===\n")
+                            .append(pageText);
+                }
+            } catch (Exception e) {
+                log.warn("[company {}] Skipping sitemap page {}: {}", source.companyId(), pageUri, e.getMessage());
+            }
+        }
+        return combined.toString();
     }
 
     /**

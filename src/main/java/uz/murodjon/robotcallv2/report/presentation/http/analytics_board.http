@@ -1,0 +1,45 @@
+### Create custom analytics board
+POST http://localhost:8080/api/reports/boards
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Kollektor Boshqaruvi",
+  "description": "Kunlik PTP va undirish ko'rsatkichlari",
+  "isDefault": true
+}
+
+### List boards
+GET http://localhost:8080/api/reports/boards
+Authorization: Bearer {{token}}
+
+### Get board by ID
+GET http://localhost:8080/api/reports/boards/1
+Authorization: Bearer {{token}}
+
+### Add widget to board
+POST http://localhost:8080/api/reports/boards/1/widgets
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Muvaffaqiyatli qo'ng'iroqlar dinamikasi",
+  "widgetType": "LINE_CHART",
+  "metric": "SUCCESS_RATE",
+  "groupBy": "DATE",
+  "timeRange": "LAST_7_DAYS",
+  "gridRow": 0,
+  "gridCol": 0,
+  "gridWidth": 12,
+  "gridHeight": 4
+}
+
+### Query analytics ad-hoc
+POST http://localhost:8080/api/reports/boards/query
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "metric": "PTP_COUNT",
+  "groupBy": "DATE"
+}

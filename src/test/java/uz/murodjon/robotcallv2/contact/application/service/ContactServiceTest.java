@@ -60,6 +60,7 @@ class ContactServiceTest {
     private static <T> ObjectProvider<T> providerOf(T bean) {
         ObjectProvider<T> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(bean);
+        when(provider.getIfAvailable()).thenReturn(bean);
         return provider;
     }
 
@@ -144,5 +145,60 @@ class ContactServiceTest {
         assertThat(response.doNotCall()).isTrue();
         verify(applicationEventPublisher).publishEvent(new ContactOptOutEvent(1L, "+998905556677", "opted out via contact"));
         verify(auditService).record(1L, "CONTACT_DNC", "contact", "5", "+998905556677");
+    }
+
+    @Test
+    void scrubPhonesHandlesEmptyOrNull() {
+        uz.murodjon.robotcallv2.contact.application.dto.ContactScrubResponse res =
+                contactService.scrubPhones(1L, new uz.murodjon.robotcallv2.contact.application.dto.ContactScrubRequest(List.of()));
+        assertThat(res.total()).isZero();
+        assertThat(res.items()).isEmpty();
+    }
+
+    @Test
+    void scrubPhonesValidatesCarriersAndIdentifiesBlocked() {
+        uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase dnc =
+                mock(uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase.class);
+        when(dnc.findBlockedPhones(eq(1L), anyCollection())).thenReturn(java.util.Set.of("+998901234567"));
+
+        ContactService serviceWithDnc = new ContactService(
+                contactRepository, providerOf(reportUseCase), applicationEventPublisher, auditService,
+                mock(ContactPrivacyRepository.class),
+                mock(ClientMemoryUseCase.class),
+                mock(CallTranscriptUseCase.class),
+                mock(OutboxMessageUseCase.class),
+                mock(FileStorageService.class),
+                new ContactMapper(),
+                new uz.murodjon.robotcallv2.dialer.infrastructure.adapter.DefaultPhoneNumberScrubberAdapter(),
+                providerOf(dnc)
+        );
+
+        uz.murodjon.robotcallv2.contact.application.dto.ContactScrubRequest req =
+                new uz.murodjon.robotcallv2.contact.application.dto.ContactScrubRequest(List.of(
+                        "+998901234567", // DNC blocked
+                        "998931112233",  // Valid Ucell
+                        "+998011234567", // Unallocated prefix
+                        "invalid"        // Format error
+                ));
+
+        uz.murodjon.robotcallv2.contact.application.dto.ContactScrubResponse res =
+                serviceWithDnc.scrubPhones(1L, req);
+
+        assertThat(res.total()).isEqualTo(4);
+        assertThat(res.validCount()).isEqualTo(1);
+        assertThat(res.invalidCount()).isEqualTo(3);
+        assertThat(res.dncCount()).isEqualTo(1);
+
+        assertThat(res.items().get(0).inDoNotCall()).isTrue();
+        assertThat(res.items().get(0).status()).isEqualTo(uz.murodjon.robotcallv2.dialer.domain.enums.ScrubStatus.BLOCKED);
+
+        assertThat(res.items().get(1).valid()).isTrue();
+        assertThat(res.items().get(1).carrierOrRegion()).isEqualTo("Ucell");
+
+        assertThat(res.items().get(2).valid()).isFalse();
+        assertThat(res.items().get(2).status()).isEqualTo(uz.murodjon.robotcallv2.dialer.domain.enums.ScrubStatus.UNALLOCATED_PREFIX);
+
+        assertThat(res.items().get(3).valid()).isFalse();
+        assertThat(res.items().get(3).status()).isEqualTo(uz.murodjon.robotcallv2.dialer.domain.enums.ScrubStatus.INVALID_FORMAT);
     }
 }

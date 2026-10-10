@@ -67,6 +67,17 @@ class DialogToolsTest {
     }
 
     @Test
+    void allowsStayingInCurrentStage() {
+        session.setState("DEBT_NOTICE");
+
+        String result = tools.transitionTo("Qaytadan aytaman: qarzingiz bor.", "DEBT_NOTICE");
+
+        assertThat(result).doesNotStartWith("XATO:").contains("DEBT_NOTICE");
+        assertThat(session.state()).isEqualTo("DEBT_NOTICE");
+        assertThat(session.toolReplies()).isEqualTo("Qaytadan aytaman: qarzingiz bor.");
+    }
+
+    @Test
     void rejectsAPromiseInThePast() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
@@ -289,5 +300,50 @@ class DialogToolsTest {
         String res = tools.sendCatalogSms("Katalogni yuboraman", null);
         assertThat(res).contains("qayd etildi");
         assertThat(session.outcome().get("catalogSmsRequested")).isEqualTo(true);
+    }
+
+    @Test
+    void bookAppointmentRecordsDetailsAndReachesGoal() {
+        String res = tools.bookAppointment("Sizni 15-oktabr soat 14:00 da kutamiz!", "2026-10-15", "14:00",
+                "Ali Valiyev", "Stomatolog ko'rigi", "Birinchi marta kelmoqda");
+
+        assertThat(res).contains("Uchrashuv muvaffaqiyatli band qilindi");
+        assertThat(session.toolReplies()).isEqualTo("Sizni 15-oktabr soat 14:00 da kutamiz!");
+        assertThat(session.outcome().get("appointmentBooked")).isEqualTo(true);
+        assertThat(session.outcome().get("appointmentDate")).isEqualTo("2026-10-15");
+        assertThat(session.outcome().get("appointmentTime")).isEqualTo("14:00");
+        assertThat(session.outcome().get("appointmentAttendee")).isEqualTo("Ali Valiyev");
+        assertThat(session.outcome().get("appointmentService")).isEqualTo("Stomatolog ko'rigi");
+        assertThat(session.outcome().get("appointmentNote")).isEqualTo("Birinchi marta kelmoqda");
+        assertThat(session.disposition()).isEqualTo(Disposition.GOAL_REACHED);
+    }
+
+    @Test
+    void bookAppointmentRequiresDateAndTime() {
+        String resNoDate = tools.bookAppointment("Rahmat", null, "14:00", "Ali", null, null);
+        assertThat(resNoDate).startsWith("XATO: Uchrashuv sanasi");
+        assertThat(session.outcome().get("appointmentBooked")).isNull();
+
+        String resNoTime = tools.bookAppointment("Rahmat", "2026-10-15", "", "Ali", null, null);
+        assertThat(resNoTime).startsWith("XATO: Uchrashuv vaqti");
+        assertThat(session.outcome().get("appointmentBooked")).isNull();
+    }
+
+    @Test
+    void checkCalendarAvailabilityReturnsAvailableSlots() {
+        String res = tools.checkCalendarAvailability("Hozir bo'sh vaqtlarni tekshiraman", "2026-10-15", "Konsultatsiya");
+        assertThat(res).contains("2026-10-15 sanasi uchun quyidagi bo'sh vaqtlar mavjud");
+        assertThat(session.toolReplies()).isEqualTo("Hozir bo'sh vaqtlarni tekshiraman");
+    }
+
+    @Test
+    void cancelAppointmentRecordsCancellation() {
+        String res = tools.cancelAppointment("Uchrashuvingiz bekor qilindi", "2026-10-15", "14:00", "Vaqt to'g'ri kelmadi");
+        assertThat(res).contains("Uchrashuv muvaffaqiyatli bekor qilindi");
+        assertThat(session.toolReplies()).isEqualTo("Uchrashuvingiz bekor qilindi");
+        assertThat(session.outcome().get("appointmentCancelled")).isEqualTo(true);
+        assertThat(session.outcome().get("cancelledAppointmentDate")).isEqualTo("2026-10-15");
+        assertThat(session.outcome().get("cancelledAppointmentTime")).isEqualTo("14:00");
+        assertThat(session.outcome().get("cancellationReason")).isEqualTo("Vaqt to'g'ri kelmadi");
     }
 }

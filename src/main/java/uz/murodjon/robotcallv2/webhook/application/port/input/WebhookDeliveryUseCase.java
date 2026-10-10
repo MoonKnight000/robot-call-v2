@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.webhook.application.port.input;
 
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.stream.EventSink;
+import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
 import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
 import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDeliveryFilter;
 
@@ -43,4 +45,9 @@ public interface WebhookDeliveryUseCase {
      * the new {@code lastError}.
      */
     WebhookDeliveryRow retryDelivery(long companyId, long id);
+
+    /**
+     * Subscribes {@code sink} to the live webhook delivery stream for {@code companyId}.
+     */
+    EventSubscription subscribe(long companyId, EventSink sink);
 }

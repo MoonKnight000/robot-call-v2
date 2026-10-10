@@ -63,4 +63,9 @@ public class ContactControllerImpl implements ContactController {
     public ResponseEntity<ResponseData<ContactErasureResponse>> eraseData(long companyId, String phone, boolean confirm) {
         return ResponseEntity.ok(ResponseData.ok(contactUseCase.eraseSubjectData(companyId, phone, confirm)));
     }
+
+    @Override
+    public ResponseEntity<ResponseData<ContactScrubResponse>> scrub(long companyId, ContactScrubRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(contactUseCase.scrubPhones(companyId, request)));
+    }
 }

@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCas
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundCallerRule;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.enums.CallerRuleAction;
+import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
 import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessHoursVerdict;
 
@@ -95,16 +96,51 @@ public class InboundCallGate {
                 ? businessScheduleUseCase.evaluate(companyId, route.scheduleId(), now)
                 : businessScheduleUseCase.evaluateDailyWindow(companyId, route.businessHoursStart(),
                 route.businessHoursEnd(), now);
-        if (!verdict.open() || route.aiAgentId() == null) {
-            String message = route.fallbackMessage() != null && !route.fallbackMessage().isBlank()
-                    ? route.fallbackMessage()
-                    : verdict.open() ? null
-                    : PbxPhrases.afterHours(language,
-                    now.atZone(businessScheduleUseCase.findZone(companyId, route.scheduleId())),
-                    verdict.nextOpeningAt(), verdict.holidayName());
-            return InboundDecision.closed(route, message, language, vip, !verdict.open());
+
+        if (!verdict.open()) {
+            if (route.afterHoursAction() == InboundAfterHoursAction.AI_AGENT) {
+                Long nightAgentId = parseLongOrNull(route.afterHoursDestination());
+                Long effectiveAgentId = nightAgentId != null ? nightAgentId : route.aiAgentId();
+                if (effectiveAgentId != null) {
+                    log.info("Inbound call to DID {} outside business hours routed to after-hours AI agent {}", did, effectiveAgentId);
+                    return InboundDecision.agent(route.withAiAgentId(effectiveAgentId), language, vip);
+                }
+            }
+
+            String message;
+            if (route.fallbackMessage() != null && !route.fallbackMessage().isBlank()) {
+                message = route.fallbackMessage();
+            } else {
+                String afterHoursNotice = PbxPhrases.afterHours(language,
+                        now.atZone(businessScheduleUseCase.findZone(companyId, route.scheduleId())),
+                        verdict.nextOpeningAt(), verdict.holidayName());
+                if (route.afterHoursAction() == InboundAfterHoursAction.VOICEMAIL) {
+                    message = afterHoursNotice + " " + PbxPhrases.voicemailGreeting(language);
+                } else {
+                    message = afterHoursNotice;
+                }
+            }
+            return InboundDecision.closed(route, message, language, vip, true);
         }
+
+        if (route.aiAgentId() == null) {
+            String message = route.fallbackMessage() != null && !route.fallbackMessage().isBlank()
+                    ? route.fallbackMessage() : null;
+            return InboundDecision.closed(route, message, language, vip, false);
+        }
+
         return InboundDecision.agent(route, language, vip);
+    }
+
+    private static Long parseLongOrNull(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private InboundCallerRule findRule(long companyId, String callerNumber) {

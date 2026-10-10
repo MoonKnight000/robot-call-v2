@@ -273,10 +273,11 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 >   Live uchun bu `GEMINI_LIVE_MODEL`, ya'ni o'sha `gemini-3.8-live-extended-thinking`. Shuning
 >   uchun forma yangi agentda shu qatorni oldindan tanlangan qilib ko'rsatishi mumkin.
 > - `fastLlmModel` — mijoz juda qisqa javob bergan turn (`ha`, `xo'p`, `tushunarli`) shu
->   arzonroq modelda javoblanadi; qolgan hamma turn `llmModel` da qoladi. Faqat
->   `CASCADE` uchun — `REALTIME` engine'da turn-ma-turn model tanlash yo'q. Katalogdan
->   tanlanadi va `llmModel` bilan bir xil tekshiruvdan o'tadi (noma'lum id →
->   `400 AI_MODEL_UNKNOWN`). Bo'sh qoldirilsa o'rnatmaning umumiy sozlamasi
+>   arzonroq modelda javoblanadi; qolgan hamma turn `llmModel` da qoladi. Agentning
+>   `pipelineMode` idan qat'i nazar **doim `CASCADE` katalogidan** tanlanadi
+>   (`/api/ai-models?kind=LLM&mode=CASCADE`, masalan `gemini-3.5-flash-lite`): `REALTIME`
+>   agentda ham u barge-in qarorlarida va realtime ulanmay cascade'ga tushgan qo'ng'iroqda
+>   ishlaydi. Realtime (Live) model id'si yoki noma'lum id → `400 AI_MODEL_UNKNOWN`. Bo'sh qoldirilsa o'rnatmaning umumiy sozlamasi
 >   (`DIALOG_FAST_MODEL`) ishlaydi. **Alohida o'chirish tugmasi yo'q:** arzon modelni
 >   umuman xohlamagan agent `fastLlmModel` ga `llmModel` bilan bir xil id yozadi.
 >   Raqam aytilgan javob ("yetti", "20") qisqa bo'lsa ham doim `llmModel` ga boradi — o'sha

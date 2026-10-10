@@ -196,8 +196,13 @@ public class RealtimeSystemPromptFactory {
                     .append("Ism bilan murojaat qilganda doim o'zbekona hurmat bilan \"aka\"/\"opa\" qo'shib gapir (masalan: \"Murodjon aka\"), familiyani aytma.\n");
         }
         sb.append("Suhbatda allaqachon aytgan faktingni (raqam, ")
-                .append("summa, sana) qayta aytma; mijoz eshitmagan bo'lsa faqat ")
-                .append("so'ralgan qismini takrorla.\n");
+                .append("summa, sana) qayta aytma. ")
+                .append("LEKIN mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\" desa yoki qayta aytishni so'rasa — ")
+                .append("keyingi bosqichga o'tib ketma, transitionTo chaqirma! ")
+                .append("Eshitmagan bo'lsa — oxirgi aytgan gapingni (qarz summasi, sana, savol) xushmuomala qilib qaytadan aniq takrorla: ")
+                .append("\"Eshitilmadimi? Qaytadan aytaman: ...\". ")
+                .append("Tushunmagan bo'lsa (\"aaa?\", \"qanaqa?\", \"tushunmadim\") — so'zma-so'z takrorlama, ")
+                .append("o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntir: \"Kechirasiz, tushuntiray: ...\".\n");
 
         sb.append("OG'ZAKI SHAKL: \"amalga oshirasiz\" emas — oddiy fe'l (\"qilasiz\"); ")
                 .append("\"ma'lumot beraman\" emas — \"aytaman\".\n");

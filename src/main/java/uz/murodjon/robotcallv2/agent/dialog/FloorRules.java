@@ -19,14 +19,19 @@ final class FloorRules {
     private static final Set<String> TAKING_THE_FLOOR = Set.of(
             "yoq", "kerakmas", "kerak", "emas", "toxtang", "toxta", "shoshmang", "kuting",
             "nima", "nega", "qanaqa", "qanday", "qachon", "qayer", "qayerda", "kim", "qancha", "nimaga",
+            "eshiting", "bilsangiz", "gapim", "gapiray", "savol", "adashdingiz", "notogri", "boshqa",
+            "alo", "eshityapsizmi", "gapiryapman",
             "нет", "не", "стоп", "подождите", "погодите", "стойте", "что", "почему", "зачем", "как",
-            "когда", "где", "кто", "сколько",
+            "когда", "где", "кто", "сколько", "послушайте", "вопрос", "минуточку", "ошиблись",
+            "неправильно", "другой", "алло", "слышите", "говорю",
             "no", "stop", "wait", "what", "why");
 
     private static final Set<String> LISTENING = Set.of(
             "ha", "xa", "haa", "aha", "ahha", "mhm", "mm", "mmm", "hm", "xop", "xopp", "mayli",
-            "yaxshi", "tushunarli", "tushundim", "eshitaman", "ok", "okey",
+            "yaxshi", "tushunarli", "tushundim", "eshitaman", "eshityapman", "albatta", "shunday",
+            "togri", "davom", "eting", "gapiravering", "ok", "okey",
             "да", "ага", "угу", "ну", "так", "ясно", "понятно", "хорошо", "конечно", "слушаю",
+            "продолжайте", "верно", "точно", "понял", "говорите",
             "yes", "yeah", "uh", "huh");
 
     private FloorRules() {

@@ -40,4 +40,12 @@ public record InboundRoute(
         boolean enabled,
         Instant createdAt
 ) {
+
+    /** This route answered by {@code agentId} instead — every other setting is kept. */
+    public InboundRoute withAiAgentId(Long agentId) {
+        return new InboundRoute(id, companyId, didNumber, agentId, routeType, targetDestination, queueStrategy,
+                ringTimeoutSec, failoverAction, failoverDestination, afterHoursAction, afterHoursDestination,
+                ivrMenuConfig, businessHoursStart, businessHoursEnd, fallbackMessage, callbackCampaignId,
+                scheduleId, callFlowId, enabled, createdAt);
+    }
 }

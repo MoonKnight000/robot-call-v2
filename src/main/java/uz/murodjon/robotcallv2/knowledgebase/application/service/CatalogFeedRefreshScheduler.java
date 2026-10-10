@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Fetches a URL catalog feed again once its {@code refreshMinutes} have passed
@@ -51,12 +52,13 @@ public class CatalogFeedRefreshScheduler {
 
     private void enqueueDueFeeds() {
         Instant now = clock.instant();
-        for (KnowledgeSource source : sourceRepository.findRefreshable(
-                KnowledgeSourceType.STRUCTURED_FEED, KnowledgeSourceStatus.INDEXED)) {
-            if (source.isDueForRefresh(now)) {
-                indexingService.enqueue(sourceRepository.save(source.queuedForIndexing()));
-                log.info("[company {}] Catalog feed {} ('{}') is due, queued for refresh",
-                        source.companyId(), source.id(), source.name());
+        for (KnowledgeSourceType type : List.of(KnowledgeSourceType.STRUCTURED_FEED, KnowledgeSourceType.SITEMAP)) {
+            for (KnowledgeSource source : sourceRepository.findRefreshable(type, KnowledgeSourceStatus.INDEXED)) {
+                if (source.isDueForRefresh(now)) {
+                    indexingService.enqueue(sourceRepository.save(source.queuedForIndexing()));
+                    log.info("[company {}] {} source {} ('{}') is due, queued for refresh",
+                            source.companyId(), type, source.id(), source.name());
+                }
             }
         }
     }

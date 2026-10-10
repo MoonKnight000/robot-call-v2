@@ -14,3 +14,8 @@ Authorization: Bearer {{auth_token}}
 ### 2. Send a FAILED delivery once more
 POST http://localhost:8080/api/webhook-deliveries/1/resend
 Authorization: Bearer {{auth_token}}
+
+### 3. Developer live SSE stream of webhook deliveries
+GET http://localhost:8080/api/webhook-deliveries/listen
+Accept: text/event-stream
+Authorization: Bearer {{auth_token}}

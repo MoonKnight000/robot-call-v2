@@ -166,6 +166,16 @@ class AiAgentEngineGuard {
     }
 
     /**
+     * The cheaper text model for barge-in decisions and short answers, or null for the
+     * deployment's own. It is always a cascade LLM, whatever pipeline the agent runs: a
+     * realtime call that falls back runs on the cascade, and a Live model cannot answer
+     * a text request — so it is checked against the cascade catalog, not the agent's mode.
+     */
+    String requireKnownFastModel(String fastLlmModel) {
+        return requireKnownModel(PipelineMode.CASCADE, null, fastLlmModel);
+    }
+
+    /**
      * The recognition model this agent listens with, or null for its provider's own.
      *
      * <p>Checked against the same catalog rows the form was filled from, for the reason

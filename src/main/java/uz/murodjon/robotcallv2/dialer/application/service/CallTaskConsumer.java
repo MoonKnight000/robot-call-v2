@@ -19,6 +19,8 @@ import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
+import uz.murodjon.robotcallv2.dialer.application.port.output.PhoneNumberScrubberPort;
+import uz.murodjon.robotcallv2.dialer.domain.entity.ScrubResult;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
@@ -52,6 +54,7 @@ public class CallTaskConsumer {
     private final CompanyUseCase companyUseCase;
     /** This instance's media ports — what a call answered here will need one of. */
     private final RtpPortAllocator portAllocator;
+    private final PhoneNumberScrubberPort phoneNumberScrubber;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
                             CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
@@ -60,6 +63,20 @@ public class CallTaskConsumer {
                             OutboundCallPreparer outboundCallPreparer, CallBillingUseCase callBilling,
                             DialerService dialerService, CompanyUseCase companyUseCase,
                             RtpPortAllocator portAllocator) {
+        this(ariService, registry, campaignUseCase, campaignTargetUseCase, audit, dialerState,
+                doNotCallUseCase, callAttemptUseCase, outboundCallPreparer, callBilling, dialerService,
+                companyUseCase, portAllocator, new uz.murodjon.robotcallv2.dialer.domain.service.PhoneNumberScrubber()::scrub);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
+                            CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
+                            AuditUseCase audit, DialerState dialerState,
+                            DoNotCallUseCase doNotCallUseCase, CallAttemptUseCase callAttemptUseCase,
+                            OutboundCallPreparer outboundCallPreparer, CallBillingUseCase callBilling,
+                            DialerService dialerService, CompanyUseCase companyUseCase,
+                            RtpPortAllocator portAllocator,
+                            PhoneNumberScrubberPort phoneNumberScrubber) {
         this.dialerService = dialerService;
         this.companyUseCase = companyUseCase;
         this.ariService = ariService;
@@ -73,6 +90,7 @@ public class CallTaskConsumer {
         this.outboundCallPreparer = outboundCallPreparer;
         this.callBilling = callBilling;
         this.portAllocator = portAllocator;
+        this.phoneNumberScrubber = phoneNumberScrubber;
     }
 
     @RabbitListener(queues = CallTask.QUEUE)
@@ -117,6 +135,19 @@ public class CallTaskConsumer {
                 return;
             }
 
+            // Guard: pre-call phone number scrubbing (format, unallocated prefix, reachability)
+            ScrubResult scrubResult = phoneNumberScrubber.scrub(task.phone());
+            if (!scrubResult.valid()) {
+                log.info("Target {} ({}) scrubbed as invalid ({}) — skipping call origination",
+                        task.targetId(), PhoneMasker.mask(task.phone()), scrubResult.reason());
+                state.release(task.companyId(), task.campaignId());
+                callBilling.releaseReservation(task.companyId(), task.targetId());
+                callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
+                        task.language(), Disposition.CARRIER_REJECTED, "scrubbed: " + scrubResult.reason());
+                campaignTargetUseCase.applyOutcome(task.companyId(), task.targetId(), Disposition.CARRIER_REJECTED);
+                return;
+            }
+
             // The dialer only claims for active companies, but a task queued before a suspension
             // would still be dialled without this.
             Company company = companyUseCase.findById(task.companyId());
@@ -143,6 +174,15 @@ public class CallTaskConsumer {
                 state.release(task.companyId(), task.campaignId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
                 campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now());
+                return;
+            }
+
+            if (campaign != null && !dialerService.isWithinDialWindowForRecipient(campaign, task.phone())) {
+                log.info("Target {} ({}) not dialled: outside recipient local dial window / quiet hours",
+                        task.targetId(), PhoneMasker.mask(task.phone()));
+                state.release(task.companyId(), task.campaignId());
+                callBilling.releaseReservation(task.companyId(), task.targetId());
+                campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now().plus(java.time.Duration.ofMinutes(30)));
                 return;
             }
 

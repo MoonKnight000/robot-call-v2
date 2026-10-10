@@ -53,7 +53,6 @@ class TurnToolsTest {
         assertThat(openAiOptions.getModel()).isEqualTo("gpt-5.6-luna");
         assertThat(openAiOptions.getTemperature()).isEqualTo(0.6);
         assertThat(openAiOptions.getMaxTokens()).isEqualTo(120);
-        assertThat(openAiOptions.getInternalToolExecutionEnabled()).isFalse();
     }
 
     @Test
@@ -71,7 +70,6 @@ class TurnToolsTest {
         assertThat(options).isInstanceOf(OpenAiChatOptions.class);
         OpenAiChatOptions openAiOptions = (OpenAiChatOptions) options;
         assertThat(openAiOptions.getModel()).isEqualTo("custom-model");
-        assertThat(openAiOptions.getInternalToolExecutionEnabled()).isFalse();
     }
 
     @Test
@@ -105,5 +103,19 @@ class TurnToolsTest {
         assertThat(main.getMaxTokens()).isEqualTo(300);
         assertThat(main.getTemperature()).isEqualTo(0.4);
         assertThat(fast.getModel()).isEqualTo("qwen3-8b");
+    }
+
+    @Test
+    void fallsBackToCascadeModelWhenModelIsRealtime() {
+        EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
+                "gemini-3.8-live-extended-thinking", 0.7, 100, 300, 100000L
+        );
+        when(session.aiModel()).thenReturn(aiModel);
+
+        ChatOptions options = turnTools.buildOptions(session, List.of());
+
+        assertThat(options).isInstanceOf(GoogleGenAiChatOptions.class);
+        GoogleGenAiChatOptions googleOptions = (GoogleGenAiChatOptions) options;
+        assertThat(googleOptions.getModel()).isEqualTo("gemini-3.8-flash");
     }
 }

@@ -54,7 +54,7 @@ class ArchitectureTest {
             "say", "schedule", "search", "send", "set", "settle", "setup", "simulate", "start",
             "store", "subscribe", "sum", "sweep", "switch", "sync", "takeover", "test", "touch",
             "transfer", "trigger", "unhold", "update", "upload", "upsert", "validate", "verify",
-            "whisper", "write");
+            "whisper", "write", "scrub", "diff", "promote", "ask", "track", "untrack", "discover", "get", "query", "acquire");
 
     /** §2/§4: a service sees ports; JPA and every other adapter stay in infrastructure. */
     @ArchTest

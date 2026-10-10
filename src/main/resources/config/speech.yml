@@ -41,6 +41,8 @@ voice-agent:
       # Off until a call confirms the model accepts them: an unknown field fails the setup.
       affective-dialog: ${REALTIME_GEMINI_AFFECTIVE_DIALOG:false}
       proactive-audio: ${REALTIME_GEMINI_PROACTIVE_AUDIO:false}
+      # LOW, MEDIUM, or HIGH for models that require it (e.g. gemini-3.8-live-extended-thinking).
+      thinking-level: ${REALTIME_GEMINI_THINKING_LEVEL:}
     open-ai:
       api-key: ${OPENAI_API_KEY:}
       url: ${REALTIME_OPENAI_URL:wss://api.openai.com/v1/realtime}

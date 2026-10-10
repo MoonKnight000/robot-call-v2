@@ -191,7 +191,7 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
      * a {@code FAILED} row minutes later.
      */
     private static void validate(CreateKnowledgeSourceItem item) {
-        if (item.sourceType() == KnowledgeSourceType.URL) {
+        if (item.sourceType() == KnowledgeSourceType.URL || item.sourceType() == KnowledgeSourceType.SITEMAP) {
             if (item.url() == null || item.url().isBlank()) {
                 throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_URL_REQUIRED);
             }

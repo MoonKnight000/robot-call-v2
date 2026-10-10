@@ -158,6 +158,30 @@ class WebhookDeliveryServiceTest {
         verify(repository, never()).claimFailed(anyLong(), any());
     }
 
+    @Test
+    void deliveryPublishesToSubscriber() throws Exception {
+        java.util.List<String> receivedEvents = new java.util.concurrent.CopyOnWriteArrayList<>();
+        uz.murodjon.robotcallv2.shared.stream.EventSink sink = new uz.murodjon.robotcallv2.shared.stream.EventSink() {
+            @Override
+            public void send(String eventName, Object payload) {
+                receivedEvents.add(eventName);
+            }
+
+            @Override
+            public void sendHeartbeat() {
+            }
+        };
+
+        uz.murodjon.robotcallv2.shared.stream.EventSubscription sub = service.subscribe(COMPANY_ID, sink);
+        assertThat(receivedEvents).contains("connected");
+
+        service.deliver(COMPANY_ID, "POST_CALL", PUBLIC_URL, Map.of(), Map.of("test", 1));
+
+        Thread.sleep(80);
+        assertThat(receivedEvents).contains("webhook");
+        sub.cancel();
+    }
+
     private static WebhookDelivery storedDelivery(UUID deliveryId, WebhookDeliveryStatus status, int attempts) {
         return new WebhookDelivery(5L, deliveryId, COMPANY_ID, "POST_CALL", "hook.example", "sealed",
                 Map.of(), status, attempts, null, "503", NOW, null);

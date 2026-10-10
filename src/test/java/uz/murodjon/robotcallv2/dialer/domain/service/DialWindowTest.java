@@ -1,0 +1,97 @@
+package uz.murodjon.robotcallv2.dialer.domain.service;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class DialWindowTest {
+
+    private final ZoneId tashkentZone = ZoneId.of("Asia/Tashkent");
+
+    private Campaign createCampaign(LocalTime start, LocalTime end) {
+        return new Campaign(
+                1L, "Test Campaign", CampaignType.DEBT_COLLECTION, CampaignStatus.ACTIVE,
+                start, end, Set.of(), 3, 24, 5, 0, 7L, 1L, null,
+                RecurrenceType.ONCE, null, null, false, null
+        );
+    }
+
+    @Test
+    @DisplayName("RecipientTimezoneResolver maps regional and international prefixes correctly")
+    void mapsRecipientTimezones() {
+        assertEquals(ZoneId.of("Asia/Tashkent"), RecipientTimezoneResolver.resolve("+998901234567", tashkentZone));
+        assertEquals(ZoneId.of("Asia/Almaty"), RecipientTimezoneResolver.resolve("+77011234567", tashkentZone));
+        assertEquals(ZoneId.of("Europe/Moscow"), RecipientTimezoneResolver.resolve("+79031234567", tashkentZone));
+        assertEquals(ZoneId.of("Europe/London"), RecipientTimezoneResolver.resolve("+447123456789", tashkentZone));
+        assertEquals(ZoneId.of("America/New_York"), RecipientTimezoneResolver.resolve("+12125551234", tashkentZone));
+        assertEquals(tashkentZone, RecipientTimezoneResolver.resolve(null, tashkentZone));
+    }
+
+    @Test
+    @DisplayName("DialWindow isOpen respects company holiday")
+    void respectsCompanyHoliday() {
+        LocalDate today = LocalDate.of(2026, 10, 10);
+        Instant now = today.atTime(12, 0).atZone(tashkentZone).toInstant();
+        Clock clock = Clock.fixed(now, tashkentZone);
+
+        Campaign campaign = createCampaign(LocalTime.of(9, 0), LocalTime.of(20, 0));
+        CompanyConfig config = CompanyConfig.settings(
+                LocalTime.of(9, 0), LocalTime.of(20, 0), "Asia/Tashkent",
+                null, List.of(), "", 3, 1, true, false,
+                List.of(today), 60
+        );
+
+        assertFalse(DialWindow.isOpen(campaign, config, clock));
+    }
+
+    @Test
+    @DisplayName("isOpenForRecipient blocks calls outside recipient local timezone daytime hours")
+    void blocksRecipientInQuietHours() {
+        // 10:00 AM Tashkent time (UTC+5) is 05:00 AM in London (UTC+0).
+        // 05:00 is outside the daytime dial window (09:00 - 20:00).
+        LocalDate today = LocalDate.of(2026, 10, 10);
+        Instant now = today.atTime(10, 0).atZone(tashkentZone).toInstant();
+        Clock clock = Clock.fixed(now, tashkentZone);
+
+        Campaign campaign = createCampaign(LocalTime.of(9, 0), LocalTime.of(20, 0));
+        CompanyConfig config = CompanyConfig.defaults();
+
+        // Calling local Uzbekistan number at 10:00 AM Tashkent is open
+        assertTrue(DialWindow.isOpenForRecipient(campaign, config, "+998901234567", clock));
+
+        // Calling UK number (+44) when it's 5:00 AM in London is blocked by quiet hours
+        assertFalse(DialWindow.isOpenForRecipient(campaign, config, "+447123456789", clock));
+    }
+
+    @Test
+    @DisplayName("isOpenForRecipient allows recipient when recipient local time is within window")
+    void allowsRecipientWhenWithinLocalWindow() {
+        // 15:00 Tashkent time (UTC+5) is 10:00 AM in London (UTC+0).
+        // 10:00 is within 09:00 - 20:00.
+        LocalDate today = LocalDate.of(2026, 10, 10);
+        Instant now = today.atTime(15, 0).atZone(tashkentZone).toInstant();
+        Clock clock = Clock.fixed(now, tashkentZone);
+
+        Campaign campaign = createCampaign(LocalTime.of(9, 0), LocalTime.of(20, 0));
+        CompanyConfig config = CompanyConfig.defaults();
+
+        assertTrue(DialWindow.isOpenForRecipient(campaign, config, "+447123456789", clock));
+    }
+}

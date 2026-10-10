@@ -2,8 +2,10 @@ package uz.murodjon.robotcallv2.webhook.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.shared.api.SseEventStreams;
 import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
 import uz.murodjon.robotcallv2.webhook.application.port.input.WebhookDeliveryUseCase;
 import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDeliveryFilter;
@@ -26,5 +28,10 @@ public class WebhookDeliveryControllerImpl implements WebhookDeliveryController 
     @Override
     public ResponseEntity<ResponseData<WebhookDeliveryRow>> resend(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(webhookDeliveryUseCase.retryDelivery(companyId, id)));
+    }
+
+    @Override
+    public SseEmitter listen(long companyId) {
+        return SseEventStreams.open(sink -> webhookDeliveryUseCase.subscribe(companyId, sink));
     }
 }

@@ -44,6 +44,9 @@ package uz.murodjon.robotcallv2.agent.realtime;
  * @param proactiveAudio let the model stay silent on audio that is not addressed to it —
  *                 a television, someone else in the room ({@code proactivity.proactiveAudio}).
  *                 Off by default for the same reason
+ * @param thinkingLevel thinking level for models that require or support it (e.g.
+ *                 {@code gemini-3.8-live-extended-thinking}): {@code LOW}, {@code MEDIUM},
+ *                 {@code HIGH}. Blank defaults to {@code LOW} for extended-thinking models
  */
 public record GeminiLiveProperties(
         String apiKey,
@@ -57,6 +60,7 @@ public record GeminiLiveProperties(
         int silenceDurationMs,
         int contextCompressionTriggerTokens,
         boolean affectiveDialog,
-        boolean proactiveAudio
+        boolean proactiveAudio,
+        String thinkingLevel
 ) {
 }

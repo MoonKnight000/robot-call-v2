@@ -107,7 +107,8 @@ public final class SpeechSanitizer {
         }
 
         // Words containing specific hallucinated phrases
-        if (lower.contains("dynamic_thought") || lower.contains("thought_or_fallback") || lower.contains("thoughtsignature")) {
+        if (lower.contains("dynamic_thought") || lower.contains("thought_or_fallback") || lower.contains("thoughtsignature")
+                || lower.contains("[ism]") || lower.contains("[name]")) {
             return true;
         }
 

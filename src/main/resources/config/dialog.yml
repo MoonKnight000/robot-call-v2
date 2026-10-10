@@ -106,3 +106,11 @@ voice-agent:
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}
     # Deployment-wide token budget of one call, when its AiModelConfig sets none; 0 = no budget.
     max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:0}
+    test-context:
+      client-name: ${TEST_CLIENT_NAME:Murodjon}
+      debt-amount: ${TEST_DEBT_AMOUNT:1500000}
+      currency: ${TEST_CURRENCY:so'm}
+      due-date: ${TEST_DUE_DATE:2026-10-01}
+      contract-number: ${TEST_CONTRACT_NUMBER:12345}
+      goal: ${TEST_GOAL:Qarzdorlik bo'yicha to'lov sanasini kelishish}
+      scenario-key: ${TEST_SCENARIO_KEY:debt-collection}

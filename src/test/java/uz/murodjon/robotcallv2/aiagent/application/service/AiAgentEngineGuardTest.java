@@ -112,6 +112,20 @@ class AiAgentEngineGuardTest {
                 ErrorCode.REALTIME_MODEL_PROVIDER_MISMATCH);
     }
 
+    /** The fast model answers text turns, so a realtime agent picks it from the cascade catalog. */
+    @Test
+    void theFastModelIsCheckedAgainstTheCascadeCatalog() {
+        when(aiModelUseCase.isSelectable(AiModelKind.LLM, PipelineMode.CASCADE, "gemini-3.5-flash-lite")).thenReturn(true);
+
+        assertThat(guard.requireKnownFastModel(" gemini-3.5-flash-lite ")).isEqualTo("gemini-3.5-flash-lite");
+    }
+
+    @Test
+    void aLiveModelIsNotAFastModel() {
+        assertRefused(() -> guard.requireKnownFastModel("gemini-3.8-live-extended-thinking"),
+                ErrorCode.AI_MODEL_UNKNOWN);
+    }
+
     @Test
     void aModelThisBuildCannotRunIsUnknown() {
         assertRefused(() -> guard.requireKnownModel(PipelineMode.CASCADE, null, "gpt-9"), ErrorCode.AI_MODEL_UNKNOWN);

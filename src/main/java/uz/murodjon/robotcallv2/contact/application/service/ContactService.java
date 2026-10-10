@@ -54,6 +54,8 @@ public class ContactService implements ContactUseCase {
     private final OutboxMessageUseCase outboxMessageUseCase;
     private final FileStorageUseCase fileStorageService;
     private final ContactMapper contactMapper;
+    private final uz.murodjon.robotcallv2.dialer.application.port.input.PhoneNumberScrubberUseCase phoneNumberScrubber;
+    private final ObjectProvider<uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase> doNotCallUseCaseProvider;
 
     public ContactService(ContactRepository contactRepository,
                           ObjectProvider<ReportUseCase> reportUseCaseProvider,
@@ -65,6 +67,26 @@ public class ContactService implements ContactUseCase {
                           OutboxMessageUseCase outboxMessageUseCase,
                           FileStorageUseCase fileStorageService,
                           ContactMapper contactMapper) {
+        this(contactRepository, reportUseCaseProvider, applicationEventPublisher, auditService,
+                privacyRepository, clientMemoryUseCase, callTranscriptUseCase, outboxMessageUseCase,
+                fileStorageService, contactMapper,
+                null,
+                null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ContactService(ContactRepository contactRepository,
+                          ObjectProvider<ReportUseCase> reportUseCaseProvider,
+                          ApplicationEventPublisher applicationEventPublisher,
+                          AuditUseCase auditService,
+                          ContactPrivacyRepository privacyRepository,
+                          ClientMemoryUseCase clientMemoryUseCase,
+                          CallTranscriptUseCase callTranscriptUseCase,
+                          OutboxMessageUseCase outboxMessageUseCase,
+                          FileStorageUseCase fileStorageService,
+                          ContactMapper contactMapper,
+                          uz.murodjon.robotcallv2.dialer.application.port.input.PhoneNumberScrubberUseCase phoneNumberScrubber,
+                          ObjectProvider<uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase> doNotCallUseCaseProvider) {
         this.privacyRepository = privacyRepository;
         this.clientMemoryUseCase = clientMemoryUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -75,6 +97,8 @@ public class ContactService implements ContactUseCase {
         this.applicationEventPublisher = applicationEventPublisher;
         this.auditService = auditService;
         this.contactMapper = contactMapper;
+        this.phoneNumberScrubber = phoneNumberScrubber != null ? phoneNumberScrubber : new uz.murodjon.robotcallv2.dialer.domain.service.PhoneNumberScrubber()::scrub;
+        this.doNotCallUseCaseProvider = doNotCallUseCaseProvider;
     }
 
     @Override
@@ -221,5 +245,80 @@ public class ContactService implements ContactUseCase {
      */
     private static String erasedPhone(long companyId, String phone) {
         return "x" + Tokens.hash(companyId + ":" + phone).substring(0, 16);
+    }
+
+    @Override
+    public ContactScrubResponse scrubPhones(long companyId, ContactScrubRequest request) {
+        if (request == null || request.phones() == null || request.phones().isEmpty()) {
+            return new ContactScrubResponse(0, 0, 0, 0, List.of());
+        }
+
+        List<uz.murodjon.robotcallv2.dialer.domain.entity.ScrubResult> scrubResults = new ArrayList<>(request.phones().size());
+        List<String> validNormalized = new ArrayList<>();
+
+        for (String raw : request.phones()) {
+            uz.murodjon.robotcallv2.dialer.domain.entity.ScrubResult res = phoneNumberScrubber.scrub(raw);
+            scrubResults.add(res);
+            if (res.valid()) {
+                validNormalized.add(res.normalizedPhone());
+            }
+        }
+
+        uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase dnc =
+                doNotCallUseCaseProvider != null ? doNotCallUseCaseProvider.getIfAvailable() : null;
+        Set<String> blocked = (dnc != null && !validNormalized.isEmpty())
+                ? dnc.findBlockedPhones(companyId, validNormalized)
+                : Set.of();
+
+        List<ScrubbedPhoneItem> items = new ArrayList<>(request.phones().size());
+        int validCount = 0;
+        int invalidCount = 0;
+        int dncCount = 0;
+
+        for (int i = 0; i < request.phones().size(); i++) {
+            String raw = request.phones().get(i);
+            uz.murodjon.robotcallv2.dialer.domain.entity.ScrubResult res = scrubResults.get(i);
+
+            if (!res.valid()) {
+                invalidCount++;
+                items.add(new ScrubbedPhoneItem(
+                        raw,
+                        res.normalizedPhone(),
+                        false,
+                        res.status(),
+                        res.operatorOrRegion(),
+                        res.reason(),
+                        false
+                ));
+            } else if (blocked.contains(res.normalizedPhone())) {
+                dncCount++;
+                invalidCount++;
+                items.add(new ScrubbedPhoneItem(
+                        raw,
+                        res.normalizedPhone(),
+                        false,
+                        uz.murodjon.robotcallv2.dialer.domain.enums.ScrubStatus.BLOCKED,
+                        res.operatorOrRegion(),
+                        "number is on Do-Not-Call list",
+                        true
+                ));
+            } else {
+                validCount++;
+                items.add(new ScrubbedPhoneItem(
+                        raw,
+                        res.normalizedPhone(),
+                        true,
+                        uz.murodjon.robotcallv2.dialer.domain.enums.ScrubStatus.VALID,
+                        res.operatorOrRegion(),
+                        null,
+                        false
+                ));
+            }
+        }
+
+        auditService.record(companyId, "CONTACTS_SCRUB", "contact", null,
+                "scrubbed " + request.phones().size() + " numbers (" + validCount + " valid, " + invalidCount + " invalid, " + dncCount + " dnc)");
+
+        return new ContactScrubResponse(request.phones().size(), validCount, invalidCount, dncCount, items);
     }
 }

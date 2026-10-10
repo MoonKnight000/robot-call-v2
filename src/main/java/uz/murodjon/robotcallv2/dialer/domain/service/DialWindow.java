@@ -38,6 +38,26 @@ public final class DialWindow {
         return config == null || withinRange(now, config.dialWindowStart(), config.dialWindowEnd());
     }
 
+    /**
+     * Evaluates whether calling {@code recipientPhone} is allowed right now:
+     * (1) the company's own dial window and holidays must be open, AND
+     * (2) the recipient's local time (in their regional timezone) must be within daytime hours (08:00 - 20:00).
+     */
+    public static boolean isOpenForRecipient(Campaign campaign, CompanyConfig config, String recipientPhone, Clock clock) {
+        if (!isOpen(campaign, config, clock)) {
+            return false;
+        }
+        java.time.ZoneId companyZone = config != null ? config.zoneId() : clock.getZone();
+        java.time.ZoneId recipientZone = RecipientTimezoneResolver.resolve(recipientPhone, companyZone);
+        if (recipientZone.equals(companyZone)) {
+            return true;
+        }
+        LocalTime recipientLocalTime = LocalTime.now(clock.withZone(recipientZone));
+        LocalTime start = campaign.dialWindowStart() != null ? campaign.dialWindowStart() : LocalTime.of(8, 0);
+        LocalTime end = campaign.dialWindowEnd() != null ? campaign.dialWindowEnd() : LocalTime.of(20, 0);
+        return withinRange(recipientLocalTime, start, end);
+    }
+
     private static boolean withinRange(LocalTime now, LocalTime start, LocalTime end) {
         if (start == null || end == null) {
             return true;

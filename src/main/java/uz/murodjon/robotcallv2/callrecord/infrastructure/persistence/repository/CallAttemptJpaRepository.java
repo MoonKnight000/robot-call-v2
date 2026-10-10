@@ -106,7 +106,8 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
     @Query("SELECT a.company.id FROM CallAttemptEntity a WHERE a.id = :id")
     Long findCompanyIdById(@Param("id") long id);
 
-    Optional<CallAttemptEntity> findByIdAndCompanyId(long id, long companyId);
+    @Query("SELECT a FROM CallAttemptEntity a WHERE a.id = :id AND a.company.id = :companyId")
+    Optional<CallAttemptEntity> findByIdAndCompanyId(@Param("id") long id, @Param("companyId") long companyId);
 
     @Query("SELECT a.id FROM CallAttemptEntity a WHERE a.company.id = :companyId AND a.target.id = :targetId "
             + "AND a.startedAt >= :since ORDER BY a.startedAt DESC, a.id DESC")

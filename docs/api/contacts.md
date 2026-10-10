@@ -1,4 +1,4 @@
-﻿# Kontaktlar API
+# Kontaktlar API
 
 `uz.murodjon.robotcallv2.contact` · huquq: **CONTACT_READ** / **CONTACT_EDIT**
 
@@ -211,3 +211,87 @@ qo'shadi. Body yo'q.
 
 Butun opt-out ro'yxatini ko'rish/undan olib tashlash uchun
 [do-not-call.md](do-not-call.md)ga qarang.
+
+---
+
+## `POST /api/contacts/scrub` — Telefon raqamlarini ommaviy tekshirish va tozalash (Batch Scrubbing) {#scrub}
+
+Kompaniya qo'ng'iroq kampaniyasini boshlashdan oldin raqamlar ro'yxatini (E.164 formati, O'zbekiston/xalqaro prefikslar, operator ajratilishi hamda kompaniyaning Do-Not-Call ro'yxatida mavjudligi) bitta so'rovda tekshirib oladi.
+
+Huquq: **CONTACT_READ**
+
+**Request body** (`ContactScrubRequest`):
+```json
+{
+  "phones": [
+    "+998901234567",
+    "+998011234567",
+    "998931112233",
+    "+12125551234",
+    "invalid-phone"
+  ]
+}
+```
+*Maksimal hajm: 5 000 ta raqam.*
+
+**Response** (`ContactScrubResponse`):
+```json
+{
+  "success": true,
+  "data": {
+    "total": 5,
+    "validCount": 3,
+    "invalidCount": 2,
+    "dncCount": 0,
+    "items": [
+      {
+        "rawPhone": "+998901234567",
+        "normalizedPhone": "+998901234567",
+        "valid": true,
+        "status": "VALID",
+        "carrierOrRegion": "Beeline",
+        "reason": null,
+        "inDoNotCall": false
+      },
+      {
+        "rawPhone": "+998011234567",
+        "normalizedPhone": "+998011234567",
+        "valid": false,
+        "status": "UNALLOCATED_PREFIX",
+        "carrierOrRegion": null,
+        "reason": "unallocated or invalid Uzbekistan NDC prefix: 01",
+        "inDoNotCall": false
+      },
+      {
+        "rawPhone": "998931112233",
+        "normalizedPhone": "+998931112233",
+        "valid": true,
+        "status": "VALID",
+        "carrierOrRegion": "Ucell",
+        "reason": null,
+        "inDoNotCall": false
+      },
+      {
+        "rawPhone": "+12125551234",
+        "normalizedPhone": "+12125551234",
+        "valid": true,
+        "status": "VALID",
+        "carrierOrRegion": "International",
+        "reason": null,
+        "inDoNotCall": false
+      },
+      {
+        "rawPhone": "invalid-phone",
+        "normalizedPhone": null,
+        "valid": false,
+        "status": "INVALID_FORMAT",
+        "carrierOrRegion": null,
+        "reason": "phone must not contain letters or special characters",
+        "inDoNotCall": false
+      }
+    ]
+  }
+}
+```
+*Agar raqam kompaniyaning Do-Not-Call ro'yxatida bo'lsa: `valid: false`, `status: "BLOCKED"`, `inDoNotCall: true`, `reason: "number is on Do-Not-Call list"`.*
+

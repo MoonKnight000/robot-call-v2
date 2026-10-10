@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
@@ -337,7 +338,8 @@ class LlmTurnClient {
             return ownLlm.fastModel();
         }
         String agentModel = s.fastModel();
-        return agentModel != null && !agentModel.isBlank() ? agentModel : dialogProperties.fastModel();
+        return agentModel != null && !agentModel.isBlank() && !AiModel.isRealtimeModel(agentModel)
+                ? agentModel : dialogProperties.fastModel();
     }
 
     /** The assistant text carried by one response (or chunk), or {@code null}. */

@@ -12,6 +12,10 @@ public enum KnowledgeSourceType {
     XLS,
     URL,
     /**
+     * An XML sitemap (or sitemap index) URL. Discovers and indexes all linked web pages.
+     */
+    SITEMAP,
+    /**
      * A product catalog — a CSV/XLSX/JSON file, or a URL answering one — read row by row
      * into catalog items the agent searches with {@code searchCatalog}
      * (UNIVERSAL-OPERATOR-PLAN B.4), not split into passages of prose.

@@ -1,0 +1,36 @@
+### Create a new Caller ID Pool
+POST http://localhost:8080/api/caller-id-pools
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Toshkent mijozlari puli",
+  "strategy": "ROUND_ROBIN",
+  "description": "Markaziy hudud uchun rotatsiya qilinadigan raqamlar",
+  "initialPhones": [
+    "+998712001122",
+    "+998712001123"
+  ]
+}
+
+### List Pools
+GET http://localhost:8080/api/caller-id-pools
+Authorization: Bearer {{token}}
+
+### Get Pool Detail
+GET http://localhost:8080/api/caller-id-pools/1
+Authorization: Bearer {{token}}
+
+### Add Number to Pool
+POST http://localhost:8080/api/caller-id-pools/1/numbers
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "phone": "+998712001124",
+  "label": "Zaxira liniya"
+}
+
+### Put Number in Cooldown
+POST http://localhost:8080/api/caller-id-pools/1/numbers/1/cooldown?hours=48
+Authorization: Bearer {{token}}

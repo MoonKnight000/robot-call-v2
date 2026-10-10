@@ -43,10 +43,11 @@ Qo'ng'iroqqa javob berishdan **oldin** (mijoz hali gudok eshitayotganda), tartib
    marshrutning `businessHoursStart`/`businessHoursEnd` oynasi (har kuni). Ikkalasi ham
    kompaniya zonasida va kompaniya [bayramlari](schedules.md#bayramlar-apiholidays) bilan
    hisoblanadi; soatlar ham, jadval ham bo'lmasa — 24/7 ochiq.
-   - **Yopiq** bo'lsa: `fallbackMessage` aytiladi, u bo'lmasa jadvaldan yasalgan ibora
-     ("Hozir ish vaqtimizdan tashqari. Ertaga soat to'qqizda ishni boshlaymiz.") — va
-     go'shak qo'yiladi. Raqami ma'lum qo'ng'iroq qiluvchi o'tkazib yuborilgan qo'ng'iroqlar
-     ro'yxatiga "ish vaqtidan tashqari" sababi bilan tushadi.
+   - **Yopiq** bo'lsa: `afterHoursAction` sozlamasi tekshiriladi:
+     - `AI_AGENT`: Tungi AI agentga (`afterHoursDestination` dagi agent ID, u berilmagan bo'lsa marshrutning o'z `aiAgentId`si) uzatiladi va 24/7 rejimda qabul qilinadi.
+     - `VOICEMAIL`: Ish vaqtidan tashqari ekanligi xabari hamda ovozli xabar qoldirish taklifi aytiladi va go'shak qo'yiladi.
+     - `PLAY_MESSAGE_AND_HANGUP` (standart): `fallbackMessage` (yoki jadvaldan yasalgan "Ertaga soat to'qqizda ishni boshlaymiz" iborasi) o'qiladi va go'shak qo'yiladi.
+     Raqami ma'lum qo'ng'iroq qiluvchi o'tkazib yuborilgan qo'ng'iroqlar ro'yxatiga "ish vaqtidan tashqari" (`AFTER_HOURS`) sababi bilan tushadi.
    - **Ochiq, lekin `aiAgentId` yo'q** bo'lsa: `fallbackMessage` bo'lsa aytiladi, bo'lmasa
      jimgina go'shak qo'yiladi.
 5. **AI agent** — ochiq va `aiAgentId` bor: qo'ng'iroqqa agent javob beradi.
