@@ -12,11 +12,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
-import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
-import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
-import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.PreviewCardResponse;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;

@@ -26,6 +26,9 @@ voice-agent:
     # A tool the engine called that has not answered in this long is reported to it as
     # failed, so the caller hears an apology instead of open-ended silence.
     tool-timeout-seconds: ${REALTIME_TOOL_TIMEOUT_SECONDS:15}
+    # The caller's transcript lines come from voice-agent.stt, not the engine's own
+    # input transcription (which wrote Uzbek callers down in Russian or Turkish).
+    transcript-stt: ${REALTIME_TRANSCRIPT_STT:true}
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
       url: ${REALTIME_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}

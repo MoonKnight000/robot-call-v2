@@ -7,11 +7,10 @@ import java.util.Set;
  * the bot is paused while that call runs, for up to a second and a half, on every
  * word or two said over it.
  *
- * <p>Two cases are certain from the words alone. A "no", a "wait" or a question word is
- * the caller taking the floor whatever line it was said over. Nothing but listener sounds
- * ("aha", "xo'p", "угу") over a line that asked nothing is the caller letting the bot go
- * on. Everything else — above all a "ha" over a question, which is an answer — still goes
- * to the model: the line it was said over decides it, and that is the model's to read.
+ * <p>Only one case is certain from the words alone: a "no", a "wait" or a question word is
+ * the caller taking the floor whatever line it was said over. Everything else goes to the
+ * model — listener sounds too: "ha" or "mayli" is agreement over one line and the answer
+ * over another, and a question the bot asked does not always end in a "?" to tell which.
  */
 final class FloorRules {
 
@@ -63,27 +62,21 @@ final class FloorRules {
     }
 
     /**
-     * @param botLine    what the bot was saying when it was talked over
      * @param callerText the caller's words
-     * @return true when the caller is taking the floor, false when they let the bot carry
-     *         on, null when only the model can tell
+     * @return true when the caller is taking the floor, null when only the model can tell
      */
-    static Boolean decide(String botLine, String callerText) {
+    static Boolean decide(String callerText) {
         if (callerText == null || callerText.isBlank()) {
             return null;
         }
         if (callerText.contains("?")) {
             return true;
         }
-        String[] words = Backchannels.words(callerText);
-        boolean listening = true;
-        for (String word : words) {
+        for (String word : Backchannels.words(callerText)) {
             if (TAKING_THE_FLOOR.contains(word)) {
                 return true;
             }
-            listening &= LISTENING.contains(word);
         }
-        boolean botAsked = botLine != null && botLine.contains("?");
-        return listening && !botAsked ? false : null;
+        return null;
     }
 }

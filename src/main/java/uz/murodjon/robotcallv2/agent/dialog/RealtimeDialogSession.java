@@ -77,8 +77,18 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile RealtimeSession engine;
     /** The caller's side of the line; read at the end for how much echo it withheld. */
     private volatile RealtimeAudioBridge audioBridge;
-    /** Speaks the engine's answer with our TTS on a HALF_CASCADE call; null on a REALTIME one. */
-    private volatile HalfCascadeVoice halfCascadeVoice;
+    /**
+     * HALF_CASCADE: our STT hears the caller and the engine is handed the text, so it never
+     * gets the caller's audio and cannot notice a barge-in by itself.
+     */
+    private volatile boolean sttDriven;
+    /**
+     * HALF_CASCADE: the caller cut in over a reply the engine is still generating; the rest
+     * of that reply's audio is dropped until the engine finishes or is interrupted.
+     */
+    private volatile boolean discardingReply;
+    /** What the caller last heard the engine say — a caller line inside it is the bot's echo. */
+    private volatile String lastAgentText = "";
     private volatile String state;
     /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
     private volatile Consumer<String> dtmfSender;
@@ -392,12 +402,28 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         this.audioBridge = audioBridge;
     }
 
-    HalfCascadeVoice halfCascadeVoice() {
-        return halfCascadeVoice;
+    boolean isSttDriven() {
+        return sttDriven;
     }
 
-    void setHalfCascadeVoice(HalfCascadeVoice halfCascadeVoice) {
-        this.halfCascadeVoice = halfCascadeVoice;
+    void setSttDriven(boolean sttDriven) {
+        this.sttDriven = sttDriven;
+    }
+
+    boolean isDiscardingReply() {
+        return discardingReply;
+    }
+
+    void setDiscardingReply(boolean discardingReply) {
+        this.discardingReply = discardingReply;
+    }
+
+    String lastAgentText() {
+        return lastAgentText;
+    }
+
+    void setLastAgentText(String lastAgentText) {
+        this.lastAgentText = lastAgentText;
     }
 
     /**

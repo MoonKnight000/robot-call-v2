@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.agent.realtime;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.StreamingUpsampler;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleSupplier;
@@ -35,7 +37,7 @@ import java.util.function.DoubleSupplier;
  * <p>Runs on the RTP consumer thread every 20 ms, so it only filters and hands over —
  * {@link RealtimeSession#sendAudio} queues rather than blocking (PROJECT.md §8.3).
  */
-public class RealtimeAudioBridge implements AudioListener {
+public class RealtimeAudioBridge implements AudioListener, Closeable {
 
     private static final int TELEPHONE_RATE = 8000;
     /** Low-energy microphone hiss/static below this RMS is noise, not speech. */
@@ -50,6 +52,31 @@ public class RealtimeAudioBridge implements AudioListener {
     private volatile double minBotLevel;
     private volatile double echoGateRatio;
     private final AtomicLong echoSamples = new AtomicLong();
+    /**
+     * The transcript's recognizer ({@code voice-agent.realtime.transcript-stt}): fed the
+     * same gated 8 kHz frames the engine hears, so the bot's echo is not written down as
+     * the caller. Null when off.
+     */
+    private volatile AudioListener transcriptTap;
+    /**
+     * False on HALF_CASCADE: the engine is handed the caller's words as text by our STT
+     * (the tap) and must not also hear the audio, or it would answer the same turn twice.
+     */
+    private final boolean engineHearsCaller;
+
+    /** A REALTIME call's bridge: the engine hears the caller. */
+    public RealtimeAudioBridge() {
+        this(true);
+    }
+
+    public RealtimeAudioBridge(boolean engineHearsCaller) {
+        this.engineHearsCaller = engineHearsCaller;
+    }
+
+    /** Whether the caller's audio reaches the engine (REALTIME) or only our STT (HALF_CASCADE). */
+    public boolean engineHearsCaller() {
+        return engineHearsCaller;
+    }
 
     /** {@link #arm(RealtimeSession, int, DoubleSupplier, double, double)} without an echo gate. */
     public void arm(RealtimeSession session, int engineRate) {
@@ -94,6 +121,23 @@ public class RealtimeAudioBridge implements AudioListener {
         this.open = true;
     }
 
+    /** Feed {@code tap} what the engine hears; it is closed with this bridge. */
+    public void setTranscriptTap(AudioListener tap) {
+        this.transcriptTap = tap;
+    }
+
+    /** Whether the transcript's caller lines come from the tap rather than the engine. */
+    public boolean hasTranscriptTap() {
+        return transcriptTap != null;
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (transcriptTap instanceof Closeable closeable) {
+            closeable.close();
+        }
+    }
+
     /** Caller audio the echo gate attenuated so far, in seconds. */
     public double echoSuppressedSeconds() {
         return echoSamples.get() / (double) TELEPHONE_RATE;
@@ -121,6 +165,13 @@ public class RealtimeAudioBridge implements AudioListener {
         } else if (rms < NOISE_FLOOR_RMS) {
             // Mute low-energy microphone hiss/static during silence to prevent ASR hallucinations.
             Arrays.fill(frame, (short) 0);
+        }
+        AudioListener tap = transcriptTap;
+        if (tap != null) {
+            tap.onAudio(frame, frame.length);
+        }
+        if (!engineHearsCaller) {
+            return;
         }
         StreamingUpsampler up = upsampler;
         short[] out = up == null ? frame : up.push(frame, frame.length);

@@ -6,11 +6,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
-import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
-import uz.murodjon.robotcallv2.scenario.domain.entity.GlobalNode;
-import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
-import uz.murodjon.robotcallv2.scenario.domain.entity.StyleExample;
+import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
@@ -19,11 +15,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * Builds the per-turn prompt from a session's bound scenario, facts and FSM stage
@@ -486,8 +478,9 @@ public class SystemPromptFactory {
                 + "(e.g. "
                 + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"a\", \"nima?\", \"labbay?\", \"nima dedingiz\", \"nima deyishdi\", \"eshitmadim\", \"qaytaring\"")
                 + ") — do not move to a new question or the next stage! Do not call transitionTo! "
-                + "Repeat your last message (fact, date or question) with the same meaning, clearly: "
-                + (russian ? "\"Плохо слышно? Повторяю: ...\"" : "\"Eshitilmadimi? Qaytadan aytaman: ...\"")
+                + "Do not ask whether they heard — explain your last message (fact, date or question) "
+                + "again, briefly and in other, simpler words, the way a live operator would: "
+                + (russian ? "\"Смотрите, ...\"" : "\"Aka, ...\" (never \"Eshitilmadimi?\" or \"Qaytadan aytaman\")")
                 + ". If the client has only just started speaking and paused to think "
                 + "(only a thinking sound or an unfinished sentence that is clearly to be continued) — "
                 + "call waitForCaller and say nothing.");

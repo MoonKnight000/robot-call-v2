@@ -59,7 +59,7 @@ toraytiriladi, chunki ovoz nomlari ikki oila o'rtasida o'tmaydi:
 |---|---|
 | `CASCADE` | TTS provayderlarining ovozlari (`yandex`, `aisha`, `gemini`, `elevenlabs`, `cartesia`) |
 | `REALTIME` | speech-to-speech engine'ining o'z ovozlari (`gemini-live`, `openai-realtime`, `qwen-omni`) |
-| `HALF_CASCADE` | `CASCADE` bilan bir xil — engine tinglaydi va o'ylaydi, lekin javobni bizning TTS ovozimiz o'qiydi |
+| `HALF_CASCADE` | `REALTIME` bilan bir xil — mijozni bizning STT eshitadi, lekin engine o'z ovozida gapiradi |
 
 > `mode` berilmasa ikkala oila ham qaytadi. Pipeline endi kompaniyaniki emas, **har bir
 > agentniki** (`ai_agent.pipeline_mode`), shuning uchun agent tahrirlash ekrani o'sha

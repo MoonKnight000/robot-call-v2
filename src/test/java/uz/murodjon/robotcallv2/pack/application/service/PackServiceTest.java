@@ -23,8 +23,8 @@ import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
 import uz.murodjon.robotcallv2.pack.application.dto.InstallDraftRequest;
 import uz.murodjon.robotcallv2.pack.application.dto.InstallPackRequest;
 import uz.murodjon.robotcallv2.pack.application.dto.PackInstallResponse;
-import uz.murodjon.robotcallv2.pack.application.port.output.PackGeneratorPort;
 import uz.murodjon.robotcallv2.pack.application.mapper.PackMapper;
+import uz.murodjon.robotcallv2.pack.application.port.output.PackGeneratorPort;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 import uz.murodjon.robotcallv2.pack.domain.service.PackSecrets;
@@ -42,9 +42,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /** Runs the shipped online-shop pack against mocked feature use cases. */

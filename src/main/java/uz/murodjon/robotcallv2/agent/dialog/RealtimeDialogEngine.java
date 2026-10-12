@@ -6,12 +6,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.audio.SpeechLevelNormalizer;
 import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
-import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.*;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
-import uz.murodjon.robotcallv2.agent.tts.TtsRouter;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.RealtimeFactsDelivery;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
@@ -24,9 +22,9 @@ import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
-import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -59,6 +57,11 @@ import java.util.function.Consumer;
  * <p>In REALTIME mode, all audio and speech generation (including the opening greeting
  * and §11.1 legal disclosure) are performed natively by the speech-to-speech provider's
  * voice to maintain 100% voice consistency throughout the call.
+ *
+ * <p>In HALF_CASCADE mode the engine still thinks and speaks in its own voice, but it never
+ * hears the caller: our STT does, and each finished utterance is handed to the engine as
+ * text ({@link #onCallerFinal}). The engine's own recognizer wrote Uzbek callers down as
+ * Russian or Turkish, and answered what it misheard.
  */
 @Component
 public class RealtimeDialogEngine implements CallDialog {
@@ -106,9 +109,9 @@ public class RealtimeDialogEngine implements CallDialog {
     private final CompanyUseCase companyUseCase;
     private final CompanyConfigUseCase companyConfigService;
     private final DialogProperties dialogProperties;
+    private final DialogTuningProperties dialogTuningProperties;
     private final RealtimeProperties realtimeProperties;
     private final RealtimeMetrics realtimeMetrics;
-    private final DialogMetrics dialogMetrics;
     private final TtsVoiceUseCase ttsVoiceUseCase;
     private final RealtimeWatchdogRunner watchdogRunner;
     private final LanguageDetector languageDetector;
@@ -116,8 +119,6 @@ public class RealtimeDialogEngine implements CallDialog {
     private final DialogPolicy dialogPolicy;
     private final RealtimeToolRunner toolRunner;
     private final RealtimeTranscriptRecorder transcriptRecorder;
-    private final TtsRouter ttsRouter;
-    private final VoiceSettingsUseCase voiceSettingsUseCase;
 
     private final Map<String, RealtimeDialogSession> sessions = new ConcurrentHashMap<>();
     /**
@@ -129,22 +130,22 @@ public class RealtimeDialogEngine implements CallDialog {
     public RealtimeDialogEngine(RealtimeProviderRegistry registry,
                                 RealtimeSystemPromptFactory promptFactory, CallAttemptUseCase callAttemptUseCase,
                                 CompanyUseCase companyUseCase, CompanyConfigUseCase companyConfigService,
-                                DialogProperties dialogProperties, RealtimeProperties realtimeProperties,
-                                RealtimeMetrics realtimeMetrics, DialogMetrics dialogMetrics,
+                                DialogProperties dialogProperties, DialogTuningProperties dialogTuningProperties,
+                                RealtimeProperties realtimeProperties,
+                                RealtimeMetrics realtimeMetrics,
                                 TtsVoiceUseCase ttsVoiceUseCase,
                                 RealtimeWatchdogRunner watchdogRunner, LanguageDetector languageDetector,
                                 MidCallSmsSender midCallSmsSender, DialogPolicy dialogPolicy,
-                                RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder,
-                                TtsRouter ttsRouter, VoiceSettingsUseCase voiceSettingsUseCase) {
+                                RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder) {
         this.registry = registry;
         this.promptFactory = promptFactory;
         this.callAttemptUseCase = callAttemptUseCase;
         this.companyUseCase = companyUseCase;
         this.companyConfigService = companyConfigService;
         this.dialogProperties = dialogProperties;
+        this.dialogTuningProperties = dialogTuningProperties;
         this.realtimeProperties = realtimeProperties;
         this.realtimeMetrics = realtimeMetrics;
-        this.dialogMetrics = dialogMetrics;
         this.ttsVoiceUseCase = ttsVoiceUseCase;
         this.watchdogRunner = watchdogRunner;
         this.languageDetector = languageDetector;
@@ -152,8 +153,6 @@ public class RealtimeDialogEngine implements CallDialog {
         this.dialogPolicy = dialogPolicy;
         this.toolRunner = toolRunner;
         this.transcriptRecorder = transcriptRecorder;
-        this.ttsRouter = ttsRouter;
-        this.voiceSettingsUseCase = voiceSettingsUseCase;
     }
 
     @Override
@@ -173,8 +172,8 @@ public class RealtimeDialogEngine implements CallDialog {
      *
      * @param fallback continues the call on the cascade pipeline when the engine drops out
      *                 mid-conversation and cannot be recovered; null hangs up instead
-     * @param halfCascade the engine only hears and thinks; its answer is spoken by our TTS
-     *                 in the call's voice after the fact guard (PipelineMode.HALF_CASCADE)
+     * @param halfCascade our STT hears the caller and the engine is handed the text; the
+     *                 engine thinks and speaks in its own voice (PipelineMode.HALF_CASCADE)
      * @return false when no engine could be opened — nothing has been said to the caller,
      *         so the caller of this method may still run the call some other way
      */
@@ -203,16 +202,9 @@ public class RealtimeDialogEngine implements CallDialog {
             log.error("[{}] REALTIME was selected but no engine resolved — call cannot start", channelId);
             return false;
         }
-        if (halfCascade && !provider.streamsOutputTranscript()) {
-            // Nothing has been said yet, so the cascade pipeline can still take the call.
-            log.error("[{}] HALF_CASCADE needs an engine that streams its answer as text — {} does not",
-                    channelId, provider.name());
-            realtimeMetrics.realtimeFallback(provider.name());
-            return false;
-        }
-
         RealtimeDialogSession session = new RealtimeDialogSession(channelId, language, callAttemptId,
                 companyId, agent, scenario, context, endpoint, hangup, transfer);
+        session.setSttDriven(halfCascade);
         session.setDtmfSender(dtmf);
         session.setInbound(callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null);
         if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
@@ -248,24 +240,18 @@ public class RealtimeDialogEngine implements CallDialog {
             realtimeMetrics.realtimeFallback(provider.name());
             return false;
         }
-        // On HALF_CASCADE the engine's voice is never heard: the catalog voice is ours to speak.
         RealtimeCallConfig config = new RealtimeCallConfig(channelId, language, prompt,
-                halfCascade ? null : voiceFor(voice, provider), session.tools(),
+                voiceFor(voice, provider), session.tools(),
                 agent != null ? agent.speechEngine().pipecatStt() : null,
                 agent != null ? agent.speechEngine().pipecatLlm() : null,
                 agent != null ? agent.speechEngine().pipecatTts() : null,
                 agent != null ? agent.llmModel() : null);
         // The catalog id only counts as the call's voice if the engine took it (voiceFor).
         session.setEngineIdentity(provider.name(), provider.resolveModel(config),
-                config.voice() != null || halfCascade ? voice : null);
+                config.voice() != null ? voice : null);
         RealtimeSession engine = null;
         try {
             EngineListener listener = new EngineListener(session, provider.outputSampleRate(), fallback, bridge);
-            if (halfCascade) {
-                session.setHalfCascadeVoice(new HalfCascadeVoice(session, ttsRouter, dialogPolicy, dialogMetrics, voice,
-                        voiceSettingsUseCase.findEffectiveByCompanyId(companyId),
-                        agent != null ? agent.pronunciationRules() : List.of(), listener::beginReply));
-            }
             engine = provider.startSession(config, listener);
             bridge.arm(engine, provider.inputSampleRate(), endpoint::recentOutboundLevel,
                     realtimeProperties.echoGateRatio(), realtimeProperties.echoMinBotLevel());
@@ -391,6 +377,97 @@ public class RealtimeDialogEngine implements CallDialog {
         s.touch();
     }
 
+    /** Whether a REALTIME call's transcript lines come from our STT ({@link #onCallerFinal}). */
+    public boolean usesTranscriptStt() {
+        return realtimeProperties.transcriptStt();
+    }
+
+    /**
+     * One finished caller utterance from our own STT. It always goes into the transcript.
+     * On HALF_CASCADE it is also the caller's turn: the engine never got the audio, so this
+     * text is what it answers. On REALTIME ({@code transcript-stt}) the engine has already
+     * heard the audio and answers that, so the text is only written down.
+     */
+    public void onCallerFinal(String channelId, String text) {
+        RealtimeDialogSession s = sessions.get(channelId);
+        if (s == null || s.isEnded() || text == null || text.isBlank()) {
+            return;
+        }
+        String said = text.trim();
+        s.touch();
+        if (s.isSttDriven() && isEchoOfBot(s, said)) {
+            // No echo cancellation on the line: handed to the engine, the bot's own words
+            // would be answered as if the caller had said them.
+            CallMdc.with(channelId, () -> log.warn("[{}] dropped a caller transcript that echoes the bot's own line: {}",
+                    channelId, said));
+            return;
+        }
+        CallMdc.with(channelId, () -> {
+            transcriptRecorder.recordLine(s, "CLIENT", said);
+            log.debug("[{}] FINAL (stt): {}", channelId, said);
+        });
+        RealtimeSession engine = s.engine();
+        if (s.isSttDriven() && engine != null) {
+            engine.sendUserText(said);
+        }
+    }
+
+    /** The same test the cascade pipeline applies ({@code ClientInputGate}). */
+    private boolean isEchoOfBot(RealtimeDialogSession s, String text) {
+        String caller = TranscriptText.normalize(text);
+        return caller.length() >= dialogTuningProperties.minEchoChars()
+                && TranscriptText.normalize(s.lastAgentText()).contains(caller);
+    }
+
+    /**
+     * HALF_CASCADE: the caller's utterance so far, while it is still being spoken. The engine
+     * does not hear the line, so taking the floor from it is decided here: more than a word
+     * or two over the bot's playback cuts the bot off — a lone "aha" does not.
+     */
+    public void onCallerInterim(String channelId, String text) {
+        RealtimeDialogSession s = sessions.get(channelId);
+        if (s == null || !s.isSttDriven() || s.isEnded() || text == null) {
+            return;
+        }
+        s.touch();
+        RtpEndpoint endpoint = s.endpoint();
+        int needed = Math.max(1, dialogProperties.minInterruptionWords());
+        if (!endpoint.isPlaying() || Backchannels.words(text).length < needed) {
+            return;
+        }
+        // Only a reply still being produced has more audio coming. One already complete is
+        // merely still playing: marking it would drop the answer to the caller's next turn.
+        s.setDiscardingReply(s.replyOpen());
+        cutPlayback(s);
+        CallMdc.with(channelId, () -> log.debug("[{}] caller took the floor", channelId));
+    }
+
+    /**
+     * Stop what the caller is hearing and note how much of the reply reached them, so the
+     * transcript (and an engine that accepts it, {@link RealtimeSession#truncatePlayback})
+     * keeps only the heard part.
+     */
+    private void cutPlayback(RealtimeDialogSession s) {
+        RtpEndpoint endpoint = s.endpoint();
+        long start = s.replyStartSample();
+        if (start >= 0) {
+            long queued = endpoint.queuedSamples() - start;
+            long played = Math.max(0, endpoint.playedSamples() - start);
+            if (queued > 0 && played < queued) {
+                s.setHeardShare(played / (double) queued);
+                realtimeMetrics.realtimeInterruption(s.engineName());
+                s.recordBargeIn();
+                RealtimeSession engine = s.engine();
+                if (engine != null) {
+                    engine.truncatePlayback(played / SAMPLES_PER_MS);
+                }
+            }
+        }
+        s.endReply();
+        endpoint.flushPlayback();
+        s.touch();
+    }
+
     /**
      * The caller is talking. The engine does its own barge-in, so this interrupts nothing
      * — it only keeps the silence watchdog quiet and restarts the turnaround clock.
@@ -490,14 +567,17 @@ public class RealtimeDialogEngine implements CallDialog {
     /** What every way out of a realtime call has to do once: stop the watchdog, count the session. */
     private void release(RealtimeDialogSession s) {
         watchdogRunner.stop(s);
-        HalfCascadeVoice voice = s.halfCascadeVoice();
-        if (voice != null) {
-            voice.close();
-        }
         realtimeMetrics.realtimeSessionSeconds(s.engineName(), Duration.between(s.startedAt(), Instant.now()).getSeconds());
         RealtimeAudioBridge bridge = s.audioBridge();
         if (bridge != null) {
             realtimeMetrics.realtimeEchoSuppressed(bridge.echoSuppressedSeconds());
+            // A cascade fallback replaces the line's listeners without closing them, and
+            // the recognizer stream behind the bridge would stay open for the rest of the call.
+            try {
+                bridge.close();
+            } catch (IOException e) {
+                log.warn("[{}] could not close the caller's recognizer: {}", s.channelId(), e.getMessage());
+            }
         }
     }
 
@@ -606,8 +686,6 @@ public class RealtimeDialogEngine implements CallDialog {
         private static final int CLOSED_DURING_SETUP = 2;
         /** Whether startCall has registered the session yet, or the engine closed before it did. */
         private final AtomicInteger phase = new AtomicInteger(STARTING);
-        /** HALF_CASCADE: what the caller has said so far in the utterance in progress. Network thread only. */
-        private final StringBuilder callerSoFar = new StringBuilder();
 
         private EngineListener(RealtimeDialogSession session, int engineRate, Runnable fallback,
                                RealtimeAudioBridge bridge) {
@@ -625,8 +703,8 @@ public class RealtimeDialogEngine implements CallDialog {
         @Override
         public void onBotAudio(short[] pcm) {
             bridge.open();
-            if (session.halfCascadeVoice() != null) {
-                // HALF_CASCADE: the caller hears our TTS speaking the engine's text, never this.
+            if (session.isDiscardingReply()) {
+                // HALF_CASCADE: the caller cut this reply off; the rest of it is not played.
                 session.touch();
                 return;
             }
@@ -663,51 +741,13 @@ public class RealtimeDialogEngine implements CallDialog {
         @Override
         public void onInputTranscript(String text, boolean isFinal) {
             session.touch();
-            stopSpeakingIfCallerTookTheFloor(text, isFinal);
-            if (isFinal) {
+            // With our own recognizer on this call, the caller's lines come from onCallerFinal.
+            if (isFinal && !bridge.hasTranscriptTap()) {
                 CallMdc.with(session.channelId(), () -> {
                     transcriptRecorder.recordLine(session, "CLIENT", text);
                     // What the caller said is personal data: kept in the transcript, not in INFO logs.
                     log.debug("[{}] FINAL: {}", session.channelId(), text);
                 });
-            }
-        }
-
-        /**
-         * HALF_CASCADE only. The engine stops on its own when the caller cuts in while it is
-         * still producing the answer; once it has finished, our TTS may still be reading it
-         * out and the engine no longer knows. A caller who says more than a word or two over
-         * that playback has taken the floor — a lone "aha" has not.
-         */
-        private void stopSpeakingIfCallerTookTheFloor(String text, boolean isFinal) {
-            HalfCascadeVoice voice = session.halfCascadeVoice();
-            if (voice == null) {
-                return;
-            }
-            if (isFinal) {
-                callerSoFar.setLength(0);
-                return;
-            }
-            callerSoFar.append(text);
-            RtpEndpoint endpoint = session.endpoint();
-            int needed = Math.max(1, dialogProperties.minInterruptionWords());
-            if (!endpoint.isPlaying() || Backchannels.words(callerSoFar.toString()).length < needed) {
-                return;
-            }
-            voice.cancel();
-            session.endReply();
-            endpoint.flushPlayback();
-            session.recordBargeIn();
-            realtimeMetrics.realtimeInterruption(session.engineName());
-            CallMdc.with(session.channelId(), () -> log.debug("[{}] caller took the floor over the TTS",
-                    session.channelId()));
-        }
-
-        @Override
-        public void onOutputTranscriptDelta(String delta) {
-            HalfCascadeVoice voice = session.halfCascadeVoice();
-            if (voice != null) {
-                voice.append(delta);
             }
         }
 
@@ -721,16 +761,14 @@ public class RealtimeDialogEngine implements CallDialog {
                     return;
                 }
                 transcriptRecorder.recordLine(session, "AGENT", heard);
+                session.setLastAgentText(heard);
                 if (share == null) {
                     log.debug("[{}] AGENT: {}", session.channelId(), heard);
                 } else {
                     log.debug("[{}] AGENT (cut off at {}%): {}", session.channelId(), Math.round(share * 100), heard);
                 }
                 // What was never played was never said: only the heard part is audited.
-                // On HALF_CASCADE every sentence already passed the fact guard before it was spoken.
-                if (session.halfCascadeVoice() == null) {
-                    transcriptRecorder.auditFacts(session, heard);
-                }
+                transcriptRecorder.auditFacts(session, heard);
                 session.appendOpeningSpeech(heard);
                 String spokenLanguage = languageDetector.detect(heard, LANGUAGE_TAGS);
                 if (spokenLanguage != null) {
@@ -741,28 +779,9 @@ public class RealtimeDialogEngine implements CallDialog {
 
         @Override
         public void onInterrupted() {
-            RtpEndpoint endpoint = session.endpoint();
-            long start = session.replyStartSample();
-            if (start >= 0) {
-                long queued = endpoint.queuedSamples() - start;
-                long played = Math.max(0, endpoint.playedSamples() - start);
-                if (queued > 0 && played < queued) {
-                    session.setHeardShare(played / (double) queued);
-                    realtimeMetrics.realtimeInterruption(session.engineName());
-                    session.recordBargeIn();
-                    RealtimeSession engine = session.engine();
-                    if (engine != null) {
-                        engine.truncatePlayback(played / SAMPLES_PER_MS);
-                    }
-                }
-            }
-            HalfCascadeVoice voice = session.halfCascadeVoice();
-            if (voice != null) {
-                voice.cancel();
-            }
-            session.endReply();
-            endpoint.flushPlayback();
-            session.touch();
+            // The engine dropped the reply the caller had cut off; what follows is new.
+            session.setDiscardingReply(false);
+            cutPlayback(session);
             CallMdc.with(session.channelId(), () -> log.debug("[{}] caller barged in", session.channelId()));
         }
 
@@ -772,25 +791,10 @@ public class RealtimeDialogEngine implements CallDialog {
             // otherwise leave the caller unheard for the rest of the call.
             bridge.open();
             session.countTurn();
-            HalfCascadeVoice voice = session.halfCascadeVoice();
-            if (voice != null) {
-                // Our TTS is still reading the answer out, so the reply closes only once all
-                // of it has reached the line — and a goodbye is not cut off by the hangup.
-                voice.flush();
-                voice.afterSpoken(() -> CallMdc.with(session.channelId(), () -> {
-                    if (session.replyOpen()) {
-                        session.closeReply();
-                        session.countSpokenTurn();
-                    }
-                    if (session.isEnded()) {
-                        finishWhenSpoken(session);
-                    }
-                }));
-            }
-            boolean spoke = voice == null && session.replyOpen();
-            if (voice == null) {
-                session.closeReply();
-            }
+            // A reply the caller cut off is over; the next one is played again.
+            session.setDiscardingReply(false);
+            boolean spoke = session.replyOpen();
+            session.closeReply();
             // A whisper that came in while this reply was being generated goes in now.
             String whisper = session.takeHeldWhisper();
             RealtimeSession engine = session.engine();
@@ -805,9 +809,7 @@ public class RealtimeDialogEngine implements CallDialog {
             session.touch();
             CallMdc.with(session.channelId(), () -> {
                 if (session.isEnded()) {
-                    if (voice == null) {
-                        engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), () -> finishWhenSpoken(session)));
-                    }
+                    engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), () -> finishWhenSpoken(session)));
                     return;
                 }
                 checkDisclosure(session);

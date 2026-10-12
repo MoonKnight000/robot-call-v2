@@ -35,6 +35,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      engine is told it failed and asked to carry on. A tool that hangs
  *                      otherwise leaves the caller in silence with no cap at all — the
  *                      no-input watchdog stands down while a tool is in flight
+ * @param transcriptStt write the caller's side of the transcript from the deployment's own
+ *                      STT ({@code voice-agent.stt}) instead of the engine's input
+ *                      transcription. Gemini Live wrote Uzbek callers down in Russian,
+ *                      Turkish or as a single syllable; the engine still hears the audio
+ *                      itself, this only changes what lands in {@code call_transcript}
  * @param geminiLive    Gemini Live settings
  * @param openAi        OpenAI Realtime settings
  * @param moshi         Kyutai Moshi settings
@@ -50,6 +55,7 @@ public record RealtimeProperties(
         double echoGateRatio,
         double echoMinBotLevel,
         int toolTimeoutSeconds,
+        boolean transcriptStt,
         GeminiLiveProperties geminiLive,
         OpenAiRealtimeProperties openAi,
         MoshiRealtimeProperties moshi,

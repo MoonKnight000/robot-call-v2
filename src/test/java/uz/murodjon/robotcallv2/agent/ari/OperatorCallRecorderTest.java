@@ -8,9 +8,7 @@ import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class OperatorCallRecorderTest {

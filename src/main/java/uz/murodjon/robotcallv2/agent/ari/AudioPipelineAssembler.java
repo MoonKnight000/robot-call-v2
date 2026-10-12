@@ -251,67 +251,110 @@ class AudioPipelineAssembler {
 
         if (realtime) {
             listeners.add(realtimeBridge);
+            // HALF_CASCADE: our recognizer is the only thing that hears the caller. REALTIME:
+            // the engine hears the caller itself, and ours only writes the transcript — the
+            // engine's own transcription writes Uzbek callers down in Russian or Turkish.
+            boolean sttDriven = !realtimeBridge.engineHearsCaller();
+            if (sttDriven || (realtimeDialogEngine.usesTranscriptStt() && sttProperties.enabled())) {
+                TranscriptListener callerListener = (text, isFinal, confidence) -> {
+                    if (isFinal) {
+                        realtimeDialogEngine.onCallerFinal(channelId, text);
+                    } else {
+                        realtimeDialogEngine.onCallerInterim(channelId, text);
+                    }
+                };
+                SttStreamBridge stt = null;
+                try {
+                    stt = openSttBridge(channelId, companyId, language, context, agent, callerListener, null, null);
+                } catch (Exception e) {
+                    if (sttDriven) {
+                        throw new ExternalServiceException(ErrorCode.STT_START_FAILED, "stt", e, e.getMessage());
+                    }
+                    log.warn("Transcript STT not started for {}: {}", channelId, e.getMessage());
+                }
+                if (stt == null && sttDriven) {
+                    // A HALF_CASCADE call that cannot hear the caller is dead air.
+                    throw new ExternalServiceException(ErrorCode.STT_START_FAILED, "stt", "no STT provider");
+                }
+                realtimeBridge.setTranscriptTap(stt);
+            }
             return listeners;
         }
 
         if (sttProperties.enabled()) {
-            String preferredSttProvider = (agent != null && agent.speechEngine().sttProvider() != null && !agent.speechEngine().sttProvider().isBlank())
-                    ? agent.speechEngine().sttProvider().trim()
-                    : sttProperties.provider();
-            SttProvider stt = sttProviderSelector.findForCall(preferredSttProvider);
-            // A model name only means anything to the vendor it was chosen for, so it is
-            // dropped the moment the call is not on that vendor — the requested provider left
-            // the build, or the bridge fails over mid-call to whatever else is configured.
-            String agentSttModel = (agent != null && sttProviderSelector.exists(preferredSttProvider))
-                    ? agent.speechEngine().sttModel()
-                    : null;
-            if (stt != null) {
-                boolean dialog = dialogProperties.enabled() && dialogEngine.available();
-                TranscriptListener listener = (text, isFinal, confidence) -> {
-                    if (isFinal) {
-                        // What the caller said is personal data: DEBUG, like the rest of the pipeline.
-                        log.debug("[{}] FINAL (conf={}): {}", channelId, confidence, text);
-                        int offsetMs = (int) (Instant.now().toEpochMilli() - startedAt.toEpochMilli());
-                        // Off the STT vendor's callback thread, which a slow insert would stall; the
-                        // channel's lane keeps the lines in the order they were heard.
-                        ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(callAttemptId, "CLIENT", text, null,
-                                offsetMs, confidence));
-                        if (dialog) {
-                            dialogEngine.onClientFinal(channelId, text, confidence);
-                        }
-                    } else {
-                        log.debug("[{}] interim: {}", channelId, text);
-                        if (dialog) {
-                            dialogEngine.onClientInterim(channelId, text);
-                        }
-                    }
-                };
-                try {
-                    String sttLanguage = (language == null || language.isBlank())
-                            ? sttProperties.defaultLanguage() : language;
-                    // The company's own languages first; the deployment list only when it set none.
-                    List<String> detectLangs = companyConfigService.findSupportedLanguageCodes(companyId);
-                    if (detectLangs.isEmpty() && sttProperties.detectLanguages() != null) {
-                        detectLangs = sttProperties.detectLanguages();
-                    }
-                    listeners.add(new SttStreamBridge(stt, stt.sampleRate(), CallMediaFactory.SAMPLE_RATE,
-                            channelId, sttLanguage, detectLangs, listener, speechGate, sttMetrics,
-                            sttProperties.endpointing(), sttProperties.responseTimeoutMs(),
-                            dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null,
-                            SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()),
-                            sttProviderSelector, agentSttModel, sttProperties.stream()));
-                } catch (Exception e) {
+            boolean dialog = dialogProperties.enabled() && dialogEngine.available();
+            TranscriptListener listener = (text, isFinal, confidence) -> {
+                if (isFinal) {
+                    // What the caller said is personal data: DEBUG, like the rest of the pipeline.
+                    log.debug("[{}] FINAL (conf={}): {}", channelId, confidence, text);
+                    int offsetMs = (int) (Instant.now().toEpochMilli() - startedAt.toEpochMilli());
+                    // Off the STT vendor's callback thread, which a slow insert would stall; the
+                    // channel's lane keeps the lines in the order they were heard.
+                    ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(callAttemptId, "CLIENT", text, null,
+                            offsetMs, confidence));
                     if (dialog) {
-                        // A conversation that cannot hear the caller is dead air until the
-                        // reaper; failing setup hangs up now and records why, and the
-                        // campaign's retry policy decides whether the number is tried again.
-                        throw new ExternalServiceException(ErrorCode.STT_START_FAILED, "stt", e, e.getMessage());
+                        dialogEngine.onClientFinal(channelId, text, confidence);
                     }
-                    log.warn("STT not started for {}: {}", channelId, e.getMessage());
+                } else {
+                    log.debug("[{}] interim: {}", channelId, text);
+                    if (dialog) {
+                        dialogEngine.onClientInterim(channelId, text);
+                    }
                 }
+            };
+            try {
+                SttStreamBridge bridge = openSttBridge(channelId, companyId, language, context, agent,
+                        listener, speechGate,
+                        dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null);
+                if (bridge != null) {
+                    listeners.add(bridge);
+                }
+            } catch (Exception e) {
+                if (dialog) {
+                    // A conversation that cannot hear the caller is dead air until the
+                    // reaper; failing setup hangs up now and records why, and the
+                    // campaign's retry policy decides whether the number is tried again.
+                    throw new ExternalServiceException(ErrorCode.STT_START_FAILED, "stt", e, e.getMessage());
+                }
+                log.warn("STT not started for {}: {}", channelId, e.getMessage());
             }
         }
         return listeners;
+    }
+
+    /**
+     * The call's speech recognizer on the agent's (or the deployment's) STT vendor.
+     *
+     * @return null when no STT vendor is available
+     */
+    private SttStreamBridge openSttBridge(String channelId, long companyId, String language, CallContext context,
+                                          AiAgent agent, TranscriptListener listener, SpeechGate speechGate,
+                                          IntConsumer onUtteranceEnd) {
+        String preferredSttProvider = (agent != null && agent.speechEngine().sttProvider() != null && !agent.speechEngine().sttProvider().isBlank())
+                ? agent.speechEngine().sttProvider().trim()
+                : sttProperties.provider();
+        SttProvider stt = sttProviderSelector.findForCall(preferredSttProvider);
+        if (stt == null) {
+            return null;
+        }
+        // A model name only means anything to the vendor it was chosen for, so it is
+        // dropped the moment the call is not on that vendor — the requested provider left
+        // the build, or the bridge fails over mid-call to whatever else is configured.
+        String agentSttModel = (agent != null && sttProviderSelector.exists(preferredSttProvider))
+                ? agent.speechEngine().sttModel()
+                : null;
+        String sttLanguage = (language == null || language.isBlank())
+                ? sttProperties.defaultLanguage() : language;
+        // The company's own languages first; the deployment list only when it set none.
+        List<String> detectLangs = companyConfigService.findSupportedLanguageCodes(companyId);
+        if (detectLangs.isEmpty() && sttProperties.detectLanguages() != null) {
+            detectLangs = sttProperties.detectLanguages();
+        }
+        return new SttStreamBridge(stt, stt.sampleRate(), CallMediaFactory.SAMPLE_RATE,
+                channelId, sttLanguage, detectLangs, listener, speechGate, sttMetrics,
+                sttProperties.endpointing(), sttProperties.responseTimeoutMs(), onUtteranceEnd,
+                SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()),
+                sttProviderSelector, agentSttModel, sttProperties.stream());
     }
 
     /** @return whether Smart Turn now decides this call's turn ends */

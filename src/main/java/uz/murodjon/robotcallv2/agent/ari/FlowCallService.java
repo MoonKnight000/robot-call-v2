@@ -265,7 +265,7 @@ class FlowCallService {
             CallStart start = new CallStart(channelId, endpoint, context, definition, language, ttsVoice, agent,
                     onCompleted, transfer, attemptId, null);
             if (mode.usesRealtimeEngine()) {
-                RealtimeAudioBridge realtimeBridge = new RealtimeAudioBridge();
+                RealtimeAudioBridge realtimeBridge = new RealtimeAudioBridge(mode == PipelineMode.REALTIME);
                 useAgentListeners(call, audioPipelineAssembler.buildAudioListeners(channelId, companyId, attemptId, startedAt, language,
                         realtimeBridge, context, agent, endpoint != null ? endpoint::recentOutboundLevel : null));
                 boolean started = dialogStarter.startRealtime(start, mode, realtimeBridge, reconnecting -> {

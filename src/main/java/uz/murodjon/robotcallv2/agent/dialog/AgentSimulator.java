@@ -17,10 +17,10 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
-import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.util.ArrayList;
 import java.util.List;

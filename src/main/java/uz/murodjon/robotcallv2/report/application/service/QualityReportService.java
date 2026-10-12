@@ -5,11 +5,7 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.report.application.port.input.QualityReportUseCase;
 import uz.murodjon.robotcallv2.report.application.port.output.QualityReportRepository;
-import uz.murodjon.robotcallv2.report.domain.entity.CriterionTrendPoint;
-import uz.murodjon.robotcallv2.report.domain.entity.DashboardRange;
-import uz.murodjon.robotcallv2.report.domain.entity.FailedCriterion;
-import uz.murodjon.robotcallv2.report.domain.entity.OperatorQualityScore;
-import uz.murodjon.robotcallv2.report.domain.entity.TopicCount;
+import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.report.domain.enums.TrendBucket;
 
 import java.time.Clock;

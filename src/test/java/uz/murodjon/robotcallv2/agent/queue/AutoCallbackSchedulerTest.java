@@ -13,7 +13,8 @@ import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import java.time.Instant;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 class AutoCallbackSchedulerTest {

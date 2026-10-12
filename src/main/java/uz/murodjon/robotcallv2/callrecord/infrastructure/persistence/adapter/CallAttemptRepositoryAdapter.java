@@ -2,13 +2,8 @@ package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.adapter;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
-
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallAttemptRepository;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.ContactHistory;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.PhoneCallHistory;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.*;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.mapper.CallAttemptEntityMapper;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
@@ -23,11 +18,7 @@ import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJp
 
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Component
 public class CallAttemptRepositoryAdapter implements CallAttemptRepository {

@@ -69,15 +69,15 @@ public class AiModelService implements AiModelUseCase {
     }
 
     /**
-     * The mode the catalog files this agent's models under. A HALF_CASCADE agent thinks on a
-     * realtime engine and speaks with our TTS, so its chat models are the REALTIME ones and
-     * everything else is CASCADE's.
+     * The mode the catalog files this agent's models under. A HALF_CASCADE agent hears the
+     * caller with our STT and thinks and speaks on a realtime engine, so its recognizers are
+     * the CASCADE ones and everything else is REALTIME's.
      */
     private static PipelineMode catalogMode(AiModelKind kind, PipelineMode mode) {
         if (mode != PipelineMode.HALF_CASCADE) {
             return mode;
         }
-        return kind == AiModelKind.LLM ? PipelineMode.REALTIME : PipelineMode.CASCADE;
+        return kind == AiModelKind.STT ? PipelineMode.CASCADE : PipelineMode.REALTIME;
     }
 
     /**

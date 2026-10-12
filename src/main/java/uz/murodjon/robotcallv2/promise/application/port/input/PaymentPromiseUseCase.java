@@ -1,11 +1,7 @@
 package uz.murodjon.robotcallv2.promise.application.port.input;
 
 import uz.murodjon.robotcallv2.promise.application.dto.UpdatePaymentPromiseSettingsRequest;
-import uz.murodjon.robotcallv2.promise.domain.entity.PaymentPromise;
-import uz.murodjon.robotcallv2.promise.domain.entity.PaymentPromiseFilter;
-import uz.murodjon.robotcallv2.promise.domain.entity.PaymentPromiseSettings;
-import uz.murodjon.robotcallv2.promise.domain.entity.PaymentPromiseStats;
-import uz.murodjon.robotcallv2.promise.domain.entity.PaymentPromiseTally;
+import uz.murodjon.robotcallv2.promise.domain.entity.*;
 import uz.murodjon.robotcallv2.promise.domain.enums.PaymentPromiseStatus;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 

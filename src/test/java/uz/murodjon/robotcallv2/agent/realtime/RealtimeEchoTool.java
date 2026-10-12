@@ -72,7 +72,7 @@ public final class RealtimeEchoTool {
             return;
         }
         GeminiLiveProvider provider = new GeminiLiveProvider(new RealtimeProperties(true, "gemini-live", true,
-                false, 0, 0, 15,
+                false, 0, 0, 15, false,
                 new GeminiLiveProperties(apiKey,
                         env("REALTIME_GEMINI_URL",
                                 "wss://generativelanguage.googleapis.com/ws/"

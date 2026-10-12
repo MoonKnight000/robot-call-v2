@@ -208,10 +208,9 @@ public class RealtimeSystemPromptFactory {
                 .append("amount, date). ")
                 .append("BUT if the client says \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\" or asks you to repeat — ")
                 .append("do not move on to the next stage, do not call transitionTo! ")
-                .append("If they did not hear — politely repeat your last line (fact, date or question) clearly: ")
-                .append("\"Eshitilmadimi? Qaytadan aytaman: ...\". ")
-                .append("If they did not understand (\"aaa?\", \"qanaqa?\", \"tushunmadim\") — do not repeat it word for word; ")
-                .append("explain the same point briefly in simpler words: \"Kechirasiz, tushuntiray: ...\".\n");
+                .append("Never ask whether they heard (no \"Eshitilmadimi?\", no \"Qaytadan aytaman\") — ")
+                .append("explain what you just said again, briefly and in other, simpler words, the way a live operator would: ")
+                .append("\"Aka, uyingiz bo'yicha oylik to'lovdan [summa] so'm to'lanmay qolgan ekan. Qachon to'lab bera olasiz?\".\n");
 
         sb.append("SPOKEN FORM: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\"); ")
                 .append("not \"ma'lumot beraman\" but \"aytaman\".\n");

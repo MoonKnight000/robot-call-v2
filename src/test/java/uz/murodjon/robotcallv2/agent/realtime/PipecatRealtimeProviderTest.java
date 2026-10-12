@@ -37,6 +37,7 @@ class PipecatRealtimeProviderTest {
                 0.15,
                 300,
                 15,
+                false,
                 null,
                 null,
                 null,

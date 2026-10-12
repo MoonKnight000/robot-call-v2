@@ -119,11 +119,6 @@ public class GeminiLiveProvider implements RealtimeProvider {
     }
 
     @Override
-    public boolean streamsOutputTranscript() {
-        return true;
-    }
-
-    @Override
     public String resolveModel(RealtimeCallConfig config) {
         return resolveModelName(config.modelOr(realtimeProperties.geminiLive().model()));
     }
@@ -218,12 +213,9 @@ public class GeminiLiveProvider implements RealtimeProvider {
         // (§4.4 — an audit after the fact, not a gate before speaking).
         ObjectNode inputTranscription = setup.putObject("inputAudioTranscription");
         if (config.language() != null && !config.language().isBlank()) {
-            ArrayNode langs = inputTranscription.putArray("languageCodes");
-            langs.add(config.language());
-            if (config.language().toLowerCase().startsWith("uz")) {
-                langs.add("uz-UZ");
-                langs.add("ru-RU");
-            }
+            // Only the call's language: with ru-RU offered next to uz-UZ the engine wrote
+            // Uzbek replies down as Russian ("Да", "Нет, я").
+            inputTranscription.putArray("languageCodes").add(config.language());
         }
         setup.putObject("outputAudioTranscription");
 
@@ -506,7 +498,6 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 String cleanSaid = said.replaceAll("<[^>]+>", "").trim();
                 if (!cleanSaid.isEmpty()) {
                     spoken.append(cleanSaid).append(' ');
-                    listener.onOutputTranscriptDelta(cleanSaid);
                 }
             }
 
@@ -641,6 +632,9 @@ public class GeminiLiveProvider implements RealtimeProvider {
             alive.set(false);
             ready.countDown();
             CallMdc.with(channelId, () -> {
+                // A hangup mid-reply never gets a turnComplete: without this the last
+                // thing either side said is missing from the transcript.
+                settleTurn();
                 if (statusCode != WebSocket.NORMAL_CLOSURE) {
                     log.warn("[{}] Gemini Live closed ({}): {}", channelId, statusCode, reason);
                     session.reconnect(generation, new IllegalStateException("closed " + statusCode + ": " + reason));
@@ -659,6 +653,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
             alive.set(false);
             ready.countDown();
             CallMdc.with(channelId, () -> {
+                settleTurn();
                 log.warn("[{}] Gemini Live error: {}", channelId, error.getMessage());
                 session.reconnect(generation, error);
             });

@@ -2,15 +2,14 @@ package uz.murodjon.robotcallv2.auth.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
 import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
 import uz.murodjon.robotcallv2.company.domain.event.CompanySuspendedEvent;
 import uz.murodjon.robotcallv2.role.domain.event.RoleChangedEvent;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
+import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import uz.murodjon.robotcallv2.user.domain.event.UserBlockedEvent;
 import uz.murodjon.robotcallv2.user.domain.event.UserRoleChangedEvent;
-import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.util.List;
 

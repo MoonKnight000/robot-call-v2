@@ -9,10 +9,9 @@ public enum PipelineMode {
     /** A speech-to-speech engine hears, thinks and speaks; its words are only audited after the fact. */
     REALTIME,
     /**
-     * A speech-to-speech engine hears and thinks, but its own voice is dropped: the text of
-     * its answer goes through the fact guard and is spoken by our TTS voice. Keeps the
-     * engine's fast understanding of the caller's audio while every figure is still gated,
-     * and the brand voice stays the same as on CASCADE calls.
+     * Our STT hears the caller and hands each utterance to a speech-to-speech engine as text;
+     * the engine thinks and speaks in its own voice. The engine's own recognizer wrote Uzbek
+     * callers down as Russian or Turkish and answered what it misheard.
      */
     HALF_CASCADE;
 
@@ -23,6 +22,6 @@ public enum PipelineMode {
 
     /** Whether the caller hears our TTS voice rather than the engine's own. */
     public boolean speaksWithTts() {
-        return this != REALTIME;
+        return this == CASCADE;
     }
 }

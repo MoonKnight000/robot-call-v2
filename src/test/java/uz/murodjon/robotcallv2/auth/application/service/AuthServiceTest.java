@@ -1,21 +1,16 @@
 package uz.murodjon.robotcallv2.auth.application.service;
 
-import uz.murodjon.robotcallv2.auth.application.port.input.TwoFactorUseCase;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.auth.application.dto.ActivateRequest;
-import uz.murodjon.robotcallv2.auth.application.dto.AuthenticatedUser;
-import uz.murodjon.robotcallv2.auth.application.dto.IssuedToken;
-import uz.murodjon.robotcallv2.auth.application.dto.LoginRequest;
-import uz.murodjon.robotcallv2.auth.application.dto.LoginResponse;
-import uz.murodjon.robotcallv2.auth.application.dto.RefreshTokenRequest;
+import uz.murodjon.robotcallv2.auth.application.dto.*;
+import uz.murodjon.robotcallv2.auth.application.port.input.TwoFactorUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.SystemRole;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.security.RateLimitProperties;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
@@ -24,7 +19,6 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.ratelimit.RateLimiter;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
-import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 

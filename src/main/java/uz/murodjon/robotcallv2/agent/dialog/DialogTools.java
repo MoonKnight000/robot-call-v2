@@ -312,7 +312,8 @@ public class DialogTools {
         return "Callback scheduled: " + callbackTime;
     }
 
-    @Tool(description = "Hands the call to an operator when the client asks for a person or becomes abusive")
+    @Tool(description = "Hands the call to an operator only when the client explicitly asks for a person "
+            + "or an operator. Rudeness or swearing alone is not a reason to transfer")
     public String requestHumanTransfer(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                        @ToolParam(description = "reason for the transfer") String reason) {
         String finalReply = reply;

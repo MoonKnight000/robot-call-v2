@@ -6,7 +6,6 @@ import uz.murodjon.robotcallv2.siptrunk.application.dto.CallerIdPoolDetail;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.CallerIdPoolRow;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.CallerIdPool;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.CallerIdPoolNumber;
-import uz.murodjon.robotcallv2.siptrunk.domain.enums.CallerIdNumberStatus;
 
 import java.time.Instant;
 import java.util.List;

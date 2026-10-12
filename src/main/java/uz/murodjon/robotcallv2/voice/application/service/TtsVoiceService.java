@@ -69,7 +69,7 @@ public class TtsVoiceService implements TtsVoiceUseCase {
      */
     private boolean spokenBy(PipelineMode mode, TtsVoice voice) {
         if (mode != null) {
-            // HALF_CASCADE thinks on a realtime engine but speaks with our TTS, like CASCADE.
+            // HALF_CASCADE speaks with its realtime engine's voice, like REALTIME.
             return mode.speaksWithTts()
                     ? ttsProviderSelector.exists(voice.provider())
                     : realtimeProviderRegistry.exists(voice.provider());

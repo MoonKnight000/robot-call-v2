@@ -15,9 +15,7 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import java.time.Instant;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class SearchServiceTest {

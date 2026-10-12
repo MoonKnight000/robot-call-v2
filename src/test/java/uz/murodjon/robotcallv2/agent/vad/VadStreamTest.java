@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;

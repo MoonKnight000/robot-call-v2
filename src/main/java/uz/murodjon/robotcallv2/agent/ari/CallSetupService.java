@@ -1,10 +1,10 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import ch.loway.oss.ari4java.ARI;
 import ch.loway.oss.ari4java.generated.models.Bridge;
 import ch.loway.oss.ari4java.generated.models.Channel;
 import ch.loway.oss.ari4java.generated.models.StasisStart;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.EventLoopGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -402,7 +402,7 @@ class CallSetupService {
             PipelineMode pipelineMode = dialogStarter.resolveMode(channelId, agent,
                     outbound != null ? outbound.pipelineModeOverride() : null);
             boolean realtime = pipelineMode.usesRealtimeEngine();
-            RealtimeAudioBridge realtimeBridge = realtime ? new RealtimeAudioBridge() : null;
+            RealtimeAudioBridge realtimeBridge = realtime ? new RealtimeAudioBridge(pipelineMode == PipelineMode.REALTIME) : null;
 
             List<AudioListener> audioListeners = audioPipelineAssembler.buildAudioListeners(channelId, companyId, attemptId, startedAt,
                     language, realtimeBridge, context, agent, endpoint::recentOutboundLevel);

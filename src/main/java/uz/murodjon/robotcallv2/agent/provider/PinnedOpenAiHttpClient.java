@@ -2,11 +2,7 @@ package uz.murodjon.robotcallv2.agent.provider;
 
 import com.openai.core.RequestOptions;
 import com.openai.core.Timeout;
-import com.openai.core.http.Headers;
-import com.openai.core.http.HttpClient;
-import com.openai.core.http.HttpRequest;
-import com.openai.core.http.HttpRequestBody;
-import com.openai.core.http.HttpResponse;
+import com.openai.core.http.*;
 import com.openai.errors.OpenAIIoException;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.apache.hc.client5.http.config.RequestConfig;

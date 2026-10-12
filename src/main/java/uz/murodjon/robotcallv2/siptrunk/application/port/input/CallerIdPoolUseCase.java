@@ -1,11 +1,6 @@
 package uz.murodjon.robotcallv2.siptrunk.application.port.input;
 
-import uz.murodjon.robotcallv2.siptrunk.application.dto.AddCallerIdNumberRequest;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.CallerIdNumberRow;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.CallerIdPoolDetail;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.CallerIdPoolRow;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.CreateCallerIdPoolRequest;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.UpdateCallerIdPoolRequest;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
 
 import java.util.List;
 

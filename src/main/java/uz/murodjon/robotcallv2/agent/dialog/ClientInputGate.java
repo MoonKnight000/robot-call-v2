@@ -365,7 +365,7 @@ public class ClientInputGate {
     /** Whether a caller who said a word or two over the bot is taking the floor — by {@link FloorRules} when the words settle it, else by the model. */
     private boolean isTakingTheFloor(DialogSession s, String text) {
         String botLine = currentBotLine(s);
-        Boolean byRule = FloorRules.decide(botLine, text);
+        Boolean byRule = FloorRules.decide(text);
         metrics.floorDecided(byRule != null);
         if (byRule != null) {
             return byRule;

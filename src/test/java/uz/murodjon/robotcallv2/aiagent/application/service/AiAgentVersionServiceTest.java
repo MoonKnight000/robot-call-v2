@@ -10,17 +10,8 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentVersionRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.PublishAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.StartAgentRolloutRequest;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
-import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentEvalRepository;
-import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
-import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentTestCaseRepository;
-import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
-import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentRollout;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionStats;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVersion;
+import uz.murodjon.robotcallv2.aiagent.application.port.output.*;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalRunStatus;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVersionStatus;
@@ -32,11 +23,7 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-import uz.murodjon.robotcallv2.shared.exception.AppException;
-import uz.murodjon.robotcallv2.shared.exception.ConflictException;
-import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
@@ -46,9 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class AiAgentVersionServiceTest {

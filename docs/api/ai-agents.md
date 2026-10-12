@@ -240,11 +240,10 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 >   (TTS uchun `TTS_MODEL_PROVIDER_MISMATCH`). Sababi — ikkala maydon qo'ng'iroqda birga
 >   o'qiladi, va mos kelmagan juft vendorga u bilmaydigan id bo'lib boradi.
 > - `pipelineMode` — `CASCADE` (bizning STT + LLM + TTS), `REALTIME` (engine eshitadi,
->   o'ylaydi va o'z ovozida gapiradi) yoki `HALF_CASCADE` (engine eshitadi va o'ylaydi,
->   javob matni FactGuard'dan o'tib **bizning TTS ovozimizda** — `ttsVoice` — aytiladi).
->   `HALF_CASCADE` uchun `ttsVoice` `CASCADE` ovozlaridan, `llmModel` `REALTIME` modellaridan
->   tanlanadi. Hozircha faqat `gemini-live` qo'llab-quvvatlaydi; boshqa engine tanlansa
->   qo'ng'iroq `CASCADE`da ketadi (logda ERROR).
+>   o'ylaydi va o'z ovozida gapiradi) yoki `HALF_CASCADE` (mijozni **bizning STT** eshitadi — `sttProvider`,
+>   matnini engine oladi, o'ylaydi va **engine'ning o'z ovozida** — `ttsVoice` — gapiradi).
+>   `HALF_CASCADE` uchun `ttsVoice` va `llmModel` `REALTIME` ovoz/modellaridan, `sttModel` `CASCADE` dan
+>   tanlanadi. Agentning STT si ishga tushmasa qo'ng'iroq boshlanmaydi (`STT_START_FAILED`).
 > - `realtimeProvider` — `pipelineMode=REALTIME` (yoki `HALF_CASCADE`) agentning speech-to-speech engine'i
 >   (`GET /api/ai-agents/engine-options` dagi `realtime` ro'yxati: `gemini-live`,
 >   `openai-realtime`, `pipecat`, …). `REALTIME` saqlanayotganda (yoki rejim/engine

@@ -1,11 +1,11 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
 import uz.murodjon.robotcallv2.report.application.dto.OperatorReportRow;
 import uz.murodjon.robotcallv2.report.application.dto.QueueReportRow;
 import uz.murodjon.robotcallv2.report.application.mapper.ReportMapper;

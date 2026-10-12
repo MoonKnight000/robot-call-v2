@@ -1,10 +1,6 @@
 package uz.murodjon.robotcallv2.callrecord.application.port.output;
 
-import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.ContactHistory;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.PhoneCallHistory;
-import uz.murodjon.robotcallv2.callrecord.domain.entity.ConversationRetention;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;

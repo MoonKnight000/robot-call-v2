@@ -7,7 +7,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.siptrunk.application.dto.AddCallerIdNumberRequest;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.CallerIdPoolDetail;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.CreateCallerIdPoolRequest;
 import uz.murodjon.robotcallv2.siptrunk.application.mapper.CallerIdPoolMapper;

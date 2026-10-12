@@ -99,13 +99,4 @@ public interface RealtimeListener {
      */
     default void onEngineWorking(boolean working) {
     }
-
-    /**
-     * A piece of the engine's answer as text, delivered as it is produced — before the
-     * whole turn settles into {@link #onOutputTranscript}. Only engines that say so
-     * ({@link RealtimeProvider#streamsOutputTranscript()}) call it; a HALF_CASCADE call
-     * speaks these pieces with our own TTS instead of playing the engine's audio.
-     */
-    default void onOutputTranscriptDelta(String delta) {
-    }
 }

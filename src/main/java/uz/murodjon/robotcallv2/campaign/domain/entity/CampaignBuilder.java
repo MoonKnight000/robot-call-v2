@@ -1,10 +1,6 @@
 package uz.murodjon.robotcallv2.campaign.domain.entity;
 
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
-import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
-import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
-import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
+import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 
 import java.time.DayOfWeek;
 import java.time.Instant;

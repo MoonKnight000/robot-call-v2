@@ -23,8 +23,8 @@ Umumiy javob shakli va xatolar uchun [README.md](README.md)ga qarang.
 ## `GET /api/ai-models` — mavjud modellar
 
 Query parametrlar: `?kind=LLM|STT|TTS` (berilmasa `LLM`) va `?mode=CASCADE|REALTIME|HALF_CASCADE`
-(ixtiyoriy). `HALF_CASCADE` alohida katalog emas: `LLM` uchun `REALTIME` modellari
-(engine o'ylaydi), `STT`/`TTS` uchun `CASCADE` modellari qaytadi. Ro'yxat uch marta toraytiriladi:
+(ixtiyoriy). `HALF_CASCADE` alohida katalog emas: `LLM`/`TTS` uchun `REALTIME` modellari
+(engine o'ylaydi va gapiradi), `STT` uchun `CASCADE` modellari (bizning STT eshitadi) qaytadi. Ro'yxat uch marta toraytiriladi:
 
 1. **`kind` bo'yicha** — agentning model maydonlari uch xil oilaga tegishli. Agent
    formasi `llmModel` va `fastLlmModel` uchun `?kind=LLM`, `sttModel` uchun `?kind=STT`,

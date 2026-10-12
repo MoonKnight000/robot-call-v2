@@ -2,8 +2,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.provider.OwnLlmChatModels;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;

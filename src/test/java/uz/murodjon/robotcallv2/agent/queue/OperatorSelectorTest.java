@@ -7,11 +7,7 @@ import uz.murodjon.robotcallv2.operator.domain.entity.OperatorPresence;
 import uz.murodjon.robotcallv2.operator.domain.enums.OperatorStatus;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
