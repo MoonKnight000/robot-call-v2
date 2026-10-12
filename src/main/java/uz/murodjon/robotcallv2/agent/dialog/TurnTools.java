@@ -427,7 +427,7 @@ public class TurnTools {
                 // name, or is reaching for an outcome that is not on the table yet.
                 log.warn("[{}] model called unavailable tool {} in {}",
                         s.channelId(), call.name(), s.state());
-                results.add("XATO: " + call.name() + " hozirgi bosqichda mavjud emas");
+                results.add("ERROR: " + call.name() + " is not available in the current stage");
                 continue;
             }
             try {
@@ -438,7 +438,7 @@ public class TurnTools {
                 }
             } catch (Exception e) {
                 log.warn("[{}] tool {} failed: {}", s.channelId(), call.name(), e.getMessage());
-                results.add("XATO: " + call.name() + " bajarilmadi");
+                results.add("ERROR: " + call.name() + " failed");
             }
         }
         return results.isEmpty() ? null : String.join(" ", results);

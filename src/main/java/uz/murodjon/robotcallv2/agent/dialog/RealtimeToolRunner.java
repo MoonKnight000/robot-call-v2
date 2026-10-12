@@ -35,8 +35,8 @@ class RealtimeToolRunner {
     private static final Logger log = LoggerFactory.getLogger(RealtimeToolRunner.class);
 
     /** Appended to a tool answer the engine gets after it already spoke this turn — see {@link #runTool}. */
-    private static final String ALREADY_SPOKEN = " [TIZIM: bu turnda aytgan gapingizni mijoz eshitib bo'ldi — "
-            + "uni qayta aytmang. Aytadigan yangi gapingiz bo'lmasa, jim turib mijozning javobini kuting.]";
+    private static final String ALREADY_SPOKEN = " [SYSTEM: the client has already heard what you said this turn — "
+            + "do not say it again. If you have nothing new to say, stay silent and wait for the client's answer.]";
 
     private final KnowledgeRetrievalUseCase knowledgeRetrieval;
     private final CatalogSearchUseCase catalogSearch;
@@ -160,8 +160,8 @@ class RealtimeToolRunner {
             running.cancel(true);
             log.warn("[{}] tool {} did not answer within {} ms — telling the engine it failed",
                     session.channelId(), name, timeoutMs);
-            answerTool(session, callId, "XATO: ma'lumot manbai javob bermadi (" + timeoutMs / 1000
-                    + " soniya). Mijozdan kechirim so'rang va suhbatni davom ettiring.");
+            answerTool(session, callId, "ERROR: the data source did not answer (" + timeoutMs / 1000
+                    + " seconds). Apologise to the client and carry on with the conversation.");
             release.run();
         }));
     }
@@ -202,14 +202,14 @@ class RealtimeToolRunner {
                     .orElse(null);
             if (callback == null) {
                 log.warn("[{}] engine called unknown tool {}", s.channelId(), name);
-                return "XATO: bunday tool yo'q";
+                return "ERROR: no such tool";
             }
             String result = callback.call(argumentsJson);
             log.info("[{}] tool {} -> {}", s.channelId(), name, result);
             return result;
         } catch (Exception e) {
             log.warn("[{}] tool {} failed: {}", s.channelId(), name, e.getMessage());
-            return "XATO: " + e.getMessage();
+            return "ERROR: " + e.getMessage();
         }
     }
 
@@ -235,8 +235,8 @@ class RealtimeToolRunner {
         // left the call in the opening stage for good, every later transition and outcome
         // refused from there. A greeting cut short is still caught by checkDisclosure.
         if ("transitionTo".equals(name) && s.turnCount() == 0 && !spokeThisTurn) {
-            return "XATO: avval mijoz bilan salomlashing, o'zingizni va kompaniyani tanishtiring. "
-                    + "Birinchi gapingizni aytib bo'lganingizdan keyingina bosqichni o'zgartirasiz.";
+            return "ERROR: first greet the client and introduce yourself and the company. "
+                    + "You change the stage only after you have said your first line.";
         }
         // A promised date the caller has not had the chance to give. The model asked for
         // the stage and the promise in one breath, before its own question had been
@@ -244,8 +244,8 @@ class RealtimeToolRunner {
         // 1 500 000 so'm promise for today, and PROMISE_TO_PAY into the CRM. Refusing is
         // recoverable: the model can confirm the date aloud and call again next turn.
         if ("recordPaymentPromise".equals(name) && s.stageJustEntered()) {
-            return "XATO: bu bosqichga endigina o'tdingiz — mijoz hali sana aytgani yo'q. "
-                    + "Avval shu bosqichning gapini ayting va mijozdan aniq kunni so'rang.";
+            return "ERROR: you have only just entered this stage — the client has not named a date yet. "
+                    + "First say this stage's line and ask the client for the exact day.";
         }
         if (DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES.contains(name)) {
             return null;
@@ -265,8 +265,8 @@ class RealtimeToolRunner {
         if (allowed == null || allowed.contains(name)) {
             return null;
         }
-        return "XATO: " + name + " ni " + s.state() + " bosqichida chaqirib bo'lmaydi"
-                + (allowed.isEmpty() ? "" : " — bu yerda faqat " + String.join(", ", allowed) + " mumkin")
+        return "ERROR: " + name + " cannot be called in stage " + s.state()
+                + (allowed.isEmpty() ? "" : " — only " + String.join(", ", allowed) + " can be called here")
                 + ".";
     }
 

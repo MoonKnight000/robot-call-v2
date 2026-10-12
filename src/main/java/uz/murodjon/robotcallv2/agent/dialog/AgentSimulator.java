@@ -20,6 +20,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.voice.application.port.input.VoiceSettingsUseCase;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,14 +45,9 @@ public class AgentSimulator {
 
     /** What the agent is told to open with — the same bootstrap a real greeting turn uses. */
     private static final String GREETING_BOOTSTRAP =
-            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Rejaga muvofiq salomlashing.]";
+            "[SYSTEM: The call is connected, the client has picked up. Greet them as planned.]";
 
-    private static final String PERSONA_RULES = """
-            Siz telefon qo'ng'irog'iga javob bergan odamsiz — operator emas, mijozsiz.
-            Faqat mijoz sifatida gapiring, hech qachon agent rolini o'ynamang.
-            Javoblaringiz og'zaki nutqdek qisqa bo'lsin: bir-ikki jumla, ro'yxat yo'q.
-            Suhbat tugadi deb hisoblasangiz, oddiy odamdek xayrlashing.
-            """;
+    private static final String PERSONA_RULES = PromptText.text("simulated-caller.txt");
 
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final TextTurnEngine textTurnEngine;
@@ -193,7 +189,7 @@ public class AgentSimulator {
                     .build();
         }
         ChatResponse response = caller.prompt()
-                .system(PERSONA_RULES + "\nSIZNING ROLINGIZ:\n" + persona.prompt())
+                .system(PERSONA_RULES + "\nYOUR ROLE:\n" + persona.prompt())
                 .messages(callerHistory)
                 .options(options.mutate())
                 .call()

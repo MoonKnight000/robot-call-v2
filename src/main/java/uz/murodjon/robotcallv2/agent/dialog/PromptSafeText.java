@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li><b>Line breaks</b> — the prompt is a list of lines, and a value that spans
  *       several of them stops looking like one entry in that list
- *   <li><b>The system-note marker</b> — {@code [TIZIM}, which is exactly how this app
+ *   <li><b>The system-note marker</b> — {@code [SYSTEM}, which is exactly how this app
  *       tells the model that something is an instruction rather than speech
  *       ({@link SystemPromptFactory#SYSTEM_NOTE_MARKER})
  *   <li><b>Length</b> — a name is a name; a paragraph in the name field is not a long

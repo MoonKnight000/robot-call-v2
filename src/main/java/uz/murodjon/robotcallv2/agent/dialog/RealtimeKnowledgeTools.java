@@ -27,8 +27,8 @@ public class RealtimeKnowledgeTools {
     private static final Logger log = LoggerFactory.getLogger(RealtimeKnowledgeTools.class);
 
     /** Deliberately explicit: the engine must say it does not know rather than fill the gap. */
-    private static final String NOTHING_FOUND = "HUJJATLARDA TOPILMADI — bu savolga javobni o'zingizdan "
-            + "to'qimang. Bilmasligingizni ayting yoki operatorga uzating.";
+    private static final String NOTHING_FOUND = "NOT FOUND IN THE DOCUMENTS — do not invent an answer to "
+            + "this question. Say you do not know or hand over to an operator.";
 
     private static final int MAX_PASSAGES = 3;
     private static final int MAX_PASSAGE_CHARS = 900;
@@ -41,11 +41,11 @@ public class RealtimeKnowledgeTools {
         this.knowledgeRetrieval = knowledgeRetrieval;
     }
 
-    @Tool(description = "Kompaniya hujjatlaridan (yuklangan fayllar va havolalar) mijozning savoliga "
-            + "tegishli ma'lumotni qidiradi. Mijoz kompaniya qoidalari, tariflari, xizmatlari yoki "
-            + "shartlari haqida so'raganda SHU TOOL'ni chaqiring va faqat qaytgan matnga tayanib javob "
-            + "bering. Qaytgan matndan tashqari narsani o'zingizdan qo'shmang.")
-    public String searchKnowledgeBase(@ToolParam(description = "mijozning savoli, o'z so'zlari bilan")
+    @Tool(description = "Searches the company's documents (uploaded files and links) for information on the "
+            + "client's question. When the client asks about the company's rules, prices, services or "
+            + "terms, call THIS TOOL and answer only from the text it returns. Do not add anything of "
+            + "your own beyond that text.")
+    public String searchKnowledgeBase(@ToolParam(description = "the client's question, in their own words")
                                       String question) {
         try {
             List<KnowledgePassage> passages = knowledgeRetrieval.findRelevantPassages(

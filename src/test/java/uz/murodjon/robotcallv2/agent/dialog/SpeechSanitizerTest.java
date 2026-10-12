@@ -15,7 +15,7 @@ class SpeechSanitizerTest {
 
     @Test
     void rejectsSystemNotesAndBrackets() {
-        assertThat(SpeechSanitizer.isUnspeakable("[TIZIM: JORIY BOSQICH: DEBT_NOTICE]")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable("[SYSTEM: CURRENT STAGE: DEBT_NOTICE]")).isTrue();
         assertThat(SpeechSanitizer.isUnspeakable("[TIZIM: Salomlashuv]")).isTrue();
         assertThat(SpeechSanitizer.isUnspeakable("[Tool natijasi]")).isTrue();
     }

@@ -23,32 +23,20 @@ public class SentimentDetector {
         boolean russian = "ru-RU".equalsIgnoreCase(language);
         boolean reserved = warmth == SpeakingWarmth.RESERVED;
         if (sentiment == CustomerSentiment.FRUSTRATED) {
-            if (russian) {
-                return "\n\n[EMPATHY & DE-ESCALATION DIRECTIVE]: Клиент раздражен. "
-                        + (reserved
-                                ? "Признайте это одним коротким словом ('Понимаю.') и спокойно вернитесь к делу. "
-                                : "Признайте это одной короткой искренней фразой, говорите спокойно и чуть медленнее, не спорьте. ")
-                        + "Не давите и не растягивайте сочувствие: разыгранная эмпатия звучит фальшиво "
-                        + "и раздражает сильнее молчания.";
-            }
-            return "\n\n[HAMDARDLIK VA TINCHLANTIRISH QOIDASI]: Mijoz asabiylashgan. "
+            return "\n\n[EMPATHY & DE-ESCALATION DIRECTIVE]: The client is upset. "
                     + (reserved
-                            ? "Buni bitta qisqa so'z bilan tan oling ('Tushunaman.') va xotirjam ohangda ishga qayting. "
-                            : "Buni bitta qisqa, samimiy gap bilan tan oling, xotirjam va sekinroq gapiring, tortishmang. ")
-                    + "Bosim qilmang, hamdardlikni cho'zmang: o'ynalgan hamdardlik samimiy emas va "
-                    + "mijozni jimlikdan ko'ra ko'proq asabiylashtiradi.";
+                            ? "Acknowledge it with one short word (" + (russian ? "'Понимаю.'" : "'Tushunaman.'")
+                                    + ") and calmly get back to the task. "
+                            : "Acknowledge it with one short, sincere sentence, speak calmly and a little slower, do not argue. ")
+                    + "Do not push and do not drag out the sympathy: performed empathy is not sincere and "
+                    + "irritates the client more than silence does.";
         } else if (sentiment == CustomerSentiment.CONFUSED) {
-            if (russian) {
-                return "\n\n[CLARITY DIRECTIVE]: Клиент не понял суть. Кратко и доступно поясните, кто вы и в чем вопрос.";
-            }
-            return "\n\n[TUSHUNTIRISH QOIDASI]: Mijoz vaziyatni to'liq tushunmadi. Kimligingiz va murojaat maqsadingizni juda qisqa va sodda qilib tushuntiring.";
+            return "\n\n[CLARITY DIRECTIVE]: The client has not understood the situation. Explain very briefly "
+                    + "and simply who you are and why you are calling.";
         } else if (sentiment == CustomerSentiment.POSITIVE && !reserved) {
             // People match the warmth they are spoken to with; answering a friendly caller
             // in the same flat register is what gives the bot away.
-            if (russian) {
-                return "\n\n[TONE DIRECTIVE]: Клиент говорит дружелюбно — ответьте чуть теплее, но не отвлекайтесь от дела.";
-            }
-            return "\n\n[OHANG QOIDASI]: Mijoz iliq gapiryapti — siz ham sal iliqroq bo'ling, lekin ishdan chalg'imang.";
+            return "\n\n[TONE DIRECTIVE]: The client is speaking warmly — be slightly warmer too, but stay on task.";
         }
         return "";
     }

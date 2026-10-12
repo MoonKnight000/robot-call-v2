@@ -23,9 +23,9 @@ public class DialogTools {
 
     static final String REPLY_PARAM = "reply";
     static final String REPLY_DESCRIPTION =
-            "faqat mijozga aytadigan gapni oddiy matn qilib YOZMAGAN bo'lsangiz to'ldiring — "
-                    + "matnni allaqachon yozgan bo'lsangiz bu parametrni bo'sh qoldiring, gapni takrorlamang. "
-                    + "Inglizcha texnik so'zlar yoki placeholderlar (masalan dynamic_thought_or_fallback) yozish QAT'IYAN TAQIQLANADI";
+            "fill this in only if you have NOT already written what you say to the client as plain text — "
+                    + "if you have, leave it empty and do not repeat the sentence. "
+                    + "English technical words or placeholders (e.g. dynamic_thought_or_fallback) are STRICTLY FORBIDDEN";
 
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
             "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
@@ -195,21 +195,22 @@ public class DialogTools {
         return null;
     }
 
-    @Tool(description = "Suhbat bosqichini keyingi ruxsat etilgan holatga o'tkazadi")
+    @Tool(description = "Moves the conversation to the next allowed stage")
     public String transitionTo(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                               @ToolParam(description = "keyingi bosqich id'si") String nextStage) {
+                               @ToolParam(description = "id of the next stage") String nextStage) {
         if (nextStage != null && nextStage.trim().equalsIgnoreCase(session.state())) {
             recordReply(reply);
-            return "Holat o'zgarishsiz: joriy " + session.state() + " bosqichida qolindi.";
+            return "State unchanged: stayed in the current stage " + session.state() + ".";
         }
         List<String> required = findUnmetRequiredOutcomes(
                 session.scenario() == null ? null : session.scenario().findStage(session.state()));
         if (!required.isEmpty()) {
             log.warn("[{}] refused transition {} -> {}: no required outcome {} recorded yet",
                     session.channelId(), session.state(), nextStage, required);
-            return "XATO: " + session.state() + " bosqichi hali tugamadi — avval " + String.join(" yoki ", required)
-                    + " natijasini yozing (tegishli tool bilan). Mijoz javob berishni rad etsa — endCall yoki "
-                    + "requestHumanTransfer. Bu bosqichda aytib bo'lgan gapingizni qayta aytmang.";
+            return "ERROR: stage " + session.state() + " is not finished yet — first record the "
+                    + String.join(" or ", required)
+                    + " outcome (with the matching tool). If the client refuses to answer — endCall or "
+                    + "requestHumanTransfer. Do not repeat what you have already said in this stage.";
         }
         List<String> allowed = allowedTransitions();
         List<String> walked = List.of();
@@ -240,9 +241,9 @@ public class DialogTools {
             // The last sentence is the safety net for a realtime call, where the model may
             // already be speaking when the refusal lands: without it, stepping into the
             // stage it had just voiced made it voice the stage all over again.
-            return "XATO: " + session.state() + " bosqichidan faqat " + String.join(", ", allowed)
-                    + " ga o'tish mumkin. Bosqichni tashlab ketmang. "
-                    + "Bu bosqichda aytib bo'lgan gapingizni qayta aytmang.";
+            return "ERROR: from stage " + session.state() + " you can only move to " + String.join(", ", allowed)
+                    + ". Do not skip stages. "
+                    + "Do not repeat what you have already said in this stage.";
         }
         recordReply(reply);
         session.setState(nextStage);
@@ -254,27 +255,27 @@ public class DialogTools {
         // turns guessing stage names it was not allowed to reach.
         String next = SystemPromptFactory.describeTransitions(
                 session.scenario() == null ? null : session.scenario().findStage(landed));
-        String moved = "Holat " + landed + " ga o'tkazildi"
-                + (landed.equals(nextStage) ? "" : " (" + nextStage + " shartlari bo'yicha avtomatik)")
-                + (walked.isEmpty() ? "" : " (oraliq bosqichlar: " + String.join(", ", walked) + ")");
+        String moved = "Moved to stage " + landed
+                + (landed.equals(nextStage) ? "" : " (automatically, by the branches of " + nextStage + ")")
+                + (walked.isEmpty() ? "" : " (stages walked through: " + String.join(", ", walked) + ")");
         return next.isEmpty()
                 ? moved
-                : moved + ". Bu bosqichdan keyin faqat " + next + " ga o'tish mumkin.";
+                : moved + ". From this stage you can only move to " + next + ".";
     }
 
-    @Tool(description = "Mijoz ANIQ KUNni o'zi aytganda chaqiriladi (masalan \"10-oktabr\", \"ertaga\"). "
-            + "Mijoz \"keyingi oy\", \"oy oxirida\", \"pul bo'lganda\" kabi noaniq javob bersa CHAQIRMANG "
-            + "— avval qaysi kun ekanini so'rang. Sanani o'zingizdan taxmin qilish TAQIQLANADI")
+    @Tool(description = "Call when the client names an EXACT DAY themselves (e.g. \"10-oktabr\", \"ertaga\"). "
+            + "Do NOT call it on a vague answer like \"keyingi oy\", \"oy oxirida\", \"pul bo'lganda\" "
+            + "— first ask which day. Guessing the date yourself is FORBIDDEN")
     public String recordPaymentPromise(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "va'da qilingan sana, format yyyy-MM-dd") LocalDate promisedDate,
-            @ToolParam(description = "va'da qilingan summa", required = false) BigDecimal amount,
-            @ToolParam(description = "mijoz aytgan to'lov kanali: CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL "
-                    + "yoki OTHER. Mijoz aytmagan bo'lsa bo'sh qoldiring", required = false) String paymentChannel,
-            @ToolParam(description = "qo'shimcha izoh", required = false) String note) {
+            @ToolParam(description = "promised date, format yyyy-MM-dd") LocalDate promisedDate,
+            @ToolParam(description = "promised amount", required = false) BigDecimal amount,
+            @ToolParam(description = "payment channel the client named: CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL "
+                    + "or OTHER. Leave empty if the client did not say", required = false) String paymentChannel,
+            @ToolParam(description = "additional note", required = false) String note) {
         if (promisedDate != null && promisedDate.isBefore(LocalDate.now())) {
-            return "XATO: " + promisedDate + " o'tmishda. Bugun " + LocalDate.now()
-                    + ". Sanani shundan hisoblab qaytadan yuboring yoki mijozdan aniq sanani so'rang.";
+            return "ERROR: " + promisedDate + " is in the past. Today is " + LocalDate.now()
+                    + ". Work the date out from today and send it again, or ask the client for the exact date.";
         }
         recordReply(reply);
         session.recordOutcome("promisedDate", promisedDate);
@@ -283,37 +284,37 @@ public class DialogTools {
         session.setDisposition(Disposition.PROMISE_TO_PAY);
         log.info("[{}] payment promise: date={}, amount={}, channel={}, note={}",
                 session.channelId(), promisedDate, amount, paymentChannel, note);
-        return "To'lov va'dasi yozib olindi: " + promisedDate;
+        return "Payment promise recorded: " + promisedDate;
     }
 
-    @Tool(description = "Mijoz to'lay olmasligini aytganda sababni yozib qo'yadi")
+    @Tool(description = "Records the reason when the client says they cannot pay")
     public String recordRefusalReason(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "to'lamaslik sababi") String reason,
-            @ToolParam(description = "sabab tafsiloti", required = false) String detail) {
+            @ToolParam(description = "reason for not paying") String reason,
+            @ToolParam(description = "details of the reason", required = false) String detail) {
         recordReply(reply);
         session.recordOutcome("reasonCode", reason);
         session.setDisposition(Disposition.REFUSED);
         log.info("[{}] refusal reason: {} ({})", session.channelId(), reason, detail);
-        return "Sabab yozib olindi: " + reason;
+        return "Reason recorded: " + reason;
     }
 
-    @Tool(description = "Mijoz keyinroq (masalan ertaga yoki soat 16:00 da) qayta qo'ng'iroq qilishni so'raganda chaqiriladi")
+    @Tool(description = "Call when the client asks to be called back later (e.g. tomorrow or at 16:00)")
     public String scheduleCallback(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "qayta qo'ng'iroq sanasi va vaqti (masalan 2026-09-02T16:00:00 yoki ertaga soat 16:00)") String callbackTime,
-            @ToolParam(description = "sababi yoki izoh", required = false) String reason) {
+            @ToolParam(description = "callback date and time (e.g. 2026-09-02T16:00:00 or 'ertaga soat 16:00')") String callbackTime,
+            @ToolParam(description = "reason or note", required = false) String reason) {
         recordReply(reply);
         session.recordOutcome("callbackTime", callbackTime);
         session.recordOutcome("callbackReason", reason);
         session.setDisposition(Disposition.CALLBACK_REQUESTED);
         log.info("[{}] callback requested: time={}, reason={}", session.channelId(), callbackTime, reason);
-        return "Qayta qo'ng'iroq rejalashtirildi: " + callbackTime;
+        return "Callback scheduled: " + callbackTime;
     }
 
-    @Tool(description = "Mijoz operator bilan gaplashishni so'raganda yoki janjal qilganda operatorga o'tkazadi")
+    @Tool(description = "Hands the call to an operator when the client asks for a person or becomes abusive")
     public String requestHumanTransfer(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                       @ToolParam(description = "o'tkazish sababi") String reason) {
+                                       @ToolParam(description = "reason for the transfer") String reason) {
         String finalReply = reply;
         if ((finalReply == null || finalReply.isBlank()) && session.agent() != null
                 && session.agent().callBehaviour().transferMessage() != null && !session.agent().callBehaviour().transferMessage().isBlank()) {
@@ -323,24 +324,24 @@ public class DialogTools {
         session.setTransferReason(reason);
         session.end(Disposition.TRANSFERRED);
         log.info("[{}] human transfer requested: {}", session.channelId(), reason);
-        return "Operatorga o'tkazish so'raldi. Mijoz bilan xayrlashing.";
+        return "Transfer to an operator requested. Say goodbye to the client.";
     }
 
-    @Tool(description = "Mijozga suhbat davomida real-vaqtda SMS xabar, havola yoki kod yuboradi. "
-            + "Faqat shu mijozning raqamiga, qo'ng'iroq davomida bir marta, ko'pi bilan " + MAX_SMS_CHARS + " belgi")
+    @Tool(description = "Sends the client an SMS message, link or code during the call. "
+            + "Only to this client's number, once per call, at most " + MAX_SMS_CHARS + " characters")
     public String sendMidCallSms(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                 @ToolParam(description = "Yuboriladigan SMS matni yoki havola. Agentning SMS shabloni "
-                                         + "bo'lsa — butun xabar emas, faqat shablonga qo'yiladigan qism (havola yoki kod)",
+                                 @ToolParam(description = "SMS text or link to send. If the agent has an SMS template "
+                                         + "— not the whole message, only the part that goes into the template (a link or a code)",
                                          required = false) String text) {
         String template = midCallSmsTemplate();
         if (template == null) {
             // Without a template the model would write the whole message itself, in words
             // nobody reviewed — and a gateway delivers only registered templates anyway.
-            return "XATO: bu agentda SMS shabloni yo'q, SMS yuborib bo'lmaydi. "
-                    + "Mijozga hozir SMS yubora olmasligingizni ayting.";
+            return "ERROR: this agent has no SMS template, no SMS can be sent. "
+                    + "Tell the client you cannot send an SMS right now.";
         }
         if (SMS_TEXT_SLOT.matcher(template).find() && (text == null || text.isBlank())) {
-            return "XATO: SMS shablonga qo'yiladigan havola yoki kodni text parametrida bering.";
+            return "ERROR: pass the link or code that goes into the SMS template in the text parameter.";
         }
         String body = renderSmsTemplate(template, text);
         String refusal = sendGuardedSms(body);
@@ -351,7 +352,7 @@ public class DialogTools {
         session.recordOutcome("midCallSmsSent", true);
         session.recordOutcome("midCallSmsText", body.trim());
         log.info("[{}] mid-call SMS sent ({} chars)", session.channelId(), body.trim().length());
-        return "SMS mijozning telefoniga yuborildi. Mijozga SMS yuborilganini bildiring.";
+        return "SMS sent to the client's phone. Tell the client the SMS has been sent.";
     }
 
     /** The agent's {@code midCallSmsTemplate}, or null when it has none — and then no mid-call SMS is sent. */
@@ -388,46 +389,46 @@ public class DialogTools {
      */
     private String sendGuardedSms(String text) {
         if (text == null || text.isBlank()) {
-            return "XATO: SMS matni bo'sh. Yuboriladigan matnni yozing.";
+            return "ERROR: the SMS text is empty. Write the text to send.";
         }
         String body = text.trim();
         if (body.length() > MAX_SMS_CHARS) {
-            return "XATO: SMS matni " + body.length() + " belgi, ko'pi bilan " + MAX_SMS_CHARS
-                    + " bo'lishi mumkin. Qisqaroq matn bilan qayta chaqiring.";
+            return "ERROR: the SMS text is " + body.length() + " characters, at most " + MAX_SMS_CHARS
+                    + " are allowed. Call again with a shorter text.";
         }
         if (session.countToolCall(SMS_BUDGET_KEY) > 1) {
-            return "XATO: bu qo'ng'iroqda SMS allaqachon yuborilgan, ikkinchisi yuborilmaydi. "
-                    + "Mijozga oldingi SMSni ko'rishini ayting.";
+            return "ERROR: an SMS has already been sent on this call, a second one is not sent. "
+                    + "Tell the client to look at the earlier SMS.";
         }
         if (!session.triggerMidCallSms(body)) {
             log.warn("[{}] SMS not sent ({} chars)", session.channelId(), body.length());
-            return "XATO: SMS yuborilmadi. Mijozga SMS yuborildi demang, hozir yubora olmasligingizni ayting.";
+            return "ERROR: the SMS was not sent. Do not tell the client it was sent; tell them you cannot send it right now.";
         }
         return null;
     }
 
-    @Tool(description = "Telefonni ko'targan odam qo'ng'iroq qilingan shaxs emasligi aniqlanganda chaqiriladi")
+    @Tool(description = "Call when it turns out the person who answered is not the person being called")
     public String recordWrongPerson(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                    @ToolParam(description = "tafsilot") String detail) {
+                                    @ToolParam(description = "details") String detail) {
         recordReply(reply);
         session.end(Disposition.WRONG_NUMBER);
         log.info("[{}] wrong person: {}", session.channelId(), detail);
-        return "Noto'g'ri odam belgilandi. Uzr so'rab xayrlashing.";
+        return "Marked as the wrong person. Apologise and say goodbye.";
     }
 
-    @Tool(description = "Mijoz boshqa qo'ng'iroq qilmaslikni, raqamini o'chirishni qat'iy talab qilganda chaqiriladi")
+    @Tool(description = "Call when the client firmly demands not to be called again or to have their number removed")
     public String recordDoNotCall(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                  @ToolParam(description = "talab sababi") String reason) {
+                                  @ToolParam(description = "reason for the demand") String reason) {
         recordReply(reply);
         session.setDoNotCallReason(reason);
         session.end(Disposition.DO_NOT_CALL);
         log.info("[{}] do not call registered: reason={}", session.channelId(), reason);
-        return "Raqam qora ro'yxatga kiritildi. Qisqa uzr so'rab xayrlashing.";
+        return "The number has been added to the do-not-call list. Apologise briefly and say goodbye.";
     }
 
-    @Tool(description = "Mijoz to'lov havolasini yoki rekvizitlarni SMS orqali yuborishni so'raganda chaqiriladi")
+    @Tool(description = "Call when the client asks for the payment link or payment details by SMS")
     public String sendSmsPaymentLink(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                     @ToolParam(description = "SMS xabar turi yoki qo'shimcha matn", required = false) String note) {
+                                     @ToolParam(description = "SMS message type or additional text", required = false) String note) {
         session.recordOutcome("sendSmsRequested", true);
         session.recordOutcome("smsNote", note);
         String link = findPaymentLink(session.context());
@@ -436,7 +437,7 @@ public class DialogTools {
             // follows up after the call, as it always was.
             recordReply(reply);
             log.info("[{}] SMS payment link requested, none on this call", session.channelId());
-            return "To'lov havolasi SMS orqali yuboriladigan bo'ldi.";
+            return "The payment link will be sent by SMS.";
         }
         // The model decides when, never what: the text is fixed and the link is the call's own.
         String refusal = sendGuardedSms(PAYMENT_LINK_SMS_TEXT + link);
@@ -446,7 +447,7 @@ public class DialogTools {
         recordReply(reply);
         session.recordOutcome("paymentLinkSmsSent", true);
         log.info("[{}] payment link SMS sent", session.channelId());
-        return "To'lov havolasi mijozning telefoniga SMS orqali yuborildi. Mijozga SMSni tekshirishni ayting.";
+        return "The payment link was sent to the client's phone by SMS. Ask the client to check their SMS.";
     }
 
     /**
@@ -458,15 +459,15 @@ public class DialogTools {
         return findLink(context, null, PAYMENT_LINK_FACT);
     }
 
-    @Tool(description = "Mijoz to'lov muddatini bir necha kunga uzaytirishni (kechiktirishni) so'raganda chaqiriladi")
+    @Tool(description = "Call when the client asks to extend (postpone) the payment deadline by a few days")
     public String requestPaymentExtension(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                          @ToolParam(description = "necha kunga uzaytirish so'ralmoqda") int extensionDays,
-                                          @ToolParam(description = "kechiktirish sababi") String reason) {
+                                          @ToolParam(description = "how many days the extension is for") int extensionDays,
+                                          @ToolParam(description = "reason for the delay") String reason) {
         recordReply(reply);
         session.recordOutcome("extensionRequestedDays", extensionDays);
         session.recordOutcome("extensionReason", reason);
         log.info("[{}] payment extension requested: {} days, reason: {}", session.channelId(), extensionDays, reason);
-        return "To'lov muddatini uzaytirish bo'yicha ariza qayd etildi: " + extensionDays + " kun.";
+        return "Payment extension request recorded: " + extensionDays + " days.";
     }
 
     /**
@@ -474,24 +475,24 @@ public class DialogTools {
      * {@link Disposition#PAYMENT_CLAIMED} keeps the dialer off the number for three days
      * while the company checks it ({@code RetrySchedule}).
      */
-    @Tool(description = "Mijoz qarzni ALLAQACHON to'laganini aytganda chaqiriladi. Avval qachon va qaysi "
-            + "to'lov tizimi orqali to'laganini so'rang. Mijoz bilan tortishmang: to'lov tekshirilguncha "
-            + "unga qo'ng'iroq qilinmasligini ayting")
+    @Tool(description = "Call when the client says they have ALREADY paid the debt. First ask when and through "
+            + "which payment system they paid. Do not argue with the client: tell them they will not be called "
+            + "until the payment has been checked")
     public String recordPaymentClaim(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                     @ToolParam(description = "mijoz aytgan to'lov sanasi, format yyyy-MM-dd",
+                                     @ToolParam(description = "payment date the client named, format yyyy-MM-dd",
                                              required = false) LocalDate paidDate,
-                                     @ToolParam(description = "to'lov kanali: CLICK, PAYME, UZUM, BANK_BRANCH, "
-                                             + "TERMINAL yoki OTHER", required = false) String paymentChannel) {
+                                     @ToolParam(description = "payment channel: CLICK, PAYME, UZUM, BANK_BRANCH, "
+                                             + "TERMINAL or OTHER", required = false) String paymentChannel) {
         if (paidDate != null && paidDate.isAfter(LocalDate.now())) {
-            return "XATO: " + paidDate + " kelajakda. Bugun " + LocalDate.now()
-                    + ". To'langan sana bugun yoki undan oldin bo'ladi — mijozdan aniqlang.";
+            return "ERROR: " + paidDate + " is in the future. Today is " + LocalDate.now()
+                    + ". A payment date is today or earlier — clarify it with the client.";
         }
         recordReply(reply);
         session.recordOutcome("paidDate", paidDate);
         session.recordOutcome("paymentChannel", paymentChannel);
         session.setDisposition(Disposition.PAYMENT_CLAIMED);
         log.info("[{}] payment claimed: date={}, channel={}", session.channelId(), paidDate, paymentChannel);
-        return "To'lov da'vosi yozib olindi. Tekshiruv tugaguncha 3 kun qo'ng'iroq qilinmaydi.";
+        return "Payment claim recorded. The client will not be called for 3 days while it is checked.";
     }
 
     /**
@@ -501,81 +502,81 @@ public class DialogTools {
      * is not used here: the wording below is what stops the model asking the human to press
      * the key, or guessing a digit it has not heard the menu name.
      */
-    @Tool(description = "Narigi tomonda avtomat menyu (IVR) gapirganda kerakli tugmani BOT o'zi bosadi. "
-            + "Menyuni oxirigacha yoki kerakli punkt aytilgunicha tinglang, keyin shu tool'ni faqat mos "
-            + "raqam bilan chaqiring. Odamdan tugma bosishni SO'RAMANG. Qaysi raqam ekani aniq bo'lmasa "
-            + "chaqirmang — tinglashda davom eting.")
+    @Tool(description = "When an automated menu (IVR) is speaking on the other end, the BOT presses the key itself. "
+            + "Listen to the menu to the end or until the option you need is named, then call this tool with "
+            + "only the matching digit. Do NOT ask the person to press a key. If it is not clear which digit, "
+            + "do not call it — keep listening.")
     public String sendDtmfTones(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                @ToolParam(description = "bosiladigan tugmalar: 0-9, * yoki #. Odatda bitta raqam") String digits,
-                                @ToolParam(description = "menyuning shu raqamni qaysi so'z bilan atagani", required = false) String menuOption) {
+                                @ToolParam(description = "keys to press: 0-9, * or #. Usually a single digit") String digits,
+                                @ToolParam(description = "the words the menu used for this digit", required = false) String menuOption) {
         recordReply(reply);
         if (!session.sendDtmf(digits)) {
             log.warn("[{}] sendDtmfTones('{}') on a call with no keypad", session.channelId(), digits);
-            return "XATO: bu qo'ng'iroqda tugma bosib bo'lmaydi. Menyuni kutmang, gapirib davom eting.";
+            return "ERROR: keys cannot be pressed on this call. Do not wait for the menu; keep talking.";
         }
         log.info("[{}] IVR: pressed '{}' for '{}'", session.channelId(), digits, menuOption);
-        return "'" + digits + "' bosildi. Endi menyu javobini kuting.";
+        return "Pressed '" + digits + "'. Now wait for the menu's answer.";
     }
 
-    @Tool(description = "Mijozning gapi hali tugamagan bo'lsa chaqiriladi: u o'ylanyapti, faqat "
-            + "o'ylanish tovushi chiqardi yoki jumlasi chala qolib, davomi kelishi aniq. Bu holda "
-            + "hech narsa demang va matn yozmang — bot jim turib, mijoz gapini davom ettirishini "
-            + "kutadi, davomi esa shu gap bilan birga keladi. Mijoz savolni eshitmagan yoki "
-            + "qaytarishni so'ragan bo'lsa, bu tool EMAS — oxirgi savolingizni qisqa qaytaring.")
+    @Tool(description = "Call when the client has not finished speaking: they are thinking, made only a "
+            + "thinking sound, or their sentence broke off and is clearly to be continued. In that case "
+            + "say nothing and write no text — the bot stays silent and waits for the client to go on, "
+            + "and the rest arrives together with this sentence. If the client did not hear the question "
+            + "or asked you to repeat it, this is NOT the tool — briefly repeat your last question.")
     public String waitForCaller() {
         session.waitForCaller();
         log.info("[{}] model chose to keep listening", session.channelId());
-        return "Jim turing, mijozning davomini kuting.";
+        return "Stay silent and wait for the client to go on.";
     }
 
-    @Tool(description = "Mijoz boshqa tilda gaplashishni so'raganda (qanday so'z bilan so'rasa ham) "
-            + "chaqiriladi. Bu tool bilan birga oddiy matn YOZMANG — yangi tildagi gapingizni reply "
-            + "parametriga yozing, u yangi tilning ovozi bilan aytiladi.")
-    public String switchLanguage(@ToolParam(description = "mijozga yangi tilda aytiladigan gap") String reply,
-                                 @ToolParam(description = "til kodi: uz-UZ, ru-RU yoki en-US") String language) {
+    @Tool(description = "Call when the client asks to speak another language (in whatever words). "
+            + "Do NOT write plain text alongside this tool — write your line in the new language in the "
+            + "reply parameter; it is spoken in the new language's voice.")
+    public String switchLanguage(@ToolParam(description = "the line to say to the client in the new language") String reply,
+                                 @ToolParam(description = "language code: uz-UZ, ru-RU or en-US") String language) {
         if (!session.switchCallLanguage(language)) {
             log.info("[{}] language switch to {} refused — not one of this company's languages",
                     session.channelId(), language);
-            return "XATO: bu til ushbu qo'ng'iroqda qo'llab-quvvatlanmaydi. Mijozdan uzr so'rab, "
-                    + "joriy tilda davom eting.";
+            return "ERROR: this language is not supported on this call. Apologise to the client and "
+                    + "continue in the current language.";
         }
         // After the switch, so the line is synthesized in the new language's voice.
         recordReply(reply);
         log.info("[{}] caller asked for {} — language switched", session.channelId(), language);
-        return "Til " + language + " ga o'tkazildi. Bundan keyin faqat shu tilda gapiring.";
+        return "Language switched to " + language + ". From now on speak only this language.";
     }
 
-    @Tool(description = "Mijozning kayfiyati O'ZGARGANINI sezsangiz chaqiriladi: asabiylashdi "
-            + "(FRUSTRATED), nima gapligini tushunmay qoldi (CONFUSED), mamnun (POSITIVE) yoki yana "
-            + "xotirjam (NEUTRAL). Har navbatda emas — faqat o'zgarganda. Mijozga aytadigan gapingizni "
-            + "odatdagidek oddiy matn qilib yozing; bu tool faqat ovoz ohangi va keyingi javob uslubini sozlaydi.")
-    public String noteCallerMood(@ToolParam(description = "mijozning hozirgi kayfiyati") CustomerSentiment mood) {
+    @Tool(description = "Call when you notice the client's mood has CHANGED: upset "
+            + "(FRUSTRATED), lost track of what this is about (CONFUSED), pleased (POSITIVE) or calm "
+            + "again (NEUTRAL). Not every turn — only when it changes. Write what you say to the client "
+            + "as plain text as usual; this tool only adjusts the voice's tone and the style of the next reply.")
+    public String noteCallerMood(@ToolParam(description = "the client's current mood") CustomerSentiment mood) {
         session.noteCallerMood(mood);
         log.info("[{}] caller mood noted: {}", session.channelId(), mood);
-        return "Belgilandi.";
+        return "Noted.";
     }
 
-    @Tool(description = "Suhbatni yakunlaydi va natijani belgilaydi")
+    @Tool(description = "Ends the conversation and records its outcome")
     public String endCall(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                          @ToolParam(description = "qo'ng'iroq yakunlash sababi/natijasi") Disposition disposition) {
+                          @ToolParam(description = "why the call ends / its outcome") Disposition disposition) {
         recordReply(reply);
         session.end(disposition);
         log.info("[{}] call ended with disposition: {}", session.channelId(), disposition);
-        return "Qo'ng'iroq yakunlandi: " + disposition;
+        return "Call ended: " + disposition;
     }
 
-    @Tool(description = "Mijoz ko'chmas mulk sotuv ofisiga (shourumga) kelishga rozi bo'lganda uchrashuvni band qiladi. "
-            + "Uchrashuv vaqti, qiziqayotgan xonalar soni va to'lov turini yozib oladi. "
-            + "Faqat mijoz tashrif buyurishga aniq rozi bo'lganda chaqiring.")
+    @Tool(description = "Books a meeting when the client agrees to come to the real-estate sales office (showroom). "
+            + "Records the meeting time, the number of rooms they are interested in and the payment method. "
+            + "Call only when the client clearly agrees to visit.")
     public String bookShowroomVisit(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "uchrashuv sanasi va vaqti (masalan '2026-09-20 15:00' yoki 'ertaga soat 15:00')") String visitTime,
-            @ToolParam(description = "kerakli xonalar soni (masalan '2 xonali', '3 xonali')", required = false) String roomsNeeded,
-            @ToolParam(description = "taxminiy byudjet", required = false) String budgetRange,
-            @ToolParam(description = "to'lov shakli (100% to'lov, bo'lib to'lash, ipoteka)", required = false) String paymentMethod,
-            @ToolParam(description = "qo'shimcha izoh", required = false) String note) {
+            @ToolParam(description = "meeting date and time (e.g. '2026-09-20 15:00' or 'ertaga soat 15:00')") String visitTime,
+            @ToolParam(description = "number of rooms needed (e.g. '2 xonali', '3 xonali')", required = false) String roomsNeeded,
+            @ToolParam(description = "approximate budget", required = false) String budgetRange,
+            @ToolParam(description = "payment method (100% payment, instalments, mortgage)", required = false) String paymentMethod,
+            @ToolParam(description = "additional note", required = false) String note) {
         if (visitTime == null || visitTime.isBlank()) {
-            return "XATO: Uchrashuv vaqti ko'rsatilmadi. Mijozdan qaysi kun va soatda kela olishini so'rang.";
+            return "ERROR: no meeting time given. Ask the client which day and hour they can come.";
         }
         recordReply(reply);
         session.recordOutcome("meetingBooked", true);
@@ -587,16 +588,16 @@ public class DialogTools {
         session.setDisposition(Disposition.GOAL_REACHED);
         log.info("[{}] showroom visit booked: time={}, rooms={}, budget={}, payment={}",
                 session.channelId(), visitTime, roomsNeeded, budgetRange, paymentMethod);
-        return "Sotuv ofisiga uchrashuv belgilandi: " + visitTime.trim()
-                + ". Mijozga mutaxassislarimiz kutib olishini bildiring va manzil/lokatsiyani SMS orqali yuborishni taklif qiling.";
+        return "Sales office meeting booked: " + visitTime.trim()
+                + ". Tell the client our specialists will meet them and offer to send the address/location by SMS.";
     }
 
-    @Tool(description = "Mijoz sotuv ofisi (shourum) manzili yoki lokatsiyasini so'raganda, "
-            + "yoki uchrashuv belgilangandan so'ng SMS orqali lokatsiya va manzilni yuboradi.")
+    @Tool(description = "Sends the sales office (showroom) location and address by SMS when the client asks "
+            + "for it, or after a meeting has been booked.")
     public String sendLocationSms(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "lokatsiya havolasi (Google Maps yoki Yandex Maps)", required = false) String locationUrl,
-            @ToolParam(description = "ofis manzili yoki mo'ljal", required = false) String address) {
+            @ToolParam(description = "location link (Google Maps or Yandex Maps)", required = false) String locationUrl,
+            @ToolParam(description = "office address or landmark", required = false) String address) {
         session.recordOutcome("locationSmsRequested", true);
         String link = findLink(session.context(), locationUrl, "locationLink", "showroomLocation", "mapUrl");
         String officeAddress = address != null && !address.isBlank()
@@ -606,7 +607,7 @@ public class DialogTools {
         if (link == null && officeAddress == null) {
             recordReply(reply);
             log.info("[{}] location SMS requested but no location link/address found", session.channelId());
-            return "Lokatsiya ma'lumotlari SMS orqali yuborish uchun qayd etildi.";
+            return "The location details have been noted to be sent by SMS.";
         }
 
         StringBuilder smsText = new StringBuilder("Sotuv ofisimiz manzili: ");
@@ -625,20 +626,20 @@ public class DialogTools {
         recordReply(reply);
         session.recordOutcome("locationSmsSent", true);
         log.info("[{}] location SMS sent successfully", session.channelId());
-        return "Sotuv ofisi lokatsiyasi mijozning telefoniga SMS orqali yuborildi. Mijozga SMSni tekshirib olishini ayting.";
+        return "The sales office location was sent to the client's phone by SMS. Ask the client to check their SMS.";
     }
 
-    @Tool(description = "Mijoz turar joy majmuasi loyihalari, rejalari yoki taqdimotini (katalog) so'raganda "
-            + "SMS orqali katalog havolasini yuboradi.")
+    @Tool(description = "Sends the catalogue link by SMS when the client asks for the residential complex's "
+            + "projects, floor plans or presentation (catalogue).")
     public String sendCatalogSms(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "katalog yoki taqdimot havolasi", required = false) String catalogUrl) {
+            @ToolParam(description = "catalogue or presentation link", required = false) String catalogUrl) {
         session.recordOutcome("catalogSmsRequested", true);
         String link = findLink(session.context(), catalogUrl, "catalogUrl", "presentationUrl");
         if (link == null) {
             recordReply(reply);
             log.info("[{}] catalog SMS requested but no link found", session.channelId());
-            return "Katalog havolasi SMS orqali yuborish uchun qayd etildi.";
+            return "The catalogue link has been noted to be sent by SMS.";
         }
         String refusal = sendGuardedSms("Loyihalarimiz katalogi va rejalari: " + link);
         if (refusal != null) {
@@ -647,23 +648,23 @@ public class DialogTools {
         recordReply(reply);
         session.recordOutcome("catalogSmsSent", true);
         log.info("[{}] catalog SMS sent successfully", session.channelId());
-        return "Katalog havolasi mijozga SMS orqali yuborildi. Mijozga SMS kelganini ma'lum qiling.";
+        return "The catalogue link was sent to the client by SMS. Let the client know the SMS has arrived.";
     }
 
-    @Tool(description = "Mijoz xizmat, konsultatsiya yoki uchrashuvga yozilishga (band qilishga) rozi bo'lganda chaqiriladi. "
-            + "Uchrashuv sanasi, vaqti, mijoz ismi va xizmat turini yozib oladi va maqsadga yetilganini belgilaydi.")
+    @Tool(description = "Call when the client agrees to book a service, consultation or appointment. "
+            + "Records the appointment date, time, the client's name and the service type, and marks the goal as reached.")
     public String bookAppointment(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "uchrashuv sanasi (masalan '2026-10-15' yoki 'ertaga')") String appointmentDate,
-            @ToolParam(description = "uchrashuv vaqti (masalan '14:00' yoki '15:30')") String appointmentTime,
-            @ToolParam(description = "mijoz ismi", required = false) String attendeeName,
-            @ToolParam(description = "xizmat yoki konsultatsiya turi", required = false) String serviceType,
-            @ToolParam(description = "qo'shimcha izoh yoki talablar", required = false) String note) {
+            @ToolParam(description = "appointment date (e.g. '2026-10-15' or 'ertaga')") String appointmentDate,
+            @ToolParam(description = "appointment time (e.g. '14:00' or '15:30')") String appointmentTime,
+            @ToolParam(description = "client's name", required = false) String attendeeName,
+            @ToolParam(description = "service or consultation type", required = false) String serviceType,
+            @ToolParam(description = "additional note or requirements", required = false) String note) {
         if (appointmentDate == null || appointmentDate.isBlank()) {
-            return "XATO: Uchrashuv sanasi ko'rsatilmadi. Mijozdan qaysi kunga yozilishni xohlashini so'rang.";
+            return "ERROR: no appointment date given. Ask the client which day they want to book.";
         }
         if (appointmentTime == null || appointmentTime.isBlank()) {
-            return "XATO: Uchrashuv vaqti ko'rsatilmadi. Mijozdan qaysi soatga yozilishni xohlashini so'rang.";
+            return "ERROR: no appointment time given. Ask the client which hour they want to book.";
         }
         recordReply(reply);
         session.recordOutcome("appointmentBooked", true);
@@ -675,32 +676,32 @@ public class DialogTools {
         session.setDisposition(Disposition.GOAL_REACHED);
         log.info("[{}] appointment booked: date={}, time={}, attendee={}, service={}",
                 session.channelId(), appointmentDate, appointmentTime, attendeeName, serviceType);
-        return "Uchrashuv muvaffaqiyatli band qilindi: " + appointmentDate.trim() + " soat " + appointmentTime.trim()
-                + ". Mijozga uchrashuv belgilanganini tasdiqlang va kelishini kutishingizni bildiring.";
+        return "Appointment booked: " + appointmentDate.trim() + " at " + appointmentTime.trim()
+                + ". Confirm the appointment to the client and say you look forward to seeing them.";
     }
 
-    @Tool(description = "Mijoz uchrashuv uchun bo'sh vaqtlarni so'raganda taqvimdagi mavjud vaqtlarni tekshiradi va qaytaradi.")
+    @Tool(description = "Checks and returns the free slots in the calendar when the client asks for available appointment times.")
     public String checkCalendarAvailability(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "tekshirilayotgan sana (masalan '2026-10-15' yoki 'bugun', 'ertaga')") String date,
-            @ToolParam(description = "xizmat turi", required = false) String serviceType) {
+            @ToolParam(description = "date being checked (e.g. '2026-10-15' or 'bugun', 'ertaga')") String date,
+            @ToolParam(description = "service type", required = false) String serviceType) {
         if (date == null || date.isBlank()) {
-            return "XATO: Sana ko'rsatilmadi. Mijozdan qaysi sanadagi bo'sh vaqtlar qiziqtirayotganini so'rang.";
+            return "ERROR: no date given. Ask the client which date they want free times for.";
         }
         recordReply(reply);
         Object customSlots = session.context() != null ? session.context().fact("availableSlots") : null;
         String slots = customSlots instanceof String s && !s.isBlank() ? s : "10:00, 11:30, 14:00, 16:30";
         log.info("[{}] checked calendar availability for date={}: slots={}", session.channelId(), date, slots);
-        return date.trim() + " sanasi uchun quyidagi bo'sh vaqtlar mavjud: " + slots
-                + ". Mijozga ushbu vaqtlardan birini tanlashni taklif qiling.";
+        return "Free times on " + date.trim() + ": " + slots
+                + ". Offer the client one of these times.";
     }
 
-    @Tool(description = "Mijoz avval belgilangan uchrashuvni bekor qilishni so'raganda chaqiriladi.")
+    @Tool(description = "Call when the client asks to cancel an appointment booked earlier.")
     public String cancelAppointment(
             @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "bekor qilinayotgan uchrashuv sanasi", required = false) String appointmentDate,
-            @ToolParam(description = "bekor qilinayotgan uchrashuv vaqti", required = false) String appointmentTime,
-            @ToolParam(description = "bekor qilish sababi", required = false) String reason) {
+            @ToolParam(description = "date of the appointment being cancelled", required = false) String appointmentDate,
+            @ToolParam(description = "time of the appointment being cancelled", required = false) String appointmentTime,
+            @ToolParam(description = "reason for cancelling", required = false) String reason) {
         recordReply(reply);
         session.recordOutcome("appointmentCancelled", true);
         recordIfPresent("cancelledAppointmentDate", appointmentDate);
@@ -708,7 +709,7 @@ public class DialogTools {
         recordIfPresent("cancellationReason", reason);
         log.info("[{}] appointment cancelled: date={}, time={}, reason={}",
                 session.channelId(), appointmentDate, appointmentTime, reason);
-        return "Uchrashuv muvaffaqiyatli bekor qilindi. Mijozga uchrashuv bekor qilinganini xushmuomalalik bilan ma'lum qiling.";
+        return "Appointment cancelled. Politely let the client know the appointment has been cancelled.";
     }
 
     private void recordIfPresent(String key, String value) {

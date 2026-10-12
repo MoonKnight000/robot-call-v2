@@ -68,7 +68,7 @@ public final class SpeechTextNormalizer {
     /**
      * A stage direction in square brackets — {@code [laugh]}, {@code [sound concerned]} —
      * the delivery tags some voices act out. Letters and spaces only, so a system-note
-     * echo ({@code [TIZIM: ...]}) is not mistaken for one; that is dropped whole upstream.
+     * echo ({@code [SYSTEM: ...]}) is not mistaken for one; that is dropped whole upstream.
      */
     private static final Pattern DELIVERY_TAG = Pattern.compile("\\[[\\p{L} ]{1,40}]\\s*");
 

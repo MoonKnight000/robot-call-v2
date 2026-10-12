@@ -12,14 +12,16 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.GlobalNode;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StyleExample;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -50,12 +52,12 @@ public class SystemPromptFactory {
      * supposed to act on these, never to repeat them — a reply that carries the marker is
      * an echo of the annex and must not reach the caller ({@link #isSystemNote}).
      */
-    public static final String SYSTEM_NOTE_MARKER = "[TIZIM";
+    public static final String SYSTEM_NOTE_MARKER = "[SYSTEM";
 
     /**
      * Whether {@code text} is the model reciting a note meant for it. Caught here rather
-     * than prompted away, because the one time it happened the caller heard "TIZIM: JORIY
-     * BOSQICH: IDENTITY_CHECK" read out loud.
+     * than prompted away, because the one time it happened the caller heard the annex's
+     * "current stage: IDENTITY_CHECK" read out loud.
      */
     public static boolean isSystemNote(String text) {
         return text != null && text.contains(SYSTEM_NOTE_MARKER);
@@ -66,35 +68,9 @@ public class SystemPromptFactory {
      * (ROADMAP A.3/§5.1): a custom scenario's own {@code guardrails} cannot remove or
      * soften these. Domain-specific rules (e.g. "never change the debt amount") belong
      * in the scenario's own {@code guardrails} instead — see the {@code debt-collection}
-     * seed for an example.
+     * seed for an example. The text lives in {@code resources/prompts/platform-guardrails.txt}.
      */
-    static final List<String> PLATFORM_GUARDRAILS = List.of(
-            "Mijozning shaxsiy ma'lumotlarini begona odamga aytma.",
-            "Savolga javobni bilmasang — requestHumanTransfer bilan operatorga o'tkaz, o'ylab topma.",
-            "Mijoz asabiylashsa yoki haqorat qilsa — darhol requestHumanTransfer chaqir.",
-            "Faqat va faqat qarshingizdagi shaxs ochiqchasiga o'zi boshqa odam ekanini yoki adashgan raqam ekanini aytsa (masalan: 'men u emasman', 'adashdingiz', 'bunaqa odam yo'q') — recordWrongPerson chaqiring. Mijoz 'alo', 'eshitaman', 'ha', 'kim bu?' desa yoki javobi tushunarsiz bo'lsa — darhol adashgan raqam deb hisoblamang, o'zingizni tanishtirib, ssenariy bo'yicha davom eting.",
-            "Mijoz \"boshqa qo'ng'iroq qilmang\" desa — bahslashma, darhol recordDoNotCall chaqir va "
-                    + "uzr so'rab xayrlash.",
-            // On a real call the caller's answer came back as "aha o'zgartir" — grammatical
-            // Uzbek, unrelated to the question — and the agent replied "Pul bo'lmagani uchun
-            // to'lolmayapman deng", inventing the one thing the whole call is meant to find
-            // out. A reason the caller never gave is a fact the recording says the company
-            // put in their mouth, so it is banned at platform level, not per scenario.
-            "Mijoz AYTMAGAN gapni unga nisbat bermang. Sabab, niyat, rozilik yoki va'dani faqat "
-                    + "mijozning o'zi ochiq aytgan bo'lsa takrorlang. \"...deng\", \"...demoqchisiz\", "
-                    + "\"demak siz...\", \"tushundim, siz...\" shakllari bilan mijoz aytmagan sababni "
-                    + "to'qish — eng og'ir xato. Mijozning javobi savolingizga javob bo'lmasa, bo'shliqni "
-                    + "o'zingizdan to'ldirmang: savolni qayta bering.",
-            "Mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\", \"qaytaring\", \"nima dedingiz\", \"nima deding\" desa yoki tushunmaganini bildirsa — keyingi bosqichga o'tib ketmang, transitionTo chaqirmang, boshqa savolga o'tmang, «qiyinchilik bo'ldimi?» demang! Eshitmagan bo'lsa — oxirgi aytgan xabaringizni (fakt, sana yoki savol) xushmuomala qilib qaytadan aniq takrorlang: «Eshitilmadimi? Qaytadan aytaman: ...». Tushunmagan bo'lsa — so'zma-so'z takrorlamang, o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntiring.",
-            "QIYINCHILIK SO'ZINI ISHLATISH QAT'IYAN TAQIQLANADI: Mijozga HECH QACHON «qandaydir qiyinchilik bo'ldimi?», «qiyinchilik bormi?», «qanaqadir qiyinchilik bo'ldimi?» deb so'ramang! Bu ibora mijozga sun'iy, noqulay va beo'xshov eshitiladi. Sababini so'rash uchun faqat: «Nima sababdan to'lanmay qoldi?» yoki «To'lov qilishga nima sabab bo'ldi?» deb tabiiy so'rang.",
-            "TIL CHEKLOVI (QAT'IY): Bu O'zbekistondagi telefon suhbati. Suhbat faqat o'zbek yoki rus tilida olib boriladi. "
-                    + "Xitoycha (Chinese / 汉字), hindcha (Hindi), inglizcha yoki boshqa begona tillarda gapirish va javob qaytarish QAT'IYAN TAQIQLANADI! "
-                    + "Transkriptda begona yozuvlar yoki xatolar uchrasa ham, HECH QACHON begona tilga o'tmang, o'zbek tilida davom eting. "
-                    + "Mijozning «ha», «ha shunday», «shunday», «albatta», «eshitaman», «labay», «alo» kabi qisqa so'zlari 100% o'zbekcha tasdiqlardir.",
-            "HAR JAVOB ANIQ SAVOL BILAN TUGASIN (QAT'IY): quruq xabar yoki fakt aytib jim qolma va mijozni kutma! "
-                    + "Fakt yoki ma'lumotni aytdingmi, darhol o'sha gapning davomida savol berib mijozning fikrini yoki javobini so'ra. "
-                    + "Savolsiz to'xtab qolish va mijozni kutish QAT'IYAN TAQIQLANADI."
-    );
+    static final List<String> PLATFORM_GUARDRAILS = PromptText.lines("platform-guardrails.txt");
 
     /**
      * A retrieved passage is about a chunk long; the cap guards against a source whose
@@ -107,7 +83,6 @@ public class SystemPromptFactory {
     /** A recorded outcome is a date, a code or a short note — enough for the model to see it is in. */
     private static final int MAX_RECORDED_CHARS = 120;
 
-    /** Uzbek label for a well-known fact name; falls back to the raw name otherwise. */
     /**
      * The caller's own zone: what day and hour it is where they are. The server may run
      * anywhere — on a UTC container an evening call was being told the next day's date —
@@ -128,31 +103,31 @@ public class SystemPromptFactory {
         // The topic of each remembered call is named because the same phone gets more than
         // one kind of call: a debt call's summary handed to a lead follow-up, untagged, read
         // as what this call was about.
-        sb.append("\nMULTI-CALL MEMORY (Mijoz bilan avvalgi suhbatlar xotirasi va operator eslatmalari — ")
-                .append("bulardan tabiiy foydalaning, lekin \"bazamizda yozilgan\" deb aytmang. ")
-                .append("Avvalgi suhbatlar BOSHQA mavzuda bo'lgan bo'lishi mumkin: joriy qo'ng'iroq mavzusi — ")
-                .append("QO'NG'IROQ TURI va SABABIda yozilgani. Boshqa mavzudagi gapni mijoz o'zi so'ramasa boshlamang):\n");
+        sb.append("\nMULTI-CALL MEMORY (earlier conversations with this client and operator notes — ")
+                .append("use them naturally, but never say \"it is written in our database\". ")
+                .append("Earlier conversations may have been about a DIFFERENT topic: this call's topic is ")
+                .append("what CALL TYPE and CALL PURPOSE say. Do not bring up another topic unless the client asks):\n");
         if (memory.preferredName() != null) {
-            sb.append("- Mijozga qulay murojaat: ").append(memory.preferredName()).append('\n');
+            sb.append("- Preferred form of address: ").append(memory.preferredName()).append('\n');
         }
         if (memory.operatorNotes() != null) {
-            sb.append("- Operator eslatmasi: ").append(memory.operatorNotes()).append('\n');
+            sb.append("- Operator note: ").append(memory.operatorNotes()).append('\n');
         }
         for (RememberedCall call : memory.recentCalls()) {
-            sb.append("- Avvalgi suhbat");
+            sb.append("- Earlier conversation");
             if (call.at() != null) {
                 sb.append(" (").append(LocalDate.ofInstant(call.at(), CALLER_ZONE)).append(')');
             }
             if (call.scenarioKey() != null && !call.scenarioKey().isBlank()) {
-                sb.append(", mavzu: ").append(call.scenarioKey());
+                sb.append(", topic: ").append(call.scenarioKey());
             }
             if (call.disposition() != null) {
-                sb.append(", natija: ").append(call.disposition());
+                sb.append(", outcome: ").append(call.disposition());
             }
             sb.append(": ").append(call.summary()).append('\n');
         }
         memory.facts().forEach((name, value) -> sb.append("- ")
-                .append(FACT_LABELS.getOrDefault(name, name)).append(" (avvalgi suhbatdan): ")
+                .append(FACT_LABELS.getOrDefault(name, name)).append(" (from an earlier conversation): ")
                 .append(value).append('\n'));
     }
 
@@ -169,21 +144,21 @@ public class SystemPromptFactory {
     static void appendCallFrame(StringBuilder sb, boolean inbound, String callPurpose, String goal,
                                 Map<String, Object> facts) {
         if (inbound) {
-            sb.append("QO'NG'IROQ TURI: KIRUVCHI — mijoz O'ZI kompaniyaga qo'ng'iroq qildi, siz qabul qilyapsiz. ")
-                    .append("Avval u nima uchun qo'ng'iroq qilganini tinglang. Mijoz aytmagan mavzuni (qarz, to'lov, ")
-                    .append("eslatma va h.k.) o'zingizdan boshlamang. \"Men [Ism] aka bilan gaplashayapmanmi?\" deb ")
-                    .append("so'ramang — ismini bilish kerak bo'lsa, \"Ismingizni bilsam bo'ladimi?\" deb so'rang.\n");
+            sb.append("CALL TYPE: INBOUND — the client called the company THEMSELVES and you are answering. ")
+                    .append("First listen to why they called. Do not bring up a topic they have not raised (debt, ")
+                    .append("payment, reminder, etc.). Do not ask \"Men [Ism] aka bilan gaplashayapmanmi?\" — if you ")
+                    .append("need their name, ask \"Ismingizni bilsam bo'ladimi?\".\n");
         } else {
-            sb.append("QO'NG'IROQ TURI: CHIQUVCHI — mijozga siz O'ZINGIZ qo'ng'iroq qildingiz. U nima uchun ")
-                    .append("qo'ng'iroq qilinganini bilmaydi — sababni siz aytasiz.\n");
+            sb.append("CALL TYPE: OUTBOUND — YOU called the client. They do not know why they are being ")
+                    .append("called — you tell them.\n");
         }
         if (callPurpose != null && !callPurpose.isBlank()) {
-            sb.append("QO'NG'IROQ SABABI: ")
+            sb.append("CALL PURPOSE: ")
                     .append(PromptTemplateEngine.render(callPurpose.trim(), facts == null ? Map.of() : facts))
-                    .append("\nSuhbat faqat shu mavzuda boradi.\n");
+                    .append("\nThe conversation stays on this topic only.\n");
         }
         if (goal != null && !goal.isBlank()) {
-            sb.append("KAMPANIYA MAQSADI: ").append(goal).append('\n');
+            sb.append("CAMPAIGN GOAL: ").append(goal).append('\n');
         }
         sb.append('\n');
     }
@@ -193,9 +168,10 @@ public class SystemPromptFactory {
         if (companyName == null || companyName.isBlank()) {
             return;
         }
-        sb.append("KOMPANIYA: siz \"").append(companyName.trim()).append("\" kompaniyasi nomidan ")
-                .append(inbound ? "qo'ng'iroqni qabul qilyapsiz" : "qo'ng'iroq qilyapsiz")
-                .append(". O'zingizni tanishtirganda faqat shu nomni ayting — yuqoridagi matnda boshqa nom bo'lsa ham.\n\n");
+        sb.append("COMPANY: you are ")
+                .append(inbound ? "answering the call" : "calling")
+                .append(" on behalf of \"").append(companyName.trim())
+                .append("\". When you introduce yourself, use only this name — even if the text above mentions another.\n\n");
     }
 
     /**
@@ -207,22 +183,26 @@ public class SystemPromptFactory {
      */
     static String inboundOpening(boolean greeted) {
         return greeted
-                ? "[TIZIM: Salomlashuv va ogohlantirish allaqachon aytildi — qayta salomlashmang, o'zingizni "
-                        + "qayta tanishtirmang. Mijoz nima uchun qo'ng'iroq qilganini tinglang va javobingizni shunga "
-                        + "moslang; hali aytmagan bo'lsa \"Sizga qanday yordam bera olaman?\" deb so'rang.]\n"
-                : "[TIZIM: Birinchi javobingizda qisqa salomlashing, kompaniya nomini ayting va \"Sizga qanday "
-                        + "yordam bera olaman?\" deb so'rang. Mijoz nima uchun qo'ng'iroq qilganini aytgach, ssenariy "
-                        + "bo'yicha davom eting.]\n";
+                ? "[SYSTEM: The greeting and the disclosure have already been spoken — do not greet again or "
+                        + "reintroduce yourself. Listen to why the client called and answer accordingly; if they "
+                        + "have not said yet, ask \"Sizga qanday yordam bera olaman?\".]\n"
+                : "[SYSTEM: In your first reply, greet briefly, say the company name and ask \"Sizga qanday "
+                        + "yordam bera olaman?\". Once the client says why they called, continue with the scenario.]\n";
     }
 
+    /**
+     * English labels for the well-known facts. The scenario texts that predate the English
+     * prompt name some of them in Uzbek ("Peniya", "Shartnoma bekor bo'lishiga qolgan kun"),
+     * so those keep the Uzbek name next to the English one.
+     */
     static final Map<String, String> FACT_LABELS = Map.of(
-            "clientName", "Ism",
-            "debtAmount", "Summa",
-            "currency", "Valyuta",
-            "dueDate", "Muddat",
-            "contractNumber", "Shartnoma raqami",
-            "penaltyAmount", "Peniya",
-            "contractCancelDays", "Shartnoma bekor bo'lishiga qolgan kun"
+            "clientName", "Name",
+            "debtAmount", "Amount",
+            "currency", "Currency",
+            "dueDate", "Due date",
+            "contractNumber", "Contract number",
+            "penaltyAmount", "Penalty (Peniya)",
+            "contractCancelDays", "Days until the contract is cancelled (Shartnoma bekor bo'lishiga qolgan kun)"
     );
 
     private final SentimentDetector sentimentDetector;
@@ -254,42 +234,45 @@ public class SystemPromptFactory {
         StringBuilder sb = new StringBuilder();
 
         sb.append(def.rolePrompt()).append(' ')
-                .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
-                .append(" tilida tabiiy suhbatlashasiz.\n\n");
+                .append("You talk with the client over the phone, naturally, in ").append(languageName(s.language()))
+                .append(". These instructions are in English for you only — every word the client hears must be in ")
+                .append(languageName(s.language())).append(".\n\n");
 
         appendCallFrame(sb, s.isInbound(), def.callPurpose(), c.goal(), c.facts());
         appendCompany(sb, s.companyName(), s.isInbound());
 
         if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
             String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
-            sb.append("SHAXSIYAT VA ROL (HAQIQIY INSON MUTAXASSIS):\n")
-                    .append("- Siz ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
-                    .append("ning professional, tirik inson xodimisiz. Ismingiz: ").append(personaName).append(".\n")
-                    .append("- QAT'IYAN TAQIQLANADI: O'zingizni robot, bot, sun'iy intellekt yoki avtomatlashtirilgan tizim deb atash!\n")
-                    .append("- Agar mijoz 'Sen robotsanmi?', 'AI bilan gaplashyapmanmi?', 'Tirik odammisan?' deb so'rasa: ")
-                    .append("\"Yo'q, men ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
-                    .append(" mutaxassisi ").append(personaName).append("man, siz bilan jonli gaplashyapman. Sizga qanday yordam bera olaman?\" deb samimiy va ishonarli javob bering.\n")
-                    .append("- BARCHA SAVOLLARGA JAVOB BERISH: Mijoz qanday savol bermasin, o'zingiz bilgan ma'lumotlar va ssenariy doirasida imkon qadar mustaqil, to'liq va odamdek samimiy javob berishga harakat qiling. Qisqa 'bilmayman' deb to'xtab qolmang.\n\n");
+            sb.append("PERSONA AND ROLE (A REAL HUMAN SPECIALIST):\n")
+                    .append("- You are a professional, real human employee of ")
+                    .append(s.companyName() != null ? s.companyName().trim() : "the company")
+                    .append(". Your name: ").append(personaName).append(".\n")
+                    .append("- STRICTLY FORBIDDEN: calling yourself a robot, bot, artificial intelligence or automated system!\n")
+                    .append("- If the client asks 'Sen robotsanmi?', 'AI bilan gaplashyapmanmi?', 'Tirik odammisan?', ")
+                    .append("answer warmly and convincingly: \"Yo'q, men ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
+                    .append(" mutaxassisi ").append(personaName).append("man, siz bilan jonli gaplashyapman. Sizga qanday yordam bera olaman?\"\n")
+                    .append("- ANSWER EVERY QUESTION: whatever the client asks, try to answer independently, fully and warmly, like a person, within what you know and the scenario. Do not stop at a short 'bilmayman'.\n\n");
         } else {
-            sb.append("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT):\n")
-                    .append("- Siz ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
-                    .append("ning rasmiy sun'iy intellekt ovozli assistentisiz (robot).\n")
-                    .append("- SAVOLGA JAVOB TOPA OLMASANGIZ: Agar mijoz ssenariy yoki faktlarda mavjud bo'lmagan, siz bilmaydigan yoki tushunarsiz savol bersa, aslo yolg'on ma'lumot to'qimang. To'g'ridan-to'g'ri o'zingizning sun'iy intellekt ekanligingizni ayting: ")
-                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman. Sizni mutaxassisimizga ulab beraman\" deng va requestHumanTransfer chaqiring.\n")
-                    .append("- Agar mijoz 'Sen robotsanmi?' deb so'rasa: \"Ha, men ").append(s.companyName() != null ? s.companyName().trim() : "")
-                    .append(" kompaniyasining sun'iy intellekt yordamchisiman\" deb ochiq ayting.\n\n");
+            sb.append("PERSONA AND ROLE (ARTIFICIAL INTELLIGENCE / AI ASSISTANT):\n")
+                    .append("- You are the official AI voice assistant (a robot) of ")
+                    .append(s.companyName() != null ? s.companyName().trim() : "the company").append(".\n")
+                    .append("- IF YOU CANNOT FIND THE ANSWER: if the client asks something that is not in the scenario or the facts, that you do not know, or that is unclear, never invent information. Say plainly that you are an AI: ")
+                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman. Sizni mutaxassisimizga ulab beraman\" and call requestHumanTransfer.\n")
+                    .append("- If the client asks 'Sen robotsanmi?', say openly: \"Ha, men ").append(s.companyName() != null ? s.companyName().trim() : "")
+                    .append(" kompaniyasining sun'iy intellekt yordamchisiman\".\n\n");
         }
 
         ZonedDateTime now = ZonedDateTime.now(CALLER_ZONE);
         LocalDate today = now.toLocalDate();
-        sb.append("BUGUNGI SANA: ").append(today).append(" (").append(weekdayUz(today.getDayOfWeek()))
-                .append("), HOZIRGI VAQT: ").append(now.toLocalTime().truncatedTo(ChronoUnit.MINUTES))
+        sb.append("TODAY (BUGUNGI SANA): ").append(today).append(" (")
+                .append(today.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH))
+                .append("), CURRENT TIME: ").append(now.toLocalTime().truncatedTo(ChronoUnit.MINUTES))
                 .append(".\n");
         sb.append(dateAnchors(today)).append(TIME_ANCHORS).append('\n');
 
         List<FactField> factSchema = def.factSchema();
         if (factSchema != null && !factSchema.isEmpty()) {
-            sb.append("FAKTLAR (faqat shu ma'lumotlarni ayting, o'zgartirmang):\n");
+            sb.append("FACTS (FAKTLAR — state only these, never change them):\n");
             for (FactField f : factSchema) {
                 sb.append("- ").append(FACT_LABELS.getOrDefault(f.name(), f.name())).append(": ")
                         .append(orDash(c.fact(f.name()))).append('\n');
@@ -299,47 +282,47 @@ public class SystemPromptFactory {
 
         Object nameObj = c != null ? c.fact("clientName") : null;
         String clientName = nameObj != null && !nameObj.toString().isBlank() ? nameObj.toString().trim() : null;
-        String sampleIdentityUz = clientName != null ? "Men " + clientName + " aka bilan gaplashayapmanmi?" : "Men Murodjon aka bilan gaplashayapmanmi?";
+        String sampleIdentityUz = (clientName != null ? clientName : "Murodjon") + " aka, yaxshimisiz?";
 
         if (s.isInbound()) {
             sb.append('\n').append(inboundOpening(s.isDisclosureSpoken()));
         } else if (s.isDisclosureSpoken()) {
-            sb.append("\n[TIZIM: Salomlashuv va \"avtomatik xizmat, suhbat yozib olinmoqda\" ")
-                    .append("ogohlantirishi allaqachon aytildi — mijoz ularni eshitib bo'ldi.\n")
-                    .append("Shuning uchun QO'NG'IROQNING HECH BIR JOYIDA — na birinchi javobda, ")
-                    .append("na undan keyingilarida — salomlashma, o'zingni va kompaniyani qayta ")
-                    .append("tanishtirma, suhbat yozib olinayotganini qayta aytma (\"Assalomu alaykum\", ")
-                    .append("\"Salom\", \"Men ... kompaniyasidanman\", \"... sun'iy intellekt ")
-                    .append("yordamchisiman\", \"Suhbat yozib olinmoqda\" — hech biri). Bularni faqat ")
-                    .append("mijozning o'zi so'raganda ayt. Birinchi javobing ")
-                    .append("to'g'ridan-to'g'ri ssenariyning navbatdagi bosqichiga o'tib, jonli, tabiiy insondek boshlansin: ");
+            sb.append("\n[SYSTEM: The greeting and the \"automated service, the call is being recorded\" ")
+                    .append("disclosure have already been spoken — the client has heard them.\n")
+                    .append("So NOWHERE IN THE CALL — not in the first reply, not in any later one — greet, ")
+                    .append("reintroduce yourself or the company, or say again that the call is recorded ")
+                    .append("(\"Assalomu alaykum\", \"Salom\", \"Men ... kompaniyasidanman\", \"... sun'iy intellekt ")
+                    .append("yordamchisiman\", \"Suhbat yozib olinmoqda\" — none of them). Say these only if the ")
+                    .append("client asks. Your first reply goes straight to the scenario's next stage and opens ")
+                    .append("like a live, natural person: ");
             if (clientName != null) {
-                sb.append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi faqat: \"Men ").append(clientName)
-                        .append(" aka bilan gaplashayapmanmi?\" yoki \"").append(clientName).append(" aka, sizmisiz?\" deb so'ra ");
+                sb.append("to confirm identity, say the name the way an experienced live operator does: \"")
+                        .append(clientName).append(" aka, yaxshimisiz?\" — a reply that takes the name without objecting ")
+                        .append("(\"rahmat, yaxshi\", \"ha, eshitaman\") already confirms it ");
             } else {
-                sb.append("shaxsni tasdiqlashda xuddi tajribali tirik operator kabi \"Men Murodjon aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra ")
-                        .append("(DIQQAT: agar ism noma'lum bo'lsa, 'men kimligingizni so'ramoqchiman' yoki 'kimsiz' deb aslo aljiramang, to'g'ridan-to'g'ri muloyim murojaat qilib maqsadga o'ting) ");
+                sb.append("to confirm identity, say the name the way an experienced live operator does: \"[Ism] aka, yaxshimisiz?\" ")
+                        .append("(NOTE: if the name is unknown, never ramble with 'men kimligingizni so'ramoqchiman' or 'kimsiz' — address them politely and go straight to the purpose) ");
             }
-            sb.append("(QAT'IYAN TAQIQLANADI: \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" yoki \"mijoz\" deb aytish). Agar shaxsni so'rash kerak bo'lmasa, muloyimlik bilan maqsadga o't.]\n");
+            sb.append("(STRICTLY FORBIDDEN: saying \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\"). If there is no need to ask who they are, politely go to the purpose.]\n");
         } else {
             if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
                 String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
-                sb.append("\n[TIZIM: Birinchi javobingizda salomlashing, o'zingizni odamdek tanishtiring: \"Salom, mening ismim ")
+                sb.append("\n[SYSTEM: In your first reply, greet and introduce yourself like a person: \"Salom, mening ismim ")
                         .append(personaName).append(". ")
                         .append(s.companyName() != null ? s.companyName().trim() + " kompaniyasidan qo'ng'iroq qilyapman. " : "")
-                        .append("\" hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"")
-                        .append(sampleIdentityUz).append("\" yoki asosiy maqsadga) o'ting: ")
-                        .append("gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. Shunchaki salomlashib to'xtab qolmang.]\n");
+                        .append("\" and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
+                        .append(sampleIdentityUz).append("\", or to the main purpose): ")
+                        .append("write what you say as plain text, then call the transitionTo tool. Do not just greet and stop.]\n");
             } else {
-            sb.append("\n[TIZIM: Birinchi javobingizda qisqa salomlashing, o'zingizni va kompaniyani tanishtiring ")
-                    .append("hamda DARHOL ssenariy bo'yicha keyingi bosqichga (masalan: shaxsni tasdiqlash uchun \"")
-                    .append(sampleIdentityUz).append("\" yoki asosiy maqsadga) ")
-                    .append("o'ting: gapingizni oddiy matn qilib yozing, so'ng transitionTo tool'ini chaqiring. ")
-                    .append("Shunchaki salomlashib to'xtab qolmang. QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\" deb so'rash.]\n");
+            sb.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
+                    .append("and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
+                    .append(sampleIdentityUz).append("\", or to the main purpose): ")
+                    .append("write what you say as plain text, then call the transitionTo tool. ")
+                    .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
             }
         }
 
-        sb.append("\nQAT'IY QOIDALAR:\n");
+        sb.append("\nSTRICT RULES:\n");
         List<String> scenarioGuardrails = def.guardrails();
         if (scenarioGuardrails != null) {
             for (String rule : scenarioGuardrails) {
@@ -352,16 +335,16 @@ public class SystemPromptFactory {
         sb.append('\n');
         appendGlobalNodes(sb, def);
 
-        sb.append("SSENARIY: bosqichma-bosqich boring. Bosqich maqsadi bajarilgach transitionTo bilan ")
-                .append("keyingi ruxsat etilgan bosqichga o'ting va o'sha bosqich talab qilgan gapni ayting. ")
-                .append("Suhbatni sababsiz yakunlamang. ")
-                .append("Har bosqichning matni — umumiy MAQSAD, har bir javob uchun buyruq emas: maqsadni ")
-                .append("bajargan bo'lsangiz takrorlamang, keyingi bosqichga o'ting.\n\n");
+        sb.append("SCENARIO: go stage by stage. Once a stage's goal is met, move to the next allowed stage ")
+                .append("with transitionTo and say what that stage needs. ")
+                .append("Do not end the call without a reason. ")
+                .append("Each stage's text is an overall GOAL, not an order for every reply: once you have met ")
+                .append("the goal, do not repeat it — move to the next stage.\n\n");
 
         // Numbered, one line each, and last in the prefix. The same rules as prose in one
         // paragraph were being dropped: a real call opened with "Ushbu to'lov qachon amalga
         // oshirilishi kutilmoqda?", two banned words in a sentence whose form was banned too.
-        sb.append("GAPIRISH QOIDALARI — har bir javobdan oldin shu ro'yxatdan o'tkazing:\n");
+        sb.append("SPEECH RULES — check every reply against this list:\n");
         int n = 1;
         for (String rule : speechRules(isRussian(s.language()), warmthOf(s.agent()))) {
             sb.append(n++).append(". ").append(rule).append('\n');
@@ -387,15 +370,15 @@ public class SystemPromptFactory {
     private static String dateAnchors(LocalDate today) {
         LocalDate nextMonth = today.plusMonths(1);
         LocalDate nextMonthEnd = nextMonth.withDayOfMonth(nextMonth.lengthOfMonth());
-        return "SANALAR (tayyor hisoblangan — o'zingiz hisoblab o'tirmang):\n"
-                + "- ertaga: " + today.plusDays(1) + "\n"
-                + "- indinga: " + today.plusDays(2) + "\n"
-                + "- kelasi hafta shu kun: " + today.plusWeeks(1) + "\n"
-                + "- shu oyning oxiri: " + today.withDayOfMonth(today.lengthOfMonth()) + "\n"
-                + "- keyingi oy: " + nextMonth.withDayOfMonth(1) + " dan " + nextMonthEnd + " gacha. "
-                + "Ya'ni \"keyingi oyning N-sanasi\" = " + nextMonth.withDayOfMonth(1).toString().substring(0, 8)
-                + "N (masalan 20-sanasi = " + nextMonth.withDayOfMonth(Math.min(20, nextMonth.lengthOfMonth())) + "). "
-                + "N ni mijoz aytadi — o'zingiz tanlamaysiz.\n";
+        return "DATES (precomputed — do not calculate them yourself):\n"
+                + "- \"ertaga\" (tomorrow): " + today.plusDays(1) + "\n"
+                + "- \"indinga\" (the day after tomorrow): " + today.plusDays(2) + "\n"
+                + "- \"kelasi hafta shu kun\" (same day next week): " + today.plusWeeks(1) + "\n"
+                + "- \"shu oyning oxiri\" (end of this month): " + today.withDayOfMonth(today.lengthOfMonth()) + "\n"
+                + "- \"keyingi oy\" (next month): " + nextMonth.withDayOfMonth(1) + " to " + nextMonthEnd + ". "
+                + "So \"keyingi oyning N-sanasi\" = " + nextMonth.withDayOfMonth(1).toString().substring(0, 8)
+                + "N (e.g. the 20th = " + nextMonth.withDayOfMonth(Math.min(20, nextMonth.lengthOfMonth())) + "). "
+                + "The client names N — never pick it yourself.\n";
     }
 
     /**
@@ -406,17 +389,11 @@ public class SystemPromptFactory {
      * is already past.
      *
      * <p>Fixed text, unlike {@link #dateAnchors}: the boundaries are the same every day, so
-     * only the "HOZIRGI VAQT" line above it moves. Shared with {@link
+     * only the "CURRENT TIME" line above it moves. Shared with {@link
      * RealtimeSystemPromptFactory} so both pipelines mean the same hours by the same word.
+     * The text lives in {@code resources/prompts/time-anchors.txt}.
      */
-    static final String TIME_ANCHORS = """
-            VAQT (mijoz soat o'rniga kun qismini aytadi — shu oraliqdan tanlang):
-            - ertalab / утром: 09:00–12:00
-            - tushlik payti / в обед: 12:00–13:00
-            - tushdan keyin / после обеда: 13:00–17:00
-            - kechqurun / вечером: 17:00–20:00
-            O'tib ketgan vaqtni taklif qilmang: bugungi kun uchun faqat HOZIRGI VAQTdan keyingi soatlar.
-            """;
+    static final String TIME_ANCHORS = String.join("\n", PromptText.lines("time-anchors.txt")) + "\n";
 
     /** The agent's {@link SpeakingWarmth}; a call without an agent (a test call) speaks {@code BALANCED}. */
     static SpeakingWarmth warmthOf(AiAgent agent) {
@@ -431,11 +408,11 @@ public class SystemPromptFactory {
      */
     private static String reactionSize(SpeakingWarmth warmth, boolean russian) {
         return switch (warmth) {
-            case RESERVED -> "Munosabat BIR SO'Z bo'lsin — hissiyot bildiruvchi alohida gap qo'shmang.";
-            case BALANCED -> "Munosabat — bir so'z yoki mijoz aytgan narsaga bog'langan qisqa ibora "
+            case RESERVED -> "Keep the reaction to ONE WORD — do not add a separate sentence expressing emotion.";
+            case BALANCED -> "The reaction is one word or a short phrase tied to what the client said "
                     + (russian ? "(\"Да, без работы непросто\", \"Хорошо, тогда так и сделаем\")"
                             : "(\"Ha, ish bo'lmasa qiyin\", \"Yaxshi, unda shunday qilamiz\")") + ".";
-            case WARM -> "Munosabat — mijoz aytgan narsaga bog'langan bitta qisqa samimiy gap "
+            case WARM -> "The reaction is one short, sincere sentence tied to what the client said "
                     + (russian ? "(\"Да, сейчас многим непросто, понимаю\")"
                             : "(\"Ha, hozir ko'pchilikka oson emas, tushunaman\")") + ".";
         };
@@ -444,10 +421,10 @@ public class SystemPromptFactory {
     /** How a worry or a complaint is acknowledged before going back to the task. */
     private static String acknowledgementSize(SpeakingWarmth warmth, boolean russian) {
         return switch (warmth) {
-            case RESERVED -> "ko'pi bilan ikki so'z bilan tan oling " + (russian ? "(\"Понимаю.\")" : "(\"Tushunaman.\")");
-            case BALANCED -> "bitta qisqa gap bilan, mijozning o'z so'zini ishlatib tan oling "
+            case RESERVED -> "acknowledge it in two words at most " + (russian ? "(\"Понимаю.\")" : "(\"Tushunaman.\")");
+            case BALANCED -> "acknowledge it in one short sentence, using the client's own words "
                     + (russian ? "(\"Понимаю, сроки поджимают.\")" : "(\"Tushunaman, muddat yaqin qolgan.\")");
-            case WARM -> "bir-ikki qisqa iliq gap bilan tan oling "
+            case WARM -> "acknowledge it in one or two short, warm sentences "
                     + (russian ? "(\"Понимаю, ситуация неприятная. Давайте вместе решим.\")"
                             : "(\"Tushunaman, vaziyat yoqimsiz. Keling, birga hal qilamiz.\")");
         };
@@ -461,12 +438,12 @@ public class SystemPromptFactory {
         if (warmth == SpeakingWarmth.RESERVED) {
             return null;
         }
-        return "Jonli og'zaki ohangda gapiring, odamdek: "
+        return "Speak in a lively spoken register, like a person: use words like "
                 + (russian ? "\"ну\", \"хорошо, тогда\", \"-то\", \"давайте\"" : "\"mayli\", \"xo'sh\", \"unda\", \"-da\", \"-ku\"")
-                + " kabi so'zlarni tabiiy joyda ishlating, gaplaringiz uzunligi bir xil bo'lmasin. "
+                + " where they fit naturally, and vary the length of your sentences. "
                 + (warmth == SpeakingWarmth.WARM
-                        ? "Ohangingiz iliq va samimiy bo'lsin, lekin ishdan chalg'imang."
-                        : "Ohangingiz xotirjam va do'stona bo'lsin — ortiqcha hayajon va maqtovsiz.");
+                        ? "Keep your tone warm and sincere, but stay on task."
+                        : "Keep your tone calm and friendly — no excess excitement or praise.");
     }
 
     /**
@@ -475,119 +452,120 @@ public class SystemPromptFactory {
      */
     private static List<String> speechRules(boolean russian, SpeakingWarmth warmth) {
         List<String> rules = new ArrayList<>();
-        rules.add("Hech qachon inglizcha texnik so'zlar, kodlar, o'zgaruvchi nomlari yoki placeholderlar "
-                + "(masalan: dynamic_thought_or_fallback, thought, undefined) ishlatmang. Faqat jonli "
-                + (russian ? "ruscha" : "o'zbekcha") + " gaplar bilan gapiring.");
-        rules.add("Ko'pi bilan ikki qisqa gap va bitta savol. Bir nechta faktni (raqam, summa, sana) bitta "
-                + "uzun gapga tiqmang — alohida gaplarga bo'ling.");
-        rules.add("Har bir javobingiz ALBATTA savol bilan tugasin, va u FAQAT ishni oldinga "
-                + "suradigan savol bo'lsin — ya'ni javobi sizga kerak bo'lgan savol. Bo'sh, tasdiqlovchi savollar "
-                + "QAT'IYAN TAQIQLANADI: "
+        rules.add("Never use English technical words, codes, variable names or placeholders "
+                + "(e.g. dynamic_thought_or_fallback, thought, undefined). Speak only in natural spoken "
+                + (russian ? "Russian" : "Uzbek") + ".");
+        rules.add("At most two short sentences and one question. Do not cram several facts (number, amount, "
+                + "date) into one long sentence — split them into separate sentences.");
+        rules.add("Every reply MUST end with a question, and ONLY with one that moves the task "
+                + "forward — a question whose answer you need. Empty, confirming questions are "
+                + "STRICTLY FORBIDDEN: "
                 + (russian ? "\"вы в курсе?\", \"слышите меня?\", \"вы меня понимаете?\"" : "\"bu haqda xabaringiz bormidi?\", \"eshitib turibsizmi?\", \"tushundingizmi?\"")
-                + " — ular suhbatni bir qadam ham oldinga surmaydi, mijozga esa sun'iy "
-                + "eshitiladi. Faktni aytdingizmi — darhol keyingi kerakli savolga o'ting. "
-                + "Istisnolar: kelishuvni yakunda bir marta tasdiqlash va endCall bilan "
-                + "xayrlashish.");
-        rules.add("Mijoz mazmunli gap aytsa (sabab, e'tiroz, sana, savol) — javobingizni bir og'iz "
-                + "munosabat bilan boshlang "
+                + " — they do not move the conversation a single step forward and sound artificial "
+                + "to the client. Once you state a fact, go straight to the next question you need. "
+                + "Exceptions: confirming the agreement once at the end, and saying goodbye with "
+                + "endCall.");
+        rules.add("When the client says something meaningful (a reason, objection, date, question), open your reply "
+                + "with a brief reaction "
                 // No "Aha" among the uz examples: the synthesized voice draws it out into a
                 // long "Aaa…", heard on calls as the bot stalling before every answer.
                 + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Tushunarli\", \"Yaxshi\")")
-                + ", lekin ketma-ket ikki javobda bir xilini takrorlamang. Mijoz shunchaki tasdiqlasa "
+                + ", but never the same one in two replies in a row. If the client simply confirms "
                 + (russian ? "(\"да\", \"ага\", \"хорошо\")" : "(\"ha\", \"aha\", \"xo'p\", \"shunday\")")
-                + " — munosabat bildirmang, to'g'ridan-to'g'ri ishga o'ting: tasdiqni qayta "
-                + "tasdiqlash robotdek eshitiladi. " + reactionSize(warmth, russian) + " Sahnaviy hamdardlik "
-                + "taqiqlanadi "
+                + " — do not react, go straight to the task: confirming a confirmation sounds "
+                + "robotic. " + reactionSize(warmth, russian) + " Staged sympathy is forbidden "
                 + (russian ? "(\"я вас прекрасно понимаю\", \"мне очень жаль\")" : "(\"vaziyatni to'g'ri tushunaman\", \"sizni juda yaxshi tushunib turibman\", \"juda afsusdaman\")")
-                + ": o'ynalgan hamdardlik samimiy emas, sun'iy eshitiladi.");
-        rules.add("Allaqachon aytgan faktingizni (raqam, summa, sana) qayta aytmang va "
-                + "allaqachon bergan savolingizni boshqa so'z bilan qayta bermang. Mijoz eshitmagan "
-                + "bo'lsa — butun xabarni emas, faqat so'ralgan qismini qisqa ayting. Istisno: "
-                + "kelishilgan natija yakunda bir marta tasdiqlanadi.");
+                + ": performed sympathy is not sincere, it sounds artificial.");
+        rules.add("Do not restate a fact you have already said (number, amount, date) and do not "
+                + "re-ask a question you have already asked in other words. If the client did not "
+                + "hear, say briefly only the part they asked about, not the whole message. Exception: "
+                + "the agreed outcome is confirmed once at the end.");
         // Left to the model on purpose: a word list cannot tell a "what?" from a "yes" or
         // a thinking noise — the conversation around it can.
-        rules.add("Mijoz sizni eshitmagani yoki qayta aytishni so'raganini qanday shaklda bo'lsa ham "
-                + "bildirsa (masalan "
+        rules.add("If the client signals in any form that they did not hear you or asks you to repeat "
+                + "(e.g. "
                 + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"a\", \"nima?\", \"labbay?\", \"nima dedingiz\", \"nima deyishdi\", \"eshitmadim\", \"qaytaring\"")
-                + ") — yangi savolga yoki keyingi bosqichga o'tmang! transitionTo chaqirmang! "
-                + "Oxirgi aytgan xabaringizni (fakt, sana yoki savol) o'sha mazmunda, tushunarli qilib qaytaring: "
+                + ") — do not move to a new question or the next stage! Do not call transitionTo! "
+                + "Repeat your last message (fact, date or question) with the same meaning, clearly: "
                 + (russian ? "\"Плохо слышно? Повторяю: ...\"" : "\"Eshitilmadimi? Qaytadan aytaman: ...\"")
-                + " deb aniq takrorlang. Mijoz gapini endigina boshlab o'ylanib qolgan "
-                + "bo'lsa (faqat o'ylanish tovushi yoki chala jumla, davomi kelishi aniq) — "
-                + "waitForCaller chaqiring va hech narsa demang.");
+                + ". If the client has only just started speaking and paused to think "
+                + "(only a thinking sound or an unfinished sentence that is clearly to be continued) — "
+                + "call waitForCaller and say nothing.");
         // A garbled answer used to cost the whole question: on a real call the caller's
         // reply came back as noise, the model said "Gapingizni to'liq tushunolmadim" and
         // then asked the next stage's question instead, so the reason it had just asked
         // for was never given. What pushed it forward was the rule above about not
         // repeating a question, which is why the exception has to sit next to that rule.
-        rules.add("Mijozning javobi tushunarsiz chiqsa yoki bergan savolingizga javob bo'lmasa — "
-                + "keyingi bosqichga ham, boshqa savolga ham o'tmang: qisqa uzr bilan "
+        rules.add("If the client's answer is unintelligible or does not answer your question — "
+                + "do not move to the next stage or to another question: with a brief apology "
                 + (russian ? "(\"Плохо слышно.\")" : "(\"Ovoz yaxshi kelmadi.\")")
-                + " O'SHA savolni soddaroq qilib bir marta qayta bering. "
-                + "Bu — yuqoridagi \"bergan savolingizni qayta bermang\" qoidasiga istisno. "
-                + "Ikkinchi urinishda ham tushunarsiz bo'lsa, uchinchi marta so'ramang: ssenariy "
-                + "bo'yicha davom eting. Javob grammatik jihatdan to'g'ri, lekin savolingizga aloqasi "
-                + "bo'lmasa ham (masalan "
+                + " ask THAT question once more, in simpler words. "
+                + "This is the exception to the \"do not re-ask a question\" rule above. "
+                + "If the second attempt is unintelligible too, do not ask a third time: continue with the "
+                + "scenario. Treat an answer that is grammatical but unrelated to your question "
+                + "(e.g. "
                 + (russian ? "\"ага, поменяй\"" : "\"aha o'zgartir\"")
-                + ") — xuddi shunday yo'l tuting: uni savolingizga moslab talqin qilmang va javobni "
-                + "o'zingizdan to'qimang.");
-        rules.add("Qisqa savolga qisqa javob bering — hammasini bir javobda tushuntirmang. Har bir "
-                + "javobingiz suhbatning davomi bo'lsin, uni boshidan boshlash emas.");
+                + ") the same way: do not interpret it to fit your question and do not invent "
+                + "the answer.");
+        rules.add("Answer a short question briefly — do not explain everything in one reply. Every "
+                + "reply continues the conversation; it does not start it over.");
         if (russian) {
-            rules.add("Taqiqlangan yozma-rasmiy so'zlar: \"данный\", \"осуществлять\", "
-                    + "\"уважаемый клиент\", \"собеседник\", \"мой собеседник\". O'rniga jonli "
-                    + "og'zaki shaklni tanlang.");
+            rules.add("Banned formal written words: \"данный\", \"осуществлять\", "
+                    + "\"уважаемый клиент\", \"собеседник\", \"мой собеседник\". Choose the lively "
+                    + "spoken form instead.");
         } else {
-            rules.add("Taqiqlangan yozma-rasmiy so'zlar: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
+            rules.add("Banned formal written words: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
                     + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\".");
-            rules.add("Og'zaki shaklni tanlang: \"amalga oshirasiz\" emas — oddiy fe'l (\"qilasiz\"); "
-                    + "\"ma'lumot beraman\" emas — \"aytaman\".");
-            rules.add("Murojaat: faqat ismga \"aka\"/\"opa\" qo'shing (\"Murodjon aka\", \"Shahnoza opa\") — "
-                    + "familiya yoki to'liq ism-sharifni hech qachon aytmang.");
-            rules.add("QAT'IYAN TAQIQLANADI: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\", yoki 'men kimligingizni so'ramoqchiman' deb aljirash. Shaxsni "
-                    + "aniqlashda faqat: \"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\". "
-                    + "Agar ism noma'lum bo'lsa, shaxsni g'alati surishtirmay to'g'ridan-to'g'ri maqsadga o'ting.");
-            rules.add("O'zbek adabiy tilida yozing; o' va g' harflarini doim apostrof bilan "
-                    + "(so'm, to'lov, bo'yicha, qo'yaymanmi). So'zni bo'lib yubormang va harfini "
-                    + "tushirib qoldirmang — buzuq yozilgan so'z ovozda ham buzuq eshitiladi.");
+            rules.add("Choose the spoken form: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\"); "
+                    + "not \"ma'lumot beraman\" but \"aytaman\".");
+            rules.add("Form of address: add \"aka\"/\"opa\" to the first name only (\"Murodjon aka\", \"Shahnoza opa\") — "
+                    + "never say the surname or the full name.");
+            rules.add("STRICTLY FORBIDDEN: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\", or rambling with 'men kimligingizni so'ramoqchiman'. "
+                    + "To confirm identity, say the name inside the greeting: \"Assalomu alaykum, [Ism] aka, yaxshimisiz?\"; "
+                    + "a reply that takes the name without objecting already confirms it. "
+                    + "If the name is unknown, do not probe oddly for who they are — go straight to the purpose.");
+            rules.add("Write in standard literary Uzbek; always write o' and g' with an apostrophe "
+                    + "(so'm, to'lov, bo'yicha, qo'yaymanmi). Do not split a word or drop its "
+                    + "letters — a misspelt word sounds broken in the voice too.");
         }
-        rules.add("FAKTLARni qat'iy ayting — ular tekshirilgan, siz ularga shubha qilmaysiz. "
+        rules.add("State the FACTS firmly — they are verified, you do not doubt them. "
+                + "Do not use hedging words like "
                 + (russian ? "\"кажется\", \"вроде\", \"похоже\"" : "\"ekan\", \"shekilli\", \"bo'lsa kerak\", \"chiqibdi\"")
-                + " kabi noaniqlik qo'shimchalarini ishlatmang va mijozdan faktni tasdiqlashini "
-                + "so'ramang: fakt muhokama mavzusi emas, siz uni xabar qilyapsiz.");
-        rules.add("Summa va sanalarni FAKTLARdagidek raqam bilan yozing (\"1500000 so'm\", \"1-iyul\") — "
-                + "so'z bilan yozmang, ovozga aylantirilganda o'zi to'g'ri o'qiladi.");
-        rules.add("Joriy yildagi sanada yilni aytmang — \"3-sentabr\" yetarli. Mijoz \"ertaga\" yoki "
-                + "\"dushanba\" desa, tasdiqlaganda ham o'sha tabiiy shaklni saqlang "
-                + "(\"ertaga, 3-sentabrda\"); to'liq yyyy-MM-dd sana faqat tool parametriga yoziladi.");
-        rules.add("Mijoz xavotir yoki norozilik bildirsa — " + acknowledgementSize(warmth, russian)
-                + " va darhol ishga qayting. Hamdardlikni cho'zmang: uzun kechirim so'rash yoki "
-                + "his-tuyg'u haqidagi alohida gap mijozni tinchlantirmaydi, faqat qo'ng'iroqni "
-                + "uzaytiradi.");
+                + " and do not ask the client to confirm a fact: a fact is not up for "
+                + "discussion, you are informing them of it.");
+        rules.add("Write amounts and dates in digits, as in FACTS (\"1500000 so'm\", \"1-iyul\") — "
+                + "not in words; text-to-speech reads them correctly.");
+        rules.add("For a date in the current year, do not say the year — \"3-sentabr\" is enough. If the client says "
+                + "\"ertaga\" or \"dushanba\", keep that natural form when confirming too "
+                + "(\"ertaga, 3-sentabrda\"); the full yyyy-MM-dd date goes only into tool parameters.");
+        rules.add("If the client voices worry or displeasure — " + acknowledgementSize(warmth, russian)
+                + " and get straight back to the task. Do not drag out the sympathy: a long apology "
+                + "or a separate sentence about feelings does not calm the client, it only "
+                + "lengthens the call.");
         if (warmth != SpeakingWarmth.RESERVED) {
             rules.add(warmthStyleLine(warmth, russian));
         }
-        rules.add("Suhbatni yakunlaydigan gapni (\"xayr\", \"salomat bo'ling\", \"kuningiz xayrli o'tsin\") "
-                + "FAQAT endCall tool'i orqali ayting. Natijani yozib bo'lganingizdan keyin mijoz "
-                + "\"rahmat\" desa — javob bermang, boshqa tool chaqirmang: endCall bilan xayrlashing. "
-                + "Bir suhbatda ikki marta xayrlashish robotdek eshitiladi.");
+        rules.add("Say the closing line (\"xayr\", \"salomat bo'ling\", \"kuningiz xayrli o'tsin\") "
+                + "ONLY through the endCall tool. If the client says \"rahmat\" after you have "
+                + "recorded the outcome — do not reply and do not call another tool: say goodbye with endCall. "
+                + "Saying goodbye twice in one call sounds robotic.");
         // "Aniq sana" had to be spelled out: on a real call the caller answered "keyingi
         // oy", the model read that as an exact date, recorded 2026-10-05 — a day nobody
         // named — and closed the call in the same turn. A promise the caller never made is
         // worse than one extra question.
-        rules.add("ANIQ SANA = kun raqami aytilgan ("
+        rules.add("AN EXACT DATE = a day number is named ("
                 + (russian ? "\"20 октября\", \"завтра\", \"5-го\"" : "\"20-oktabr\", \"ertaga\", \"oyning 5-si\"")
-                + "). Faqat oy yoki noaniq muddat aytilsa ("
+                + "). If only a month or a vague time is named ("
                 + (russian ? "\"в следующем месяце\", \"в октябре\", \"в конце месяца\"" : "\"keyingi oy\", \"oktabrda\", \"oy oxirida\"")
-                + ") bu ANIQ SANA EMAS: kun raqamini O'ZINGIZ TANLAMANG va sanani tool'ga "
-                + "yozmang — qaysi kun ekanini bir marta so'rang.");
-        rules.add("O'zingizni va kompaniyani bir marta tanishtirasiz — keyingi javoblarda kompaniya "
-                + "nomini qayta aytmang.");
-        rules.add("Mijoz viloyat shevalarida (Surxondaryo, Xorazm, Samarqand, Farg'ona va boshqalar) yoki "
-                + "o'zbek-rus aralash tilda gapirsa: STT matnidagi g'alati yoki shevaga xos so'zlarni kontekstdan to'g'ri tushuning, "
-                + "unga e'tiroz bildirmang yoki to'g'irlamang. Asosiy maqsad va ssenariy bo'yicha tabiiy va muloyim davom eting. "
-                + "Agar gap mutlaqo tushunarsiz bo'lsa, xushmuomalalik bilan qisqa aniqlashtiring.");
-        rules.add("Javobingiz ovozga aylantiriladi: ro'yxat, sarlavha, qavs yoki maxsus belgi ishlatmang.");
+                + "), it is NOT AN EXACT DATE: do NOT PICK the day yourself and do not write the date "
+                + "into a tool — ask once which day.");
+        rules.add("You introduce yourself and the company once — do not repeat the company "
+                + "name in later replies.");
+        rules.add("If the client speaks a regional dialect (Surxondaryo, Xorazm, Samarqand, Farg'ona and others) or "
+                + "mixed Uzbek-Russian: understand odd or dialect words in the STT text from context, "
+                + "do not object to them or correct them. Continue naturally and politely with the main purpose and the scenario. "
+                + "If what they said is completely unintelligible, politely ask a brief clarifying question.");
+        rules.add("Your reply is converted to speech: do not use lists, headings, brackets or special characters.");
         return rules;
     }
 
@@ -599,25 +577,25 @@ public class SystemPromptFactory {
      * went into every scenario's calls.
      */
     private static String examples(ScenarioDefinition scenario, String language) {
-        StringBuilder sb = new StringBuilder("MISOL (✗ noto'g'ri → ✓ to'g'ri):\n");
+        StringBuilder sb = new StringBuilder("EXAMPLES (✗ wrong → ✓ right):\n");
         sb.append(isRussian(language)
                 ? "✗ \"Вы Мурод?\" → ✓ \"Я говорю с Мурод-ака?\"\n"
-                : "✗ \"Siz Murodjonmisiz?\" → ✓ \"Men Murodjon aka bilan gaplashayapmanmi?\"\n");
+                : "✗ \"Siz Murodjonmisiz?\" → ✓ \"Assalomu alaykum, Murodjon aka, yaxshimisiz?\"\n");
         // How the conversation itself goes, the same in every domain: answering a repair
         // request, a caller asking who is calling, and a caller still mid-thought.
         sb.append(isRussian(language)
-                ? "✗ (клиент: \"А? Что вы сказали?\") повторить всё вступление заново → "
+                ? "✗ (client: \"А? Что вы сказали?\") repeating the whole introduction from the start → "
                         + "✓ \"Я спросил, удобно ли вам сейчас говорить?\"\n"
-                        + "✗ (клиент: \"А кто это?\") \"Извините, ошиблись номером.\" → "
+                        + "✗ (client: \"А кто это?\") \"Извините, ошиблись номером.\" → "
                         + "✓ \"Я звоню из компании. Я говорю с Мурод-ака?\"\n"
-                        + "✗ (клиент: \"Ну я, это, хотел...\") \"Понятно, спасибо!\" → "
-                        + "✓ ничего не говорить — вызвать waitForCaller и дать договорить\n"
-                : "✗ (mijoz: \"A? Nima dedingiz?\") butun kirish so'zini boshidan takrorlash → "
+                        + "✗ (client: \"Ну я, это, хотел...\") \"Понятно, спасибо!\" → "
+                        + "✓ say nothing — call waitForCaller and let them finish\n"
+                : "✗ (client: \"A? Nima dedingiz?\") repeating the whole introduction from the start → "
                         + "✓ \"Hozir gaplashishga qulaymi, deb so'radim.\"\n"
-                        + "✗ (mijoz: \"Kim bu?\") \"Uzr, adashibmiz.\" → "
-                        + "✓ \"Kompaniyadan qo'ng'iroq qilyapman. Murodjon aka bilan gaplashayapmanmi?\"\n"
-                        + "✗ (mijoz: \"Men... endi, haligi...\") \"Tushunarli, rahmat!\" → "
-                        + "✓ hech narsa demang — waitForCaller chaqiring va gapini tugatishini kuting\n");
+                        + "✗ (client: \"Kim bu?\") \"Uzr, adashibmiz.\" → "
+                        + "✓ \"Aka, kompaniyadan telefon qilyapman. Murodjon aka o'zlarimi?\"\n"
+                        + "✗ (client: \"Men... endi, haligi...\") \"Tushunarli, rahmat!\" → "
+                        + "✓ say nothing — call waitForCaller and let them finish\n");
         appendStyleExamples(sb, scenario, language);
         return sb.toString();
     }
@@ -631,8 +609,8 @@ public class SystemPromptFactory {
         if (scenario == null || scenario.globalNodes() == null || scenario.globalNodes().isEmpty()) {
             return;
         }
-        sb.append("ISTALGAN BOSQICHDA BERILADIGAN SAVOLLAR — mijoz shunga o'xshash narsa so'rasa, ")
-                .append("qisqa javob bering va transitionTo CHAQIRMASDAN joriy bosqichni davom ettiring:\n");
+        sb.append("QUESTIONS ANSWERED AT ANY STAGE — if the client asks something like this, ")
+                .append("answer briefly and continue the current stage WITHOUT calling transitionTo:\n");
         for (GlobalNode node : scenario.globalNodes()) {
             sb.append("- \"").append(node.question()).append("\" → ").append(node.answer()).append('\n');
         }
@@ -662,9 +640,9 @@ public class SystemPromptFactory {
     public String turnAnnex(DialogSession s) {
         StageDef stage = stageOf(s.scenario(), s.state());
         StringBuilder sb = new StringBuilder();
-        sb.append("[TIZIM: JORIY BOSQICH: ").append(s.state()).append(" — ")
+        sb.append("[SYSTEM: CURRENT STAGE: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
-        sb.append("Ruxsat etilgan keyingi bosqichlar: ").append(allowedNext(stage)).append('\n');
+        sb.append("Allowed next stages: ").append(allowedNext(stage)).append('\n');
         appendStaticLines(sb, s.scenario(), stage, s.context() != null ? s.context().facts() : Map.of());
         appendRecorded(sb, s.outcome());
         // The FSM refuses an edge that is not in `allowedNext`, and a model that spoke a
@@ -683,22 +661,22 @@ public class SystemPromptFactory {
         // and the reason it was supposed to collect was never collected. Pairing the text
         // and the transitionTo on the same stage in the same turn is what removes the lag.
         if (s.isDisclosureSpoken() && "GREETING".equalsIgnoreCase(s.state())) {
-            sb.append("DIQQAT: Salomlashuv va tizim ogohlantirishi mijozga allaqachon aytildi. ")
-                    .append("GREETING gapini QAYTARMANG! Qayta salomlashmasdan, darhol yuqoridagi ruxsat etilgan ")
-                    .append("bosqichlardan BIRIGA o'ting: avval o'sha bosqichning matnini yozing, ")
-                    .append("so'ng transitionTo bilan aynan o'sha bosqichga o'ting.\n");
+            sb.append("NOTE: the greeting and the system disclosure have already been spoken to the client. ")
+                    .append("Do NOT REPEAT the GREETING line! Without greeting again, move straight to ONE of the ")
+                    .append("allowed stages above: first write that stage's line, ")
+                    .append("then call transitionTo for exactly that stage.\n");
         } else {
-            sb.append("Bu javobda: agar keyingi bosqichga o'tayotgan bo'lsangiz — yuqoridagi ruxsat etilgan ")
-                    .append("bosqichlardan BIRIGA o'ting: avval o'sha bosqichning matnini yozing, so'ng transitionTo ")
-                    .append("bilan aynan o'sha bosqichga o'ting. ")
-                    .append("Agar joriy bosqichning o'zida qolayotgan bo'lsangiz (masalan mijoz savol berdi, eshitmadi yoki tushuntirish so'radi) — ")
-                    .append("transitionTo chaqirmang, faqat mijozga javob matnini yozing.\n");
+            sb.append("In this reply: if you are moving to the next stage, move to ONE of the allowed ")
+                    .append("stages above: first write that stage's line, then call transitionTo ")
+                    .append("for exactly that stage. ")
+                    .append("If you are staying in the current stage (e.g. the client asked a question, did not hear, or asked for an explanation) — ")
+                    .append("do not call transitionTo, just write your reply to the client.\n");
         }
-        sb.append("QAT'IY QOIDA: Har bir javobingiz ALBATTA aniq savol bilan tugashi shart! ")
-                .append("Hech qachon quruq fakt yoki xabar aytib to'xtab qolmang (masalan DEBT_NOTICE da qarz va muddatni aytganda ")
-                .append("darhol o'sha gapning davomida sababini yoki qachon to'lashini so'rang: «Murodjon aka, 1 500 000 so'm qarzingiz bor, ")
-                .append("to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?» deb so'rang). ")
-                .append("Savolsiz to'xtab qolish va mijozni kutish QAT'IYAN TAQIQLANADI.\n");
+        sb.append("STRICT RULE: every reply MUST end with a clear question! ")
+                .append("Never stop after a bare fact or message (e.g. in DEBT_NOTICE, when you state the debt and the due date, ")
+                .append("ask for the reason or when they will pay in the same breath: «Murodjon aka, 1 500 000 so'm qarzingiz bor, ")
+                .append("to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?»). ")
+                .append("Stopping without a question and waiting for the client is STRICTLY FORBIDDEN.\n");
         // Text first, tool second — this is a latency rule, not a style one. A line carried
         // in a tool argument arrives in one chunk when the whole reply is finished (this
         // provider does not stream tool arguments), so synthesis cannot start until
@@ -714,14 +692,14 @@ public class SystemPromptFactory {
         // the function call alone with no text and no `reply` — "empty LLM reply in
         // REASON_INQUIRY", then a whole extra round trip (996ms) to ask for the sentence
         // the turn should already have had.
-        sb.append("Mijozga aytadigan gapingizni AVVAL oddiy matn qilib yozing — u yozilishi bilanoq ")
-                .append("ovozga beriladi. HAR QANDAY tool — transitionTo, natija yozadigan tool'lar, ")
-                .append("scheduleCallback, endCall va boshqalari — SHU MATNDAN ")
-                .append("KEYIN chaqiriladi, va gap uning \"reply\" parametrida QAYTA YOZILMAYDI. ")
-                .append("Tool chaqirib, matn yozmaslik — eng qo'pol xato: mijoz jimlikni eshitadi ")
-                .append("va javobi bir necha soniyaga kechikadi. Natijani yozayotgan bo'lsangiz ham ")
-                .append("(sana, summa, sabab), avval mijozga aytadigan gapni yozing. ")
-                .append("(DIQQAT: inglizcha kod yoki placeholder yozish qat'iyan man etiladi).]");
+        sb.append("FIRST write what you say to the client as plain text — it goes to speech as soon as ")
+                .append("it is written. EVERY tool — transitionTo, the outcome-recording tools, ")
+                .append("scheduleCallback, endCall and the rest — is called AFTER THAT ")
+                .append("TEXT, and the sentence is NOT written again in its \"reply\" parameter. ")
+                .append("Calling a tool without writing text is the worst mistake: the client hears silence ")
+                .append("and your answer is delayed by several seconds. Even when you are recording an outcome ")
+                .append("(date, amount, reason), first write what you say to the client. ")
+                .append("(NOTE: never write English code or placeholders in that text.)]");
         String asked = lastQuestion(s.lastAgentText());
         if (asked != null) {
             // The history already holds this, and the model still asked "qachon to'lay
@@ -732,23 +710,23 @@ public class SystemPromptFactory {
             // note sits closest to the generation point, so its branch is the one that won:
             // handed an answer that was not one, the model moved on — and filled the gap it
             // was moving past with a reason the caller never gave.
-            sb.append("\n[TIZIM: O'tgan javobingizda shuni so'ragan edingiz: \"").append(asked)
-                    .append("\" Uni boshqa so'z bilan qayta so'ramang. Mijoz javob bergan bo'lsa — ")
-                    .append("javobini qabul qilib keyingi savolga o'ting. Javob bermagan bo'lsa yoki ")
-                    .append("gapi shu savolga aloqasiz bo'lsa — javobni o'zingizdan to'qimang va uni ")
-                    .append("savolga moslab talqin qilmang: o'sha savolni soddaroq qilib bir marta ")
-                    .append("qayta bering.]");
+            sb.append("\n[SYSTEM: In your last reply you asked: \"").append(asked)
+                    .append("\" Do not re-ask it in other words. If the client answered — ")
+                    .append("accept the answer and move to the next question. If they did not answer, or ")
+                    .append("what they said is unrelated to this question — do not invent the answer and do not ")
+                    .append("interpret it to fit the question: ask that question once more, ")
+                    .append("in simpler words.]");
         }
         if (s.isInterrupted()) {
             // A barge-in means the caller was talking over the question, so what came back
             // is very often not an answer to it. On the call that prompted this the agent
             // was cut off mid-question, got "aha o'zgartir", and treated it as the reason
             // it had asked for.
-            sb.append("\n[TIZIM: Mijoz siz gapirayotganda sizni bo'ldi. Siz shu yergacha aytgan edingiz: \"")
+            sb.append("\n[SYSTEM: The client interrupted you while you were speaking. You had said up to here: \"")
                     .append(s.lastAgentText() == null ? "" : s.lastAgentText())
-                    .append("\". Mijozning gapiga moslashing; butun gapni qaytadan boshlamang. ")
-                    .append("Mijoz savolingizni to'liq eshitmagan bo'lishi mumkin — uning gapini ")
-                    .append("savolingizga javob deb hisoblamang.]");
+                    .append("\". Adapt to what the client said; do not start the whole sentence over. ")
+                    .append("The client may not have heard your question in full — do not treat what they ")
+                    .append("said as an answer to it.]");
         }
         appendKnowledge(sb, s);
         String catalog = s.catalogResult();
@@ -756,23 +734,23 @@ public class SystemPromptFactory {
             // Held here rather than left in a tool result: a cascade turn does not see its own
             // tool results afterwards, and the order the caller is placing needs these SKUs
             // (UNIVERSAL-OPERATOR-PLAN B.4). Replaced by the next search.
-            sb.append("\n[TIZIM: Oxirgi katalog qidiruvi natijasi — buyurtma tool'iga faqat shu ")
-                    .append("SKU'lardan birini bering:\n").append(catalog).append(']');
+            sb.append("\n[SYSTEM: Result of the last catalog search — pass the order tool only one of ")
+                    .append("these SKUs:\n").append(catalog).append(']');
         }
         if (s.isLowConfidenceInput()) {
             // The recognizer itself said it was unsure. Acting on a misheard date or sum is
             // how a promise gets recorded for a day the caller never named — a person in
             // this position repeats it back before writing anything down.
-            sb.append("\n[TIZIM: Mijozning oxirgi gapi shovqin ichida noaniq eshitildi. ")
-                    .append("Unga ishonib ish qilma: eshitganingni qisqa takrorlab tasdiqlat ")
-                    .append("(masalan \"To'g'ri eshitdimmi — ...?\"). Tasdiqlanmaguncha sana yoki ")
-                    .append("summani tool'ga yozma.]");
+            sb.append("\n[SYSTEM: The client's last sentence was heard unclearly through noise. ")
+                    .append("Do not act on it: briefly repeat back what you heard and have them confirm it ")
+                    .append("(e.g. \"To'g'ri eshitdimmi — ...?\"). Until it is confirmed, do not write a date or ")
+                    .append("an amount into a tool.]");
             if (s.agent() != null && s.agent().callBehaviour().dtmfInputEnabled()) {
                 // A number said into noise is misheard again on the second try just as
                 // easily; typed, it arrives exactly (DtmfInputRouter).
-                sb.append("\n[TIZIM: Agar bu raqam bo'lsa (karta, pasport, PINFL, telefon, sana) — ")
-                        .append("mijozdan uni telefon tugmalarida terib, oxirida panjara (#) tugmasini ")
-                        .append("bosishni so'rang.]");
+                sb.append("\n[SYSTEM: If it is a number (card, passport, PINFL, phone, date) — ")
+                        .append("ask the client to type it on the phone keypad and press the hash (#) key ")
+                        .append("at the end.]");
             }
         }
         if (s.lastCustomerSentiment() != null && s.lastCustomerSentiment() != CustomerSentiment.NEUTRAL) {
@@ -787,26 +765,26 @@ public class SystemPromptFactory {
             // call the model then kept the conversation open with nothing left to ask:
             // it recorded the promise, said "Kelishdik, 2-oktabr deb belgilab qo'ydim",
             // and sat there until the caller hung up on it.
-            sb.append("\n[TIZIM: Qo'ng'iroq natijasi allaqachon yozib olindi (")
+            sb.append("\n[SYSTEM: The call outcome has already been recorded (")
                     .append(s.disposition())
-                    .append("). Boshqa savol bermang va kelishilgan narsani qayta muhokama ")
-                    .append("qilmang: kelishuvni bitta qisqa gap bilan tasdiqlab, DARHOL ")
-                    .append("endCall tool'i bilan xayrlashing.]");
+                    .append("). Ask nothing else and do not reopen what was agreed: ")
+                    .append("confirm the agreement in one short sentence and IMMEDIATELY ")
+                    .append("say goodbye with the endCall tool.]");
         }
         int stageAttempts = s.stageAttempts(s.state());
         if (stageAttempts >= 2) {
-            sb.append("\n[TIZIM OGOHLANTIRISHI: Siz ushbu '").append(s.state())
-                    .append("' bosqichida allaqachon ").append(stageAttempts)
-                    .append(" marta takrorladingiz. Mijozdan bir xil savolni QAYTA SO'RAMANG! ")
-                    .append("Mijozning e'tirozi yoki savolini qisqa tan olib, zudlik bilan keyingi bosqichga o'ting ")
-                    .append("(transitionTo tool'ini chaqiring) yoki agar mijoz rozi bo'lmasa/tushunmasa operatorga uzating (requestHumanTransfer).]");
+            sb.append("\n[SYSTEM WARNING: You have already repeated yourself ").append(stageAttempts)
+                    .append(" times in the '").append(s.state())
+                    .append("' stage. Do NOT ASK the client the same question AGAIN! ")
+                    .append("Briefly acknowledge the client's objection or question and move to the next stage at once ")
+                    .append("(call the transitionTo tool), or if the client does not agree or understand, hand over to an operator (requestHumanTransfer).]");
         }
         String whisper = s.operatorWhisper();
         if (whisper != null) {
             // A supervisor listening in (LiveCallControlHub): the guidance steers this turn
             // and the ones after it until a newer whisper replaces it.
-            sb.append("\n[TIZIM: OPERATOR KO'RSATMASI — mijoz buni eshitmaydi, uni so'zma-so'z ")
-                    .append("o'qib bermang, faqat amal qiling: ").append(whisper).append(']');
+            sb.append("\n[SYSTEM: OPERATOR INSTRUCTION — the client does not hear this; do not read it out ")
+                    .append("word for word, just act on it: ").append(whisper).append(']');
         }
         return sb.toString();
     }
@@ -830,18 +808,18 @@ public class SystemPromptFactory {
         if (passages.isEmpty()) {
             return;
         }
-        sb.append("\n[TIZIM: Kompaniya hujjatlaridan olingan ma'lumot — mijozning oxirgi savoliga ")
-                .append("shu yerdan javob bering:\n");
+        sb.append("\n[SYSTEM: Information from the company's documents — answer the client's last ")
+                .append("question from here:\n");
         int n = 1;
         for (KnowledgePassage passage : passages) {
             sb.append(n++).append(") [").append(PromptSafeText.sanitize(passage.sourceName(), MAX_SOURCE_NAME_CHARS)).append("] ")
                     .append(PromptSafeText.sanitize(passage.content(), MAX_PASSAGE_CHARS)).append('\n');
         }
-        sb.append("Qoidalar: (a) javobni O'Z SO'ZINGIZ bilan, bir-ikki qisqa gapda ayting — ")
-                .append("matnni o'qib bermang; (b) yuqoridagi parchalarda savolga javob YO'Q bo'lsa, ")
-                .append("o'zingizdan to'qimang — bilmasligingizni ayting yoki operatorga uzating; ")
-                .append("(c) bu parchalar umumiy ma'lumot — mijozning shaxsiy summasi, muddati yoki ")
-                .append("chegirmasi haqida emas, ular haqida baribir faqat sizga berilgan faktlardan gapiring.]");
+        sb.append("Rules: (a) answer IN YOUR OWN WORDS, in one or two short sentences — ")
+                .append("do not read the text out; (b) if the passages above do NOT answer the question, ")
+                .append("do not invent an answer — say you do not know or hand over to an operator; ")
+                .append("(c) these passages are general information — not about the client's own amount, due date or ")
+                .append("discount; for those, speak only from the facts you were given.]");
     }
 
     /**
@@ -867,7 +845,7 @@ public class SystemPromptFactory {
 
     private static String allowedNext(StageDef stage) {
         String next = describeTransitions(stage);
-        return next.isEmpty() ? "(yakuniy holat)" : next;
+        return next.isEmpty() ? "(final state)" : next;
     }
 
     /**
@@ -884,7 +862,7 @@ public class SystemPromptFactory {
         for (String target : stage.allowedTransitions()) {
             String line = renderStaticLine(scenario.findStage(target), facts);
             if (line != null) {
-                sb.append("- ").append(target).append(" ga o'tsangiz, gapingiz AYNAN shu bo'lsin: «")
+                sb.append("- If you move to ").append(target).append(", say EXACTLY this: «")
                         .append(line).append("»\n");
             }
         }
@@ -913,12 +891,12 @@ public class SystemPromptFactory {
             }
             recorded.append(name).append(" = ").append(PromptSafeText.sanitize(String.valueOf(value), MAX_RECORDED_CHARS));
         });
-        sb.append("ANIQLANGAN (qayta so'ramang; mijoz o'zgartirsa qayta yozing): ").append(recorded).append('\n');
+        sb.append("ALREADY ESTABLISHED (do not ask again; if the client changes it, record it again): ").append(recorded).append('\n');
     }
 
     /**
      * The stages {@code stage} may move to, each with its {@link StageDef#transitionConditions
-     * condition} — {@code "A (agar: …), B"} — or empty when it names none.
+     * condition} — {@code "A (if: …), B"} — or empty when it names none.
      */
     static String describeTransitions(StageDef stage) {
         if (stage == null || stage.allowedTransitions() == null || stage.allowedTransitions().isEmpty()) {
@@ -932,32 +910,21 @@ public class SystemPromptFactory {
             sb.append(target);
             String condition = stage.transitionConditions() == null ? null : stage.transitionConditions().get(target);
             if (condition != null && !condition.isBlank()) {
-                sb.append(" (agar: ").append(condition.trim()).append(')');
+                sb.append(" (if: ").append(condition.trim()).append(')');
             }
         }
         return sb.toString();
     }
 
-    private static String languageName(String code) {
-        if (isRussian(code)) return "rus";
-        if (code != null && code.toLowerCase().startsWith("en")) return "ingliz";
-        return "o'zbek";
+    /** The call language's English name; shared with {@link RealtimeSystemPromptFactory}. */
+    static String languageName(String code) {
+        if (isRussian(code)) return "Russian";
+        if (code != null && code.toLowerCase().startsWith("en")) return "English";
+        return "Uzbek";
     }
 
     private static boolean isRussian(String code) {
         return code != null && code.toLowerCase().startsWith("ru");
-    }
-
-    private static String weekdayUz(DayOfWeek dow) {
-        return switch (dow) {
-            case MONDAY -> "dushanba";
-            case TUESDAY -> "seshanba";
-            case WEDNESDAY -> "chorshanba";
-            case THURSDAY -> "payshanba";
-            case FRIDAY -> "juma";
-            case SATURDAY -> "shanba";
-            case SUNDAY -> "yakshanba";
-        };
     }
 
     private static String orDash(Object value) {

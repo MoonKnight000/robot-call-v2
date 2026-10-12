@@ -40,14 +40,14 @@ public class RealtimeWatchdogRunner {
     private static final Duration TICK = Duration.ofSeconds(1);
 
     /** Instructions to the engine — never heard by the caller; what they hear is the answer. */
-    static final String STILL_THERE = "[TIZIM: mijoz bir necha soniyadan beri jim. Qisqa qilib "
-            + "eshityaptimi deb so'rang va oxirgi savolingizni qisqa takrorlang.]";
-    static final String LAST_CALL = "[TIZIM: mijoz hamon jim. Bir gap bilan aloqadami deb so'rang va "
-            + "javob bo'lmasa qo'ng'iroqni yakunlashingizni ayting. endCall chaqirmang.]";
-    static final String GIVE_UP = "[TIZIM: mijoz javob bermayapti. Bir gap bilan muloyim xayrlashing "
-            + "va endCall chaqiring.]";
-    static final String TIME_UP = "[TIZIM: qo'ng'iroq uchun ajratilgan vaqt tugadi. Bir gap bilan "
-            + "muloyim xayrlashing va endCall chaqiring.]";
+    static final String STILL_THERE = "[SYSTEM: the client has been silent for several seconds. Briefly "
+            + "ask whether they can hear you and briefly repeat your last question.]";
+    static final String LAST_CALL = "[SYSTEM: the client is still silent. In one sentence ask whether they are "
+            + "still on the line and say you will end the call if there is no answer. Do not call endCall.]";
+    static final String GIVE_UP = "[SYSTEM: the client is not answering. Say a polite goodbye in one sentence "
+            + "and call endCall.]";
+    static final String TIME_UP = "[SYSTEM: the time allotted to this call is up. Say a polite goodbye in one "
+            + "sentence and call endCall.]";
 
     private final DialogProperties dialogProperties;
     private final DialogExecutors executors;

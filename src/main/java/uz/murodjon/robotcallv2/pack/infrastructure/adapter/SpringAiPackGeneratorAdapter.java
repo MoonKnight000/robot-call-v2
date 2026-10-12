@@ -18,6 +18,7 @@ import uz.murodjon.robotcallv2.pack.infrastructure.config.PackGeneratorPropertie
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.List;
@@ -42,68 +43,7 @@ public class SpringAiPackGeneratorAdapter implements PackGeneratorPort {
     private static final ObjectMapper JSON = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    private static final String INSTRUCTIONS = """
-            Siz ovozli AI agentlar platformasi uchun "soha paketi" yozadigan mutaxassissiz.
-            Sizga biznesning o'z so'zlari bilan tavsifi beriladi. Siz shu biznes uchun ovozli
-            operator ssenariysini yozasiz.
-
-            JAVOB FAQAT JSON BO'LSIN, aynan shu maydonlar bilan:
-            {
-              "key": "lotin harflar va tire, qisqa: gul-dokoni",
-              "name": "Paket nomi",
-              "description": "Bir jumlada: agent nima qiladi",
-              "industry": "soha kaliti, inglizcha: flowers, education, fitness",
-              "agent": {
-                "name": "Agent nomi",
-                "description": "Bir jumla",
-                "language": "til kodi",
-                "firstMessage": "Agent birinchi aytadigan gap",
-                "useRag": true,
-                "scenario": {
-                  "stages": [
-                    {"id": "GREETING", "purpose": "Shu bosqichda nima qilinadi", "allowedTransitions": ["..."]}
-                  ],
-                  "factSchema": [],
-                  "tools": [],
-                  "outcomeSchema": [
-                    {"name": "maydon", "type": "string", "description": "...", "goal": true}
-                  ],
-                  "rolePrompt": "Agent kimligi va nima qilishi",
-                  "guardrails": ["Aytilmasligi kerak bo'lgan narsalar, buyruq gap bilan"],
-                  "disclosureText": null,
-                  "factWebhook": null,
-                  "styleExamples": [{"language": "uz", "wrong": "\\"...\\"", "right": "\\"...\\""}]
-                },
-                "dataNeeded": [{"id": "...", "type": "string", "name": "...", "description": "..."}],
-                "dataEvaluation": [{"id": "...", "name": "...", "criteria": "..."}]
-              },
-              "conversionGoal": {"goalKey": "...", "name": "...", "attributionWindowHours": 168, "enabled": true},
-              "testCases": [
-                {"name": "...", "personaPrompt": "Mijoz rolini o'ynaydigan modelga ko'rsatma",
-                 "mustNotSay": ["..."], "maxTurns": 10}
-              ]
-            }
-
-            QAT'IY QOIDALAR:
-            - "tools" va "secrets" maydonlarini YOZMANG: tool'lar API hujjatidan olinadi.
-              Bosqich matnida tool nomini ishlatishingiz mumkin (pastda ro'yxati bor), lekin
-              yangi tool o'ylab topmang va URL yozmang.
-            - Bosqichlar: 5 tadan 9 tagacha. Har bir bosqich "allowedTransitions" orqali oxir-oqibat
-              END_CALL ga yeta olsin, END_CALL ning o'zida esa bo'sh ro'yxat bo'lsin. Har doim
-              ESCALATE_TO_HUMAN va END_CALL bo'lsin.
-            - "outcomeSchema" da AYNAN BITTA maydonda "goal": true bo'lsin — qo'ng'iroq nima uchun
-              qilinayotganini o'lchaydigan maydon. Agar yozuvchi tool bo'lsa, maqsad shu tool
-              qaytaradigan raqam bo'lsin.
-            - Guardrails: kamida 4 ta. Ular agentning nimani TO'QIMASLIGI va NIMA VA'DA
-              QILMASLIGI haqida bo'lsin (narx, muddat, chegirma, tibbiy yoki huquqiy maslahat),
-              hamda karta/parol so'ramaslik.
-            - testCases: aynan 5 ta, ulardan kamida 2 tasi "yomon niyatli" mijoz bo'lsin
-              (chegirma talab qiladi, boshqa odam nomidan so'raydi, maxfiy ma'lumot aytmoqchi).
-              "mustNotSay" — agent aytmasligi kerak bo'lgan aniq iboralar.
-            - Hamma matn (firstMessage, purpose, guardrails, personaPrompt) AGENT TILIDA bo'lsin.
-            - Biznes tavsifida yo'q faktni (narx, ish vaqti, muddat) ssenariyga yozmang. Kerak
-              bo'lsa, agent uni bilimlar bazasidan o'qisin deb yozing.
-            """;
+    private static final String INSTRUCTIONS = PromptText.text("pack-generator.txt");
 
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final PackGeneratorProperties packGeneratorProperties;
@@ -146,20 +86,20 @@ public class SpringAiPackGeneratorAdapter implements PackGeneratorPort {
 
     private static String describe(String business, String language, List<Tool> tools) {
         StringBuilder sb = new StringBuilder();
-        sb.append("BIZNES:\n").append(business).append("\n\n");
-        sb.append("AGENT TILI: ").append(language != null && !language.isBlank() ? language : "uz-UZ").append('\n');
+        sb.append("BUSINESS:\n").append(business).append("\n\n");
+        sb.append("AGENT LANGUAGE: ").append(language != null && !language.isBlank() ? language : "uz-UZ").append('\n');
         if (tools.isEmpty()) {
-            sb.append("\nTOOL'LAR: yo'q. Agent tashqi tizimga yozmaydi — natija faqat suhbatdan "
-                    + "yig'iladi, shuning uchun maqsad maydoni ssenariyning o'zida to'ladigan qiymat bo'lsin.\n");
+            sb.append("\nTOOLS: none. The agent writes to no external system — the outcome is gathered from the "
+                    + "conversation alone, so the goal field must be a value filled in by the scenario itself.\n");
             return sb.toString();
         }
-        sb.append("\nAGENTDA BO'LADIGAN TOOL'LAR (API hujjatidan olingan, o'zgartirmang):\n");
+        sb.append("\nTOOLS THE AGENT WILL HAVE (taken from the API document, do not change them):\n");
         for (Tool tool : tools) {
             sb.append("- ").append(tool.name()).append(" (").append(tool.apiMethod()).append("): ")
                     .append(tool.description() == null ? "" : tool.description()).append('\n');
         }
-        sb.append("Bosqichlarda shu nomlarni ishlating va yozuvchi tool chaqirilgandan keyingina "
-                + "\"qabul qilindi\" deyilsin.\n");
+        sb.append("Use these names in the stages, and have the agent say \"qabul qilindi\" only after "
+                + "the writing tool has been called.\n");
         return sb.toString();
     }
 

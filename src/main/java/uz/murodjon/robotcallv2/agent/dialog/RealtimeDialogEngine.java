@@ -73,11 +73,11 @@ public class RealtimeDialogEngine implements CallDialog {
      * anyone: it is a nudge, not a greeting, and what the caller hears is the answer.
      */
     private static final String GREETING_BOOTSTRAP =
-            "[TIZIM: qo'ng'iroq boshlandi, mijoz go'shakni ko'tardi. Suhbatni boshlang.]";
-    private static final String TOKEN_CAP = "[TIZIM: suhbat uchun ajratilgan hisob tugadi. Bir gap bilan "
-            + "xushmuomala xayrlashing va suhbatni yakunlang.]";
-    private static final String LOW_CONFIDENCE = "[TIZIM: mijozning oxirgi gapi noaniq eshitildi. Unda raqam, "
-            + "sana yoki ism bo'lsa — takrorlab, tasdiqlatib oling.]";
+            "[SYSTEM: the call has started, the client has picked up. Start the conversation.]";
+    private static final String TOKEN_CAP = "[SYSTEM: the budget allotted to this conversation is used up. Say a "
+            + "polite goodbye in one sentence and end the conversation.]";
+    private static final String LOW_CONFIDENCE = "[SYSTEM: the client's last sentence was heard unclearly. If it "
+            + "contained a number, date or name — repeat it back and have them confirm it.]";
     /** The languages a reply is sorted into for the {@code voice.realtime.language} metric. */
     private static final List<String> LANGUAGE_TAGS = List.of("uz", "ru");
 
@@ -86,19 +86,19 @@ public class RealtimeDialogEngine implements CallDialog {
      * said — typically because the caller spoke over the greeting. The requirement is that
      * the caller heard it, not that it was in the instructions.
      */
-    private static final String DISCLOSURE_NUDGE = "[TIZIM: qonuniy ogohlantirish to'liq aytilmadi. "
-            + "Hozir bir gap bilan ayting: \"%s\" — va suhbatni to'xtagan joyidan davom ettiring.]";
+    private static final String DISCLOSURE_NUDGE = "[SYSTEM: the legal disclosure was not spoken in full. "
+            + "Say it now in one sentence: \"%s\" — and continue the conversation from where it stopped.]";
 
     /**
      * A supervisor's guidance ({@link LiveCallControlHub}), worded as the cascade prompt
      * words it. Added to the conversation as context, never answered on its own.
      */
-    private static final String OPERATOR_WHISPER = "[TIZIM: OPERATOR KO'RSATMASI — mijoz buni eshitmaydi, "
-            + "uni so'zma-so'z o'qib bermang, suhbatning qolgan qismida faqat amal qiling: %s]";
+    private static final String OPERATOR_WHISPER = "[SYSTEM: OPERATOR INSTRUCTION — the client does not hear this; "
+            + "do not read it out word for word, just act on it for the rest of the conversation: %s]";
 
     /** Sent when the call reaches its turn cap, the realtime counterpart of the cascade farewell. */
-    private static final String TURN_CAP = "[TIZIM: suhbat juda cho'zilib ketdi. Bir gap bilan "
-            + "muloyim xayrlashing va endCall chaqiring.]";
+    private static final String TURN_CAP = "[SYSTEM: the conversation has gone on too long. Say a polite "
+            + "goodbye in one sentence and call endCall.]";
 
     private final RealtimeProviderRegistry registry;
     private final RealtimeSystemPromptFactory promptFactory;
@@ -337,8 +337,8 @@ public class RealtimeDialogEngine implements CallDialog {
             return;
         }
         s.touch();
-        engine.sendUserText("[TIZIM: mijoz telefon tugmalarida terdi: " + digit
-                + ". Buni menyu tanlovi yoki savolga javob sifatida qabul qiling.]");
+        engine.sendUserText("[SYSTEM: the client typed on the phone keypad: " + digit
+                + ". Take it as a menu choice or as the answer to your question.]");
     }
 
     /**

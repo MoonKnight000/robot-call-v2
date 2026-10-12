@@ -85,8 +85,8 @@ final class ToolResponseFormatter {
     String formatLimitReached(int limit) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("status", 429);
-        node.put("error", "Bu amal shu qo'ng'iroqda " + limit + " marta bajarildi. Qayta chaqirmang, "
-                + "olingan natija bilan suhbatni davom ettiring.");
+        node.put("error", "This action has already been done " + limit + " times on this call. Do not call it again; "
+                + "carry on the conversation with the result you have.");
         return node.toString();
     }
 

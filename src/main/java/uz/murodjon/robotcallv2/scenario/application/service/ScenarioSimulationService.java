@@ -78,24 +78,25 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
         long start = System.currentTimeMillis();
 
         StringBuilder systemPrompt = new StringBuilder();
-        systemPrompt.append("Siz ovozli AI agent rolidasiz. Ssenariy bo'yicha tabiiy suhbat olib boring.\n");
-        systemPrompt.append("ROL VA VAZIFA:\n").append(definition.rolePrompt()).append("\n\n");
-        systemPrompt.append("JORIY BOSQICH: ").append(currentState).append("\n");
+        systemPrompt.append("You play a voice AI agent. Hold a natural conversation following the scenario, ")
+                .append("speaking the client's language (Uzbek or Russian), never English.\n");
+        systemPrompt.append("ROLE AND TASK:\n").append(definition.rolePrompt()).append("\n\n");
+        systemPrompt.append("CURRENT STAGE: ").append(currentState).append("\n");
 
         if (request.contextFacts() != null && !request.contextFacts().isEmpty()) {
-            systemPrompt.append("FAKTLAR:\n");
+            systemPrompt.append("FACTS (FAKTLAR):\n");
             request.contextFacts().forEach((k, v) -> systemPrompt.append("- ").append(k).append(": ").append(v).append("\n"));
             systemPrompt.append("\n");
         }
 
-        systemPrompt.append("QOIDALAR:\n");
+        systemPrompt.append("RULES:\n");
         if (definition.guardrails() != null) {
             for (String g : definition.guardrails()) {
                 systemPrompt.append("- ").append(g).append("\n");
             }
         }
-        systemPrompt.append("- Mijozga insondek samimiy va qisqa (1-2 gap) javob bering.\n");
-        systemPrompt.append("- Agar bosqich o'zgarsa yoki va'da/rad qayd etilsa, javob oxirida maxsus JSON teg qo'shing: [STATE: yangi_bosqich] yoki [OUTCOME: outcome_nomi].\n");
+        systemPrompt.append("- Answer the client warmly and briefly (1-2 sentences), like a person.\n");
+        systemPrompt.append("- If the stage changes or a promise/refusal is recorded, add a special tag at the end of the reply: [STATE: new_stage] or [OUTCOME: outcome_name].\n");
 
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(systemPrompt.toString()));
@@ -115,7 +116,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
         if (request.userMessage() != null && !request.userMessage().isBlank()) {
             messages.add(new UserMessage(request.userMessage()));
         } else if (request.chatHistory() == null || request.chatHistory().isEmpty()) {
-            messages.add(new UserMessage("[Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Salomlashing.]"));
+            messages.add(new UserMessage("[The call is connected, the client has picked up. Greet them.]"));
         }
 
         ChatClient chatClient = ChatClient.create(chatModel);

@@ -72,7 +72,7 @@ class DialogToolsTest {
 
         String result = tools.transitionTo("Qaytadan aytaman: qarzingiz bor.", "DEBT_NOTICE");
 
-        assertThat(result).doesNotStartWith("XATO:").contains("DEBT_NOTICE");
+        assertThat(result).doesNotStartWith("ERROR:").contains("DEBT_NOTICE");
         assertThat(session.state()).isEqualTo("DEBT_NOTICE");
         assertThat(session.toolReplies()).isEqualTo("Qaytadan aytaman: qarzingiz bor.");
     }
@@ -83,7 +83,7 @@ class DialogToolsTest {
 
         String result = tools.recordPaymentPromise("Yaxshi, yozib qo'ydim.", yesterday, null, null, null);
 
-        assertThat(result).startsWith("XATO:");
+        assertThat(result).startsWith("ERROR:");
         // The line confirmed a promise the guardrail refused — it must not be spoken.
         assertThat(session.toolReplies()).isNull();
         // The usual cause is a wrong year, so today's date has to be in the reply —
@@ -163,7 +163,7 @@ class DialogToolsTest {
 
         assertThat(session.language()).isEqualTo("ru-RU");
         assertThat(session.toolReplies()).isEqualTo("Хорошо, давайте по-русски.");
-        assertThat(note).doesNotContain("XATO");
+        assertThat(note).doesNotContain("ERROR");
     }
 
     @Test
@@ -174,7 +174,7 @@ class DialogToolsTest {
 
         assertThat(session.language()).isEqualTo("uz-UZ");
         assertThat(session.toolReplies()).isNull();
-        assertThat(note).startsWith("XATO");
+        assertThat(note).startsWith("ERROR");
     }
 
     @Test
@@ -200,7 +200,7 @@ class DialogToolsTest {
 
         assertThat(session.state()).isEqualTo("DEBT_NOTICE");
         // The model has to be told what it passed, or it keeps asking for those stages.
-        assertThat(result).doesNotStartWith("XATO:").contains("IDENTITY_CHECK");
+        assertThat(result).doesNotStartWith("ERROR:").contains("IDENTITY_CHECK");
         assertThat(session.toolReplies()).isEqualTo("Sizning qarzingiz bor.");
     }
 
@@ -282,7 +282,7 @@ class DialogToolsTest {
 
         String result = required.transitionTo("Kelishdik.", "CONFIRM");
 
-        assertThat(result).startsWith("XATO:").contains("promisedDate").contains("reasonCode");
+        assertThat(result).startsWith("ERROR:").contains("promisedDate").contains("reasonCode");
         assertThat(requiredSession.state()).isEqualTo("ASK_DATE");
     }
 
@@ -315,7 +315,7 @@ class DialogToolsTest {
 
         String result = tools.transitionTo("Qarzingiz bor.", "DEBT_NOTICE");
 
-        assertThat(result).startsWith("XATO:");
+        assertThat(result).startsWith("ERROR:");
         // The model has to be told where it may go, or it re-sends the same stage.
         assertThat(result).contains("END_CALL");
         assertThat(session.state()).isEqualTo("CLOSING");
@@ -349,7 +349,7 @@ class DialogToolsTest {
     @Test
     void bookShowroomVisitRequiresVisitTime() {
         String res = tools.bookShowroomVisit("Xayr", null, "2 xonali", null, null, null);
-        assertThat(res).startsWith("XATO:");
+        assertThat(res).startsWith("ERROR:");
         assertThat(session.outcome().get("meetingBooked")).isNull();
     }
 
@@ -386,18 +386,18 @@ class DialogToolsTest {
     @Test
     void bookAppointmentRequiresDateAndTime() {
         String resNoDate = tools.bookAppointment("Rahmat", null, "14:00", "Ali", null, null);
-        assertThat(resNoDate).startsWith("XATO: Uchrashuv sanasi");
+        assertThat(resNoDate).startsWith("ERROR: no appointment date");
         assertThat(session.outcome().get("appointmentBooked")).isNull();
 
         String resNoTime = tools.bookAppointment("Rahmat", "2026-10-15", "", "Ali", null, null);
-        assertThat(resNoTime).startsWith("XATO: Uchrashuv vaqti");
+        assertThat(resNoTime).startsWith("ERROR: no appointment time");
         assertThat(session.outcome().get("appointmentBooked")).isNull();
     }
 
     @Test
     void checkCalendarAvailabilityReturnsAvailableSlots() {
         String res = tools.checkCalendarAvailability("Hozir bo'sh vaqtlarni tekshiraman", "2026-10-15", "Konsultatsiya");
-        assertThat(res).contains("2026-10-15 sanasi uchun quyidagi bo'sh vaqtlar mavjud");
+        assertThat(res).contains("Free times on 2026-10-15");
         assertThat(session.toolReplies()).isEqualTo("Hozir bo'sh vaqtlarni tekshiraman");
     }
 

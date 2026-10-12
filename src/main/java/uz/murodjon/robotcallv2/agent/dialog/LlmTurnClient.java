@@ -719,10 +719,10 @@ class LlmTurnClient {
     private static List<Message> spokenLineRetry(List<Message> messages, String toolNote) {
         List<Message> retryMessages = new ArrayList<>(messages);
         if (toolNote != null) {
-            retryMessages.add(new UserMessage("[TIZIM: Tool natijasi: " + toolNote + "]"));
+            retryMessages.add(new UserMessage("[SYSTEM: Tool result: " + toolNote + "]"));
         }
-        retryMessages.add(new UserMessage("[TIZIM: Endi faqat mijozga ovoz bilan aytiladigan "
-                + "matnni qaytaring. Tool chaqirmang, izoh yozmang.]"));
+        retryMessages.add(new UserMessage("[SYSTEM: Now return only the text to be spoken to the "
+                + "client. Do not call tools, do not write comments.]"));
         return retryMessages;
     }
 

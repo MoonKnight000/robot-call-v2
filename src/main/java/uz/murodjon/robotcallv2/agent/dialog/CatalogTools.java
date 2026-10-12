@@ -27,8 +27,8 @@ public class CatalogTools {
     private static final Logger log = LoggerFactory.getLogger(CatalogTools.class);
 
     /** Explicit on purpose: the model must ask again, not fill the gap with a product and a SKU of its own. */
-    private static final String NOTHING_FOUND = "KATALOGDA TOPILMADI — mahsulot, SKU yoki narxni o'zingizdan "
-            + "to'qimang. Mijozdan aniqroq so'rang (nomi, rangi, o'lchami) yoki bunday mahsulot yo'qligini ayting.";
+    private static final String NOTHING_FOUND = "NOT FOUND IN THE CATALOGUE — do not invent a product, SKU or "
+            + "price. Ask the client to be more specific (name, colour, size) or tell them there is no such product.";
 
     private static final int MAX_MATCHES = 5;
     private static final int MAX_SKU_CHARS = 100;
@@ -46,11 +46,11 @@ public class CatalogTools {
         this.catalogSearch = catalogSearch;
     }
 
-    @Tool(description = "Kompaniya katalogidan mahsulot yoki xizmatni qidiradi (nomi, rangi, o'lchami, narxi, "
-            + "qoldig'i). Mijoz mahsulot haqida so'raganda yoki buyurtma berayotganda chaqiring. Buyurtma "
-            + "tool'iga FAQAT shu yerdan qaytgan SKU ni bering — SKU, narx yoki qoldiqni o'zingizdan to'qimang.")
-    public String searchCatalog(@ToolParam(description = "mijoz aytgan mahsulot: nomi va belgilari, "
-            + "masalan \"qora 42 razmer krossovka\"") String query) {
+    @Tool(description = "Searches the company catalogue for a product or service (name, colour, size, price, "
+            + "stock). Call it when the client asks about a product or is placing an order. Pass the order "
+            + "tool ONLY an SKU returned from here — never invent an SKU, price or stock level.")
+    public String searchCatalog(@ToolParam(description = "the product the client named: its name and attributes, "
+            + "e.g. \"qora 42 razmer krossovka\"") String query) {
         try {
             List<CatalogMatch> matches = catalogSearch.findCatalogMatches(companyId, agentId, query, MAX_MATCHES);
             if (matches.isEmpty()) {

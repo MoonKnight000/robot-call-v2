@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.insight.domain.entity.AgentCallSignals;
 import uz.murodjon.robotcallv2.insight.domain.entity.InsightProposal;
 import uz.murodjon.robotcallv2.insight.domain.enums.InsightType;
 import uz.murodjon.robotcallv2.insight.infrastructure.config.InsightProperties;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,45 +46,7 @@ public class SpringAiInsightClustererAdapter implements InsightClustererPort {
     private static final int MAX_TITLE_CHARS = 200;
     private static final int MAX_TEXT_CHARS = 2000;
 
-    private static final String INSTRUCTIONS = """
-            Siz ovozli AI agentlarning sifatini tahlil qiluvchi mutaxassissiz. Sizga bitta
-            agentning bir sutkalik qo'ng'iroqlaridan yig'ilgan BELGILAR beriladi: sonlar,
-            sifat sudyasining qisqa izohlari va supervayzerning "agent xato qildi" sabablari.
-            Transkript berilmaydi.
-
-            Vazifa: shu belgilardan nechta HAQIQIY muammo ko'rinayotganini aniqlang va har biri
-            uchun bitta aniq taklif yozing. Bir xil muammoni ikki marta yozmang.
-
-            QAT'IY QOIDALAR:
-            - Faqat berilgan sonlar va izohlarga tayaning. Sabab to'qimang, "ehtimol" deb
-              taxmin qilmang. Belgilar kam bo'lsa — kam taklif yozing yoki umuman yozmang.
-            - Har bir taklifda callCount — shu muammo ko'ringan qo'ng'iroqlar soni, berilgan
-              sonlardan olinadi.
-            - title, detail va suggestion — AGENT TILIDA (pastda ko'rsatilgan), operator
-              o'qiydigan tirik gap bilan.
-
-            type quyidagilardan biri:
-            - PROMPT_FIX: agent aytmasligi kerak bo'lgan narsani aytgan. suggestion — agent
-              qoidalari ro'yxatiga O'ZGARTIRISHSIZ qo'shsa bo'ladigan BITTA buyruq gap
-              (masalan: "Chegirma yoki bepul yetkazib berish va'da qilmang."). Faqat bitta gap,
-              sarlavhasiz, raqamsiz, qo'shtirnoqsiz.
-            - KB_GAP: mijozlar so'ragan savolga agentda javob yo'q. suggestion — bilimlar
-              bazasiga qanday mavzu qo'shilishi kerakligi (javob matnini o'zingiz yozmang,
-              uni kompaniya biladi).
-            - TOOL_FIX: tashqi tool xato qaytaryapti yoki noto'g'ri chaqirilyapti. suggestion —
-              tool yoki uning parametri tavsifida nima aniqlashtirilishi kerak.
-            - NEW_TEST_CASE: shu muammo qayta takrorlanmasligi uchun test holati kerak.
-              suggestion — mijoz rolini o'ynaydigan modelga beriladigan persona matni: u kim,
-              nima istaydi, qanday bosim o'tkazadi (2-4 gap).
-            - PRONUNCIATION: so'z noto'g'ri eshitilyapti yoki noto'g'ri o'qilyapti.
-              suggestion — qaysi so'z va qanday o'qilishi kerakligi.
-            - HANDOFF_PATTERN: operatorga o'tkazish kech yoki keraksiz sodir bo'lyapti.
-              suggestion — nimani o'zgartirish kerakligi.
-
-            Javob FAQAT JSON bo'lsin, shu ko'rinishda:
-            {"insights": [{"type": "...", "title": "...", "detail": "...", "suggestion": "...", "callCount": 0}]}
-            Muammo ko'rinmasa: {"insights": []}
-            """;
+    private static final String INSTRUCTIONS = PromptText.text("insight-clusterer.txt");
 
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final InsightProperties insightProperties;
@@ -130,26 +93,26 @@ public class SpringAiInsightClustererAdapter implements InsightClustererPort {
     private static String describe(String agentName, String language, AgentCallSignals signals) {
         StringBuilder sb = new StringBuilder();
         sb.append("AGENT: ").append(agentName).append('\n');
-        sb.append("AGENT TILI: ").append(language != null ? language : "uz-UZ").append('\n');
-        sb.append("QO'NG'IROQLAR (oxirgi sutka): ").append(signals.calls()).append('\n');
+        sb.append("AGENT LANGUAGE: ").append(language != null ? language : "uz-UZ").append('\n');
+        sb.append("CALLS (last 24 hours): ").append(signals.calls()).append('\n');
         if (signals.avgScore() != null) {
-            sb.append("O'RTACHA SIFAT BALLI: ").append(signals.avgScore()).append(" / 100\n");
+            sb.append("AVERAGE QUALITY SCORE: ").append(signals.avgScore()).append(" / 100\n");
         }
-        sb.append("BELGILAR (qo'ng'iroqlar soni bilan):\n")
-                .append("- qoidabuzarlik (aytmasligi kerak bo'lgan narsani aytdi): ")
+        sb.append("SIGNALS (with number of calls):\n")
+                .append("- rule violation (said something it should not have): ")
                 .append(signals.guardrailViolations()).append('\n')
-                .append("- javobsiz savol: ").append(signals.unansweredQuestions()).append('\n')
-                .append("- tool'ni noto'g'ri ishlatdi: ").append(signals.toolMisuses()).append('\n')
-                .append("- noto'g'ri til: ").append(signals.languageMismatches()).append('\n')
-                .append("- mijozning gapini bo'ldi: ").append(signals.talkedOverClient()).append('\n')
-                .append("- tool xatosi bo'lgan qo'ng'iroqlar: ").append(signals.toolErrorCalls()).append('\n')
-                .append("- sutka ichida qayta qo'ng'iroq qilgan mijozlar: ").append(signals.repeatCalls()).append('\n')
-                .append("- operatorga o'tkazilgan: ").append(signals.transfers()).append('\n')
-                .append("- mijoz \"nima?\", \"qaytaring\" degan holatlar (jami): ").append(signals.repairs()).append('\n')
-                .append("- jimlik uchun qayta so'rash (jami): ").append(signals.noInputPrompts()).append('\n')
-                .append("- nutqni tanib olish ishonchi past gaplar (jami): ").append(signals.lowConfidence()).append('\n');
-        appendLines(sb, "SIFAT SUDYASI IZOHLARI", signals.judgeNotes());
-        appendLines(sb, "SUPERVAYZER \"AGENT XATO QILDI\" SABABLARI", signals.reviewerNotes());
+                .append("- unanswered question: ").append(signals.unansweredQuestions()).append('\n')
+                .append("- misused a tool: ").append(signals.toolMisuses()).append('\n')
+                .append("- wrong language: ").append(signals.languageMismatches()).append('\n')
+                .append("- talked over the client: ").append(signals.talkedOverClient()).append('\n')
+                .append("- calls with a tool error: ").append(signals.toolErrorCalls()).append('\n')
+                .append("- clients who called again within 24 hours: ").append(signals.repeatCalls()).append('\n')
+                .append("- transferred to an operator: ").append(signals.transfers()).append('\n')
+                .append("- client said \"nima?\", \"qaytaring\" (total): ").append(signals.repairs()).append('\n')
+                .append("- re-prompts after silence (total): ").append(signals.noInputPrompts()).append('\n')
+                .append("- low speech-recognition confidence utterances (total): ").append(signals.lowConfidence()).append('\n');
+        appendLines(sb, "QUALITY JUDGE NOTES", signals.judgeNotes());
+        appendLines(sb, "SUPERVISOR \"AGENT MADE A MISTAKE\" REASONS", signals.reviewerNotes());
         return sb.toString();
     }
 

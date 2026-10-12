@@ -72,8 +72,8 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
         assertThat(prompt)
-                .contains("HOZIRGI VAQT")
-                .contains("ertaga: " + LocalDate.now(SystemPromptFactory.CALLER_ZONE).plusDays(1))
+                .contains("CURRENT TIME")
+                .contains("(tomorrow): " + LocalDate.now(SystemPromptFactory.CALLER_ZONE).plusDays(1))
                 .contains("tushdan keyin / после обеда: 13:00–17:00");
     }
 
@@ -104,7 +104,7 @@ class SystemPromptFactoryTest {
                 .contains("Aziz aka")
                 .contains("xushmuomala gaplashing")
                 .contains("2026-08-20")
-                .contains("mavzu: debt-collection")
+                .contains("topic: debt-collection")
                 .contains("PROMISE_TO_PAY")
                 .contains("dushanba kuni to'lashga va'da bergandi")
                 .contains("2026-08-25");
@@ -129,8 +129,8 @@ class SystemPromptFactoryTest {
 
         String annex = factory.turnAnnex(s);
 
-        assertThat(annex).contains("JORIY BOSQICH: " + stageId);
-        assertThat(annex).contains("Ruxsat etilgan keyingi bosqichlar:");
+        assertThat(annex).contains("CURRENT STAGE: " + stageId);
+        assertThat(annex).contains("Allowed next stages:");
     }
 
     private static DialogSession sessionWithWarmth(SpeakingWarmth warmth) {
@@ -152,8 +152,8 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(sessionWithWarmth(SpeakingWarmth.RESERVED));
 
         assertThat(prompt)
-                .contains("Munosabat BIR SO'Z bo'lsin")
-                .doesNotContain("Jonli og'zaki ohangda")
+                .contains("Keep the reaction to ONE WORD")
+                .doesNotContain("lively spoken register")
                 .contains("juda afsusdaman");
     }
 
@@ -164,10 +164,10 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(sessionWithWarmth(SpeakingWarmth.BALANCED));
 
         assertThat(prompt)
-                .doesNotContain("Munosabat BIR SO'Z bo'lsin")
+                .doesNotContain("Keep the reaction to ONE WORD")
                 .contains("Ha, ish bo'lmasa qiyin")
-                .contains("Jonli og'zaki ohangda")
-                .contains("Sahnaviy hamdardlik taqiqlanadi")
+                .contains("lively spoken register")
+                .contains("Staged sympathy is forbidden")
                 .contains("juda afsusdaman");
     }
 
@@ -176,11 +176,11 @@ class SystemPromptFactoryTest {
         SentimentDetector detector = new SentimentDetector();
 
         assertThat(detector.empathyDirective(CustomerSentiment.POSITIVE, "uz-UZ", SpeakingWarmth.BALANCED))
-                .contains("sal iliqroq");
+                .contains("slightly warmer");
         assertThat(detector.empathyDirective(CustomerSentiment.POSITIVE, "uz-UZ", SpeakingWarmth.RESERVED))
                 .isEmpty();
         assertThat(detector.empathyDirective(CustomerSentiment.FRUSTRATED, "uz-UZ", SpeakingWarmth.RESERVED))
-                .contains("bitta qisqa so'z");
+                .contains("one short word");
     }
 
     @Test
@@ -188,8 +188,8 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
         assertThat(prompt)
-                .contains("QO'NG'IROQ TURI: CHIQUVCHI")
-                .contains("kompaniyasi nomidan qo'ng'iroq qilyapsiz");
+                .contains("CALL TYPE: OUTBOUND")
+                .contains("calling on behalf of \"Uysot\"");
     }
 
     @Test
@@ -202,11 +202,11 @@ class SystemPromptFactoryTest {
         String prompt = factory.stablePrefix(s);
 
         assertThat(prompt)
-                .contains("QO'NG'IROQ TURI: KIRUVCHI")
-                .contains("kompaniyasi nomidan qo'ng'iroqni qabul qilyapsiz")
+                .contains("CALL TYPE: INBOUND")
+                .contains("answering the call on behalf of \"Uysot\"")
                 .contains("Sizga qanday yordam bera olaman?")
-                .doesNotContain("nomidan qo'ng'iroq qilyapsiz")
-                .doesNotContain("CHIQUVCHI");
+                .doesNotContain("calling on behalf of")
+                .doesNotContain("OUTBOUND");
     }
 
     @Test
@@ -220,7 +220,7 @@ class SystemPromptFactoryTest {
                 .companyId(1L)
                 .build();
 
-        assertThat(factory.stablePrefix(s)).contains("QO'NG'IROQ SABABI: Aziz Karimov saytda ariza qoldirgan");
+        assertThat(factory.stablePrefix(s)).contains("CALL PURPOSE: Aziz Karimov saytda ariza qoldirgan");
     }
 
     @Test
@@ -245,18 +245,18 @@ class SystemPromptFactoryTest {
                 .build();
 
         assertThat(factory.turnAnnex(s)).contains(
-                "DEBT_NOTICE ga o'tsangiz, gapingiz AYNAN shu bo'lsin: «Aziz Karimov aka, shartnoma bo'yicha to'lov kechikdi.»");
+                "If you move to DEBT_NOTICE, say EXACTLY this: «Aziz Karimov aka, shartnoma bo'yicha to'lov kechikdi.»");
     }
 
     @Test
     void theAnnexListsWhatTheCallHasRecorded() {
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
         s.setState("PAYMENT_DATE");
-        assertThat(factory.turnAnnex(s)).doesNotContain("ANIQLANGAN");
+        assertThat(factory.turnAnnex(s)).doesNotContain("ALREADY ESTABLISHED");
 
         s.recordOutcome("promisedDate", LocalDate.of(2026, 10, 15));
 
-        assertThat(factory.turnAnnex(s)).contains("ANIQLANGAN").contains("promisedDate = 2026-10-15");
+        assertThat(factory.turnAnnex(s)).contains("ALREADY ESTABLISHED").contains("promisedDate = 2026-10-15");
     }
 
     @Test
@@ -270,7 +270,7 @@ class SystemPromptFactoryTest {
                 .build();
 
         assertThat(SystemPromptFactory.describeTransitions(askTime))
-                .isEqualTo("HAS_TIME (agar: mijoz vaqtim bor desa), RESCHEDULE");
+                .isEqualTo("HAS_TIME (if: mijoz vaqtim bor desa), RESCHEDULE");
     }
 
     @Test
@@ -283,7 +283,7 @@ class SystemPromptFactoryTest {
         s.setState("PAYMENT_DATE");
 
         assertThat(factory.stablePrefix(s)).isEqualTo(atGreeting);
-        assertThat(atGreeting).doesNotContain("JORIY BOSQICH");
+        assertThat(atGreeting).doesNotContain("CURRENT STAGE");
     }
 
     @Test
@@ -304,7 +304,7 @@ class SystemPromptFactoryTest {
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
         s.setLastAgentText("Yaxshi, belgilab qo'ydim.");
 
-        assertThat(factory.turnAnnex(s)).doesNotContain("so'ragan edingiz");
+        assertThat(factory.turnAnnex(s)).doesNotContain("you asked:");
     }
 
     @Test
@@ -313,14 +313,14 @@ class SystemPromptFactoryTest {
         s.setLastAgentText("Qarzingiz bo'yicha");
         s.setInterrupted(true);
 
-        assertThat(factory.turnAnnex(s)).contains("bo'ldi").contains("Qarzingiz bo'yicha");
+        assertThat(factory.turnAnnex(s)).contains("interrupted").contains("Qarzingiz bo'yicha");
         assertThat(factory.stablePrefix(s)).doesNotContain("Qarzingiz bo'yicha");
     }
 
     @Test
     void statesTheConversationLanguage() {
-        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU"))).contains("rus tilida");
-        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"))).contains("o'zbek tilida");
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU"))).contains("in Russian");
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"))).contains("in Uzbek");
     }
 
     @Test
@@ -328,9 +328,9 @@ class SystemPromptFactoryTest {
         // Real uz-UZ calls produced "so me'doridagi" and "kuninigiz", which TTS then spoke
         // as written. The rule that fixes that says nothing useful on a Russian call.
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
-                .contains("apostrof");
+                .contains("apostrophe");
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
-                .doesNotContain("apostrof");
+                .doesNotContain("apostrophe");
     }
 
     @Test
@@ -338,11 +338,11 @@ class SystemPromptFactoryTest {
         // The rule itself is always there; its example words must follow the call's
         // language, or the model drops Uzbek back-channels into a Russian call.
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
-                .contains("munosabat bilan boshlang")
+                .contains("open your reply with a brief reaction")
                 .contains("Tushunarli")
                 .doesNotContain("Понятно");
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
-                .contains("munosabat bilan boshlang")
+                .contains("open your reply with a brief reaction")
                 .contains("Понятно")
                 .doesNotContain("Tushunarli");
     }
@@ -353,10 +353,10 @@ class SystemPromptFactoryTest {
         // The caller had nothing to answer, said one unintelligible word, and the call
         // never recovered — so "always end on a question" is a rule, not a stage's hope.
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
-                .contains("ALBATTA savol bilan tugasin")
+                .contains("MUST end with a question")
                 .contains("bu haqda xabaringiz bormidi?");
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
-                .contains("ALBATTA savol bilan tugasin")
+                .contains("MUST end with a question")
                 .contains("вы в курсе?");
     }
 
@@ -366,7 +366,7 @@ class SystemPromptFactoryTest {
 
         assertThat(prompt)
                 .contains("Siz [Ism]misiz?")
-                .contains("Men Murodjon aka bilan gaplashayapmanmi?")
+                .contains("Assalomu alaykum, Murodjon aka, yaxshimisiz?")
                 .contains("suhbatdoshim");
     }
 
@@ -379,7 +379,7 @@ class SystemPromptFactoryTest {
         assertThat(prompt)
                 .contains("Nima dedingiz?")
                 .contains("\"Uzr, adashibmiz.\"")
-                .contains("waitForCaller chaqiring va gapini tugatishini kuting");
+                .contains("call waitForCaller and let them finish");
     }
 
     @Test
@@ -389,7 +389,7 @@ class SystemPromptFactoryTest {
         // has to be present — and it must not forbid the closing confirmation.
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 
-        assertThat(prompt).contains("qayta aytmang").contains("Istisno");
+        assertThat(prompt).contains("Do not restate").contains("Exception");
     }
 
     @Test
@@ -408,18 +408,18 @@ class SystemPromptFactoryTest {
         // the block's own wording rather than on the anti-repetition rule further down,
         // which every call carries anyway.
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
-        assertThat(factory.stablePrefix(s)).doesNotContain("allaqachon aytildi");
+        assertThat(factory.stablePrefix(s)).doesNotContain("already been spoken");
 
         s.setDisclosureSpoken(true);
         assertThat(factory.stablePrefix(s))
-                .contains("allaqachon aytildi")
+                .contains("already been spoken")
                 // Scoped to the first reply, the rule was obeyed to the letter and broken
                 // in spirit: the model introduced itself on the second reply instead. It
                 // has to hold for the whole call.
-                .contains("HECH BIR JOYIDA")
+                .contains("NOWHERE IN THE CALL")
                 // A bare "do not repeat it" did not stop the model opening with a
                 // greeting anyway; what the first line must be instead has to be there.
-                .contains("Birinchi javobing");
+                .contains("Your first reply");
     }
 
     @Test
@@ -475,9 +475,9 @@ class SystemPromptFactoryTest {
 
         String prompt = factory.stablePrefix(session);
 
-        assertThat(prompt).contains("SHAXSIYAT VA ROL (HAQIQIY INSON MUTAXASSIS)");
+        assertThat(prompt).contains("PERSONA AND ROLE (A REAL HUMAN SPECIALIST)");
         assertThat(prompt).contains("Dilnavoz");
-        assertThat(prompt).contains("QAT'IYAN TAQIQLANADI: O'zingizni robot, bot, sun'iy intellekt yoki avtomatlashtirilgan tizim deb atash");
+        assertThat(prompt).contains("STRICTLY FORBIDDEN: calling yourself a robot, bot, artificial intelligence or automated system");
         assertThat(prompt).contains("Salom, mening ismim Dilnavoz. Uysot kompaniyasidan qo'ng'iroq qilyapman");
     }
 
@@ -504,7 +504,7 @@ class SystemPromptFactoryTest {
                 .build();
 
         String prompt = factory.stablePrefix(session);
-        assertThat(prompt).contains("SHAXSIYAT VA ROL (SUN'IY INTELLEKT / AI ASSISTENT)");
+        assertThat(prompt).contains("PERSONA AND ROLE (ARTIFICIAL INTELLIGENCE / AI ASSISTANT)");
         assertThat(prompt).contains("Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman");
     }
 
@@ -527,10 +527,10 @@ class SystemPromptFactoryTest {
     @Test
     void anOperatorWhisperRidesEveryTurnUntilReplaced() {
         DialogSession s = session(ScenarioFixtures.fullContext(), "uz-UZ");
-        assertThat(factory.turnAnnex(s)).doesNotContain("OPERATOR KO'RSATMASI");
+        assertThat(factory.turnAnnex(s)).doesNotContain("OPERATOR INSTRUCTION");
 
         s.setOperatorWhisper("10% chegirma taklif qiling");
-        assertThat(factory.turnAnnex(s)).contains("OPERATOR KO'RSATMASI").contains("10% chegirma taklif qiling");
+        assertThat(factory.turnAnnex(s)).contains("OPERATOR INSTRUCTION").contains("10% chegirma taklif qiling");
 
         s.setOperatorWhisper("Muddatni 5-sanaga suring");
         assertThat(factory.turnAnnex(s)).contains("Muddatni 5-sanaga suring").doesNotContain("10% chegirma");

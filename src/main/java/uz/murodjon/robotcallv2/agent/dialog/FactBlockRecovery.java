@@ -41,9 +41,9 @@ class FactBlockRecovery {
      */
     void recover(DialogSession s, String system, List<Message> messages) {
         List<Message> retryMessages = new ArrayList<>(messages);
-        retryMessages.add(new UserMessage("[TIZIM: Oxirgi javobingizda kontekstda berilmagan pul "
-                + "summasi bor edi, shuning uchun u mijozga AYTILMADI. Javobni qaytadan yozing va "
-                + "faqat yuqorida berilgan summalarni ishlating. Tool chaqirmang.]"));
+        retryMessages.add(new UserMessage("[SYSTEM: Your last reply contained an amount of money that "
+                + "is not in the context, so it was NOT said to the client. Write the reply again and "
+                + "use only the amounts given above. Do not call tools.]"));
         String second = null;
         try {
             ChatResponse response = llmTurnClient.callWithoutOptions(s, system, retryMessages);

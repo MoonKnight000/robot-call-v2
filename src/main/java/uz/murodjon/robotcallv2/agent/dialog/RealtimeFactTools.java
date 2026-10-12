@@ -35,8 +35,8 @@ public class RealtimeFactTools {
     private static final Logger log = LoggerFactory.getLogger(RealtimeFactTools.class);
 
     /** What the model gets for a fact this call does not carry — never a guess, never blank. */
-    private static final String MISSING = "MA'LUMOT YO'Q — bu ma'lumotni aytmang, mijozdan so'rang "
-            + "yoki operatorga o'tkazing.";
+    private static final String MISSING = "NO DATA — do not state this; ask the client "
+            + "or hand over to an operator.";
 
     private final RealtimeDialogSession session;
 
@@ -44,10 +44,10 @@ public class RealtimeFactTools {
         this.session = session;
     }
 
-    @Tool(description = "Mijoz haqidagi aniq ma'lumotni (summa, sana, shartnoma raqami, ism) qaytaradi. "
-            + "Har qanday raqam yoki sanani aytishdan OLDIN shu tool'ni chaqiring va qaytgan qiymatni "
-            + "aynan o'zgartirmasdan ayting. Xotirangizdan raqam aytish QAT'IYAN taqiqlanadi.")
-    public String getCallFact(@ToolParam(description = "ma'lumot nomi, masalan debtAmount, dueDate, "
+    @Tool(description = "Returns an exact fact about the client (amount, date, contract number, name). "
+            + "Call this tool BEFORE saying any number or date, and say the returned value exactly, "
+            + "unchanged. Saying a number from memory is STRICTLY FORBIDDEN.")
+    public String getCallFact(@ToolParam(description = "fact name, e.g. debtAmount, dueDate, "
             + "contractNumber, clientName") String name) {
         if (name == null || name.isBlank()) {
             return MISSING;

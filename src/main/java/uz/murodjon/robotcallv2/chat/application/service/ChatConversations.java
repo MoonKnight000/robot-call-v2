@@ -69,8 +69,8 @@ class ChatConversations {
 
     /** What the agent is told when it has no opening line of its own — the bootstrap a call's greeting turn uses. */
     private static final String GREETING_BOOTSTRAP =
-            "[TIZIM: Mijoz yozishmani boshladi. Rejaga muvofiq qisqa salomlashing va nima bilan yordam bera "
-                    + "olishingizni so'rang.]";
+            "[SYSTEM: The client has started a chat. Greet them briefly as planned and ask how you can "
+                    + "help.]";
 
     private final ChatSessionRepository repository;
     private final ChatQuotaPort chatQuota;

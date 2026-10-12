@@ -340,9 +340,21 @@ public class ClientInputGate {
      * Whether the caller has said enough over the bot that it can only be them taking the
      * floor — a listener's "aha" is a word or two in any language, never a sentence. LOW
      * sensitivity wants twice as much before it yields.
+     *
+     * <p>Filler-only utterances ("ha", "aha", "mm") never trigger barge-in outright, even
+     * when the word count meets the threshold: they are backchannel, not floor-taking.
+     * If the bot asked a question, a single "ha" is an answer — that case is handled by
+     * {@link #isTakingTheFloor} via the model, not here.
      */
     private boolean saidEnoughToInterrupt(DialogSession s, String text) {
-        int words = text == null || text.isBlank() ? 0 : Backchannels.words(text).length;
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        // Filler-only text never triggers barge-in — let isTakingTheFloor decide instead.
+        if (FloorRules.isBackchannel(text)) {
+            return false;
+        }
+        int words = Backchannels.words(text).length;
         int needed = Math.max(1, dialogProperties.minInterruptionWords());
         if (sensitivity(s) == InterruptionSensitivity.LOW) {
             needed *= 2;

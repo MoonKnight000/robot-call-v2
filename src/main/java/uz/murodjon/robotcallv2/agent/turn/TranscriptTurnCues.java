@@ -128,6 +128,12 @@ public final class TranscriptTurnCues {
      * @param transcript the recognizer's latest hypothesis for the utterance in progress
      */
     public static TurnCue judge(String transcript) {
+        // Terminal punctuation at the end of the transcript is a strong signal the
+        // sentence is complete, even if the last word is ambiguous. This lets SpeechGate
+        // close the turn sooner (~200-400ms latency reduction per turn).
+        if (hasTerminalPunctuation(transcript)) {
+            return TurnCue.COMPLETE;
+        }
         String last = lastWord(transcript);
         if (last == null) {
             return TurnCue.UNKNOWN;
@@ -136,6 +142,32 @@ public final class TranscriptTurnCues {
             return TurnCue.INCOMPLETE;
         }
         return isCyrillic(last) ? judgeRussian(last) : judgeUzbek(last);
+    }
+
+    /**
+     * Whether the transcript ends with terminal punctuation that signals a complete sentence.
+     * Checks for '.', '?', '!', '…' (ellipsis), and '...' (three dots).
+     *
+     * @param transcript the full transcript text, may be null or blank
+     * @return true if the transcript ends with terminal punctuation
+     */
+    public static boolean hasTerminalPunctuation(String transcript) {
+        if (transcript == null || transcript.isBlank()) {
+            return false;
+        }
+        String trimmed = transcript.trim();
+        char last = trimmed.charAt(trimmed.length() - 1);
+        if (last == '.' || last == '?' || last == '!' || last == '…') {
+            return true;
+        }
+        // Check for "..." (three dots) at the end
+        if (trimmed.length() >= 3) {
+            String tail = trimmed.substring(trimmed.length() - 3);
+            if ("...".equals(tail)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** How many words the hypothesis holds — a one- or two-word COMPLETE is a quick answer. */

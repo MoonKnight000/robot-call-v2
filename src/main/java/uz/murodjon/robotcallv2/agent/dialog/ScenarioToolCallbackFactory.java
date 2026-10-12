@@ -50,14 +50,14 @@ final class ScenarioToolCallbackFactory {
             for (ToolParamDef p : params) {
                 Object raw = args == null ? null : args.get(p.name());
                 if (p.required() && (raw == null || raw.toString().isBlank())) {
-                    return "XATO: " + p.name() + " majburiy, lekin berilmadi";
+                    return "ERROR: " + p.name() + " is required but was not given";
                 }
                 if (raw == null) {
                     continue;
                 }
                 Object coerced = coerce(p.type(), raw);
                 if (coerced == null) {
-                    return "XATO: " + p.name() + " qiymatini tushunib bo'lmadi: " + raw;
+                    return "ERROR: could not understand the value of " + p.name() + ": " + raw;
                 }
                 session.recordOutcome(p.name(), coerced);
             }

@@ -27,11 +27,11 @@ final class ToolConfirmation {
      * Opens the answer to a write tool's first call: nothing was sent, the caller is to
      * confirm first. {@code TurnRunner} carries a tool note holding it into the next turn.
      */
-    static final String CONFIRMATION_REQUIRED = "TASDIQ KERAK";
+    static final String CONFIRMATION_REQUIRED = "CONFIRMATION REQUIRED";
 
     /** Added to the description of a tool whose calls are held for the caller's yes. */
-    static final String CONFIRMATION_HINT = " Ma'lumot to'liq bo'lishi bilan shu tool'ni chaqiring: "
-            + "birinchi chaqiruv so'rovni yubormaydi, mijozga o'qib berib tasdiqlatadi. O'zingiz alohida tasdiq so'ramang.";
+    static final String CONFIRMATION_HINT = " Call this tool as soon as the details are complete: "
+            + "the first call does not send the request, it reads it back to the client for confirmation. Do not ask for confirmation separately yourself.";
 
     ToolConfirmation(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -67,11 +67,11 @@ final class ToolConfirmation {
         log.info("[{}] Tool '{}' held for the caller's confirmation", session.channelId(), tool.name());
         ObjectNode node = objectMapper.createObjectNode();
         node.put("status", "CONFIRMATION_REQUIRED");
-        node.put("note", CONFIRMATION_REQUIRED + ": so'rov hali YUBORILMADI. Mijozga "
-                + (readback != null ? "shuni o'qib bering: \"" + readback + "\"" : "yuboriladigan ma'lumotni qisqa o'qib bering")
-                + " va tasdiqlashini so'rang. Mijoz aniq \"ha\" desa — shu tool'ni AYNAN shu argumentlar bilan "
-                + "qayta chaqiring. Mijoz biror narsani o'zgartirsa — yangi argumentlar bilan chaqiring, "
-                + "ular ham qayta tasdiqlanadi.");
+        node.put("note", CONFIRMATION_REQUIRED + ": the request has NOT been sent yet. "
+                + (readback != null ? "Read this to the client: \"" + readback + "\"" : "Briefly read the details to be sent to the client")
+                + " and ask them to confirm. If the client clearly says \"ha\" — call this tool again with EXACTLY "
+                + "the same arguments. If the client changes something — call it with the new arguments, "
+                + "which are confirmed again too.");
         if (readback == null && args != null) {
             node.set("args", objectMapper.valueToTree(args));
         }

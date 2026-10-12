@@ -21,6 +21,7 @@ import uz.murodjon.robotcallv2.quality.domain.entity.ScorecardCriterion;
 import uz.murodjon.robotcallv2.quality.domain.entity.ScorecardVerdict;
 import uz.murodjon.robotcallv2.quality.domain.enums.CriterionAnswer;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,25 +52,7 @@ public class SpringAiScorecardJudgeAdapter implements ScorecardJudgePort {
     /** Room for every criterion's answer and quote, which the AI judge's single verdict does not need. */
     private static final int MIN_OUTPUT_TOKENS = 2048;
 
-    private static final String INSTRUCTIONS = """
-            Siz kontakt-markaz operatorining qo'ng'iroqlarini baholovchi qat'iy QA auditorisiz.
-            Sizga OPERATOR va CLIENT gaplaridan iborat transkript hamda raqamlangan MEZONLAR
-            beriladi. Har bir mezon uchun javob bering:
-            - YES: operator mezonni bajardi;
-            - NO: mezon shu qo'ng'iroqqa tegishli edi, lekin operator uni bajarmadi;
-            - NOT_APPLICABLE: qo'ng'iroqda mezonga tegishli vaziyat bo'lmadi.
-            Faqat transkriptdagi dalilga tayaning — taxmin qilmang. evidence — javob tayangan
-            gap, transkriptdan so'zma-so'z va qisqa; dalil bo'lmasa null.
-            sentiment — mijozning qo'ng'iroq davomidagi umumiy kayfiyati: POSITIVE, NEUTRAL,
-            NEGATIVE yoki HOSTILE (qo'pol, tahdidli).
-            topics — qo'ng'iroq nima haqida bo'lgani: 1–3 ta qisqa teg, o'zbek tilida, kichik
-            harflarda, 1–3 so'zdan (masalan "to'lov muddati", "narx", "yetkazib berish"). Shaxsiy
-            ma'lumot (ism, raqam, manzil) yozilmasin.
-
-            Javob FAQAT JSON bo'lsin, shu ko'rinishda:
-            {"sentiment": "NEUTRAL", "topics": ["to'lov muddati"],
-             "answers": [{"criterion": 1, "answer": "YES", "evidence": "..."}]}
-            """;
+    private static final String INSTRUCTIONS = PromptText.text("scorecard-judge.txt");
 
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final QualityProperties qualityProperties;
@@ -94,7 +77,7 @@ public class SpringAiScorecardJudgeAdapter implements ScorecardJudgePort {
             ResponseEntity<ChatResponse, Map<String, Object>> answer = ChatClient.create(chatModel).prompt()
                     .options(options().mutate())
                     .system(INSTRUCTIONS)
-                    .user(describe(criteria) + "\nTRANSKRIPT:\n" + transcript)
+                    .user(describe(criteria) + "\nTRANSCRIPT:\n" + transcript)
                     .call()
                     .responseEntity(new MapOutputConverter());
             TokenUsage tokens = new TokenUsage();
@@ -125,7 +108,7 @@ public class SpringAiScorecardJudgeAdapter implements ScorecardJudgePort {
     }
 
     private static String describe(List<ScorecardCriterion> criteria) {
-        StringBuilder sb = new StringBuilder("MEZONLAR:\n");
+        StringBuilder sb = new StringBuilder("CRITERIA:\n");
         for (int i = 0; i < criteria.size(); i++) {
             ScorecardCriterion criterion = criteria.get(i);
             sb.append(i + 1).append(". ").append(criterion.name()).append(" — ").append(criterion.instruction())

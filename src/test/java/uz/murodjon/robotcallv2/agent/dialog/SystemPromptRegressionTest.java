@@ -39,7 +39,7 @@ class SystemPromptRegressionTest {
     @Test
     void guardrailBlockCarriesEveryScenarioRuleThenEveryPlatformRule() {
         String prompt = factory.stablePrefix(session("GREETING"));
-        int idx = prompt.indexOf("QAT'IY QOIDALAR:");
+        int idx = prompt.indexOf("STRICT RULES:");
         assertThat(idx).isPositive();
         String guardrailBlock = prompt.substring(idx);
 
@@ -50,14 +50,14 @@ class SystemPromptRegressionTest {
                 "recordPaymentPromise'ga ber",
                 "Peniya va shartnoma bekor bo'lish muddatini",
                 "Sud, ijro, qora ro'yxat",
-                "shaxsiy ma'lumotlarini begona odamga aytma",
-                // Not "requestHumanTransfer bilan operatorga o'tkaz": the penalty
+                "personal data to anyone else",
+                // Not "hand over to an operator with requestHumanTransfer": the penalty
                 // guardrail above routes to the same tool, so that fragment no longer
                 // identifies the platform rule this line is checking the order of.
-                "Savolga javobni bilmasang",
-                "asabiylashsa yoki haqorat qilsa",
-                "recordWrongPerson chaqiring",
-                "recordDoNotCall chaqir"
+                "do not know the answer",
+                "angry or insults you",
+                "Call recordWrongPerson ONLY",
+                "call recordDoNotCall immediately"
         );
         int last = -1;
         for (String fragment : expectedOrder) {
@@ -96,9 +96,9 @@ class SystemPromptRegressionTest {
         );
         for (StageDef stage : ScenarioFixtures.debtCollection().stages()) {
             String annex = factory.turnAnnex(session(stage.id()));
-            assertThat(annex).contains("JORIY BOSQICH: " + stage.id() + " — " + expectedPurpose.get(stage.id()));
+            assertThat(annex).contains("CURRENT STAGE: " + stage.id() + " — " + expectedPurpose.get(stage.id()));
             if (stage.allowedTransitions().isEmpty()) {
-                assertThat(annex).contains("(yakuniy holat)");
+                assertThat(annex).contains("(final state)");
             } else {
                 assertThat(annex).contains(String.join(", ", stage.allowedTransitions()));
             }
@@ -110,13 +110,13 @@ class SystemPromptRegressionTest {
         String prompt = factory.stablePrefix(session("GREETING"));
 
         assertThat(prompt)
-                .contains("Ism: Aziz Karimov")
-                .contains("Summa: 1500000")
-                .contains("Valyuta: so'm")
-                .contains("Muddat: 2026-07-01")
-                .contains("Shartnoma raqami: UY-2026-00123")
-                .contains("Peniya: 75000")
-                .contains("Shartnoma bekor bo'lishiga qolgan kun: 30");
+                .contains("Name: Aziz Karimov")
+                .contains("Amount: 1500000")
+                .contains("Currency: so'm")
+                .contains("Due date: 2026-07-01")
+                .contains("Contract number: UY-2026-00123")
+                .contains("Penalty (Peniya): 75000")
+                .contains("Days until the contract is cancelled (Shartnoma bekor bo'lishiga qolgan kun): 30");
     }
 
     @Test

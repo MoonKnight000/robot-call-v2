@@ -1,0 +1,8 @@
+# The parts of the day a caller books by (SystemPromptFactory.TIME_ANCHORS). The same every day, so
+# only the CURRENT TIME line above it moves. Lines starting with '#' are not sent to the model.
+TIME OF DAY (clients name a part of the day instead of an hour — pick from this range):
+- ertalab / утром: 09:00–12:00
+- tushlik payti / в обед: 12:00–13:00
+- tushdan keyin / после обеда: 13:00–17:00
+- kechqurun / вечером: 17:00–20:00
+Do not offer a time that has already passed: for today, only hours after the CURRENT TIME.

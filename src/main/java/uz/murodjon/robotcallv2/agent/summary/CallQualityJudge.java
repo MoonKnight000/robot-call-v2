@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -49,28 +50,7 @@ public class CallQualityJudge {
 
     private static final Logger log = LoggerFactory.getLogger(CallQualityJudge.class);
 
-    private static final String RUBRIC = """
-            Siz avtomatik qo'ng'iroq agentini baholovchi qat'iy QA auditorisiz.
-            Sizga AGENT va CLIENT gaplaridan iborat transkript, ssenariy qoidalari va
-            qo'ng'iroq qanday yakunlangani (disposition) beriladi.
-            Faqat transkriptdagi dalilga tayaning — taxmin qilmang.
-            Quyidagi maydonlar bo'yicha JSON qaytaring:
-            - score: agent qo'ng'iroqni qanday olib borgani, 0 dan 100 gacha butun son.
-            - guardrailViolation: agent faktlarda yo'q summa, sana yoki majburiyatni aytdimi,
-              yoki ssenariy qoidasini buzdimi (true/false). Eng jiddiy belgi.
-            - languageMismatch: agent mijoz gapirgan tildan boshqa tilda javob berdimi (true/false).
-            - talkedOverClient: agent mijozning gapini bo'ldimi yoki u gapini tugatmasdan
-              javob berdimi (true/false).
-            - outcomeCorrect: qo'ng'iroq yozilgan yakun (disposition) transkriptdagi haqiqiy
-              holatga mos keladimi (true/false).
-            - goalReached: qo'ng'iroq quyida berilgan MAQSADga erishdimi (true/false).
-            - unansweredQuestion: mijoz savol berdi-yu, agent unga javob bera olmadi,
-              "bilmayman" dedi yoki javobni aylanib o'tdi (true/false).
-            - toolMisuse: agent tool bilan bajariladigan ishni (buyurtma, bron, ma'lumotni
-              tekshirish) tool'siz bajargandek gapirdi, natijani o'zi to'qidi yoki kerakli
-              ma'lumotni so'ramasdan ishni yakunladi (true/false). Transkriptda dalil bo'lmasa false.
-            - note: eng jiddiy kamchilik haqida bitta jumla (o'zbekcha). Kamchilik bo'lmasa null.
-            """;
+    private static final String RUBRIC = PromptText.text("call-quality-rubric.txt");
 
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final CallMetrics metrics;
@@ -160,7 +140,7 @@ public class CallQualityJudge {
             Map<String, Object> raw = chatClient.prompt()
                     .options(options.mutate())
                     .system(RUBRIC + rules(scenario))
-                    .user("QO'NG'IROQ YAKUNI: " + disposition + "\n\nTRANSKRIPT:\n" + transcript)
+                    .user("CALL DISPOSITION: " + disposition + "\n\nTRANSCRIPT:\n" + transcript)
                     .call()
                     .entity(new MapOutputConverter());
             return toVerdict(raw);
@@ -186,11 +166,11 @@ public class CallQualityJudge {
         }
         StringBuilder sb = new StringBuilder();
         if (scenario.guardrails() != null && !scenario.guardrails().isEmpty()) {
-            sb.append("\nSSENARIY QOIDALARI:\n- ").append(String.join("\n- ", scenario.guardrails())).append('\n');
+            sb.append("\nSCENARIO RULES:\n- ").append(String.join("\n- ", scenario.guardrails())).append('\n');
         }
-        sb.append("\nMAQSAD: ").append(goalOf(scenario)).append('\n');
+        sb.append("\nGOAL: ").append(goalOf(scenario)).append('\n');
         if (scenario.tools() != null && !scenario.tools().isEmpty()) {
-            sb.append("AGENTDAGI TOOL'LAR: ")
+            sb.append("THE AGENT'S TOOLS: ")
                     .append(scenario.tools().stream().map(ToolDef::name).collect(Collectors.joining(", ")))
                     .append('\n');
         }

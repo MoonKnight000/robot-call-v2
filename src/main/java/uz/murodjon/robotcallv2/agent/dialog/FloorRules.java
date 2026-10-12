@@ -38,6 +38,31 @@ final class FloorRules {
     }
 
     /**
+     * Whether every word in {@code text} is a listener sound (backchannel).
+     * Used by {@code ClientInputGate#saidEnoughToInterrupt} to prevent filler-only
+     * utterances from triggering a barge-in even when the word count meets the threshold.
+     *
+     * @param text the caller's words, may be null or blank
+     * @return true when all words are in the LISTENING set; false when the text is empty
+     *         or contains at least one word not in either set
+     */
+    public static boolean isBackchannel(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String[] words = Backchannels.words(text);
+        if (words.length == 0) {
+            return false;
+        }
+        for (String word : words) {
+            if (!LISTENING.contains(word)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * @param botLine    what the bot was saying when it was talked over
      * @param callerText the caller's words
      * @return true when the caller is taking the floor, false when they let the bot carry

@@ -26,6 +26,7 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
+import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -59,18 +60,7 @@ public class SummaryService {
     /** The {@code outcome} key listing {@code dataNeeded} values that never came back in their type. */
     private static final String EXTRACTION_ERRORS_KEY = "extractionErrors";
 
-    private static final String SYSTEM_PROMPT_HEADER = """
-            Siz qo'ng'iroq transkriptini chuqur tahlil qiluvchi va baholovchi QA ekspertisiz.
-            Sizga AGENT va CLIENT gaplaridan iborat transkript beriladi.
-            Undan quyidagi maydonlarni ajratib, faqat so'ralgan struktura bo'yicha JSON qaytaring:
-            - summary: 2-3 jumlada CRM uchun qisqacha xulosa (o'zbekcha).
-            - sentiment: mijoz kayfiyati (POSITIVE, NEUTRAL, NEGATIVE, HOSTILE).
-            - needsFollowUp: qayta qo'ng'iroq kerakmi (true/false).
-            - followUpNote: qayta qo'ng'iroq uchun izoh (bo'lmasa null).
-            - callbackAt: mijoz qayta qo'ng'iroq qilishni so'ragan sana-vaqt (ISO-8601 YYYY-MM-DDTHH:mm:ss, bo'lmasa null).
-            - qaScore: suhbat sifati va botning stsenariyga muvofiqligi (0 dan 100 gacha butun son).
-            - commitmentScore: mijozning to'lashga yoki kelishuvga rozilik darajasi (0 dan 100 gacha butun son).
-            """;
+    private static final String SYSTEM_PROMPT_HEADER = PromptText.text("call-summary.txt");
 
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final boolean enabled;
@@ -158,7 +148,7 @@ public class SummaryService {
             ChatOptions options = ownLlm != null
                     ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
                     : options();
-            String system = systemPrompt(scenario, agent) + "\nBUGUNGI SANA VA VAQT: " + callTime + ".";
+            String system = systemPrompt(scenario, agent) + "\nTODAY'S DATE AND TIME: " + callTime + ".";
             Map<String, Object> raw = ask(client, options, system, transcript, tokens);
             List<String> invalid = invalidExtractions(raw, agent);
             if (!invalid.isEmpty()) {
@@ -166,9 +156,9 @@ public class SummaryService {
                 // first answer stays if the retry fails: it is still a usable summary.
                 log.info("Summary: {} extracted field(s) had the wrong type, asking once more: {}", invalid.size(), invalid);
                 try {
-                    raw = ask(client, options, system + "\nOLDINGI JAVOBDA QUYIDAGI MAYDONLAR NOTO'G'RI TURDA EDI: "
+                    raw = ask(client, options, system + "\nIN THE PREVIOUS ANSWER THESE FIELDS HAD THE WRONG TYPE: "
                             + String.join(", ", invalid)
-                            + ". Ularni ko'rsatilgan turda qaytaring yoki null qoldiring.", transcript, tokens);
+                            + ". Return them in the stated type or leave them null.", transcript, tokens);
                 } catch (Exception e) {
                     log.warn("Summary retry for field types failed, keeping the first answer: {}", e.getMessage());
                 }
@@ -241,10 +231,10 @@ public class SummaryService {
         }
         if (agent != null) {
             if (!agent.dataNeeded().isEmpty()) {
-                sb.append("\nQuyidagi maydonlarni transkriptdan ajratib oling (data_needed). JSON kaliti — ")
-                        .append("qavs oldidagi nom; qiymat — ko'rsatilgan turda: string — matn, number — faqat ")
-                        .append("raqam, boolean — true yoki false, date — YYYY-MM-DD, enum — tavsifdagi ")
-                        .append("variantlardan biri:\n");
+                sb.append("\nExtract the following fields from the transcript (data_needed). The JSON key is ")
+                        .append("the name before the brackets; the value is in the stated type: string — text, number — ")
+                        .append("digits only, boolean — true or false, date — YYYY-MM-DD, enum — one of the options ")
+                        .append("in the description:\n");
                 for (DataExtractionField f : agent.dataNeeded()) {
                     sb.append("- ").append(fieldKey(f)).append(" (").append(typeOf(f)).append("): ")
                             .append(f.name() != null ? f.name() : "").append(" — ")
@@ -252,10 +242,10 @@ public class SummaryService {
                 }
             }
             if (!agent.dataEvaluation().isEmpty()) {
-                sb.append("\nQuyidagi mezonlarning har birini baholab, \"").append(EVALUATION_KEY)
-                        .append("\" obyektiga yozing: kalit — qavs oldidagi nom, qiymat — ")
-                        .append("{\"verdict\": \"PASS\" | \"FAIL\" | \"N/A\", \"reason\": \"bir jumla sabab\"}. ")
-                        .append("N/A — suhbatda bu mezonni tekshirishga imkon bo'lmagan:\n");
+                sb.append("\nScore each of the following criteria and write it into the \"").append(EVALUATION_KEY)
+                        .append("\" object: key — the name before the colon, value — ")
+                        .append("{\"verdict\": \"PASS\" | \"FAIL\" | \"N/A\", \"reason\": \"one-sentence reason\"}. ")
+                        .append("N/A — the conversation gave no chance to check this criterion:\n");
                 for (DataEvaluationCriterion c : agent.dataEvaluation()) {
                     sb.append("- ").append(criterionKey(c)).append(": ")
                             .append(c.name() != null ? c.name() : "").append(" — ")
@@ -263,9 +253,9 @@ public class SummaryService {
                 }
             }
         }
-        sb.append("Ma'lum bo'lmagan maydonni null qoldiring. Transkriptda nisbiy sana bo'lsa ")
-                .append("(\"ertaga\", \"kelasi oyning 5-sanasi\"), uni BUGUNGI SANA VA VAQTdan hisoblang — yilni ")
-                .append("o'zingizdan to'qimang. Faktlarni o'ylab topmang — faqat transkriptdagi ma'lumotga tayaning.");
+        sb.append("Leave a field you do not know null. If the transcript has a relative date ")
+                .append("(\"ertaga\", \"kelasi oyning 5-sanasi\"), work it out from TODAY'S DATE AND TIME — never ")
+                .append("invent the year. Do not make facts up — rely only on what is in the transcript.");
         return sb.toString();
     }
 

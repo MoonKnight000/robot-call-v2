@@ -34,7 +34,7 @@ class DialogToolsSmsGuardTest {
 
         String result = tools.sendMidCallSms("SMS yubordim.", "Karta raqami: 8600 1234 5678 9012");
 
-        assertThat(result).startsWith("XATO:");
+        assertThat(result).startsWith("ERROR:");
         assertThat(sent).isEmpty();
     }
 
@@ -45,8 +45,8 @@ class DialogToolsSmsGuardTest {
         String first = tools.sendMidCallSms(null, "Karta raqami: 8600 1234 5678 9012");
         String second = tools.sendMidCallSms("Yana yubordim.", "Yana bir SMS");
 
-        assertThat(first).doesNotStartWith("XATO:");
-        assertThat(second).startsWith("XATO:");
+        assertThat(first).doesNotStartWith("ERROR:");
+        assertThat(second).startsWith("ERROR:");
         assertThat(sent).containsExactly("Karta raqami: 8600 1234 5678 9012");
     }
 
@@ -58,8 +58,8 @@ class DialogToolsSmsGuardTest {
         String link = tools.sendSmsPaymentLink(null, null);
         String other = tools.sendMidCallSms(null, "Yana bir SMS");
 
-        assertThat(link).doesNotStartWith("XATO:");
-        assertThat(other).startsWith("XATO:");
+        assertThat(link).doesNotStartWith("ERROR:");
+        assertThat(other).startsWith("ERROR:");
         // The model decides when, not what: the text is fixed and the link is the call's own.
         assertThat(sent).containsExactly("To'lov havolasi: https://pay.example.uz/abc123");
     }
@@ -71,8 +71,8 @@ class DialogToolsSmsGuardTest {
         String overlong = tools.sendMidCallSms(null, "a".repeat(DialogTools.MAX_SMS_CHARS + 1));
         String shortOne = tools.sendMidCallSms(null, "Qisqa matn");
 
-        assertThat(overlong).startsWith("XATO:").contains(String.valueOf(DialogTools.MAX_SMS_CHARS));
-        assertThat(shortOne).doesNotStartWith("XATO:");
+        assertThat(overlong).startsWith("ERROR:").contains(String.valueOf(DialogTools.MAX_SMS_CHARS));
+        assertThat(shortOne).doesNotStartWith("ERROR:");
         assertThat(sent).containsExactly("Qisqa matn");
     }
 
@@ -83,7 +83,7 @@ class DialogToolsSmsGuardTest {
 
         String result = tools.sendMidCallSms("SMS yubordim.", "Salom");
 
-        assertThat(result).startsWith("XATO:");
+        assertThat(result).startsWith("ERROR:");
         // The line claims an SMS that never went — it must not be spoken.
         assertThat(session.toolReplies()).isNull();
         assertThat(session.outcome()).doesNotContainKey("midCallSmsSent");
@@ -95,7 +95,7 @@ class DialogToolsSmsGuardTest {
 
         String result = new DialogTools(session).sendMidCallSms(null, "Salom");
 
-        assertThat(result).startsWith("XATO:");
+        assertThat(result).startsWith("ERROR:");
     }
 
     @Test
@@ -104,7 +104,7 @@ class DialogToolsSmsGuardTest {
 
         String result = new DialogTools(session).sendSmsPaymentLink(null, "rekvizitlar");
 
-        assertThat(result).doesNotStartWith("XATO:");
+        assertThat(result).doesNotStartWith("ERROR:");
         assertThat(sent).isEmpty();
         assertThat(session.outcome()).containsEntry("sendSmsRequested", true);
     }
@@ -127,7 +127,7 @@ class DialogToolsSmsGuardTest {
 
         String result = new DialogTools(session).sendMidCallSms(null, "https://pay.example.uz/abc123");
 
-        assertThat(result).doesNotStartWith("XATO:");
+        assertThat(result).doesNotStartWith("ERROR:");
         assertThat(sent).containsExactly("Hurmatli Murodjon, to'lov havolasi: https://pay.example.uz/abc123");
         assertThat(session.outcome())
                 .containsEntry("midCallSmsText", "Hurmatli Murodjon, to'lov havolasi: https://pay.example.uz/abc123");
@@ -140,8 +140,8 @@ class DialogToolsSmsGuardTest {
         String empty = tools.sendMidCallSms(null, " ");
         String filled = tools.sendMidCallSms(null, "https://pay.example.uz/abc123");
 
-        assertThat(empty).startsWith("XATO:");
-        assertThat(filled).doesNotStartWith("XATO:");
+        assertThat(empty).startsWith("ERROR:");
+        assertThat(filled).doesNotStartWith("ERROR:");
         assertThat(sent).containsExactly("To'lov havolasi: https://pay.example.uz/abc123");
     }
 

@@ -35,7 +35,8 @@ voice-agent:
       start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:LOW}
       end-of-speech-sensitivity: ${REALTIME_GEMINI_END_SENSITIVITY:}
       prefix-padding-ms: ${REALTIME_GEMINI_PREFIX_PADDING_MS:100}
-      silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:800}
+      # Recorded human collectors answer 150-350 ms after the caller stops; 800 sounded slow.
+      silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:500}
       context-compression-trigger-tokens: ${REALTIME_GEMINI_CONTEXT_COMPRESSION_TOKENS:25600}
       # Tone-aware replies and ignoring audio not meant for the bot — GeminiLiveProperties.
       # Off until a call confirms the model accepts them: an unknown field fails the setup.
@@ -98,15 +99,15 @@ voice-agent:
     endpointing:
       enabled: ${STT_ENDPOINTING:true}
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
-      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:500}
-      complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:800}
-      max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:20000}
+      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:700}
+      complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:1000}
+      max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:25000}
       final-grace-ms: ${STT_ENDPOINTING_FINAL_GRACE_MS:250}
       dynamic:
         enabled: ${STT_ENDPOINTING_DYNAMIC:true}
-        min-post-roll-ms: ${STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS:600}
+        min-post-roll-ms: ${STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS:800}
         ema-alpha: ${STT_ENDPOINTING_DYNAMIC_EMA_ALPHA:0.2}
-        reopen-grace-ms: ${STT_ENDPOINTING_DYNAMIC_REOPEN_GRACE_MS:900}
+        reopen-grace-ms: ${STT_ENDPOINTING_DYNAMIC_REOPEN_GRACE_MS:1200}
     gemini:
       api-key: ${GEMINI_API_KEY:}
       url: ${STT_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
@@ -272,13 +273,13 @@ voice-agent:
     model-path: ${VAD_MODEL_PATH:models/silero_vad.onnx}
     sample-rate: 8000
     window-samples: 256
-    threshold: ${VAD_THRESHOLD:0.5}
-    listening-threshold: ${VAD_LISTENING_THRESHOLD:0.35}
-    min-energy-rms: ${VAD_MIN_ENERGY_RMS:150.0}
+    threshold: ${VAD_THRESHOLD:0.4}
+    listening-threshold: ${VAD_LISTENING_THRESHOLD:0.3}
+    min-energy-rms: ${VAD_MIN_ENERGY_RMS:100.0}
     noise-floor-margin: ${VAD_NOISE_FLOOR_MARGIN:2.5}
     min-speech-ms: ${VAD_MIN_SPEECH_MS:400}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
-    echo-gate-ratio: ${VAD_ECHO_GATE_RATIO:0.15}
+    echo-gate-ratio: ${VAD_ECHO_GATE_RATIO:0.2}
     echo-min-bot-level: ${VAD_ECHO_MIN_BOT_LEVEL:300.0}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}

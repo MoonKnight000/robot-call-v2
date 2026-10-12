@@ -52,11 +52,11 @@ public class TurnRunner {
 
     /** Bootstraps the opening turn when disclosure was already spoken. */
     private static final String GREETING_BOOTSTRAP_DISCLOSURE_SPOKEN =
-            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Avtomatik salomlashuv va ogohlantirish allaqachon aytildi — qayta salomlashmang! To'g'ridan-to'g'ri ssenariy bo'yicha keyingi qadamni boshlang.]";
+            "[SYSTEM: The call is connected, the client has picked up. The automated greeting and disclosure have already been spoken — do not greet again! Start the scenario's next step directly.]";
 
     /** Bootstraps the opening turn — the bot speaks first without automated disclosure. */
     private static final String GREETING_BOOTSTRAP =
-            "[TIZIM: Qo'ng'iroq ulandi, mijoz go'shakni ko'tardi. Qisqa salomlashib, o'zingizni tanishtiring va darhol ssenariy bo'yicha keyingi qadamga o'ting.]";
+            "[SYSTEM: The call is connected, the client has picked up. Greet briefly, introduce yourself and move straight to the scenario's next step.]";
 
     /**
      * How many messages to drop at once when the history cap is reached. Trimming in
@@ -307,7 +307,7 @@ public class TurnRunner {
                 // check clears it if it turns out nobody was speaking and the reply resumes.
                 s.setUnansweredClientText(clientText);
             }
-            if (result.toolNote() != null && (result.toolNote().contains("XATO")
+            if (result.toolNote() != null && (result.toolNote().contains("ERROR")
                     || result.toolNote().contains(ToolConfirmation.CONFIRMATION_REQUIRED))) {
                 // The model spoke and called a tool in the same breath, and the tool
                 // refused it (§4.4 — a promise dated in the past, say). There was no
@@ -315,7 +315,7 @@ public class TurnRunner {
                 // otherwise the model believes a promise that was never recorded. A write
                 // held for the caller's yes is the same: nothing was sent, and the model
                 // has to know that, and what to read back.
-                s.history().add(new UserMessage("[TIZIM: Tool natijasi: " + result.toolNote() + "]"));
+                s.history().add(new UserMessage("[SYSTEM: Tool result: " + result.toolNote() + "]"));
             }
 
             if (cutOff) {
