@@ -137,7 +137,7 @@ public class GeminiSttProvider implements SttProvider {
             alive.set(true);
 
             // Send session setup message
-            String setupPayload = buildSetupMessage(externalEndpointing, resolveModel(model));
+            String setupPayload = buildSetupMessage(externalEndpointing, resolveModel(model), languageCode);
             webSocket.sendText(setupPayload, true).get(timeoutSeconds, TimeUnit.SECONDS);
 
             // Wait for setup acknowledgement
@@ -195,13 +195,21 @@ public class GeminiSttProvider implements SttProvider {
      * field ({@code customVocabulary} closes the socket with "Cannot find field"), and a
      * setup that fails costs the whole call its recognition.
      */
-    private String buildSetupMessage(boolean externalEndpointing, String model) {
+    private String buildSetupMessage(boolean externalEndpointing, String model, String languageCode) {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode setup = root.putObject("setup");
         setup.put("model", "models/" + model);
 
         ObjectNode genConfig = setup.putObject("generationConfig");
         genConfig.putArray("responseModalities").add("TEXT");
+
+        boolean isRussian = languageCode != null && languageCode.toLowerCase().startsWith("ru");
+        String instruction = isRussian
+                ? "You are a speech-to-text transcriber for a phone call in Uzbekistan. The speaker is speaking Russian. Transcribe speech accurately in Russian Cyrillic script. Never translate. Never output Chinese, Hindi, or other foreign scripts."
+                : "You are a speech-to-text transcriber for a phone call in Uzbekistan. The speaker is speaking Uzbek (or occasionally Russian). Transcribe speech accurately in Uzbek Latin or Cyrillic script. Never translate. Never output Chinese (Hanzi), Hindi, Arabic, or other foreign scripts. Short utterances such as 'ha', 'ha shunday', 'yo\\'q', 'alo' are common Uzbek phrases.";
+        setup.putObject("systemInstruction").putArray("parts")
+                .addObject().put("text", instruction);
+
         // This is what makes the server transcribe the audio at all.
         setup.putObject("inputAudioTranscription");
         if (externalEndpointing) {
@@ -280,8 +288,12 @@ public class GeminiSttProvider implements SttProvider {
         private void handleServerContent(JsonNode content) {
             String interim = content.path("interimInputTranscription").path("text").asText("").trim();
             if (!interim.isEmpty()) {
-                lastInterim = interim;
-                listener.onTranscript(interim, false, 0.0f);
+                if (inExpectedScript(interim, languageCode)) {
+                    lastInterim = interim;
+                    listener.onTranscript(interim, false, 0.0f);
+                } else {
+                    log.debug("Gemini STT dropped interim transcription with foreign script: {}", interim);
+                }
             }
 
             String finalText = content.path("inputTranscription").path("text").asText("").trim();
@@ -289,9 +301,10 @@ public class GeminiSttProvider implements SttProvider {
                 return;
             }
             if (!inExpectedScript(finalText, languageCode)) {
-                if (lastInterim == null) {
-                    log.warn("Gemini STT final is not in the {} script and there is no interim to fall back to — dropped: {}",
+                if (lastInterim == null || !inExpectedScript(lastInterim, languageCode)) {
+                    log.warn("Gemini STT final is not in the {} script and there is no valid interim to fall back to — dropped: {}",
                             languageCode, finalText);
+                    lastInterim = null;
                     return;
                 }
                 log.warn("Gemini STT final is not in the {} script ('{}') — using the last interim: {}",

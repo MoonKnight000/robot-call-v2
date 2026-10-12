@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+
+import java.util.List;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
@@ -104,7 +106,7 @@ class CallFinalizerTest {
         when(recordingStoragePort.uploadRecording(eq(WAV), eq(COMPANY_ID), anyString())).thenReturn(RECORDING_ID);
         when(outboxDeliveryService.prepareCrmNote(eq(COMPANY_ID), eq(CALL_ID), eq(LEAD_ID), any(), any())).thenReturn(crmNote);
         when(callRecordService.writeResult(eq(COMPANY_ID), eq(CALL_ID), any(), anyBoolean(), any()))
-                .thenReturn(NOTE_MESSAGE_ID);
+                .thenReturn(List.of(NOTE_MESSAGE_ID));
 
         finalizer = new CallFinalizer(callRecordService, summaryService, mock(CallQualityUseCase.class),
                 mock(ScorecardUseCase.class),
@@ -124,7 +126,7 @@ class CallFinalizerTest {
         assertEquals(Disposition.REFUSED, finalizeCall(Disposition.REFUSED, agent));
 
         InOrder order = inOrder(callRecordService, outboxDeliveryService);
-        order.verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, SUMMARY, false, crmNote);
+        order.verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, SUMMARY, false, List.of(crmNote));
         order.verify(outboxDeliveryService).deliverNow(NOTE_MESSAGE_ID);
         verify(memoryWriter).remember(CALL_ID, COMPANY_ID, scenario, Disposition.REFUSED, SUMMARY);
         verify(postCallActionExecutor).executeActions(COMPANY_ID, CALL_ID, PHONE, agent, Disposition.REFUSED, SUMMARY);
@@ -136,7 +138,7 @@ class CallFinalizerTest {
 
         finalizeCall(Disposition.TRANSFERRED, agent());
 
-        verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, SUMMARY, true, crmNote);
+        verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, SUMMARY, true, List.of(crmNote));
     }
 
     @Test
@@ -158,7 +160,7 @@ class CallFinalizerTest {
         finalizeCall(Disposition.REFUSED, agent);
 
         CallSummary stripped = SUMMARY.stripPersonalData(null);
-        verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, stripped, false, crmNote);
+        verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, stripped, false, List.of(crmNote));
         verify(memoryWriter).remember(CALL_ID, COMPANY_ID, scenario, Disposition.REFUSED, stripped);
         verify(outboxDeliveryService).prepareCrmNote(eq(COMPANY_ID), eq(CALL_ID), eq(LEAD_ID), eq(SUMMARY), any());
         verify(postCallActionExecutor).executeActions(COMPANY_ID, CALL_ID, PHONE, agent, Disposition.REFUSED, SUMMARY);
@@ -272,7 +274,7 @@ class CallFinalizerTest {
 
         verify(callRecordService).finishAttempt(eq(CALL_ID), eq(Disposition.REFUSED), isNull(), anyInt());
         verify(recordingStoragePort, never()).deleteLocalCopy(any());
-        verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, SUMMARY, false, crmNote);
+        verify(callRecordService).writeResult(COMPANY_ID, CALL_ID, SUMMARY, false, List.of(crmNote));
         verify(callBilling).settleCall(eq(COMPANY_ID), eq(CALL_ID), eq(TARGET_ID), any());
     }
 

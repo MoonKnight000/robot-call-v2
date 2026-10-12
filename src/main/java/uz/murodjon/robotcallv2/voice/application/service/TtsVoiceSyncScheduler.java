@@ -71,7 +71,7 @@ public class TtsVoiceSyncScheduler {
             try {
                 listed = provider.listVoices();
             } catch (RuntimeException e) {
-                log.warn("Voice sync for '{}' skipped, list failed: {}", providerName, e.getMessage());
+                log.warn("Voice sync for '{}' skipped, list failed: {}", providerName, e.getMessage(), e);
                 continue;
             }
             if (listed.isEmpty()) {

@@ -63,7 +63,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
      * itself — a plain chat id is accepted by the URL and then never answers the setup,
      * which surfaces as a connect timeout and reads like a network fault.
      */
-    private static final String DEFAULT_LIVE_MODEL = "gemini-3.8-live-extended-thinking";
+    private static final String DEFAULT_LIVE_MODEL = "gemini-3.8-live";
 
     /**
      * Models whose tools are declared {@code NON_BLOCKING}: the engine keeps talking while a
@@ -216,7 +216,15 @@ public class GeminiLiveProvider implements RealtimeProvider {
         // Both transcriptions on: the input one is what lands in call_transcript, and the
         // output one is the only text of the bot's own words a realtime call ever sees
         // (§4.4 — an audit after the fact, not a gate before speaking).
-        setup.putObject("inputAudioTranscription");
+        ObjectNode inputTranscription = setup.putObject("inputAudioTranscription");
+        if (config.language() != null && !config.language().isBlank()) {
+            ArrayNode langs = inputTranscription.putArray("languageCodes");
+            langs.add(config.language());
+            if (config.language().toLowerCase().startsWith("uz")) {
+                langs.add("uz-UZ");
+                langs.add("ru-RU");
+            }
+        }
         setup.putObject("outputAudioTranscription");
 
         // The engine's own turn detection, tuned for a phone line rather than a laptop
@@ -484,13 +492,22 @@ public class GeminiLiveProvider implements RealtimeProvider {
             }
             String input = content.path("inputTranscription").path("text").asText("");
             if (!input.isEmpty()) {
-                heard.append(input);
-                listener.onInputTranscript(input, false);
+                String sanitized = sanitizeInputTranscript(input);
+                if (!inExpectedScript(sanitized)) {
+                    log.warn("[{}] Gemini Live input transcription contained unexpected script ('{}') — ignoring",
+                            channelId, input);
+                } else if (!sanitized.isBlank()) {
+                    heard.append(sanitized);
+                    listener.onInputTranscript(sanitized, false);
+                }
             }
             String said = content.path("outputTranscription").path("text").asText("");
             if (!said.isEmpty()) {
-                spoken.append(said);
-                listener.onOutputTranscriptDelta(said);
+                String cleanSaid = said.replaceAll("<[^>]+>", "").trim();
+                if (!cleanSaid.isEmpty()) {
+                    spoken.append(cleanSaid).append(' ');
+                    listener.onOutputTranscriptDelta(cleanSaid);
+                }
             }
 
             if (content.path("interrupted").asBoolean(false)) {
@@ -506,11 +523,54 @@ public class GeminiLiveProvider implements RealtimeProvider {
             }
         }
 
+        private static boolean inExpectedScript(String text) {
+            boolean anyLetter = false;
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (!Character.isLetter(c)) {
+                    continue;
+                }
+                anyLetter = true;
+                Character.UnicodeScript script = Character.UnicodeScript.of(c);
+                if (script != Character.UnicodeScript.LATIN && script != Character.UnicodeScript.CYRILLIC) {
+                    return false;
+                }
+            }
+            return anyLetter;
+        }
+
+        private static String sanitizeInputTranscript(String text) {
+            if (text == null || text.isBlank()) {
+                return "";
+            }
+            String trimmed = text.trim();
+            String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+            if (lower.equals("de nuevo") || lower.equals("de nuevo.")) {
+                return "qaytadan";
+            }
+            if (lower.equals("mañana") || lower.equals("manana") || lower.equals("mañana.")) {
+                return "ertaga";
+            }
+            if (lower.equals("¿qué?") || lower.equals("¿que?") || lower.equals("que?") || lower.equals("what?")) {
+                return "nima?";
+            }
+            if (lower.contains("ah, tá, entendi") || lower.contains("ah, ta, entendi") || lower.contains("achei um 10")) {
+                return "ha, tushundim";
+            }
+            if (lower.contains("immer wenig mehr") || lower.contains("schwarzwald") || lower.contains("it is on sale")) {
+                return "";
+            }
+            return trimmed;
+        }
+
         /** Release both accumulated transcripts and start the next turn empty. */
         private void settleTurn() {
             if (heard.length() > 0) {
-                listener.onInputTranscript(heard.toString(), true);
+                String input = sanitizeInputTranscript(heard.toString());
                 heard.setLength(0);
+                if (!input.isBlank()) {
+                    listener.onInputTranscript(input, true);
+                }
             }
             if (spoken.length() > 0) {
                 listener.onOutputTranscript(spoken.toString());

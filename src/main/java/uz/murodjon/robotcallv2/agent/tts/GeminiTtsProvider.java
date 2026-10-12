@@ -248,19 +248,31 @@ public class GeminiTtsProvider implements TtsProvider {
                     throw new ExternalServiceException(ErrorCode.TTS_GEMINI_HTTP_STATUS, "gemini-tts", response.statusCode());
                 }
                 JsonNode root = objectMapper.readTree(response.body());
-                for (JsonNode voice : root.path("voices")) {
-                    String id = voice.path("id").asText("");
-                    if (!id.isBlank()) {
-                        voices.add(new ProviderVoice(id, voiceLabel(voice, id), voiceLanguages(voice)));
+                if (root != null) {
+                    for (JsonNode voice : root.path("voices")) {
+                        String id = voice.path("id").asText("");
+                        if (!id.isBlank()) {
+                            voices.add(new ProviderVoice(id, voiceLabel(voice, id), voiceLanguages(voice)));
+                        }
                     }
+                    // REST spells the fields in camelCase; the SDK docs show snake_case. Accept either.
+                    pageToken = field(root, "nextPageToken", "next_page_token").asText("");
+                } else {
+                    pageToken = "";
                 }
-                // REST spells the fields in camelCase; the SDK docs show snake_case. Accept either.
-                pageToken = field(root, "nextPageToken", "next_page_token").asText("");
             } while (!pageToken.isBlank());
         } catch (ExternalServiceException e) {
             throw e;
+        } catch (ConnectException | HttpConnectTimeoutException e) {
+            String detail = (e.getMessage() != null && !e.getMessage().isBlank()) ? e.getMessage() : e.getClass().getSimpleName();
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_CONNECT_FAILED, "gemini-tts", e, detail);
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_VOICES_FAILED, "gemini-tts", e, e.getMessage());
+            String detail = (e.getMessage() != null && !e.getMessage().isBlank())
+                    ? e.getMessage()
+                    : (e.getCause() != null && e.getCause().getMessage() != null)
+                            ? e.getCause().getMessage()
+                            : e.getClass().getSimpleName();
+            throw new ExternalServiceException(ErrorCode.TTS_GEMINI_VOICES_FAILED, "gemini-tts", e, detail);
         }
         return voices;
     }

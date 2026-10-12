@@ -8,5 +8,9 @@ public enum OutboxMessageKind {
     /** The call's summary, as a note on the CRM lead. */
     CRM_NOTE,
     /** The conversation itself, on the lead's call history. */
-    CRM_CALL_HISTORY
+    CRM_CALL_HISTORY,
+    /** A CRM task or meeting created from the call outcome. */
+    CRM_TASK,
+    /** A lead pipeline stage update derived from the call outcome. */
+    CRM_LEAD_STAGE
 }

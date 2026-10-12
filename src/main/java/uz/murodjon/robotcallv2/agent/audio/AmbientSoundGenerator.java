@@ -149,24 +149,26 @@ public final class AmbientSoundGenerator {
             case CALL_CENTER -> {
                 targetRms = 420.0; // ~ -37.9 dBFS
                 addBabble(raw, rand, 7, 480.0, 1.0);
-                addNoise(raw, rand, 0.20);          // room tone and ventilation
+                addNoise(raw, rand, 0.18);          // room tone and ventilation
                 addKeyboard(raw, rand, 0.12, 0.35, 0.55);
+                addPaperShuffle(raw, rand);
             }
             case OFFICE -> {
-                targetRms = 300.0; // ~ -40.8 dBFS
-                addNoise(raw, rand, 0.55);          // HVAC is most of a quiet office
-                addBabble(raw, rand, 2, 450.0, 0.30);
-                addKeyboard(raw, rand, 0.8, 1.5, 0.35);
+                targetRms = 320.0; // ~ -40.2 dBFS
+                addNoise(raw, rand, 0.18);          // gentle room tone instead of harsh 0.55 hiss
+                addBabble(raw, rand, 4, 460.0, 0.60); // distant colleagues talking
+                addKeyboard(raw, rand, 0.35, 1.0, 0.50); // realistic office typing
+                addPaperShuffle(raw, rand);         // subtle paper/desk rustle
             }
             case CAFE -> {
                 targetRms = 380.0; // ~ -38.7 dBFS
                 addBabble(raw, rand, 10, 430.0, 1.0);
-                addNoise(raw, rand, 0.30);
+                addNoise(raw, rand, 0.20);
                 addCrockery(raw, rand);
             }
             case NATURAL_LINE -> {
-                targetRms = 240.0; // ~ -42.7 dBFS — comfort noise, nothing more
-                addNoise(raw, rand, 1.0);
+                targetRms = 220.0; // ~ -43.5 dBFS — subtle telephone line comfort noise
+                addNoise(raw, rand, 0.30);          // reduced from harsh 1.0 hiss
                 addLineHum(raw);
             }
             // Typed notes under a pause, played only while the model is composing a reply.
@@ -275,6 +277,16 @@ public final class AmbientSoundGenerator {
             addTransient(raw, rand, i, partial, 60.0, 0.012, 0.10);
             addTransient(raw, rand, i, partial * 1.63, 90.0, 0.008, 0.06);
             i += (int) (SAMPLE_RATE * (2.0 + rand.nextDouble() * 3.0));
+        }
+    }
+
+    /** Occasional subtle desk movement or paper shuffle every few seconds. */
+    private static void addPaperShuffle(double[] raw, Random rand) {
+        int i = SAMPLE_RATE * 2;
+        while (i < LOOP_SAMPLES) {
+            double freq = 600.0 + rand.nextDouble() * 800.0;
+            addTransient(raw, rand, i, freq, 450.0, 0.035, 0.12);
+            i += (int) (SAMPLE_RATE * (3.5 + rand.nextDouble() * 5.0));
         }
     }
 

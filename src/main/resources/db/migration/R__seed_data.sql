@@ -27,7 +27,7 @@ SELECT setval(pg_get_serial_sequence('company', 'id'),
 INSERT INTO company_config (id, company_id, dial_window_start, dial_window_end, timezone, default_language,
                             disclosure_text, human_like_persona_allowed, holidays)
 VALUES (1, 1, '07:00:00', '23:00:00', 'Asia/Tashkent', 'uz-UZ',
-        'Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.',
+        NULL,
         true, '2026-10-01,2026-12-08')
 ON CONFLICT (company_id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('company_config', 'id'),
@@ -214,7 +214,7 @@ VALUES (
 $def$
 {
   "stages": [
-    {"id": "GREETING", "purpose": "Salomlash, tizim ekaningni ayt, suhbat yozib olinishini bildiring.", "allowedTransitions": ["IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
+    {"id": "GREETING", "purpose": "Salomlash va darhol shaxsni tasdiqlashga o't.", "allowedTransitions": ["IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
     {"id": "IDENTITY_CHECK", "purpose": "Mijozning shaxsini tasdiqla (masalan: 'Men [Ism] aka bilan gaplashayapmanmi?'). Faqat aniq tasdiq — 'ha', 'ha, menman', 'ha, [Ism]', 'men' — bo'lsa DEBT_NOTICE ga o't. 'Xo'sh', 'alo', 'aha', 'labbay', 'a?', 'eshitaman', 'kim bu?' tasdiq EMAS: o'zingni qisqa tanishtir va ismini yana bir bor so'ra. Shaxs aniq tasdiqlanmaguncha qarz, summa yoki muddat haqida hech narsa aytma.", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
     {"id": "DEBT_NOTICE", "purpose": "Qarz miqdori va muddatini xushmuomala yetkaz VA o'sha javobning o'zida nima uchun to'lanmaganini so'ra. Faqat xabar aytib, tasdiq so'rab ('bu haqda xabaringiz bormidi?') alohida turn sarflama. Shu gapni aytding va mijoz eshitgan bo'lsa — keyingi qadamda REASON_INQUIRY ga o't. Agar mijoz eshitmagan bo'lsa ('a?', 'eshitmadim', 'qaytaring') — qarz va muddatni qaytadan aniq ayt. Agar tushunmagan bo'lsa ('aaa?', 'qanaqa qarz?', 'tushunmadim') — o'sha gapni so'zma-so'z takrorlama: qarz nimadan kelib chiqqanini soddaroq so'zlar bilan qisqa tushuntir ('Kechirasiz, tushuntiray: ...'). Ikkala holatda ham mijoz javob bermaguncha keyingi bosqichga o'tma.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "REASON_INQUIRY", "purpose": "Sabab savoli DEBT_NOTICE da berilgan — uni qayta berma. Mijozning javobini tinglab sababni yozib ol; mijoz sababni umuman aytmagan bo'lsagina bir marta so'ra.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
@@ -260,11 +260,12 @@ $def$
   ],
   "styleExamples": [
     {"language": "uz", "wrong": "\"Ushbu to'lov qachon amalga oshirilishi kutilmoqda?\"", "right": "\"Qachon to'lay olasiz?\""},
-    {"language": "uz", "wrong": "\"Sizning A56 shartnomangiz bo'yicha 1500000 so'm qarzingiz bor ekan, to'lov muddati 1-iyulda o'tib ketgan.\"", "right": "\"Murodjon aka, 1500000 so'm qarzingiz bor. To'lov muddati 1-iyulda o'tgan.\""},
+    {"language": "uz", "wrong": "\"Sizning A56 shartnomangiz bo'yicha 1500000 so'm qarzingiz bor ekan, to'lov muddati 1-iyulda o'tib ketgan.\"", "right": "\"Murodjon aka, 1500000 so'm qarzingiz bor, to'lov muddati 1-iyulda o'tgan. Nima sababdan to'lanmadi?\""},
     {"language": "uz", "wrong": "\"Sizda qarzdorlik bor ekan, to'g'rimi?\"", "right": "\"1500000 so'm qarzingiz bor. Nima uchun to'lanmayapti?\""},
     {"language": "uz", "wrong": "(bo'sh, tasdiqlovchi savol) \"1500000 so'm qarzingiz bor, muddati 1-iyulda o'tgan — bu haqda xabaringiz bormidi?\"", "right": "\"1500000 so'm qarzingiz bor, muddati 1-iyulda o'tgan. Nima uchun to'lanmayapti?\""},
     {"language": "uz", "wrong": "\"Murodjon aka, eshitib turibsizmi, to'lovni bu hafta oxirigacha qila olasizmi?\"", "right": "\"Qachon to'lay olasiz?\""},
-    {"language": "uz", "wrong": "(o'tgan javobda \"qachon to'laysiz?\" so'ralgan) \"Bu to'lovni qachon to'lab bera olasiz?\"", "right": "\"Tushunarli. Sabab nimada — vaqtinchalik qiyinchilikmi?\""},
+    {"language": "uz", "wrong": "(o'tgan javobda \"qachon to'laysiz?\" so'ralgan) \"Bu to'lovni qachon to'lab bera olasiz?\"", "right": "\"Tushunarli. Nima sababdan to'lanmay qoldi?\""},
+    {"language": "uz", "wrong": "(mijoz \"nima deding? eshitilmadi\" dedi) \"Ovoz yaxshi eshitilmadi. Qandaydir qiyinchilik bo'ldimi?\"", "right": "\"Eshitilmadimi? Qaytadan aytaman: 1500000 so'm qarzingiz bor, to'lov muddati o'tgan. Nima sababdan to'lanmadi?\""},
     {"language": "uz", "wrong": "(mijoz \"20-sanada\" dedi, endi tasdiqlatyapti) \"Aha. 20-oktabrda 1500000 so'm to'lay olasizmi?\"", "right": "\"Kelishdik. 20-oktabr kuni 1500000 so'mni kutib qolamiz. Salomat bo'ling!\""},
     {"language": "uz", "wrong": "(mijoz javobi tushunarsiz chiqdi) \"Gapingizni to'liq tushunolmadim. Bu to'lovni qachon to'lay olasiz?\"", "right": "\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\""},
     {"language": "uz", "wrong": "(mijoz \"aha o'zgartir\" dedi — bu \"nima uchun to'lanmayapti?\" savoliga javob emas) \"Pul bo'lmagani uchun to'lolmayapman deng. Xo'p, qachon to'lay olasiz?\"", "right": "\"Ovoz yaxshi kelmadi. Nima uchun to'lanmayapti?\""},
@@ -726,7 +727,7 @@ SELECT 1, 'Qarzdorlik (realtime)',
        'Chiquvchi qarzdorlik qo''ng''irog''i: Gemini Live nativ audio (speech-to-speech).',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
-       'REALTIME', 'gemini-live', 'gemini-3.8-live-extended-thinking', 'gemini-aoede-uz',
+       'REALTIME', 'gemini-live', 'gemini-3.8-live', 'gemini-aoede-uz',
        'OFFICE', false, 'LEAVE_MESSAGE',
        'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
        'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
@@ -2068,7 +2069,7 @@ BEGIN
            CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-live' ELSE coalesce(a.stt_provider, 'yandex') END,
            CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-live' ELSE coalesce(a.tts_provider, 'yandex') END,
            CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'Aoede' ELSE coalesce(a.tts_voice, 'nigora') END,
-           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-3.8-live-extended-thinking' ELSE coalesce(a.llm_model, 'gemini-3.8-flash') END,
+           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-3.8-live' ELSE coalesce(a.llm_model, 'gemini-3.8-flash') END,
            c.duration_sec * 42, c.duration_sec * 7, c.duration_sec * 25, greatest(2, c.duration_sec / 12),
            850 + (c.id % 7) * 70, 1600 + (c.id % 5) * 180, 420 + (c.id % 6) * 45, 900 + (c.id % 4) * 150,
            c.duration_sec * 50, (c.id % 4) * c.duration_sec / 20, 8 + (c.id % 5) * 3,

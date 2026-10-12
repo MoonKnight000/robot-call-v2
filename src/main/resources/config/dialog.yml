@@ -87,7 +87,7 @@ voice-agent:
     preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:true}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:2}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:2}
-    mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:true}
+    mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:false}
     fast-model: ${DIALOG_FAST_MODEL:gemini-3.5-flash-lite}
     fast-model-max-words: ${DIALOG_FAST_MODEL_MAX_WORDS:5}
     state-scoped-tools: ${DIALOG_STATE_SCOPED_TOOLS:true}

@@ -530,7 +530,7 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
     }
 
     /**
-     * Insert the single call_result row (§4.3), and queue the call's CRM note with it.
+     * Insert the single call_result row (§4.3), and queue all resulting CRM writes with it.
      *
      * <p>One transaction: a result is never stored without its note queued, and a note is
      * never queued for a result that was not stored. Idempotent on both: the outbox re-runs
@@ -539,13 +539,14 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
      * wins — they are summarizing the same transcript. Unlike the other writes here this one
      * is not fail-open: a failure rolls both back and reaches the caller.
      *
-     * @param crmNote the note to queue, or null when the call has no CRM lead to file one under
-     * @return the id of the note queued by this call, or null when none was
+     * @param outboxMessages CRM writes derived from this result
+     * @return ids of the outbox messages newly queued by this call
      */
     @Transactional
-    public Long writeResult(long companyId, long callId, CallSummary s, boolean escalated, OutboxMessage crmNote) {
+    public List<Long> writeResult(long companyId, long callId, CallSummary s, boolean escalated,
+                                  List<OutboxMessage> outboxMessages) {
         if (callId == 0 || s == null) {
-            return null;
+            return List.of();
         }
         LocalDate promisedDate = asDate(s.outcome().get("promisedDate"));
         BigDecimal promisedAmount = asAmount(s.outcome().get("promisedAmount"));
@@ -565,7 +566,14 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         if (promisedDate != null) {
             publishPromise(companyId, callId, promisedDate, promisedAmount);
         }
-        return crmNote != null ? outboxMessageRepository.enqueue(companyId, crmNote) : null;
+        List<Long> messageIds = new java.util.ArrayList<>();
+        for (OutboxMessage message : outboxMessages) {
+            Long messageId = outboxMessageRepository.enqueue(companyId, message);
+            if (messageId != null) {
+                messageIds.add(messageId);
+            }
+        }
+        return List.copyOf(messageIds);
     }
 
     /**

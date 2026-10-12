@@ -176,7 +176,12 @@ public class ElevenLabsTtsProvider implements TtsProvider {
         } catch (ExternalServiceException e) {
             throw e;
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.TTS_ELEVENLABS_VOICES_FAILED, "elevenlabs-tts", e, e.getMessage());
+            String detail = (e.getMessage() != null && !e.getMessage().isBlank())
+                    ? e.getMessage()
+                    : (e.getCause() != null && e.getCause().getMessage() != null)
+                            ? e.getCause().getMessage()
+                            : e.getClass().getSimpleName();
+            throw new ExternalServiceException(ErrorCode.TTS_ELEVENLABS_VOICES_FAILED, "elevenlabs-tts", e, detail);
         }
         return voices;
     }

@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageKind;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageStatus;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.config.OutboxProperties;
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -56,13 +57,22 @@ class OutboxDeliveryServiceTest {
     }
 
     @Test
-    void syncLeadStageDelegatesToCrmUseCase() {
+    void actionableLeadStageIsPreparedForTheDurableOutbox() {
         CallSummary meetingSummary = new CallSummary("Shourumga kelishga rozi bo'ldi",
                 Map.of("meetingBooked", true), null, false, null, null);
+        UpdateLeadStageRequest request = new UpdateLeadStageRequest(LEAD_ID, 12L, "meeting booked");
+        when(crmClient.resolveLeadStageUpdate(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED))
+                .thenReturn(request);
 
-        service.syncLeadStageIfActionable(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+        OutboxMessage message = service.prepareCrmLeadStage(COMPANY_ID, CALL_ID, LEAD_ID,
+                meetingSummary, Disposition.GOAL_REACHED);
 
-        verify(crmClient).syncLeadStage(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+        assertEquals(OutboxMessageKind.CRM_LEAD_STAGE, message.kind());
+        assertEquals("CRM_LEAD_STAGE:55", message.idempotencyKey());
+        assertEquals(12L, ((Number) message.payload().get("statusId")).longValue());
+        assertEquals("meeting booked", message.payload().get("reason"));
+        verify(crmClient).resolveLeadStageUpdate(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+        verifyNoInteractions(outboxMessageRepository);
     }
 
     @Test
@@ -251,33 +261,70 @@ class OutboxDeliveryServiceTest {
     }
 
     @Test
-    void meetingBookedCreatesCrmTask() {
+    void meetingBookedIsPreparedAsAnIdempotentOutboxTask() {
         CallSummary meetingSummary = new CallSummary("Shourumga kelishga rozi bo'ldi",
                 Map.of("meetingBooked", true, "meetingTime", "2026-09-20 15:00", "roomsNeeded", "3 xonali", "budgetRange", "50000 USD"),
                 null, false, null, null);
 
-        service.scheduleCrmTaskIfActionable(COMPANY_ID, LEAD_ID, meetingSummary, Disposition.GOAL_REACHED);
+        OutboxMessage message = service.prepareCrmTask(COMPANY_ID, CALL_ID, LEAD_ID,
+                meetingSummary, Disposition.GOAL_REACHED);
 
-        ArgumentCaptor<CreateCrmTaskRequest> captor = ArgumentCaptor.forClass(CreateCrmTaskRequest.class);
-        verify(crmClient).createTask(eq(COMPANY_ID), captor.capture());
-        assertEquals(LEAD_ID, captor.getValue().leadId());
-        assertTrue(captor.getValue().title().contains("Sotuv ofisiga uchrashuv"));
-        assertTrue(captor.getValue().description().contains("3 xonali"));
-        assertTrue(captor.getValue().description().contains("2026-09-20 15:00"));
+        assertEquals(OutboxMessageKind.CRM_TASK, message.kind());
+        assertEquals("CRM_TASK:55", message.idempotencyKey());
+        assertEquals(LEAD_ID, ((Number) message.payload().get("leadId")).longValue());
+        assertTrue(((String) message.payload().get("title")).contains("Sotuv ofisiga uchrashuv"));
+        assertTrue(((String) message.payload().get("description")).contains("3 xonali"));
+        assertTrue(((String) message.payload().get("description")).contains("2026-09-20 15:00"));
+        assertTrue(((String) message.payload().get("description")).contains("Qo'ng'iroq ID: 55"));
+        verifyNoInteractions(outboxMessageRepository);
     }
 
     @Test
-    void paymentPromiseCreatesCrmTask() {
+    void paymentPromiseIsPreparedAsAnOutboxTask() {
         CallSummary promiseSummary = new CallSummary("Ertaga to'laydi",
                 Map.of("promisedDate", "2026-09-18", "promisedAmount", "12000000"),
                 null, false, null, null);
 
-        service.scheduleCrmTaskIfActionable(COMPANY_ID, LEAD_ID, promiseSummary, Disposition.PROMISE_TO_PAY);
+        OutboxMessage message = service.prepareCrmTask(COMPANY_ID, CALL_ID, LEAD_ID,
+                promiseSummary, Disposition.PROMISE_TO_PAY);
 
-        ArgumentCaptor<CreateCrmTaskRequest> captor = ArgumentCaptor.forClass(CreateCrmTaskRequest.class);
-        verify(crmClient).createTask(eq(COMPANY_ID), captor.capture());
-        assertEquals(LEAD_ID, captor.getValue().leadId());
-        assertTrue(captor.getValue().title().contains("To'lov va'dasi"));
+        assertEquals(OutboxMessageKind.CRM_TASK, message.kind());
+        assertTrue(((String) message.payload().get("title")).contains("To'lov va'dasi"));
+        assertTrue(((String) message.payload().get("description")).contains("12000000"));
+        verifyNoInteractions(outboxMessageRepository);
+    }
+
+    @Test
+    void claimedTaskIsDeliveredAndMarkedSent() {
+        OutboxMessage task = new OutboxMessage(10L, COMPANY_ID, OutboxMessageKind.CRM_TASK, CALL_ID,
+                Map.of("leadId", LEAD_ID, "title", "task", "description", "description",
+                        "dueAt", NOW.plusSeconds(3600).toString()), "CRM_TASK:55", OutboxMessageStatus.PENDING,
+                1, LEASE_END, null, NOW, null);
+        claimDue(task);
+        when(crmClient.createTask(eq(COMPANY_ID), any(CreateCrmTaskRequest.class))).thenReturn("task-1");
+
+        service.deliverDue();
+
+        assertEquals(OutboxMessageStatus.SENT, lastUpdate().status());
+        ArgumentCaptor<CreateCrmTaskRequest> request = ArgumentCaptor.forClass(CreateCrmTaskRequest.class);
+        verify(crmClient).createTask(eq(COMPANY_ID), request.capture());
+        assertEquals(LEAD_ID, request.getValue().leadId());
+        assertEquals(NOW.plusSeconds(3600), request.getValue().dueAt());
+    }
+
+    @Test
+    void claimedStageUpdateIsDeliveredAndMarkedSent() {
+        OutboxMessage stage = new OutboxMessage(11L, COMPANY_ID, OutboxMessageKind.CRM_LEAD_STAGE, CALL_ID,
+                Map.of("leadId", LEAD_ID, "statusId", 12, "reason", "meeting booked"), "CRM_LEAD_STAGE:55",
+                OutboxMessageStatus.PENDING, 1, LEASE_END, null, NOW, null);
+        claimDue(stage);
+        when(crmClient.updateLeadStage(COMPANY_ID, new UpdateLeadStageRequest(LEAD_ID, 12L, "meeting booked")))
+                .thenReturn(true);
+
+        service.deliverDue();
+
+        assertEquals(OutboxMessageStatus.SENT, lastUpdate().status());
+        verify(crmClient).updateLeadStage(COMPANY_ID, new UpdateLeadStageRequest(LEAD_ID, 12L, "meeting booked"));
     }
 
     private OutboxDeliveryService serviceWith(OutboxProperties outboxProperties) {

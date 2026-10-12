@@ -63,6 +63,10 @@ public interface CrmUseCase {
      */
     boolean syncLeadStage(long companyId, long leadId, CallSummary summary, Disposition disposition);
 
+    /** Resolves the stage update for an outcome, or returns {@code null} when none applies. */
+    UpdateLeadStageRequest resolveLeadStageUpdate(long companyId, long leadId, CallSummary summary,
+                                                   Disposition disposition);
+
     /** The note as a person reads it in the CRM. */
     String composeNoteText(CallSummary summary);
 

@@ -38,8 +38,8 @@ import java.util.function.DoubleSupplier;
 public class RealtimeAudioBridge implements AudioListener {
 
     private static final int TELEPHONE_RATE = 8000;
-    /** −20 dB: an echo frame is kept, not zeroed, so the engine's own noise model stays fed. */
-    private static final double ECHO_ATTENUATION = 0.1;
+    /** Low-energy microphone hiss/static below this RMS is noise, not speech. */
+    private static final double NOISE_FLOOR_RMS = 70.0;
 
     private volatile RealtimeSession session;
     /** Null while the engine listens at the telephone rate. */
@@ -108,11 +108,19 @@ public class RealtimeAudioBridge implements AudioListener {
         // A copy: the endpoint hands every listener the same buffer and reuses it for the
         // next packet, so neither the gate nor the upsampler may keep or change it.
         short[] frame = Arrays.copyOf(pcm, length);
-        if (isEcho(frame)) {
-            for (int i = 0; i < frame.length; i++) {
-                frame[i] = (short) (frame[i] * ECHO_ATTENUATION);
-            }
+        double sumSq = 0;
+        for (short sample : frame) {
+            sumSq += (double) sample * sample;
+        }
+        double rms = Math.sqrt(sumSq / frame.length);
+
+        if (isEcho(rms)) {
+            // Silence echo completely so speech-to-speech models never hear their own voice.
+            Arrays.fill(frame, (short) 0);
             echoSamples.addAndGet(length);
+        } else if (rms < NOISE_FLOOR_RMS) {
+            // Mute low-energy microphone hiss/static during silence to prevent ASR hallucinations.
+            Arrays.fill(frame, (short) 0);
         }
         StreamingUpsampler up = upsampler;
         short[] out = up == null ? frame : up.push(frame, frame.length);
@@ -121,7 +129,7 @@ public class RealtimeAudioBridge implements AudioListener {
         }
     }
 
-    private boolean isEcho(short[] frame) {
+    private boolean isEcho(double rms) {
         DoubleSupplier level = botLevel;
         double ratio = echoGateRatio;
         if (level == null || ratio <= 0) {
@@ -131,10 +139,6 @@ public class RealtimeAudioBridge implements AudioListener {
         if (bot < minBotLevel) {
             return false;
         }
-        double sumSq = 0;
-        for (short sample : frame) {
-            sumSq += (double) sample * sample;
-        }
-        return Math.sqrt(sumSq / frame.length) < bot * ratio;
+        return rms < bot * ratio;
     }
 }

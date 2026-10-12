@@ -61,11 +61,14 @@ public class VoiceEmotionResolver {
      */
     private static Double agentSpeed(DialogSession s, Double companySpeed) {
         AiAgent agent = s.agent();
-        if (agent == null) {
+        if (agent == null || agent.voice() == null) {
             return companySpeed;
         }
         double own = agent.voice().speedFor(s.language());
-        return own != 1.0 ? own : companySpeed;
+        if (own != 1.0) {
+            return own;
+        }
+        return companySpeed;
     }
 
     /**

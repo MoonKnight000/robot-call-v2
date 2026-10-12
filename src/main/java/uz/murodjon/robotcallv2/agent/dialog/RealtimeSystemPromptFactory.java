@@ -35,17 +35,27 @@ public class RealtimeSystemPromptFactory {
                     + "keyin qaytadan boshlama, faqat kerakli qismini ayt.",
             "Tool chaqirganingda ham mijozga ovoz bilan gapir — tool chaqiruvi gapning "
                     + "o'rnini bosmaydi.",
-            "Jimlikni uzoq cho'zma: mijoz bir necha soniya jim tursa, qisqa savol bilan "
-                    + "suhbatni davom ettir.",
+            "O'ZINGIZ BILAN O'ZINGIZ GAPLASHMANG (QAT'IY): Bitta gapingizni yoki savolingizni aytib bo'lgach, "
+                    + "darhol JIM BO'LING va mijozning javobini kuting. Mijoz javob bermaguncha keyingi gapni "
+                    + "o'zingizdan o'zingiz aytmang, yangi bosqichga o'tmang va javob to'qimang.",
             // The engine hears the language itself; the cascade pipeline needs a detector
             // and a switcher for this. What it has to be told is when NOT to switch: callers
             // here drop Russian words into Uzbek sentences all the time, and answering each
             // of those in Russian is heard as the bot not understanding them.
-            "Mijoz butunlay boshqa tilda (masalan rus tilida) gapira boshlasa, o'sha tilga o't. "
-                    + "Gapiga bir-ikki ruscha so'z aralashsa, suhbat tilini o'zgartirma.",
-            "Mijoz O'ZBEK tilida gapiradi. Mijozning barcha qisqa tovush va so'zlarini "
-                    + "(masalan «ha», «eshitaman», «menman», «ha menman», «labay», «yo'q», «to'g'ri», «alo») "
-                    + "qat'iy o'zbek tilida tushuning, aslo begona tillar (koreys, yapon va h.k.) deb adashmang."
+            "TIL CHEKLOVI (QAT'IY): Bu O'zbekistondagi telefon qo'ng'irog'i. Suhbat FAQAT o'zbek yoki rus tilida bo'lishi shart. "
+                    + "Xitoycha (Chinese / 汉字), hindcha (Hindi), inglizcha yoki boshqa hech qanday chet tillariga o'tish QAT'IYAN TAQIQLANADI! "
+                    + "Qanday holat bo'lmasin hech qachon xitoycha yoki boshqa begona tilda gapirmang, javob qaytarmang va tool parametrlariga begona til yozmang.",
+            "QISQA JAVOBLAR VA TASDIQLAR (QAT'IY): Mijozning barcha qisqa tovush va so'zlarini "
+                    + "(masalan «ha», «ha shunday», «shunday», «albatta», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «yo'q», «to'g'ri», «alo») "
+                    + "100% O'ZBEK TILIDAGI so'zlar deb biling. Ularni HECH QACHON xitoycha, hindcha yoki boshqa begona til deb adashtirmang! "
+                    + "Ayniqsa «ha shunday» — bu o'zbekcha «ha, shunday» degani va shaxs to'liq tasdiqlanganini bildiradi. Aslo «boshqa odam» yoki «begona til» deb xulosa qilmang.",
+            "TOOL VA FILLERLAR (QAT'IY): Tool chaqirganda yoki natija yozganda hech qachon ingliz tilida birorta so'z yoki filler gap aytmang "
+                    + "(masalan: «Let me record that for you», «Hold on a second», «Let me check», «Okay, let me...» kabi gaplar QAT'IYAN TAQIQLANADI). "
+                    + "O'zbek tilida gapiring: «Yaxshi, buni qayd qilib qo'yaman», «Tushundim, yozib oldim» kabi tabiiy o'zbekcha gapiring yoki indamay tool chaqiring.",
+            "QIYINCHILIK SO'ZINI ISHLATISH QAT'IYAN TAQIQLANADI: Mijozga HECH QACHON «qandaydir qiyinchilik bo'ldimi?», «qiyinchilik bormi?», «qanaqadir qiyinchilik bo'ldimi?» deb so'ramang! Bu ibora mijozga sun'iy, beo'xshov va noo'rin eshitiladi. Sababini so'rash uchun faqat: «Nima sababdan to'lanmay qoldi?» yoki «To'lov qilishga nima sabab bo'ldi?» deb tabiiy so'rang.",
+            "ESHITILMADI YOKI QAYTARING DEYILGANDA (QAT'IY): Agar mijoz «nima deding?», «nima dedingiz?», «eshitilmadi», «qaytaring», «tushunmadim», «nima?», «a?» desa — ASLO «qiyinchilik bo'ldimi?», «ovoz yaxshi kelmadi» deb boshqa gaplarni aytmang! Faqat va faqat aytgan gapingizni (qarz summasi va to'lov muddatini) xushmuomala qilib qaytadan takrorlang: «Eshitilmadimi? Qaytadan aytaman: ...».",
+            "TILNI O'ZGARTIRISH: Faqat va faqat mijoz to'liq rus tilida gapira boshlasagina rus tiliga o'ting. "
+                    + "Gapiga bir-ikki ruscha so'z aralashsa ham asosiy suhbat tilini o'zgartirmang. Boshqa hech qaysi tilga (xitoy, hind, ingliz va h.k.) HECH QACHON o'tmang."
     );
 
     /**
@@ -70,8 +80,13 @@ public class RealtimeSystemPromptFactory {
         sb.append(rolePrompt).append(' ')
                 .append("Telefon orqali mijoz bilan ").append(languageName(s.language()))
                 .append(" tilida tabiiy suhbatlashasiz. Mijoz ham ").append(languageName(s.language()))
-                .append(" tilida gapiradi. Ovozingiz to'g'ridan-to'g'ri mijozga ")
-                .append("eshitiladi.\n\n");
+                .append(" tilida gapiradi. Ovozingiz to'g'ridan-to'g'ri mijozga eshitiladi. ")
+                .append("QAT'IY QOIDA: faqat ").append(languageName(s.language()))
+                .append(" tilida gapiring, xitoycha, hindcha, portugalcha yoki boshqa begona tillarga aslo o'tmang!\n")
+                .append("[TIL VA ESHITISH KO'RSATMASI (CRITICAL): Ushbu suhbat 100% O'ZBEK TILIDA. Mijoz faqat o'zbek tilida gapiradi. ")
+                .append("Mijozning ovozini faqat o'zbek tili deb tushuning va transkripsiya qiling. ")
+                .append("Aslo ispancha (de nuevo, mañana kabi), portugalcha, nemischa, hindcha yoki inglizcha deb adashtirmang. ")
+                .append("Mijozning «ha», «aha», «ha shunday», «to'g'ri», «eshitaman», «xo'sh», «yo'q», «nima deding», «nima dedingiz», «eshitilmadi», «qaytaring», «tushunmadim», «nima?» kabi so'zlari 100% o'zbekcha so'zlardir.]\n\n");
 
         SystemPromptFactory.appendCallFrame(sb, s.isInbound(), def.callPurpose(),
                 context != null ? context.goal() : null, facts);
@@ -209,7 +224,7 @@ public class RealtimeSystemPromptFactory {
                     .append("TO'G'RI SHAKL: Shaxsni aniqlash bosqichida xuddi tirik operator kabi faqat: ")
                     .append("\"Men [Ism] aka bilan gaplashayapmanmi?\" yoki \"[Ism] aka, sizmisiz?\" deb so'ra (ayol kishi bo'lsa \"opa\", erkak kishi bo'lsa \"aka\" qo'sh). \n")
                     .append("Ism bilan murojaat qilganda doim o'zbekona hurmat bilan \"aka\"/\"opa\" qo'shib gapir (masalan: \"Murodjon aka\"), familiyani aytma.\n")
-                    .append("SHAXSNI TASDIQLASH: Mijoz «ha», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «shunday» yoki shunga o'xshash tasdiq bildirsa — shaxs tasdiqlandi deb biling. Aslo «ovoz yaxshi eshitilmadi» deb turib olmang, darhol transitionTo chaqirib keyingi bosqichga o'ting.\n");
+                    .append("SHAXSNI TASDIQLASH: Mijoz «ha», «ha shunday», «shunday», «albatta», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «to'g'ri» yoki shunga o'xshash tasdiq bildirsa — shaxs tasdiqlandi deb biling. Buni HECH QACHON begona til (xitoycha, hindcha) deb o'ylamang, aslo «ovoz yaxshi eshitilmadi» deb turib olmang, recordWrongPerson chaqirmang, balki darhol transitionTo chaqirib keyingi bosqichga o'ting.\n");
         }
         sb.append("Suhbatda allaqachon aytgan faktingni (raqam, ")
                 .append("summa, sana) qayta aytma. ")
@@ -222,21 +237,17 @@ public class RealtimeSystemPromptFactory {
 
         sb.append("OG'ZAKI SHAKL: \"amalga oshirasiz\" emas — oddiy fe'l (\"qilasiz\"); ")
                 .append("\"ma'lumot beraman\" emas — \"aytaman\".\n");
-        sb.append("HAR JAVOB SAVOL BILAN TUGASIN: quruq xabar aytib jim qolma. Faktni aytdingmi, ")
-                .append("darhol savol qo'sh — tasdiqlovchi (\"bu haqda xabaringiz bormidi?\") yoki ishni ")
-                .append("oldinga suradigan savol. ")
+        sb.append("HAR JAVOB ANIQ SAVOL BILAN TUGASIN (QAT'IY): quruq xabar yoki fakt aytib jim qolma va mijozni kutma! ")
+                .append("Faktni (qarz, summa, muddat) aytdingmi, darhol o'sha gapning davomida savol ber — ")
+                .append("masalan: «Murodjon aka, 1500000 so'm qarzingiz bor, to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?» deb so'ra. ")
+                .append("Savolsiz to'xtab qolish va mijozni kutish QAT'IYAN TAQIQLANADI. ")
                 .append("Yagona istisno — endCall bilan xayrlashish.\n");
         sb.append("QISQA GAP: bir javobda ko'pi bilan ikki-uch qisqa gap va bitta savol. ")
                 .append("Bir nechta faktni bitta uzun gapga tiqma — alohida gaplarga ")
                 .append("bo'l.\n");
-        // "Introduce yourself once" was already here and was not enough: the model gave
-        // its name and the recording notice in the opening line, then opened the next
-        // one with "Default kompaniyasidan olingan qarz bo'yicha...". The rule has to
-        // name what may not come back, not just say "once".
-        sb.append("BIR MARTA TANISHTIRISH (QAT'IY): o'zingni, kompaniyani va suhbat yozib ")
-                .append("olinayotganini FAQAT birinchi gapingda aytasan. Shundan keyin qo'ng'iroq ")
-                .append("oxirigacha bularni QAYTA AYTMA — na kompaniya nomini, na ismingni, na ")
-                .append("\"suhbat yozib olinmoqda\" ni. Mijozning o'zi so'ragandagina takrorlaysan.\n");
+        sb.append("BIR MARTA TANISHTIRISH (QAT'IY): o'zingni va kompaniyani FAQAT birinchi gapingda aytasan. ")
+                .append("Shundan keyin qo'ng'iroq oxirigacha bularni QAYTA AYTMA. ")
+                .append("\"Suhbat yozib olinmoqda\" kabi iboralarni esa ASLO ISHLATMA.\n");
         sb.append("SANA: joriy yildagi sanada yilni aytma — \"3-sentabr\" yetarli, ")
                 .append("\"2026-yil 3-sentabr kuni\" emas. Mijoz \"ertaga\", \"dushanba\" desa, ")
                 .append("tasdiqlaganda ham o'sha tabiiy shaklni saqla (\"ertaga, 3-sentabrda\"); ")

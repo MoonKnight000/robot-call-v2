@@ -85,7 +85,15 @@ public class SystemPromptFactory {
                     + "\"demak siz...\", \"tushundim, siz...\" shakllari bilan mijoz aytmagan sababni "
                     + "to'qish — eng og'ir xato. Mijozning javobi savolingizga javob bo'lmasa, bo'shliqni "
                     + "o'zingizdan to'ldirmang: savolni qayta bering.",
-            "Mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\", \"qaytaring\" desa yoki tushunmaganini bildirsa — keyingi bosqichga o'tib ketmang, transitionTo chaqirmang. Eshitmagan bo'lsa — oxirgi aytgan xabaringizni (fakt, sana yoki savol) xushmuomala qilib qaytadan aniq takrorlang. Tushunmagan bo'lsa — so'zma-so'z takrorlamang, o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntiring."
+            "Mijoz \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\", \"qaytaring\", \"nima dedingiz\", \"nima deding\" desa yoki tushunmaganini bildirsa — keyingi bosqichga o'tib ketmang, transitionTo chaqirmang, boshqa savolga o'tmang, «qiyinchilik bo'ldimi?» demang! Eshitmagan bo'lsa — oxirgi aytgan xabaringizni (fakt, sana yoki savol) xushmuomala qilib qaytadan aniq takrorlang: «Eshitilmadimi? Qaytadan aytaman: ...». Tushunmagan bo'lsa — so'zma-so'z takrorlamang, o'sha mazmunni soddaroq so'zlar bilan qisqa tushuntiring.",
+            "QIYINCHILIK SO'ZINI ISHLATISH QAT'IYAN TAQIQLANADI: Mijozga HECH QACHON «qandaydir qiyinchilik bo'ldimi?», «qiyinchilik bormi?», «qanaqadir qiyinchilik bo'ldimi?» deb so'ramang! Bu ibora mijozga sun'iy, noqulay va beo'xshov eshitiladi. Sababini so'rash uchun faqat: «Nima sababdan to'lanmay qoldi?» yoki «To'lov qilishga nima sabab bo'ldi?» deb tabiiy so'rang.",
+            "TIL CHEKLOVI (QAT'IY): Bu O'zbekistondagi telefon suhbati. Suhbat faqat o'zbek yoki rus tilida olib boriladi. "
+                    + "Xitoycha (Chinese / 汉字), hindcha (Hindi), inglizcha yoki boshqa begona tillarda gapirish va javob qaytarish QAT'IYAN TAQIQLANADI! "
+                    + "Transkriptda begona yozuvlar yoki xatolar uchrasa ham, HECH QACHON begona tilga o'tmang, o'zbek tilida davom eting. "
+                    + "Mijozning «ha», «ha shunday», «shunday», «albatta», «eshitaman», «labay», «alo» kabi qisqa so'zlari 100% o'zbekcha tasdiqlardir.",
+            "HAR JAVOB ANIQ SAVOL BILAN TUGASIN (QAT'IY): quruq xabar yoki fakt aytib jim qolma va mijozni kutma! "
+                    + "Fakt yoki ma'lumotni aytdingmi, darhol o'sha gapning davomida savol berib mijozning fikrini yoki javobini so'ra. "
+                    + "Savolsiz to'xtab qolish va mijozni kutish QAT'IYAN TAQIQLANADI."
     );
 
     /**
@@ -684,9 +692,13 @@ public class SystemPromptFactory {
                     .append("bosqichlardan BIRIGA o'ting: avval o'sha bosqichning matnini yozing, so'ng transitionTo ")
                     .append("bilan aynan o'sha bosqichga o'ting. ")
                     .append("Agar joriy bosqichning o'zida qolayotgan bo'lsangiz (masalan mijoz savol berdi, eshitmadi yoki tushuntirish so'radi) — ")
-                    .append("transitionTo chaqirmang, faqat mijozga javob matnini yozing. ")
-                    .append("Undan narigi bosqichlarning mazmuniga (savol, taklif, xulosa) sakramang — har bosqich o'z navbatida aytiladi.\n");
+                    .append("transitionTo chaqirmang, faqat mijozga javob matnini yozing.\n");
         }
+        sb.append("QAT'IY QOIDA: Har bir javobingiz ALBATTA aniq savol bilan tugashi shart! ")
+                .append("Hech qachon quruq fakt yoki xabar aytib to'xtab qolmang (masalan DEBT_NOTICE da qarz va muddatni aytganda ")
+                .append("darhol o'sha gapning davomida sababini yoki qachon to'lashini so'rang: «Murodjon aka, 1 500 000 so'm qarzingiz bor, ")
+                .append("to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?» deb so'rang). ")
+                .append("Savolsiz to'xtab qolish va mijozni kutish QAT'IYAN TAQIQLANADI.\n");
         // Text first, tool second — this is a latency rule, not a style one. A line carried
         // in a tool argument arrives in one chunk when the whole reply is finished (this
         // provider does not stream tool arguments), so synthesis cannot start until

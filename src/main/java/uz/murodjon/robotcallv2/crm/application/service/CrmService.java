@@ -55,8 +55,15 @@ public class CrmService implements CrmUseCase {
 
     @Override
     public boolean syncLeadStage(long companyId, long leadId, CallSummary summary, Disposition disposition) {
+        UpdateLeadStageRequest request = resolveLeadStageUpdate(companyId, leadId, summary, disposition);
+        return request != null && updateLeadStage(companyId, request);
+    }
+
+    @Override
+    public UpdateLeadStageRequest resolveLeadStageUpdate(long companyId, long leadId, CallSummary summary,
+                                                          Disposition disposition) {
         if (leadId <= 0 || !isConnected(companyId)) {
-            return false;
+            return null;
         }
         Integer targetStatusId = null;
         String reason = null;
@@ -84,9 +91,9 @@ public class CrmService implements CrmUseCase {
         }
 
         if (targetStatusId != null && targetStatusId > 0) {
-            return updateLeadStage(companyId, new UpdateLeadStageRequest(leadId, targetStatusId, reason));
+            return new UpdateLeadStageRequest(leadId, targetStatusId, reason);
         }
-        return false;
+        return null;
     }
 
     /**

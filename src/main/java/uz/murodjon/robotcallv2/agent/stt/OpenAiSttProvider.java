@@ -172,18 +172,31 @@ public class OpenAiSttProvider implements SttProvider {
         transcription.put("model", model);
         if (languageCode != null && !languageCode.isBlank()) {
             ArrayNode languages = transcription.putArray("languages");
-            languages.add(languageCode.trim());
+            String trimmed = languageCode.trim();
+            languages.add(trimmed);
+            if (trimmed.contains("-")) {
+                languages.add(trimmed.substring(0, trimmed.indexOf('-')));
+            }
             if (alternativeLanguages != null) {
                 for (String alternative : alternativeLanguages) {
                     if (alternative != null && !alternative.isBlank()
-                            && !alternative.trim().equalsIgnoreCase(languageCode.trim())) {
+                            && !alternative.trim().equalsIgnoreCase(trimmed)) {
                         languages.add(alternative.trim());
                     }
                 }
             }
         }
+        java.util.List<String> promptParts = new java.util.ArrayList<>();
         if (hints != null && !hints.isEmpty()) {
-            transcription.put("prompt", String.join(", ", hints));
+            promptParts.addAll(hints);
+        }
+        if (languageCode != null && languageCode.toLowerCase().startsWith("uz")) {
+            promptParts.add("Suhbat o'zbek tilida: ha, ha shunday, eshitaman, alo, yo'q, albatta");
+        } else if (languageCode != null && languageCode.toLowerCase().startsWith("ru")) {
+            promptParts.add("Разговор на русском языке: да, алло, слушаю, конечно, нет");
+        }
+        if (!promptParts.isEmpty()) {
+            transcription.put("prompt", String.join(", ", promptParts));
         }
 
         if (externalEndpointing) {

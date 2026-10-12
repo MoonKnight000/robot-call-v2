@@ -151,15 +151,19 @@ public class YandexSttProvider implements SttProvider {
     private static Stt.StreamingRequest sessionOptions(String languageCode, List<String> alternativeLanguages,
                                                        YandexSttProperties y, boolean externalEndpointing,
                                                        String requestedModel) {
+        String primaryLang = normalizeLanguageCode(languageCode);
         Stt.LanguageRestrictionOptions.Builder languages = Stt.LanguageRestrictionOptions.newBuilder()
                 .setRestrictionType(Stt.LanguageRestrictionOptions.LanguageRestrictionType.WHITELIST)
-                .addLanguageCode(languageCode);
+                .addLanguageCode(primaryLang);
         boolean detecting = false;
         if (alternativeLanguages != null) {
             for (String alternative : alternativeLanguages) {
-                if (alternative != null && !alternative.isBlank() && !alternative.equalsIgnoreCase(languageCode)) {
-                    languages.addLanguageCode(alternative);
-                    detecting = true;
+                if (alternative != null && !alternative.isBlank()) {
+                    String norm = normalizeLanguageCode(alternative);
+                    if (!norm.equalsIgnoreCase(primaryLang)) {
+                        languages.addLanguageCode(norm);
+                        detecting = true;
+                    }
                 }
             }
         }
@@ -243,6 +247,19 @@ public class YandexSttProvider implements SttProvider {
             return clamped;
         }
         return hintMs;
+    }
+
+    static String normalizeLanguageCode(String code) {
+        if (code == null || code.isBlank()) {
+            return "uz-UZ";
+        }
+        String trimmed = code.trim();
+        String lower = trimmed.toLowerCase();
+        if ("uz".equals(lower)) return "uz-UZ";
+        if ("ru".equals(lower)) return "ru-RU";
+        if ("en".equals(lower)) return "en-US";
+        if ("kk".equals(lower)) return "kk-KZ";
+        return trimmed;
     }
 
     @PreDestroy

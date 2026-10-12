@@ -269,22 +269,30 @@ public class CallFinalizer implements CallFinalizationUseCase {
         CallSummary stored = agent != null && agent.dataPolicy().zeroPiiRetention()
                 ? summary.stripPersonalData(goalFieldOf(scenarioRow)) : summary;
 
-        // The note is queued with the result, in one transaction, and delivered from the outbox
-        // right after: a result never exists without its note queued, and a note the CRM
-        // refuses now is posted on a retry. A call with no CRM lead gets no note at all.
+        // CRM effects are queued with the result in one transaction. A call result can never
+        // exist without its follow-up writes being recoverable by the outbox worker.
         OutboxMessage crmNote = outboxDeliveryService.prepareCrmNote(companyId, callAttemptId, clientId, summary, recordingFileId);
-        Long crmNoteMessageId = null;
+        List<OutboxMessage> crmMessages = new java.util.ArrayList<>();
+        if (crmNote != null) {
+            crmMessages.add(crmNote);
+        }
+        OutboxMessage crmTask = outboxDeliveryService.prepareCrmTask(companyId, callAttemptId, clientId,
+                summary, disposition);
+        if (crmTask != null) {
+            crmMessages.add(crmTask);
+        }
+        OutboxMessage crmStage = outboxDeliveryService.prepareCrmLeadStage(companyId, callAttemptId, clientId,
+                summary, disposition);
+        if (crmStage != null) {
+            crmMessages.add(crmStage);
+        }
         try {
-            crmNoteMessageId = callRecordService.writeResult(companyId, callAttemptId, stored, escalated, crmNote);
+            List<Long> crmMessageIds = callRecordService.writeResult(companyId, callAttemptId, stored,
+                    escalated, crmMessages);
+            crmMessageIds.forEach(outboxDeliveryService::deliverNow);
         } catch (Exception e) {
             log.error("[{}] writeResult failed: {}", callAttemptId, e.getMessage());
         }
-        if (crmNoteMessageId != null) {
-            outboxDeliveryService.deliverNow(crmNoteMessageId);
-        }
-
-        outboxDeliveryService.scheduleCrmTaskIfActionable(companyId, clientId, summary, disposition);
-        outboxDeliveryService.syncLeadStageIfActionable(companyId, clientId, summary, disposition);
 
         memoryWriter.remember(callAttemptId, companyId, scenarioRow, disposition, stored);
 

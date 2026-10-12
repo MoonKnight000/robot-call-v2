@@ -211,7 +211,7 @@ class CallRecordServiceTest {
         CallSummary summary = new CallSummary("Mijoz 20-sentabrda to'laydi.", Map.of("reasonCode", " no_money ",
                 "promisedDate", "2026-09-20", "promisedAmount", 1500000), Sentiment.NEUTRAL, true, "Eslatish", null);
 
-        assertEquals(9L, service.writeResult(COMPANY_ID, CALL_ID, summary, true, note));
+        assertEquals(List.of(9L), service.writeResult(COMPANY_ID, CALL_ID, summary, true, List.of(note)));
 
         CallResult stored = storedResult();
         assertEquals(CALL_ID, stored.callId());
@@ -229,7 +229,7 @@ class CallRecordServiceTest {
         CallSummary summary = new CallSummary(null, Map.of("reasonCode", "MAYBE", "promisedDate", "ertaga",
                 "promisedAmount", "ko'p"), null, false, null, null);
 
-        assertNull(service.writeResult(COMPANY_ID, CALL_ID, summary, false, null));
+        assertEquals(List.of(), service.writeResult(COMPANY_ID, CALL_ID, summary, false, List.of()));
 
         CallResult stored = storedResult();
         assertEquals("", stored.summary());
@@ -247,7 +247,7 @@ class CallRecordServiceTest {
         CallSummary summary = new CallSummary("Mijoz rad etdi.", Map.of(), null, false, null, null);
 
         assertThrows(IllegalStateException.class,
-                () -> service.writeResult(COMPANY_ID, CALL_ID, summary, false, note));
+                () -> service.writeResult(COMPANY_ID, CALL_ID, summary, false, List.of(note)));
         verifyNoInteractions(outboxMessageRepository);
     }
 

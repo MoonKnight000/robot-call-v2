@@ -20,7 +20,7 @@ voice-agent:
     provider: ${REALTIME_PROVIDER:}
     facts-in-prompt: ${REALTIME_FACTS_IN_PROMPT:true}
     normalize-output-level: ${REALTIME_NORMALIZE_OUTPUT_LEVEL:true}
-    echo-gate-ratio: ${REALTIME_ECHO_GATE_RATIO:0.15}
+    echo-gate-ratio: ${REALTIME_ECHO_GATE_RATIO:0.25}
     # Below this bot output level (RMS) the bot is not really talking, so nothing counts as echo.
     echo-min-bot-level: ${REALTIME_ECHO_MIN_BOT_LEVEL:300}
     # A tool the engine called that has not answered in this long is reported to it as
@@ -29,13 +29,13 @@ voice-agent:
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
       url: ${REALTIME_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
-      model: ${GEMINI_LIVE_MODEL:gemini-3.8-live-extended-thinking}
+      model: ${GEMINI_LIVE_MODEL:gemini-3.8-live}
       voice: ${GEMINI_LIVE_VOICE:Aoede}
       connect-timeout-seconds: ${REALTIME_GEMINI_CONNECT_TIMEOUT_SECONDS:15}
-      start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:HIGH}
+      start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:LOW}
       end-of-speech-sensitivity: ${REALTIME_GEMINI_END_SENSITIVITY:}
-      prefix-padding-ms: ${REALTIME_GEMINI_PREFIX_PADDING_MS:0}
-      silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:0}
+      prefix-padding-ms: ${REALTIME_GEMINI_PREFIX_PADDING_MS:100}
+      silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:800}
       context-compression-trigger-tokens: ${REALTIME_GEMINI_CONTEXT_COMPRESSION_TOKENS:25600}
       # Tone-aware replies and ignoring audio not meant for the bot — GeminiLiveProperties.
       # Off until a call confirms the model accepts them: an unknown field fails the setup.

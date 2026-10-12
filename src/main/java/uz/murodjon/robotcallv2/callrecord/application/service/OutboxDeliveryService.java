@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageKind;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.config.OutboxProperties;
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -62,6 +63,11 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
     private static final String INBOUND = "inbound";
     private static final String ANSWERED = "answered";
     private static final String CLIENT_PHONE = "clientPhone";
+    private static final String TITLE = "title";
+    private static final String DESCRIPTION = "description";
+    private static final String DUE_AT = "dueAt";
+    private static final String STATUS_ID = "statusId";
+    private static final String REASON = "reason";
 
     /**
      * How long a claimed row stays hidden from other workers — far longer than a CRM request
@@ -136,60 +142,72 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
     }
 
     /**
-     * Automatically updates the lead's status/stage in the company's CRM based on call outcome.
+     * Queues the lead's status/stage update in the company's CRM based on call outcome.
      */
-    public void syncLeadStageIfActionable(long companyId, long leadId, CallSummary summary, Disposition disposition) {
-        if (leadId <= 0 || !crmUseCase.isConnected(companyId)) {
-            return;
+    public OutboxMessage prepareCrmLeadStage(long companyId, long callAttemptId, long leadId,
+                                             CallSummary summary, Disposition disposition) {
+        if (leadId <= 0 || summary == null || disposition == null) {
+            return null;
         }
-        try {
-            crmUseCase.syncLeadStage(companyId, leadId, summary, disposition);
-        } catch (Exception e) {
-            log.warn("Failed to sync CRM lead stage for lead {}: {}", leadId, e.getMessage());
+        UpdateLeadStageRequest request = crmUseCase.resolveLeadStageUpdate(companyId, leadId, summary, disposition);
+        if (request == null) {
+            return null;
         }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put(LEAD_ID, request.leadId());
+        payload.put(STATUS_ID, request.statusId());
+        payload.put(REASON, request.reason());
+        return OutboxMessage.pending(OutboxMessageKind.CRM_LEAD_STAGE, callAttemptId, payload);
     }
 
     /**
-     * Automatically creates a task or meeting in the company's CRM when a call achieves
-     * an actionable real-estate milestone: booking a showroom visit or securing a payment promise.
+     * Queues a task or meeting when a call achieves an actionable milestone: booking a showroom
+     * visit or securing a payment promise.
      */
-    public void scheduleCrmTaskIfActionable(long companyId, long leadId, CallSummary summary, Disposition disposition) {
-        if (leadId <= 0 || summary == null || !crmUseCase.isConnected(companyId)) {
-            return;
+    public OutboxMessage prepareCrmTask(long companyId, long callAttemptId, long leadId,
+                                        CallSummary summary, Disposition disposition) {
+        if (leadId <= 0 || summary == null || disposition == null || !crmUseCase.isConnected(companyId)) {
+            return null;
         }
-        try {
-            if (Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
-                String meetingTime = String.valueOf(summary.outcome().getOrDefault("meetingTime", "Yaqin orada"));
-                String rooms = String.valueOf(summary.outcome().getOrDefault("roomsNeeded", "Keltirilmagan"));
-                String budget = String.valueOf(summary.outcome().getOrDefault("budgetRange", "Keltirilmagan"));
-                String desc = "AI Call Center orqali sotuv ofisiga uchrashuv belgilandi.\n"
-                        + "Uchrashuv vaqti: " + meetingTime + "\n"
-                        + "Xonalar: " + rooms + "\n"
-                        + "Byudjet: " + budget;
-                crmUseCase.createTask(companyId, new CreateCrmTaskRequest(
-                        leadId,
-                        "Sotuv ofisiga uchrashuv (AI bot)",
-                        desc,
-                        Instant.now(clock).plus(Duration.ofDays(1)),
-                        null
-                ));
-            } else if (disposition == Disposition.PROMISE_TO_PAY || summary.outcome().containsKey("promisedDate")) {
-                String date = String.valueOf(summary.outcome().getOrDefault("promisedDate", "Yaqin kunlarda"));
-                String amount = String.valueOf(summary.outcome().getOrDefault("promisedAmount", "Ko'rsatilmagan"));
-                String desc = "AI Call Center orqali to'lov va'dasi olindi.\n"
-                        + "Va'da qilingan sana: " + date + "\n"
-                        + "Summa: " + amount;
-                crmUseCase.createTask(companyId, new CreateCrmTaskRequest(
-                        leadId,
-                        "To'lov va'dasi (AI bot)",
-                        desc,
-                        Instant.now(clock).plus(Duration.ofDays(1)),
-                        null
-                ));
-            }
-        } catch (Exception e) {
-            log.warn("Failed to schedule CRM task for lead {}: {}", leadId, e.getMessage());
+        CreateCrmTaskRequest request = taskForOutcome(callAttemptId, leadId, summary, disposition);
+        if (request == null) {
+            return null;
         }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put(LEAD_ID, request.leadId());
+        payload.put(TITLE, request.title());
+        payload.put(DESCRIPTION, request.description());
+        payload.put(DUE_AT, request.dueAt() != null ? request.dueAt().toString() : null);
+        payload.put("responsibleId", request.responsibleId());
+        return OutboxMessage.pending(OutboxMessageKind.CRM_TASK, callAttemptId, payload);
+    }
+
+    private CreateCrmTaskRequest taskForOutcome(long callAttemptId, long leadId, CallSummary summary,
+                                                 Disposition disposition) {
+        String title;
+        String description;
+        if (Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
+            String meetingTime = String.valueOf(summary.outcome().getOrDefault("meetingTime", "Yaqin orada"));
+            String rooms = String.valueOf(summary.outcome().getOrDefault("roomsNeeded", "Keltirilmagan"));
+            String budget = String.valueOf(summary.outcome().getOrDefault("budgetRange", "Keltirilmagan"));
+            title = "Sotuv ofisiga uchrashuv (AI bot)";
+            description = "AI Call Center orqali sotuv ofisiga uchrashuv belgilandi.\n"
+                    + "Uchrashuv vaqti: " + meetingTime + "\n"
+                    + "Xonalar: " + rooms + "\n"
+                    + "Byudjet: " + budget + "\n"
+                    + "Qo'ng'iroq ID: " + callAttemptId;
+        } else if (disposition == Disposition.PROMISE_TO_PAY || summary.outcome().containsKey("promisedDate")) {
+            String date = String.valueOf(summary.outcome().getOrDefault("promisedDate", "Yaqin kunlarda"));
+            String amount = String.valueOf(summary.outcome().getOrDefault("promisedAmount", "Ko'rsatilmagan"));
+            title = "To'lov va'dasi (AI bot)";
+            description = "AI Call Center orqali to'lov va'dasi olindi.\n"
+                    + "Va'da qilingan sana: " + date + "\n"
+                    + "Summa: " + amount + "\n"
+                    + "Qo'ng'iroq ID: " + callAttemptId;
+        } else {
+            return null;
+        }
+        return new CreateCrmTaskRequest(leadId, title, description, clock.instant().plus(Duration.ofDays(1)), null);
     }
 
     /**
@@ -295,6 +313,17 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
                         (String) payload.get("recordingUrl"));
                 yield accepted ? callUuid : null;
             }
+            case CRM_TASK -> {
+                String dueAt = (String) payload.get(DUE_AT);
+                Number responsibleId = (Number) payload.get("responsibleId");
+                yield crmUseCase.createTask(message.companyId(), new CreateCrmTaskRequest(leadId,
+                        (String) payload.get(TITLE), (String) payload.get(DESCRIPTION),
+                        dueAt != null ? Instant.parse(dueAt) : null,
+                        responsibleId != null ? responsibleId.longValue() : null));
+            }
+            case CRM_LEAD_STAGE -> crmUseCase.updateLeadStage(message.companyId(), new UpdateLeadStageRequest(
+                    leadId, ((Number) payload.get(STATUS_ID)).longValue(), (String) payload.get(REASON)))
+                    ? message.idempotencyKey() : null;
         };
     }
 
@@ -342,6 +371,8 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
         return switch (kind) {
             case CRM_NOTE -> "xulosasi";
             case CRM_CALL_HISTORY -> "qo'ng'iroqlar tarixidagi yozuvi";
+            case CRM_TASK -> "CRM vazifasi";
+            case CRM_LEAD_STAGE -> "CRM bosqich yangilanishi";
         };
     }
 }
