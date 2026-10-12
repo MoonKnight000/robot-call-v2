@@ -18,6 +18,9 @@ import java.util.*;
 @Service
 public class DashboardReportService implements DashboardReportUseCase {
 
+    private static final int DEFAULT_TOPIC_LIMIT = 20;
+    private static final int MAX_TOPIC_LIMIT = 100;
+
     private final DashboardReportRepository dashboardReportRepository;
     private final ReportMapper reportMapper;
     private final CompanyConfigUseCase companyConfigUseCase;
@@ -108,6 +111,28 @@ public class DashboardReportService implements DashboardReportUseCase {
     public List<FunnelStage> findFunnel(long companyId, String from, String to, Long campaignId) {
         DashboardRange range = findRange(companyId, from, to);
         return dashboardReportRepository.findFunnel(companyId, DashboardFilter.of(range, campaignId, null));
+    }
+
+    @Override
+    public List<StageFunnelStep> findStageFunnel(long companyId, String from, String to, long aiAgentId,
+                                                 Long campaignId) {
+        DashboardRange range = findRange(companyId, from, to);
+        return dashboardReportRepository.findStageFunnel(companyId, DashboardFilter.of(range, campaignId, null), aiAgentId);
+    }
+
+    @Override
+    public List<AgentCallTopic> findAgentCallTopics(long companyId, String from, String to, Long aiAgentId,
+                                                    Long campaignId, Integer limit) {
+        DashboardRange range = findRange(companyId, from, to);
+        int size = limit == null ? DEFAULT_TOPIC_LIMIT : Math.clamp(limit, 1, MAX_TOPIC_LIMIT);
+        return dashboardReportRepository.findAgentCallTopics(companyId, DashboardFilter.of(range, campaignId, null),
+                aiAgentId, size);
+    }
+
+    @Override
+    public List<CampaignDataQuality> findCampaignDataQuality(long companyId, String from, String to) {
+        DashboardRange range = findRange(companyId, from, to);
+        return dashboardReportRepository.findCampaignDataQuality(companyId, range.from(), range.to());
     }
 
     @Override

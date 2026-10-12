@@ -88,3 +88,15 @@ Authorization: Bearer {{token}}
 ### PREDICTIVE campaign: dialled, answered, to operator, AI overflow, abandoned
 GET {{host}}/api/reports/campaigns/1/predictive?from=2026-10-01&to=2026-10-07
 Authorization: Bearer {{token}}
+
+### Scenario stages: where the calls of agent 1 are lost
+GET {{host}}/api/reports/stage-funnel?aiAgentId=1&from=2026-10-01&to=2026-10-12
+Authorization: Bearer {{token}}
+
+### AI-agent calls: what they were about (post-call summary tags)
+GET {{host}}/api/reports/call-topics?from=2026-10-01&to=2026-10-12&limit=10
+Authorization: Bearer {{token}}
+
+### Campaign contact lists: wrong numbers and carrier rejections per campaign
+GET {{host}}/api/reports/data-quality?from=2026-10-01&to=2026-10-12
+Authorization: Bearer {{token}}

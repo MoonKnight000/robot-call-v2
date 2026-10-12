@@ -4,6 +4,8 @@ import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 
 import uz.murodjon.robotcallv2.voice.application.dto.SttPreviewResponse;
 
+import java.util.List;
+
 /**
  * Trying the speech vendors out before a campaign is created: hear a catalog voice speak a
  * line, or hear how a recognizer transcribes a recording.
@@ -24,6 +26,8 @@ public interface SpeechPreviewUseCase {
      *
      * @param provider provider id; {@code null}/blank uses the company's engine default
      * @param language BCP-47 language; {@code null}/blank uses the configured STT default
+     * @param alternativeLanguages other languages the recording may switch to; {@code null}/empty uses the configured {@code detect-languages}
      */
-    SttPreviewResponse previewStt(long companyId, UploadedFile file, String provider, String language);
+    SttPreviewResponse previewStt(long companyId, UploadedFile file, String provider, String language,
+                                   List<String> alternativeLanguages);
 }

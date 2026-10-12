@@ -11,3 +11,4 @@ Extract the fields below and return JSON in exactly the requested structure:
 - callbackAt: the date and time the client asked to be called back (ISO-8601 YYYY-MM-DDTHH:mm:ss, null if none).
 - qaScore: conversation quality and how well the bot followed the scenario (integer from 0 to 100).
 - commitmentScore: how committed the client is to paying or to the agreement (integer from 0 to 100).
+- topics: what the client called or talked about — 1 to 3 short lowercase tags in Uzbek, 2-4 words each, the same wording for the same subject across calls (e.g. "internet yo'q", "to'lov muddati", "narx so'radi"). [] when the call never got to a subject.

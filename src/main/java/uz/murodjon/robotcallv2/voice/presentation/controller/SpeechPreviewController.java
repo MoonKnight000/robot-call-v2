@@ -12,6 +12,8 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.voice.application.dto.PreviewVoiceRequest;
 import uz.murodjon.robotcallv2.voice.application.dto.SttPreviewResponse;
 
+import java.util.List;
+
 /**
  * Trying voices and recognizers out from the settings screen, without placing a call.
  */
@@ -33,6 +35,9 @@ public interface SpeechPreviewController {
      * The uploaded recording (WebM/Opus, MP4, WAV — anything ffmpeg reads) transcribed by
      * one STT provider. Runs at the recording's own pace,
      * so a 10-second file takes about 10 seconds to answer.
+     *
+     * <p>{@code alternativeLanguages} are the other languages the recognizer may hear in the same
+     * recording (Uzbek with Russian words in it); none given, the configured {@code detect-languages}.
      */
     @PreAuthorize("hasAuthority('VOICE_READ')")
     @PostMapping(value = "/stt/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -40,5 +45,6 @@ public interface SpeechPreviewController {
             @CurrentCompanyId long companyId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String provider,
-            @RequestParam(required = false) String language);
+            @RequestParam(required = false) String language,
+            @RequestParam(required = false) List<String> alternativeLanguages);
 }

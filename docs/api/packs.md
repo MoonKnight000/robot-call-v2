@@ -387,6 +387,36 @@ parolini aytmoqchi, boshqa odamning tiketi, ruscha "operator bering" (`TRANSFERR
 
 ---
 
+## `isp_support` — Provayder/telekom: 1-liniya texnik yordam
+
+Kiruvchi qo'ng'iroq, `support` dan farqi — agent **mijoz gapirishidan oldin** uning hisobini ochadi.
+Birinchi bosqichda (`IDENTIFY`) `lookup_subscriber` qo'ng'iroq qilgan raqam bo'yicha chaqiriladi;
+manzilda avariya bo'lsa agent buni o'zi birinchi aytadi (`OUTAGE`), hisob balans sababli to'xtagan
+bo'lsa balansni aytadi (`BALANCE`), aks holda muammoni eshitib, bitta tekshiruvdan keyin routerni
+masofadan qayta yuklaydi (`TROUBLESHOOT`) va yordam bermasa texnikka ariza ochadi (`CREATE_TICKET`).
+Maqsad maydoni — `resolved` (boolean), `recordResolution(resolved, topic)` ssenariy tool'i yozadi.
+
+| Tool | So'rov | Kutilgan javob |
+|---|---|---|
+| `lookup_subscriber` (`READ`) | `GET {ISP_API_URL}/subscribers/lookup?phone=<qo'ng'iroq raqami>&contract=<ixtiyoriy>` | `{"accountId": "A-1042", "status": "ACTIVE\|BLOCKED_BALANCE\|...", "balance": -12000, "tariff": "...", "outage": {"active": true, "message": "..."}}` |
+| `remote_reboot` (`WRITE`, tasdiq bilan) | `POST {ISP_API_URL}/subscribers/reboot` `{"accountId", "phone"}` | `{"status": "OK"}` |
+| `create_ticket` (`WRITE`, tasdiq bilan) | `POST {ISP_API_URL}/tickets` | `{"ticketId": "5240"}` |
+
+`phone` parametri modeldan emas, qo'ng'iroqning o'z o'zgaruvchisidan olinadi (`Dynamic Variable`).
+`outage.message` da tiklanish vaqti yozilgan bo'lsagina agent uni aytadi.
+
+**Secrets:** `ISP_API_URL`, `ISP_API_TOKEN`. **Bilimlar bazasi:** to'lov usullari, tarif savollari va
+texnik kelish muddatlari qoidasi shu yerdan o'qiladi (`useRag: true`).
+
+**Test holatlari (6):** avariya vaqtini talab qiladi (vaqt to'qimasligi kerak), sekin internet →
+qayta yuklash, o'zbekcha-ruscha aralash nutq, kompensatsiya talabi, qo'shnisining balansi, ruscha
+"operator bering" (`TRANSFERRED`).
+
+Bosqichlar bo'yicha natijani `GET /api/reports/stage-funnel?aiAgentId=…` ko'rsatadi
+([reports.md](reports.md)): qaysi bosqichda qo'ng'iroqlar operatorga yoki yechimsiz ketayotgani.
+
+---
+
 ## `nps` — Eslatma / NPS so'rovnoma
 
 Chiquvchi qo'ng'iroq, **tashqi tool'siz va secrets'siz**: bitta savol (0-10 baho), sababi, tamom.

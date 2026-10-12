@@ -97,7 +97,8 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
     }
 
     @Override
-    public SttPreviewResponse previewStt(long companyId, UploadedFile file, String providerName, String language) {
+    public SttPreviewResponse previewStt(long companyId, UploadedFile file, String providerName, String language,
+                                          List<String> alternativeLanguages) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException(ErrorCode.AUDIO_UPLOAD_FILE_MISSING);
         }
@@ -111,7 +112,9 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         String lang = (language == null || language.isBlank()) ? sttProperties.defaultLanguage() : language;
 
         TranscriptCollector collector = new TranscriptCollector();
-        List<String> alternatives = sttProperties.detectLanguages() == null ? List.of() : sttProperties.detectLanguages();
+        List<String> alternatives = (alternativeLanguages != null && !alternativeLanguages.isEmpty())
+                ? alternativeLanguages
+                : sttProperties.detectLanguages() == null ? List.of() : sttProperties.detectLanguages();
         SttSession session = provider.startStream(lang, alternatives, collector, false);
         try {
             stream(session, samples, provider.sampleRate());
@@ -123,7 +126,7 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
         } finally {
             closeQuietly(session);
         }
-        return new SttPreviewResponse(provider.name(), lang, collector.transcript(), audioMs);
+        return new SttPreviewResponse(provider.name(), lang, alternatives, collector.transcript(), audioMs);
     }
 
     private SttProvider resolveSttProvider(long companyId, String providerName) {

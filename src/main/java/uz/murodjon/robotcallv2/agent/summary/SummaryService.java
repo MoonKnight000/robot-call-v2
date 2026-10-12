@@ -53,12 +53,16 @@ public class SummaryService {
     private static final Logger log = LoggerFactory.getLogger(SummaryService.class);
 
     private static final Set<String> FIXED_FIELDS = Set.of(
-            "summary", "sentiment", "needsFollowUp", "followUpNote", "callbackAt", "qaScore", "commitmentScore");
+            "summary", "sentiment", "needsFollowUp", "followUpNote", "callbackAt", "qaScore", "commitmentScore", "topics");
 
     /** Where the per-criterion verdicts live, in the model's answer and in {@code outcome}. */
     private static final String EVALUATION_KEY = "evaluation";
     /** The {@code outcome} key listing {@code dataNeeded} values that never came back in their type. */
     private static final String EXTRACTION_ERRORS_KEY = "extractionErrors";
+    /** Where what the call was about lives, in the model's answer and in {@code outcome} — counted by the call-topics report. */
+    private static final String TOPICS_KEY = "topics";
+    private static final int MAX_TOPICS = 3;
+    private static final int MAX_TOPIC_CHARS = 60;
 
     private static final String SYSTEM_PROMPT_HEADER = PromptText.text("call-summary.txt");
 
@@ -273,6 +277,10 @@ public class SummaryService {
         Integer commitmentScore = integer(raw.get("commitmentScore"), 50);
 
         Map<String, Object> outcome = new HashMap<>();
+        List<String> topics = topicsOf(raw.get(TOPICS_KEY));
+        if (!topics.isEmpty()) {
+            outcome.put(TOPICS_KEY, topics);
+        }
         if (scenario != null) {
             List<OutcomeField> outcomeSchema = scenario.outcomeSchema();
             if (outcomeSchema != null) {
@@ -408,6 +416,28 @@ public class SummaryService {
 
     private static String str(Object value) {
         return value == null ? null : value.toString();
+    }
+
+    /**
+     * Lowercased, trimmed, without repeats and at most {@link #MAX_TOPICS} — the call-topics
+     * report counts calls per tag, and "Internet yo'q" and "internet yo'q " must be one.
+     */
+    private static List<String> topicsOf(Object value) {
+        if (!(value instanceof List<?> items)) {
+            return List.of();
+        }
+        Set<String> topics = new LinkedHashSet<>();
+        for (Object item : items) {
+            if (item == null || item.toString().isBlank()) {
+                continue;
+            }
+            String topic = item.toString().trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+            topics.add(topic.length() > MAX_TOPIC_CHARS ? topic.substring(0, MAX_TOPIC_CHARS) : topic);
+            if (topics.size() == MAX_TOPICS) {
+                break;
+            }
+        }
+        return List.copyOf(topics);
     }
 
     private static Integer integer(Object value, Integer fallback) {

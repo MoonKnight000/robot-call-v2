@@ -162,6 +162,35 @@ public interface ReportController {
             @RequestParam(required = false) String to,
             @RequestParam(required = false) Long campaignId);
 
+    /** Where one agent's calls are lost: per scenario stage, calls that reached it, ended in it unconverted, converted after it. */
+    @PreAuthorize("hasAuthority('REPORT_READ')")
+    @GetMapping("/stage-funnel")
+    ResponseEntity<ResponseData<List<StageFunnelStep>>> stageFunnel(
+            @CurrentCompanyId long companyId,
+            @RequestParam long aiAgentId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long campaignId);
+
+    /** What AI-agent calls were about, from the post-call summary's tags; most frequent first, {@code limit} 20 by default, 100 at most. */
+    @PreAuthorize("hasAuthority('REPORT_READ')")
+    @GetMapping("/call-topics")
+    ResponseEntity<ResponseData<List<AgentCallTopic>>> callTopics(
+            @CurrentCompanyId long companyId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Long aiAgentId,
+            @RequestParam(required = false) Long campaignId,
+            @RequestParam(required = false) Integer limit);
+
+    /** Per campaign: how much of its contact list was wrong (wrong person, number the carrier rejects); worst first. */
+    @PreAuthorize("hasAuthority('REPORT_READ')")
+    @GetMapping("/data-quality")
+    ResponseEntity<ResponseData<List<CampaignDataQuality>>> dataQuality(
+            @CurrentCompanyId long companyId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to);
+
     @PreAuthorize("hasAuthority('REPORT_READ')")
     @GetMapping("/export")
     ResponseEntity<byte[]> export(

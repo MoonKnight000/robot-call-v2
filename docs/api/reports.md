@@ -656,6 +656,101 @@ Huquq: **REPORT_READ**. Query: `from`, `to`, `campaignId`, `scenarioId`, `operat
 
 ---
 
+### `GET /api/reports/stage-funnel` — Ssenariy bosqichlari voronkasi
+
+Bitta agentning qo'ng'iroqlari ssenariyning qaysi bosqichida yo'qolayotganini ko'rsatadi. Har bir transkript
+qatori o'zi aytilgan bosqichni saqlaydi (`call_transcript.dialog_state`), shuning uchun yo'l shu
+qatorlardan tiklanadi; qo'ng'iroqning oxirgi qatori qaysi bosqichda bo'lsa, qo'ng'iroq o'sha yerda
+tugagan hisoblanadi. Huquq: `REPORT_READ`.
+
+| Parametr | Majburiy | Izoh |
+|---|---|---|
+| `aiAgentId` | ha | Qo'ng'iroqni olib borgan agent (`call_attempt.ai_agent_id`). Bosqich id'lari ssenariyga xos, shuning uchun bitta agent bo'yicha. `scenarioId` emas, chunki o'rnatilgan paket kabi ichki ssenariyli agentning ssenariy qatori yo'q |
+| `from`, `to` | yo'q | Boshqa hisobotlardagi davr qoidasi bilan bir xil |
+| `campaignId` | yo'q | Faqat shu kampaniya qo'ng'iroqlari |
+
+Javob — `ResponseData<StageFunnelStep[]>`, `reachedCalls` bo'yicha kamayish tartibida:
+
+```json
+[
+  { "stage": "GREETING",  "reachedCalls": 420, "droppedCalls": 35, "convertedCalls": 96, "conversionRate": 0.2286 },
+  { "stage": "OBJECTION", "reachedCalls": 180, "droppedCalls": 71, "convertedCalls": 40, "conversionRate": 0.2222 }
+]
+```
+
+| Maydon | Ma'nosi |
+|---|---|
+| `stage` | Ssenariydagi `StageDef.id` |
+| `reachedCalls` | Shu bosqichda kamida bitta replika aytilgan qo'ng'iroqlar |
+| `droppedCalls` | Oxirgi replikasi shu bosqichda bo'lgan va konversiyasiz tugagan qo'ng'iroqlar — "shu yerda yo'qotildi" |
+| `convertedCalls` | Shu bosqichga yetib, konversiya bilan tugagan qo'ng'iroqlar (`Disposition.isConversion`) |
+| `conversionRate` | `convertedCalls / reachedCalls` (0..1) |
+
+Bosqich tartibini frontend ssenariy ta'rifidan (`stages`) oladi; bu endpoint faqat raqamlarni beradi.
+
+---
+
+### `GET /api/reports/call-topics` — AI qo'ng'iroqlari nima haqida bo'lgan
+
+Mijozlar AI agentga **nima uchun** qo'ng'iroq qilayotgani (yoki chiquvchi qo'ng'iroqda nima haqida
+gapirgani). Har bir AI qo'ng'iroqdan keyin xulosa modeli 1–3 ta qisqa teg yozadi
+(`call_result.outcome.topics`, masalan `"internet yo'q"`, `"to'lov muddati"`); bu endpoint ularni sanaydi.
+Operator qo'ng'iroqlari uchun — `GET /api/reports/quality/topics`. Huquq: `REPORT_READ`.
+
+| Parametr | Majburiy | Izoh |
+|---|---|---|
+| `from`, `to` | yo'q | Boshqa hisobotlardagi davr qoidasi bilan bir xil |
+| `aiAgentId` | yo'q | Faqat shu agent olib borgan qo'ng'iroqlar |
+| `campaignId` | yo'q | Faqat shu kampaniya qo'ng'iroqlari |
+| `limit` | yo'q | Standart 20, ko'pi bilan 100 |
+
+Javob — `ResponseData<AgentCallTopic[]>`, `calls` bo'yicha kamayish tartibida:
+
+```json
+[
+  { "topic": "internet yo'q", "calls": 312, "convertedCalls": 240, "escalatedCalls": 41 },
+  { "topic": "balans", "calls": 118, "convertedCalls": 110, "escalatedCalls": 3 }
+]
+```
+
+| Maydon | Ma'nosi |
+|---|---|
+| `topic` | Teg, kichik harflarda |
+| `calls` | Shu teg qo'yilgan qo'ng'iroqlar (bitta qo'ng'iroq 3 tagacha tegda sanaladi) |
+| `convertedCalls` | Ulardan konversiya bilan tugaganlari (`Disposition.isConversion`) |
+| `escalatedCalls` | Ulardan operatorga o'tkazilganlari — avtomatlashtirishga birinchi nomzodlar |
+
+Teglar faqat shu o'zgarishdan keyin xulosa qilingan qo'ng'iroqlarda bor; eski qo'ng'iroqlar sanalmaydi.
+`zeroPiiRetention` yoqilgan agentning qo'ng'iroqlarida teglar saqlanmaydi (model yozgan matn).
+
+---
+
+### `GET /api/reports/data-quality` — Kontakt ro'yxatlari sifati
+
+Har bir kampaniyaning ro'yxatida qancha raqam **noto'g'ri** chiqqani. Bitta target qancha marta terilgan
+bo'lsa ham bir marta sanaladi. Yuqori `badDataRate` — CRM yoki CSV'dagi raqamlar eskirgan: bunday
+ro'yxatni qayta qo'ng'iroq qilishdan oldin tozalash kerak. Huquq: `REPORT_READ`.
+
+Parametrlar: `from`, `to` (boshqa hisobotlar bilan bir xil). Javob — `ResponseData<CampaignDataQuality[]>`,
+eng yomon ro'yxat birinchi:
+
+```json
+[
+  { "campaignId": 7, "campaignName": "Oktyabr qarzdorlar", "dialledTargets": 1200, "wrongNumberTargets": 96,
+    "carrierRejectedTargets": 54, "neverAnsweredTargets": 310, "badDataRate": 0.125 }
+]
+```
+
+| Maydon | Ma'nosi |
+|---|---|
+| `dialledTargets` | Davrda kamida bir marta terilgan targetlar |
+| `wrongNumberTargets` | Mijoz emas, boshqa odam javob bergan (`WRONG_NUMBER`) |
+| `carrierRejectedTargets` | Operator raqamni qabul qilmagan (`CARRIER_REJECTED`) — odatda mavjud bo'lmagan yoki buzuq raqam |
+| `neverAnsweredTargets` | Birorta urinishiga javob berilmagan — ma'lumot xatosi emas, lekin raqam eskirganiga ishora bo'lishi mumkin |
+| `badDataRate` | `(wrongNumberTargets + carrierRejectedTargets) / dialledTargets` (0..1) |
+
+---
+
 ### `GET /api/reports/export` — Umumiy hisobotni faylga chiqarish
 
 ---

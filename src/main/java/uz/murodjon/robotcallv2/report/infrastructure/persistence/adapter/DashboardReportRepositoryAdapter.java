@@ -312,6 +312,101 @@ public class DashboardReportRepositoryAdapter implements DashboardReportReposito
                 .single();
     }
 
+    /**
+     * Every transcript line carries the stage it was spoken in, so a call's path through the
+     * scenario is read back from its lines; the stage of its last line is where it ended.
+     */
+    @Override
+    public List<StageFunnelStep> findStageFunnel(long companyId, DashboardFilter filter, long aiAgentId) {
+        return buildDashboardQuery("""
+                        SELECT tr.dialog_state AS stage,
+                               count(DISTINCT a.id) AS reached,
+                               count(DISTINCT a.id) FILTER (WHERE tr.seq = last_line.seq
+                                   AND (a.disposition IS NULL OR a.disposition NOT IN (:successDispositions))) AS dropped,
+                               count(DISTINCT a.id) FILTER (WHERE a.disposition IN (:successDispositions)) AS converted
+                        """ + DASHBOARD_FROM + """
+                        JOIN call_transcript tr ON tr.call_id = a.id
+                        JOIN LATERAL (SELECT max(x.seq) AS seq FROM call_transcript x WHERE x.call_id = a.id) last_line ON true
+                        """, companyId, filter)
+                .where("a.ai_agent_id = :aiAgentId", "aiAgentId", aiAgentId)
+                .where("tr.dialog_state IS NOT NULL")
+                .append("GROUP BY tr.dialog_state ORDER BY reached DESC, stage")
+                .bind("successDispositions", SUCCESS_DISPOSITIONS)
+                .prepare(jdbc)
+                .query((rs, n) -> {
+                    long reached = rs.getLong("reached");
+                    long converted = rs.getLong("converted");
+                    return new StageFunnelStep(rs.getString("stage"), reached, rs.getLong("dropped"), converted,
+                            rate(converted, reached));
+                })
+                .list();
+    }
+
+    /** The post-call summary tags each call it summarized ({@code call_result.outcome.topics}); untagged calls are not counted. */
+    @Override
+    public List<AgentCallTopic> findAgentCallTopics(long companyId, DashboardFilter filter, Long aiAgentId, int limit) {
+        SqlStatement statement = buildDashboardQuery("""
+                SELECT topic.value AS topic,
+                       count(*) AS calls,
+                       count(*) FILTER (WHERE a.disposition IN (:successDispositions)) AS converted,
+                       count(*) FILTER (WHERE r.escalated) AS escalated
+                """ + DASHBOARD_FROM + """
+                JOIN call_result r ON r.call_id = a.id
+                CROSS JOIN LATERAL jsonb_array_elements_text(
+                    CASE WHEN jsonb_typeof(r.outcome -> 'topics') = 'array' THEN r.outcome -> 'topics' END) topic
+                """, companyId, filter);
+        if (aiAgentId != null) {
+            statement.where("a.ai_agent_id = :aiAgentId", "aiAgentId", aiAgentId);
+        }
+        return statement.append("GROUP BY topic.value ORDER BY calls DESC, topic.value LIMIT :limit")
+                .bind("successDispositions", SUCCESS_DISPOSITIONS)
+                .bind("limit", limit)
+                .prepare(jdbc)
+                .query((rs, n) -> new AgentCallTopic(rs.getString("topic"), rs.getLong("calls"),
+                        rs.getLong("converted"), rs.getLong("escalated")))
+                .list();
+    }
+
+    /** Each target is first folded over its attempts, so a retried number counts once. */
+    @Override
+    public List<CampaignDataQuality> findCampaignDataQuality(long companyId, Instant from, Instant to) {
+        return jdbc.sql("""
+                        WITH per_target AS (
+                            SELECT t.campaign_id,
+                                   bool_or(a.disposition = :wrongNumber) AS wrong_number,
+                                   bool_or(a.disposition = :carrierRejected) AS carrier_rejected,
+                                   bool_and(a.answered_at IS NULL) AS never_answered
+                            FROM call_attempt a
+                            JOIN campaign_target t ON t.id = a.target_id
+                            WHERE a.company_id = :companyId AND a.started_at >= :from AND a.started_at < :to
+                            GROUP BY t.campaign_id, a.target_id
+                        )
+                        SELECT c.id AS campaign_id, c.name AS campaign_name,
+                               count(*) AS dialled,
+                               count(*) FILTER (WHERE p.wrong_number) AS wrong_number,
+                               count(*) FILTER (WHERE p.carrier_rejected) AS carrier_rejected,
+                               count(*) FILTER (WHERE p.never_answered) AS never_answered
+                        FROM per_target p
+                        JOIN campaign c ON c.id = p.campaign_id
+                        GROUP BY c.id, c.name
+                        ORDER BY (count(*) FILTER (WHERE p.wrong_number OR p.carrier_rejected))::float / count(*) DESC, c.id
+                        """)
+                .param("companyId", companyId)
+                .param("from", toTimestamptz(from))
+                .param("to", toTimestamptz(to))
+                .param("wrongNumber", Disposition.WRONG_NUMBER.name())
+                .param("carrierRejected", Disposition.CARRIER_REJECTED.name())
+                .query((rs, n) -> {
+                    long dialled = rs.getLong("dialled");
+                    long wrongNumber = rs.getLong("wrong_number");
+                    long carrierRejected = rs.getLong("carrier_rejected");
+                    return new CampaignDataQuality(rs.getLong("campaign_id"), rs.getString("campaign_name"), dialled,
+                            wrongNumber, carrierRejected, rs.getLong("never_answered"),
+                            rate(wrongNumber + carrierRejected, dialled));
+                })
+                .list();
+    }
+
     @Override
     public DashboardAggregates findDashboardAggregates(long companyId, DashboardFilter filter) {
         return buildDashboardQuery("""

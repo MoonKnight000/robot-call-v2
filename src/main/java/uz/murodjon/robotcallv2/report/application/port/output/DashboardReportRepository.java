@@ -35,6 +35,19 @@ public interface DashboardReportRepository {
 
     List<FunnelStage> findFunnel(long companyId, DashboardFilter filter);
 
+    /**
+     * Per stage of the scenario agent {@code aiAgentId} speaks: calls that reached it, were lost in
+     * it and converted after it; most reached first. By the agent the call ran rather than by a
+     * scenario row, because an agent speaking its own embedded scenario (an installed pack) has none.
+     */
+    List<StageFunnelStep> findStageFunnel(long companyId, DashboardFilter filter, long aiAgentId);
+
+    /** What AI-agent calls were about, most frequent first, at most {@code limit}; one agent's when {@code aiAgentId} is set. */
+    List<AgentCallTopic> findAgentCallTopics(long companyId, DashboardFilter filter, Long aiAgentId, int limit);
+
+    /** Per campaign with calls in {@code [from, to)}: how much of its contact list was wrong; worst first. */
+    List<CampaignDataQuality> findCampaignDataQuality(long companyId, Instant from, Instant to);
+
     DashboardAggregates findDashboardAggregates(long companyId, DashboardFilter filter);
 
     List<DashboardTimelineBucket> findDashboardTimelineBuckets(long companyId, DashboardFilter filter,

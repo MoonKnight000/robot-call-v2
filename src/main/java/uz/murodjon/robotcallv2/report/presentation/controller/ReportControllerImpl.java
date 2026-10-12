@@ -135,6 +135,25 @@ public class ReportControllerImpl implements ReportController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<List<StageFunnelStep>>> stageFunnel(long companyId, long aiAgentId, String from,
+                                                                          String to, Long campaignId) {
+        return ResponseEntity.ok(ResponseData.ok(
+                dashboardReportUseCase.findStageFunnel(companyId, from, to, aiAgentId, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<AgentCallTopic>>> callTopics(long companyId, String from, String to,
+                                                                        Long aiAgentId, Long campaignId, Integer limit) {
+        return ResponseEntity.ok(ResponseData.ok(
+                dashboardReportUseCase.findAgentCallTopics(companyId, from, to, aiAgentId, campaignId, limit)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<CampaignDataQuality>>> dataQuality(long companyId, String from, String to) {
+        return ResponseEntity.ok(ResponseData.ok(dashboardReportUseCase.findCampaignDataQuality(companyId, from, to)));
+    }
+
+    @Override
     public ResponseEntity<byte[]> export(long companyId, String format, String from, String to, Long campaignId) {
         return reportDownloadResponseFactory.toResponse(
                 reportExportUseCase.exportSummary(companyId, format, from, to, campaignId));

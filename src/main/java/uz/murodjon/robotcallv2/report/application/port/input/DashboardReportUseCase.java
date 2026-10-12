@@ -31,6 +31,13 @@ public interface DashboardReportUseCase {
 
     List<FunnelStage> findFunnel(long companyId, String from, String to, Long campaignId);
 
+    List<StageFunnelStep> findStageFunnel(long companyId, String from, String to, long aiAgentId, Long campaignId);
+
+    List<AgentCallTopic> findAgentCallTopics(long companyId, String from, String to, Long aiAgentId, Long campaignId,
+                                             Integer limit);
+
+    List<CampaignDataQuality> findCampaignDataQuality(long companyId, String from, String to);
+
     ReportSummary findSummary(long companyId, String from, String to, Long campaignId);
 
     DashboardSummaryResponse findDashboardSummary(long companyId, String range, String from, String to,

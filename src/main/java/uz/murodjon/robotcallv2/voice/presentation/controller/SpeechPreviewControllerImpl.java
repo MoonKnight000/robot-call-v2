@@ -13,6 +13,8 @@ import uz.murodjon.robotcallv2.voice.application.dto.PreviewVoiceRequest;
 import uz.murodjon.robotcallv2.voice.application.dto.SttPreviewResponse;
 import uz.murodjon.robotcallv2.voice.application.port.input.SpeechPreviewUseCase;
 
+import java.util.List;
+
 @RestController
 public class SpeechPreviewControllerImpl implements SpeechPreviewController {
 
@@ -32,8 +34,9 @@ public class SpeechPreviewControllerImpl implements SpeechPreviewController {
 
     @Override
     public ResponseEntity<ResponseData<SttPreviewResponse>> previewStt(long companyId, MultipartFile file,
-                                                                        String provider, String language) {
+                                                                        String provider, String language,
+                                                                        List<String> alternativeLanguages) {
         return ResponseEntity.ok(ResponseData.ok(
-                speechPreviewUseCase.previewStt(companyId, UploadedFile.from(file), provider, language)));
+                speechPreviewUseCase.previewStt(companyId, UploadedFile.from(file), provider, language, alternativeLanguages)));
     }
 }
