@@ -38,6 +38,7 @@ public class DialerState implements DialerSlotUseCase {
     private static final String TOTAL_KEY = "dialer:active";
     private static final String COMPANY_KEY_PREFIX = "dialer:active:company:";
     private static final String CAMPAIGN_KEY_PREFIX = "dialer:active:campaign:";
+    private static final String TRUNK_KEY_PREFIX = "dialer:active:trunk:";
 
     private static final Duration TTL = Duration.ofHours(6);
     private static final Duration DAILY_TTL = Duration.ofDays(2);
@@ -166,6 +167,25 @@ public class DialerState implements DialerSlotUseCase {
         increment(campaignKey(campaignId));
     }
 
+    /** Calls dispatched over this SIP trunk right now — what its maxChannels is measured against. */
+    public int countActiveForTrunk(long sipTrunkId) {
+        return count(trunkKey(sipTrunkId));
+    }
+
+    /** Counts a call against its trunk; a null trunk (the platform's, or chosen later) is not counted. */
+    public void reserveTrunk(Long sipTrunkId) {
+        if (sipTrunkId != null) {
+            increment(trunkKey(sipTrunkId));
+        }
+    }
+
+    @Override
+    public void releaseTrunk(Long sipTrunkId) {
+        if (sipTrunkId != null) {
+            decrement(trunkKey(sipTrunkId));
+        }
+    }
+
     @Override
     public void release(long companyId, long campaignId) {
         localTotal.updateAndGet(n -> n > 0 ? n - 1 : 0);
@@ -219,6 +239,10 @@ public class DialerState implements DialerSlotUseCase {
 
     private static String campaignKey(long campaignId) {
         return CAMPAIGN_KEY_PREFIX + campaignId;
+    }
+
+    private static String trunkKey(long sipTrunkId) {
+        return TRUNK_KEY_PREFIX + sipTrunkId;
     }
 
     public void countDispatch(long campaignId, LocalDate day) {

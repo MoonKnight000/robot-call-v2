@@ -167,10 +167,10 @@ public class SecurityConfig {
                     // tenant API key used to be able to read them (an API key can never hold
                     // PLATFORM_ADMIN: ApiKeyScopes).
                     auth.requestMatchers("/actuator/**").hasAuthority("PLATFORM_ADMIN");
-                    // Logging in, activating an invite, refreshing an expired access token, or
-                    // recovering a forgotten password all happen without a currently-valid
-                    // Bearer token.
-                    auth.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/activate",
+                    // Signing up, logging in, activating an invite, refreshing an expired access
+                    // token, or recovering a forgotten password all happen without a
+                    // currently-valid Bearer token.
+                    auth.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/activate",
                             "/api/auth/refresh", "/api/auth/uysot/callback", "/api/auth/forgot-password",
                             "/api/auth/reset-password").permitAll();
                     // The Uysot CRM OAuth redirect (§11 integrations) lands here straight from
@@ -186,6 +186,9 @@ public class SecurityConfig {
                     // allowed-origins list on the widget row is what stops that key being
                     // useful from another site; the agent's own daily and concurrent limits
                     // cap what a leaked key can spend (AgentWidgetService, WidgetCallGate).
+                    // The login page shows a partner's brand before anyone has logged in; it
+                    // reveals only what that page displays anyway (PartnerController).
+                    auth.requestMatchers(HttpMethod.GET, "/api/public/branding").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/api/public/widgets/*/config").permitAll();
                     auth.requestMatchers(HttpMethod.POST, "/api/public/widgets/*/session").permitAll();
                     // The same widget's text channel (UNIVERSAL-OPERATOR-PLAN E.4). Open for the

@@ -1,3 +1,14 @@
+### Signup (needs SIGNUP_ENABLED=true; the activation link is mailed)
+POST http://localhost:8080/api/auth/signup
+Content-Type: application/json
+
+{
+  "companyName": "Test kompaniya",
+  "name": "Ali Valiyev",
+  "username": "ali",
+  "email": "ali@example.com"
+}
+
 ### Login
 POST http://localhost:8080/api/auth/login
 Content-Type: application/json

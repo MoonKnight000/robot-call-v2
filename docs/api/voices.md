@@ -99,6 +99,7 @@ standart ovozida gapiradi (`RealtimeDialogEngine.voiceFor`).
 | `name` | provayder tomonidagi ovoz nomi (sintez so'roviga yuboriladi) |
 | `label` | UI'da ko'rsatiladigan inson-o'qiy oladigan nom |
 | `role` | ovozning boshlang'ich gapirish uslubi / roli |
+| `companyId` | `null` — umumiy katalog ovozi; son — shu kompaniyaning klonlangan ovozi (faqat o'sha kompaniyaga ko'rinadi) |
 
 `REALTIME` rejimidagi kompaniya uchun xuddi shu endpoint engine ovozlarini
 qaytaradi (`R__seed_data.sql` bilan seed qilinadi):
@@ -117,6 +118,55 @@ Kampaniya ovozni ikkala rejimda ham bir xil tanlaydi: `campaign.ttsVoice` —
 standart, `campaign_language_voice` — til bo'yicha ustuvor (`campaigns.md`).
 Ya'ni bitta kampaniya `uz-UZ` uchun `Aoede`, `ru-RU` uchun `Puck` bilan
 gapirishi mumkin.
+
+---
+
+## `POST /api/tts/voices/clone` — kompaniyaning o'z ovozini klonlash
+
+**Rol:** `VOICE_EDIT`. `multipart/form-data`. Eng yaxshi operatorning yoki brend ovozini 1–5 ta yozuvdan
+klonlaydi (ElevenLabs instant voice cloning). Yangi ovoz faqat shu kompaniyaga ko'rinadi va agentda
+boshqa ovozlar kabi `id` si bilan tanlanadi (`CASCADE` / ElevenLabs).
+
+| Maydon | Turi | Majburiy | Izoh |
+|---|---|---|---|
+| `name` | string (≤100) | ✅ | Agent formasida ko'rinadigan nom |
+| `language` | string | ✅ | `uz-UZ`, `ru-RU` ko'rinishida — ovoz shu tildagi qo'ng'iroqlarda ishlatiladi |
+| `consent` | boolean | ✅ | `true` bo'lishi shart: ovoz egasi klonlashga rozi. Audit jurnaliga yoziladi |
+| `files` | fayl (1–5) | ✅ | Bitta odamning toza yozuvlari (`audio/*`: mp3, wav, m4a). Jami so'rov ≤ 5 MB; 1–2 daqiqa ovoz yetarli |
+
+```bash
+curl -X POST $BASE/api/tts/voices/clone -H "Authorization: Bearer $TOKEN" \
+  -F name="Dilnoza — call-markaz" -F language=uz-UZ -F consent=true \
+  -F files=@dilnoza-1.mp3 -F files=@dilnoza-2.mp3
+```
+
+**Response** — `TtsVoice`:
+
+```json
+{ "data": { "id": "clone-7-abc123xyz", "provider": "elevenlabs", "language": "uz-UZ", "name": "AbC123xyz", "label": "Dilnoza — call-markaz", "role": null, "companyId": 7 } }
+```
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 400 | `VOICE_CLONE_CONSENT_REQUIRED` | `consent` `true` emas |
+| 400 | `AUDIO_UPLOAD_FILE_MISSING` | fayl yo'q yoki bo'sh |
+| 400 | `VOICE_CLONE_TOO_MANY_SAMPLES` | 5 tadan ko'p fayl |
+| 400 | `VOICE_CLONE_SAMPLE_NOT_AUDIO` | fayl audio emas |
+| 400 | `VALIDATION_FAILED` | `name` / `language` noto'g'ri |
+| 409 | `VOICE_CLONE_UNAVAILABLE` | serverda `ELEVENLABS_API_KEY` sozlanmagan |
+| 409 | `VOICE_CLONE_LIMIT_REACHED` | kompaniyada allaqachon 5 ta klon bor |
+| 502 | `VOICE_CLONE_FAILED` | ElevenLabs rad etdi yoki javob bermadi |
+
+Klonlar ElevenLabs ovoz sinxronizatsiyasiga (`TtsVoiceSyncScheduler`) tushmaydi — aks holda boshqa
+kompaniyalarga ham ko'rinib qolardi.
+
+## `DELETE /api/tts/voices/{id}` — klonni o'chirish
+
+**Rol:** `VOICE_EDIT`. Faqat o'z kompaniyasining klonini o'chiradi: ElevenLabs'dan o'chiriladi, katalogda
+o'chiriladi (`active=false`; qator qoladi — agentlar va eski qo'ng'iroqlar id'ga ishora qiladi).
+Umumiy katalog ovozi yoki boshqa kompaniyaning kloni — `404 TTS_VOICE_NOT_FOUND`. **Avval shu ovozdagi
+agentlarni boshqa ovozga o'tkazing** — aks holda ularning qo'ng'iroqlari TTS fallback provayderiga
+(sozlangan bo'lsa) o'tadi.
 
 ---
 

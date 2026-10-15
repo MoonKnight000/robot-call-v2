@@ -42,7 +42,7 @@ public class SipTrunkBootstrap {
         }
         String callerId = asterisk.callerId() == null || asterisk.callerId().isBlank() ? null : asterisk.callerId();
         long id = sipTrunkRepository.create(companyId, "Default", asterisk.trunkEndpoint(), callerId, true,
-                null, 5060, null, null, SipTrunkTransport.UDP, List.of("alaw", "ulaw"), null);
+                null, 5060, null, null, SipTrunkTransport.UDP, List.of("alaw", "ulaw"), null, null);
         log.info("Seeded default SIP trunk {} (endpoint '{}') from voice-agent.asterisk.trunk-endpoint",
                 id, asterisk.trunkEndpoint());
     }

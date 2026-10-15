@@ -139,6 +139,8 @@ public class ElevenLabsTtsProvider implements TtsProvider {
      * The account's voices ({@code GET /v2/voices}): the premade ones plus whatever was added
      * from the Voice Library. Every one is offered for every language — v4 speaks 90+ of them
      * with any voice and puts the accent on by itself — so {@code languages} is left empty.
+     * Cloned voices are left out: each belongs to the one company that made it
+     * (VoiceCloneService), and listing it here would file it as a voice for everyone.
      */
     @Override
     public List<ProviderVoice> listVoices() {
@@ -167,7 +169,7 @@ public class ElevenLabsTtsProvider implements TtsProvider {
                 JsonNode root = objectMapper.readTree(response.body());
                 for (JsonNode voice : root.path("voices")) {
                     String id = voice.path("voice_id").asText("");
-                    if (!id.isBlank()) {
+                    if (!id.isBlank() && !"cloned".equals(voice.path("category").asText(""))) {
                         voices.add(new ProviderVoice(id, label(voice), Set.of()));
                     }
                 }

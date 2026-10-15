@@ -59,6 +59,9 @@ public class SipTrunkEntity {
     @Column(name = "max_cps")
     private Integer maxCps;
 
+    @Column(name = "max_channels")
+    private Integer maxChannels;
+
     @Column(name = "is_default", nullable = false)
     private boolean isDefault;
 
@@ -166,6 +169,16 @@ public class SipTrunkEntity {
 
     public void setMaxCps(Integer maxCps) {
         this.maxCps = maxCps;
+    }
+
+
+    public Integer getMaxChannels() {
+        return maxChannels;
+    }
+
+
+    public void setMaxChannels(Integer maxChannels) {
+        this.maxChannels = maxChannels;
     }
 
     public boolean isDefault() {

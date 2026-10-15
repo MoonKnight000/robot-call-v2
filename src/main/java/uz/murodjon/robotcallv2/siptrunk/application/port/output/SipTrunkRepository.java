@@ -11,7 +11,7 @@ public interface SipTrunkRepository {
 
     long create(long companyId, String name, String pjsipEndpoint, String callerId, boolean makeDefault,
                 String host, int port, String sipUsername, String sipPasswordEnc,
-                SipTrunkTransport transport, List<String> codecs, Integer maxCps);
+                SipTrunkTransport transport, List<String> codecs, Integer maxCps, Integer maxChannels);
 
     SipTrunk find(long companyId, long id);
 
@@ -19,7 +19,7 @@ public interface SipTrunkRepository {
 
     void update(long companyId, long id, String name, String pjsipEndpoint, String callerId, boolean enabled,
                 String host, int port, String sipUsername, String sipPasswordEnc,
-                SipTrunkTransport transport, List<String> codecs, Integer maxCps);
+                SipTrunkTransport transport, List<String> codecs, Integer maxCps, Integer maxChannels);
 
     void updatePjsipEndpoint(long companyId, long id, String pjsipEndpoint);
 

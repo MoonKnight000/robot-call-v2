@@ -21,6 +21,15 @@ public interface TtsVoiceRepository {
 
     List<String> findIds();
 
+    /** A company's cloned voices still switched on — what counts against its clone limit. */
+    long countActiveByCompanyId(long companyId);
+
+    /** Files a new voice, switched on and not synced (a later sync never switches it off). */
+    void create(TtsVoice voice);
+
+    /** Switches the voice off; the row stays, since agents and past calls still name it. */
+    void deactivate(String id);
+
     /**
      * Files {@code voices} as {@code provider}'s synced voices: each is inserted or refreshed
      * and switched on, and every earlier synced voice of that provider missing from the list

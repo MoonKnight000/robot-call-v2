@@ -23,6 +23,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.application.port.input.DialerSlotUseCase;
+import uz.murodjon.robotcallv2.dialer.application.port.input.TrunkCapacityUseCase;
 import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
 import uz.murodjon.robotcallv2.dialer.application.port.input.TrunkHealthUseCase;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
@@ -68,6 +69,7 @@ class CallTeardownService {
     private final OutboundCallTrackingUseCase outboundCallTrackingUseCase;
     private final DialerSlotUseCase dialerSlotUseCase;
     private final TrunkHealthUseCase trunkHealthUseCase;
+    private final TrunkCapacityUseCase trunkCapacityUseCase;
     private final DoNotCallUseCase doNotCallUseCase;
     private final CallFinalizationUseCase callFinalizationUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
@@ -92,6 +94,7 @@ class CallTeardownService {
                         OutboundCallTrackingUseCase outboundCallTrackingUseCase,
                         DialerSlotUseCase dialerSlotUseCase,
                         TrunkHealthUseCase trunkHealthUseCase,
+                        TrunkCapacityUseCase trunkCapacityUseCase,
                         DoNotCallUseCase doNotCallUseCase,
                         CallFinalizationUseCase callFinalizationUseCase,
                         CampaignTargetUseCase campaignTargetUseCase,
@@ -114,6 +117,7 @@ class CallTeardownService {
         this.outboundCallTrackingUseCase = outboundCallTrackingUseCase;
         this.dialerSlotUseCase = dialerSlotUseCase;
         this.trunkHealthUseCase = trunkHealthUseCase;
+        this.trunkCapacityUseCase = trunkCapacityUseCase;
         this.doNotCallUseCase = doNotCallUseCase;
         this.callFinalizationUseCase = callFinalizationUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
@@ -261,7 +265,9 @@ class CallTeardownService {
         long clientId = 0L;
         if (outbound != null) {
             clientId = outbound.clientId() != null ? outbound.clientId() : 0L;
+            trunkCapacityUseCase.recordConnectedCall(outbound.sipTrunkId());
             dialerSlotUseCase.release(outbound.companyId(), outbound.campaignId());
+            dialerSlotUseCase.releaseTrunk(outbound.sipTrunkId());
             trunkHealthUseCase.recordOutcome(outbound.sipTrunkId(), disposition);
             if (disposition == Disposition.DO_NOT_CALL) {
                 // Through the use case, which stores the number normalised: the port stored it

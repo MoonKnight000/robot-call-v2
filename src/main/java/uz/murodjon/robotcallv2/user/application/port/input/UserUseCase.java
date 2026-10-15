@@ -17,6 +17,12 @@ public interface UserUseCase {
 
     InviteUserResponse invite(long companyId, InviteUserRequest request);
 
+    /**
+     * Invites the first administrator of a company that has no users yet, without a caller
+     * whose permissions would vouch for it — self-service signup has nobody logged in.
+     */
+    InviteUserResponse inviteFirstAdmin(long companyId, String name, String username, String email);
+
     List<UserRow> list(long companyId);
 
     UserRow requireUserRow(long companyId, long id);

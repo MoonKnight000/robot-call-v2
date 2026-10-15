@@ -110,7 +110,7 @@ class AiAgentEngineGuard {
         Map<String, String> checked = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : languageVoices.entrySet()) {
             String language = companyConfigUseCase.resolveLanguage(companyId, entry.getKey());
-            String voiceId = requireKnownVoice(pipelineMode, entry.getValue());
+            String voiceId = requireKnownVoice(companyId, pipelineMode, entry.getValue());
             if (voiceId == null) {
                 continue;
             }
@@ -124,14 +124,14 @@ class AiAgentEngineGuard {
         return checked;
     }
 
-    String requireKnownVoice(PipelineMode pipelineMode, String ttsVoice) {
+    String requireKnownVoice(long companyId, PipelineMode pipelineMode, String ttsVoice) {
         if (ttsVoice == null || ttsVoice.isBlank()) {
             return null;
         }
         String trimmed = ttsVoice.trim();
-        if (!ttsVoiceUseCase.isSelectable(pipelineMode, trimmed)) {
+        if (!ttsVoiceUseCase.isSelectable(companyId, pipelineMode, trimmed)) {
             throw new ValidationException(ErrorCode.TTS_VOICE_UNKNOWN, trimmed,
-                    ttsVoiceUseCase.findSelectableIds(pipelineMode));
+                    ttsVoiceUseCase.findSelectableIds(companyId, pipelineMode));
         }
         return trimmed;
     }

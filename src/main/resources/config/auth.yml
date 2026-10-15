@@ -26,6 +26,12 @@ voice-agent:
       public-widget-per-minute: ${RATE_LIMIT_PUBLIC_WIDGET_PER_MINUTE:20}
     password-reset:
       from: ${PASSWORD_RESET_FROM:no-reply@uysot.uz}
+    # Self-service signup, POST /api/auth/signup (SignupProperties). Off unless turned on.
+    signup:
+      enabled: ${SIGNUP_ENABLED:false}
+      # Frontend page that reads ?token= and calls POST /api/auth/activate.
+      activation-url: ${SIGNUP_ACTIVATION_URL:http://localhost:5173/activate}
+      from: ${SIGNUP_FROM:no-reply@uysot.uz}
   encryption:
     secret-key: ${ENCRYPTION_SECRET_KEY:}
     # Rotation: move the old key here (comma-separated, newest first), set a new

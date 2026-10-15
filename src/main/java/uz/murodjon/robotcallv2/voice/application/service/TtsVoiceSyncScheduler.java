@@ -103,7 +103,7 @@ public class TtsVoiceSyncScheduler {
                                 providerName, voice.name());
                         continue;
                     }
-                    voices.add(new TtsVoice(id, providerName, language, voice.name(), voice.label(), null));
+                    voices.add(new TtsVoice(id, providerName, language, voice.name(), voice.label(), null, null));
                 }
             }
         }

@@ -97,6 +97,7 @@ public class CampaignService implements CampaignUseCase {
         LocalTime dialWindowStart = request.dialWindowStart() != null ? request.dialWindowStart() : LocalTime.of(9, 0);
         LocalTime dialWindowEnd = request.dialWindowEnd() != null ? request.dialWindowEnd() : LocalTime.of(20, 0);
         requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
+        campaignValidator.validateRetryPolicy(request.retryPolicyOrNone());
         Campaign row = Campaign.builder()
                 .name(request.name())
                 .type(request.type())
@@ -143,6 +144,7 @@ public class CampaignService implements CampaignUseCase {
         AiAgent agent = requireDialers(existing.companyId(), existing.dialMode(), request.aiAgentId(),
                 request.callQueueId());
         requireWindowWithinCompany(existing.companyId(), request.dialWindowStart(), request.dialWindowEnd());
+        campaignValidator.validateRetryPolicy(request.retryPolicyOrNone());
         // The type, status, company, creator, last run and dial mode stay the existing campaign's.
         Campaign row = existing.toBuilder()
                 .name(request.name())

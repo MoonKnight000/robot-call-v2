@@ -1,0 +1,43 @@
+### Platform: make company 2 a partner
+PUT http://localhost:8080/api/partners/2/branding
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "productName": "SmartCall",
+  "domain": "app.smartcall.uz",
+  "logoUrl": "https://smartcall.uz/logo.png",
+  "primaryColor": "#0055FF",
+  "supportEmail": "help@smartcall.uz",
+  "supportPhone": "+998712000000"
+}
+
+### Partner: its own brand
+GET http://localhost:8080/api/partner/branding
+Authorization: Bearer {{auth_token}}
+
+### Partner: sign up a client company
+POST http://localhost:8080/api/partner/clients
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "companyName": "Do'kon MChJ",
+  "adminName": "Aziz Karimov",
+  "username": "aziz",
+  "email": "aziz@dokon.uz"
+}
+
+### Partner: its clients
+POST http://localhost:8080/api/partner/clients/list
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{ "page": 0, "size": 20 }
+
+### The brand the logged-in company's panel shows
+GET http://localhost:8080/api/branding
+Authorization: Bearer {{auth_token}}
+
+### Login page brand (no login)
+GET http://localhost:8080/api/public/branding?domain=app.smartcall.uz

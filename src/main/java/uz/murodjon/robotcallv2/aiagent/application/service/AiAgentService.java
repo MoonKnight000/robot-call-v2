@@ -119,7 +119,7 @@ public class AiAgentService implements AiAgentUseCase {
         // mode has to be settled before anything is checked against it.
         PipelineMode pipelineMode = request.pipelineMode() != null ? request.pipelineMode() : PipelineMode.CASCADE;
         String realtimeProvider = engineGuard.requireKnownRealtimeProvider(pipelineMode, request.realtimeProvider());
-        String ttsVoice = engineGuard.requireKnownVoice(pipelineMode, request.ttsVoice());
+        String ttsVoice = engineGuard.requireKnownVoice(companyId, pipelineMode, request.ttsVoice());
         String llmModel = engineGuard.requireKnownModel(pipelineMode, realtimeProvider, request.llmModel());
         String fastLlmModel = engineGuard.requireKnownFastModel(request.fastLlmModel());
         Map<String, String> checkedLanguageVoices =
@@ -236,7 +236,7 @@ public class AiAgentService implements AiAgentUseCase {
                 : existing.speechEngine().mode();
 
         String ttsVoice = (request.ttsVoice() != null)
-                ? engineGuard.requireKnownVoice(pipelineMode, request.ttsVoice())
+                ? engineGuard.requireKnownVoice(companyId, pipelineMode, request.ttsVoice())
                 : existing.voice().defaultVoice();
 
         // Same reason the mode is settled first: switching engine and model arrives as one

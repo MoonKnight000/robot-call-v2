@@ -3,6 +3,9 @@ package uz.murodjon.robotcallv2.campaign.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import uz.murodjon.robotcallv2.agent.dialog.PromptTemplateEngine;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
@@ -17,8 +20,13 @@ import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
+import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
+import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
 
 import java.time.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -34,24 +42,32 @@ public class CampaignOutcomeService {
 
     private static final Logger log = LoggerFactory.getLogger(CampaignOutcomeService.class);
 
+    private static final TypeReference<Map<String, Object>> FACTS = new TypeReference<>() {
+    };
+
     private final CampaignRepository campaignRepository;
     private final CampaignTargetRepository campaignTargetRepository;
     private final CompanyConfigUseCase companyConfigUseCase;
     private final RetryProperties retryProperties;
     private final AuditUseCase auditUseCase;
     private final NotificationUseCase notificationUseCase;
+    private final SmsUseCase smsUseCase;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public CampaignOutcomeService(CampaignRepository campaignRepository,
                                   CampaignTargetRepository campaignTargetRepository,
                                   CompanyConfigUseCase companyConfigUseCase, RetryProperties retryProperties,
-                                  AuditUseCase auditUseCase, NotificationUseCase notificationUseCase, Clock clock) {
+                                  AuditUseCase auditUseCase, NotificationUseCase notificationUseCase,
+                                  SmsUseCase smsUseCase, ObjectMapper objectMapper, Clock clock) {
         this.campaignRepository = campaignRepository;
         this.campaignTargetRepository = campaignTargetRepository;
         this.companyConfigUseCase = companyConfigUseCase;
         this.retryProperties = retryProperties;
         this.auditUseCase = auditUseCase;
         this.notificationUseCase = notificationUseCase;
+        this.smsUseCase = smsUseCase;
+        this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
@@ -60,13 +76,14 @@ public class CampaignOutcomeService {
         if (t == null) {
             return;
         }
+        Campaign c = campaignRepository.find(companyId, t.campaignId());
+        sendFollowUpSms(c, t, disposition);
         if (isTerminal(disposition)) {
             campaignTargetRepository.updateStatus(targetId, TargetStatus.DONE, null);
             log.info("Target {} DONE ({})", targetId, disposition);
             checkCompletion(companyId, t.campaignId());
             return;
         }
-        Campaign c = campaignRepository.find(companyId, t.campaignId());
         int maxAttempts = c != null ? c.maxAttempts() : 3;
         // A disposition rule may give up sooner — "one voicemail is enough" — never later
         // than the campaign's own cap.
@@ -89,6 +106,51 @@ public class CampaignOutcomeService {
         campaignTargetRepository.updateStatus(targetId, TargetStatus.PENDING, next);
         log.info("Target {} rescheduled ({}, attempt {}/{}) -> {}",
                 targetId, disposition, t.attempts(), maxAttempts, next);
+    }
+
+    /**
+     * Texts the number when the campaign's rule for this outcome says so — the second channel
+     * of a follow-up: "no answer → SMS → call again later". Never fails the outcome: the target
+     * moves on whether or not the SMS gateway answered.
+     */
+    private void sendFollowUpSms(Campaign campaign, CampaignTarget target, Disposition disposition) {
+        RetryRule rule = campaign != null ? campaign.retryPolicy().ruleFor(disposition) : null;
+        if (rule == null || rule.smsText() == null || rule.smsText().isBlank()) {
+            return;
+        }
+        // Checked on save as well (CampaignValidator); a stranger or a "do not contact" is never texted.
+        if (target.doNotCall() || disposition == Disposition.DO_NOT_CALL || disposition == Disposition.WRONG_NUMBER) {
+            return;
+        }
+        if (rule.smsOnAttempt() != null && rule.smsOnAttempt() != target.attempts()) {
+            return;
+        }
+        if (!smsUseCase.isEnabled()) {
+            log.debug("Follow-up SMS for target {} skipped: SMS is not enabled", target.id());
+            return;
+        }
+        String text = PromptTemplateEngine.render(rule.smsText(), findFacts(target));
+        try {
+            boolean sent = smsUseCase.sendSms(campaign.companyId(), new SmsSendRequest(target.phone(), text));
+            log.info("Follow-up SMS after {} to {} (target {}, attempt {}): {}", disposition,
+                    PhoneMasker.mask(target.phone()), target.id(), target.attempts(), sent ? "sent" : "not sent");
+        } catch (Exception e) {
+            log.warn("Follow-up SMS to target {} failed: {}", target.id(), e.getMessage());
+        }
+    }
+
+    /** The target's facts for the SMS template, plus {@code phone}; unreadable facts leave only the phone. */
+    private Map<String, Object> findFacts(CampaignTarget target) {
+        Map<String, Object> facts = new HashMap<>();
+        if (target.contextData() != null && !target.contextData().isBlank()) {
+            try {
+                facts.putAll(objectMapper.readValue(target.contextData(), FACTS));
+            } catch (Exception e) {
+                log.debug("Target {} facts are not a JSON object: {}", target.id(), e.getMessage());
+            }
+        }
+        facts.put("phone", target.phone());
+        return facts;
     }
 
     /**

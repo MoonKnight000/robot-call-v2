@@ -26,6 +26,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
+import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Clock;
@@ -79,7 +80,7 @@ class CampaignServiceTest {
         clock = Clock.systemDefaultZone();
 
         CampaignOutcomeService outcomeService = new CampaignOutcomeService(campaigns, targets, companyConfig,
-                retryProperties, audit, notifications, clock);
+                retryProperties, audit, notifications, mock(SmsUseCase.class), new ObjectMapper(), clock);
         targetService = new CampaignTargetService(campaigns, targets, targetSources, doNotCallUseCase, audit,
                 notifications, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
                 mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper());

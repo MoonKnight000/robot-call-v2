@@ -72,7 +72,8 @@ public class SpeechPreviewService implements SpeechPreviewUseCase {
     @Override
     public byte[] previewVoice(long companyId, String voiceId, String text) {
         TtsVoice voice = ttsVoiceRepository.find(voiceId);
-        if (voice == null) {
+        // Another company's cloned voice is its likeness — never spoken for anyone else.
+        if (voice == null || !voice.isVisibleTo(companyId)) {
             throw new NotFoundException(ErrorCode.TTS_VOICE_NOT_FOUND, voiceId);
         }
         TtsProvider provider = ttsProviderSelector.tryFind(previewProviderOf(voice));

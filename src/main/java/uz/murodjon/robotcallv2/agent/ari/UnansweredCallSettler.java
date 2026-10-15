@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseC
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.application.port.input.DialerSlotUseCase;
+import uz.murodjon.robotcallv2.dialer.application.port.input.TrunkCapacityUseCase;
 import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
 import uz.murodjon.robotcallv2.dialer.application.port.input.TrunkHealthUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -34,6 +35,7 @@ class UnansweredCallSettler {
     private final DialerSlotUseCase dialerSlotUseCase;
     private final CallBillingUseCase callBillingUseCase;
     private final TrunkHealthUseCase trunkHealthUseCase;
+    private final TrunkCapacityUseCase trunkCapacityUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final CallMetrics metrics;
 
@@ -45,6 +47,7 @@ class UnansweredCallSettler {
                           DialerSlotUseCase dialerSlotUseCase,
                           CallBillingUseCase callBillingUseCase,
                           TrunkHealthUseCase trunkHealthUseCase,
+                          TrunkCapacityUseCase trunkCapacityUseCase,
                           CampaignTargetUseCase campaignTargetUseCase,
                           CallMetrics metrics) {
         this.callSessionRegistry = callSessionRegistry;
@@ -55,6 +58,7 @@ class UnansweredCallSettler {
         this.dialerSlotUseCase = dialerSlotUseCase;
         this.callBillingUseCase = callBillingUseCase;
         this.trunkHealthUseCase = trunkHealthUseCase;
+        this.trunkCapacityUseCase = trunkCapacityUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.metrics = metrics;
     }
@@ -88,7 +92,9 @@ class UnansweredCallSettler {
         if (outbound == null) {
             return;
         }
+        trunkCapacityUseCase.recordUnansweredCall(outbound.sipTrunkId(), cause);
         dialerSlotUseCase.release(outbound.companyId(), outbound.campaignId());
+        dialerSlotUseCase.releaseTrunk(outbound.sipTrunkId());
         // Only an answered call is settled (CallFinalizer); an unanswered one has to give
         // its hold back here, or every no-answer kept its reservation for good.
         callBillingUseCase.releaseReservation(outbound.companyId(), outbound.targetId());
@@ -110,6 +116,7 @@ class UnansweredCallSettler {
             return;
         }
         dialerSlotUseCase.release(outbound.companyId(), outbound.campaignId());
+        dialerSlotUseCase.releaseTrunk(outbound.sipTrunkId());
         callBillingUseCase.releaseReservation(outbound.companyId(), outbound.targetId());
         trunkHealthUseCase.recordOutcome(outbound.sipTrunkId(), Disposition.FAILED);
         campaignTargetUseCase.applyOutcome(outbound.companyId(), outbound.targetId(), Disposition.FAILED);

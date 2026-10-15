@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.dialer.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
@@ -23,13 +24,16 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
+import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
+import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 
 import java.time.*;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -272,5 +276,50 @@ class DialerServiceTest {
         dialer.dispatch();
 
         verify(campaignUseCase, never()).findActiveCampaigns();
+    }
+
+    private static SipTrunkRow trunk(long id, Integer maxChannels) {
+        return new SipTrunkRow(id, "t" + id, "trunk-" + id, null, false, null, 5060, null,
+                SipTrunkTransport.UDP, List.of("alaw"), null, maxChannels, false, true, Instant.EPOCH);
+    }
+
+    /** A trunk already holding as many calls as its provider gives channels gets none of the batch. */
+    @Test
+    void aTrunkAtItsChannelLimitIsSkipped() {
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
+        givenDueTargets(3);
+        when(sipTrunks.findTrunksForCall(anyLong(), any())).thenReturn(List.of(trunk(1L, 2), trunk(2L, null)));
+        when(state.countActiveForTrunk(1L)).thenReturn(2);
+
+        dialerAt(10).dispatch();
+
+        ArgumentCaptor<CallTask> tasks = ArgumentCaptor.forClass(CallTask.class);
+        verify(rabbit, times(3)).convertAndSend(eq(CallTask.QUEUE), tasks.capture());
+        assertThat(tasks.getAllValues()).extracting(CallTask::sipTrunkId).containsOnly(2L);
+        verify(state, times(3)).reserveTrunk(2L);
+    }
+
+    @Test
+    void freeChannelsBoundTheBatch() {
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
+        givenDueTargets(10);
+        when(sipTrunks.findTrunksForCall(anyLong(), any())).thenReturn(List.of(trunk(1L, 3)));
+        when(state.countActiveForTrunk(1L)).thenReturn(1);
+
+        dialerAt(10).dispatch();
+
+        verify(campaignTargetUseCase).claimDueTargets(CAMPAIGN_ID, 2);
+    }
+
+    @Test
+    void everyTrunkFullClaimsNothing() {
+        givenActiveCampaign(0, Set.of(DayOfWeek.WEDNESDAY));
+        givenDueTargets(10);
+        when(sipTrunks.findTrunksForCall(anyLong(), any())).thenReturn(List.of(trunk(1L, 3)));
+        when(state.countActiveForTrunk(1L)).thenReturn(3);
+
+        dialerAt(10).dispatch();
+
+        verify(campaignTargetUseCase, never()).claimDueTargets(anyLong(), anyInt());
     }
 }

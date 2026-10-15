@@ -35,6 +35,9 @@ public class TtsVoiceEntity {
     @Column(name = "synced_at")
     private Instant syncedAt;
 
+    @Column(name = "company_id")
+    private Long companyId;
+
     public String getId() {
         return id;
     }
@@ -97,5 +100,13 @@ public class TtsVoiceEntity {
 
     public void setSyncedAt(Instant syncedAt) {
         this.syncedAt = syncedAt;
+    }
+
+    public Long getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(Long companyId) {
+        this.companyId = companyId;
     }
 }

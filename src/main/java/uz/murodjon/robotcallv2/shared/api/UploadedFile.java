@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * An uploaded file as a service sees it: read once in the controller, so no service
@@ -23,6 +24,11 @@ public record UploadedFile(String originalFilename, String contentType, long siz
         } catch (IOException e) {
             throw new ValidationException(ErrorCode.IMAGE_UPLOAD_READ_FAILED, e.getMessage());
         }
+    }
+
+    /** Each part as {@link #from}; null or no parts is an empty list. */
+    public static List<UploadedFile> fromAll(List<MultipartFile> files) {
+        return files == null ? List.of() : files.stream().map(UploadedFile::from).toList();
     }
 
     public boolean isEmpty() {

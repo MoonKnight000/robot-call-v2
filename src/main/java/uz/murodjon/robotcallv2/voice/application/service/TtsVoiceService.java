@@ -17,7 +17,7 @@ import java.util.List;
  * <p>A voice belongs to whichever engine speaks it, and the two families do not overlap:
  * a cascade call is spoken by a TTS vendor, a REALTIME call by the speech-to-speech
  * engine itself, and neither understands the other's voice names. So "selectable" means
- * two different things depending on who is asking — see {@link #findSelectableByMode}.
+ * two different things depending on who is asking — see {@link #findSelectableByCompanyIdAndMode}.
  */
 @Service
 public class TtsVoiceService implements TtsVoiceUseCase {
@@ -41,9 +41,9 @@ public class TtsVoiceService implements TtsVoiceUseCase {
      * setting would look broken rather than wrong.
      */
     @Override
-    public List<TtsVoice> findSelectableByMode(PipelineMode mode, String language) {
+    public List<TtsVoice> findSelectableByCompanyIdAndMode(long companyId, PipelineMode mode, String language) {
         return ttsVoiceRepository.findByLanguage(language).stream()
-                .filter(voice -> spokenBy(mode, voice))
+                .filter(voice -> voice.isVisibleTo(companyId) && spokenBy(mode, voice))
                 .toList();
     }
 
@@ -53,14 +53,14 @@ public class TtsVoiceService implements TtsVoiceUseCase {
     }
 
     @Override
-    public boolean isSelectable(PipelineMode mode, String id) {
+    public boolean isSelectable(long companyId, PipelineMode mode, String id) {
         TtsVoice voice = ttsVoiceRepository.findActiveById(id);
-        return voice != null && spokenBy(mode, voice);
+        return voice != null && voice.isVisibleTo(companyId) && spokenBy(mode, voice);
     }
 
     @Override
-    public List<String> findSelectableIds(PipelineMode mode) {
-        return findSelectableByMode(mode, null).stream().map(TtsVoice::id).toList();
+    public List<String> findSelectableIds(long companyId, PipelineMode mode) {
+        return findSelectableByCompanyIdAndMode(companyId, mode, null).stream().map(TtsVoice::id).toList();
     }
 
     /**

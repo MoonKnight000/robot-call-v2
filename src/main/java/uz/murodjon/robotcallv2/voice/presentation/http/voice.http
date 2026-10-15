@@ -44,3 +44,31 @@ Content-Disposition: form-data; name="language"
 
 uz-UZ
 --WebAppBoundary--
+
+### Clone a voice from recordings (VOICE_EDIT; ELEVENLABS_API_KEY must be set)
+POST http://localhost:8080/api/tts/voices/clone
+Authorization: Bearer {{auth_token}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="name"
+
+Dilnoza — call-markaz
+--WebAppBoundary
+Content-Disposition: form-data; name="language"
+
+uz-UZ
+--WebAppBoundary
+Content-Disposition: form-data; name="consent"
+
+true
+--WebAppBoundary
+Content-Disposition: form-data; name="files"; filename="sample.wav"
+Content-Type: audio/wav
+
+< ./sample.wav
+--WebAppBoundary--
+
+### Delete one of the company's cloned voices
+DELETE http://localhost:8080/api/tts/voices/clone-1-abc123xyz
+Authorization: Bearer {{auth_token}}

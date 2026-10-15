@@ -19,5 +19,11 @@ public enum LedgerEntryType {
     ADJUSTMENT,
 
     /** Tokens a panel AI service used — the copilot. No call is behind it. */
-    AI_CHARGE
+    AI_CHARGE,
+
+    /** Free trial money given to a self-registered company. */
+    TRIAL_CREDIT,
+
+    /** The unspent part of a trial credit, taken back when the trial ends. */
+    TRIAL_EXPIRE
 }

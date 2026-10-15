@@ -114,3 +114,13 @@ voice-agent:
   # Owner of startup work with no request behind it — CompanyProperties
   company:
     default-id: ${COMPANY_DEFAULT_ID:1}
+
+  # The ROI report's operator yardstick (RoiReportProperties) — what the same calls would have
+  # cost with people. A request may pass its own operatorHourlyCostUzs.
+  report:
+    roi:
+      # ~5.3 mln so'm a month gross with social tax, over 176 hours.
+      operator-hourly-cost-uzs: ${REPORT_ROI_OPERATOR_HOURLY_COST_UZS:30000}
+      # Dialling, ringing and writing up the result, per call — answered or not.
+      operator-seconds-per-attempt: ${REPORT_ROI_OPERATOR_SECONDS_PER_ATTEMPT:45}
+      operator-hours-per-month: ${REPORT_ROI_OPERATOR_HOURS_PER_MONTH:176}

@@ -22,6 +22,7 @@ public record SipTrunk(
         SipTrunkTransport transport,
         List<String> codecs,
         Integer maxCps,
+        Integer maxChannels,
         boolean isDefault,
         boolean enabled,
         Instant createdAt

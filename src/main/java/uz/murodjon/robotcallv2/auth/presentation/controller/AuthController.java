@@ -26,6 +26,13 @@ public interface AuthController {
     ResponseEntity<ResponseData<LoginResponse>> login(@Valid @RequestBody LoginRequest request,
                                                       @ClientAddress String clientAddress);
 
+    /**
+     * Self-service signup: a new company, its first administrator and free trial money. The
+     * administrator sets a password from the mailed link ({@code /auth/activate}).
+     */
+    @PostMapping("/auth/signup")
+    ResponseEntity<ResponseData<SignupResponse>> signup(@Valid @RequestBody SignupRequest request);
+
     @PostMapping("/auth/activate")
     ResponseEntity<ResponseData<LoginResponse>> activate(@Valid @RequestBody ActivateRequest request);
 

@@ -80,7 +80,7 @@ class RetryScheduleTest {
 
     @Test
     void aRuleForPaymentClaimWins() {
-        assertThat(RetrySchedule.delayFor(Disposition.PAYMENT_CLAIMED, null, 60, new RetryRule(null, 24 * 60)))
+        assertThat(RetrySchedule.delayFor(Disposition.PAYMENT_CLAIMED, null, 60, new RetryRule(null, 24 * 60, null, null)))
                 .isEqualTo(Duration.ofDays(1));
     }
 }

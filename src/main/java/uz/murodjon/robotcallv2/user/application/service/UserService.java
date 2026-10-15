@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
+import uz.murodjon.robotcallv2.role.domain.enums.SystemRole;
 import uz.murodjon.robotcallv2.role.domain.service.RoleValidator;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.*;
@@ -68,6 +69,24 @@ public class UserService implements UserUseCase {
     @Override
     public InviteUserResponse invite(long companyId, InviteUserRequest request) {
         Role role = requireAssignableRole(companyId, request.roleId());
+        return createInvited(companyId, request, role);
+    }
+
+    @Override
+    public InviteUserResponse inviteFirstAdmin(long companyId, String name, String username, String email) {
+        // Nobody is logged in to vouch for this invite, so it is only allowed where there is
+        // nobody yet — a company that already has a user grows through the normal invite.
+        if (repository.hasAnyUser(companyId)) {
+            throw new ConflictException(ErrorCode.COMPANY_ALREADY_HAS_USERS, companyId);
+        }
+        Role admin = roleUseCase.findRoleByCode(companyId, SystemRole.ADMIN.name());
+        if (admin == null) {
+            throw new NotFoundException(ErrorCode.ROLE_NOT_FOUND, SystemRole.ADMIN.name());
+        }
+        return createInvited(companyId, new InviteUserRequest(name, username, email, admin.id()), admin);
+    }
+
+    private InviteUserResponse createInvited(long companyId, InviteUserRequest request, Role role) {
         if (repository.existsByEmail(request.email())) {
             throw new ConflictException(ErrorCode.USER_EMAIL_TAKEN, request.email());
         }

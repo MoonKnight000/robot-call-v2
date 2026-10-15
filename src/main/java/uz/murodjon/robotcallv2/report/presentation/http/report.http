@@ -100,3 +100,7 @@ Authorization: Bearer {{token}}
 ### Campaign contact lists: wrong numbers and carrier rejections per campaign
 GET {{host}}/api/reports/data-quality?from=2026-10-01&to=2026-10-12
 Authorization: Bearer {{token}}
+
+### ROI: what the robot did and cost against operators (from/to: YYYY-MM-DD; operatorHourlyCostUzs optional)
+GET http://localhost:8080/api/reports/roi?from=2026-10-01&to=2026-10-31&operatorHourlyCostUzs=30000
+Authorization: Bearer {{auth_token}}

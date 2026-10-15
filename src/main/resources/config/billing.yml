@@ -26,6 +26,13 @@ voice-agent:
       amount-uzs: ${BILLING_AUTO_RECHARGE_AMOUNT_UZS:500000}
       cron: ${BILLING_AUTO_RECHARGE_CRON:0 */15 * * * *}
 
+    # The free trial a self-registered company starts with (TrialCreditProperties). Trial
+    # money is spent first; what is left of it after `duration` is taken back.
+    trial:
+      credit-uzs: ${BILLING_TRIAL_CREDIT_UZS:20000}
+      duration: ${BILLING_TRIAL_DURATION:7d}
+      expiry-cron: ${BILLING_TRIAL_EXPIRY_CRON:0 0 * * * *}
+
     # Payme / Click top-ups (PaymentProperties). Credentials come from the merchant cabinets
     # and are never committed; a method left unconfigured refuses its top-ups with 409
     # PAYMENT_METHOD_NOT_CONFIGURED and its callbacks as unauthenticated.

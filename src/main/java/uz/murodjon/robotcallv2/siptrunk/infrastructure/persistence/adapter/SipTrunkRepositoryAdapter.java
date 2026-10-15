@@ -32,7 +32,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
     @Override
     public long create(long companyId, String name, String pjsipEndpoint, String callerId, boolean makeDefault,
                        String host, int port, String sipUsername, String sipPasswordEnc,
-                       SipTrunkTransport transport, List<String> codecs, Integer maxCps) {
+                       SipTrunkTransport transport, List<String> codecs, Integer maxCps, Integer maxChannels) {
         boolean first = !jpaRepository.existsByCompanyId(companyId);
         boolean asDefault = makeDefault || first;
         if (asDefault) {
@@ -50,6 +50,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
         entity.setTransport(transport);
         entity.setCodecs(codecs);
         entity.setMaxCps(maxCps);
+        entity.setMaxChannels(maxChannels);
         entity.setDefault(asDefault);
         entity.setEnabled(true);
         entity.setCreatedAt(Instant.now());
@@ -69,7 +70,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
     @Override
     public void update(long companyId, long id, String name, String pjsipEndpoint, String callerId, boolean enabled,
                        String host, int port, String sipUsername, String sipPasswordEnc,
-                       SipTrunkTransport transport, List<String> codecs, Integer maxCps) {
+                       SipTrunkTransport transport, List<String> codecs, Integer maxCps, Integer maxChannels) {
         jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             entity.setName(name);
             entity.setPjsipEndpoint(pjsipEndpoint);
@@ -84,6 +85,7 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
             entity.setTransport(transport);
             entity.setCodecs(codecs);
             entity.setMaxCps(maxCps);
+            entity.setMaxChannels(maxChannels);
             jpaRepository.save(entity);
         });
     }

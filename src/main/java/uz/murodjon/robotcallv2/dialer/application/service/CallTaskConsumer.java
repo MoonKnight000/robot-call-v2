@@ -128,6 +128,7 @@ public class CallTaskConsumer {
                 log.info("Target {} ({}) is in Do-Not-Call list — skipping call origination",
                         task.targetId(), PhoneMasker.mask(task.phone()));
                 state.release(task.companyId(), task.campaignId());
+                state.releaseTrunk(task.sipTrunkId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
                 callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.DO_NOT_CALL, "number is in the do-not-call list");
@@ -141,6 +142,7 @@ public class CallTaskConsumer {
                 log.info("Target {} ({}) scrubbed as invalid ({}) — skipping call origination",
                         task.targetId(), PhoneMasker.mask(task.phone()), scrubResult.reason());
                 state.release(task.companyId(), task.campaignId());
+                state.releaseTrunk(task.sipTrunkId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
                 callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.CARRIER_REJECTED, "scrubbed: " + scrubResult.reason());
@@ -155,6 +157,7 @@ public class CallTaskConsumer {
                 log.info("Target {} ({}) not dialled: company {} is suspended", task.targetId(),
                         PhoneMasker.mask(task.phone()), task.companyId());
                 state.release(task.companyId(), task.campaignId());
+                state.releaseTrunk(task.sipTrunkId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
                 campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now());
                 return;
@@ -172,6 +175,7 @@ public class CallTaskConsumer {
                         PhoneMasker.mask(task.phone()), campaign.id(), campaign.status(),
                         campaign.status() == CampaignStatus.ACTIVE ? " but outside its dial window" : "");
                 state.release(task.companyId(), task.campaignId());
+                state.releaseTrunk(task.sipTrunkId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
                 campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now());
                 return;
@@ -181,6 +185,7 @@ public class CallTaskConsumer {
                 log.info("Target {} ({}) not dialled: outside recipient local dial window / quiet hours",
                         task.targetId(), PhoneMasker.mask(task.phone()));
                 state.release(task.companyId(), task.campaignId());
+                state.releaseTrunk(task.sipTrunkId());
                 callBilling.releaseReservation(task.companyId(), task.targetId());
                 campaignTargetUseCase.releaseClaim(task.targetId(), Instant.now().plus(java.time.Duration.ofMinutes(30)));
                 return;
@@ -200,6 +205,7 @@ public class CallTaskConsumer {
             log.warn("Originate failed for target {} ({}): {}", task.targetId(), PhoneMasker.mask(task.phone()),
                     e.getMessage());
             state.release(task.companyId(), task.campaignId());
+            state.releaseTrunk(task.sipTrunkId());
             // The hold is given back either way: a call that never reached Asterisk has no
             // finalizer to settle it, and one whose originate threw leaves no attempt row
             // to charge against.

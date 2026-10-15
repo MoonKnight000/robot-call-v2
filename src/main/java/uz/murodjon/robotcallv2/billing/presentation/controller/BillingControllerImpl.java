@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.billing.application.dto.*;
 import uz.murodjon.robotcallv2.billing.application.port.input.BillingUseCase;
+import uz.murodjon.robotcallv2.billing.application.port.input.TrialCreditUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -15,9 +16,11 @@ import java.util.List;
 public class BillingControllerImpl implements BillingController {
 
     private final BillingUseCase billingUseCase;
+    private final TrialCreditUseCase trialCreditUseCase;
 
-    public BillingControllerImpl(BillingUseCase billingUseCase) {
+    public BillingControllerImpl(BillingUseCase billingUseCase, TrialCreditUseCase trialCreditUseCase) {
         this.billingUseCase = billingUseCase;
+        this.trialCreditUseCase = trialCreditUseCase;
     }
 
     @Override
@@ -42,6 +45,11 @@ public class BillingControllerImpl implements BillingController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invoice-" + id + ".pdf\"")
                 .body(pdfBytes);
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TrialCreditResponse>> getTrial(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(trialCreditUseCase.findTrialCredit(companyId)));
     }
 
     @Override

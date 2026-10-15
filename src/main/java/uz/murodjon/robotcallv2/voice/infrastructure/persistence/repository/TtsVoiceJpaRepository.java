@@ -15,4 +15,6 @@ public interface TtsVoiceJpaRepository extends JpaRepository<TtsVoiceEntity, Str
     List<TtsVoiceEntity> findAllByActiveTrueOrderByIdAsc();
 
     List<TtsVoiceEntity> findAllByProviderAndSyncedAtIsNotNull(String provider);
+
+    long countByCompanyIdAndActiveTrue(long companyId);
 }

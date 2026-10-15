@@ -40,6 +40,11 @@ public interface BillingController {
             @CurrentCompanyId long companyId,
             @PathVariable("id") String id);
 
+    /** The free trial of a self-registered company; data is null when it never had one. */
+    @PreAuthorize("hasAuthority('BILLING_READ')")
+    @GetMapping("/trial")
+    ResponseEntity<ResponseData<TrialCreditResponse>> getTrial(@CurrentCompanyId long companyId);
+
     @PreAuthorize("hasAuthority('BILLING_EDIT')")
     @PostMapping("/topup")
     ResponseEntity<ResponseData<TopupResponse>> topup(

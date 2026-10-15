@@ -7,4 +7,7 @@ package uz.murodjon.robotcallv2.dialer.application.port.input;
 public interface DialerSlotUseCase {
 
     void release(long companyId, long campaignId);
+
+    /** Gives back the call's place on its SIP trunk; a null trunk is ignored. Called alongside {@link #release}. */
+    void releaseTrunk(Long sipTrunkId);
 }

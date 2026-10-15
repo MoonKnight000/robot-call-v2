@@ -25,6 +25,7 @@ public class SipTrunkEntityMapper {
                 entity.getTransport(),
                 entity.getCodecs(),
                 entity.getMaxCps(),
+                entity.getMaxChannels(),
                 entity.isDefault(),
                 entity.isEnabled(),
                 entity.getCreatedAt()

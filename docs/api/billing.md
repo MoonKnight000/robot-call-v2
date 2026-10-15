@@ -492,3 +492,49 @@ top-up'lari `409 PAYMENT_METHOD_NOT_CONFIGURED`, callback'lari rad etiladi (Paym
 | `click.return-url` | `CLICK_RETURN_URL` | — | To'lovdan keyin qaytish manzili |
 
 Qo'lda sinash: `src/main/java/uz/murodjon/robotcallv2/billing/presentation/http/billing.http`.
+
+---
+
+## 10. `GET /api/billing/trial` — Bepul sinov
+
+Rol: `BILLING_READ`. [`POST /api/auth/signup`](auth.md#post-apiauthsignup--royxatdan-otish-bepul-sinov)
+orqali o'zi ro'yxatdan o'tgan kompaniyaning sinov mablag'i — billing sahifasidagi
+"Sinov: N kun qoldi" banneri uchun. Kompaniyada sinov bo'lmagan bo'lsa `data: null`.
+
+### Response (`TrialCreditResponse`)
+
+```json
+{
+  "creditUzs": 20000,
+  "grantedAt": "2026-10-14T09:00:00Z",
+  "expiresAt": "2026-10-21T09:00:00Z",
+  "active": true,
+  "clawbackUzs": null
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `creditUzs` | Berilgan sinov summasi |
+| `expiresAt` | Shu vaqtdan keyin ishlatilmagan qoldiq qaytarib olinadi |
+| `active` | Sinov tugab, qoldiq qaytarib olingunga qadar `true` |
+| `clawbackUzs` | Sinov tugaganda qancha qaytarib olingani; `active=true` bo'lsa `null` |
+
+### Qanday ishlaydi
+
+- Signup paytida balansga `creditUzs` qo'shiladi: `billing_ledger`da `TRIAL_CREDIT` qatori
+  (`trial:<companyId>` kaliti bilan). Bir kompaniyaga faqat bir marta beriladi.
+- Qo'ng'iroqlar sinov pulini oddiy balans kabi sarflaydi. **Avval sinov puli sarflangan deb
+  hisoblanadi**: kompaniya o'zi to'lagan pul hech qachon qaytarib olinmaydi.
+- `expiresAt` o'tgach (har `expiry-cron`da tekshiriladi) qaytariladigan summa:
+  `min(creditUzs, balans − sinovdan keyingi TOPUP'lar)`. U hozir yurayotgan qo'ng'iroqlar uchun
+  band qilingan pulni hech qachon olmaydi va 0 dan kichik bo'lmaydi. Ledger'da `TRIAL_EXPIRE`
+  (manfiy summa) qatori yoziladi.
+
+### Sozlamalar (`voice-agent.billing.trial.*`)
+
+| Kalit | Env | Standart | Izoh |
+|---|---|---|---|
+| `credit-uzs` | `BILLING_TRIAL_CREDIT_UZS` | `20000` | `0` — sinov puli berilmaydi |
+| `duration` | `BILLING_TRIAL_DURATION` | `7d` | Sinov muddati |
+| `expiry-cron` | `BILLING_TRIAL_EXPIRY_CRON` | `0 0 * * * *` | Tugagan sinovlarni tekshirish (har soat) |

@@ -64,12 +64,12 @@ public class SipTrunkService implements SipTrunkUseCase {
             SipTrunkValidator.requireValidPassword(request.sipPassword());
             id = repository.create(companyId, request.name(), pendingEndpoint(), request.callerId(), false,
                     request.host(), SipTrunkValidator.portOrDefault(request.port()), request.sipUsername(), encryptPassword(request.sipPassword()),
-                    SipTrunkValidator.transportOrDefault(request.transport()), request.codecs(), request.maxCps());
+                    SipTrunkValidator.transportOrDefault(request.transport()), request.codecs(), request.maxCps(), request.maxChannels());
             repository.updatePjsipEndpoint(companyId, id, generatedEndpoint(companyId, id));
         } else {
             requireManualEndpointAllowed(request.pjsipEndpoint(), null);
             id = repository.create(companyId, request.name(), request.pjsipEndpoint(), request.callerId(), false,
-                    null, 5060, null, null, SipTrunkTransport.UDP, request.codecs(), request.maxCps());
+                    null, 5060, null, null, SipTrunkTransport.UDP, request.codecs(), request.maxCps(), request.maxChannels());
         }
         pjsipConfigWriter.regenerateAndReload();
         audit.record(companyId, "SIP_TRUNK_CREATE", "sip_trunk", String.valueOf(id), request.name());
@@ -96,11 +96,11 @@ public class SipTrunkService implements SipTrunkUseCase {
             }
             repository.update(companyId, id, request.name(), generatedEndpoint(companyId, id), request.callerId(), request.enabled(),
                     request.host(), SipTrunkValidator.portOrDefault(request.port()), request.sipUsername(), passwordEnc,
-                    SipTrunkValidator.transportOrDefault(request.transport()), request.codecs(), request.maxCps());
+                    SipTrunkValidator.transportOrDefault(request.transport()), request.codecs(), request.maxCps(), request.maxChannels());
         } else {
             requireManualEndpointAllowed(request.pjsipEndpoint(), existing.pjsipEndpoint());
             repository.update(companyId, id, request.name(), request.pjsipEndpoint(), request.callerId(), request.enabled(),
-                    null, 5060, null, null, SipTrunkTransport.UDP, request.codecs(), request.maxCps());
+                    null, 5060, null, null, SipTrunkTransport.UDP, request.codecs(), request.maxCps(), request.maxChannels());
         }
         pjsipConfigWriter.regenerateAndReload();
         audit.record(companyId, "SIP_TRUNK_UPDATE", "sip_trunk", String.valueOf(id), request.name());

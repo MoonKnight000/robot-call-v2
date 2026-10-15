@@ -20,6 +20,8 @@ public record UpdateSipTrunkRequest(
         String callerId,
         @NotNull Boolean enabled,
         /** Calls per second the provider accepts on this trunk; null = voice-agent.dialer.default-trunk-cps. */
-        @Min(1) @Max(100) Integer maxCps
+        @Min(1) @Max(100) Integer maxCps,
+        /** Simultaneous calls the provider allows on this trunk (its channel count); null = not limited by us. */
+        @Min(1) @Max(10_000) Integer maxChannels
 ) {
 }

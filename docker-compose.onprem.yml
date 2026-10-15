@@ -1,0 +1,36 @@
+# On-prem override for a customer's own server (docs/ONPREM.md):
+#   docker compose -f docker-compose.yml -f docker-compose.onprem.yml up -d --no-build
+# Only the differences from docker-compose.yml: images come from `docker load`, logs rotate
+# so a server nobody watches does not fill its disk, and nothing calls out to learn the
+# public IP — an on-prem trunk's address is static and set in pjsip.conf by hand.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  postgres:
+    restart: unless-stopped
+    logging: *logging
+  redis:
+    restart: unless-stopped
+    logging: *logging
+  rabbitmq:
+    restart: unless-stopped
+    logging: *logging
+  minio:
+    restart: unless-stopped
+    logging: *logging
+  asterisk-ip-sync:
+    # Would ask ifconfig.me for the public IP — an outbound call a bank firewall refuses,
+    # and a value a static on-prem address does not need.
+    entrypoint: ["sh", "-c", "echo 'on-prem: external IP is static, set in pjsip.conf'"]
+  asterisk:
+    logging: *logging
+  app:
+    # The image loaded from robot-call-images.tar; never built or pulled on the server.
+    pull_policy: never
+    restart: unless-stopped
+    logging: *logging

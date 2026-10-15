@@ -74,6 +74,24 @@ public class TtsVoiceRepositoryAdapter implements TtsVoiceRepository {
     }
 
     @Override
+    public long countActiveByCompanyId(long companyId) {
+        return jpaRepository.countByCompanyIdAndActiveTrue(companyId);
+    }
+
+    @Override
+    public void create(TtsVoice voice) {
+        TtsVoiceEntity entity = mapper.toTtsVoiceEntity(voice);
+        entity.setActive(true);
+        jpaRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
+    public void deactivate(String id) {
+        jpaRepository.findById(id).ifPresent(entity -> entity.setActive(false));
+    }
+
+    @Override
     @Transactional
     public void replaceSyncedVoices(String provider, List<TtsVoice> voices, Instant syncedAt) {
         Set<String> listed = voices.stream().map(TtsVoice::id).collect(Collectors.toSet());

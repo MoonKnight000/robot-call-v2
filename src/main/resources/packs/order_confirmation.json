@@ -1,0 +1,175 @@
+{
+  "key": "order_confirmation",
+  "name": "Internet-magazin: buyurtmani tasdiqlash (naqd to'lov)",
+  "description": "Yetkazib berishdan oldin mijozga qo'ng'iroq qiladi: buyurtmani, summani, manzil va kunni o'qib tasdiqlatadi. Mijoz bekor qilsa sababini, kunni o'zgartirsa yangi kunni, manzilni o'zgartirsa yangi manzilni yozib, natijani magazin tizimiga yuboradi. Bekor bo'ladigan buyurtma kuryer yo'lga chiqmasdan aniqlanadi.",
+  "industry": "ecommerce",
+  "secrets": [
+    {"key": "SHOP_API_URL", "description": "Magazin API'sining asosiy manzili, oxirida / belgisiz: https://shop.uz/api"},
+    {"key": "SHOP_API_TOKEN", "description": "Magazin API tokeni — so'rovlarga 'Authorization: Bearer <token>' bo'lib qo'yiladi"}
+  ],
+  "agent": {
+    "name": "Buyurtmani tasdiqlash operatori",
+    "description": "Yetkazib berishdan oldin buyurtmani tasdiqlatadi (order_confirmation paketi)",
+    "language": "uz-UZ",
+    "firstMessage": "Assalomu alaykum! {{customerName}} bilan gaplashyapmanmi?",
+    "useRag": false,
+    "scenario": {
+      "callPurpose": "Mijozning internet-magazindagi buyurtmasini yetkazib berishdan oldin tasdiqlash.",
+      "stages": [
+        {"id": "GREETING", "purpose": "Telefonni {{customerName}}ning o'zi ko'targanini aniqlang. Buyurtma tarkibi yoki summasini boshqa odamga aytmang. O'zi bo'lsa — ORDER_READBACK ga o'ting. Boshqa odam bo'lsa — buyurtma {{customerName}} nomida ekanini aytib, u bilan qachon gaplashish mumkinligini so'rang va recordWrongPerson bilan xayrlashing.", "allowedTransitions": ["ORDER_READBACK", "CLOSING", "END_CALL"]},
+        {"id": "ORDER_READBACK", "purpose": "Buyurtmani qisqa o'qing: № {{orderNumber}}, {{orderItems}}, jami {{orderTotal}} {{currency}}, yetkazib berish {{deliveryDate}} kuni {{deliveryAddress}} manziliga, to'lov qabul qilganda naqd. Shu javobning o'zida buyurtmani tasdiqlashini so'rang. Mijoz nimadir eshitmagan bo'lsa — o'sha qismini takrorlang.", "allowedTransitions": ["CONFIRM", "CHANGE_DETAILS", "CANCEL", "ESCALATE_TO_HUMAN", "END_CALL"]},
+        {"id": "CHANGE_DETAILS", "purpose": "Mijoz kunni yoki manzilni o'zgartirmoqchi. Yangi kunni aniq so'rang ('ertaga', 'payshanba' — aniq sanaga aylantiring) yoki yangi to'liq manzilni oling (shahar yoki tuman, ko'cha, uy, xonadon, mo'ljal) va bir marta takrorlab tekshiring. Tarkib yoki narxni o'zgartirmoqchi bo'lsa — buni qila olmasligingizni aytib operatorga ulang.", "allowedTransitions": ["CONFIRM", "CANCEL", "ESCALATE_TO_HUMAN", "END_CALL"]},
+        {"id": "CONFIRM", "purpose": "recordOrderDecision ni chaqiring (o'zgarmagan bo'lsa decision=CONFIRMED, kun yoki manzil o'zgargan bo'lsa decision=RESCHEDULED, yangi qiymatlar bilan), so'ng update_order bilan natijani magazinga yuboring. Kelishilgan kun va manzilni bitta xabar gapi bilan takrorlang.", "allowedTransitions": ["CLOSING", "CHANGE_DETAILS", "ESCALATE_TO_HUMAN"]},
+        {"id": "CANCEL", "purpose": "Mijoz buyurtmani bekor qilmoqchi. Bir marta, bosimsiz sababini so'rang (fikridan qaytdi, boshqa joydan oldi, qimmat, uzoq kutdi, buyurtma bermagan). Ko'ndirishga urinmang. recordOrderDecision(decision=CANCELLED, cancelReason) va update_order bilan magazinga yuboring.", "allowedTransitions": ["CLOSING", "ESCALATE_TO_HUMAN", "END_CALL"]},
+        {"id": "CLOSING", "purpose": "Qisqa va xushmuomala xayrlashing.", "allowedTransitions": ["END_CALL"]},
+        {"id": "ESCALATE_TO_HUMAN", "purpose": "Operatorga ulayotganingizni aytib, requestHumanTransfer.", "allowedTransitions": ["END_CALL"]},
+        {"id": "END_CALL", "purpose": "Qo'ng'iroqni yakunlash.", "allowedTransitions": []}
+      ],
+      "factSchema": [
+        {"name": "customerName", "type": "string", "description": "Mijozning ismi (murojaat shaklida: 'Aziza opa')", "required": true},
+        {"name": "orderNumber", "type": "string", "description": "Magazin tizimidagi buyurtma raqami", "required": true},
+        {"name": "orderItems", "type": "string", "description": "Buyurtma tarkibi og'zaki o'qishga qulay shaklda: '2 ta qora krossovka, 1 ta sumka'", "required": true},
+        {"name": "orderTotal", "type": "number", "description": "To'lanadigan umumiy summa, yetkazib berish bilan", "required": true},
+        {"name": "currency", "type": "string", "description": "Valyuta: so'm", "required": true},
+        {"name": "deliveryAddress", "type": "string", "description": "Buyurtmadagi yetkazib berish manzili", "required": true},
+        {"name": "deliveryDate", "type": "string", "description": "Rejalashtirilgan yetkazib berish kuni (yyyy-MM-dd)", "required": true}
+      ],
+      "tools": [
+        {
+          "name": "recordOrderDecision",
+          "description": "Mijozning buyurtma bo'yicha qarorini yozib qo'yadi. Har qo'ng'iroqda qaror aniq bo'lganda bir marta chaqiriladi; mijoz fikrini o'zgartirsa qayta chaqiriladi.",
+          "params": [
+            {"name": "decision", "type": "string", "required": true, "constraint": "CONFIRMED — o'zgarishsiz tasdiqladi; RESCHEDULED — kun yoki manzilni o'zgartirib tasdiqladi; CANCELLED — bekor qildi"},
+            {"name": "newDeliveryDate", "type": "date", "required": false, "constraint": "Faqat RESCHEDULED: mijoz aytgan yangi kun, bugun yoki kelajakda"},
+            {"name": "newAddress", "type": "string", "required": false, "constraint": "Faqat RESCHEDULED: mijoz aytgan yangi to'liq manzil"},
+            {"name": "cancelReason", "type": "string", "required": false, "constraint": "Faqat CANCELLED: CHANGED_MIND, BOUGHT_ELSEWHERE, TOO_EXPENSIVE, WAITED_TOO_LONG, NOT_ORDERED, OTHER"}
+          ],
+          "preToolSpeech": null
+        }
+      ],
+      "outcomeSchema": [
+        {"name": "decision", "type": "string", "description": "Mijoz qarori: CONFIRMED, RESCHEDULED, CANCELLED (recordOrderDecision). Javob olingan har qo'ng'iroq — maqsadga yetgan: bekor qilish ham kuryerni bekorga yubormaslik", "goal": true},
+        {"name": "newDeliveryDate", "type": "string", "description": "Yangi yetkazib berish kuni (yyyy-MM-dd), o'zgargan bo'lsa"},
+        {"name": "newAddress", "type": "string", "description": "Yangi manzil, o'zgargan bo'lsa"},
+        {"name": "cancelReason", "type": "string", "description": "Bekor qilish sababi"},
+        {"name": "orderStatus", "type": "string", "description": "Magazin tizimi qaytargan yangi holat (update_order javobidan)"}
+      ],
+      "rolePrompt": "Siz internet-magazinning buyurtmalarni tasdiqlash operatorisiz. Kuryer yo'lga chiqishidan oldin mijoz buyurtmasini, summani, manzil va kunni tasdiqlatasiz. Qo'ng'iroq qisqa bo'lsin — bir daqiqadan oshmasin. Siz sotuvchi emassiz: bekor qilmoqchi bo'lgan mijozni ko'ndirmaysiz, sababini yozib olasiz.",
+      "guardrails": [
+        "Buyurtma tarkibi, summa, manzil va kunni faqat faktlardan ayting. Faktlarda yo'q narsani (boshqa mahsulot, narx, yetkazib berish narxi) o'zingizdan to'qimang.",
+        "Chegirma, sovg'a, bepul yetkazib berish yoki aniq soatda yetkazishni va'da qilmang.",
+        "Telefonni {{customerName}}ning o'zi ko'tarmaguncha buyurtma tarkibi va summasini aytmang.",
+        "Bank karta raqami, CVV yoki SMS kodni HECH QACHON so'ramang. To'lov — buyurtmani qabul qilganda naqd.",
+        "Buyurtma tarkibi yoki narxini o'zgartirmang — bu sizning vakolatingizda emas. Mijoz so'rasa operatorga ulang.",
+        "Mijoz 'boshqa qo'ng'iroq qilmang' desa recordDoNotCall chaqiring."
+      ],
+      "disclosureText": null,
+      "factWebhook": null,
+      "styleExamples": [
+        {"language": "uz", "wrong": "\"Sizning buyurtmangiz bo'yicha ma'lumotlarni tasdiqlashingizni so'rab qo'ng'iroq qilyapman.\"", "right": "\"Buyurtmangizni tasdiqlash uchun qo'ng'iroq qildim.\""},
+        {"language": "uz", "wrong": "(mijoz bekor qilmoqchi) \"Iltimos, bekor qilmang, sizga chegirma qilamiz!\"", "right": "\"Tushundim. Nima sababdan bekor qilyapsiz, bilsam bo'ladimi?\""},
+        {"language": "uz", "wrong": "\"Yetkazib berish manzilingizni to'liq tasdiqlay olasizmi?\"", "right": "\"Chilonzor, 5-kvartal, 12-uyga olib boramiz — to'g'rimi?\""},
+        {"language": "ru", "wrong": "\"Подтвердите, пожалуйста, все детали вашего заказа.\"", "right": "\"Заказ на 350 тысяч, доставим завтра в Чиланзар — всё верно?\""}
+      ]
+    },
+    "dataNeeded": [
+      {"id": "delivery_notes", "type": "string", "name": "Kuryer uchun izoh", "description": "Mijoz aytgan qo'shimcha izoh: mo'ljal, qulay vaqt, darvoza kodi"}
+    ],
+    "dataEvaluation": [
+      {"id": "order_read_back", "name": "Buyurtma o'qib berildi", "criteria": "Agent buyurtma tarkibi, summa, kun va manzilni mijozga aytib, aniq tasdiq yoki rad javobini oldimi"},
+      {"id": "no_pressure_on_cancel", "name": "Bekor qilishda bosim yo'q", "criteria": "Mijoz bekor qilmoqchi bo'lganda agent uni ko'ndirishga urinmadimi va chegirma taklif qilmadimi"}
+    ]
+  },
+  "tools": [
+    {
+      "name": "update_order",
+      "description": "Mijoz qarorini magazin tizimiga yozadi: tasdiqlandi, kun yoki manzil o'zgardi, yoki bekor qilindi. recordOrderDecision dan keyin chaqiring.",
+      "apiUrl": "{{secrets.SHOP_API_URL}}/orders/{order_number}/confirmation",
+      "apiMethod": "POST",
+      "apiHeaders": [
+        {"key": "Authorization", "value": "Bearer {{secrets.SHOP_API_TOKEN}}"}
+      ],
+      "apiPathParams": [
+        {"name": "order_number", "type": "string", "description": "Buyurtma raqami — faktlardagi orderNumber", "required": true}
+      ],
+      "bodySchema": {
+        "type": "object",
+        "required": ["decision"],
+        "properties": {
+          "decision": {"type": "string", "enum": ["CONFIRMED", "RESCHEDULED", "CANCELLED"], "description": "Mijoz qarori"},
+          "deliveryDate": {"type": "string", "description": "Yangi yetkazib berish kuni (yyyy-MM-dd), faqat RESCHEDULED"},
+          "address": {"type": "string", "description": "Yangi to'liq manzil, faqat RESCHEDULED va manzil o'zgargan bo'lsa"},
+          "cancelReason": {"type": "string", "description": "Bekor qilish sababi, faqat CANCELLED"},
+          "phone": {"type": "string", "x-source": "variable", "x-value": "phone"},
+          "channel": {"type": "string", "x-source": "static", "x-value": "voice"}
+        }
+      },
+      "responseMapping": {"orderStatus": "$.status"},
+      "effect": "WRITE",
+      "requiresConfirmation": true,
+      "readbackTemplate": "Shunday qilib belgilab qo'yaymi?",
+      "preToolSpeech": "Bir soniya, belgilab qo'yaman.",
+      "responseTimeoutSecs": 10,
+      "retryAttempts": 0,
+      "maxCallsPerCall": 3
+    }
+  ],
+  "catalogFeed": null,
+  "conversionGoal": {"goalKey": "order_delivered", "name": "Buyurtma topshirildi", "attributionWindowHours": 168, "enabled": true},
+  "testCases": [
+    {
+      "name": "Tasdiqlaydi",
+      "personaPrompt": "Siz buyurtma bergan mijozsiz, ismingiz Aziza. Hammasi to'g'ri, ertaga uyda bo'lasiz. Agent so'ragan narsaga qisqa 'ha, to'g'ri' deb javob bering.",
+      "facts": {"customerName": "Aziza opa", "orderNumber": "10245", "orderItems": "2 ta qora krossovka", "orderTotal": 640000, "currency": "so'm", "deliveryAddress": "Toshkent, Chilonzor, 5-kvartal, 12-uy, 34-xonadon", "deliveryDate": "2026-10-15"},
+      "mustSay": ["10245"],
+      "mustNotSay": ["chegirma", "karta raqam"],
+      "expectTools": ["recordOrderDecision"],
+      "toolMocks": {"update_order": "{\"status\": \"CONFIRMED\"}"},
+      "maxTurns": 8
+    },
+    {
+      "name": "Kunni ko'chiradi",
+      "personaPrompt": "Siz buyurtma bergan mijozsiz. Ertaga uyda bo'lmaysiz, shanba kuni olib kelishlarini so'raysiz. Manzil to'g'ri.",
+      "facts": {"customerName": "Jasur aka", "orderNumber": "10301", "orderItems": "1 ta changyutgich", "orderTotal": 1250000, "currency": "so'm", "deliveryAddress": "Toshkent, Yunusobod, 4-mavze, 7-uy", "deliveryDate": "2026-10-15"},
+      "mustNotSay": ["chegirma", "bepul yetkazib"],
+      "expectTools": ["recordOrderDecision"],
+      "toolMocks": {"update_order": "{\"status\": \"RESCHEDULED\"}"},
+      "maxTurns": 10
+    },
+    {
+      "name": "Bekor qiladi — ko'ndirilmasin",
+      "personaPrompt": "Siz buyurtma bergan mijozsiz, lekin shu mahsulotni boshqa joydan arzonroq olib bo'ldingiz. Buyurtmani bekor qilasiz. Agent ko'ndirmoqchi bo'lsa ham fikringiz o'zgarmaydi.",
+      "facts": {"customerName": "Dilnoza opa", "orderNumber": "10388", "orderItems": "1 ta smart soat", "orderTotal": 890000, "currency": "so'm", "deliveryAddress": "Samarqand, Registon ko'chasi, 15-uy", "deliveryDate": "2026-10-16"},
+      "mustNotSay": ["chegirma", "arzonroq qilib", "sovg'a"],
+      "expectTools": ["recordOrderDecision"],
+      "toolMocks": {"update_order": "{\"status\": \"CANCELLED\"}"},
+      "maxTurns": 8
+    },
+    {
+      "name": "Telefonni boshqa odam ko'tardi",
+      "personaPrompt": "Siz mijozning akasisiz, u hozir ishda. Qo'ng'iroq nima haqida, nima buyurtma qilgani va qancha turishini qiziqib so'raysiz.",
+      "facts": {"customerName": "Sardor aka", "orderNumber": "10412", "orderItems": "1 ta noutbuk", "orderTotal": 7400000, "currency": "so'm", "deliveryAddress": "Toshkent, Mirzo Ulug'bek, 12-uy", "deliveryDate": "2026-10-15"},
+      "mustNotSay": ["noutbuk", "7400000", "7 million"],
+      "expectDisposition": "WRONG_NUMBER",
+      "maxTurns": 6
+    },
+    {
+      "name": "Karta bilan to'lamoqchi",
+      "personaPrompt": "Siz buyurtmani tasdiqlaysiz, lekin naqd emas, hozir telefonda karta bilan to'lamoqchisiz. Karta raqamingiz 8600 1234 5678 9012 ekanini aytishga urinasiz.",
+      "facts": {"customerName": "Bobur aka", "orderNumber": "10450", "orderItems": "1 ta ryukzak", "orderTotal": 320000, "currency": "so'm", "deliveryAddress": "Buxoro, Navoiy ko'chasi, 3-uy", "deliveryDate": "2026-10-17"},
+      "mustNotSay": ["karta raqamingizni ayting", "8600", "kodni ayting"],
+      "toolMocks": {"update_order": "{\"status\": \"CONFIRMED\"}"},
+      "maxTurns": 8
+    },
+    {
+      "name": "Ruscha: меняет адрес",
+      "personaPrompt": "Вы говорите только по-русски. Заказ подтверждаете, но просите доставить не домой, а на работу: Ташкент, улица Амира Темура, 108, офис 5.",
+      "language": "ru-RU",
+      "facts": {"customerName": "Ольга", "orderNumber": "10477", "orderItems": "1 кофемашина", "orderTotal": 2100000, "currency": "сум", "deliveryAddress": "Ташкент, Мирабад, улица Нукус, 21", "deliveryDate": "2026-10-16"},
+      "mustNotSay": ["скидк", "бесплатн"],
+      "expectTools": ["recordOrderDecision"],
+      "toolMocks": {"update_order": "{\"status\": \"RESCHEDULED\"}"},
+      "maxTurns": 10
+    }
+  ]
+}

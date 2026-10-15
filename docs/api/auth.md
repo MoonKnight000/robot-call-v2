@@ -115,9 +115,57 @@ yangi juftlik olinadi.
 
 ---
 
+## `POST /api/auth/signup` — ro'yxatdan o'tish (bepul sinov)
+
+Rol: hech biri (ochiq). Yangi kompaniya, uning birinchi administratori (`ADMIN` roli) va
+sinov balansini yaratadi, so'ng administrator email'iga faollashtirish havolasini yuboradi.
+Parol shu yerda **berilmaydi** — havola orqali
+[`POST /api/auth/activate`](#post-apiauthactivate--taklifni-faollashtirish) da o'rnatiladi,
+bu email haqiqiyligini ham tasdiqlaydi.
+
+Platformada yoqilgan bo'lishi kerak: `SIGNUP_ENABLED=true` (standart — o'chiq).
+
+Body (`SignupRequest`):
+
+```json
+{
+  "companyName": "Mening kompaniyam",
+  "name": "Ali Valiyev",
+  "username": "ali",
+  "email": "ali@example.com"
+}
+```
+
+**Javob** (`SignupResponse`):
+
+```json
+{ "companyId": 42, "email": "ali@example.com", "activationExpiresAt": "2026-10-21T09:00:00Z" }
+```
+
+Email'dagi havola: `SIGNUP_ACTIVATION_URL?token=<token>` (standart
+`http://localhost:5173/activate`). Frontend sahifasi `token`ni olib, parol bilan
+`/api/auth/activate` ga yuboradi — keyingi oqim oddiy taklif bilan bir xil. Havola 7 kun amal qiladi.
+
+Yangi kompaniya balansiga `voice-agent.billing.trial.credit-uzs` (standart **20 000 so'm**) qo'shiladi —
+  holatini [`GET /api/billing/trial`](billing.md#10-get-apibillingtrial--bepul-sinov) ko'rsatadi.
+
+Hammasi bitta tranzaksiyada: email yuborilmasa hech narsa saqlanmaydi va xuddi shu email bilan
+qayta urinish mumkin.
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| `400` | `VALIDATION_FAILED` | Maydon bo'sh, email noto'g'ri, `username` 3–64 belgidan tashqarida |
+| `403` | `SIGNUP_DISABLED` | Platformada ro'yxatdan o'tish o'chirilgan |
+| `409` | `USER_EMAIL_TAKEN` | Bu email allaqachon ro'yxatdan o'tgan (bitta email — bitta sinov) |
+| `409` | `USER_USERNAME_TAKEN` | `username` band |
+| `502` | `SIGNUP_MAIL_FAILED` | SMTP xatni yubora olmadi; hech narsa yaratilmadi |
+
+---
+
 ## `POST /api/auth/activate` — taklifni faollashtirish
 
-Rol: hech biri (ochiq). `POST /api/users/invite` qaytargan
+Rol: hech biri (ochiq). `POST /api/users/invite` qaytargan (yoki
+[`/api/auth/signup`](#post-apiauthsignup--royxatdan-otish-bepul-sinov) email'da yuborgan)
 `activationToken`ni parol bilan almashtiradi va avtomatik login qiladi.
 
 Body (`ActivateRequest`):

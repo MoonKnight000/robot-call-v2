@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.auth.application.dto.*;
 import uz.murodjon.robotcallv2.auth.application.port.input.AuthUseCase;
+import uz.murodjon.robotcallv2.auth.application.port.input.SignupUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.security.RefreshTokenCookie;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -14,9 +15,16 @@ import java.util.List;
 public class AuthControllerImpl implements AuthController {
 
     private final AuthUseCase authUseCase;
+    private final SignupUseCase signupUseCase;
 
-    public AuthControllerImpl(AuthUseCase authUseCase) {
+    public AuthControllerImpl(AuthUseCase authUseCase, SignupUseCase signupUseCase) {
         this.authUseCase = authUseCase;
+        this.signupUseCase = signupUseCase;
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<SignupResponse>> signup(SignupRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(signupUseCase.signup(request)));
     }
 
     @Override

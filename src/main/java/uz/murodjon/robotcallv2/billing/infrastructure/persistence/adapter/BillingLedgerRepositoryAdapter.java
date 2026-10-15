@@ -4,10 +4,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.billing.application.port.output.BillingLedgerRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.LedgerEntry;
+import uz.murodjon.robotcallv2.billing.domain.enums.LedgerEntryType;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.mapper.BillingLedgerEntityMapper;
 import uz.murodjon.robotcallv2.billing.infrastructure.persistence.repository.BillingLedgerJpaRepository;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+
+import java.time.Instant;
 
 @Component
 public class BillingLedgerRepositoryAdapter implements BillingLedgerRepository {
@@ -38,5 +41,10 @@ public class BillingLedgerRepositoryAdapter implements BillingLedgerRepository {
         } catch (DataIntegrityViolationException alreadyWritten) {
             return false;
         }
+    }
+
+    @Override
+    public long sumAmountByCompanyIdAndEntryTypeSince(long companyId, LedgerEntryType entryType, Instant since) {
+        return jpaRepository.sumAmount(companyId, entryType, since);
     }
 }

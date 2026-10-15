@@ -7,12 +7,15 @@ import java.util.List;
 
 public interface TtsVoiceUseCase {
 
-    /** {@code mode} narrows to one engine's voice family; null asks for both. */
-    List<TtsVoice> findSelectableByMode(PipelineMode mode, String language);
+    /**
+     * The shared voices plus the company's own clones. {@code mode} narrows to one engine's
+     * voice family; null asks for both.
+     */
+    List<TtsVoice> findSelectableByCompanyIdAndMode(long companyId, PipelineMode mode, String language);
 
     TtsVoice find(String id);
 
-    boolean isSelectable(PipelineMode mode, String id);
+    boolean isSelectable(long companyId, PipelineMode mode, String id);
 
-    List<String> findSelectableIds(PipelineMode mode);
+    List<String> findSelectableIds(long companyId, PipelineMode mode);
 }

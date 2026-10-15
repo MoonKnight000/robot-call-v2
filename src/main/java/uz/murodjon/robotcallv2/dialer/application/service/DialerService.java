@@ -37,6 +37,7 @@ import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 import java.time.*;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -276,6 +277,22 @@ public class DialerService {
             } else {
                 candidateTrunks = healthy;
             }
+            // A trunk's own channel count (maxChannels, from the provider's contract): past it
+            // the provider refuses the call, so dialling there spends an attempt on a refusal.
+            Map<Long, Integer> freeByTrunk = new HashMap<>();
+            for (SipTrunkRow trunk : candidateTrunks) {
+                freeByTrunk.put(trunk.id(), trunk.maxChannels() != null
+                        ? trunk.maxChannels() - state.countActiveForTrunk(trunk.id())
+                        : Integer.MAX_VALUE);
+            }
+            if (!candidateTrunks.isEmpty()) {
+                long freeOnTrunks = freeByTrunk.values().stream().mapToLong(channels -> Math.max(0, channels)).sum();
+                if (freeOnTrunks <= 0) {
+                    log.debug("Campaign {}: every SIP trunk is at its channel limit", campaign.id());
+                    continue;
+                }
+                batch = (int) Math.min(batch, freeOnTrunks);
+            }
 
             List<CampaignTarget> due = campaign.targetOrdering() == TargetOrdering.SCORE
                     ? campaignTargetUseCase.claimDueTargetsByScore(campaign.id(), batch, companyHour(campaign.companyId()))
@@ -334,11 +351,9 @@ public class DialerService {
                 state.countDispatch(campaign.id(), today);
                 String language = t.language() != null ? t.language() : agent.language();
 
-                Long selectedTrunkId = null;
-                if (!candidateTrunks.isEmpty()) {
-                    int idx = Math.abs(counter.getAndIncrement() % candidateTrunks.size());
-                    selectedTrunkId = candidateTrunks.get(idx).id();
-                }
+                // Never null while there are trunks: the batch was capped at their free channels.
+                Long selectedTrunkId = selectTrunk(candidateTrunks, counter, freeByTrunk);
+                state.reserveTrunk(selectedTrunkId);
 
                 // Assigned here rather than when the task is consumed: this is the one place
                 // that knows the campaign is dialling, so it is also where the attempt is
@@ -373,6 +388,22 @@ public class DialerService {
                         selectedTrunkId, variantId != null ? ", variant " + variant.name() : "");
             }
         }
+    }
+
+    /**
+     * The next trunk in rotation that still has a free channel, taking one of them; null when
+     * there are no trunks (the platform's own carries the call) or every one is full.
+     */
+    private static Long selectTrunk(List<SipTrunkRow> trunks, AtomicInteger counter, Map<Long, Integer> freeByTrunk) {
+        for (int tried = 0; tried < trunks.size(); tried++) {
+            SipTrunkRow trunk = trunks.get(Math.abs(counter.getAndIncrement() % trunks.size()));
+            int free = freeByTrunk.get(trunk.id());
+            if (free > 0) {
+                freeByTrunk.put(trunk.id(), free - 1);
+                return trunk.id();
+            }
+        }
+        return null;
     }
 
     /**
@@ -480,6 +511,7 @@ public class DialerService {
             OutboundCall oc = registry.remove(channelId);
             if (oc != null) {
                 state.release(oc.companyId(), oc.campaignId());
+                state.releaseTrunk(oc.sipTrunkId());
                 callBilling.releaseReservation(oc.companyId(), oc.targetId());
                 campaignTargetUseCase.applyOutcome(oc.companyId(), oc.targetId(), Disposition.NO_ANSWER);
                 ariService.hangupChannel(channelId);

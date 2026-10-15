@@ -444,6 +444,45 @@ raqam o'rniga so'z aytadi, ruscha narx haqida savol beradi.
 
 ---
 
+## `order_confirmation` — Internet-magazin: buyurtmani tasdiqlash (naqd to'lov)
+
+Chiquvchi qo'ng'iroq, kuryer yo'lga chiqishidan oldin: buyurtma tarkibi, summa, manzil va kunni o'qib
+tasdiqlatadi. Bekor bo'ladigan buyurtma oldindan aniqlanadi — kuryer bekorga bormaydi. Maqsad maydoni —
+`decision`: javob olingan har qo'ng'iroq maqsadga yetgan (bekor qilish ham).
+
+Buyurtma ma'lumoti kampaniya target'ining faktlaridan keladi (CSV ustunlari yoki `target-source`):
+
+| Fakt | Majburiy | Ma'nosi |
+|---|---|---|
+| `customerName` | ✅ | Murojaat shaklida: "Aziza opa" |
+| `orderNumber` | ✅ | Magazin tizimidagi raqam |
+| `orderItems` | ✅ | Og'zaki o'qishga qulay: "2 ta qora krossovka, 1 ta sumka" |
+| `orderTotal`, `currency` | ✅ | To'lanadigan summa, yetkazib berish bilan |
+| `deliveryAddress`, `deliveryDate` | ✅ | Manzil va kun (`yyyy-MM-dd`) |
+
+Natija `recordOrderDecision(decision, newDeliveryDate, newAddress, cancelReason)` bilan qo'ng'iroq
+natijasiga yoziladi va `update_order` tool'i bilan magazinga yuboriladi:
+`POST {{secrets.SHOP_API_URL}}/orders/{orderNumber}/confirmation`, body
+`{decision, deliveryDate, address, cancelReason, phone, channel}`, javobdan `status` olinadi.
+Magazinda bunday API bo'lmasa, natija baribir qo'ng'iroqda saqlanadi va agentning post-call webhook'i
+yoki CRM orqali olinadi.
+
+| Natija | Ma'nosi |
+|---|---|
+| `decision` | `CONFIRMED`, `RESCHEDULED` (kun yoki manzil o'zgardi), `CANCELLED` (maqsad) |
+| `newDeliveryDate`, `newAddress` | Faqat `RESCHEDULED` da |
+| `cancelReason` | `CHANGED_MIND`, `BOUGHT_ELSEWHERE`, `TOO_EXPENSIVE`, `WAITED_TOO_LONG`, `NOT_ORDERED`, `OTHER` |
+| `orderStatus` | Magazin qaytargan holat |
+
+Telefonni boshqa odam ko'tarsa, buyurtma tarkibi va summasi aytilmaydi, qo'ng'iroq `recordWrongPerson`
+bilan (`WRONG_NUMBER`) yakunlanadi. Konversiya maqsadi: `order_delivered` (168 soat) — magazin
+buyurtma topshirilganini [conversions.md](conversions.md) orqali xabar qiladi.
+
+**Test holatlari (6):** tasdiqlaydi, kunni ko'chiradi, bekor qiladi (ko'ndirilmasin), boshqa odam
+ko'tardi (tarkib aytilmasin), karta bilan to'lamoqchi, ruscha manzil o'zgartiradi.
+
+---
+
 ## `debt_collection` — Bank/MFO muddati o'tgan qarz (Soft Collection)
 
 Chiquvchi qo'ng'iroq, **tashqi tool'siz va secrets'siz**. Bosqichlar: `RPC_VERIFY` (o'zi ekanini

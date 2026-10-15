@@ -35,6 +35,7 @@ Qamrov hisoboti: `build/reports/jacoco/jacocoUnitTestReport/html/index.html`.
 | [docs/api/](docs/api/README.md)          | REST API — frontend shunga qarab ishlaydi                       |
 | [docs/RUN.md](docs/RUN.md)               | Ishga tushirish, portlar, debug                                 |
 | [docs/NETWORK.md](docs/NETWORK.md)       | Tarmoq: SIP, RTP, Asterisk                                      |
+| [docs/ONPREM.md](docs/ONPREM.md)         | Mijoz serverida o'rnatish (bank/MFO): lokal nima, tashqi nima, firewall |
 | [docs/claude/CLAUDE.md](docs/claude/CLAUDE.md) | Bosqichlar tarixi (arxiv)                                 |
 
 ## Tuzilma

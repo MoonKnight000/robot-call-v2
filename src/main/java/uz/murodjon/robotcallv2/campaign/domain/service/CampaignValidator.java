@@ -1,10 +1,12 @@
 package uz.murodjon.robotcallv2.campaign.domain.service;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSourceStep;
 import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
@@ -13,6 +15,9 @@ import java.util.List;
 
 @Component
 public class CampaignValidator {
+
+    /** Three Cyrillic SMS parts (3 × 153 characters) — longer is split into ever more paid parts. */
+    static final int MAX_FOLLOW_UP_SMS_LENGTH = 459;
 
     /**
      * An AI campaign needs the agent that speaks; an operator campaign needs the queue whose
@@ -26,6 +31,29 @@ public class CampaignValidator {
         if (!dialMode.placesAiCalls() && callQueueId == null) {
             throw new ValidationException(ErrorCode.CAMPAIGN_CALL_QUEUE_REQUIRED, dialMode);
         }
+    }
+
+    /**
+     * A follow-up SMS fits one message part set, and never goes to a number the call learned
+     * it must not text: one that asked not to be contacted, or one that turned out to be
+     * somebody else — a stranger would read the client's facts.
+     */
+    public void validateRetryPolicy(RetryPolicy policy) {
+        policy.rules().forEach((disposition, rule) -> {
+            if (rule == null || rule.smsText() == null || rule.smsText().isBlank()) {
+                return;
+            }
+            if (disposition == Disposition.DO_NOT_CALL || disposition == Disposition.WRONG_NUMBER) {
+                throw new ValidationException(ErrorCode.CAMPAIGN_FOLLOW_UP_SMS_NOT_ALLOWED, disposition);
+            }
+            if (rule.smsText().length() > MAX_FOLLOW_UP_SMS_LENGTH) {
+                throw new ValidationException(ErrorCode.CAMPAIGN_FOLLOW_UP_SMS_TOO_LONG, disposition,
+                        MAX_FOLLOW_UP_SMS_LENGTH);
+            }
+            if (rule.smsOnAttempt() != null && rule.smsOnAttempt() < 1) {
+                throw new ValidationException(ErrorCode.CAMPAIGN_FOLLOW_UP_SMS_ATTEMPT_INVALID, disposition);
+            }
+        });
     }
 
     public void validateDialWindow(LocalTime start, LocalTime end) {

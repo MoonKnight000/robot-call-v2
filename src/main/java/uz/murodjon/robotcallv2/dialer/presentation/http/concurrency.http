@@ -1,3 +1,7 @@
 ### The company's concurrent dialer calls: limit, active, available
 GET http://localhost:8080/api/concurrency
 Authorization: Bearer {{auth_token}}
+
+### SIP trunks: channel limit, calls on them now, and the channel count learned from refusals
+GET http://localhost:8080/api/concurrency/trunks
+Authorization: Bearer {{auth_token}}

@@ -18,7 +18,8 @@ public class TtsVoiceEntityMapper {
                 entity.getLanguage(),
                 entity.getName(),
                 entity.getLabel(),
-                entity.getRole()
+                entity.getRole(),
+                entity.getCompanyId()
         );
     }
 
@@ -33,6 +34,7 @@ public class TtsVoiceEntityMapper {
         entity.setName(domain.name());
         entity.setLabel(domain.label());
         entity.setRole(domain.role());
+        entity.setCompanyId(domain.companyId());
         return entity;
     }
 }
