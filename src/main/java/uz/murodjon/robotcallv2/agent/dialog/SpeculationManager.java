@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -161,13 +162,26 @@ class SpeculationManager {
         if (s.turnCount() == 0) {
             return "the bot has not spoken yet";
         }
-        if (text.length() < dialogProperties.preemptiveMinChars()) {
+        if (text.length() < dialogProperties.preemptiveMinChars() && !isKnownShortUtterance(text)) {
             return "interim shorter than preemptive-min-chars=" + dialogProperties.preemptiveMinChars();
         }
         if (!withinSpeculationBudget(s)) {
             return "call token budget nearly spent";
         }
         return null;
+    }
+
+    private static final Set<String> COMPLETE_SHORT_UTTERANCES = Set.of(
+            "ha", "yoq", "yo'q", "aha", "shunday", "mayli", "xop", "xo'p", "to'g'ri", "togri", "albatta",
+            "да", "нет", "ага", "так", "ясно", "ладно", "верно", "конечно"
+    );
+
+    static boolean isKnownShortUtterance(String text) {
+        if (text == null) {
+            return false;
+        }
+        String norm = TranscriptText.normalize(text);
+        return COMPLETE_SHORT_UTTERANCES.contains(norm);
     }
 
     /**

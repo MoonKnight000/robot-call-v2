@@ -52,6 +52,28 @@ public class FastPathRouter {
             "дайте оператора", "живой человек есть", "свяжите с оператором"
     );
 
+    private static final Set<String> CLOSING_GRATITUDE_UZ = Set.of(
+            "rahmat xayr", "katta rahmat xayr", "rahmat salomat boling", "rahmat salomat bo'ling",
+            "katta rahmat salomat boling", "katta rahmat salomat bo'ling", "rahmat sog boling", "rahmat sog' bo'ling",
+            "raxmat xayr", "tashakkur xayr", "boshqa savol yoq", "boshqa savol yo'q",
+            "boshqa savolim yoq", "boshqa savolim yo'q", "hammasi tushunarli rahmat", "boldi rahmat", "bo'ldi rahmat",
+            "rahmat boldi", "rahmat bo'ldi", "rahmat tushundim", "tushundim rahmat"
+    );
+
+    private static final Set<String> CLOSING_GRATITUDE_RU = Set.of(
+            "спасибо до свидания", "большое спасибо до свидания", "спасибо всего доброго",
+            "большое спасибо всего хорошего", "все понятно спасибо", "нет вопросов спасибо",
+            "спасибо больше ничего не надо", "понял спасибо до свидания", "понятно спасибо до свидания"
+    );
+
+    private static final Set<String> SIMPLE_GRATITUDE_UZ = Set.of(
+            "rahmat", "katta rahmat", "raxmat", "tashakkur", "salomat boling", "salomat bo'ling", "sog boling", "sog' bo'ling"
+    );
+
+    private static final Set<String> SIMPLE_GRATITUDE_RU = Set.of(
+            "спасибо", "большое спасибо", "благодарю", "всего доброго", "до свидания"
+    );
+
     public FastPathResult evaluate(DialogSession s, String clientText) {
         if (clientText == null || clientText.isBlank() || s.isEnded()) {
             return FastPathResult.NOT_HANDLED;
@@ -85,7 +107,28 @@ public class FastPathRouter {
             return FastPathResult.endWithDisposition(reply, Disposition.TRANSFERRED);
         }
 
+        // 4. Closing Gratitude / Polite Farewell
+        if (isClosingGratitude(normalized, isRu, s)) {
+            String reply = DialogPhrases.gratitudeReply(s.language());
+            log.info("[{}] Fast-path matched: GRATITUDE_CLOSE", s.channelId());
+            Disposition disp = s.disposition() != null ? s.disposition() : Disposition.ANSWERED;
+            return FastPathResult.endWithDisposition(reply, disp);
+        }
+
         return FastPathResult.NOT_HANDLED;
+    }
+
+    private static boolean isClosingGratitude(String normalized, boolean isRu, DialogSession s) {
+        if (matchesAny(normalized, isRu ? CLOSING_GRATITUDE_RU : CLOSING_GRATITUDE_UZ)) {
+            return true;
+        }
+        if (s.turnsSinceOutcome() >= 0) {
+            String[] words = normalized.split("\\s+");
+            if (words.length <= 3 && matchesAny(normalized, isRu ? SIMPLE_GRATITUDE_RU : SIMPLE_GRATITUDE_UZ)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean matchesAny(String input, Set<String> phrases) {

@@ -400,6 +400,15 @@ public class DialogEngine implements CallDialog {
         return inputGate.onBargeIn(session);
     }
 
+    /** The caller kept talking over the bot after a barge-in ({@code VadProperties#sustainedSpeechMs}). */
+    public void notifySustainedSpeech(String channelId) {
+        DialogSession session = sessions.get(channelId);
+        if (session == null || session.isEnded()) {
+            return;
+        }
+        inputGate.onSustainedSpeech(session);
+    }
+
     @Override
     public boolean owns(String channelId) {
         return sessions.containsKey(channelId);

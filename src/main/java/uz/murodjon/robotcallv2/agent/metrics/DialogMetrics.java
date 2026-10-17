@@ -37,6 +37,8 @@ public class DialogMetrics {
     private final Counter echoSuppressed;
     private final Counter floorDecidedByRule;
     private final Counter floorDecidedByModel;
+    private final Counter floorDecidedByLearning;
+    private final Counter floorDecidedBySpeech;
     private final Timer turnaround;
 
     public DialogMetrics(MeterRegistry registry) {
@@ -123,6 +125,16 @@ public class DialogMetrics {
                 .description("short caller utterances over the bot judged as yielding or taking the floor")
                 .tag("by", "model")
                 .register(registry);
+        // Learned from the model's own rulings (FloorLearning), and taken by the caller simply
+        // talking on over the paused bot (VadProperties.sustainedSpeechMs) — both skip the wait.
+        this.floorDecidedByLearning = Counter.builder("voice.dialog.floor.decided")
+                .description("short caller utterances over the bot judged as yielding or taking the floor")
+                .tag("by", "learned")
+                .register(registry);
+        this.floorDecidedBySpeech = Counter.builder("voice.dialog.floor.decided")
+                .description("short caller utterances over the bot judged as yielding or taking the floor")
+                .tag("by", "speech")
+                .register(registry);
         // The number §1.3 actually budgets (<1000ms): client stopped speaking -> first
         // bot audio on the wire. The LLM and TTS timers alone cannot show it, because
         // sentence streaming overlaps them.
@@ -206,6 +218,16 @@ public class DialogMetrics {
     /** A short utterance over the bot was judged — from the words alone, or by the model. */
     public void floorDecided(boolean byRule) {
         (byRule ? floorDecidedByRule : floorDecidedByModel).increment();
+    }
+
+    /** A short utterance over the bot was judged taking the floor from what the model ruled on it before. */
+    public void floorDecidedByLearning() {
+        floorDecidedByLearning.increment();
+    }
+
+    /** The caller talked on over the paused bot long enough that no words were needed to tell. */
+    public void floorDecidedBySpeech() {
+        floorDecidedBySpeech.increment();
     }
 
     /** A caller transcript was dropped for echoing the bot's own line back at it. */

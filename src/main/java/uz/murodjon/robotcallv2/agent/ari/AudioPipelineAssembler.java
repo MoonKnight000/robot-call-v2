@@ -243,7 +243,8 @@ class AudioPipelineAssembler {
                 listeners.add(new VadStream(vad, vadProperties, channelId,
                         realtime ? () -> realtimeDialogEngine.notifyCallerSpeaking(channelId)
                                 : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
-                        buildAmd(channelId, realtime), onSpeechEnd, botLevelSupplier));
+                        buildAmd(channelId, realtime), onSpeechEnd, botLevelSupplier,
+                        realtime ? null : () -> dialogEngine.notifySustainedSpeech(channelId)));
             } else if (!realtime && sttProperties.vadGating() != null && sttProperties.vadGating().enabled()) {
                 log.debug("[{}] STT gating requested but VAD is unavailable — streaming all audio", channelId);
             }

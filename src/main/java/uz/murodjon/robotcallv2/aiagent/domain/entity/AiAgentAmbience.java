@@ -40,10 +40,10 @@ public record AiAgentAmbience(
             backgroundFadeInSeconds = 1.5;
         }
         if (thinking == null) {
-            thinking = AmbientSound.OFF;
+            thinking = AmbientSound.KEYBOARD_TYPING;
         }
         if (thinkingVolume == null) {
-            thinkingVolume = 1.0;
+            thinkingVolume = 0.8;
         }
         if (noiseCancellationMode == null) {
             noiseCancellationMode = NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;

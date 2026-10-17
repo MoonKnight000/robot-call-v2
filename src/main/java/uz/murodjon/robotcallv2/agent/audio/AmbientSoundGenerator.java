@@ -1,7 +1,12 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
+import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
+import uz.murodjon.robotcallv2.agent.rtp.WavReader;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Random;
@@ -9,35 +14,25 @@ import java.util.Random;
 /**
  * The room the bot is calling from, mixed under its voice on the outbound leg.
  *
- * <p>Everything here is noise driven. The first version built its call-centre "chatter"
- * out of eight steady sine tones at voice formant frequencies, and eight steady sines are
- * a chord, not a room — a listener names it as synthetic inside a second. Speech has no
- * steady partials: it is broadband excitation shaped by moving resonances, and what makes
- * distant babble read as people is the <em>syllable rhythm</em>, not the pitch. So a
- * talker here is white noise through three formant resonators, gated by its own phrase and
- * syllable envelope, and a room is several of those at rates that never line up. Key
- * clicks are noise transients for the same reason — a decaying sine is a beep.
+ * <p>Supports both pre-recorded studio 8 kHz WAV beds (from {@code /ambience/<name>.wav}
+ * or {@code data/ambience/<name>.wav}) and highly realistic procedural soundscape synthesis.
  *
- * <p>Levels are much lower than they were: ~ -38 dBFS rather than ~ -30. Synthesized TTS
- * speech sits around -20 dBFS, so the old bed was only ~10 dB under the bot's own voice
- * where a real office is 20-25 dB under. That margin is also what keeps the bed from
- * coming back up the line: the caller's handset leaks whatever we play into its
- * microphone, and a continuous voice-band signal arriving at the recognizer is exactly
- * what makes it return words nobody said.
+ * <p>Procedural chatter uses dynamic vowel formant modulation across phonetic targets
+ * ([a], [e], [i], [o], [u]) with natural phrase cadence and independent vocal tract scaling,
+ * sounding like genuine human speech murmur rather than static organ whistlers.
+ * Typing sounds use dual-component acoustic transients (tactile switch strike + lower chassis
+ * bottom-out thud) grouped into natural word bursts with inter-burst pauses. Room tone incorporates
+ * subtle HVAC air movement and warm duct resonance.
  *
- * <p>Everything is band-limited to the telephone passband before calibration — energy
- * outside 250-3400 Hz never reaches an earpiece, so leaving it in only steals level from
- * the part that does.
+ * <p>Everything is band-limited to the telephone passband (250-3400 Hz) before calibration
+ * to ~ -38 dBFS (~20 dB under TTS speech) to eliminate recognizer bleed.
  */
 public final class AmbientSoundGenerator {
 
     private static final int SAMPLE_RATE = 8000;
     /**
      * Longer than a call's quiet stretches, because a loop is heard as a loop the moment
-     * it comes round twice. At 10 s a 56 s call played the same babble, the same keystroke
-     * and the same pause 5.7 times over, and a caller reads that repetition as the bed
-     * cutting out and starting again. Sixty seconds costs 960 KB per soundscape and puts
-     * the seam beyond most calls entirely.
+     * it comes round twice. Sixty seconds puts the loop seam beyond almost all calls.
      */
     private static final int LOOP_DURATION_SECONDS = 60;
     private static final int LOOP_SAMPLES = SAMPLE_RATE * LOOP_DURATION_SECONDS; // 480,000 samples
@@ -48,6 +43,20 @@ public final class AmbientSoundGenerator {
 
     /** Cosine cross-fade at the loop boundary, 50 ms. */
     private static final int CROSSFADE_SAMPLES = 400;
+
+    /**
+     * Acoustic phonetic vowel formant prototypes (F1, F2, F3 in Hz):
+     * [a] (father), [e] (head), [i] (see), [o] (call), [u] (foot), [ae] (had), [uh] (but).
+     */
+    private static final double[][] VOWEL_FORMANTS = {
+        { 730.0, 1100.0, 2450.0 }, // [a]
+        { 530.0, 1850.0, 2500.0 }, // [e]
+        { 280.0, 2250.0, 2850.0 }, // [i]
+        { 550.0,  850.0, 2400.0 }, // [o]
+        { 320.0,  880.0, 2250.0 }, // [u]
+        { 660.0, 1720.0, 2410.0 }, // [ae]
+        { 520.0, 1200.0, 2390.0 }  // [uh]
+    };
 
     private static final Map<AmbientSound, short[]> SOUNDSCAPES = new EnumMap<>(AmbientSound.class);
 
@@ -63,11 +72,6 @@ public final class AmbientSoundGenerator {
 
     /**
      * Builds every soundscape now instead of on the first frame that needs one.
-     *
-     * <p>The static initializer above takes ~0.6s at this loop length. Left alone it runs
-     * on whichever thread first calls {@link #mix}, and that thread is the RTP pacer's
-     * Netty event loop — 0.6s of stalled outbound audio at the start of the first call
-     * after a restart. Called from startup, it costs nothing anyone hears.
      */
     public static void warmUp() {
         SOUNDSCAPES.size();
@@ -88,13 +92,7 @@ public final class AmbientSoundGenerator {
     /**
      * As {@link #mix(short[], AmbientSound, long)}, with the bed trimmed and faded in.
      *
-     * <p>{@code volume} scales the calibrated level rather than setting one: 1.0 is the
-     * level {@link #generateLoop} tuned each soundscape to, which is already the ~20 dB
-     * under the bot's voice that a real room sits at. Anything above 1.0 is refused for
-     * that reason — a louder bed is not a preference, it is the bed leaking back up the
-     * line into the recognizer.
-     *
-     * @param volume        multiplier on the calibrated level, clamped to 0.0-1.0
+     * @param volume multiplier on the calibrated level, clamped to 0.0-1.0
      * @param fadeInSeconds equal-power ramp from call start; 0 starts at full level
      */
     public static short[] mix(short[] pcmFrame, AmbientSound sound, long samplePosition,
@@ -124,9 +122,7 @@ public final class AmbientSoundGenerator {
     }
 
     /**
-     * Equal-power ramp: {@code sin(pi/2 * t)} rather than a straight line, because a bed
-     * is noise and noise fades by power, not amplitude. A linear ramp on noise is heard
-     * as arriving late and then rushing in.
+     * Equal-power ramp: {@code sin(pi/2 * t)} rather than a straight line.
      */
     private static double fadeGain(long samplePosition, double fadeInSeconds) {
         if (fadeInSeconds <= 0.0) {
@@ -141,45 +137,54 @@ public final class AmbientSoundGenerator {
 
     /** Builds one soundscape's looping buffer, band-limited and calibrated to its target level. */
     private static short[] generateLoop(AmbientSound sound) {
+        double targetRms;
+        switch (sound) {
+            case CALL_CENTER -> targetRms = 420.0; // ~ -37.9 dBFS
+            case OFFICE -> targetRms = 320.0;      // ~ -40.2 dBFS
+            case CAFE -> targetRms = 380.0;        // ~ -38.7 dBFS
+            case NATURAL_LINE -> targetRms = 220.0;// ~ -43.5 dBFS
+            case KEYBOARD_TYPING -> targetRms = 320.0; // ~ -40.2 dBFS
+            default -> {
+                return new short[0];
+            }
+        }
+
+        // 1. Try pre-recorded WAV if provided
+        short[] preRecorded = loadPreRecordedWav(sound, targetRms);
+        if (preRecorded != null) {
+            return preRecorded;
+        }
+
+        // 2. Fall back to high-realism procedural synthesis
         Random rand = new Random(sound.ordinal() * 31337L + 42);
         double[] raw = new double[LOOP_SAMPLES];
-        double targetRms;
 
         switch (sound) {
             case CALL_CENTER -> {
-                targetRms = 420.0; // ~ -37.9 dBFS
-                addBabble(raw, rand, 7, 480.0, 1.0);
+                addBabble(raw, rand, 7, 1.0);
                 addNoise(raw, rand, 0.18);          // room tone and ventilation
-                addKeyboard(raw, rand, 0.12, 0.35, 0.55);
+                addKeyboard(raw, rand, 1.8, 4.5, 0.55);
                 addPaperShuffle(raw, rand);
             }
             case OFFICE -> {
-                targetRms = 320.0; // ~ -40.2 dBFS
-                addNoise(raw, rand, 0.18);          // gentle room tone instead of harsh 0.55 hiss
-                addBabble(raw, rand, 4, 460.0, 0.60); // distant colleagues talking
-                addKeyboard(raw, rand, 0.35, 1.0, 0.50); // realistic office typing
+                addNoise(raw, rand, 0.18);          // gentle room tone
+                addBabble(raw, rand, 4, 0.60);      // distant colleagues talking
+                addKeyboard(raw, rand, 2.5, 6.5, 0.50); // realistic office typing bursts
                 addPaperShuffle(raw, rand);         // subtle paper/desk rustle
             }
             case CAFE -> {
-                targetRms = 380.0; // ~ -38.7 dBFS
-                addBabble(raw, rand, 10, 430.0, 1.0);
+                addBabble(raw, rand, 10, 1.0);
                 addNoise(raw, rand, 0.20);
                 addCrockery(raw, rand);
             }
             case NATURAL_LINE -> {
-                targetRms = 220.0; // ~ -43.5 dBFS — subtle telephone line comfort noise
-                addNoise(raw, rand, 0.30);          // reduced from harsh 1.0 hiss
+                addNoise(raw, rand, 0.30);          // subtle line comfort noise
                 addLineHum(raw);
             }
-            // Typed notes under a pause, played only while the model is composing a reply.
-            // Denser than the office bed's stray keystroke and with no babble under it:
-            // this one is meant to be noticed as someone working, not as a room.
             case KEYBOARD_TYPING -> {
-                targetRms = 320.0; // ~ -40.2 dBFS
                 addNoise(raw, rand, 0.15);
-                addKeyboard(raw, rand, 0.09, 0.22, 1.0);
+                addKeyboard(raw, rand, 0.25, 0.75, 1.0); // active note-taking typing
             }
-            // OFF, and any constant added later that has no bed of its own.
             default -> {
                 return new short[0];
             }
@@ -192,58 +197,149 @@ public final class AmbientSoundGenerator {
     }
 
     /**
-     * Distant multi-talker babble: {@code talkers} independent voices, each white noise
-     * through three formant resonators and gated by its own phrase/syllable envelope.
-     *
-     * @param baseFormantHz centre the talkers' first formant is drawn around; the higher
-     *                      two are derived per talker so no two share a spectrum
+     * Attempts to load a pre-recorded 8kHz 16-bit mono WAV file for the given soundscape.
+     * Looks first in classpath (/ambience/<name>.wav), then in data/ambience/<name>.wav.
+     * Returns null if no file exists or if reading fails, falling back to procedural synthesis.
      */
-    private static void addBabble(double[] raw, Random rand, int talkers, double baseFormantHz, double level) {
-        double[] excitation = new double[LOOP_SAMPLES];
-        double[] voice = new double[LOOP_SAMPLES];
-        for (int t = 0; t < talkers; t++) {
-            for (int i = 0; i < LOOP_SAMPLES; i++) {
-                excitation[i] = rand.nextDouble() * 2.0 - 1.0;
-                voice[i] = 0.0;
-            }
-            double f1 = baseFormantHz * (0.75 + rand.nextDouble() * 0.6);
-            double f2 = f1 * (2.0 + rand.nextDouble() * 1.6);
-            double f3 = Math.min(3200.0, f2 * (1.4 + rand.nextDouble() * 0.7));
-            resonate(voice, excitation, f1, 130.0, 1.0);
-            resonate(voice, excitation, f2, 190.0, 0.55);
-            resonate(voice, excitation, f3, 280.0, 0.30);
+    private static short[] loadPreRecordedWav(AmbientSound sound, double targetRms) {
+        String name = sound.name().toLowerCase();
+        byte[] bytes = null;
 
-            double[] envelope = syllables(rand);
-            double gain = level * (0.6 + rand.nextDouble() * 0.8) / Math.sqrt(talkers);
-            for (int i = 0; i < LOOP_SAMPLES; i++) {
-                raw[i] += voice[i] * envelope[i] * gain;
+        // 1. Try classpath resource: /ambience/<name>.wav
+        try (InputStream in = AmbientSoundGenerator.class.getResourceAsStream("/ambience/" + name + ".wav")) {
+            if (in != null) {
+                bytes = in.readAllBytes();
             }
+        } catch (Exception ignored) {
+        }
+
+        // 2. Try filesystem: data/ambience/<name>.wav
+        if (bytes == null) {
+            Path fsPath = Path.of("data", "ambience", name + ".wav");
+            if (Files.isRegularFile(fsPath)) {
+                try {
+                    bytes = Files.readAllBytes(fsPath);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+
+        try {
+            WavAudio audio = WavReader.read(bytes);
+            if (audio.samples() == null || audio.samples().length == 0) {
+                return null;
+            }
+            short[] src = audio.samples();
+            double[] raw = new double[LOOP_SAMPLES];
+            for (int i = 0; i < LOOP_SAMPLES; i++) {
+                raw[i] = src[i % src.length];
+            }
+            bandLimit(raw);
+            short[] buffer = calibrate(raw, targetRms);
+            crossFadeLoop(buffer);
+            return buffer;
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
     /**
-     * How loud one talker is, moment to moment: phrases of 0.6-2.5 s at 3-6 syllables per
-     * second, separated by pauses. Independent rates per talker are what stop the sum from
-     * pulsing in step, which is the other half of why the sine version sounded mechanical.
+     * Distant multi-talker babble: independent voices with dynamic formant modulation across
+     * syllables, phrase pauses, and vocal tract variance.
      */
-    private static double[] syllables(Random rand) {
-        double[] envelope = new double[LOOP_SAMPLES];
-        int edge = SAMPLE_RATE / 20; // 50 ms in and out of a phrase
-        int i = 0;
-        double phase = rand.nextDouble() * 2.0 * Math.PI;
-        while (i < LOOP_SAMPLES) {
-            int phraseLength = (int) (SAMPLE_RATE * (0.6 + rand.nextDouble() * 1.9));
-            int pauseLength = (int) (SAMPLE_RATE * (0.3 + rand.nextDouble() * 1.2));
-            double syllableRate = 3.0 + rand.nextDouble() * 3.0;
-            for (int k = 0; k < phraseLength && i < LOOP_SAMPLES; k++, i++) {
-                phase += 2.0 * Math.PI * syllableRate / SAMPLE_RATE;
-                double syllable = 0.2 + 0.8 * Math.pow(0.5 * (1.0 - Math.cos(phase)), 1.6);
-                double fade = Math.min(1.0, Math.min(k, phraseLength - k) / (double) edge);
-                envelope[i] = syllable * fade;
+    private static void addBabble(double[] raw, Random rand, int talkers, double level) {
+        double r1 = Math.exp(-Math.PI * 130.0 / SAMPLE_RATE);
+        double r2 = Math.exp(-Math.PI * 190.0 / SAMPLE_RATE);
+        double r3 = Math.exp(-Math.PI * 280.0 / SAMPLE_RATE);
+        double r1Sq = r1 * r1;
+        double r2Sq = r2 * r2;
+        double r3Sq = r3 * r3;
+
+        for (int t = 0; t < talkers; t++) {
+            double tractScale = 0.85 + rand.nextDouble() * 0.32;
+            double gain = level * (0.65 + rand.nextDouble() * 0.70) / Math.sqrt(talkers);
+
+            // Filter states
+            double y1_1 = 0, y2_1 = 0;
+            double y1_2 = 0, y2_2 = 0;
+            double y1_3 = 0, y2_3 = 0;
+
+            int vIdx = rand.nextInt(VOWEL_FORMANTS.length);
+            double targetF1 = VOWEL_FORMANTS[vIdx][0] * tractScale;
+            double targetF2 = VOWEL_FORMANTS[vIdx][1] * tractScale;
+            double targetF3 = Math.min(3350.0, VOWEL_FORMANTS[vIdx][2] * tractScale);
+
+            double curF1 = targetF1;
+            double curF2 = targetF2;
+            double curF3 = targetF3;
+
+            double c1 = 2.0 * r1 * Math.cos(2.0 * Math.PI * curF1 / SAMPLE_RATE);
+            double c2 = 2.0 * r2 * Math.cos(2.0 * Math.PI * curF2 / SAMPLE_RATE);
+            double c3 = 2.0 * r3 * Math.cos(2.0 * Math.PI * curF3 / SAMPLE_RATE);
+
+            // Talker speech phrases and pauses
+            int i = (int) (rand.nextDouble() * SAMPLE_RATE * 3); // initial stagger
+            while (i < LOOP_SAMPLES) {
+                int phraseLength = (int) (SAMPLE_RATE * (0.8 + rand.nextDouble() * 2.2));
+                int pauseLength = (int) (SAMPLE_RATE * (0.4 + rand.nextDouble() * 1.5));
+                double syllableRate = 3.5 + rand.nextDouble() * 2.5;
+                int syllableSamples = Math.max(1, (int) (SAMPLE_RATE / syllableRate));
+                int edge = (int) (SAMPLE_RATE * 0.045); // 45ms phrase attack/decay
+
+                for (int k = 0; k < phraseLength && i < LOOP_SAMPLES; k++, i++) {
+                    // At start of each syllable, pick a new vowel target
+                    if (k % syllableSamples == 0) {
+                        vIdx = rand.nextInt(VOWEL_FORMANTS.length);
+                        targetF1 = VOWEL_FORMANTS[vIdx][0] * tractScale;
+                        targetF2 = VOWEL_FORMANTS[vIdx][1] * tractScale;
+                        targetF3 = Math.min(3350.0, VOWEL_FORMANTS[vIdx][2] * tractScale);
+                    }
+
+                    // Update resonant frequencies smoothly
+                    if ((k & 7) == 0) {
+                        curF1 += (targetF1 - curF1) * 0.06;
+                        curF2 += (targetF2 - curF2) * 0.06;
+                        curF3 += (targetF3 - curF3) * 0.06;
+                        c1 = 2.0 * r1 * Math.cos(2.0 * Math.PI * curF1 / SAMPLE_RATE);
+                        c2 = 2.0 * r2 * Math.cos(2.0 * Math.PI * curF2 / SAMPLE_RATE);
+                        c3 = 2.0 * r3 * Math.cos(2.0 * Math.PI * curF3 / SAMPLE_RATE);
+                    }
+
+                    double white = rand.nextDouble() * 2.0 - 1.0;
+
+                    // 3-pole formant filtering
+                    double out1 = (1.0 - r1) * white + c1 * y1_1 - r1Sq * y2_1;
+                    y2_1 = y1_1;
+                    y1_1 = out1;
+
+                    double out2 = (1.0 - r2) * white + c2 * y1_2 - r2Sq * y2_2;
+                    y2_2 = y1_2;
+                    y1_2 = out2;
+
+                    double out3 = (1.0 - r3) * white + c3 * y1_3 - r3Sq * y2_3;
+                    y2_3 = y1_3;
+                    y1_3 = out3;
+
+                    double voiceSample = out1 * 1.0 + out2 * 0.55 + out3 * 0.28;
+
+                    // Phrase envelope (in/out fade)
+                    double phraseFade = Math.min(1.0, Math.min(k, phraseLength - k) / (double) edge);
+
+                    // Syllable modulation
+                    double sylPhase = 2.0 * Math.PI * (k % syllableSamples) / (double) syllableSamples;
+                    double sylAmp = 0.25 + 0.75 * Math.pow(0.5 * (1.0 - Math.cos(sylPhase)), 1.5);
+
+                    raw[i] += voiceSample * phraseFade * sylAmp * gain;
+                }
+
+                // Pauses between phrases
+                i += pauseLength;
             }
-            i += pauseLength; // the gap between phrases stays zero
         }
-        return envelope;
     }
 
     /** Pink noise: room tone, ventilation, and the line's own comfort noise. */
@@ -254,45 +350,103 @@ public final class AmbientSoundGenerator {
             b0 = 0.99765 * b0 + white * 0.0990460;
             b1 = 0.96300 * b1 + white * 0.2965164;
             b2 = 0.57000 * b2 + white * 1.0526913;
-            raw[i] += (b0 + b1 + b2 + white * 0.1848) * 0.25 * level;
-        }
-    }
+            double pink = (b0 + b1 + b2 + white * 0.1848) * 0.25;
 
-    /** Keystrokes at {@code minGapSeconds}-{@code maxGapSeconds} intervals. */
-    private static void addKeyboard(double[] raw, Random rand,
-                                    double minGapSeconds, double maxGapSeconds, double level) {
-        int i = SAMPLE_RATE / 10;
-        while (i < LOOP_SAMPLES) {
-            addTransient(raw, rand, i, 1400.0 + rand.nextDouble() * 1400.0, 900.0,
-                    0.0025, level * (0.6 + rand.nextDouble() * 0.7));
-            i += (int) (SAMPLE_RATE * (minGapSeconds + rand.nextDouble() * (maxGapSeconds - minGapSeconds)));
-        }
-    }
+            // Subtle indoor HVAC air movement (~122 Hz ventilation hum)
+            double hvac = Math.sin(2.0 * Math.PI * 122.0 * i / SAMPLE_RATE) * 0.035;
 
-    /** A cup or spoon every few seconds: two inharmonic partials, ringing rather than clicking. */
-    private static void addCrockery(double[] raw, Random rand) {
-        int i = SAMPLE_RATE;
-        while (i < LOOP_SAMPLES) {
-            double partial = 1700.0 + rand.nextDouble() * 900.0;
-            addTransient(raw, rand, i, partial, 60.0, 0.012, 0.10);
-            addTransient(raw, rand, i, partial * 1.63, 90.0, 0.008, 0.06);
-            i += (int) (SAMPLE_RATE * (2.0 + rand.nextDouble() * 3.0));
-        }
-    }
-
-    /** Occasional subtle desk movement or paper shuffle every few seconds. */
-    private static void addPaperShuffle(double[] raw, Random rand) {
-        int i = SAMPLE_RATE * 2;
-        while (i < LOOP_SAMPLES) {
-            double freq = 600.0 + rand.nextDouble() * 800.0;
-            addTransient(raw, rand, i, freq, 450.0, 0.035, 0.12);
-            i += (int) (SAMPLE_RATE * (3.5 + rand.nextDouble() * 5.0));
+            raw[i] += (pink + hvac) * level;
         }
     }
 
     /**
-     * One percussive event: a noise burst rung through a resonator. Broadband excitation is
-     * what separates a key press from a beep — the resonator only says what was hit.
+     * Realistic keyboard typing with natural word bursts (3-7 characters at 80-160ms intervals),
+     * inter-burst pauses, dual-component keystroke acoustics (crisp tactile click + chassis bottom-out thud),
+     * and distinct spacebar/enter resonance.
+     */
+    private static void addKeyboard(double[] raw, Random rand,
+                                    double minBurstGapSeconds, double maxBurstGapSeconds, double level) {
+        int i = (int) (SAMPLE_RATE * (minBurstGapSeconds * 0.5 + rand.nextDouble() * 0.5));
+        while (i < LOOP_SAMPLES) {
+            int burstCount = 3 + rand.nextInt(5); // 3 to 7 keystrokes in a typing burst (a word)
+            for (int k = 0; k < burstCount && i < LOOP_SAMPLES; k++) {
+                boolean spacebar = (k == burstCount - 1); // spacebar at the end of word
+                addKeystroke(raw, rand, i, spacebar, level);
+
+                if (!spacebar) {
+                    // Gap between letters: 85 to 160 ms (approx 60-80 WPM typing speed)
+                    i += (int) (SAMPLE_RATE * (0.085 + rand.nextDouble() * 0.075));
+                } else {
+                    // Small gap after spacebar before pause: 120-200 ms
+                    i += (int) (SAMPLE_RATE * (0.12 + rand.nextDouble() * 0.08));
+                }
+            }
+            // Pause between words or sentences
+            i += (int) (SAMPLE_RATE * (minBurstGapSeconds + rand.nextDouble() * (maxBurstGapSeconds - minBurstGapSeconds)));
+        }
+    }
+
+    /** Dual-component keystroke: high-frequency tactile strike + low-mid chassis bottoming out. */
+    private static void addKeystroke(double[] raw, Random rand, int at, boolean spacebar, double level) {
+        if (at >= raw.length) {
+            return;
+        }
+        double clickFreq = spacebar ? 1700.0 + rand.nextDouble() * 500.0 : 2300.0 + rand.nextDouble() * 900.0;
+        double clickDecay = spacebar ? 0.0035 : 0.0022;
+        double clickLevel = level * (spacebar ? 0.85 : 0.95) * (0.8 + rand.nextDouble() * 0.4);
+
+        double thudFreq = spacebar ? 360.0 + rand.nextDouble() * 100.0 : 490.0 + rand.nextDouble() * 140.0;
+        double thudDecay = spacebar ? 0.012 : 0.0075;
+        double thudLevel = level * (spacebar ? 0.65 : 0.40) * (0.8 + rand.nextDouble() * 0.4);
+
+        addTransient(raw, rand, at, clickFreq, 850.0, clickDecay, clickLevel);
+        addTransient(raw, rand, at, thudFreq, 380.0, thudDecay, thudLevel);
+    }
+
+    /** Cafe tableware: ceramic inharmonic clinks + occasional saucer placement thud. */
+    private static void addCrockery(double[] raw, Random rand) {
+        int i = SAMPLE_RATE;
+        while (i < LOOP_SAMPLES) {
+            double partial = 1750.0 + rand.nextDouble() * 800.0;
+            // High ceramic chime
+            addTransient(raw, rand, i, partial, 55.0, 0.015, 0.09);
+            addTransient(raw, rand, i, partial * 1.58, 85.0, 0.009, 0.05);
+
+            // Occasional dull saucer clunk
+            if (rand.nextDouble() < 0.4) {
+                addTransient(raw, rand, i, 480.0 + rand.nextDouble() * 120.0, 320.0, 0.012, 0.07);
+            }
+
+            i += (int) (SAMPLE_RATE * (2.2 + rand.nextDouble() * 3.5));
+        }
+    }
+
+    /** Occasional subtle desk movement or paper shuffle with smooth friction envelope. */
+    private static void addPaperShuffle(double[] raw, Random rand) {
+        int i = (int) (SAMPLE_RATE * (2.0 + rand.nextDouble() * 3.0));
+        while (i < LOOP_SAMPLES) {
+            int duration = (int) (SAMPLE_RATE * (0.11 + rand.nextDouble() * 0.12)); // 110-230 ms
+            double freq = 1200.0 + rand.nextDouble() * 800.0; // 1200-2000 Hz paper friction
+            double level = 0.10 + rand.nextDouble() * 0.05;
+
+            double[] burst = new double[duration];
+            double[] shaped = new double[duration];
+            for (int k = 0; k < duration; k++) {
+                // Hann-windowed friction envelope
+                double window = 0.5 * (1.0 - Math.cos(2.0 * Math.PI * k / (double) duration));
+                burst[k] = (rand.nextDouble() * 2.0 - 1.0) * window;
+            }
+            resonate(shaped, burst, freq, 650.0, 1.0);
+            for (int k = 0; k < duration && i + k < raw.length; k++) {
+                raw[i + k] += shaped[k] * level;
+            }
+
+            i += (int) (SAMPLE_RATE * (4.5 + rand.nextDouble() * 6.5));
+        }
+    }
+
+    /**
+     * One percussive event: a noise burst rung through a resonator.
      *
      * @param decaySeconds time constant of the burst; short is a click, long is a chime
      */
@@ -320,7 +474,7 @@ public final class AmbientSoundGenerator {
 
     /**
      * Two-pole resonator, accumulated into {@code out}: a peak at {@code freqHz} whose
-     * width is {@code bandwidthHz}. Three of these on one noise source is a vowel.
+     * width is {@code bandwidthHz}.
      */
     private static void resonate(double[] out, double[] excitation,
                                  double freqHz, double bandwidthHz, double gain) {

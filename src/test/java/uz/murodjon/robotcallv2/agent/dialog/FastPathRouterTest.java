@@ -122,6 +122,53 @@ class FastPathRouterTest {
         assertThat(result.disposition()).isEqualTo(Disposition.TRANSFERRED);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "rahmat salomat bo'ling",
+            "katta rahmat xayr",
+            "hammasi tushunarli rahmat",
+            "boshqa savolim yo'q rahmat",
+            "bo'ldi rahmat"
+    })
+    void matchesClosingGratitudeUzbek(String phrase) {
+        when(session.language()).thenReturn("uz-UZ");
+
+        FastPathResult result = router.evaluate(session, phrase);
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isTrue();
+        assertThat(result.reply()).contains("Arzimaydi");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "спасибо до свидания",
+            "большое спасибо всего доброго",
+            "все понятно спасибо",
+            "нет вопросов спасибо"
+    })
+    void matchesClosingGratitudeRussian(String phrase) {
+        when(session.language()).thenReturn("ru-RU");
+
+        FastPathResult result = router.evaluate(session, phrase);
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isTrue();
+        assertThat(result.reply()).contains("Пожалуйста");
+    }
+
+    @Test
+    void matchesSimpleGratitudeWhenOutcomeRecorded() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.turnsSinceOutcome()).thenReturn(1);
+
+        FastPathResult result = router.evaluate(session, "rahmat");
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isTrue();
+        assertThat(result.reply()).contains("Arzimaydi");
+    }
+
     @Test
     void returnsNotHandledForGeneralConversation() {
         when(session.language()).thenReturn("uz-UZ");

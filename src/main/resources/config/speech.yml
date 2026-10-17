@@ -284,6 +284,7 @@ voice-agent:
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
     echo-gate-ratio: ${VAD_ECHO_GATE_RATIO:0.2}
     echo-min-bot-level: ${VAD_ECHO_MIN_BOT_LEVEL:300.0}
+    sustained-speech-ms: ${VAD_SUSTAINED_SPEECH_MS:800}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}

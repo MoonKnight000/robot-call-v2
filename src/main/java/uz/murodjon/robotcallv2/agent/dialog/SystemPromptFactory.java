@@ -506,6 +506,8 @@ public class SystemPromptFactory {
             rules.add("Banned formal written words: \"данный\", \"осуществлять\", "
                     + "\"уважаемый клиент\", \"собеседник\", \"мой собеседник\". Choose the lively "
                     + "spoken form instead.");
+            rules.add("Talk like a live operator: use natural bridges («Смотрите...», «Хорошо...», "
+                    + "«Договорились») and concise, friendly phrasing.");
         } else {
             rules.add("Banned formal written words: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
                     + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\".");
@@ -517,6 +519,8 @@ public class SystemPromptFactory {
                     + "To confirm identity, say the name inside the greeting: \"Assalomu alaykum, [Ism] aka, yaxshimisiz?\"; "
                     + "a reply that takes the name without objecting already confirms it. "
                     + "If the name is unknown, do not probe oddly for who they are — go straight to the purpose.");
+            rules.add("Natural conversation: use spoken connectors («Qarang...», «Xo'sh...», «Kelishdik») "
+                    + "and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
             rules.add("Write in standard literary Uzbek; always write o' and g' with an apostrophe "
                     + "(so'm, to'lov, bo'yicha, qo'yaymanmi). Do not split a word or drop its "
                     + "letters — a misspelt word sounds broken in the voice too.");

@@ -136,11 +136,14 @@ class LlmTurnClient {
      * <p>Fails toward yielding — no model, no answer in {@link #BARGE_IN_DECISION_MS}, or
      * an answer it cannot read all mean the bot stops: talking over a caller who meant
      * it is the worse of the two mistakes.
+     *
+     * @return the model's ruling, or null when it gave none — the caller yields on null,
+     *         but {@link FloorLearning} must not learn a word from a timeout
      */
-    boolean isTakingTheFloor(DialogSession s, String botLine, String callerText) {
+    Boolean isTakingTheFloor(DialogSession s, String botLine, String callerText) {
         ChatClient client = clientFor(s);
         if (client == null) {
-            return true;
+            return null;
         }
         String prompt = "Telefon suhbati. Bot shu gapni aytayotgan edi: \""
                 + PromptSafeText.sanitize(botLine == null ? "" : botLine, 300)
@@ -159,10 +162,14 @@ class LlmTurnClient {
             usage.add(response);
             publishUsage(s, usage);
             String answer = extractText(response);
-            return answer == null || !answer.strip().toUpperCase(Locale.ROOT).startsWith("CONTINUE");
+            String ruling = answer == null ? "" : answer.strip().toUpperCase(Locale.ROOT);
+            if (ruling.startsWith("CONTINUE")) {
+                return false;
+            }
+            return ruling.startsWith("STOP") ? true : null;
         } catch (RuntimeException e) {
             log.warn("[{}] barge-in decision failed ({}) — yielding to the caller", s.channelId(), e.getMessage());
-            return true;
+            return null;
         }
     }
 

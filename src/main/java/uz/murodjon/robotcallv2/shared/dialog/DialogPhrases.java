@@ -72,6 +72,16 @@ public final class DialogPhrases {
                 : "Bir daqiqa, sizni operatorga ulab beraman.";
     }
 
+    /**
+     * Spoken when the caller thanks the agent or gives a final closing gratitude.
+     */
+    public static String gratitudeReply(String language) {
+        if (english(language)) return "You're welcome! Have a great day, goodbye.";
+        return russian(language)
+                ? "Пожалуйста! Всего доброго, до свидания."
+                : "Arzimaydi! Salomat bo'ling, xayr.";
+    }
+
     /** Spoken when the line has gone quiet. */
     public static String stillThere(String language) {
         if (english(language)) return "Hello, are you still there?";
@@ -188,6 +198,7 @@ public final class DialogPhrases {
                 stillThere(language),
                 stillThereLastCall(language),
                 transferring(language),
+                gratitudeReply(language),
                 technicalError(language),
                 reconnected(language)
         ));

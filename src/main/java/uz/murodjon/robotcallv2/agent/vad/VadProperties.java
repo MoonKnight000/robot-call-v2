@@ -40,6 +40,12 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  *                           level is treated as the bot's voice coming back down the line and
  *                           ignored for barge-in (e.g. 0.15 is -16 dB). 0 disables echo gate.
  * @param echoMinBotLevel    bot output level (RMS) below which the echo gate stays open (e.g. 300.0).
+ * @param sustainedSpeechMs  how long the caller has to keep talking after a barge-in, gaps
+ *                           shorter than {@code silenceResetMs} included, before the paused
+ *                           bot yields without waiting for their words. A listener's "aha" or
+ *                           "xo'p, xo'p" is over well inside it; a caller still talking is
+ *                           taking the floor in whatever dialect they speak. Counted on top of
+ *                           {@code minSpeechMs}. 0 turns it off
  */
 @ConfigurationProperties(prefix = "voice-agent.vad")
 public record VadProperties(
@@ -55,7 +61,8 @@ public record VadProperties(
         double minEnergyRms,
         double noiseFloorMargin,
         double echoGateRatio,
-        double echoMinBotLevel
+        double echoMinBotLevel,
+        int sustainedSpeechMs
 ) {
     @ConstructorBinding
     public VadProperties {
@@ -63,8 +70,16 @@ public record VadProperties(
 
     public VadProperties(boolean enabled, String modelPath, int sampleRate, int windowSamples,
                          float threshold, int minSpeechMs, int silenceResetMs, AmdProperties amd,
+                         float listeningThreshold, double minEnergyRms, double noiseFloorMargin,
+                         double echoGateRatio, double echoMinBotLevel) {
+        this(enabled, modelPath, sampleRate, windowSamples, threshold, minSpeechMs, silenceResetMs, amd,
+                listeningThreshold, minEnergyRms, noiseFloorMargin, echoGateRatio, echoMinBotLevel, 0);
+    }
+
+    public VadProperties(boolean enabled, String modelPath, int sampleRate, int windowSamples,
+                         float threshold, int minSpeechMs, int silenceResetMs, AmdProperties amd,
                          float listeningThreshold, double minEnergyRms, double noiseFloorMargin) {
         this(enabled, modelPath, sampleRate, windowSamples, threshold, minSpeechMs, silenceResetMs, amd,
-                listeningThreshold, minEnergyRms, noiseFloorMargin, 0.15, 300.0);
+                listeningThreshold, minEnergyRms, noiseFloorMargin, 0.15, 300.0, 0);
     }
 }

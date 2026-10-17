@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -126,5 +127,40 @@ class VadStreamTest {
 
         // Gate should stay closed because frames were identified as echo
         assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Speech that goes on after the barge-in is reported once, when it reaches sustainedSpeechMs")
+    void sustainedSpeechAfterBargeInIsReportedOnce() {
+        when(vad.run(any(), any(), any())).thenReturn(0.85f);
+        AtomicInteger sustained = new AtomicInteger();
+        VadStream stream = new VadStream(vad, withSustainedSpeechMs(320), "ch-5",
+                () -> true, null, null, null, () -> 0.0, sustained::incrementAndGet);
+
+        // 5 windows confirm the barge-in, 10 more (320 ms) are the sustained run.
+        feedAudio(stream, (short) 500, 14);
+        assertThat(sustained.get()).isZero();
+        feedAudio(stream, (short) 500, 1);
+        assertThat(sustained.get()).isEqualTo(1);
+        feedAudio(stream, (short) 500, 20);
+        assertThat(sustained.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("A short sound over the bot ends before sustainedSpeechMs and is not reported")
+    void shortSpeechAfterBargeInIsNotReported() {
+        when(vad.run(any(), any(), any())).thenReturn(0.85f);
+        AtomicInteger sustained = new AtomicInteger();
+        VadStream stream = new VadStream(vad, withSustainedSpeechMs(320), "ch-6",
+                () -> true, null, null, null, () -> 0.0, sustained::incrementAndGet);
+
+        feedAudio(stream, (short) 500, 8);
+        feedAudio(stream, (short) 0, 10);
+        assertThat(sustained.get()).isZero();
+    }
+
+    private VadProperties withSustainedSpeechMs(int sustainedSpeechMs) {
+        return new VadProperties(true, "dummy.onnx", RATE, WINDOW, 0.5f, MIN_SPEECH_MS, 250, null,
+                0.35f, 150.0, 2.5, 0.15, 300.0, sustainedSpeechMs);
     }
 }

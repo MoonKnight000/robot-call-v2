@@ -69,6 +69,11 @@ public class VadStream implements AudioListener {
     private final IntConsumer onSpeechEnd;
     /** The silence this stream waits out before calling an utterance over, in ms. */
     private final int speechEndWaitMs;
+    /** Told once per barge-in that the caller kept talking for {@code sustainedSpeechMs}; null when off. */
+    private final Runnable onSustainedSpeech;
+    private final int sustainedSpeechWindows;
+    /** Windows since the barge-in fired, short gaps included; the run ends when the detector re-arms. */
+    private int bargeInRunWindows;
 
     private final float[] window;
     private final float[][][] state;
@@ -105,6 +110,16 @@ public class VadStream implements AudioListener {
     public VadStream(SileroVad model, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
                      SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd,
                      DoubleSupplier botLevel) {
+        this(model, vadProperties, channelId, onBargeIn, gate, amd, onSpeechEnd, botLevel, null);
+    }
+
+    /**
+     * @param onSustainedSpeech told once per barge-in that the caller has kept talking for
+     *                          {@code sustainedSpeechMs} after it; null to report nothing
+     */
+    public VadStream(SileroVad model, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
+                     SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd,
+                     DoubleSupplier botLevel, Runnable onSustainedSpeech) {
         this.model = model;
         this.channelId = channelId;
         this.threshold = vadProperties.threshold();
@@ -126,6 +141,9 @@ public class VadStream implements AudioListener {
         this.minSpeechWindows = Math.max(1, vadProperties.minSpeechMs() / frameMs);
         this.silenceResetWindows = Math.max(1, vadProperties.silenceResetMs() / frameMs);
         this.speechEndWaitMs = silenceResetWindows * frameMs;
+        this.onSustainedSpeech = onSustainedSpeech;
+        this.sustainedSpeechWindows = vadProperties.sustainedSpeechMs() > 0
+                ? Math.max(1, vadProperties.sustainedSpeechMs() / frameMs) : 0;
     }
 
     @Override
@@ -219,10 +237,13 @@ public class VadStream implements AudioListener {
                 }
                 if (interrupted) {
                     armed = false;
+                    bargeInRunWindows = 0;
                     log.info("[{}] barge-in detected (speech {} windows, rms={})", channelId, speechWindows, (int) rms);
                 } else {
                     speechWindows = 0;
                 }
+            } else if (!armed) {
+                countBargeInRun();
             }
         } else {
             silenceWindows++;
@@ -233,6 +254,22 @@ public class VadStream implements AudioListener {
             }
             if (!armed && silenceWindows >= silenceResetWindows) {
                 armed = true; // ready to detect the next interruption
+            } else if (!armed) {
+                countBargeInRun(); // a gap between words, not the end of the run
+            }
+        }
+    }
+
+    /** One more window of the caller talking over the bot since the barge-in fired. */
+    private void countBargeInRun() {
+        if (onSustainedSpeech == null || sustainedSpeechWindows == 0) {
+            return;
+        }
+        if (++bargeInRunWindows == sustainedSpeechWindows) {
+            try {
+                onSustainedSpeech.run();
+            } catch (Exception e) {
+                log.warn("[{}] sustained-speech handler failed: {}", channelId, e.getMessage());
             }
         }
     }

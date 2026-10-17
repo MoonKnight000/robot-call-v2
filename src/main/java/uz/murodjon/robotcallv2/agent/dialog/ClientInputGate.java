@@ -41,10 +41,11 @@ public class ClientInputGate {
      */
     private static final List<String> UNREACHABLE_PHRASES = List.of(
             "apparati o'chirilgan", "xizmat doirasidan tashqarida", "telefon o'chirilgan",
-            "chaqirilayotgan abonent apparati",
+            "chaqirilayotgan abonent apparati", "tarmoq doirasidan tashqarida", "tarmoqda yo'q",
+            "apparati o'chiq", "chaqiruv qabul qilinmadi",
             "абонент недоступен", "аппарат абонента выключен", "находится вне зоны",
-            "данный вид связи недоступен", "номер временно заблокирован", "currently unavailable",
-            "switched off"
+            "данный вид связи недоступен", "номер временно заблокирован", "временно недоступен",
+            "currently unavailable", "switched off"
     );
 
     /**
@@ -53,7 +54,7 @@ public class ClientInputGate {
      */
     private static final List<String> MESSAGE_PROMPT_PHRASES = List.of(
             "ovozli xabar qoldiring", "signal ovozidan so'ng", "signal ovozidan keyin",
-            "boshqa raqamga yo'naltirilgan",
+            "boshqa raqamga yo'naltirilgan", "bip ovozidan keyin", "bipdan so'ng",
             "оставьте сообщение", "после сигнала", "после звукового сигнала", "автоответчик",
             "leave a message after the tone"
     );
@@ -86,13 +87,16 @@ public class ClientInputGate {
     private final LlmTurnClient llmTurnClient;
     private final VoicemailDrop voicemailDrop;
     private final CallMetrics callMetrics;
+    private final FloorLearning floorLearning;
 
     public ClientInputGate(DialogProperties dialogProperties, SttProperties sttProperties, LanguageDetector languageDetector,
                            DialogMetrics metrics, DialogTranscript transcript,
                            TurnRunner turnRunner, DialogExecutors executors,
                            DialogTuningProperties dialogTuning, LlmTurnClient llmTurnClient,
                            VoicemailDrop voicemailDrop,
-                           CallMetrics callMetrics) {
+                           CallMetrics callMetrics,
+                           FloorLearning floorLearning) {
+        this.floorLearning = floorLearning;
         this.callMetrics = callMetrics;
         this.dialogTuning = dialogTuning;
         this.llmTurnClient = llmTurnClient;
@@ -302,6 +306,20 @@ public class ClientInputGate {
         }
     }
 
+    /**
+     * The caller has kept talking over the paused bot for {@code sustained-speech-ms}. A
+     * listener's "aha" never lasts that long, so the floor is theirs before a word is
+     * transcribed — and in whatever dialect, since no word is matched at all. Their final
+     * then arrives with nothing pending and takes the path of a HIGH-sensitivity barge-in:
+     * a word or two is still put to the model, which can let the cut-off reply resume.
+     */
+    public void onSustainedSpeech(DialogSession s) {
+        if (s.isBargeInPending() && s.settleBargeIn()) {
+            metrics.floorDecidedBySpeech();
+            confirmBargeIn(s, true);
+        }
+    }
+
     private void confirmBargeIn(DialogSession s, boolean playing) {
         s.endpoint().flushPlayback();
         s.setCancelled(true);
@@ -362,17 +380,30 @@ public class ClientInputGate {
         return words >= needed;
     }
 
-    /** Whether a caller who said a word or two over the bot is taking the floor — by {@link FloorRules} when the words settle it, else by the model. */
+    /**
+     * Whether a caller who said a word or two over the bot is taking the floor — by
+     * {@link FloorRules} when the words settle it, by {@link FloorLearning} when the model
+     * has settled them before, else by the model. A model that gives no ruling yields.
+     */
     private boolean isTakingTheFloor(DialogSession s, String text) {
         String botLine = currentBotLine(s);
         Boolean byRule = FloorRules.decide(text);
-        metrics.floorDecided(byRule != null);
         if (byRule != null) {
+            metrics.floorDecided(true);
             return byRule;
         }
+        if (floorLearning.isLearnedTakingTheFloor(text)) {
+            metrics.floorDecidedByLearning();
+            return true;
+        }
+        metrics.floorDecided(false);
         long startedAt = System.nanoTime();
-        boolean taking = llmTurnClient.isTakingTheFloor(s, botLine, text);
+        Boolean taking = llmTurnClient.isTakingTheFloor(s, botLine, text);
         metrics.recordFloorModelLatency((System.nanoTime() - startedAt) / 1_000_000);
+        if (taking == null) {
+            return true;
+        }
+        executors.submit(() -> floorLearning.recordModelDecision(text, botLine, taking));
         return taking;
     }
 
