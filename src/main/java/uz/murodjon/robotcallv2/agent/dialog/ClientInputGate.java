@@ -214,14 +214,50 @@ public class ClientInputGate {
 
         adaptLanguage(s, text);
 
-        // A "rahmat" once the outcome is recorded is not matched against a word list here:
-        // "rahmat, lekin bir savolim bor" is not a goodbye. The model reads it and closes
-        // with endCall (SystemPromptFactory's closing rule).
+        // When the bot was paused waiting on a barge-in (MEDIUM/LOW sensitivity), the caller's
+        // complete utterance has now arrived. If it was only a listener sound ("aha", "tushunarli"),
+        // the bot carries on without an LLM round-trip.
+        if (s.isBargeInPending()) {
+            if (FloorRules.isBackchannel(text)) {
+                if (s.settleBargeIn()) {
+                    metrics.backchannelIgnored();
+                    resumeBot(s, "backchannel: " + text);
+                    log.info("[{}] caller backchannel '{}' while bot was paused — carrying on", s.channelId(), text);
+                }
+                return;
+            }
+            if (saidEnoughToInterrupt(s, text) || Boolean.TRUE.equals(FloorRules.decide(text))) {
+                if (s.settleBargeIn()) {
+                    confirmBargeIn(s, true);
+                }
+                executors.submit(() -> turnRunner.advance(s, text, true));
+                return;
+            }
+            executors.submit(() -> {
+                if (isTakingTheFloor(s, text)) {
+                    if (s.settleBargeIn()) {
+                        confirmBargeIn(s, true);
+                    }
+                    turnRunner.advance(s, text, true);
+                } else {
+                    if (s.settleBargeIn()) {
+                        metrics.backchannelIgnored();
+                        resumeBot(s, "semantic agreement: " + text);
+                        log.info("[{}] caller text '{}' evaluated as non-interruption — carrying on", s.channelId(), text);
+                    }
+                }
+            });
+            return;
+        }
 
         if (!floorDecided && s.isInterrupted() && s.hasUnspokenText() && !saidEnoughToInterrupt(s, text)) {
             // The bot was silenced at once (HIGH sensitivity) and the caller said only a
-            // word or two. Whether that was agreement — leave the cut-off reply to resume —
-            // or an answer is the model's call, off the recognizer's thread.
+            // word or two. Listener sounds skip the model entirely.
+            if (FloorRules.isBackchannel(text)) {
+                metrics.backchannelIgnored();
+                log.info("[{}] caller agreed over the bot ({}) — leaving the cut-off reply to resume", s.channelId(), text);
+                return;
+            }
             executors.submit(() -> {
                 if (isTakingTheFloor(s, text)) {
                     turnRunner.advance(s, text, true);
@@ -231,9 +267,6 @@ public class ClientInputGate {
                 log.info("[{}] caller agreed over the bot rather than answering it — "
                         + "leaving the cut-off reply to resume", s.channelId());
                 log.debug("[{}] backchannel transcript: {}", s.channelId(), text);
-                // Deliberately not resumed from here. The barge-in that silenced the bot armed
-                // TurnRunner's false-interruption check already, and not starting a turn is
-                // exactly what lets it find the call where it left it and speak the rest.
             });
             return;
         }

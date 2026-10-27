@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.callrecord.application.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
@@ -23,6 +24,7 @@ import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
@@ -80,6 +82,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
     private final InboundRouteUseCase inboundRouteUseCase;
     /** Whose clock a "call me back at five" is read in. */
     private final CompanyConfigUseCase companyConfigUseCase;
+    private final ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider;
     private final String llmModel;
 
     public CallFinalizer(CallRecordService callRecordService, SummaryService summaryService,
@@ -92,6 +95,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
                          TtsVoiceUseCase ttsVoiceUseCase, VadProperties vadProperties, CallMemoryWriter memoryWriter,
                          PostCallActionExecutor postCallActionExecutor, CallBillingUseCase callBilling,
                          InboundRouteUseCase inboundRouteUseCase, CompanyConfigUseCase companyConfigUseCase,
+                         ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
         this.inboundRouteUseCase = inboundRouteUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
@@ -112,7 +116,25 @@ public class CallFinalizer implements CallFinalizationUseCase {
         this.memoryWriter = memoryWriter;
         this.postCallActionExecutor = postCallActionExecutor;
         this.callBilling = callBilling;
+        this.campaignVariantUseCaseProvider = campaignVariantUseCaseProvider;
         this.llmModel = llmModel;
+    }
+
+    public CallFinalizer(CallRecordService callRecordService, SummaryService summaryService,
+                         CallQualityUseCase callQualityUseCase,
+                         ScorecardUseCase scorecardUseCase,
+                         RecordingStoragePort recordingStoragePort, OutboxDeliveryService outboxDeliveryService,
+                         ScenarioUseCase scenarioUseCase,
+                         CampaignTargetUseCase campaignTargetUseCase, NotificationUseCase notificationUseCase,
+                         CallMetrics metrics, SttProperties sttProperties, TtsProperties ttsProperties,
+                         TtsVoiceUseCase ttsVoiceUseCase, VadProperties vadProperties, CallMemoryWriter memoryWriter,
+                         PostCallActionExecutor postCallActionExecutor, CallBillingUseCase callBilling,
+                         InboundRouteUseCase inboundRouteUseCase, CompanyConfigUseCase companyConfigUseCase,
+                         String llmModel) {
+        this(callRecordService, summaryService, callQualityUseCase, scorecardUseCase, recordingStoragePort,
+                outboxDeliveryService, scenarioUseCase, campaignTargetUseCase, notificationUseCase, metrics,
+                sttProperties, ttsProperties, ttsVoiceUseCase, vadProperties, memoryWriter,
+                postCallActionExecutor, callBilling, inboundRouteUseCase, companyConfigUseCase, null, llmModel);
     }
 
     /**
@@ -228,6 +250,13 @@ public class CallFinalizer implements CallFinalizationUseCase {
                         callAttemptId, durationSec, disposition, summary.sentiment());
             } else {
                 log.info("Finalized call {} without summary (LLM unavailable or empty transcript)", callAttemptId);
+                if (agent != null) {
+                    try {
+                        postCallActionExecutor.executeActions(companyId, callAttemptId, phone, agent, disposition, null);
+                    } catch (Exception e) {
+                        log.warn("[{}] post-call action execution failed without summary: {}", callAttemptId, e.getMessage());
+                    }
+                }
             }
 
             try {
@@ -238,6 +267,21 @@ public class CallFinalizer implements CallFinalizationUseCase {
             }
 
             settle(callAttemptId, companyId, durationSec, technical);
+            if (disposition != null && disposition.isConversion()) {
+                try {
+                    CampaignVariantUseCase variantUseCase = campaignVariantUseCaseProvider != null
+                            ? campaignVariantUseCaseProvider.getIfAvailable() : null;
+                    if (variantUseCase != null) {
+                        CallAttempt attempt = callRecordService.findAttemptByCompanyIdAndId(companyId, callAttemptId);
+                        if (attempt != null && attempt.variantId() != null) {
+                            variantUseCase.recordConversion(attempt.variantId());
+                            log.info("Recorded A/B conversion for variant {} on call {}", attempt.variantId(), callAttemptId);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] failed to record variant conversion: {}", callAttemptId, e.getMessage());
+                }
+            }
             chargeSummary(companyId, callAttemptId, summarized);
             chargeOperatorAnalysis(companyId, callAttemptId, scorecard);
         } catch (Exception e) {

@@ -22,6 +22,26 @@ class FloorRulesTest {
     }
 
     @Test
+    void identifiesBackchannelsAccurately() {
+        assertThat(FloorRules.isBackchannel("ha")).isTrue();
+        assertThat(FloorRules.isBackchannel("aha")).isTrue();
+        assertThat(FloorRules.isBackchannel("xo'p, xo'p")).isTrue();
+        assertThat(FloorRules.isBackchannel("tushunarli")).isTrue();
+        assertThat(FloorRules.isBackchannel("eshitvoman")).isTrue();
+        assertThat(FloorRules.isBackchannel("gapiravering")).isTrue();
+        assertThat(FloorRules.isBackchannel("mayli, bo'pti")).isTrue();
+        assertThat(FloorRules.isBackchannel("да, понятно")).isTrue();
+        assertThat(FloorRules.isBackchannel("хорошо, слушаю")).isTrue();
+
+        // Non-backchannels
+        assertThat(FloorRules.isBackchannel("to'xtang")).isFalse();
+        assertThat(FloorRules.isBackchannel("ha, to'lamayman")).isFalse();
+        assertThat(FloorRules.isBackchannel("nima deyapsiz?")).isFalse();
+        assertThat(FloorRules.isBackchannel("")).isFalse();
+        assertThat(FloorRules.isBackchannel(null)).isFalse();
+    }
+
+    @Test
     void aNoTakesTheFloor() {
         assertThat(FloorRules.decide("yo'q")).isTrue();
         assertThat(FloorRules.decide("ага, нет")).isTrue();
@@ -58,6 +78,8 @@ class FloorRulesTest {
         assertThat(FloorRules.decide("to'xtanglar")).isTrue();
         assertThat(FloorRules.decide("bir savolim bor")).isTrue();
         assertThat(FloorRules.decide("секундочку")).isTrue();
+        assertThat(FloorRules.decide("operatorga ulang")).isTrue();
+        assertThat(FloorRules.decide("adashibsiz")).isTrue();
     }
 
     @Test

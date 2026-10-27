@@ -64,6 +64,11 @@ public class CampaignVariantRepositoryAdapter implements CampaignVariantReposito
     }
 
     @Override
+    public Optional<CampaignVariant> findById(long id) {
+        return jpaRepository.findById(id).map(this::toCampaignVariant);
+    }
+
+    @Override
     public Optional<CampaignVariant> findByIdAndCompanyId(long id, long companyId) {
         return jpaRepository.findByIdAndCompanyId(id, companyId).map(this::toCampaignVariant);
     }
@@ -91,6 +96,12 @@ public class CampaignVariantRepositoryAdapter implements CampaignVariantReposito
     @Transactional
     public void recordConversion(long variantId) {
         jpaRepository.incrementConvertedCount(variantId);
+    }
+
+    @Override
+    @Transactional
+    public void updateTrafficWeight(long id, long companyId, int trafficWeight) {
+        jpaRepository.updateTrafficWeight(id, companyId, trafficWeight);
     }
 
     @Override

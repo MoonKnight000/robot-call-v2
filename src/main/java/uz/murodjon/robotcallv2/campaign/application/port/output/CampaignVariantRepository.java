@@ -9,6 +9,8 @@ public interface CampaignVariantRepository {
 
     CampaignVariant save(CampaignVariant variant);
 
+    Optional<CampaignVariant> findById(long id);
+
     Optional<CampaignVariant> findByIdAndCompanyId(long id, long companyId);
 
     List<CampaignVariant> findAllByCampaignIdAndCompanyId(long campaignId, long companyId);
@@ -18,6 +20,8 @@ public interface CampaignVariantRepository {
     void recordAnswer(long variantId);
 
     void recordConversion(long variantId);
+
+    void updateTrafficWeight(long id, long companyId, int trafficWeight);
 
     void deleteByIdAndCompanyId(long id, long companyId);
 }

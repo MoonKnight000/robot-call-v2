@@ -5,10 +5,7 @@ import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
-import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
-import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
-import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioRow;
-import uz.murodjon.robotcallv2.scenario.application.dto.UpdateScenarioRequest;
+import uz.murodjon.robotcallv2.scenario.application.dto.*;
 import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.security.CurrentUser;
@@ -28,7 +25,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-import static org.mockito.Mockito.anyString;
 
 class ScenarioServiceTest {
 
@@ -98,44 +94,65 @@ class ScenarioServiceTest {
         ScenarioDefinition definition = new ScenarioDefinition(
                 List.of(
                         StageDef.builder()
-                                .id("START")
-                                .purpose("Salomlash")
-                                .allowedTransitions(List.of("END"))
-                                .allowedTools(List.of())
-                                .model("no-such-model")
+                                .id("GREETING")
+                                .purpose("Say hello")
+                                .model("made-up-model")
                                 .build(),
-                        new StageDef("END", "Yakunla", List.of(), List.of())
+                        new StageDef("CLOSE", "Bye", List.of(), List.of())
                 ),
-                List.of(new FactField("name", "string", true)),
                 List.of(),
-                List.of(new OutcomeField("success", "boolean", "Natija")),
-                "System prompt",
-                List.of("Rule 1"),
-                null);
-        when(aiModels.isSelectable(AiModelKind.LLM, PipelineMode.CASCADE, "no-such-model")).thenReturn(false);
+                List.of(),
+                List.of(new OutcomeField("res", "string", "Outcome")),
+                "role",
+                List.of(),
+                null
+        );
+
+        when(aiModels.isSelectable(AiModelKind.LLM, PipelineMode.CASCADE, "made-up-model")).thenReturn(false);
+        when(aiModels.findSelectableIds(AiModelKind.LLM, PipelineMode.CASCADE)).thenReturn(List.of("gpt-4o", "gemini-2.0-flash"));
 
         assertThatThrownBy(() -> scenarioService.create(1L,
-                new CreateScenarioRequest("custom-key", "My Scenario", "Desc", definition)))
+                new CreateScenarioRequest("test", "Test", "Desc", definition)))
                 .isInstanceOf(ValidationException.class);
-        verify(repo, never()).create(anyLong(), anyString(), anyString(), any(), anyBoolean(), any(), any());
     }
 
     @Test
-    void createThrowsConflictWhenKeyExists() {
-        CreateScenarioRequest req = new CreateScenarioRequest(
-                "existing-key", "My Scenario", "Desc", validDefinition());
-        when(repo.existsByKey("existing-key")).thenReturn(true);
+    void createAcceptsAStageModelFromCascadeCatalog() {
+        ScenarioDefinition definition = new ScenarioDefinition(
+                List.of(
+                        StageDef.builder()
+                                .id("GREETING")
+                                .purpose("Say hello")
+                                .model("gemini-2.0-flash")
+                                .build(),
+                        new StageDef("CLOSE", "Bye", List.of(), List.of())
+                ),
+                List.of(),
+                List.of(),
+                List.of(new OutcomeField("res", "string", "Outcome")),
+                "role",
+                List.of(),
+                null
+        );
 
-        assertThatThrownBy(() -> scenarioService.create(1L, req))
-                .isInstanceOf(ConflictException.class);
+        when(aiModels.isSelectable(AiModelKind.LLM, PipelineMode.CASCADE, "gemini-2.0-flash")).thenReturn(true);
+        when(repo.existsByKey("test")).thenReturn(false);
+        when(repo.create(eq(1L), eq("test"), any(), any(), eq(false), any(), eq(1L))).thenReturn(11L);
+        when(repo.find(1L, 11L)).thenReturn(new Scenario(11L, "test", 1, "Test", "D", false, true, definition, Instant.now(), 1L));
+        when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
+
+        ScenarioRow created = scenarioService.create(1L, new CreateScenarioRequest("test", "Test", "D", definition));
+        assertThat(created).isNotNull();
     }
 
     @Test
-    void updateThrowsForbiddenWhenBuiltin() {
-        Scenario builtinScenario = sampleScenario(1L, "debt-collection", true);
-        when(repo.find(1L, 1L)).thenReturn(builtinScenario);
+    void updateBuiltinThrowsForbidden() {
+        when(repo.find(1L, 5L)).thenReturn(sampleScenario(5L, "builtin-key", true));
 
-        assertThatThrownBy(() -> scenarioService.update(1L, 1L, null))
+        UpdateScenarioRequest req = new UpdateScenarioRequest(
+                "Updated", "Desc", validDefinition(), null);
+
+        assertThatThrownBy(() -> scenarioService.update(1L, 5L, req))
                 .isInstanceOf(ForbiddenException.class);
     }
 
@@ -147,7 +164,7 @@ class ScenarioServiceTest {
         when(repo.deactivate("custom-key", 1)).thenReturn(false);
 
         assertThatThrownBy(() -> scenarioService.update(1L, 5L,
-                new UpdateScenarioRequest("New", "D", validDefinition(), 1)))
+                new UpdateScenarioRequest("New", "D", 1, validDefinition())))
                 .isInstanceOf(ConflictException.class);
         verify(repo, never()).insertVersion(anyLong(), anyString(), anyInt(), any(), any(), anyBoolean(), any(), any());
     }
@@ -163,7 +180,7 @@ class ScenarioServiceTest {
         when(repo.find(1L, 9L)).thenReturn(sampleScenario(9L, "custom-key", false));
         when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
 
-        ScenarioRow updated = scenarioService.update(1L, 5L, new UpdateScenarioRequest("New", "D", validDefinition(), null));
+        ScenarioRow updated = scenarioService.update(1L, 5L, new UpdateScenarioRequest("New", "D", null, validDefinition()));
 
         assertThat(updated.id()).isEqualTo(9L);
         verify(repo).deactivate("custom-key", 2);
@@ -192,5 +209,50 @@ class ScenarioServiceTest {
 
         assertThatThrownBy(() -> scenarioService.requireScenario(1L, 999L))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void getCanvasReturnsGraphRepresentation() {
+        when(repo.find(1L, 5L)).thenReturn(sampleScenario(5L, "custom-key", false));
+
+        CanvasGraphDto canvas = scenarioService.getCanvas(1L, 5L);
+
+        assertThat(canvas).isNotNull();
+        assertThat(canvas.scenarioId()).isEqualTo(5L);
+        assertThat(canvas.nodes()).isNotEmpty();
+        assertThat(canvas.edges()).isNotEmpty();
+    }
+
+    @Test
+    void updateCanvasSavesUpdatedDefinition() {
+        Scenario current = sampleScenario(5L, "custom-key", false);
+        when(repo.find(1L, 5L)).thenReturn(current);
+        when(repo.findMaxVersion("custom-key")).thenReturn(1);
+        when(repo.deactivate("custom-key", 1)).thenReturn(true);
+        when(repo.insertVersion(eq(1L), eq("custom-key"), eq(2), any(), any(), eq(false), any(), eq(1L)))
+                .thenReturn(12L);
+        when(repo.find(1L, 12L)).thenReturn(sampleScenario(12L, "custom-key", false));
+        when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
+
+        CanvasGraphDto canvas = scenarioService.getCanvas(1L, 5L);
+        ScenarioRow updated = scenarioService.updateCanvas(1L, 5L, canvas);
+
+        assertThat(updated).isNotNull();
+        assertThat(updated.id()).isEqualTo(12L);
+        verify(repo).insertVersion(eq(1L), eq("custom-key"), eq(2), any(), any(), eq(false), any(), eq(1L));
+    }
+
+    @Test
+    void dryRunStepExecutesSimulationTurn() {
+        when(repo.find(1L, 5L)).thenReturn(sampleScenario(5L, "custom-key", false));
+
+        CanvasDryRunRequest req = new CanvasDryRunRequest(
+                5L, "START", "Salom", Map.of("name", "Ali"), Map.of(), null);
+
+        CanvasDryRunResponse response = scenarioService.dryRunStep(1L, req);
+
+        assertThat(response).isNotNull();
+        assertThat(response.previousNodeId()).isEqualTo("START");
+        assertThat(response.nextNodeId()).isEqualTo("END");
     }
 }

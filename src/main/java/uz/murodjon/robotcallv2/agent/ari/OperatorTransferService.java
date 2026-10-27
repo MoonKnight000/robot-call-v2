@@ -10,7 +10,15 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
+import uz.murodjon.robotcallv2.operator.application.port.input.ContactCenterEventUseCase;
+import uz.murodjon.robotcallv2.operator.application.port.input.OperatorAccountUseCase;
+import uz.murodjon.robotcallv2.operator.domain.entity.CallOffer;
+import uz.murodjon.robotcallv2.operator.domain.entity.OperatorSipAccount;
+import uz.murodjon.robotcallv2.operator.domain.enums.ContactCenterEventType;
 import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
+
+import java.time.Duration;
+import java.time.Instant;
 
 /**
  * An AI call handed to a person: the agent's transfer queue, its transfer number, the
@@ -34,6 +42,8 @@ class OperatorTransferService {
     private final CallAttemptUseCase callAttemptUseCase;
     private final DialogRouter dialogRouter;
     private final OperatorAcceptance operatorAcceptance;
+    private final ContactCenterEventUseCase contactCenterEventUseCase;
+    private final OperatorAccountUseCase operatorAccountUseCase;
 
     OperatorTransferService(CallSessionRegistry callSessionRegistry,
                             FlowCallService flowCallService,
@@ -43,7 +53,9 @@ class OperatorTransferService {
                             NotificationUseCase notificationService,
                             CallAttemptUseCase callAttemptUseCase,
                             DialogRouter dialogRouter,
-                            OperatorAcceptance operatorAcceptance) {
+                            OperatorAcceptance operatorAcceptance,
+                            ContactCenterEventUseCase contactCenterEventUseCase,
+                            OperatorAccountUseCase operatorAccountUseCase) {
         this.callSessionRegistry = callSessionRegistry;
         this.flowCallService = flowCallService;
         this.ariClient = ariClient;
@@ -53,6 +65,8 @@ class OperatorTransferService {
         this.callAttemptUseCase = callAttemptUseCase;
         this.dialogRouter = dialogRouter;
         this.operatorAcceptance = operatorAcceptance;
+        this.contactCenterEventUseCase = contactCenterEventUseCase;
+        this.operatorAccountUseCase = operatorAccountUseCase;
     }
 
     void transferToOperator(String channelId) {
@@ -108,16 +122,48 @@ class OperatorTransferService {
             operatorAcceptance.onOperatorDialled(channelId, !toOperator);
             log.info("Transferring {} to target {} (bridge {})",
                     channelId, targetEndpoint, session.bridgeId());
+
+            long companyId = callAttemptUseCase.findCompanyIdByAttemptId(session.callAttemptId());
+            OperatorSnapshot snapshot = dialogRouter.operatorSnapshot(channelId);
+            String handoverSummary = buildHandoverSummary(snapshot);
+
             // A warm transfer: the operator reads who is on the line and what has been said
             // while the phone is still ringing, instead of asking the caller to start over.
-            notificationService.notify(callAttemptUseCase.findCompanyIdByAttemptId(session.callAttemptId()),
+            notificationService.notify(companyId,
                     NotificationType.OPERATOR_REQUEST,
                     "Operatorga so'rov", "Qo'ng'iroq " + channelId + " " + targetEndpoint + " ga uzatildi"
-                            + buildHandoverSummary(dialogRouter.operatorSnapshot(channelId)), null);
+                            + handoverSummary, null);
+
+            // Live screen pop on operator's web panel (SSE CALL_OFFER event)
+            CallOffer offer = buildCallOffer(channelId, session, snapshot, handoverSummary);
+            OperatorSipAccount account = toOperator
+                    ? operatorAccountUseCase.findSipAccountByEndpoint(operatorEndpoint.trim())
+                    : (operatorProperties.endpoint() != null ? operatorAccountUseCase.findSipAccountByEndpoint(operatorProperties.endpoint().trim()) : null);
+            if (account != null) {
+                contactCenterEventUseCase.publishToUser(account.userId(), ContactCenterEventType.CALL_OFFER, offer);
+            } else {
+                contactCenterEventUseCase.publishToCompany(companyId, ContactCenterEventType.CALL_OFFER, offer);
+            }
         } catch (Exception e) {
             log.error("Operator transfer failed for {}: {}", channelId, e.getMessage());
             ariClient.hangup(channelId);
         }
+    }
+
+    private CallOffer buildCallOffer(String channelId, CallSession session, OperatorSnapshot snapshot, String summary) {
+        long attemptId = session.callAttemptId();
+        String callerNumber = callAttemptUseCase.findPhoneByAttemptId(attemptId);
+        String clientName = snapshot != null ? snapshot.clientName() : null;
+        String language = (session.agent() != null && session.agent().language() != null)
+                ? session.agent().language() : "uz-UZ";
+        String transcript = snapshot != null ? snapshot.transcript() : null;
+        int waitSeconds = (session.startedAt() != null)
+                ? (int) Duration.between(session.startedAt(), Instant.now()).getSeconds()
+                : 0;
+        return new CallOffer(channelId, attemptId, callerNumber, clientName,
+                "Operatorga uzatish", waitSeconds, language, false,
+                summary != null && !summary.isBlank() ? summary : "Operatorga so'rov",
+                transcript);
     }
 
     /**

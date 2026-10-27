@@ -20,6 +20,9 @@ final class Backchannels {
      * rather than treated as breaks — otherwise a single Uzbek word arrives here as two.
      */
     static String[] words(String text) {
+        if (text == null || text.isBlank()) {
+            return new String[0];
+        }
         StringBuilder normalized = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = Character.toLowerCase(text.charAt(i));
@@ -35,7 +38,8 @@ final class Backchannels {
                 normalized.append(' ');
             }
         }
-        return normalized.toString().trim().split(" ");
+        String trimmed = normalized.toString().trim();
+        return trimmed.isEmpty() ? new String[0] : trimmed.split(" ");
     }
 
     private static boolean isApostrophe(char c) {

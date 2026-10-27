@@ -16,7 +16,7 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import java.util.List;
 
 /**
- * Scenario CRUD & Simulation API (ROADMAP A.4, §10.7, docs/api/scenarios.md).
+ * Scenario CRUD, Visual Canvas Studio & Simulation API (ROADMAP A.4, §10.7, docs/api/scenarios.md).
  */
 @RequestMapping("/api")
 public interface ScenarioController {
@@ -68,4 +68,28 @@ public interface ScenarioController {
     ResponseEntity<ResponseData<List<PersonaTestResult>>> testPersonas(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('SCENARIO_READ')")
+    @GetMapping("/scenarios/{id:\\d+}/canvas")
+    ResponseEntity<ResponseData<CanvasGraphDto>> getCanvas(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('SCENARIO_EDIT')")
+    @PutMapping("/scenarios/{id:\\d+}/canvas")
+    ResponseEntity<ResponseData<ScenarioRow>> updateCanvas(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody CanvasGraphDto canvas);
+
+    @PreAuthorize("hasAuthority('SCENARIO_EDIT')")
+    @PostMapping("/scenarios/canvas/auto-layout")
+    ResponseEntity<ResponseData<CanvasGraphDto>> autoLayout(
+            @Valid @RequestBody CanvasGraphDto canvas);
+
+    @PreAuthorize("hasAuthority('SCENARIO_EDIT')")
+    @PostMapping("/scenarios/canvas/dry-run")
+    ResponseEntity<ResponseData<CanvasDryRunResponse>> dryRun(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CanvasDryRunRequest request);
 }

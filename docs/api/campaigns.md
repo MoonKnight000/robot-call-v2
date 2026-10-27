@@ -763,6 +763,7 @@ Kampaniyada faol variant bo'lmasa, qo'ng'iroq kampaniya agentining o'z senariysi
 - `PUT /api/campaigns/{campaignId}/variants/{variantId}` — tahrirlash
 - `DELETE /api/campaigns/{campaignId}/variants/{variantId}` — o'chirish
 - `GET /api/campaigns/{campaignId}/variants/report` — A/B hisoboti
+- `POST /api/campaigns/{campaignId}/variants/optimize` — Avtonom Multi-Armed Bandit (MAB) optimizatsiyasini ishga tushirish
 
 ### Variant tanasi (`CampaignVariantCreateRequest` / `...UpdateRequest`)
 
@@ -837,3 +838,57 @@ Javob (`CampaignVariantResponse`) — o'sha maydonlar plus `id`, `campaignId`, `
 > haqiqiy konversiyaga o'tkazish — ma'lumot to'plangandan keyin qabul qilinadigan qaror:
 > hozir o'tkazilsa, konversiya maqsadi sozlamagan har bir kompaniyada g'olib doim `null`
 > bo'lib qolardi.
+
+---
+
+### `POST /api/campaigns/{campaignId}/variants/optimize` — Avtonom Multi-Armed Bandit (MAB) optimizatori
+
+A/B test davomida past natija ko'rsatayotgan ssenariylarga ortiqcha budjet sarflamaslik va eng ko'p konversiya berayotgan variantga ko'proq mijozlarni avtomatik yo'naltirish uchun dinamik optimallashtirish.
+
+Ushbu operatsiya backend tomonidan har bir konversiya qayd etilganda va har 10 ta javob olingan milestone'larda avtomatik chaqiriladi, shuningdek, istalgan vaqtda ushbu endpoint orqali qo'lda ishga tushirilishi ham mumkin.
+
+**Optimizatsiya strategiyalari:**
+1. `COLD_START_EQUAL`: Jami javoblar soni 20 taga yetmaguncha yoki biror faol variantda kamida 5 ta javob bo'lmaguncha, barcha faol variantlar teng ulush (50/50 yoki 33/33/34) oladi.
+2. `ADAPTIVE_BANDIT`: Yetarli ma'lumot to'planganda, lekin Wilson 95% ishonch oralig'i hali to'liq ajralmaganda, Bayesian Laplace-tekislangan konversiya `(converted + 1) / (answered + 2)` bo'yicha trafik taqsimlanadi. Har bir variantga kamida 10% doimiy o'rganish (exploration floor) kafolatlanadi.
+3. `STATISTICAL_WINNER`: Wilson 95% ishonch oralig'i to'liq ustun bo'lgan g'olib aniqlanganda, g'olib variantga 80–90% trafik beriladi, qolgan variantlarga 10% eksploratsiya kafolati qoldiriladi.
+
+**Response** (`VariantOptimizationPlan`):
+
+```json
+{
+  "accept": true,
+  "data": {
+    "campaignId": 12,
+    "companyId": 3,
+    "strategy": "ADAPTIVE_BANDIT",
+    "winningVariantId": null,
+    "winningVariantName": null,
+    "allocations": [
+      {
+        "variantId": 101,
+        "variantName": "Yumshoq ohang",
+        "previousTrafficWeight": 50,
+        "optimizedTrafficWeight": 73,
+        "answeredCount": 25,
+        "convertedCount": 10,
+        "conversionRate": 40.0,
+        "lowerBound": 23.41,
+        "upperBound": 59.27
+      },
+      {
+        "variantId": 102,
+        "variantName": "Qat'iy ohang",
+        "previousTrafficWeight": 50,
+        "optimizedTrafficWeight": 27,
+        "answeredCount": 25,
+        "convertedCount": 2,
+        "conversionRate": 8.0,
+        "lowerBound": 2.24,
+        "upperBound": 24.97
+      }
+    ],
+    "optimizedAt": "2026-10-27T16:50:00Z"
+  },
+  "errors": null
+}
+```

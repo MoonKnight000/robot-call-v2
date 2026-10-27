@@ -29,5 +29,9 @@ public interface CampaignVariantJpaRepository extends JpaRepository<CampaignVari
     @Query("UPDATE CampaignVariantEntity v SET v.convertedCount = v.convertedCount + 1, v.updatedAt = CURRENT_TIMESTAMP WHERE v.id = :id")
     void incrementConvertedCount(@Param("id") Long id);
 
+    @Modifying
+    @Query("UPDATE CampaignVariantEntity v SET v.trafficWeight = :trafficWeight, v.updatedAt = CURRENT_TIMESTAMP WHERE v.id = :id AND v.companyId = :companyId")
+    void updateTrafficWeight(@Param("id") Long id, @Param("companyId") Long companyId, @Param("trafficWeight") int trafficWeight);
+
     void deleteByIdAndCompanyId(Long id, Long companyId);
 }

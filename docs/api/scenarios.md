@@ -133,6 +133,137 @@ Huquq: **SCENARIO_EDIT**. Body (`CloneScenarioRequest`):
 
 `name` majburiy, `scenarioKey` ixtiyoriy. Javob — yangi `ScenarioRow`.
 
+---
+
+## 🎨 Vizual Ssenariy Konstruktori (Visual Studio & Canvas Engine)
+
+FSM stsenariylarini React Flow, Vue Flow yoki Rete.js kabi drag-and-drop vizual muharrirlarda ko'rish, tahrirlash va interaktiv simulyatsiya qilish uchun to'liq Canvas API:
+
+### `GET /api/scenarios/{id}/canvas` — Vizual Canvas Grafini olish
+
+Huquq: **SCENARIO_READ**.
+Joriy ssenariyni node'lar (bosqichlar, global FAQlar, boshlang'ich nuqta) va bog'lovchi yo'naltirilgan edge'lar (shartli o'tishlar va deterministik branch'lar) bilan React Flow formatida qaytaradi. Koordinatalar avtomatik topologik qatlamlar (DAG auto-layout) asosida hisoblangan bo'ladi.
+
+Javob (`CanvasGraphDto`):
+```json
+{
+  "scenarioId": 7,
+  "scenarioKey": "debt-collection",
+  "name": "Qarz undirish v2",
+  "version": 3,
+  "valid": true,
+  "validationErrors": [],
+  "viewport": { "x": 0.0, "y": 0.0, "zoom": 1.0 },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "position": { "x": 40.0, "y": 40.0 },
+      "data": {
+        "title": "Start",
+        "callPurpose": "Mijozdan qarz to'lovini so'rash",
+        "disclosureText": "Qo'ng'iroq yozib olinadi..."
+      }
+    },
+    {
+      "id": "GREETING",
+      "type": "stage",
+      "position": { "x": 400.0, "y": 40.0 },
+      "data": {
+        "stageId": "GREETING",
+        "title": "Greeting",
+        "purpose": "Salomlashish",
+        "staticLine": "Assalomu alaykum {{clientName}}!",
+        "emotion": "FRIENDLY",
+        "allowedTools": [],
+        "requiredOutcomes": ["contacted"]
+      }
+    },
+    {
+      "id": "gn_0",
+      "type": "global_node",
+      "position": { "x": -340.0, "y": 40.0 },
+      "data": {
+        "question": "Siz kimsiz?",
+        "answer": "Men Robot Call virtual assistentiman."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start_to_GREETING",
+      "source": "start",
+      "target": "GREETING",
+      "label": "Begins call",
+      "type": "default",
+      "data": {}
+    },
+    {
+      "id": "e_GREETING_to_OFFER",
+      "source": "GREETING",
+      "target": "OFFER",
+      "label": "Mijoz ha dedi",
+      "type": "transition",
+      "data": { "condition": "Mijoz ha dedi" }
+    },
+    {
+      "id": "e_branch_GREETING_CLOSE_0",
+      "source": "GREETING",
+      "target": "CLOSE",
+      "label": "debtAmount LESS_OR_EQUAL 0",
+      "type": "branch",
+      "data": { "fact": "debtAmount", "operator": "LESS_OR_EQUAL", "value": "0", "branch": true }
+    }
+  ]
+}
+```
+
+### `PUT /api/scenarios/{id}/canvas` — Vizual Canvasni Saqlash
+
+Huquq: **SCENARIO_EDIT**.
+Frontend vizual muharririda o'zgartirilgan node'lar va edge'lar grafigini yuboradi. Server ularni tekshiradi, to'liq `ScenarioDefinition` ga aylantiradi, optimistik qulf bilan yangi versiya sifatida saqlaydi va yangilangan `ScenarioRow` ni qaytaradi.
+
+Body — `CanvasGraphDto`.
+
+### `POST /api/scenarios/canvas/auto-layout` — Avtomatik Chiroyli Joylashtirish
+
+Huquq: **SCENARIO_EDIT**.
+Graflar chigallashib ketganda yoki yangi node'lar qo'shilganda ularni topologik qatlamlar (topological rank BFS) bo'yicha tartiblab, yangilangan koordinatalar bilan qaytaradi.
+
+### `POST /api/scenarios/canvas/dry-run` — Node Darajasidagi Tezkor Simulyator
+
+Huquq: **SCENARIO_EDIT**.
+Foydalanuvchi Studio'da xohlagan node'ni tanlab, mijozning gapi va faktlarini kiritib, suhbat keyingi qaysi node'ga o'tishini, qaysi edge faollashishini, bot qanday javob qaytarishini (`{{fact}}` shablonlari to'ldirilgan holda) va terminal holatni real vaqtda tekshirishi mumkin.
+
+Request (`CanvasDryRunRequest`):
+```json
+{
+  "scenarioId": 7,
+  "currentNodeId": "GREETING",
+  "userInput": "Ha menman, eshitaman",
+  "facts": { "clientName": "Azizbek", "debtAmount": 150000 },
+  "currentOutcomes": {}
+}
+```
+
+Response (`CanvasDryRunResponse`):
+```json
+{
+  "previousNodeId": "GREETING",
+  "nextNodeId": "OFFER",
+  "activeEdgeId": "e_GREETING_to_OFFER",
+  "botResponse": "Hurmatli Azizbek, siz uchun yangi aksiya...",
+  "transitionReason": "Transition matched -> OFFER",
+  "updatedFacts": { "clientName": "Azizbek", "debtAmount": 150000 },
+  "updatedOutcomes": { "contacted": "Ha menman, eshitaman" },
+  "terminal": false,
+  "visitedPath": ["GREETING", "OFFER"],
+  "availableTransitions": ["CONFIRM", "REJECT"]
+}
+```
+
+---
+
 ### Boshqa serverga ko'chirish (export / import)
 
 Alohida endpoint yo'q — ikkita mavjud so'rov yetarli. `GET /api/scenarios/{id}` javobidagi

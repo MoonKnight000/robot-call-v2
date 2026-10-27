@@ -20,13 +20,15 @@ import java.util.regex.Pattern;
  * catches is not a wrong answer — it only costs the model call, and
  * {@link FloorLearning} picks up the ones callers keep saying.
  */
-final class FloorRules {
+public final class FloorRules {
 
     /** As {@link Backchannels#words} leaves them: lower case, apostrophes dropped. */
     private static final Set<String> TAKING_THE_FLOOR = Set.of(
             "kerak", "emas", "kim", "kimsiz", "eshiting", "bilsangiz", "gapim", "gapiray", "gapiryapman",
-            "boshqa", "alo",
+            "boshqa", "alo", "adashibsiz", "tanimayman", "kimbu", "operator", "operatorga",
+            "qaytaring", "qayta",
             "нет", "не", "стоп", "что", "когда", "где", "кто", "вопрос", "другой", "алло", "говорю",
+            "человек", "минутку",
             "no", "stop", "wait", "what", "why");
 
     /**
@@ -37,9 +39,9 @@ final class FloorRules {
     private static final List<String> STEMS = List.of(
             "toxta", "shoshma", "kuting", "daqiqa", "sekund", "minut", "savol",
             "nima", "nega", "qanaqa", "qanday", "qachon", "qayer", "qancha", "nechta", "nechi",
-            "adashdi", "notogri", "eshityapsiz",
+            "adashdi", "notogri", "eshityapsiz", "operat", "qaytar",
             "подожд", "погод", "стой", "секунд", "минут", "почему", "зачем", "сколько", "как",
-            "ошибл", "неправ", "слыш", "послуш");
+            "ошибл", "неправ", "слыш", "послуш", "перевед");
 
     /**
      * Uzbek negative verb endings: "shoshmang", "to'lamayman", "olmadim", "kerakmas",
@@ -57,11 +59,13 @@ final class FloorRules {
     private static final Pattern NO = Pattern.compile("(yo|yu)[qg](e|ey)?|й[ўуо][қкғг]е?");
 
     private static final Set<String> LISTENING = Set.of(
-            "ha", "xa", "haa", "aha", "ahha", "mhm", "mm", "mmm", "hm", "xop", "xopp", "mayli",
-            "yaxshi", "tushunarli", "tushundim", "eshitaman", "eshityapman", "albatta", "shunday",
-            "togri", "davom", "eting", "gapiravering", "boladi", "kelishdik", "ok", "okey",
+            "ha", "xa", "haa", "xaa", "aha", "ahha", "eha", "mhm", "mm", "mmm", "hm", "hmm", "hmmm",
+            "xop", "xopp", "hop", "hopp", "mayli", "yaxshi", "tushunarli", "tushunarlik", "tushundim",
+            "tushundik", "tushunyapman", "eshitaman", "eshityapman", "eshitvoman", "albatta", "shunday",
+            "shunaqa", "togri", "rost", "davom", "eting", "gapiravering", "gapirvuring", "ayting",
+            "aytavering", "boladi", "bopti", "kelishdik", "rahmat", "ok", "okey",
             "да", "ага", "угу", "ну", "так", "ясно", "понятно", "хорошо", "конечно", "слушаю",
-            "продолжайте", "верно", "точно", "понял", "говорите", "договорились",
+            "слушаем", "продолжайте", "верно", "точно", "понял", "говорите", "договорились", "ладно", "добро",
             "yes", "yeah", "uh", "huh");
 
     private FloorRules() {
@@ -69,8 +73,8 @@ final class FloorRules {
 
     /**
      * Whether every word in {@code text} is a listener sound (backchannel).
-     * Used by {@code ClientInputGate#saidEnoughToInterrupt} to prevent filler-only
-     * utterances from triggering a barge-in even when the word count meets the threshold.
+     * Used to prevent filler-only utterances from triggering a barge-in even when
+     * the word count meets the threshold.
      *
      * @param text the caller's words, may be null or blank
      * @return true when all words are in the LISTENING set; false when the text is empty
@@ -96,7 +100,7 @@ final class FloorRules {
      * @param callerText the caller's words
      * @return true when the caller is taking the floor, null when only the model can tell
      */
-    static Boolean decide(String callerText) {
+    public static Boolean decide(String callerText) {
         if (callerText == null || callerText.isBlank()) {
             return null;
         }

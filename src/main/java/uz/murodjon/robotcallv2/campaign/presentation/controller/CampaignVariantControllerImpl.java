@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateReq
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
+import uz.murodjon.robotcallv2.campaign.domain.entity.VariantOptimizationPlan;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -50,5 +51,10 @@ public class CampaignVariantControllerImpl implements CampaignVariantController 
     @Override
     public ResponseEntity<ResponseData<AbTestReportResponse>> getReport(long companyId, long campaignId) {
         return ResponseEntity.ok(ResponseData.ok(variantUseCase.findAbTestReport(companyId, campaignId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<VariantOptimizationPlan>> optimize(long companyId, long campaignId) {
+        return ResponseEntity.ok(ResponseData.ok(variantUseCase.optimizeWeights(companyId, campaignId)));
     }
 }

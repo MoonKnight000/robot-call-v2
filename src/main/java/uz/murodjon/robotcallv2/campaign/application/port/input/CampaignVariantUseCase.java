@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateReq
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
+import uz.murodjon.robotcallv2.campaign.domain.entity.VariantOptimizationPlan;
 
 import java.util.List;
 
@@ -27,7 +28,6 @@ public interface CampaignVariantUseCase {
     /**
      * The variant this call should run, or null when the campaign is not A/B testing.
      *
-     *
      * @param assignmentKey the target's phone number — what the assignment stays stable
      *                      for across retries; null draws at random
      */
@@ -38,4 +38,15 @@ public interface CampaignVariantUseCase {
     void recordAnswer(long variantId);
 
     void recordConversion(long variantId);
+
+    /**
+     * Runs multi-armed bandit optimization on the campaign's active variants and persists
+     * the new traffic weights to the database.
+     */
+    VariantOptimizationPlan optimizeWeights(long companyId, long campaignId);
+
+    /**
+     * Evaluates whether auto-optimization should execute (e.g. after a conversion or milestone).
+     */
+    VariantOptimizationPlan autoTuneIfEligible(long companyId, long campaignId);
 }

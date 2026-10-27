@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.beans.factory.ObjectProvider;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
@@ -18,9 +19,11 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentDataPolicy;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.RecordingStoragePort;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageKind;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
@@ -246,6 +249,17 @@ class CallFinalizerTest {
     }
 
     @Test
+    void postCallActionsAreExecutedEvenWhenCallHasNoSummary() {
+        when(summaryService.summarize(anyLong(), anyString(), any(), any())).thenReturn(null);
+
+        AiAgent agent = agent();
+        finalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, Disposition.NO_ANSWER, CHANNEL, "trunk",
+                null, agent, PHONE, null);
+
+        verify(postCallActionExecutor).executeActions(eq(COMPANY_ID), eq(CALL_ID), eq(PHONE), eq(agent), eq(Disposition.NO_ANSWER), isNull());
+    }
+
+    @Test
     void failedResultWriteDoesNotStopTheRestOfThePostCallWork() {
         summarizes(SUMMARY);
         when(callRecordService.writeResult(anyLong(), anyLong(), any(), anyBoolean(), any()))
@@ -314,6 +328,32 @@ class CallFinalizerTest {
     private Disposition finalizeCall(Disposition disposition, AiAgent agent) {
         return finalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, disposition, CHANNEL, "trunk",
                 TECHNICAL, agent, PHONE, null);
+    }
+
+    @Test
+    void convertingCallRecordsVariantConversionWhenAttemptHasVariant() {
+        CampaignVariantUseCase variantUseCase = mock(CampaignVariantUseCase.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<CampaignVariantUseCase> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(variantUseCase);
+
+        CallFinalizer customFinalizer = new CallFinalizer(callRecordService, summaryService, mock(CallQualityUseCase.class),
+                mock(ScorecardUseCase.class),
+                recordingStoragePort, outboxDeliveryService, scenarioUseCase, campaignTargetUseCase,
+                notificationUseCase, mock(CallMetrics.class), mock(SttProperties.class), mock(TtsProperties.class),
+                mock(TtsVoiceUseCase.class), mock(VadProperties.class), memoryWriter, postCallActionExecutor,
+                callBilling, mock(InboundRouteUseCase.class), companyConfigUseCase, provider, "gemini-2.5-flash");
+
+        CallAttempt attemptWithVariant = new CallAttempt(CALL_ID, COMPANY_ID, TARGET_ID, PHONE, null, "PJSIP/trunk-1",
+                "uz", startedAt, startedAt.plusSeconds(50), startedAt.plusSeconds(95), 45, Disposition.PROMISE_TO_PAY,
+                null, null, null, startedAt, 1, null, null, 777L);
+        when(callRecordService.findAttemptByCompanyIdAndId(COMPANY_ID, CALL_ID)).thenReturn(attemptWithVariant);
+
+        customFinalizer.finalizeCall(CALL_ID, "PJSIP/trunk-1", "trunk", WAV,
+                new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, 0, 0, null, null),
+                Disposition.PROMISE_TO_PAY, SCENARIO_ID, agent(), LEAD_ID, PHONE, startedAt, 0, null);
+
+        verify(variantUseCase).recordConversion(777L);
     }
 
     private void summarizes(CallSummary summary) {

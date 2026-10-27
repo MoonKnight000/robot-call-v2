@@ -205,6 +205,10 @@ public class PostCallActionExecutor {
                     }
                 }
             }
+        } else {
+            res = res.replace("{{summary}}", "")
+                    .replace("{{sentiment}}", "")
+                    .replace("{{qaScore}}", "");
         }
         return res;
     }

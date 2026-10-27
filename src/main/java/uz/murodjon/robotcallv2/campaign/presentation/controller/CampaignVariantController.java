@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.campaign.application.dto.AbTestReportResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantCreateRequest;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantResponse;
 import uz.murodjon.robotcallv2.campaign.application.dto.CampaignVariantUpdateRequest;
+import uz.murodjon.robotcallv2.campaign.domain.entity.VariantOptimizationPlan;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
@@ -57,6 +58,12 @@ public interface CampaignVariantController {
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping("/report")
     ResponseEntity<ResponseData<AbTestReportResponse>> getReport(
+            @CurrentCompanyId long companyId,
+            @PathVariable long campaignId);
+
+    @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
+    @PostMapping("/optimize")
+    ResponseEntity<ResponseData<VariantOptimizationPlan>> optimize(
             @CurrentCompanyId long companyId,
             @PathVariable long campaignId);
 }

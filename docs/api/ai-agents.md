@@ -307,6 +307,11 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 > - `ttsProvider` — ovoz tanlanmagan (yoki ovozning provayderi build'dan chiqib ketgan)
 >   qo'ng'iroq qaysi vendor bilan gapirishini belgilaydi; kompaniya sozlamasi shunda zaxira
 >   bo'lib qoladi. `engine-options` dagi `tts` ro'yxatida yo'q id — `400 ENGINE_TTS_PROVIDER_UNKNOWN`.
+> - `interruptionSensitivity` — mijoz bot gapirayotganda gap boshlasa (barge-in) sezgirlik darajasi:
+>   - `MEDIUM` (standart): **Semantik Barge-In**. Bot nutqi darhol kesib tashlanmaydi, balki kutiladi. Agar mijoz shunchaki tinglayotganini bildiruvchi tasdiq so'zlarini ("aha", "xo'p", "tushunarli", "ha", "mayli", "eshitvoman", "да", "понятно" va h.k.) aytsa, bot o'z nutqini to'xtatmasdan davom ettiradi. Agar mijoz savol, e'tiroz yoki ko'rsatma aytsa ("to'xtang", "yo'q", "qancha?", "nima?", "operatorga ulang") — bot o'z so'zini to'xtatib, yangi savolga javob beradi.
+>   - `LOW`: Ko'proq so'z yoki aniq e'tiroz eshitilmaguncha bot nutqini davom ettiradi.
+>   - `HIGH`: Har qanday tovushda bot darhol to'xtatiladi.
+>   - `OFF`: Barge-in o'chirilgan — bot o'z gapini tugatmaguncha gapirilgan so'zlar inobatga olinmaydi.
 
 > ⚠️ **Webhook manzillari ommaviy bo'lishi shart.** `initiationWebhook.url` va
 > `postCallWebhook.url` xususiy tarmoq manziliga (`127.0.0.1`, `localhost`, `10/8`,
@@ -710,7 +715,7 @@ TTS modeli so'zlashayotganda qisqartmalar, xorijiy atamalar yoki sohaviy so'zlar
 
 ## 13. Post-Call Actions & Automated Follow-ups — `/api/ai-agents/{id}/post-call-actions`
 
-Qo'ng'iroq muvaffaqiyatli yakunlangach yoki ma'lum bir natijaga erishilgach avtomatik ishga tushuvchi amallar: SMS yuborish, CRM webhook chaqirish yoki Telegram operator guruhiga xabar berish.
+Qo'ng'iroq yakunlangach (suhbat muvaffaqiyatli bo'ladimi yoki javobsiz/band `NO_ANSWER`, `BUSY`, `FAILED` bo'ladimi) `triggerDisposition` mos kelganda avtomatik ishga tushuvchi amallar: mijozga SMS yuborish (masalan: ko'tarmagan mijozga qayta aloqa havolasi yuborish), CRM webhook chaqirish yoki Telegram operator guruhiga xabar berish. `onlyOnSuccess: false` qilib qo'yilsa va `triggerDisposition: NO_ANSWER` berilsa, LLM summary'si bo'lmagan qo'ng'iroqlarda ham SMS/webhook ishonchli ishlaydi (`{{phone}}` va `{{disposition}}` to'ldiriladi).
 
 ### `GET /api/ai-agents/{id}/post-call-actions`
 ```json

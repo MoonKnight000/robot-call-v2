@@ -4,11 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionGoalRequest;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionResultResponse;
 import uz.murodjon.robotcallv2.conversion.application.dto.ReportConversionRequest;
@@ -48,15 +50,25 @@ public class ConversionService implements ConversionUseCase {
     private final ConversionGoalRepository goalRepository;
     private final ConversionRepository conversionRepository;
     private final CallAttemptUseCase callAttemptUseCase;
+    private final ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider;
+
+    public ConversionService(ConversionGoalRepository goalRepository,
+                             ConversionRepository conversionRepository,
+                             CallAttemptUseCase callAttemptUseCase,
+                             ObjectMapper objectMapper,
+                             ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider) {
+        this.objectMapper = objectMapper;
+        this.goalRepository = goalRepository;
+        this.conversionRepository = conversionRepository;
+        this.callAttemptUseCase = callAttemptUseCase;
+        this.campaignVariantUseCaseProvider = campaignVariantUseCaseProvider;
+    }
 
     public ConversionService(ConversionGoalRepository goalRepository,
                              ConversionRepository conversionRepository,
                              CallAttemptUseCase callAttemptUseCase,
                              ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-        this.goalRepository = goalRepository;
-        this.conversionRepository = conversionRepository;
-        this.callAttemptUseCase = callAttemptUseCase;
+        this(goalRepository, conversionRepository, callAttemptUseCase, objectMapper, null);
     }
 
     @Override
@@ -147,6 +159,17 @@ public class ConversionService implements ConversionUseCase {
 
         log.info("Conversion '{}' for {} credited to call {} (campaign {}, variant {})",
                 goal.goalKey(), PhoneMasker.mask(phone), earned.callAttemptId(), earned.campaignId(), earned.variantId());
+
+        if (earned.variantId() != null && campaignVariantUseCaseProvider != null) {
+            CampaignVariantUseCase variantUseCase = campaignVariantUseCaseProvider.getIfAvailable();
+            if (variantUseCase != null) {
+                try {
+                    variantUseCase.recordConversion(earned.variantId());
+                } catch (Exception e) {
+                    log.warn("Failed to record variant conversion for variant {}: {}", earned.variantId(), e.getMessage());
+                }
+            }
+        }
 
         return new ConversionResultResponse(saved.id(), true, null, false,
                 attribution.campaignId(), attribution.variantId(), attribution.callAttemptId());

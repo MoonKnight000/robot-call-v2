@@ -406,6 +406,10 @@ public class RealtimeDialogEngine implements CallDialog {
             transcriptRecorder.recordLine(s, "CLIENT", said);
             log.debug("[{}] FINAL (stt): {}", channelId, said);
         });
+        if (s.isSttDriven() && s.endpoint().isPlaying() && FloorRules.isBackchannel(said)) {
+            CallMdc.with(channelId, () -> log.debug("[{}] caller backchannel ignored while bot is playing: '{}'", channelId, said));
+            return;
+        }
         RealtimeSession engine = s.engine();
         if (s.isSttDriven() && engine != null) {
             engine.sendUserText(said);
@@ -433,6 +437,10 @@ public class RealtimeDialogEngine implements CallDialog {
         RtpEndpoint endpoint = s.endpoint();
         int needed = Math.max(1, dialogProperties.minInterruptionWords());
         if (!endpoint.isPlaying() || Backchannels.words(text).length < needed) {
+            return;
+        }
+        if (FloorRules.isBackchannel(text)) {
+            CallMdc.with(channelId, () -> log.debug("[{}] caller backchannel in realtime interim ignored: '{}'", channelId, text));
             return;
         }
         // Only a reply still being produced has more audio coming. One already complete is

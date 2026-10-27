@@ -5,13 +5,12 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
-import uz.murodjon.robotcallv2.scenario.application.dto.CloneScenarioRequest;
-import uz.murodjon.robotcallv2.scenario.application.dto.CreateScenarioRequest;
-import uz.murodjon.robotcallv2.scenario.application.dto.ScenarioRow;
-import uz.murodjon.robotcallv2.scenario.application.dto.UpdateScenarioRequest;
+import uz.murodjon.robotcallv2.scenario.application.dto.*;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.application.port.output.ScenarioRepository;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
+import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioCanvasConverter;
+import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioCanvasSimulator;
 import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -23,7 +22,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Scenario CRUD, versioning and validation (ROADMAP A.4).
+ * Scenario CRUD, versioning, visual canvas studio and validation (ROADMAP A.4).
  */
 @Service
 public class ScenarioService implements ScenarioUseCase {
@@ -157,6 +156,43 @@ public class ScenarioService implements ScenarioUseCase {
     @Override
     public Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids) {
         return repository.findNamesByIds(companyId, ids);
+    }
+
+    @Override
+    public CanvasGraphDto getCanvas(long companyId, long id) {
+        Scenario scenario = requireScenario(companyId, id);
+        return ScenarioCanvasConverter.toCanvasGraph(scenario);
+    }
+
+    @Override
+    @Transactional
+    public ScenarioRow updateCanvas(long companyId, long id, CanvasGraphDto canvas) {
+        Scenario current = requireScenario(companyId, id);
+        ScenarioDefinition def = ScenarioCanvasConverter.toScenarioDefinition(canvas, current.definition());
+        String name = canvas.name() != null && !canvas.name().isBlank() ? canvas.name() : current.name();
+        UpdateScenarioRequest request = new UpdateScenarioRequest(name, current.description(), canvas.version(), def);
+        return update(companyId, id, request);
+    }
+
+    @Override
+    public CanvasGraphDto autoLayoutCanvas(CanvasGraphDto canvas) {
+        return ScenarioCanvasConverter.autoLayout(canvas);
+    }
+
+    @Override
+    public CanvasDryRunResponse dryRunStep(long companyId, CanvasDryRunRequest request) {
+        ScenarioDefinition def = null;
+        if (request.customCanvas() != null) {
+            Scenario fallback = request.scenarioId() != null ? findById(companyId, request.scenarioId()) : null;
+            def = ScenarioCanvasConverter.toScenarioDefinition(request.customCanvas(), fallback != null ? fallback.definition() : null);
+        } else if (request.scenarioId() != null) {
+            Scenario s = requireScenario(companyId, request.scenarioId());
+            def = s.definition();
+        }
+        if (def == null) {
+            throw new ValidationException(ErrorCode.PARAM_REQUIRED, "scenarioId or customCanvas must be provided");
+        }
+        return ScenarioCanvasSimulator.step(def, request);
     }
 
     /** Every problem the validator found goes to the client as its own entry of {@code errors}. */

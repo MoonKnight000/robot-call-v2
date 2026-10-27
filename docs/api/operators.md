@@ -316,7 +316,7 @@ izohi keladi. API kalit bilan — `403 NO_USER_SESSION`.
 | `event:` | Kimga | Payload | Qachon |
 |---|---|---|---|
 | `connected` | shu ulanish | raqam — obuna ID si | Ulanish ochilganda |
-| `CALL_OFFER` | shu operator | `CallOffer` | Navbat qo'ng'irog'i shu operatorga jiringlay boshladi (softphone ham, `forwardNumber` mobili ham) |
+| `CALL_OFFER` | shu operator yoki kompaniya | `CallOffer` | Navbat qo'ng'irog'i yoki AI agent uzatgan qo'ng'iroq (warm-transfer screen pop) operatorga jiringlay boshladi |
 | `CALL_CONNECTED` | shu operator | `CallOffer` | Operator ko'tardi va mijoz bilan ulandi |
 | `CALL_ENDED` | shu operator | `CallOffer` | Taklif javobsiz tugadi, qaytarib olindi (boshqasi ko'tardi, mijoz go'shakni qo'ydi) yoki ulangan suhbat tugadi |
 | `STATUS_CHANGED` | shu operator | `OperatorPresence` | Har qanday status o'zgarishi — operator o'zi qo'ygan ham, tizim qo'ygani ham (`RINGING`, `ON_CALL`, `WRAP_UP`, RONA `BREAK`) |

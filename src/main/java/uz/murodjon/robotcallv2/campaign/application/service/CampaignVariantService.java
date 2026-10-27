@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.campaign.application.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
@@ -14,8 +16,11 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignReposito
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignVariantRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
+import uz.murodjon.robotcallv2.campaign.domain.entity.VariantAllocation;
+import uz.murodjon.robotcallv2.campaign.domain.entity.VariantOptimizationPlan;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.service.AbTestSignificance;
+import uz.murodjon.robotcallv2.campaign.domain.service.CampaignVariantBanditOptimizer;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignVariantSelector;
 import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
 import uz.murodjon.robotcallv2.conversion.domain.entity.VariantConversions;
@@ -32,6 +37,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class CampaignVariantService implements CampaignVariantUseCase {
+
+    private static final Logger log = LoggerFactory.getLogger(CampaignVariantService.class);
 
     private final CampaignVariantRepository variantRepository;
     private final CampaignRepository campaignRepository;
@@ -223,12 +230,71 @@ public class CampaignVariantService implements CampaignVariantUseCase {
     @Transactional
     public void recordAnswer(long variantId) {
         variantRepository.recordAnswer(variantId);
+        variantRepository.findById(variantId).ifPresent(v -> {
+            if (v.answeredCount() >= CampaignVariantBanditOptimizer.MIN_WARMUP_PER_VARIANT
+                    && v.answeredCount() % 10 == 0) {
+                try {
+                    autoTuneIfEligible(v.companyId(), v.campaignId());
+                } catch (Exception e) {
+                    log.warn("Auto-tune after answer milestone for variant {} failed: {}", variantId, e.getMessage());
+                }
+            }
+        });
     }
 
     @Override
     @Transactional
     public void recordConversion(long variantId) {
         variantRepository.recordConversion(variantId);
+        variantRepository.findById(variantId).ifPresent(v -> {
+            try {
+                autoTuneIfEligible(v.companyId(), v.campaignId());
+            } catch (Exception e) {
+                log.warn("Auto-tune after conversion for variant {} failed: {}", variantId, e.getMessage());
+            }
+        });
+    }
+
+    @Override
+    @Transactional
+    public VariantOptimizationPlan optimizeWeights(long companyId, long campaignId) {
+        Campaign campaign = campaignRepository.find(companyId, campaignId);
+        if (campaign == null || campaign.companyId() != companyId) {
+            throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, campaignId);
+        }
+
+        List<CampaignVariant> variants = variantRepository.findAllByCampaignIdAndCompanyId(campaignId, companyId);
+        VariantOptimizationPlan plan = CampaignVariantBanditOptimizer.optimize(campaignId, companyId, variants);
+
+        for (VariantAllocation allocation : plan.allocations()) {
+            if (allocation.previousTrafficWeight() != allocation.optimizedTrafficWeight()) {
+                variantRepository.updateTrafficWeight(allocation.variantId(), companyId, allocation.optimizedTrafficWeight());
+            }
+        }
+
+        log.info("Optimized weights for campaign {} using strategy {}: {}", campaignId, plan.strategy(),
+                plan.allocations().stream()
+                        .map(a -> a.variantName() + "=" + a.optimizedTrafficWeight() + "%")
+                        .collect(Collectors.joining(", ")));
+
+        return plan;
+    }
+
+    @Override
+    @Transactional
+    public VariantOptimizationPlan autoTuneIfEligible(long companyId, long campaignId) {
+        List<CampaignVariant> variants = variantRepository.findAllByCampaignIdAndCompanyId(campaignId, companyId);
+        List<CampaignVariant> active = variants.stream().filter(CampaignVariant::active).toList();
+        if (active.size() < 2) {
+            return null;
+        }
+
+        int totalAnswered = active.stream().mapToInt(CampaignVariant::answeredCount).sum();
+        if (totalAnswered < CampaignVariantBanditOptimizer.MIN_ANSWERED_FOR_BANDIT) {
+            return null;
+        }
+
+        return optimizeWeights(companyId, campaignId);
     }
 
     /** A 0..1 rate as a percentage with two decimals, the shape the report already used. */
@@ -255,7 +321,7 @@ public class CampaignVariantService implements CampaignVariantUseCase {
      * four-variant report into nine round trips.
      */
     private CampaignVariantResponse toResponse(CampaignVariant v, Map<Long, VariantConversions> conversions,
-                                               Map<Long, VariantSpend> spend) {
+                                                Map<Long, VariantSpend> spend) {
         long attributed = conversions.containsKey(v.id()) ? conversions.get(v.id()).conversions() : 0L;
         long value = conversions.containsKey(v.id()) ? conversions.get(v.id()).attributedValueUzs() : 0L;
         long spent = spend.containsKey(v.id()) ? spend.get(v.id()).spentUzs() : 0L;

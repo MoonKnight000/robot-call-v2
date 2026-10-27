@@ -65,4 +65,24 @@ public class ScenarioControllerImpl implements ScenarioController {
     public ResponseEntity<ResponseData<List<PersonaTestResult>>> testPersonas(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(scenarioSimulationUseCase.runPersonaTests(companyId, id)));
     }
+
+    @Override
+    public ResponseEntity<ResponseData<CanvasGraphDto>> getCanvas(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(scenarioUseCase.getCanvas(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ScenarioRow>> updateCanvas(long companyId, long id, CanvasGraphDto canvas) {
+        return ResponseEntity.ok(ResponseData.ok(scenarioUseCase.updateCanvas(companyId, id, canvas)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CanvasGraphDto>> autoLayout(CanvasGraphDto canvas) {
+        return ResponseEntity.ok(ResponseData.ok(scenarioUseCase.autoLayoutCanvas(canvas)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CanvasDryRunResponse>> dryRun(long companyId, CanvasDryRunRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(scenarioUseCase.dryRunStep(companyId, request)));
+    }
 }
