@@ -1,4 +1,4 @@
-﻿# CLAUDE.md — Loyiha qoidalari
+# CLAUDE.md — Loyiha qoidalari
 
 AI voice agent: SIP orqali mijozlarga qo'ng'iroq qilib, o'zbek/rus tilida suhbatlashadi
 va natijani CRM ga yozadi.
@@ -428,6 +428,8 @@ Batafsil: `CODE_STRUCTURE.md` §3.7.
 Quyidagilar noaniq bo'lsa — **taxmin qilma, so'ra**: SIP provayder credentials, CRM API
 endpointlari, Google Cloud / Yandex kalitlari, test uchun telefon raqami, qarzdorlik
 ma'lumotining aniq strukturasi.
+
+---
 
 ## graphify
 

@@ -1,3 +1,436 @@
+# GEMINI.md — Loyiha qoidalari
+
+AI voice agent: SIP orqali mijozlarga qo'ng'iroq qilib, o'zbek/rus tilida suhbatlashadi
+va natijani CRM ga yozadi.
+
+**Stack:** Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Asterisk 20 (ari4java) ·
+PostgreSQL + Flyway · RabbitMQ · Redis · MinIO · Netty (RTP) · ONNX Runtime (VAD, turn)
+**Base paket:** `uz.murodjon.robotcallv2` · bitta Gradle moduli
+Bosqichlar tarixi: `docs/claude/CLAUDE.md`
+
+---
+
+# DOMEN ATAMALARI — Campaign · AI Agent · Scenario
+
+Uchalasi bir-birini almashtirmaydi; har biri qo'ng'iroqning **bitta savoliga** javob beradi.
+Yangi sozlama qo'shishdan oldin "bu qaysi savolga tegishli?" deb so'ra va faqat o'sha joyga qo'sh.
+
+```
+Campaign ──aiAgentId──▶ AiAgent ──script.scenarioId──▶ Scenario
+(kimga, qachon)          (kim, qanday ovozda)            (nima deydi, qaysi tartibda)
+```
+
+| | **Campaign** (`campaign`) | **AI Agent** (`aiagent`) | **Scenario** (`scenario`) |
+|---|---|---|---|
+| Savol | Kimga va qachon qo'ng'iroq qilinadi? | Kim gapiradi, qanday ovozda, qaysi model bilan? | Nima deydi, qaysi bosqichlarda, qayerga o'tadi? |
+| Saqlaydi | targetlar (CSV/CRM/`TargetSource`), dial oynasi va kunlari, `maxAttempts`, `RetryPolicy`, concurrency, kunlik limit, budjet, `priority`, `startAt/endAt`, takrorlanish, `dialMode` (AI yoki operator rejimlari), `callQueueId`, A/B `CampaignVariant` | til, `persona`, ovoz (`AiAgentVoice`), STT/TTS (`AiAgentSpeechEngine`), LLM (`llmModel`, `fastLlmModel`, temperature), fon tovushi, `callBehaviour`, limitlar, data policy, `firstMessage`, initiation/post-call webhook, `dataNeeded`/`dataEvaluation`, talaffuz qoidalari, SIP trunklar, versiyalar/publish | `StageDef` bosqichlar (`purpose`, `allowedTransitions`, `transitionConditions`, `branches`, `staticLine`, `requiredOutcomes`, `allowedTools`, `emotion`, bosqich `model` i), `GlobalNode`, `factSchema`, `outcomeSchema`, `tools`, `rolePrompt`, `guardrails`, `styleExamples`, `disclosureText`, `factWebhook` |
+| SAQLAMAYDI | ovoz, model, ssenariy matni | kimga/qachon qo'ng'iroq qilish; bosqichlar grafi (agar `scenarioId` bo'lsa) | ovoz, persona, model tanlovi, kompaniya sozlamalari |
+| Egasi / umumiylik | Kompaniyaniki | Kompaniyaniki, draft + published snapshot | Umumiy va **versiyalangan** (`scenarioKey` + `version`), built-in shablonlar bor |
+
+**Agent ssenariyni qayerdan oladi** (`AiAgentService.resolveScenario`, ustuvorlik tartibida):
+1. `script.scenarioId` — umumiy `Scenario` qatori (bir nechta agent bitta ssenariyni turli ovozda gapira oladi);
+2. `script.definition` — agentning o'ziga ichki (embedded) `ScenarioDefinition` (`PUT /api/ai-agents/{id}/scenario`);
+3. ikkalasi ham yo'q — `systemPrompt` dan bitta `CONVERSATION` bosqichli ssenariy yasaladi (`ScenarioMode.PROMPT`).
+
+**Qaysi biri qayerga:**
+- "Bosqich qo'shish", "ha desa X, yo'q desa Y" → Scenario (`StageDef.transitionConditions`); faktga qarab LLM'siz → `StageDef.branches`.
+- "Istalgan bosqichda 'siz kimsiz?' ga javob" → Scenario (`GlobalNode`).
+- "Ovozni/tilni/modelni almashtirish" → AI Agent.
+- "Ertaga 9:00–18:00 da shu ro'yxatga, 3 marta urinib" → Campaign.
+- "Bir xil kampaniyada ikki xil prompt/agentni sinash" → `CampaignVariant` (`promptOverride` faqat `rolePrompt` ni almashtiradi, `aiAgentId` — boshqa agent).
+- Kiruvchi qo'ng'iroq Campaign'siz ishlaydi: `InboundRoute` to'g'ridan-to'g'ri `aiAgentId` (yoki `callFlowId`) ga ishora qiladi.
+- **Mavzu va yo'nalish — ikki xil o'q.** Mavzu (qarz / eslatma / lid) = Scenario, uni
+  `ScenarioDefinition.callPurpose` bir gapda aytadi; bitta ssenariy — bitta mavzu. Yo'nalish
+  (kiruvchi / chiquvchi) ssenariyda emas, qo'ng'iroqning o'zida (`DialogSession`/`RealtimeDialogSession.isInbound()`).
+  Ikkalasi promptga `SystemPromptFactory.appendCallFrame` orqali tushadi. Ko'p mavzuli kiruvchi
+  liniya — `TRIAGE` bosqichi + `transitionConditions` (`docs/api/scenarios.md`).
+
+**Adashtirilmaydigan yana bitta atama — CallFlow** (`callflow`, ijrosi `agent/flow`): kiruvchi
+qo'ng'iroqning IVR/PBX grafi — `PLAY`, `MENU` (DTMF), `SCHEDULE`, `QUEUE`, `RING_GROUP`, `VOICEMAIL`,
+`AI_AGENT` (qo'ng'iroqni agentga beradi) va h.k. Bu **LLM suhbati emas**; suhbat bosqichlari doim
+Scenario'da. CallFlow'ning `AI_AGENT` tuguni → AiAgent → Scenario.
+
+---
+
+# ISH USLUBI
+
+Bu bo'lim — *qanday ishlash* haqida, keyingisi — *kod qanday ko'rinishi* haqida.
+Arzimas vazifada mulohaza bilan yondash: bu qoidalar tezlikdan ko'ra ehtiyotkorlikni
+tanlaydi.
+
+1. **Avval o'yla.** Taxminingni ochiq ayt; noaniq bo'lsa to'xta va so'ra. Bir nechta
+   talqin bo'lsa — jimgina birini tanlama, ikkalasini ko'rsat. Soddaroq yo'l bo'lsa ayt,
+   kerak bo'lsa e'tiroz bildir.
+2. **Soddalik.** Masalani yechadigan eng kam kod. So'ralmagan feature, bir marta
+   ishlatiladigan abstraksiya, so'ralmagan "moslashuvchanlik", bo'lmaydigan holat uchun
+   error handling — yozilmaydi. 200 qator yozding-u, 50 qatorda bo'ladimi — qayta yoz.
+3. **Jarrohlik o'zgarish.** Faqat kerakli joyga teg: yonidagi kodni, kommentni,
+   formatlashni "yaxshilama", buzilmagan narsani refactor qilma, mavjud uslubga moslash.
+   Aloqasi yo'q o'lik kodni ko'rsang — ayt, o'chirma. O'z o'zgarishing natijasida
+   keraksiz qolgan import/o'zgaruvchi/metodni esa o'zing tozala. **Test:** har bir
+   o'zgargan qator foydalanuvchi so'roviga bevosita bog'lana olsin.
+4. **Maqsad + tekshiruv mezoni.** Vazifani tekshirib bo'ladigan maqsadga aylantir
+   ("validation qo'sh" → "noto'g'ri kirish uchun test, keyin uni o'tkaz"). Ko'p
+   bosqichli ishda qisqa reja ber: har bosqich va uni qanday tekshirish. **Lekin
+   tekshirishni foydalanuvchi bajaradi** (§8.6) — build/test ishga tushirmaydi,
+   mezonni aytib beradi.
+
+---
+
+# QAT'IY QOIDALAR
+
+Quyidagilar **majburiy**. Kod yozishdan oldin ham, review qilishda ham shu ro'yxatga
+qarab tekshiriladi. Qoidani buzadigan kod qabul qilinmaydi.
+
+## 1. Bitta faylda bitta public type
+
+Har bir `class`/`interface`/`enum`/`record` — **o'z faylida**, fayl nomi type nomi bilan
+bir xil. Nested type faqat **`private`** bo'lsa ruxsat (`DialogEngine.TurnResult`,
+`GoogleSttProvider.GoogleSttSession`) — bu tashqariga ko'rinmaydigan implementatsiya
+detali. **`public` nested type taqiqlanadi:** u API'ning bir qismi, alohida faylga
+chiqariladi — `TtsProperties` ichida `public record Voice` emas, balki `TtsProperties.java`
+va `TtsVoice.java`.
+
+## 2. Paket strukturasi — feature-first + hexagonal
+
+Har bir feature to'rt qatlamga bo'linadi. Bog'liqlik **faqat ichkariga qaraydi**:
+`presentation → application → domain`, `infrastructure → application`. Teskarisi yo'q.
+
+```
+uz.murodjon.robotcallv2.<feature>
+├── presentation
+│   ├── controller                 — REST interfeys + bitta Impl (§3)
+│   └── http                       — <feature>.http, qo'lda sinash uchun
+├── application
+│   ├── port/input                 — <Feature>UseCase: tashqi dunyo service'dan nima so'raydi
+│   ├── port/output                — <Feature>Repository (INTERFEYS): service tashqaridan nima so'raydi
+│   ├── service                    — BUTUN biznes logika, `implements <Feature>UseCase`
+│   ├── mapper                     — faqat domain ↔ dto ko'chirish (JPA entity'ni ko'rmaydi)
+│   └── dto                        — faqat HTTP uchun: *Request, *Response, *Row, *Detail
+├── domain
+│   ├── entity                     — ASOSIY model: Campaign, AiModelConfig, *Filter
+│   ├── enums                      — shu feature'ga tegishli BARCHA enum'lar
+│   ├── event                      — boshqa feature'ga xabar beruvchi ApplicationEvent record'lari (CompanySuspendedEvent)
+│   └── service                    — sof qoidalar: <Feature>Validator (Spring'siz)
+└── infrastructure
+    ├── persistence/entity         — JPA entity: <Domain>Entity
+    ├── persistence/repository     — Spring Data: <Entity>JpaRepository
+    ├── persistence/adapter        — <Feature>RepositoryAdapter implements port/output
+    ├── persistence/mapper         — <Domain>EntityMapper: entity ↔ domain (faqat adapter ishlatadi)
+    ├── adapter                    — DB'ga aloqasi yo'q port implementatsiyalari (§2.2)
+    └── config                     — @ConfigurationProperties, @Configuration
+```
+
+**`infrastructure/adapter` — faqat DB bo'lmagan port uchun.** Saqlash porti doim
+`persistence/adapter` da. Tashqi dunyoga chiqadigan boshqa port (HTTP client, fayl
+parser, embedding modeli) `infrastructure/adapter` ga tushadi va nomi texnologiyani
+aytadi: `RestClientWebhookSenderAdapter`, `SpringAiTextEmbedderAdapter`,
+`DocumentTextExtractorAdapter`. **`RestClient`/`HttpClient`/`WebClient` service'da
+yaratilmaydi** — u shu adapter ichida qoladi, service esa faqat port interfeysini
+ko'radi (`WebhookSenderPort`, `TextEmbedderPort`).
+
+**Etalon: `aimodel`.** Yangi feature yozganda yoki eskisiga qo'shganda shu paketga
+qarab tekshiriladi — u to'liq skeletni eng kichik hajmda ko'rsatadi.
+
+Qatlam bo'sh bo'lsa — **subpaketni umuman yaratmang** (`search` da `infrastructure` yo'q,
+`live` da `persistence` yo'q). Bo'sh papka qoida emas, shovqin.
+
+**Enum'lar — har doim `<feature>.domain.enums` da.** `dto` yoki `entity` ichiga enum
+qo'shilmaydi (`CampaignStatus`, `CampaignTableField`, `PipelineMode` ham shunga bo'ysunadi).
+
+### 2.1. `domain.entity` vs `infrastructure.persistence.entity` vs `application.dto`
+
+| Paket                               | Nima uchun                                                                                                                                                               | Kim ko'radi                |
+|-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
+| `domain.entity`                     | **Asosiy model.** Service ↔ port/output o'rtasida ikki tomonga yuradigan type; hosila qiymatlar (`EffectiveAiModelConfig`) va filtrlar (`CampaignFilter`) ham shu yerda. | service, adapter, `agent/` |
+| `infrastructure.persistence.entity` | **Faqat saqlash.** JPA detali — `domain`ga aylanmasdan adapter'dan chiqmaydi.                                                                                            | faqat persistence ichida   |
+| `application.dto`                   | **Faqat HTTP borligi uchun mavjud.** `*Request`, `*Response`, bitta endpoint javobiga moslangan proyeksiya (`*Row`, `*Detail`).                                          | controller, service cheti  |
+
+Ajratish testi: **service uni o'qiydi ham, yozadi ham → `domain.entity`; faqat bitta
+endpoint javobi uchun yasalgan → `application.dto`.** JPA entity hech qachon
+controller'ga chiqmaydi, DTO hech qachon `port/output` ga kirmaydi.
+
+Mavjud feature'lar (50 ta):
+`aiagent` · `aimodel` · `alert` · `apikey` · `audit` · `auth` · `billing` · `callflow` · `callqueue` · `callrecord` ·
+`campaign` · `chat` · `company` · `contact` · `conversion` · `copilot` · `crm` · `dialer` · `donotcall` · `inbound` · `insight` ·
+`integration` ·
+`knowledgebase` · `live` · `mcp` · `memory` · `missedcall` · `notification` · `operator` · `pack` · `partner` · `profile` · `promise` ·
+`quality` ·
+`report` · `role` · `scenario` · `schedule` · `search` · `secret` · `siptrunk` · `sms` ·
+`storage` · `tool` · `user` · `voice` · `voicemail` · `webhook` · `widget` · `wrapup`
+
+**Istisno — `agent/`.** Voice pipeline infratuzilmasi, CRUD emas, shuning uchun hexagonal
+emas, **texnik tamoyil** bo'yicha bo'linadi: `agent/ari`, `agent/ami`, `agent/rtp`,
+`agent/codec`, `agent/vad`, `agent/turn`, `agent/stt`, `agent/tts`, `agent/realtime`,
+`agent/dialog`, `agent/audio`, `agent/session`, `agent/routing`, `agent/metrics`,
+`agent/lifecycle`, `agent/alerting`, `agent/summary`, `agent/flow`, `agent/queue`,
+`agent/provider` (STT/TTS selector'lari va vendor WebSocket listener'larining umumiy bazasi). Bu
+bo'linish ataylab shunday — `agent/` hexagonal'ga o'tkazilmaydi. Katta klass esa shu
+paket ichida kichik klasslarga bo'linadi (2026-09-14: `AriService` fasad bo'lib qoldi,
+ish `CallSetupService`, `CallTeardownService`, `OutboundDialService`, … ga tarqatildi).
+
+**`shared/`** — feature'lardan mustaqil umumiy kod: `shared/api` (ResponseData,
+PageableData, FilterInterface, TableField), `shared/dialog`, `shared/exception`,
+`shared/csv`, `shared/converter`, `shared/util`, `shared/ratelimit`, `shared/lock`
+(`ClusterJobLock` — ikki instance'da bir vaqtda yurmasligi kerak bo'lgan `@Scheduled` job'lar
+shu orqali), `shared/http` (`PublicHttpClientFactory` — tenant bergan URL'ga har qanday so'rov
+faqat shu pinned client orqali, SSRF himoyasi), `shared/stream` (`EventSink`,
+`EventSubscription`, `EventStreamHub` — service SSE'ni bilmaydi: obunani transport'dan
+mustaqil qaytaradi, `SseEmitter` esa faqat presentation'da, `shared/api/SseEventStreams`
+orqali yasaladi). **`config/`** — ilova darajasidagi
+konfiguratsiya: executor, netty, clock, encryption, global exception handler.
+**`security/`** — JwtAuthFilter, SecurityConfig, CurrentCompanyId(+ArgumentResolver),
+`CurrentUser` porti (so'rovdagi foydalanuvchi va uning huquqlari) va uning yagona
+implementatsiyasi `AuthenticatedCurrentUser` — `SecurityContextHolder` faqat shu paketda o'qiladi.
+Bir nechta feature ishlatadigan enum `shared/` da turadi (masalan `shared/dialog/PipelineMode`).
+
+## 3. Controller — interfeys + bitta Impl, logikasiz
+
+- Har bir controller **interfeys**. Barcha Spring web annotatsiyalari (`@RequestMapping`,
+  `@GetMapping`, `@PathVariable`, `@RequestBody`, `@RequestParam`, `@Valid`) va butun
+  Javadoc — **interfeysda**.
+- Implementatsiya bitta: `<Name>ControllerImpl`, faqat `@RestController` bilan
+  belgilanadi, `implements <Name>Controller`.
+- **Impl'da logika bo'lmaydi.** Har bir metod bitta qator: use case'ni chaqirish va
+  javobni o'rash. `if`, `for`, `try`, `instanceof`, hisob-kitob, tekshiruv,
+  transformatsiya — hech biri controller'da bo'lmaydi.
+- Controller **`application.port.input.<Feature>UseCase` ga bog'lanadi**, service klassiga
+  emas — bu `presentation → application` yo'nalishini saqlaydi. Boshqa feature'ning
+  service'iga yoki `agent/` ga to'g'ridan-to'g'ri murojaat qilmaydi.
+
+## 4. Logika — service'da
+
+- **Butun** biznes logikasi `<feature>.application.service` da, `implements
+  <Feature>UseCase`. Service o'z `port/output` iga, `agent/` ga va boshqa feature'ga
+  **faqat uning UseCase'i (`port/input`) orqali** murojaat qiladi — boshqa feature'ning
+  service klassini yoki `port/output` ini inject qilmaydi. Tashqaridan chaqiriladigan har
+  bir service shuning uchun UseCase implement qiladi; faqat o'z feature'i ichida
+  ishlatiladigan yordamchi (bootstrap, scheduler, renderer) UseCase'siz qolishi mumkin.
+  Boshqa feature'dan ko'rinadiganlari: `port/input`, `domain..` va UseCase imzosidagi
+  `application.dto`. Ruxsat etilgan istisnolar (`ArchitectureTest` bilan bir xil): boshqa
+  feature'ning `port/output` ini **implement qilish** (tashqaridan ulanadigan adapter, masalan
+  `TrunkRegistrationMonitor implements TrunkRegistrationStatusPort`); `persistence` qatlamida
+  boshqa feature'ning JPA entity'siga bog'lanish (`@ManyToOne CompanyEntity`); `agent/` va
+  infrastructure adapter'ning boshqa feature `*Properties` ini o'qishi.
+- **Feature'lar orasida sikl bo'lmaydi.** Orqaga yo'nalgan bog'liqlik faqat "xabar berish"
+  bo'lsa (sessiyalarni bekor qilish, DNC'ga qo'shish) — Spring `ApplicationEvent` +
+  oddiy `@EventListener` (xuddi shu thread va tranzaksiya, vaqt o'zgarmaydi).
+- Service HTTP haqida bilmaydi: `ResponseEntity`, `HttpStatus`, `ResponseStatusException`,
+  `HttpServletRequest` — service'da **taqiqlangan**.
+- **Service JPA haqida ham bilmaydi.** `*Entity`, `EntityManager`, `*JpaRepository` —
+  service'da taqiqlangan; u faqat `port/output` interfeysini ko'radi. JPA butunlay
+  `infrastructure/persistence` ichida qoladi.
+- **Adapter'da biznes logikasi bo'lmaydi** — faqat DB kirish va entity↔domain mapping
+  (`infrastructure/persistence/mapper` dagi `<Domain>EntityMapper` orqali).
+- **Yagona ruxsat etilgan istisno:** service o'z feature'ining `infrastructure.config`
+  dagi `*Properties` record'ini o'qishi mumkin (faqat konfiguratsiya qiymati). Boshqa
+  feature'ning Properties'i yoki boshqa har qanday infrastructure klassi — yo'q. Yagona
+  umumiy istisno — `CompanyProperties.defaultId()`: pastdagi so'rovsiz startup ishlari uni
+  ataylab oshkora chaqiradi.
+- **Port domain qabul qiladi, domain qaytaradi.** Yozish metodlariga yoyilgan
+  parametrlar berilmaydi. Identifikator, `company_id`, `created_at` kabi saqlash
+  qatlaminiki bo'lgan maydonlar kirishda e'tiborga olinmaydi (adapter o'zi shtamplaydi),
+  chiqishda esa doim to'ldirilgan bo'ladi; faqat yozish uchun mo'ljallangan qiymatni
+  domain record'dagi nomlangan factory yasaydi (`AiModelConfig.overrides(...)`).
+- **Spring'siz sof qoidalar `domain.service` da** (`<Feature>Validator`): bog'liqliksiz,
+  shuning uchun eng arzon test qilinadigan joy.
+- **Kompaniya — hech qachon yashirin kontekst emas.** So'rovning kompaniyasi controller
+  kirishida `@CurrentCompanyId long companyId` bilan tokendan olinadi va shundan keyin
+  oddiy argument bo'lib yuradi: UseCase → service → port → adapter. Hech bir qatlam uni
+  `SecurityContext`dan yoki thread-local'dan o'qimaydi — aks holda dialer/ARI kabi
+  so'rovsiz threadlarda kompaniya yo'qoladi. So'rovsiz startup ishlari (bootstrap, TTS
+  warmup, simulyatsiya) `companyProperties.defaultId()` ni **oshkora** chaqiradi.
+
+```java
+// ✗ yoyilgan parametrlar + adapter ichida yashirin kompaniya
+public AiModelConfig save(String model, Double temperature, Integer maxOutputTokens) {
+    long companyId = securityContextdanQaydandir();
+    ...
+}
+// ✓
+public AiModelConfig upsert(long companyId, AiModelConfig config) { ... }
+```
+
+## 5. Exception — umumiy ierarxiya
+
+Kutilgan har qanday xato `shared/exception` dagi `AppException` avlodi bo'ladi:
+
+| Exception                  | Status | Qachon                                                                                                             |
+|----------------------------|--------|--------------------------------------------------------------------------------------------------------------------|
+| `ValidationException`      | 400    | Kiruvchi ma'lumot noto'g'ri                                                                                        |
+| `ForbiddenException`       | 403    | Ruxsat yo'q                                                                                                        |
+| `NotFoundException`        | 404    | Entity topilmadi (yoki boshqa company'niki)                                                                        |
+| `ConflictException`        | 409    | So'rov to'g'ri, lekin tizim holati mos emas                                                                        |
+| `ExternalServiceException` | 502    | Asterisk / CRM / STT / TTS / storage yiqildi — qo'shimcha `service` argumenti oladi (`"asterisk"`, `"google-stt"`) |
+
+- **Xabar hech qachon literal matn emas.** Har bir exception `ErrorCode` qabul qiladi,
+  xabar `code.format(args)` bilan yasaladi. Yangi xato qo'shish = `ErrorCode` enum'iga
+  yangi qator qo'shish (`shared/exception/ErrorCode.java`, kategoriyalar bo'yicha
+  guruhlangan), kodda matn yozish emas.
+- Frontend `ResponseData.messageCode` (= `ErrorCode.name()`) bo'yicha tarjima qiladi:
+  **matnni o'zgartirish erkin, enum nomini o'zgartirish breaking change.**
+- **Taqiqlangan:** biznes xatosi uchun `IllegalArgumentException`, `IllegalStateException`,
+  `RuntimeException`, `ResponseStatusException` tashlash.
+- **Imkonsiz invariant** (JVM'da SHA-256/HMAC yo'q, o'zimizning record'ni Jackson
+  serializatsiya qila olmadi, statik jadvalda takroriy kod) — `IllegalStateException` bo'lib
+  qoladi va 500 beradi; bu biznes xatosi emas. Runtime'da haqiqatda bo'lishi mumkin bo'lgan
+  har narsa — noto'g'ri kirish, buzilgan saqlangan ma'lumot, kalit almashishi, vendor
+  xatosi — `ErrorCode` bilan `AppException`.
+- **Server konfiguratsiyasi yetishmasa** (shifrlash kaliti, JWT kaliti, web-test sozlanmagan)
+  — `ConflictException` (409): so'rov to'g'ri, tizim holati mos emas.
+- **Validator bir nechta muammo topsa** — `ValidationException.withErrors(code, errors, …)`:
+  muammolar `ResponseData.errors` ro'yxatiga tushadi, `ErrorCode` argumentiga inglizcha
+  matn berilmaydi.
+- **Exception faqat `application.service`, `domain.service` va `agent/` da tashlanadi.**
+  Adapter topilmasa `null`/`Optional.empty()` qaytaradi — bu 404 mi yoki normal holat mi,
+  service hal qiladi. Controller'da `throw` ham, `try/catch` ham bo'lmaydi.
+  **Istisno — tashqariga chiqadigan `infrastructure/adapter`** (HTTP client, SMS/CRM
+  gateway, target source fetcher): tarmoq yoki vendor xatosini `ExternalServiceException`
+  ga o'raydi — bu "topilmadi" emas, tashqi xizmat yiqildi, va sababini faqat adapter biladi.
+  **Istisno — web chegarasidagi yordamchilar:** `security/` argument resolver'lari,
+  `shared/api` (`UploadedFile`, `FileResponseFactory`) va `shared/util` qiymat parser'lari
+  (`PhoneNumbers`) ham `AppException` tashlashi mumkin.
+- Hamma xatoni `config/ApiExceptionHandler` (`@RestControllerAdvice`) ushlaydi va yagona
+  `ResponseData` konvertiga o'raydi. U `AppException`dan tashqari `@Valid`
+  (`VALIDATION_FAILED`), buzuq JSON, yetishmagan/noto'g'ri tipdagi parametr va noma'lum
+  endpoint holatlarini ham qoplaydi — qo'lda tekshirish shart emas.
+- `AppException` bo'lmagan exception — bu bug: 500 (`INTERNAL_SERVER_ERROR`), stack trace
+  faqat serverda loglanadi.
+
+```java
+// ✗
+throw new ResponseStatusException(NOT_FOUND, "campaign " + id + " not found");
+throw new IllegalArgumentException("phone is empty");
+throw new NotFoundException("Campaign " + id + " not found");   // matn kodda
+// ✓
+throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, id);
+throw new ValidationException(ErrorCode.CSV_PHONE_EMPTY);
+throw new ExternalServiceException(ErrorCode.ARI_ORIGINATE_FAILED, "asterisk", cause, number, trunk);
+```
+
+## 6. Nomlash
+
+| Type                            | Paket                                   | Qoida                                    | Misol                       |
+|---------------------------------|-----------------------------------------|------------------------------------------|-----------------------------|
+| Domain model                    | `domain.entity`                         | Suffikssiz sof domain nomi               | `Campaign`, `AiModelConfig` |
+| Filtr                           | `domain.entity`                         | `<Noun>Filter`                           | `CampaignFilter`            |
+| Sort ustunlari                  | `domain.enums`                          | `<Noun>TableField`                       | `CampaignTableField`        |
+| Sof qoidalar                    | `domain.service`                        | `<Feature>Validator`                     | `ScenarioValidator`         |
+| Kirish porti                    | `application.port.input`                | `<Feature>UseCase` (interfeys)           | `CampaignUseCase`           |
+| Chiqish porti                   | `application.port.output`               | `<Feature>Repository` (INTERFEYS)        | `CampaignRepository`        |
+| Service                         | `application.service`                   | `<Feature>Service implements ...UseCase` | `CampaignService`           |
+| Mapper (domain ↔ dto)           | `application.mapper`                    | `<Feature>Mapper`                        | `CampaignMapper`            |
+| Entity mapper (entity ↔ domain) | `infrastructure.persistence.mapper`     | `<Domain>EntityMapper`                   | `CampaignEntityMapper`      |
+| Request DTO                     | `application.dto`                       | `<Verb><Noun>Request`                    | `CreateCampaignRequest`     |
+| Response DTO                    | `application.dto`                       | `<Noun>Response`                         | `CreateCampaignResponse`    |
+| Endpoint javobidagi proyeksiya  | `application.dto`                       | `<Noun>Row` / `<Noun>Detail`             | `CallRow`, `CallDetail`     |
+| Controller                      | `presentation.controller`               | `<Feature>Controller` + `...Impl`        | `CampaignController`        |
+| JPA entity                      | `infrastructure.persistence.entity`     | `<Domain>Entity`                         | `CampaignEntity`            |
+| Spring Data interfeys           | `infrastructure.persistence.repository` | `<Entity>JpaRepository`                  | `CampaignJpaRepository`     |
+| Port implementatsiyasi          | `infrastructure.persistence.adapter`    | `<Feature>RepositoryAdapter`             | `CampaignRepositoryAdapter` |
+| Properties                      | `infrastructure.config` yoki `agent/`   | `<Noun>Properties`                       | `DialerProperties`          |
+
+- **`<Feature>Repository` — interfeys, klass emas.** Uni implement qiladigan klass doim
+  `...RepositoryAdapter`. Bu eski `repository` paketidagi DAO klassidan asosiy farq:
+  service faqat interfeysni ko'radi.
+- Suffikssiz nom — **`domain.entity` paketiniki**; `Row`/`Detail` esa faqat bitta endpoint
+  javobi uchun yasalgan `application.dto` proyeksiyasi (`CallRow` = `call_attempt` +
+  target + disposition). Shuning uchun `domain.entity.Campaign` va
+  `application.dto.CampaignRow` yonma-yon turishi normal.
+- Bitta simple name butun loyihada **faqat bir marta** uchraydi — aks holda import
+  chalkashadi. Domain/entity juftligi mustasno: `Campaign` va `CampaignEntity` ikkalasi
+  ham bo'lishi joiz, ular `Entity` suffiksi bilan ajraladi.
+
+### 6.1. Maydon nomlari
+
+**Qisqartma yo'q:** `jpa`, `repo`, `props`, `cfg`, `defaults` — taqiqlangan. Bitta roldan
+bitta bog'liqlik bo'lsa **rol nomi** olinadi (`jpaRepository`, `repository`, `service`);
+bir nechta bo'lsa **nima bilan ishlashi prefiks bo'ladi** (`aiModelConfigService`,
+`voiceSettingsService`, `callAttemptJpaRepository`). Request parametri — `request`, `r` emas.
+
+```java
+// ✗ jpa · repo · defaults
+// ✓ jpaRepository · repository · dialogProperties
+```
+
+### 6.2. Metod nomlari
+
+- Metod **fe'l bilan boshlanadi**: `find…`, `create…`, `update…`, `upsert…`, `delete…`,
+  `count…`. `effective(...)`, `active(...)` kabi sifat-nomlar taqiqlanadi.
+- Nom o'z qamrovini aytadi: argument bo'lsa nomda ko'rinadi — `findByCompanyId(long)`,
+  `requireByCompanyIdAndPhone(long, String)`.
+- **Yashirin overload taqiqlanadi:** `find()` va `find(long companyId)` yonma-yon
+  turmaydi — birinchisi qaysi kompaniya ekanini yashiradi. Shu sababli
+  `…ForCurrentCompany` uslubidagi argumentsiz nomlar ham yo'q.
+- Entity→domain mapping metodi `to<Domain>`: `toAiModelConfig(entity)`. `toRow`/`toDto` emas.
+
+**Etalon:** `aimodel` feature'i — yangi kod yozishda `AiModelConfigUseCase`,
+`AiModelConfigService`, `AiModelConfigRepository` (port) va
+`AiModelConfigRepositoryAdapter` ga qarab tekshiriladi.
+
+## 7. API konvert
+
+- Har bir REST javob `ResponseData<T>` ichida qaytadi. Fayl yuklab olish (`Resource`) va
+  SSE (`SseEmitter`) — istisno.
+- Ro'yxat qaytaruvchi endpoint `PageableData<T>` ishlatadi va `FilterInterface`
+  merosxo'ri bo'lgan filtr qabul qiladi.
+- **`docs/api/` koddagi API bilan doim mos bo'lishi shart.** Har qanday controller
+  o'zgarishi (yangi endpoint, o'zgargan maydon, yangi status kod, rol o'zgarishi,
+  endpoint o'chirilishi) shu o'zgarishni qilgan commit ichidayoq `docs/api/`ga ham
+  yoziladi — bu keyingi alohida vazifa emas. Yangi controller qo'shilsa,
+  `docs/api/README.md` jadvaliga ham qator qo'shiladi. Frontend shu papkaga qarab
+  ishlaydi.
+
+## 8. Umumiy texnik qoidalar
+
+1. **Python ISHLATILMAYDI.** Butun stack Java; skript kerak bo'lsa — bash yoki Java.
+2. **Audio transport — RTP over UDP.** WebSocket faqat ARI control va STT/TTS
+   provayderlar uchun, audio uchun emas.
+3. **Netty event loop threadida blocking kod yozilmasin.** Paketni qabul qil, queue ga
+   tashla, ishlov virtual threadda.
+4. **Guardrails majburiy.** LLM qarz summasi, muddat, chegirma haqida o'zidan gapirmasin
+   (`agent/dialog/FactGuard`, system prompt guardrail'lari).
+5. **Kommentariya va log — ingliz tilida.** Bot gapiradigan, foydalanuvchiga ko'rinadigan
+   matnlar — o'zbek/rus.
+6. **Build'ni Agent ishga tushirmaydi.** `./gradlew`, testlar, `bootRun` — foydalanuvchi
+   o'zi tekshiradi.
+7. **Bosqichma-bosqich.** Foydalanuvchi "keyingi bosqich" demaguncha oldinga yugurma.
+8. **Integration testlarga tegilmaydi.** `@SpringBootTest` + `@Testcontainers` ishlatadigan
+   testlarni ko'tarish uchun butun loyiha (Docker) kerak — buni faqat foydalanuvchi
+   qiladi. Production kod o'zgarganda ular compile bo'lmay qolsa ham **tuzatishga urinma**;
+   foydalanuvchi o'zi moslashtiradi. Faqat mock asosidagi sof unit testlar (Spring
+   context'siz) yangi signaturaga moslanadi.
+9. **Properties vs `@Value`:** YAML (`application.yml` yoki `config/*.yml`) dan o'qiladigan
+   parametrlar soni bitta guruh/prefiks bo'yicha **3 tadan ko'p bo'lsa**, ularni
+   alohida `@Value` bilan inject qilish taqiqlanadi. Ular uchun alohida
+   `@ConfigurationProperties(prefix = "...")` record/klass yaratilishi shart (masalan,
+   `AlertingProperties`). Nomlash: `<Prefix/Feature>Properties`, maydonda to'liq
+   nom ishlatiladi (`alertingProperties`, qisqartmasiz).
+
+## 9. Builder — ko'p maydonli domain record uchun
+
+Batafsil: `CODE_STRUCTURE.md` §3.7.
+
+- **Builder kerak:** 10+ komponentli, ko'pi `null`/default bo'ladigan domain record
+  (`Campaign`, `AiAgent`, `StageDef`, `ScenarioDefinition`). Bunday record uchun yangi
+  konstruktor overload'i **yozilmaydi** — yangi maydon = record'ga komponent + builder'ga metod.
+- **Builder kerak emas:** kichik record, DTO, JPA entity, `*Properties`, exception.
+- `<Domain>Builder` — alohida fayl, record bilan bir paketda (§1: `public` nested yo'q);
+  kirish `X.builder()` va `x.toBuilder()`. Default'lar record'ning compact konstruktorida,
+  validatsiya builder'da emas.
+- Nusxa olish (`withX`, clone) — `toBuilder()...build()`; maydon ro'yxatini qo'lda
+  qayta yozma.
+
+---
+
+## Yordam kerak bo'lganda
+
+Quyidagilar noaniq bo'lsa — **taxmin qilma, so'ra**: SIP provayder credentials, CRM API
+endpointlari, Google Cloud / Yandex kalitlari, test uchun telefon raqami, qarzdorlik
+ma'lumotining aniq strukturasi.
+
+---
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
