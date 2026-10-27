@@ -8,7 +8,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.EventLoopGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.LiveAudioMonitor;
 import uz.murodjon.robotcallv2.agent.dialog.*;
@@ -103,6 +105,7 @@ class CallSetupService {
     private final UnansweredCallSettler unansweredCallSettler;
     private final ObjectMapper objectMapper;
     private final PreConversationAudio preConversationAudio;
+    private final ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider;
 
     CallSetupService(ExecutorService callExecutor,
                      AriClient ariClient,
@@ -136,9 +139,11 @@ class CallSetupService {
                      OperatorTransferService operatorTransferService,
                      UnansweredCallSettler unansweredCallSettler,
                      ObjectMapper objectMapper,
-                     PreConversationAudio preConversationAudio) {
+                     PreConversationAudio preConversationAudio,
+                     ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider) {
         this.objectMapper = objectMapper;
         this.preConversationAudio = preConversationAudio;
+        this.callerIdPoolUseCaseProvider = callerIdPoolUseCaseProvider;
         this.callExecutor = callExecutor;
         this.ariClient = ariClient;
         this.pbxLegService = pbxLegService;
@@ -415,6 +420,19 @@ class CallSetupService {
             registered = true;
             if (outbound != null) {
                 outboundCallTrackingUseCase.markAnswered(channelId);
+                if (outbound.callerIdPoolId() != null) {
+                    CallerIdPoolUseCase poolUseCase = callerIdPoolUseCaseProvider.getIfAvailable();
+                    if (poolUseCase != null) {
+                        String callerPhone = ChannelNames.extractCallerNumber(channel);
+                        if (callerPhone != null && !callerPhone.isBlank()) {
+                            try {
+                                poolUseCase.recordCallAnswer(outbound.callerIdPoolId(), callerPhone);
+                            } catch (Exception e) {
+                                log.warn("[{}] failed to record caller ID answer: {}", channelId, e.getMessage());
+                            }
+                        }
+                    }
+                }
             }
             log.info("Media ready for {}: rtpPort={}, extMedia={}, bridge={}, wav={}, attempt={}",
                     channelId, port, extMedia.getId(), bridge.getId(), wavPath, attemptId);

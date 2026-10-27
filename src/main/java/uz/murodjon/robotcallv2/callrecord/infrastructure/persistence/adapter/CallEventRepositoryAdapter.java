@@ -59,4 +59,9 @@ public class CallEventRepositoryAdapter implements CallEventRepository {
             return Map.of();
         }
     }
+
+    @Override
+    public int deleteCreatedBefore(java.time.Instant cutoff, int batchSize) {
+        return jpaRepository.deleteCreatedBefore(cutoff, batchSize);
+    }
 }

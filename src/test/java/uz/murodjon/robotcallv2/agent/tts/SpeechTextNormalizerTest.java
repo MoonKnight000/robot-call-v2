@@ -35,6 +35,16 @@ class SpeechTextNormalizerTest {
             // it is said in, so the caller can check it against the number they know
             "+998901234567|to'qqiz yuz to'qson sakkiz, to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti",
             "90 123 45 67|to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti",
+            // sums with trailing .00 and tiyin
+            "1 500 000.00 so'm|bir million besh yuz ming so'm",
+            "15000.50 so'm|o'n besh ming so'm ellik tiyin",
+            // bank card numbers in groups of 4 digits
+            "8600 1234 5678 9012|sakson olti nol nol, o'n ikki o'ttiz to'rt, ellik olti yetmish sakkiz, to'qson o'n ikki",
+            "8600-1234-5678-9012|sakson olti nol nol, o'n ikki o'ttiz to'rt, ellik olti yetmish sakkiz, to'qson o'n ikki",
+            // half quantities
+            "1.5 million so'm|bir yarim million so'm",
+            "2.5 kun|ikki yarim kun",
+            "0.5 soat|yarim soat",
             // the hour a slot is booked for, not two figures either side of a colon
             "soat 14:30 da|soat o'n to'rt o'ttiz da",
             "9:00|to'qqiz"
@@ -61,5 +71,13 @@ class SpeechTextNormalizerTest {
     void leavesOtherLanguagesAlone() {
         String line = "1500000 test do 2026-07-01";
         assertThat(SpeechTextNormalizer.normalize(line, "fr-FR")).isEqualTo(line);
+    }
+
+    @Test
+    void normalizesRussianCardsAndQuantities() {
+        assertThat(SpeechTextNormalizer.normalize("Карта: 8600 1234 5678 9012", "ru-RU"))
+                .isEqualTo("Карта: восемьдесят шесть ноль ноль, двенадцать тридцать четыре, пятьдесят шесть семьдесят восемь, девяносто двенадцать");
+        assertThat(SpeechTextNormalizer.normalize("1.5 миллиона", "ru-RU"))
+                .isEqualTo("полтора миллиона");
     }
 }

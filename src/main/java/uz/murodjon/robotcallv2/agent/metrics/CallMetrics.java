@@ -20,6 +20,7 @@ public class CallMetrics {
     private final MeterRegistry registry;
     private final Counter calls;
     private final DistributionSummary qualityScore;
+    private final DistributionSummary scorecardScore;
     private final Timer callDuration;
     private final AtomicInteger active = new AtomicInteger(0);
     private final Map<String, AtomicInteger> trunkRegistrations = new ConcurrentHashMap<>();
@@ -29,6 +30,10 @@ public class CallMetrics {
         this.calls = Counter.builder("voice.calls.total").register(registry);
         this.qualityScore = DistributionSummary.builder("voice.qa.score")
                 .description("automated quality review of a finished call, 0-100")
+                .publishPercentileHistogram()
+                .register(registry);
+        this.scorecardScore = DistributionSummary.builder("voice.scorecard.score")
+                .description("operator call scorecard score, 0-100")
                 .publishPercentileHistogram()
                 .register(registry);
         this.callDuration = Timer.builder("voice.call.duration").register(registry);
@@ -95,6 +100,35 @@ public class CallMetrics {
         Counter.builder("voice.qa.flags")
                 .description("findings from the automated call-quality review")
                 .tag("flag", flag)
+                .register(registry)
+                .increment();
+    }
+
+    /**
+     * One finished operator call's scorecard score, 0-100.
+     */
+    public void recordScorecardScore(int score) {
+        scorecardScore.record(score);
+    }
+
+    /**
+     * An operator call scorecard was flagged as needing supervisor review.
+     */
+    public void scorecardReviewNeeded() {
+        Counter.builder("voice.scorecard.reviews")
+                .description("operator call scorecards flagged or reviewed")
+                .tag("status", "needed")
+                .register(registry)
+                .increment();
+    }
+
+    /**
+     * An operator call scorecard review was completed by a supervisor.
+     */
+    public void scorecardReviewed(String status) {
+        Counter.builder("voice.scorecard.reviews")
+                .description("operator call scorecards flagged or reviewed")
+                .tag("status", status != null ? status.toLowerCase() : "unknown")
                 .register(registry)
                 .increment();
     }

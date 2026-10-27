@@ -15,6 +15,10 @@ public record FastPathResult(
         return new FastPathResult(true, reply, nextStage, null, false);
     }
 
+    public static FastPathResult replyOnly(String reply) {
+        return new FastPathResult(true, reply, null, null, false);
+    }
+
     public static FastPathResult endWithDisposition(String reply, Disposition disposition) {
         return new FastPathResult(true, reply, null, disposition, true);
     }

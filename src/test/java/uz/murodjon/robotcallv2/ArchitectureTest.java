@@ -41,7 +41,7 @@ class ArchitectureTest {
      */
     private static final Set<String> PORT_VERBS = Set.of(
             "accept", "activate", "add", "append", "apply", "archive", "assign", "attach", "book", "build",
-            "call", "cancel", "change", "charge", "claim", "clear", "click", "clone", "close", "cluster",
+            "call", "cancel", "change", "charge", "claim", "clear", "click", "clone", "close", "cluster", "compress",
             "complete", "compose", "connect", "consume", "contains", "count", "create", "deactivate",
             "delete", "deliver", "detach", "disable", "disconnect", "download", "embed", "enable",
             "enqueue", "erase", "evaluate", "evict", "exchange", "execute", "exhaust", "exists",

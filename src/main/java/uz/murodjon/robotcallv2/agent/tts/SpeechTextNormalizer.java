@@ -6,7 +6,9 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.function.LongFunction;
 import java.util.regex.MatchResult;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 
 /**
  * Rewrites digits, currencies, percentages, and dates into spoken words across multiple
@@ -64,6 +66,17 @@ public final class SpeechTextNormalizer {
      * {@code startsAt} is not something to read aloud in the first place.
      */
     private static final Pattern CLOCK = Pattern.compile("(?<![\\d:])([01]?\\d|2[0-3]):([0-5]\\d)(?![\\d:])");
+
+    /**
+     * A bank card number written in 4-digit groups ({@code 8600 1234 5678 9012} or
+     * {@code 8600-1234-5678-9012}). Spoken in 2-digit pairs per group with commas
+     * so the listener can follow and verify each group.
+     */
+    private static final Pattern CARD = Pattern.compile(
+            "(?<!\\d)(\\d{4})[\\s\\-](\\d{4})[\\s\\-](\\d{4})[\\s\\-](\\d{4})(?!\\d)");
+
+    /** Half quantity like {@code 1.5}, {@code 2.5}, {@code 0.5}. */
+    private static final Pattern HALF_QUANTITY = Pattern.compile("(?<![\\d.,])(\\d+)[.,]5(?![\\d.,])");
 
     /**
      * A stage direction in square brackets — {@code [laugh]}, {@code [sound concerned]} —
@@ -157,7 +170,7 @@ public final class SpeechTextNormalizer {
         String out = PERCENTAGE.matcher(text).replaceAll(m -> m.group(1) + " foiz");
 
         // 2. Currencies
-        out = UZ_SUM.matcher(out).replaceAll(m -> cleanNumber(m.group(1)) + " so'm");
+        out = UZ_SUM.matcher(out).replaceAll(m -> cleanSumAmount(m.group(1), "so'm", "tiyin"));
         out = USD_AMOUNT.matcher(out).replaceAll(m -> {
             String val = m.group(1) != null ? m.group(1) : m.group(2);
             return cleanNumber(val) + " dollar";
@@ -167,20 +180,22 @@ public final class SpeechTextNormalizer {
         out = ISO_DATE.matcher(out).replaceAll(SpeechTextNormalizer::uzbekIsoDate);
         out = DOT_DATE.matcher(out).replaceAll(SpeechTextNormalizer::uzbekDotDate);
 
-        // 4. Phone numbers and clock times, ahead of the reference and quantity rules: both
-        // would otherwise claim the digits and read them out as something the caller cannot
-        // check against what they said.
+        // 4. Phone numbers, card numbers, and clock times
         out = PHONE.matcher(out).replaceAll(m -> phone(m.group(), UzbekNumberWords::cardinal));
+        out = CARD.matcher(out).replaceAll(SpeechTextNormalizer::uzbekCard);
         out = CLOCK.matcher(out).replaceAll(m -> clock(m, "uz"));
 
-        // 5. Reference numbers
+        // 5. Half quantities (1.5 -> bir yarim, 0.5 -> yarim)
+        out = HALF_QUANTITY.matcher(out).replaceAll(SpeechTextNormalizer::uzbekHalf);
+
+        // 6. Reference numbers
         out = REFERENCE.matcher(out).replaceAll(m -> uzbekReference(m.group()));
 
-        // 6. Ordinals (2026-yil -> ikki ming yigirma oltinchi yil)
+        // 7. Ordinals (2026-yil -> ikki ming yigirma oltinchi yil)
         out = UZ_ORDINAL.matcher(out).replaceAll(
                 m -> UzbekNumberWords.ordinal(Long.parseLong(m.group(1))) + " " + m.group(2));
 
-        // 7. Quantities
+        // 8. Quantities
         return QUANTITY.matcher(out).replaceAll(m -> uzbekQuantity(m.group()));
     }
 
@@ -235,8 +250,8 @@ public final class SpeechTextNormalizer {
         String out = PERCENTAGE.matcher(text).replaceAll(m -> m.group(1) + " процентов");
 
         // 2. Currencies
-        out = RU_RUBLE.matcher(out).replaceAll(m -> cleanNumber(m.group(1)) + " рублей");
-        out = UZ_SUM.matcher(out).replaceAll(m -> cleanNumber(m.group(1)) + " сум");
+        out = RU_RUBLE.matcher(out).replaceAll(m -> cleanSumAmount(m.group(1), "рублей", "копеек"));
+        out = UZ_SUM.matcher(out).replaceAll(m -> cleanSumAmount(m.group(1), "сум", "тийин"));
         out = USD_AMOUNT.matcher(out).replaceAll(m -> {
             String val = m.group(1) != null ? m.group(1) : m.group(2);
             return cleanNumber(val) + " долларов";
@@ -246,11 +261,15 @@ public final class SpeechTextNormalizer {
         out = ISO_DATE.matcher(out).replaceAll(SpeechTextNormalizer::russianIsoDate);
         out = DOT_DATE.matcher(out).replaceAll(SpeechTextNormalizer::russianDotDate);
 
-        // 4. Phone numbers and clock times
+        // 4. Phone numbers, card numbers, and clock times
         out = PHONE.matcher(out).replaceAll(m -> phone(m.group(), RussianNumberWords::cardinal));
+        out = CARD.matcher(out).replaceAll(SpeechTextNormalizer::russianCard);
         out = CLOCK.matcher(out).replaceAll(m -> clock(m, "ru"));
 
-        // 5. Quantities & Reference numbers
+        // 5. Half quantities (1.5 -> полтора)
+        out = HALF_QUANTITY.matcher(out).replaceAll(SpeechTextNormalizer::russianHalf);
+
+        // 6. Quantities & Reference numbers
         out = REFERENCE.matcher(out).replaceAll(m -> russianReference(m.group()));
         return QUANTITY.matcher(out).replaceAll(m -> russianQuantity(m.group()));
     }
@@ -312,8 +331,9 @@ public final class SpeechTextNormalizer {
         // 3. Dates
         out = ISO_DATE.matcher(out).replaceAll(SpeechTextNormalizer::englishIsoDate);
 
-        // 4. Phone numbers
+        // 4. Phone numbers and card numbers
         out = PHONE.matcher(out).replaceAll(m -> phone(m.group(), EnglishNumberWords::cardinal));
+        out = CARD.matcher(out).replaceAll(SpeechTextNormalizer::englishCard);
 
         // 5. Quantities & Reference numbers
         out = REFERENCE.matcher(out).replaceAll(m -> englishReference(m.group()));
@@ -386,6 +406,86 @@ public final class SpeechTextNormalizer {
     private static String clock(MatchResult m, String language) {
         return SpokenNumbers.clockTime(
                 LocalTime.of(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))), language);
+    }
+
+    private static String uzbekCard(MatchResult m) {
+        return formatCardGroup(m.group(1), UzbekNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(2), UzbekNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(3), UzbekNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(4), UzbekNumberWords::cardinal);
+    }
+
+    private static String russianCard(MatchResult m) {
+        return formatCardGroup(m.group(1), RussianNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(2), RussianNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(3), RussianNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(4), RussianNumberWords::cardinal);
+    }
+
+    private static String englishCard(MatchResult m) {
+        return formatCardGroup(m.group(1), EnglishNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(2), EnglishNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(3), EnglishNumberWords::cardinal) + ", "
+                + formatCardGroup(m.group(4), EnglishNumberWords::cardinal);
+    }
+
+    private static String formatCardGroup(String fourDigits, LongFunction<String> cardinal) {
+        String p1 = fourDigits.substring(0, 2);
+        String p2 = fourDigits.substring(2, 4);
+        return formatTwoDigits(p1, cardinal) + " " + formatTwoDigits(p2, cardinal);
+    }
+
+    private static String formatTwoDigits(String twoDigits, LongFunction<String> cardinal) {
+        if ("00".equals(twoDigits)) {
+            return cardinal.apply(0) + " " + cardinal.apply(0);
+        }
+        if (twoDigits.startsWith("0")) {
+            return cardinal.apply(0) + " " + cardinal.apply(twoDigits.charAt(1) - '0');
+        }
+        return cardinal.apply(Long.parseLong(twoDigits));
+    }
+
+    private static String uzbekHalf(MatchResult m) {
+        long whole = Long.parseLong(m.group(1));
+        if (whole == 0) {
+            return "yarim";
+        }
+        if (whole == 1) {
+            return "bir yarim";
+        }
+        return UzbekNumberWords.cardinal(whole) + " yarim";
+    }
+
+    private static String russianHalf(MatchResult m) {
+        long whole = Long.parseLong(m.group(1));
+        if (whole == 0) {
+            return "половина";
+        }
+        if (whole == 1) {
+            return "полтора";
+        }
+        return RussianNumberWords.cardinal(whole) + " с половиной";
+    }
+
+    private static String cleanSumAmount(String written, String mainCurrency, String fractionCurrency) {
+        String cleaned = written.replaceAll("[\\s\\u00A0']", "");
+        // Remove trailing .00 or ,00
+        if (cleaned.matches(".*[.,]00?$")) {
+            cleaned = cleaned.replaceAll("[.,]00?$", "");
+        }
+        if (cleaned.matches("\\d{1,3}([.,]\\d{3})+")) {
+            cleaned = cleaned.replaceAll("[.,]", "");
+        }
+        Matcher decimalMatcher = Pattern.compile("^(\\d+)[.,](\\d{1,2})$").matcher(cleaned);
+        if (decimalMatcher.matches()) {
+            String main = decimalMatcher.group(1);
+            String fraction = decimalMatcher.group(2);
+            if (fraction.length() == 1) {
+                fraction = fraction + "0";
+            }
+            return main + " " + mainCurrency + " " + fraction + " " + fractionCurrency;
+        }
+        return cleaned + " " + mainCurrency;
     }
 
     private static String cleanNumber(String written) {

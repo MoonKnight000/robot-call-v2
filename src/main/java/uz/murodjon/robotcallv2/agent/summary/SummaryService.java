@@ -16,6 +16,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.agent.dialog.PiiRedactor;
 import uz.murodjon.robotcallv2.agent.dialog.TokenUsage;
 import uz.murodjon.robotcallv2.agent.provider.OwnLlmChatModels;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
@@ -268,10 +269,10 @@ public class SummaryService {
         if (raw == null) {
             return null;
         }
-        String summary = str(raw.get("summary"));
+        String summary = PiiRedactor.redact(str(raw.get("summary")));
         Sentiment sentiment = sentiment(raw.get("sentiment"));
         boolean needsFollowUp = Boolean.TRUE.equals(raw.get("needsFollowUp"));
-        String followUpNote = str(raw.get("followUpNote"));
+        String followUpNote = PiiRedactor.redact(str(raw.get("followUpNote")));
         String callbackAt = str(raw.get("callbackAt"));
         Integer qaScore = integer(raw.get("qaScore"), 100);
         Integer commitmentScore = integer(raw.get("commitmentScore"), 50);

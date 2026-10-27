@@ -126,14 +126,16 @@ public class RetentionService {
                 cutoff -> auditUseCase.deleteCreatedBefore(cutoff, batchSize));
         int outboxRows = deleteOlderThan("outbox message", retentionProperties.outboxDays(), now, batchSize,
                 cutoff -> callRetentionUseCase.deleteFinishedOutboxMessagesBefore(cutoff, batchSize));
+        int eventRows = deleteOlderThan("call event", retentionProperties.conversationDays(), now, batchSize,
+                cutoff -> callRetentionUseCase.deleteEventsCreatedBefore(cutoff, batchSize));
 
         if (recordings + transcripts + evidence + otherAudio + summaries + memories + auditRows + outboxRows
-                + chats > 0) {
+                + chats + eventRows > 0) {
             log.info("Retention: {} call recording(s), {} transcript line(s), {} scorecard evidence quote(s), "
                             + "{} other audio file(s), {} call summary(ies), {} client memory row(s), "
-                            + "{} audit row(s), {} finished outbox message(s), {} chat(s)",
+                            + "{} audit row(s), {} finished outbox message(s), {} chat(s), {} call event(s)",
                     recordings, transcripts, evidence, otherAudio, summaries, memories, auditRows, outboxRows,
-                    chats);
+                    chats, eventRows);
         }
     }
 

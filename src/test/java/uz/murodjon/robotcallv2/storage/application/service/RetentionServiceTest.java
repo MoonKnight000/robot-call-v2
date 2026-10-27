@@ -89,6 +89,8 @@ class RetentionServiceTest {
 
         verify(callRetention).deleteFinishedOutboxMessagesBefore(
                 argThat(cutoff -> !cutoff.isAfter(before.minus(30, ChronoUnit.DAYS).plusSeconds(60))), eq(100));
+        verify(callRetention).deleteEventsCreatedBefore(
+                argThat(cutoff -> !cutoff.isAfter(before.minus(90, ChronoUnit.DAYS).plusSeconds(60))), eq(100));
     }
 
     @Test

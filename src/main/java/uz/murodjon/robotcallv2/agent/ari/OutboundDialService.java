@@ -33,6 +33,8 @@ import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -124,9 +126,10 @@ class OutboundDialService {
         // conversation on one language — the row is written now and never rewritten, so a
         // literal here left the call held in uz-UZ but reported as "uz".
         String language = outboundCall != null ? outboundCall.language() : dialogProperties.language();
-        SipTrunkRow trunk;
+        List<SipTrunkRow> candidateTrunks;
         try {
-            trunk = isLocalNumber(number) ? null : resolveTrunkForCall(companyId, sipTrunkId);
+            candidateTrunks = isLocalNumber(number) ? Collections.singletonList(null)
+                    : resolveTrunksForCall(companyId, sipTrunkId);
         } catch (RuntimeException e) {
             // Refused before Asterisk was asked, but the dialer has already counted the
             // attempt: it still leaves a row saying why.
@@ -134,42 +137,57 @@ class OutboundDialService {
                     Disposition.FAILED, "no trunk for the call: " + e.getMessage());
             throw e;
         }
-        String endpoint = endpointFor(number, trunk);
-        String callerId = callerIdFor(trunk, outboundCall, companyId);
-        String dialNumber = !isLocalNumber(number) && number.startsWith("+")
-                ? number.substring(1)
-                : number;
-        awaitTrunkSlot(number, endpoint, trunk);
-        try {
-            // Inside the try on purpose: an ARI connection that is down is one more way
-            // for the call never to happen, and it has to leave a row like the rest.
-            var request = ariClient.requireConnection().channels()
-                    .originate("PJSIP/" + dialNumber + "@" + endpoint)
-                    .setApp(asteriskProperties.appName())
-                    .setAppArgs(callId)
-                    .setTimeout(asteriskProperties.answerTimeoutSec());
-            if (callerId != null && !callerId.isBlank()) {
-                request.setCallerId(callerId);
+
+        Exception lastException = null;
+        String lastEndpoint = null;
+
+        for (int i = 0; i < candidateTrunks.size(); i++) {
+            SipTrunkRow trunk = candidateTrunks.get(i);
+            String endpoint = endpointFor(number, trunk);
+            lastEndpoint = endpoint;
+            String callerId = callerIdFor(trunk, outboundCall, companyId);
+            String dialNumber = !isLocalNumber(number) && number.startsWith("+")
+                    ? number.substring(1)
+                    : number;
+            awaitTrunkSlot(number, endpoint, trunk);
+            try {
+                // Inside the try on purpose: an ARI connection that is down is one more way
+                // for the call never to happen, and it has to leave a row like the rest.
+                var request = ariClient.requireConnection().channels()
+                        .originate("PJSIP/" + dialNumber + "@" + endpoint)
+                        .setApp(asteriskProperties.appName())
+                        .setAppArgs(callId)
+                        .setTimeout(asteriskProperties.answerTimeoutSec());
+                if (callerId != null && !callerId.isBlank()) {
+                    request.setCallerId(callerId);
+                }
+                Channel channel = request.execute();
+                String channelId = channel.getId();
+                callAttemptUseCase.startAttempt(companyId, targetId, channelId, number, language, null,
+                        outboundCall != null ? outboundCall.variantId() : null);
+                if (outboundCall != null) {
+                    outboundCallTrackingUseCase.register(channelId, outboundCall);
+                }
+                Long usedTrunkId = trunk != null ? trunk.id() : sipTrunkId;
+                log.info("Originated call {} to {} (dial={}) via {} (trunkId={}) -> channel {}",
+                        callId, PhoneMasker.mask(number), PhoneMasker.mask(dialNumber), endpoint, usedTrunkId, channelId);
+                return channelId;
+            } catch (Exception e) {
+                lastException = e;
+                if (i < candidateTrunks.size() - 1) {
+                    log.warn("Originate via trunk {} ({}) failed ({}); attempting failover to next trunk...",
+                            trunk != null ? trunk.name() : "default", endpoint, e.getMessage());
+                }
             }
-            Channel channel = request.execute();
-            String channelId = channel.getId();
-            callAttemptUseCase.startAttempt(companyId, targetId, channelId, number, language, null,
-                    outboundCall != null ? outboundCall.variantId() : null);
-            if (outboundCall != null) {
-                outboundCallTrackingUseCase.register(channelId, outboundCall);
-            }
-            log.info("Originated call {} to {} (dial={}) via {} (trunkId={}) -> channel {}",
-                    callId, PhoneMasker.mask(number), PhoneMasker.mask(dialNumber), endpoint, sipTrunkId, channelId);
-            return channelId;
-        } catch (Exception e) {
-            // Asterisk never took the call, so no channel and no ChannelDestroyed will
-            // ever arrive to close a row — write the closed row here instead, or the
-            // attempt the dialer already counted leaves no trace of why it failed.
-            callAttemptUseCase.recordUnplacedAttempt(companyId, targetId, number, language,
-                    Disposition.FAILED, "originate via " + endpoint + " failed: " + e.getMessage());
-            throw new ExternalServiceException(ErrorCode.ARI_ORIGINATE_FAILED, "asterisk", e,
-                    number, endpoint, e.getMessage());
         }
+
+        // Asterisk never took the call, so no channel and no ChannelDestroyed will
+        // ever arrive to close a row — write the closed row here instead, or the
+        // attempt the dialer already counted leaves no trace of why it failed.
+        callAttemptUseCase.recordUnplacedAttempt(companyId, targetId, number, language,
+                Disposition.FAILED, "originate via " + lastEndpoint + " failed: " + (lastException != null ? lastException.getMessage() : "unknown"));
+        throw new ExternalServiceException(ErrorCode.ARI_ORIGINATE_FAILED, "asterisk", lastException,
+                number, lastEndpoint, lastException != null ? lastException.getMessage() : "unknown");
     }
 
     /**
@@ -235,16 +253,33 @@ class OutboundDialService {
         return new CallOriginateResponse(number, channelId);
     }
 
-    private SipTrunkRow resolveTrunkForCall(long companyId, Long sipTrunkId) {
+    private List<SipTrunkRow> resolveTrunksForCall(long companyId, Long sipTrunkId) {
         if (sipTrunkId != null) {
             // Used or refused: dialling it over another trunk showed the callee a caller ID nobody chose.
-            return sipTrunkUseCase.requireTrunk(companyId, sipTrunkId);
+            return List.of(sipTrunkUseCase.requireTrunk(companyId, sipTrunkId));
         }
-        SipTrunkRow trunk = sipTrunkUseCase.findDefaultForCall(companyId);
-        if (trunk == null) {
-            requirePlatformTrunkAllowed(companyId);
+        SipTrunkRow defaultTrunk = sipTrunkUseCase.findDefaultForCall(companyId);
+        if (defaultTrunk != null) {
+            List<SipTrunkRow> allTrunks = sipTrunkUseCase.findAllEnabledForCompany(companyId);
+            if (allTrunks == null || allTrunks.size() <= 1) {
+                return List.of(defaultTrunk);
+            }
+            List<SipTrunkRow> candidates = new ArrayList<>();
+            candidates.add(defaultTrunk);
+            for (SipTrunkRow t : allTrunks) {
+                if (t.id() != defaultTrunk.id()) {
+                    candidates.add(t);
+                }
+            }
+            return candidates;
         }
-        return trunk;
+        requirePlatformTrunkAllowed(companyId);
+        return Collections.singletonList(null);
+    }
+
+    private SipTrunkRow resolveTrunkForCall(long companyId, Long sipTrunkId) {
+        List<SipTrunkRow> trunks = resolveTrunksForCall(companyId, sipTrunkId);
+        return trunks.isEmpty() ? null : trunks.getFirst();
     }
 
     /**

@@ -114,15 +114,21 @@ public class KnowledgeBaseLookup {
 
     private static boolean matchesTopic(String query, String key) {
         return switch (key) {
-            case "payment_methods" -> query.contains("click") || query.contains("payme") || query.contains("to'lash")
-                    || query.contains("qayerga") || query.contains("qanday to'layman") || query.contains("оплатить")
-                    || query.contains("как оплатить") || query.contains("how to pay");
-            case "court_mib" -> query.contains("mib") || query.contains("sud") || query.contains("qonun")
-                    || query.contains("sudga") || query.contains("бпи") || query.contains("суд") || query.contains("court");
-            case "restructuring" -> query.contains("bo'lib to'lash") || query.contains("imtiyoz") || query.contains("sharoit")
-                    || query.contains("qiyin") || query.contains("рассрочка") || query.contains("реструктуризация");
-            case "branch_locations" -> query.contains("filial") || query.contains("manzil") || query.contains("ofis")
-                    || query.contains("филиал") || query.contains("адрес") || query.contains("branch") || query.contains("office");
+            case "payment_methods" -> query.contains("click") || query.contains("payme")
+                    || query.contains("qanday to'la") || query.contains("qayerga to'la")
+                    || query.contains("to'lov usul") || query.contains("to'lash yo'li") || query.contains("to'lash usuli")
+                    || query.contains("как оплатить") || query.contains("способы оплаты")
+                    || query.contains("куда оплатить") || query.contains("how to pay");
+            case "court_mib" -> query.contains("mibga") || query.contains("sudga") || query.contains("sud qil")
+                    || query.contains("mib qil") || query.contains("qonuniy chora") || query.contains("sud orqali")
+                    || query.contains("в суд") || query.contains("в бпи") || query.contains("судебн") || query.contains("court");
+            case "restructuring" -> query.contains("bo'lib to'lash") || query.contains("muddatini uzaytir")
+                    || query.contains("qayta ko'rib chiq") || query.contains("grafikni o'zgartir")
+                    || query.contains("рассрочк") || query.contains("реструктуризац");
+            case "branch_locations" -> query.contains("qayerda joylashgan") || query.contains("filial qayerda")
+                    || query.contains("filialingiz") || query.contains("manzilingiz") || query.contains("ofisingiz qayerda")
+                    || query.contains("где находится") || query.contains("где филиал") || query.contains("ваш адрес")
+                    || query.contains("где ваш офис") || query.contains("where is branch") || query.contains("office address");
             default -> false;
         };
     }

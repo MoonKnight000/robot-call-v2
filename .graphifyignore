@@ -1,0 +1,23 @@
+# Graphify ignore patterns
+build/
+.gradle/
+.idea/
+.claude/
+.gemini/
+.junie/
+recordings/
+logs/
+models/
+corpus/
+data/
+asterisk/etc/asterisk/generated/
+*.bin
+*.wav
+*.mp3
+*.ogg
+*.onnx
+*.pt
+*.pth
+*.zip
+*.tar.gz
+*.jar

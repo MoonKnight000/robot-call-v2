@@ -133,7 +133,7 @@ public final class DialogPhrases {
         }
         return russian(language)
                 ? List.of("Секунду.", "Сейчас посмотрю.", "Один момент.", "Сейчас скажу.")
-                : List.of("Bir soniya.", "Hozir ko'rib chiqyapman.", "Bir lahza.", "Hozir aytaman.");
+                : List.of("Bir soniya.", "Hozir tekshirib ko'raman.", "Bir daqiqa.", "Hozir aytaman.");
     }
 
     /**
@@ -162,7 +162,7 @@ public final class DialogPhrases {
         }
         return russian(language)
                 ? List.of("Ага.", "Понятно.", "Да-да.")
-                : List.of("Aha.", "Tushunarli.", "Ha-ha.");
+                : List.of("Aha.", "Tushunarli.", "Eshityapman.");
     }
 
     /**

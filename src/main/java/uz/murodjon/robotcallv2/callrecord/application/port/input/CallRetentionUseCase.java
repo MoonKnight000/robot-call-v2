@@ -32,4 +32,7 @@ public interface CallRetentionUseCase {
      * {@code cutoff}; a PENDING message is never deleted. Returns how many went.
      */
     int deleteFinishedOutboxMessagesBefore(Instant cutoff, int batchSize);
+
+    /** Deletes {@code call_event} rows written before {@code cutoff}; returns how many went. */
+    int deleteEventsCreatedBefore(Instant cutoff, int batchSize);
 }

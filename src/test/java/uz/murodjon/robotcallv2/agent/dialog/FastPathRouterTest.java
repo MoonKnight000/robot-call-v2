@@ -177,4 +177,46 @@ class FastPathRouterTest {
 
         assertThat(result.handled()).isFalse();
     }
+
+    @Test
+    void matchesRepeatUzbek() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.lastAgentText()).thenReturn("Qarzingiz 500000 so'm, qachon to'laysiz?");
+
+        FastPathResult result = router.evaluate(session, "nima dedingiz?");
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isFalse();
+        assertThat(result.reply()).isEqualTo("Takrorlayman: Qarzingiz 500000 so'm, qachon to'laysiz?");
+    }
+
+    @Test
+    void matchesIdentityUzbekWithCompanyAndLastQuestion() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.companyName()).thenReturn("Uysot Bank");
+        when(session.lastAgentText()).thenReturn("To'lovni ertaga qila olasizmi?");
+
+        FastPathResult result = router.evaluate(session, "siz kimsiz o'zi?");
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isFalse();
+        assertThat(result.reply()).contains("Uysot Bank kompaniyasining sun'iy intellekt ovozli yordamchisiman.");
+        assertThat(result.reply()).endsWith("To'lovni ertaga qila olasizmi?");
+    }
+
+    @Test
+    void matchesPurposeUzbek() {
+        when(session.language()).thenReturn("uz-UZ");
+        uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition def = mock(uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition.class);
+        when(def.callPurpose()).thenReturn("qarzdorlik to'lovi");
+        when(session.scenario()).thenReturn(def);
+        when(session.lastAgentText()).thenReturn("Eshityapsizmi?");
+
+        FastPathResult result = router.evaluate(session, "nega telefon qildingiz?");
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isFalse();
+        assertThat(result.reply()).contains("qarzdorlik to'lovi masalasida bog'lanyapman.");
+        assertThat(result.reply()).endsWith("Eshityapsizmi?");
+    }
 }

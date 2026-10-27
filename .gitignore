@@ -73,3 +73,7 @@ corpus/
 
 # Turn dataset (caller words from live calls) — TurnDatasetProperties
 data/turn-dataset/
+
+# Graphify output (generated locally)
+graphify-out/
+

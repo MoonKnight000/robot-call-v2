@@ -61,10 +61,10 @@ voice-agent:
     language-switch-finals: ${DIALOG_LANGUAGE_SWITCH_FINALS:2}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
     streaming: ${DIALOG_STREAMING:true}
-    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:0}
-    backchannel-after-ms: ${DIALOG_BACKCHANNEL_AFTER_MS:0}
+    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:1400}
+    backchannel-after-ms: ${DIALOG_BACKCHANNEL_AFTER_MS:4000}
     backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
-    interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:0}
+    interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:25000}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
     # LlmTimeoutProperties — a stalled model stream becomes a transient failure (one
     # retry, then the fast model) instead of holding the caller for as long as the socket lives.
@@ -94,10 +94,9 @@ voice-agent:
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
     no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
-    # Off: a phrase list cannot tell "adashdingiz" from "sizni tanimayman, kim bu?" — the
-    # model decides wrong-number / do-not-call / transfer from the whole conversation.
-    fast-path: ${DIALOG_FAST_PATH:false}
-    knowledge-base: ${DIALOG_KNOWLEDGE_BASE:false}
+    # Fast-path for deterministic intent turns (<20ms latency, zero LLM tokens)
+    fast-path: ${DIALOG_FAST_PATH:true}
+    knowledge-base: ${DIALOG_KNOWLEDGE_BASE:true}
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.5}
     fact-guard: ${DIALOG_FACT_GUARD:true}
     # REALTIME only: spoken fact violations before the call goes to an operator; 0 = never.

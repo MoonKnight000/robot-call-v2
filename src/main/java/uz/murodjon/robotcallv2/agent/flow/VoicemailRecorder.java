@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.flow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.dialog.PiiRedactor;
 import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.rtp.WavHeader;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
@@ -115,7 +116,7 @@ public class VoicemailRecorder {
             log.info("[{}] nothing was said after the beep — no voicemail saved", call.channelId());
             return null;
         }
-        String text = transcript.toString().trim();
+        String text = PiiRedactor.redact(transcript.toString().trim());
         int seconds = pcm.length / SAMPLE_RATE;
         VoicemailMessage message = voicemailUseCase.recordMessage(call.companyId(), boxId,
                 call.callAttemptId() != 0 ? call.callAttemptId() : null, call.callerNumber(), wav(pcm), seconds, text);

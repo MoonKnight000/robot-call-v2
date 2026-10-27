@@ -47,23 +47,23 @@ class PiiRedactorTest {
 
     @Test
     void redactsUzbekPassportNumbers() {
-        String input = "Pasport ma'lumotlarim AA 1234567 va ikkinchisi AB7654321";
+        String input = "Pasport ma'lumotlarim AA 1234567, ikkinchisi AB7654321, kirillcha esa АА 9876543";
         String redacted = PiiRedactor.redact(input);
-        assertThat(redacted).isEqualTo("Pasport ma'lumotlarim AA ****567 va ikkinchisi AB ****321");
+        assertThat(redacted).isEqualTo("Pasport ma'lumotlarim AA ****567, ikkinchisi AB ****321, kirillcha esa АА ****543");
     }
 
     @Test
     void redactsPinfl14Digits() {
-        String input = "JSHSHIR raqamim: 31201901234567";
+        String input = "JSHSHIR raqamim: 31201901234567 va ajratilgan 3120 190123 4567";
         String redacted = PiiRedactor.redact(input);
-        assertThat(redacted).isEqualTo("JSHSHIR raqamim: 3120 ****** 4567");
+        assertThat(redacted).isEqualTo("JSHSHIR raqamim: 3120 ****** 4567 va ajratilgan 3120 ****** 4567");
     }
 
     @Test
     void redactsCvvCodes() {
-        String input = "Karta orqasidagi CVV: 789 va kodini 123";
+        String input = "Karta orqasidagi CVV: 789 va maxfiy kod: 123, lekin telefon kodi 998 o'zgarmasligi kerak";
         String redacted = PiiRedactor.redact(input);
-        assertThat(redacted).isEqualTo("Karta orqasidagi CVV *** va CVV ***");
+        assertThat(redacted).isEqualTo("Karta orqasidagi CVV *** va CVV ***, lekin telefon kodi 998 o'zgarmasligi kerak");
     }
 
     @Test

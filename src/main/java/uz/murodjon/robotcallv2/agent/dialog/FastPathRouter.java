@@ -74,12 +74,46 @@ public class FastPathRouter {
             "спасибо", "большое спасибо", "благодарю", "всего доброго", "до свидания"
     );
 
+    private static final Set<String> REPEAT_UZ = Set.of(
+            "nima dedingiz", "nima deding", "nima deyapsiz", "nima deysiz", "nima deyishdi",
+            "eshitmay qoldim", "eshitmadim", "eshitolmadim", "qaytaring", "qaytarib yuboring",
+            "qaytarvoring", "tushunmadim", "qaytadan ayting", "qaytadan aytvorasizmi",
+            "qaytadan aytingchi", "a", "nima"
+    );
+
+    private static final Set<String> REPEAT_RU = Set.of(
+            "повторите", "повторите пожалуйста", "что вы сказали", "что ты сказал",
+            "не расслышал", "не услышал", "не понял", "плохо слышно", "что", "а"
+    );
+
+    private static final Set<String> IDENTITY_UZ = Set.of(
+            "siz kimsiz", "kim bu", "kim bu o'zi", "kim bu ozi", "robotmisiz", "odammisiz",
+            "sun'iy intellektmisiz", "suniy intellektmisiz", "botmisiz", "avtooperator",
+            "avtojavobgich", "kim bilan gaplashyapman", "kim bilan gaplashayapman", "siz kimsiz ozi", "siz kimsiz o'zi"
+    );
+
+    private static final Set<String> IDENTITY_RU = Set.of(
+            "кто это", "кто говорит", "вы робот", "вы человек", "с кем я говорю", "это бот", "вы бот"
+    );
+
+    private static final Set<String> PURPOSE_UZ = Set.of(
+            "nima maqsadda telefon qilyapsiz", "nima maqsadda qo'ng'iroq qilyapsiz", "nima maqsadda",
+            "nega telefon qildingiz", "nega telefon qilyapsiz", "nega qildingiz", "nima uchun telefon qilyapsiz",
+            "nima masala", "tinchlikmi", "qanday masala", "nima gap"
+    );
+
+    private static final Set<String> PURPOSE_RU = Set.of(
+            "с какой целью звоните", "с какой целью", "зачем звоните", "по какому поводу",
+            "по какому вопросу", "в чем дело", "что случилось"
+    );
+
     public FastPathResult evaluate(DialogSession s, String clientText) {
         if (clientText == null || clientText.isBlank() || s.isEnded()) {
             return FastPathResult.NOT_HANDLED;
         }
 
         String normalized = normalize(clientText);
+        String[] words = normalized.split("\\s+");
         boolean isRu = s.language() != null && s.language().startsWith("ru");
 
         // 1. Wrong person / wrong number detection
@@ -113,6 +147,54 @@ public class FastPathRouter {
             log.info("[{}] Fast-path matched: GRATITUDE_CLOSE", s.channelId());
             Disposition disp = s.disposition() != null ? s.disposition() : Disposition.ANSWERED;
             return FastPathResult.endWithDisposition(reply, disp);
+        }
+
+        // 5. Repeat Request / Clarification
+        if (words.length <= 5 && matchesAny(normalized, isRu ? REPEAT_RU : REPEAT_UZ)) {
+            String lastText = s.lastAgentText();
+            if (lastText != null && !lastText.isBlank()) {
+                String reply = isRu
+                        ? "Повторяю: " + lastText
+                        : "Takrorlayman: " + lastText;
+                log.info("[{}] Fast-path matched: REPEAT", s.channelId());
+                return FastPathResult.replyOnly(reply);
+            }
+        }
+
+        // 6. Identity / Robot Check
+        if (words.length <= 6 && matchesAny(normalized, isRu ? IDENTITY_RU : IDENTITY_UZ)) {
+            String company = s.companyName();
+            boolean hasCompany = company != null && !company.isBlank();
+            String identityReply;
+            if (isRu) {
+                identityReply = hasCompany
+                        ? "Я голосовой ассистент компании " + company.trim() + "."
+                        : "Я голосовой ассистент.";
+            } else {
+                identityReply = hasCompany
+                        ? "Men " + company.trim() + " kompaniyasining sun'iy intellekt ovozli yordamchisiman."
+                        : "Men sun'iy intellekt ovozli yordamchisiman.";
+            }
+            String lastQ = DialogLines.lastQuestion(s.lastAgentText());
+            String reply = lastQ != null ? identityReply + " " + lastQ : identityReply;
+            log.info("[{}] Fast-path matched: IDENTITY", s.channelId());
+            return FastPathResult.replyOnly(reply);
+        }
+
+        // 7. Call Purpose Inquiry
+        if (words.length <= 6 && matchesAny(normalized, isRu ? PURPOSE_RU : PURPOSE_UZ)) {
+            String purpose = s.scenario() != null ? s.scenario().callPurpose() : null;
+            if (purpose != null && !purpose.isBlank()) {
+                java.util.Map<String, String> facts = s.context() != null ? s.context().facts() : java.util.Map.of();
+                String rendered = PromptTemplateEngine.render(purpose.trim(), facts);
+                String purposeReply = isRu
+                        ? "Я звоню вам по поводу: " + rendered + "."
+                        : "Sizga " + rendered + " masalasida bog'lanyapman.";
+                String lastQ = DialogLines.lastQuestion(s.lastAgentText());
+                String reply = lastQ != null ? purposeReply + " " + lastQ : purposeReply;
+                log.info("[{}] Fast-path matched: PURPOSE", s.channelId());
+                return FastPathResult.replyOnly(reply);
+            }
         }
 
         return FastPathResult.NOT_HANDLED;

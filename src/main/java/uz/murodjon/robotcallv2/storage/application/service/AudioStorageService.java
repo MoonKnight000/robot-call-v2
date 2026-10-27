@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.storage.application.port.input.AudioStorageUseCase;
 import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
+import uz.murodjon.robotcallv2.storage.application.port.output.AudioCompressorPort;
+import uz.murodjon.robotcallv2.storage.domain.entity.CompressedAudio;
 import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
 import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
 import uz.murodjon.robotcallv2.storage.infrastructure.config.AudioStorageProperties;
@@ -20,19 +22,34 @@ import java.nio.file.Path;
 public class AudioStorageService implements AudioStorageUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(AudioStorageService.class);
-    private static final String CONTENT_TYPE = "audio/wav";
 
     private final FileStorageUseCase fileStorageUseCase;
     private final AudioStorageProperties audioStorageProperties;
+    private final AudioCompressorPort audioCompressor;
 
-    public AudioStorageService(FileStorageUseCase fileStorageUseCase, AudioStorageProperties audioStorageProperties) {
+    public AudioStorageService(FileStorageUseCase fileStorageUseCase,
+                               AudioStorageProperties audioStorageProperties,
+                               AudioCompressorPort audioCompressor) {
         this.fileStorageUseCase = fileStorageUseCase;
         this.audioStorageProperties = audioStorageProperties;
+        this.audioCompressor = audioCompressor;
     }
 
     @Override
     public StoredFile upload(Path file, long companyId, String originalName) {
-        return fileStorageUseCase.store(file, companyId, FileCategory.AUDIO, originalName, CONTENT_TYPE);
+        CompressedAudio compressed = audioCompressor.compress(file, originalName);
+        try {
+            return fileStorageUseCase.store(compressed.path(), companyId, FileCategory.AUDIO,
+                    compressed.originalName(), compressed.contentType());
+        } finally {
+            if (compressed.isTemporary()) {
+                try {
+                    Files.deleteIfExists(compressed.path());
+                } catch (Exception e) {
+                    log.warn("Could not delete temporary compressed recording {}: {}", compressed.path(), e.getMessage());
+                }
+            }
+        }
     }
 
     @Override

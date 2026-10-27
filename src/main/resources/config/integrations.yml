@@ -9,6 +9,9 @@ voice-agent:
     secret-key: ${MINIO_PASSWORD:robot_call}
     bucket: ${MINIO_BUCKET:files}
     delete-local-after-upload: ${STORAGE_DELETE_LOCAL:true}
+    compress-audio: ${STORAGE_COMPRESS_AUDIO:true}
+    ffmpeg-path: ${STORAGE_FFMPEG_PATH:${voice-agent.audio.ffmpeg-path:ffmpeg}}
+    bitrate-kbps: ${STORAGE_BITRATE_KBPS:32}
 
   # How long personal data is kept — RetentionProperties, RetentionService. 0 = forever.
   # A call an agent ran keeps its transcript and recording for that agent's

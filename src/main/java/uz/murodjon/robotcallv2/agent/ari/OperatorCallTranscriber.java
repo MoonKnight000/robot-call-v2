@@ -78,7 +78,7 @@ class OperatorCallTranscriber {
                             return;
                         }
                         int offsetMs = (int) (Instant.now().toEpochMilli() - session.startedAt().toEpochMilli());
-                        String stored = OPERATOR.equals(role) ? PiiRedactor.redact(text) : text;
+                        String stored = PiiRedactor.redact(text);
                         // Off the vendor's callback thread; the call's lane keeps both sides in the order heard.
                         ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(
                                 session.callAttemptId(), role, stored, null, offsetMs, confidence));

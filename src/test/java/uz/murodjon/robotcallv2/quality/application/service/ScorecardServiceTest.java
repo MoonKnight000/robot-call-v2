@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.quality.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -193,6 +195,24 @@ class ScorecardServiceTest {
                 .isInstanceOfSatisfying(ValidationException.class,
                         e -> assertThat(e.code()).isEqualTo(ErrorCode.SCORECARD_ANSWER_UNKNOWN));
         verify(scorecards, never()).updateReview(anyLong(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void recordsScorecardMetricsWhenProviderAvailable() {
+        CallMetrics callMetrics = mock(CallMetrics.class);
+        ObjectProvider<CallMetrics> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(callMetrics);
+
+        ScorecardService serviceWithMetrics = new ScorecardService(criteria, scorecards, judge,
+                mock(AuditUseCase.class), companyConfig, notifications, mock(CurrentUser.class), provider);
+
+        judgeSays(Sentiment.NEUTRAL, CriterionAnswer.NO, CriterionAnswer.YES);
+
+        serviceWithMetrics.recordCallScorecard(COMPANY_ID, CALL_ID, OPERATOR_ID, TRANSCRIPT);
+
+        verify(callMetrics).recordScorecardScore(25);
+        verify(callMetrics).scorecardReviewNeeded();
     }
 
     private void judgeSays(Sentiment sentiment, CriterionAnswer onGreeting, CriterionAnswer onIdentity) {

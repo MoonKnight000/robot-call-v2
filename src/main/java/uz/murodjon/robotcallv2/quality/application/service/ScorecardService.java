@@ -2,8 +2,11 @@ package uz.murodjon.robotcallv2.quality.application.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
@@ -48,11 +51,21 @@ public class ScorecardService implements ScorecardUseCase {
     private final CompanyConfigUseCase companyConfigUseCase;
     private final NotificationUseCase notificationUseCase;
     private final CurrentUser currentUser;
+    private final ObjectProvider<CallMetrics> callMetricsProvider;
 
     public ScorecardService(ScorecardCriterionRepository scorecardCriterionRepository,
                             CallScorecardRepository callScorecardRepository, ScorecardJudgePort scorecardJudgePort,
                             AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase,
                             NotificationUseCase notificationUseCase, CurrentUser currentUser) {
+        this(scorecardCriterionRepository, callScorecardRepository, scorecardJudgePort, auditUseCase,
+                companyConfigUseCase, notificationUseCase, currentUser, null);
+    }
+
+    public ScorecardService(ScorecardCriterionRepository scorecardCriterionRepository,
+                            CallScorecardRepository callScorecardRepository, ScorecardJudgePort scorecardJudgePort,
+                            AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase,
+                            NotificationUseCase notificationUseCase, CurrentUser currentUser,
+                            ObjectProvider<CallMetrics> callMetricsProvider) {
         this.scorecardCriterionRepository = scorecardCriterionRepository;
         this.callScorecardRepository = callScorecardRepository;
         this.scorecardJudgePort = scorecardJudgePort;
@@ -60,6 +73,7 @@ public class ScorecardService implements ScorecardUseCase {
         this.companyConfigUseCase = companyConfigUseCase;
         this.notificationUseCase = notificationUseCase;
         this.currentUser = currentUser;
+        this.callMetricsProvider = callMetricsProvider;
     }
 
     @Override
@@ -143,6 +157,10 @@ public class ScorecardService implements ScorecardUseCase {
         CallScorecard saved = callScorecardRepository.updateReview(companyId, scorecard.withReview(answers,
                 ScoreCalculator.calculate(answers), status, note, currentUser.id().orElse(null), Instant.now()));
         auditUseCase.record(companyId, "SCORECARD_REVIEW", "call", String.valueOf(callId), status.name());
+        CallMetrics metrics = callMetricsProvider != null ? callMetricsProvider.getIfAvailable() : null;
+        if (metrics != null) {
+            metrics.scorecardReviewed(status.name());
+        }
         return saved;
     }
 
@@ -164,6 +182,15 @@ public class ScorecardService implements ScorecardUseCase {
             boolean needsReview = needsReview(companyId, score, verdict.sentiment());
             CallScorecard saved = callScorecardRepository.upsert(companyId,
                     CallScorecard.judged(callId, operatorUserId, score, needsReview, verdict));
+            if (score != null) {
+                CallMetrics callMetrics = callMetricsProvider != null ? callMetricsProvider.getIfAvailable() : null;
+                if (callMetrics != null) {
+                    callMetrics.recordScorecardScore(score);
+                    if (needsReview) {
+                        callMetrics.scorecardReviewNeeded();
+                    }
+                }
+            }
             if (needsReview) {
                 notifyReview(companyId, callId, score, verdict.sentiment());
             }

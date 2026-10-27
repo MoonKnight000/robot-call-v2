@@ -289,9 +289,8 @@ class AudioPipelineAssembler {
                     // What the caller said is personal data: DEBUG, like the rest of the pipeline.
                     log.debug("[{}] FINAL (conf={}): {}", channelId, confidence, text);
                     int offsetMs = (int) (Instant.now().toEpochMilli() - startedAt.toEpochMilli());
-                    // Off the STT vendor's callback thread, which a slow insert would stall; the
-                    // channel's lane keeps the lines in the order they were heard.
-                    ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(callAttemptId, "CLIENT", text, null,
+                    String safeText = PiiRedactor.redact(text);
+                    ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(callAttemptId, "CLIENT", safeText, null,
                             offsetMs, confidence));
                     if (dialog) {
                         dialogEngine.onClientFinal(channelId, text, confidence);
