@@ -42,8 +42,8 @@ final class ToolRequestTemplates {
                              Map<String, String> secrets) {
         // Secrets first: after this line the string holds credentials, and a path or query
         // value that happens to contain a placeholder is just text.
-        String url = SecretPlaceholders.resolve(tool.apiUrl(), secrets);
-        List<ToolParamConfig> pathParams = tool.apiPathParams();
+        String url = SecretPlaceholders.resolve(tool.http().url(), secrets);
+        List<ToolParamConfig> pathParams = tool.http().pathParams();
         if (pathParams != null) {
             for (ToolParamConfig param : pathParams) {
                 Object value = resolveParamValue(param, callVariables, args);
@@ -53,7 +53,7 @@ final class ToolRequestTemplates {
         }
 
         StringBuilder queryString = new StringBuilder();
-        List<ToolParamConfig> queryParams = tool.apiQueryParams();
+        List<ToolParamConfig> queryParams = tool.http().queryParams();
         if (queryParams != null && !queryParams.isEmpty()) {
             for (ToolParamConfig param : queryParams) {
                 Object value = resolveParamValue(param, callVariables, args);
@@ -101,9 +101,9 @@ final class ToolRequestTemplates {
     /** The request body: from the tool's {@code bodySchema} when it has one, else from its body parameters. */
     String buildBody(Tool tool, Map<String, Object> callVariables, Map<String, Object> args,
                             Map<String, String> secrets) {
-        return tool.bodySchema().isEmpty()
-                ? buildParamBody(tool.apiBody(), callVariables, args, secrets)
-                : buildSchemaBody(tool.bodySchema(), callVariables, args, secrets);
+        return tool.http().bodySchema().isEmpty()
+                ? buildParamBody(tool.http().body(), callVariables, args, secrets)
+                : buildSchemaBody(tool.http().bodySchema(), callVariables, args, secrets);
     }
 
     /**

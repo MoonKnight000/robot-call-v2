@@ -20,6 +20,10 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseC
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
@@ -114,15 +118,12 @@ class CallTaskConsumerTest {
                 .name("c")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.PAUSED)
-                .dialWindowStart(LocalTime.of(9, 0))
-                .dialWindowEnd(LocalTime.of(20, 0))
-                .dialDays(Set.of())
-                .maxAttempts(3)
-                .retryIntervalMinutes(24)
-                .maxConcurrentCalls(5)
+                .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
+                .retry(new CampaignRetry(3, 24, null))
+                .limits(new CampaignLimits(5, 0, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
-                .recurrenceType(RecurrenceType.ONCE)
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
                 .build());
 
         consumer.process(task, dialerState);
@@ -197,15 +198,12 @@ class CallTaskConsumerTest {
                 .name("c")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
-                .dialWindowStart(LocalTime.of(9, 0))
-                .dialWindowEnd(LocalTime.of(20, 0))
-                .dialDays(Set.of())
-                .maxAttempts(3)
-                .retryIntervalMinutes(24)
-                .maxConcurrentCalls(5)
+                .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
+                .retry(new CampaignRetry(3, 24, null))
+                .limits(new CampaignLimits(5, 0, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
-                .recurrenceType(RecurrenceType.ONCE)
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
                 .build();
         when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(activeCampaign);
         when(dialerService.isWithinDialWindow(activeCampaign)).thenReturn(true);

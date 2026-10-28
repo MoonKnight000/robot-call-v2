@@ -10,27 +10,36 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "Savdo maslahatchisi",
   "description": "Mijozlar bilan aloqa va mahsulot taqdimoti",
-  "templateId": "BUSINESS",
-  "scenarioId": null,
-  "firstMessage": "Assalomu alaykum! Men kompaniya AI maslahatchisiman. Sizga qanday yordam bera olaman?",
-  "systemPrompt": "Siz kompaniyaning tajribali savdo maslahatchisisiz. Savollarga qisqa, aniq va do'stona javob bering.",
+  "language": "uz-UZ",
+  "persona": "AI_ASSISTANT",
+  "script": {
+    "templateId": "BUSINESS",
+    "scenarioId": null,
+    "firstMessage": "Assalomu alaykum! Men kompaniya AI maslahatchisiman. Sizga qanday yordam bera olaman?",
+    "systemPrompt": "Siz kompaniyaning tajribali savdo maslahatchisisiz. Savollarga qisqa, aniq va do'stona javob bering."
+  },
+  "speechEngine": {
+    "mode": "CASCADE",
+    "sttProvider": "yandex",
+    "sttModel": "general",
+    "ttsProvider": "yandex",
+    "ttsModel": null
+  },
+  "voice": {
+    "defaultVoice": "nigora",
+    "speed": 1.0,
+    "stability": 0.75,
+    "similarityBoost": 0.85,
+    "perLanguage": {
+      "uz-UZ": "nigora",
+      "ru-RU": "alena"
+    },
+    "emotionAdaptive": true,
+    "warmth": "BALANCED"
+  },
   "preemptiveGeneration": true,
   "ivrNavigationEnabled": true,
   "useRag": false,
-  "language": "uz-UZ",
-  "sttProvider": "yandex",
-  "sttModel": "general",
-  "ttsProvider": "yandex",
-  "ttsModel": null,
-  "ttsVoice": "nigora",
-  "voiceSpeed": 1.0,
-  "voiceStability": 0.75,
-  "voiceSimilarityBoost": 0.85,
-  "languageVoices": {
-    "uz-UZ": "nigora",
-    "ru-RU": "alena"
-  },
-  "persona": "AI_ASSISTANT",
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite",
   "temperature": 0.7,
@@ -63,15 +72,19 @@ Authorization: Bearer {{auth_token}}
       "criteria": "Agent va mijoz muloqot ohangi"
     }
   ],
-  "zeroPiiRetention": false,
-  "storeCallAudio": true,
-  "conversationRetentionDays": 90,
-  "realtimeFactsDelivery": "TOOL",
-  "maxConversationDurationSeconds": 600,
-  "silenceEndCallTimeoutSeconds": 25,
-  "turnTimeoutSeconds": 15,
-  "concurrentCallsLimit": 10,
-  "dailyCallsLimit": 1000,
+  "dataPolicy": {
+    "zeroPiiRetention": false,
+    "storeCallAudio": true,
+    "conversationRetentionDays": 90,
+    "realtimeFactsDelivery": "TOOL"
+  },
+  "limits": {
+    "maxConversationDurationSeconds": 600,
+    "silenceEndCallTimeoutSeconds": 25,
+    "turnTimeoutSeconds": 15,
+    "concurrentCallsLimit": 10,
+    "dailyCallsLimit": 1000
+  },
   "initiationWebhook": {
     "url": "https://webhook.site/test-start",
     "headers": { "Authorization": "Bearer secret" },
@@ -82,20 +95,22 @@ Authorization: Bearer {{auth_token}}
     "headers": { "Authorization": "Bearer secret" },
     "timeoutSeconds": 10
   },
-  "ambientSound": "OFFICE",
-  "ambientSoundVolume": 1.0,
-  "ambientSoundFadeInSeconds": 1.5,
-  "thinkingSound": "KEYBOARD_TYPING",
-  "thinkingSoundVolume": 0.30,
-  "noiseCancellationEnabled": true,
-  "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
-  "emotionAdaptiveVoice": true,
-  "speakingWarmth": "BALANCED",
-  "dtmfInputEnabled": true,
-  "voicemailAction": "LEAVE_MESSAGE",
-  "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
-  "midCallSmsEnabled": false,
-  "midCallSmsTemplate": null,
+  "ambience": {
+    "background": "OFFICE",
+    "backgroundVolume": 1.0,
+    "backgroundFadeInSeconds": 1.5,
+    "thinking": "KEYBOARD_TYPING",
+    "thinkingVolume": 0.30,
+    "noiseCancellationEnabled": true,
+    "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION"
+  },
+  "callBehaviour": {
+    "dtmfInputEnabled": true,
+    "voicemailAction": "LEAVE_MESSAGE",
+    "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
+    "midCallSmsEnabled": false,
+    "midCallSmsTemplate": null
+  },
   "sipTrunkIds": [1],
   "enabled": true
 }
@@ -124,12 +139,14 @@ Authorization: Bearer {{auth_token}}
 
 {
   "name": "Savdo maslahatchisi (Yangilangan)",
-  "templateId": "BUSINESS",
-  "firstMessage": "Xayrli kun! Sizga qanday yordam bera olaman?",
-  "systemPrompt": "Siz kompaniyaning eng tajribali xodimlaridansiz.",
+  "script": {
+    "templateId": "BUSINESS",
+    "firstMessage": "Xayrli kun! Sizga qanday yordam bera olaman?",
+    "systemPrompt": "Siz kompaniyaning eng tajribali xodimlaridansiz."
+  },
   "preemptiveGeneration": true,
   "language": "uz-UZ",
-  "ttsVoice": "nigora",
+  "voice": { "defaultVoice": "nigora" },
   "persona": "HUMAN_LIKE",
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite",
@@ -257,10 +274,6 @@ Authorization: Bearer {{auth_token}}
   "useRag": true,
   "preemptiveGeneration": true,
   "ivrNavigationEnabled": false,
-  "storeCallAudio": true,
-  "zeroPiiRetention": false,
-  "conversationRetentionDays": 60,
-  "realtimeFactsDelivery": "TOOL",
   "initiationWebhook": {
     "url": "https://api.example.com/webhooks/call-started",
     "headers": { "Authorization": "Bearer secret_token" },
@@ -271,20 +284,30 @@ Authorization: Bearer {{auth_token}}
     "headers": { "Authorization": "Bearer secret_token" },
     "timeoutSeconds": 10
   },
-  "ambientSound": "OFFICE",
-  "ambientSoundVolume": 1.0,
-  "ambientSoundFadeInSeconds": 1.5,
-  "thinkingSound": "KEYBOARD_TYPING",
-  "thinkingSoundVolume": 0.30,
-  "noiseCancellationEnabled": true,
-  "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
   "emotionAdaptiveVoice": true,
   "speakingWarmth": "BALANCED",
-  "dtmfInputEnabled": true,
-  "voicemailAction": "LEAVE_MESSAGE",
-  "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
-  "midCallSmsEnabled": false,
-  "midCallSmsTemplate": null
+  "ambience": {
+    "background": "OFFICE",
+    "backgroundVolume": 1.0,
+    "backgroundFadeInSeconds": 1.5,
+    "thinking": "KEYBOARD_TYPING",
+    "thinkingVolume": 0.30,
+    "noiseCancellationEnabled": true,
+    "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION"
+  },
+  "callBehaviour": {
+    "dtmfInputEnabled": true,
+    "voicemailAction": "LEAVE_MESSAGE",
+    "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
+    "midCallSmsEnabled": false,
+    "midCallSmsTemplate": null
+  },
+  "dataPolicy": {
+    "storeCallAudio": true,
+    "zeroPiiRetention": false,
+    "conversationRetentionDays": 60,
+    "realtimeFactsDelivery": "TOOL"
+  }
 }
 
 ### 16. This agent's website widgets — see widget.http
@@ -370,8 +393,7 @@ Content-Type: application/json
 Authorization: Bearer {{auth_token}}
 
 {
-  "pipelineMode": "REALTIME",
-  "realtimeProvider": "gemini-live",
+  "speechEngine": { "mode": "REALTIME", "realtimeProvider": "gemini-live" },
   "llmModel": "gemini-3.1-flash-live-preview"
 }
 
@@ -382,8 +404,7 @@ Content-Type: application/json
 Authorization: Bearer {{auth_token}}
 
 {
-  "pipelineMode": "REALTIME",
-  "realtimeProvider": "gemini-live",
+  "speechEngine": { "mode": "REALTIME", "realtimeProvider": "gemini-live" },
   "llmModel": "gpt-realtime-2.1"
 }
 
@@ -395,7 +416,7 @@ Authorization: Bearer {{auth_token}}
 
 {
   "name": "Uysot qarz undirish",
-  "pipelineMode": "CASCADE",
+  "speechEngine": { "mode": "CASCADE" },
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite"
 }
@@ -409,7 +430,7 @@ Authorization: Bearer {{auth_token}}
 
 {
   "name": "Uysot qarz undirish",
-  "pipelineMode": "CASCADE",
+  "speechEngine": { "mode": "CASCADE" },
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.8-flash"
 }
@@ -422,6 +443,6 @@ Authorization: Bearer {{auth_token}}
 
 {
   "name": "Uysot qarz undirish",
-  "pipelineMode": "CASCADE",
+  "speechEngine": { "mode": "CASCADE" },
   "fastLlmModel": "gemini-1.0-nano"
 }

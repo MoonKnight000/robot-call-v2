@@ -8,12 +8,21 @@ import uz.murodjon.robotcallv2.agent.tts.TtsWarmup;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignDialingDto;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignLimitsDto;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignRecurrenceDto;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignRetryDto;
+import uz.murodjon.robotcallv2.campaign.application.dto.CampaignScheduleDto;
 import uz.murodjon.robotcallv2.campaign.application.dto.CreateCampaignRequest;
 import uz.murodjon.robotcallv2.campaign.application.dto.TargetImportResult;
 import uz.murodjon.robotcallv2.campaign.application.dto.UpdateCampaignRequest;
 import uz.murodjon.robotcallv2.campaign.application.port.output.*;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.*;
@@ -96,15 +105,13 @@ class CampaignServiceTest {
                 .name("c")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
-                .dialWindowStart(LocalTime.of(9, 0))
-                .dialWindowEnd(LocalTime.of(20, 0))
-                .dialDays(Set.of(DayOfWeek.MONDAY))
-                .maxAttempts(maxAttempts)
-                .retryIntervalMinutes(retryIntervalMinutes)
-                .maxConcurrentCalls(5)
+                .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
+                        Set.of(DayOfWeek.MONDAY)))
+                .retry(new CampaignRetry(maxAttempts, retryIntervalMinutes, null))
+                .limits(new CampaignLimits(5, 0, null, null))
                 .aiAgentId(AI_AGENT_ID)
                 .companyId(1L)
-                .recurrenceType(RecurrenceType.ONCE)
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
                 .build();
     }
 
@@ -123,10 +130,10 @@ class CampaignServiceTest {
         assertThat(result.data()).hasSize(1);
         var row = result.data().getFirst();
         assertThat(row.id()).isEqualTo(CAMPAIGN_ID);
-        assertThat(row.totalTargets()).isEqualTo(50L);
-        assertThat(row.calledTargets()).isEqualTo(20L);
-        assertThat(row.pendingTargets()).isEqualTo(30L);
-        assertThat(row.completedTargets()).isEqualTo(15L);
+        assertThat(row.stats().totalTargets()).isEqualTo(50L);
+        assertThat(row.stats().calledTargets()).isEqualTo(20L);
+        assertThat(row.stats().pendingTargets()).isEqualTo(30L);
+        assertThat(row.stats().completedTargets()).isEqualTo(15L);
         assertThat(result.totalElements()).isEqualTo(1L);
         assertThat(result.currentPage()).isZero();
     }
@@ -141,10 +148,10 @@ class CampaignServiceTest {
         var row = service.requireCampaignRow(1L, CAMPAIGN_ID);
 
         assertThat(row.id()).isEqualTo(CAMPAIGN_ID);
-        assertThat(row.totalTargets()).isEqualTo(100L);
-        assertThat(row.calledTargets()).isEqualTo(45L);
-        assertThat(row.pendingTargets()).isEqualTo(55L);
-        assertThat(row.completedTargets()).isEqualTo(30L);
+        assertThat(row.stats().totalTargets()).isEqualTo(100L);
+        assertThat(row.stats().calledTargets()).isEqualTo(45L);
+        assertThat(row.stats().pendingTargets()).isEqualTo(55L);
+        assertThat(row.stats().completedTargets()).isEqualTo(30L);
     }
 
     @Test
@@ -230,8 +237,8 @@ class CampaignServiceTest {
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).create(eq(1L), written.capture());
-        assertThat(written.getValue().dialMode()).isEqualTo(DialMode.PREVIEW);
-        assertThat(written.getValue().callQueueId()).isEqualTo(5L);
+        assertThat(written.getValue().dialing().mode()).isEqualTo(DialMode.PREVIEW);
+        assertThat(written.getValue().dialing().callQueueId()).isEqualTo(5L);
         assertThat(written.getValue().aiAgentId()).isNull();
         verifyNoInteractions(aiAgents);
     }
@@ -254,7 +261,7 @@ class CampaignServiceTest {
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).create(eq(1L), written.capture());
-        assertThat(written.getValue().dialMode()).isEqualTo(DialMode.AI);
+        assertThat(written.getValue().dialing().mode()).isEqualTo(DialMode.AI);
         assertThat(written.getValue().aiAgentId()).isEqualTo(AI_AGENT_ID);
     }
 
@@ -269,8 +276,8 @@ class CampaignServiceTest {
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).create(eq(1L), written.capture());
-        assertThat(written.getValue().dialWindowStart()).isEqualTo(LocalTime.of(10, 0));
-        assertThat(written.getValue().dialWindowEnd()).isEqualTo(LocalTime.of(18, 0));
+        assertThat(written.getValue().schedule().dialWindowStart()).isEqualTo(LocalTime.of(10, 0));
+        assertThat(written.getValue().schedule().dialWindowEnd()).isEqualTo(LocalTime.of(18, 0));
     }
 
     @Test
@@ -281,8 +288,8 @@ class CampaignServiceTest {
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).create(eq(1L), written.capture());
-        assertThat(written.getValue().dialWindowStart()).isEqualTo(LocalTime.of(9, 0));
-        assertThat(written.getValue().dialWindowEnd()).isEqualTo(LocalTime.of(20, 0));
+        assertThat(written.getValue().schedule().dialWindowStart()).isEqualTo(LocalTime.of(9, 0));
+        assertThat(written.getValue().schedule().dialWindowEnd()).isEqualTo(LocalTime.of(20, 0));
     }
 
     @Test
@@ -291,31 +298,44 @@ class CampaignServiceTest {
         when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
         when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
 
-        service.updateCampaign(1L, CAMPAIGN_ID, new UpdateCampaignRequest("c", AI_AGENT_ID, null, null,
-                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
-                null, null, null, null, null, null, null, null));
+        service.updateCampaign(1L, CAMPAIGN_ID, new UpdateCampaignRequest("c", AI_AGENT_ID, null,
+                schedule(null, null), retry(), limits(), recurrence(), null, null));
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).update(eq(1L), eq(CAMPAIGN_ID), written.capture());
-        assertThat(written.getValue().dialWindowStart()).isEqualTo(LocalTime.of(9, 0));
-        assertThat(written.getValue().dialWindowEnd()).isEqualTo(LocalTime.of(20, 0));
+        assertThat(written.getValue().schedule().dialWindowStart()).isEqualTo(LocalTime.of(9, 0));
+        assertThat(written.getValue().schedule().dialWindowEnd()).isEqualTo(LocalTime.of(20, 0));
     }
 
     private static CreateCampaignRequest createRequestWithWindow(LocalTime start, LocalTime end) {
-        return new CreateCampaignRequest("c", CampaignType.SURVEY, AI_AGENT_ID, start, end,
-                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
-                null, null, null, null, null, null, null, null);
+        return new CreateCampaignRequest("c", CampaignType.SURVEY, AI_AGENT_ID, null,
+                schedule(start, end), retry(), limits(), recurrence(), null);
     }
 
     private static CreateCampaignRequest createRequest(DialMode dialMode, Long aiAgentId, Long callQueueId) {
-        return new CreateCampaignRequest("c", CampaignType.SURVEY, aiAgentId, LocalTime.of(9, 0), LocalTime.of(20, 0),
-                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
-                null, null, null, null, dialMode, callQueueId, null, null);
+        return new CreateCampaignRequest("c", CampaignType.SURVEY, aiAgentId, null,
+                schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(),
+                new CampaignDialingDto(dialMode, callQueueId, null, null));
     }
 
     private static UpdateCampaignRequest updateRequest(Long version) {
-        return new UpdateCampaignRequest("c", AI_AGENT_ID, LocalTime.of(9, 0), LocalTime.of(20, 0),
-                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
-                null, null, null, null, version, null, null, null);
+        return new UpdateCampaignRequest("c", AI_AGENT_ID, null,
+                schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(), null, version);
+    }
+
+    private static CampaignScheduleDto schedule(LocalTime start, LocalTime end) {
+        return new CampaignScheduleDto(null, null, start, end, Set.of(DayOfWeek.MONDAY));
+    }
+
+    private static CampaignRetryDto retry() {
+        return new CampaignRetryDto(3, 0, null);
+    }
+
+    private static CampaignLimitsDto limits() {
+        return new CampaignLimitsDto(5, 0, null, null);
+    }
+
+    private static CampaignRecurrenceDto recurrence() {
+        return new CampaignRecurrenceDto(RecurrenceType.ONCE, null, null, false);
     }
 }

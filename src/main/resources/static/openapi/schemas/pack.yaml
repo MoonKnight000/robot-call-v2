@@ -194,7 +194,7 @@ VerticalPack:
     tools:
       type: array
       items:
-        $ref: tool.yaml#/Tool
+        $ref: '#/PackTool'
     catalogFeed:
       allOf:
       - $ref: '#/PackCatalogFeed'
@@ -212,3 +212,79 @@ VerticalPack:
       items:
         $ref: '#/PackSecret'
       description: every `{{secrets.KEY`}} the tools read
+PackTool:
+  type: object
+  description: A tool as a pack file spells it — the flat shape packs/*.json and exported packs were written in. id, companyId, createdAt and updatedAt of older exports are accepted and dropped.
+  properties:
+    name:
+      type: string
+    description:
+      type: string
+    apiUrl:
+      type: string
+    apiMethod:
+      type: string
+    apiHeaders:
+      type: array
+      items:
+        $ref: tool.yaml#/ToolKeyValuePair
+    apiBody:
+      type: array
+      items:
+        $ref: tool.yaml#/ToolParamConfig
+    apiQueryParams:
+      type: array
+      items:
+        $ref: tool.yaml#/ToolParamConfig
+    apiPathParams:
+      type: array
+      items:
+        $ref: tool.yaml#/ToolParamConfig
+    responseTimeoutSecs:
+      type: integer
+      format: int32
+    dynamicVariables:
+      type: array
+      items:
+        $ref: tool.yaml#/ToolKeyValuePair
+    disableInterruptions:
+      type: boolean
+    forcePreToolSpeech:
+      type: boolean
+    preToolSpeech:
+      type: string
+    responseMapping:
+      type: object
+      additionalProperties:
+        type: string
+    retryAttempts:
+      type: integer
+      format: int32
+    maxCallsPerCall:
+      type: integer
+      format: int32
+    bodySchema:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      description: 'a JSON Schema for a body with nested objects and arrays (UNIVERSAL-OPERATOR-PLAN B.1); empty when the flat `apiBody` list describes it. A field carrying {@value #BODY_SOURCE_KEY} is filled from the configuration, the call or a secret, not by the model'
+    effect:
+      allOf:
+      - $ref: tool.yaml#/ToolEffect
+      description: what calling it does (B.3); unset, a GET reads and anything else writes
+    requiresConfirmation:
+      type: boolean
+      description: whether a call is read back to the caller and sent only after their yes; unset, on for a `WRITE` tool
+    readbackTemplate:
+      type: string
+      description: the sentence that reads a call back, `{{name`}} per argument; null leaves the wording to the model
+    auth:
+      allOf:
+      - $ref: tool.yaml#/ToolAuth
+      description: the tool's own OAuth client (B.5); null when its headers and address carry the authentication
+  required:
+  - disableInterruptions
+  - forcePreToolSpeech
+  - retryAttempts
+  - maxCallsPerCall

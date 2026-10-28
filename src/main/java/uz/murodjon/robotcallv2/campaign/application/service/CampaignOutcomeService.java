@@ -84,10 +84,10 @@ public class CampaignOutcomeService {
             checkCompletion(companyId, t.campaignId());
             return;
         }
-        int maxAttempts = c != null ? c.maxAttempts() : 3;
+        int maxAttempts = c != null ? c.retry().maxAttempts() : 3;
         // A disposition rule may give up sooner — "one voicemail is enough" — never later
         // than the campaign's own cap.
-        RetryRule rule = c != null ? c.retryPolicy().ruleFor(disposition) : null;
+        RetryRule rule = c != null ? c.retry().policy().ruleFor(disposition) : null;
         if (rule != null && rule.maxAttempts() != null && rule.maxAttempts() > 0) {
             maxAttempts = Math.min(maxAttempts, rule.maxAttempts());
         }
@@ -114,7 +114,7 @@ public class CampaignOutcomeService {
      * moves on whether or not the SMS gateway answered.
      */
     private void sendFollowUpSms(Campaign campaign, CampaignTarget target, Disposition disposition) {
-        RetryRule rule = campaign != null ? campaign.retryPolicy().ruleFor(disposition) : null;
+        RetryRule rule = campaign != null ? campaign.retry().policy().ruleFor(disposition) : null;
         if (rule == null || rule.smsText() == null || rule.smsText().isBlank()) {
             return;
         }
@@ -169,7 +169,7 @@ public class CampaignOutcomeService {
         }
         Campaign c = campaignRepository.find(companyId, t.campaignId());
         TargetStatus settled = status;
-        if (status == TargetStatus.PENDING && t.attempts() >= (c != null ? c.maxAttempts() : 3)) {
+        if (status == TargetStatus.PENDING && t.attempts() >= (c != null ? c.retry().maxAttempts() : 3)) {
             settled = TargetStatus.EXHAUSTED;
         }
         if (settled == TargetStatus.PENDING) {
@@ -192,8 +192,8 @@ public class CampaignOutcomeService {
         ZonedDateTime candidate = callbackAt.atZone(zoneOf(companyId));
         Instant finalInstant = candidate.toInstant();
         if (c != null && retryProperties.respectDialWindow()) {
-            finalInstant = RetrySchedule.intoWindow(candidate, c.allowedDays(),
-                    c.dialWindowStart(), c.dialWindowEnd(), holidaysOf(companyId)).toInstant();
+            finalInstant = RetrySchedule.intoWindow(candidate, c.schedule().allowedDays(),
+                    c.schedule().dialWindowStart(), c.schedule().dialWindowEnd(), holidaysOf(companyId)).toInstant();
         }
         campaignTargetRepository.updateStatus(targetId, TargetStatus.PENDING, finalInstant);
         log.info("Target {} scheduled for smart callback at {}", targetId, finalInstant);
@@ -227,15 +227,15 @@ public class CampaignOutcomeService {
     }
 
     private Instant nextAttemptAt(Disposition disposition, Campaign campaign) {
-        int retryMinutes = campaign != null ? campaign.retryIntervalMinutes() : 0;
-        RetryRule rule = campaign != null ? campaign.retryPolicy().ruleFor(disposition) : null;
+        int retryMinutes = campaign != null ? campaign.retry().intervalMinutes() : 0;
+        RetryRule rule = campaign != null ? campaign.retry().policy().ruleFor(disposition) : null;
         Duration delay = RetrySchedule.delayFor(disposition, retryProperties.toRetryDelays(), retryMinutes, rule);
         ZonedDateTime candidate = ZonedDateTime.now(clock).plus(delay);
         if (campaign == null || !retryProperties.respectDialWindow()) {
             return candidate.toInstant();
         }
-        return RetrySchedule.intoWindow(candidate, campaign.allowedDays(),
-                campaign.dialWindowStart(), campaign.dialWindowEnd(), holidaysOf(campaign.companyId())).toInstant();
+        return RetrySchedule.intoWindow(candidate, campaign.schedule().allowedDays(),
+                campaign.schedule().dialWindowStart(), campaign.schedule().dialWindowEnd(), holidaysOf(campaign.companyId())).toInstant();
     }
 
     private static boolean isTerminal(Disposition d) {

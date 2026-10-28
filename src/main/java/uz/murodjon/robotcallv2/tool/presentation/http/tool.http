@@ -6,32 +6,35 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "check_delivery_status",
   "description": "Mijozning buyurtma raqami bo'yicha yetkazib berish holatini aniqlash",
-  "apiUrl": "https://api.mycompany.uz/v1/orders/{order_id}/track",
-  "apiMethod": "GET",
-  "apiHeaders": [
-    { "key": "Authorization", "value": "Bearer my-secret-api-token" },
-    { "key": "X-Company-Id", "value": "{{company_id}}" }
-  ],
-  "apiQueryParams": [
-    { "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }
-  ],
-  "apiPathParams": [
-    {
-      "name": "order_id",
-      "type": "string",
-      "valueType": "LLM Prompt",
-      "description": "Mijoz aytgan 6 xonali buyurtma raqami",
-      "required": true
-    }
-  ],
-  "apiBody": null,
-  "responseTimeoutSecs": 5,
+  "http": {
+    "url": "https://api.mycompany.uz/v1/orders/{order_id}/track",
+    "method": "GET",
+    "headers": [
+      { "key": "Authorization", "value": "Bearer my-secret-api-token" },
+      { "key": "X-Company-Id", "value": "{{company_id}}" }
+    ],
+    "queryParams": [
+      { "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }
+    ],
+    "pathParams": [
+      {
+        "name": "order_id",
+        "type": "string",
+        "valueType": "LLM Prompt",
+        "description": "Mijoz aytgan 6 xonali buyurtma raqami",
+        "required": true
+      }
+    ],
+    "responseTimeoutSecs": 5
+  },
   "dynamicVariables": [
     { "key": "source", "value": "voice_bot_v2" }
   ],
-  "disableInterruptions": true,
-  "forcePreToolSpeech": true,
-  "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman."
+  "speech": {
+    "disableInterruptions": true,
+    "forcePreToolSpeech": true,
+    "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman."
+  }
 }
 
 ### 2. List All Company Tools
@@ -63,12 +66,8 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "check_delivery_status",
   "description": "Mijozning buyurtma raqami bo'yicha yetkazib berish holatini aniqlash (Yangilangan)",
-  "apiUrl": "https://api.mycompany.uz/v1/orders/{order_id}/track",
-  "apiMethod": "GET",
-  "responseTimeoutSecs": 8,
-  "disableInterruptions": true,
-  "forcePreToolSpeech": true,
-  "preToolSpeech": "Hozir tekshirib beraman, bir daqiqa."
+  "http": { "responseTimeoutSecs": 8 },
+  "speech": { "preToolSpeech": "Hozir tekshirib beraman, bir daqiqa." }
 }
 
 ### 6. Delete Tool (Returns 409 if in use by any AI Agent)
@@ -83,15 +82,17 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "create_lead",
   "description": "CRM'da yangi lead yaratadi",
-  "apiUrl": "https://crm.example.uz/api/leads",
-  "apiMethod": "POST",
-  "apiBody": [{ "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }],
-  "auth": {
-    "type": "OAUTH2_CLIENT_CREDENTIALS",
-    "tokenUrl": "https://crm.example.uz/oauth/token",
-    "clientIdSecret": "CRM_CLIENT_ID",
-    "clientSecretSecret": "CRM_CLIENT_SECRET",
-    "scope": "leads.write"
+  "http": {
+    "url": "https://crm.example.uz/api/leads",
+    "method": "POST",
+    "body": [{ "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }],
+    "auth": {
+      "type": "OAUTH2_CLIENT_CREDENTIALS",
+      "tokenUrl": "https://crm.example.uz/oauth/token",
+      "clientIdSecret": "CRM_CLIENT_ID",
+      "clientSecretSecret": "CRM_CLIENT_SECRET",
+      "scope": "leads.write"
+    }
   }
 }
 

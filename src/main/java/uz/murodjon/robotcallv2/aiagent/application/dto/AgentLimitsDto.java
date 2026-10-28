@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentLimits;
+
 public record AgentLimitsDto(
         Integer concurrentCallsLimit,
         Integer dailyCallsLimit,
@@ -7,4 +9,10 @@ public record AgentLimitsDto(
         Integer silenceEndCallTimeoutSeconds,
         Integer turnTimeoutSeconds
 ) {
+
+    public static AgentLimitsDto of(AiAgentLimits limits) {
+        return new AgentLimitsDto(limits.concurrentCallsLimit(), limits.dailyCallsLimit(),
+                limits.maxConversationDurationSeconds(), limits.silenceEndCallTimeoutSeconds(),
+                limits.turnTimeoutSeconds());
+    }
 }

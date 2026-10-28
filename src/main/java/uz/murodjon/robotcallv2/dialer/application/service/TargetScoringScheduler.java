@@ -77,7 +77,7 @@ public class TargetScoringScheduler {
     void scoreActiveCampaigns() {
         Instant now = clock.instant();
         for (Campaign campaign : campaignUseCase.findActiveCampaigns()) {
-            if (campaign.targetOrdering() != TargetOrdering.SCORE) {
+            if (campaign.dialing().targetOrdering() != TargetOrdering.SCORE) {
                 continue;
             }
             try {

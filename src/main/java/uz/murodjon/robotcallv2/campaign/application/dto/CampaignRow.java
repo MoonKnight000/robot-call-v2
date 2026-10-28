@@ -1,62 +1,37 @@
 package uz.murodjon.robotcallv2.campaign.application.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
-import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
-import uz.murodjon.robotcallv2.campaign.domain.enums.*;
-import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 
-import java.time.DayOfWeek;
 import java.time.Instant;
-import java.time.LocalTime;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * {@link Campaign} enriched for the API response with names resolved from the ids it
  * carries (backend-uchun-talablar.md §16/§18) — a projection over {@code campaign},
  * {@code ai_agent} and {@code app_user}, so it takes the {@code <Noun>Row} suffix rather
- * than bare {@code Campaign}.
+ * than bare {@code Campaign}. The groups are the ones {@link UpdateCampaignRequest} takes.
  */
 public record CampaignRow(
         long id,
         String name,
         CampaignType type,
         CampaignStatus status,
-        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
-        @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
-        Set<DayOfWeek> dialDays,
-        int maxAttempts,
-        int retryIntervalMinutes,
-        int maxConcurrentCalls,
-        int dailyCallCap,
         Long aiAgentId,
         String aiAgentName,
         long companyId,
         Long createdBy,
         String createdByName,
-        RecurrenceType recurrenceType,
-        Integer recurringDayOfMonth,
-        String cronExpression,
-        boolean autoResetTargets,
-        Instant lastRunAt,
         int priority,
-        Map<Disposition, RetryRule> retryPolicy,
-        Instant startAt,
-        Instant endAt,
-        Long budgetUzs,
-        Long dailyBudgetUzs,
-        long totalTargets,
-        long calledTargets,
-        long pendingTargets,
-        long completedTargets,
-        long version,
-        DialMode dialMode,
-        Long callQueueId,
-        int maxAiOverflowPercent,
-        TargetOrdering targetOrdering
+        CampaignScheduleDto schedule,
+        CampaignRetryDto retry,
+        CampaignLimitsDto limits,
+        CampaignRecurrenceDto recurrence,
+        CampaignDialingDto dialing,
+        CampaignTargetStats stats,
+        Instant lastRunAt,
+        long version
 ) {
 
     public static CampaignRow of(Campaign c, String aiAgentName, String createdByName) {
@@ -64,24 +39,18 @@ public record CampaignRow(
     }
 
     public static CampaignRow of(Campaign c, String aiAgentName, String createdByName, CampaignTargetStats stats) {
-        CampaignTargetStats s = stats != null ? stats : CampaignTargetStats.ZERO;
         return new CampaignRow(
                 c.id(), c.name(), c.type(), c.status(),
-                c.dialWindowStart(), c.dialWindowEnd(), c.dialDays(), c.maxAttempts(),
-                c.retryIntervalMinutes(), c.maxConcurrentCalls(), c.dailyCallCap(),
                 c.aiAgentId(), aiAgentName, c.companyId(),
                 c.createdBy(), createdByName,
-                c.recurrenceType() != null ? c.recurrenceType() : RecurrenceType.ONCE,
-                c.recurringDayOfMonth(), c.cronExpression(), c.autoResetTargets(), c.lastRunAt(),
-                c.priority(), c.retryPolicy().rules(), c.startAt(), c.endAt(), c.budgetUzs(), c.dailyBudgetUzs(),
-                s.totalTargets(),
-                s.calledTargets(),
-                s.pendingTargets(),
-                s.completedTargets(),
-                c.version(),
-                c.dialMode(),
-                c.callQueueId(),
-                c.maxAiOverflowPercent(),
-                c.targetOrdering());
+                c.priority(),
+                CampaignScheduleDto.of(c.schedule()),
+                CampaignRetryDto.of(c.retry()),
+                CampaignLimitsDto.of(c.limits()),
+                CampaignRecurrenceDto.of(c.recurrence()),
+                CampaignDialingDto.of(c.dialing()),
+                stats != null ? stats : CampaignTargetStats.ZERO,
+                c.lastRunAt(),
+                c.version());
     }
 }

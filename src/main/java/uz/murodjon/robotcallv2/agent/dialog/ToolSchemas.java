@@ -34,13 +34,13 @@ final class ToolSchemas {
         ObjectNode properties = schema.putObject("properties");
         ArrayNode required = schema.putArray("required");
 
-        collectLlmParams(tool.apiPathParams(), properties, required);
-        collectLlmParams(tool.apiQueryParams(), properties, required);
-        collectLlmParams(tool.apiBody(), properties, required);
+        collectLlmParams(tool.http().pathParams(), properties, required);
+        collectLlmParams(tool.http().queryParams(), properties, required);
+        collectLlmParams(tool.http().body(), properties, required);
         // A nested body: its fields are the model's top-level arguments, less the ones the
         // configuration fills (UNIVERSAL-OPERATOR-PLAN B.1).
-        if (!tool.bodySchema().isEmpty()) {
-            JsonNode body = schemaForModel(objectMapper.valueToTree(tool.bodySchema()));
+        if (!tool.http().bodySchema().isEmpty()) {
+            JsonNode body = schemaForModel(objectMapper.valueToTree(tool.http().bodySchema()));
             body.path("properties").fields().forEachRemaining(field -> properties.set(field.getKey(), field.getValue()));
             body.path("required").forEach(required::add);
         }

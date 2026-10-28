@@ -7,6 +7,9 @@ import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
@@ -58,13 +61,11 @@ class CampaignOutcomeServiceTest {
                 .name("c")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
-                .dialWindowStart(LocalTime.of(9, 0))
-                .dialWindowEnd(LocalTime.of(20, 0))
-                .dialDays(EnumSet.allOf(DayOfWeek.class))
-                .maxAttempts(3)
+                .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
+                        EnumSet.allOf(DayOfWeek.class)))
+                .retry(new CampaignRetry(3, 0, new RetryPolicy(rules)))
                 .companyId(COMPANY_ID)
-                .recurrenceType(RecurrenceType.ONCE)
-                .retryPolicy(new RetryPolicy(rules))
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
                 .build());
     }
 

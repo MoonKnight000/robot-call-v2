@@ -16,12 +16,13 @@ Majburiy maydon **faqat `name`**. Oddiy rejimda ko'rsatiladigan 5 tasi:
 | Forma maydoni | JSON maydon |
 |---|---|
 | Nom | `name` |
-| Vazifa (prompt) | `systemPrompt` |
+| Vazifa (prompt) | `script.systemPrompt` |
 | Til | `language` |
-| Ovoz | `ttsVoice` (ro'yxat: `GET /api/ai-agents/engine-options`) |
-| Birinchi gap | `firstMessage` |
+| Ovoz | `voice.defaultVoice` (ro'yxat: `GET /api/ai-agents/engine-options`) |
+| Birinchi gap | `script.firstMessage` |
 
-Shablon tanlangan bo'lsa qo'shimcha `templateId`; bo'sh `systemPrompt` shablonnikiga tushadi.
+Shablon tanlangan bo'lsa qo'shimcha `script.templateId`; bo'sh `script.systemPrompt` shablonnikiga tushadi.
+Agent maydonlari guruhlangan — to'liq jadval: [ai-agents.md](ai-agents.md#4-post-apiai-agents--agent-yaratish).
 Sifat darajasi uchun `GET /api/ai-agents/engine-profiles` dan profil tanlanadi va `engineProfileId`
 yuboriladi: u STT, LLM, `temperature`, `maxOutputTokens` ni bir marta to'ldiradi
 ([ai-agents.md](ai-agents.md#31-get-apiai-agentsengine-profiles--tayyor-dvigatel-toplamlari)).
@@ -42,11 +43,12 @@ orqali. `agentVersion: null` — hali e'lon qilinmagan qoralama bilan gaplashadi
 | Nom | `name` |
 | Maqsad: Qarz / So'rovnoma | `type` — **majburiy** (`DEBT_COLLECTION` \| `SURVEY`) |
 | Agent | `aiAgentId` — AI rejimida majburiy |
-| Jadval | `dialWindowStart`, `dialWindowEnd`, `dialDays` |
-| Urinishlar | `maxAttempts` |
+| Jadval | `schedule.dialWindowStart`, `schedule.dialWindowEnd`, `schedule.dialDays` |
+| Urinishlar | `retry.maxAttempts` |
 
-Berilmasa default: oyna 09:00–20:00, har kuni, `maxAttempts` 3, `maxConcurrentCalls` 20,
-`dialMode` AI, `priority` 3, `recurrenceType` ONCE.
+Berilmasa default: oyna 09:00–20:00, har kuni, `retry.maxAttempts` 3, `limits.maxConcurrentCalls` 20,
+`dialing.mode` AI, `priority` 3, `recurrence.type` ONCE. Guruhlar jadvali:
+[campaigns.md](campaigns.md#post-apicampaigns--yangi-kampaniya-yaratish).
 
 Kontaktlar: `POST /api/campaigns/{id}/targets/csv` (`text/csv`); avval
 `.../targets/csv/preview` bilan ustunlarni ko'rsatish mumkin.
@@ -59,11 +61,11 @@ Foydalanuvchi ikki variantni ko'radi; `scenarioId` / `definition` farqi UI'da ko
 
 | UI rejimi | Qachon (agent qatoridan, `AiAgentRow`) | Tahrirlash |
 |---|---|---|
-| **Oddiy** | `scenarioId == null` va `scenarioDefinition` yo'q yoki bitta bosqichli | `systemPrompt`, `firstMessage` — `PUT /api/ai-agents/{id}` |
-| **Bosqichli (o'zining)** | `scenarioId == null` va `scenarioDefinition.stages` bittadan ko'p | `PUT /api/ai-agents/{id}/scenario` |
-| **Bosqichli (umumiy)** | `scenarioId != null` | Umumiy ssenariy (`scenarios.md`); ogohlantiring: u shu ssenariyni gapiradigan barcha agentlarga ta'sir qiladi. Agentga xos qilish uchun `scenarioId: null` |
+| **Oddiy** | `script.scenarioId == null` va `script.definition` yo'q yoki bitta bosqichli | `script.systemPrompt`, `script.firstMessage` — `PUT /api/ai-agents/{id}` |
+| **Bosqichli (o'zining)** | `script.scenarioId == null` va `script.definition.stages` bittadan ko'p | `PUT /api/ai-agents/{id}/scenario` |
+| **Bosqichli (umumiy)** | `script.scenarioId != null` | Umumiy ssenariy (`scenarios.md`); ogohlantiring: u shu ssenariyni gapiradigan barcha agentlarga ta'sir qiladi. Agentga xos qilish uchun `script.scenarioId: null` |
 
-`scenarioMode` maydoniga tayanmang — u qo'ng'iroqda o'qilmaydigan yorliq
+`script.mode` maydoniga tayanmang — u qo'ng'iroqda o'qilmaydigan yorliq
 ([ai-agents.md](ai-agents.md#8-agent-scenario--behavior--apiai-agentsidscenario)).
 Oddiydan Bosqichliga o'tish: `PUT /api/ai-agents/{id}/scenario` ga `stages` yuboriladi
 (agentning `systemPrompt` i `rolePrompt` bo'lib qoladi).
@@ -72,23 +74,18 @@ A/B variantlar (`CampaignVariant`) kampaniya sahifasida emas, alohida "Tajriba" 
 
 ## "Qo'shimcha" ichiga yashiriladigan maydonlar
 
-**Kampaniya:** `recurrenceType`, `recurringDayOfMonth`, `cronExpression`, `autoResetTargets`,
-`priority`, `retryPolicy`, `retryIntervalMinutes`, `startAt`, `endAt`, `budgetUzs`,
-`dailyBudgetUzs`, `dailyCallCap`, `maxConcurrentCalls`, `dialMode`, `callQueueId`,
-`maxAiOverflowPercent`, `targetOrdering`; A/B variantlar (`CampaignVariant`).
+**Kampaniya:** butun `recurrence`, `limits` va `dialing` guruhlari; `retry.intervalMinutes`,
+`retry.policy`, `schedule.startAt`, `schedule.endAt`, `priority`; A/B variantlar (`CampaignVariant`).
 
-**Agent:** `pipelineMode`, `realtimeProvider`, `pipecat*`, `stt*`, `ttsProvider`, `ttsModel`,
-`voice*`, `languageVoices*`, `persona`, `llmModel`, `fastLlmModel`, `temperature`,
-`maxOutputTokens` (profil bilan almashadi), `dataNeeded`, `dataEvaluation`, `zeroPiiRetention`, `storeCallAudio`,
-`conversationRetentionDays`, `realtimeFactsDelivery`, `*Limit*`, `*Seconds`, webhook'lar,
-`ambient*`, `thinkingSound`, `noiseCancellation*`, `emotionAdaptiveVoice`, `speakingWarmth`,
-`dtmfInputEnabled`, `voicemail*`, `midCallSms*`, `transfer*`, `interruptionSensitivity`,
-`endpointingDelayMs`, `sipTrunkIds`, `scenarioId`, `scenarioMode`, `scenarioDefinition`,
-`preemptiveGeneration`, `ivrNavigationEnabled`, `useRag`, `preConversationAudioFileId`.
+**Agent:** butun `speechEngine`, `voice` (`defaultVoice` dan tashqari), `ambience`,
+`callBehaviour`, `limits`, `dataPolicy` guruhlari; `script.scenarioId`, `script.mode`,
+`script.definition`; `persona`, `llmModel`, `fastLlmModel`, `temperature`,
+`maxOutputTokens` (profil bilan almashadi), `dataNeeded`, `dataEvaluation`, webhook'lar,
+`sipTrunkIds`, `preemptiveGeneration`, `ivrNavigationEnabled`, `useRag`.
 
 > Ro'yxat `CreateAiAgentRequest` / `CreateCampaignRequest` dan olingan; yangi maydon
 > qo'shilganda bu yerga ham yoziladi.
 
 **Hech qayerda ko'rsatilmasin (qo'ng'iroqqa ta'sir qilmaydi):** `preemptiveGeneration`,
-`ivrNavigationEnabled`, `voiceStability`, `voiceSimilarityBoost`, `endpointingDelayMs`,
-`turnTimeoutSeconds` — [ai-agents.md](ai-agents.md#4-post-apiai-agents--agent-yaratish).
+`ivrNavigationEnabled`, `voice.stability`, `voice.similarityBoost`, `callBehaviour.endpointingDelayMs`,
+`limits.turnTimeoutSeconds` — [ai-agents.md](ai-agents.md#4-post-apiai-agents--agent-yaratish).

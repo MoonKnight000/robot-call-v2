@@ -22,45 +22,78 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "name": "Kechikkan to'lovlar - Mart 2026",
   "type": "DEBT_COLLECTION",
   "aiAgentId": 7,
-  "dialWindowStart": "09:00:00",
-  "dialWindowEnd": "18:00:00",
-  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
-  "maxAttempts": 3,
-  "retryIntervalMinutes": 0,
-  "maxConcurrentCalls": 20,
-  "dailyCallCap": 0,
-  "recurrenceType": "CRON",
-  "recurringDayOfMonth": null,
-  "cronExpression": "0 0 9 ? * MON-FRI",
-  "autoResetTargets": false
+  "priority": 3,
+  "schedule": {
+    "startAt": null,
+    "endAt": null,
+    "dialWindowStart": "09:00:00",
+    "dialWindowEnd": "18:00:00",
+    "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]
+  },
+  "retry": {
+    "maxAttempts": 3,
+    "intervalMinutes": 0,
+    "policy": { "VOICEMAIL": { "maxAttempts": 1, "delayMinutes": 120 } }
+  },
+  "limits": {
+    "maxConcurrentCalls": 20,
+    "dailyCallCap": 0,
+    "budgetUzs": null,
+    "dailyBudgetUzs": null
+  },
+  "recurrence": {
+    "type": "CRON",
+    "dayOfMonth": null,
+    "cronExpression": "0 0 9 ? * MON-FRI",
+    "autoResetTargets": false
+  },
+  "dialing": {
+    "mode": "AI",
+    "callQueueId": null,
+    "maxAiOverflowPercent": 20,
+    "targetOrdering": "FIFO"
+  }
 }
 ```
+
+> **Maydon guruhlari (2026-10-28 dan, breaking change).** Kampaniya sozlamalari domain'dagi
+> guruhlar bo'yicha ichma-ich keladi: `schedule`, `retry`, `limits`, `recurrence`, `dialing`.
+> Shakl `POST`, `PUT` va javob (`CampaignRow`) da bir xil. Guruhni butunlay tashlab ketish
+> mumkin: uning maydonlari berilmagan maydonlar kabi o'qiladi (pastdagi standartlar). Eski →
+> yangi: `dialWindowStart/End`, `dialDays`, `startAt`, `endAt` → `schedule.*`;
+> `maxAttempts` → `retry.maxAttempts`, `retryIntervalMinutes` → `retry.intervalMinutes`,
+> `retryPolicy` → `retry.policy`; `maxConcurrentCalls`, `dailyCallCap`, `budgetUzs`,
+> `dailyBudgetUzs` → `limits.*`; `recurrenceType` → `recurrence.type`, `recurringDayOfMonth` →
+> `recurrence.dayOfMonth`, `cronExpression`, `autoResetTargets` → `recurrence.*`; `dialMode` →
+> `dialing.mode`, `callQueueId`, `maxAiOverflowPercent`, `targetOrdering` → `dialing.*`. Javobdagi
+> `totalTargets`, `calledTargets`, `pendingTargets`, `completedTargets` → `stats.*`.
+> Yuqori darajada: `name`, `type`, `aiAgentId`, `priority` (`PUT` da yana `version`).
 
 | Maydon | Turi | Majburiymi | Izoh |
 |---|---|---|---|
 | `name` | `string` | ✅ (`@NotBlank`) | Kampaniya nomi |
 | `type` | `CampaignType` | ✅ (`@NotNull`) | `DEBT_COLLECTION` yoki `SURVEY`. **Majburiy** — berilmasa `400` (avval jimgina `DEBT_COLLECTION` ga tushardi) |
-| `dialMode` | `DialMode` | ❌ | Mijoz bilan kim gaplashadi: `AI` (standart) — kampaniya agenti; `PREVIEW` — operator mijoz kartasini ko'rib o'zi teradi; `PROGRESSIVE` — har bo'sh operatorga bitta qo'ng'iroq; `PREDICTIVE` — bo'sh operatorlardan ko'proq qo'ng'iroq, operator yetmasa mijozni AI agent qabul qiladi. **Yaratilgandan keyin o'zgarmaydi.** `AI` kampaniyalarni dialer teradi, `PREVIEW` ni operatorlar ([preview-dialing.md](preview-dialing.md)), `PROGRESSIVE` ni dialer navbatning bo'sh operatorlari uchun ([pastda](#progressive-kampaniya-qanday-teriladi)); `PREDICTIVE` ni dialer javob ulushiga qarab oldindan ([pastda](#predictive-kampaniya-qanday-teriladi)) |
+| `dialing.mode` | `DialMode` | ❌ | Mijoz bilan kim gaplashadi: `AI` (standart) — kampaniya agenti; `PREVIEW` — operator mijoz kartasini ko'rib o'zi teradi; `PROGRESSIVE` — har bo'sh operatorga bitta qo'ng'iroq; `PREDICTIVE` — bo'sh operatorlardan ko'proq qo'ng'iroq, operator yetmasa mijozni AI agent qabul qiladi. **Yaratilgandan keyin o'zgarmaydi.** `AI` kampaniyalarni dialer teradi, `PREVIEW` ni operatorlar ([preview-dialing.md](preview-dialing.md)), `PROGRESSIVE` ni dialer navbatning bo'sh operatorlari uchun ([pastda](#progressive-kampaniya-qanday-teriladi)); `PREDICTIVE` ni dialer javob ulushiga qarab oldindan ([pastda](#predictive-kampaniya-qanday-teriladi)) |
 | `aiAgentId` | `number` | `AI` da ✅ | [`GET /api/ai-agents`](ai-agents.md) dagi agent. **Senariy, ovoz, persona, LLM model va SIP trunklar shu agentdan olinadi.** Keyin `PUT` bilan boshqa agentga o'tkazsa bo'ladi. `dialMode=AI` da berilmasa — `400 CAMPAIGN_AI_AGENT_REQUIRED`; operator rejimlarida ixtiyoriy |
-| `callQueueId` | `number` | `AI` dan boshqasida ✅ | Qo'ng'iroqlarni oladigan operatorlar navbati ([call-queues.md](call-queues.md)). `dialMode` `AI` bo'lmasa va berilmasa — `400 CAMPAIGN_CALL_QUEUE_REQUIRED`; boshqa kompaniyaning yoki mavjud bo'lmagan navbat — `404 CALL_QUEUE_NOT_FOUND`. Navbat o'chirilsa, maydon `null` bo'lib qoladi |
-| `dialWindowStart` / `dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. **Berilmasa — kompaniyaning ish soatlari** (`company_config.dialWindowStart/End`, yaratish paytidagi qiymati nusxalanadi; kompaniyada sozlama bo'lmasa 09:00–20:00). `PUT` da berilmasa — kampaniyaning mavjud oynasi qoladi. UI bu maydonni "Kompaniya ish soatlari" (default) / "Boshqa vaqt" tanlovi sifatida ko'rsatishi mumkin. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)). Shuningdek, `DialerService` har bir qabul qiluvchining mahalliy vaqt zonasini (quiet hours / TCPA: 08:00–20:00) hisobga oladi — uning mahalliy vaqtida tun bo'lsa, nishon avtomatik +30 daqiqaga kechiktiriladi |
-| `dialDays` | `array<DayOfWeek>` | ❌ | `["MONDAY", ...]`. Bo'sh/berilmasa — barcha kunlar |
-| `maxAttempts` | `number` | ❌ | Bitta nishonga urinishlar soni |
-| `retryIntervalMinutes` | `number` | ❌ | Javob bo'lmagan nishonni qayta terishgacha daqiqa. `0` — disposition bo'yicha standartlar (avtootvetchikdan keyin uzoqroq, bandlikdan keyin qisqaroq) |
-| `maxConcurrentCalls` | `number` | ❌ | Parallel kanallar chegarasi |
-| `dailyCallCap` | `number` | ❌ | Kunlik qo'ng'iroq chegarasi; `0` — cheksiz. Sarf shifti: har bir qo'ng'iroq STT/LLM/TTS va trunk daqiqasini yeydi |
-| `recurrenceType` | `RecurrenceType` | ❌ | `ONCE` (standart), `DAILY`, `WEEKLY`, `MONTHLY`, `CRON` |
-| `recurringDayOfMonth` | `number` (1–31) | ❌ | `MONTHLY` uchun oyning kuni |
-| `cronExpression` | `string` | ❌ | `CRON` uchun Spring/Quartz cron ifodasi |
-| `autoResetTargets` | `boolean` | ❌ | Takror ishga tushganda nishonlar `PENDING` ga qaytariladimi. Standart `false` |
+| `dialing.callQueueId` | `number` | `AI` dan boshqasida ✅ | Qo'ng'iroqlarni oladigan operatorlar navbati ([call-queues.md](call-queues.md)). `dialMode` `AI` bo'lmasa va berilmasa — `400 CAMPAIGN_CALL_QUEUE_REQUIRED`; boshqa kompaniyaning yoki mavjud bo'lmagan navbat — `404 CALL_QUEUE_NOT_FOUND`. Navbat o'chirilsa, maydon `null` bo'lib qoladi |
+| `schedule.dialWindowStart` / `schedule.dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. **Berilmasa — kompaniyaning ish soatlari** (`company_config.dialWindowStart/End`, yaratish paytidagi qiymati nusxalanadi; kompaniyada sozlama bo'lmasa 09:00–20:00). `PUT` da berilmasa — kampaniyaning mavjud oynasi qoladi. UI bu maydonni "Kompaniya ish soatlari" (default) / "Boshqa vaqt" tanlovi sifatida ko'rsatishi mumkin. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)). Shuningdek, `DialerService` har bir qabul qiluvchining mahalliy vaqt zonasini (quiet hours / TCPA: 08:00–20:00) hisobga oladi — uning mahalliy vaqtida tun bo'lsa, nishon avtomatik +30 daqiqaga kechiktiriladi |
+| `schedule.dialDays` | `array<DayOfWeek>` | ❌ | `["MONDAY", ...]`. Bo'sh/berilmasa — barcha kunlar |
+| `retry.maxAttempts` | `number` | ❌ | Bitta nishonga urinishlar soni |
+| `retry.intervalMinutes` | `number` | ❌ | Javob bo'lmagan nishonni qayta terishgacha daqiqa. `0` — disposition bo'yicha standartlar (avtootvetchikdan keyin uzoqroq, bandlikdan keyin qisqaroq) |
+| `limits.maxConcurrentCalls` | `number` | ❌ | Parallel kanallar chegarasi |
+| `limits.dailyCallCap` | `number` | ❌ | Kunlik qo'ng'iroq chegarasi; `0` — cheksiz. Sarf shifti: har bir qo'ng'iroq STT/LLM/TTS va trunk daqiqasini yeydi |
+| `recurrence.type` | `RecurrenceType` | ❌ | `ONCE` (standart), `DAILY`, `WEEKLY`, `MONTHLY`, `CRON` |
+| `recurrence.dayOfMonth` | `number` (1–31) | ❌ | `MONTHLY` uchun oyning kuni |
+| `recurrence.cronExpression` | `string` | ❌ | `CRON` uchun Spring/Quartz cron ifodasi |
+| `recurrence.autoResetTargets` | `boolean` | ❌ | Takror ishga tushganda nishonlar `PENDING` ga qaytariladimi. Standart `false` |
 | `priority` | `number` (1–5) | ❌ | Dialer har tickdagi batch'ni faol kampaniyalar orasida ustuvorlikka **proporsional** bo'ladi: 5 dagi kampaniya 1 dagiga nisbatan 5 barobar ko'p liniya oladi; har biri kamida 1 ta. Standart `3` |
-| `retryPolicy` | `object` | ❌ | Disposition bo'yicha retry qoidalari: `{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}}`. `delayMinutes` — shu natijadan keyingi kutish (`retryIntervalMinutes` va standartlardan ustun); `maxAttempts` — oxirgi natija shu bo'lsa, shuncha urinishdan keyin nishon `EXHAUSTED` (kampaniya `maxAttempts`idan oshmaydi). Qoida bo'lmagan disposition uchun `retryIntervalMinutes`, u `0` bo'lsa standartlar (`NO_ANSWER` 180 min, `FAILED` 15 min, `VOICEMAIL` 120 min, `CALLBACK_REQUESTED` 60 min). **Ikkinchi kanal — SMS:** qoidaga `smsText` (va ixtiyoriy `smsOnAttempt`) qo'shilsa, qo'ng'iroq shu natija bilan tugaganda raqamga SMS ketadi: `{"NO_ANSWER": {"delayMinutes": 180, "smsText": "{{clientName | Hurmatli mijoz}}, sizga qo'ng'iroq qildik. Qulay vaqtda qayta qo'ng'iroq qilamiz.", "smsOnAttempt": 1}}` — "javob bermadi → SMS → 3 soatdan keyin qayta qo'ng'iroq". `smsText` da nishon faktlari (`{{fakt}}`, `{{fakt | zaxira}}`) va `{{phone}}`; ko'pi bilan 459 belgi. `smsOnAttempt` — faqat shu urinish shu natija bilan tugaganda yuboriladi (qayta-qayta yubormaslik uchun); `null` — har safar. Yakuniy natijada ham ishlaydi (`PROMISE_TO_PAY` → tasdiq SMS). `WRONG_NUMBER` va `DO_NOT_CALL` ga SMS qo'yib bo'lmaydi (`400 CAMPAIGN_FOLLOW_UP_SMS_NOT_ALLOWED`) — begona odam mijoz ma'lumotini o'qimasligi uchun; nishon `doNotCall` bo'lsa ham yuborilmaydi. SMS platformada yoqilgan bo'lishi kerak (`voice-agent.sms`, Eskiz); yiqilgan SMS nishonni qayta rejalashtirishga xalaqit bermaydi |
-| `startAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan boshlanish. `start` shu vaqtdan **oldin** bosilsa kampaniya `SCHEDULED` bo'lib turadi va daqiqalik sweep vaqti kelganda `ACTIVE` qiladi (`startAt` o'tib ketgan yoki `null` bo'lsa — darhol `ACTIVE`). `start?immediate=true` rejani chetlab hozir boshlaydi |
-| `endAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan tugash: `ACTIVE` kampaniya shu vaqtda nishonlar qolgan bo'lsa ham `COMPLETED` qilinadi (`CAMPAIGN_FINISHED` bildirishnomasi). `endAt` `startAt`dan keyin bo'lishi shart — `400 CAMPAIGN_SCHEDULE_INVALID`; o'tib ketgan `endAt` bilan `start` — `409 CAMPAIGN_END_PASSED` |
-| `budgetUzs` | `number` | ❌ | Butun kampaniya uchun xarajat tavani (so'm). Yakunlangan (`SETTLED`) qo'ng'iroqlar summasi shunga yetganda dialer kampaniyani `PAUSED` qiladi va `CAMPAIGN_PAUSED` bildirishnomasi (`BUDGET_CAP`) yuboradi; davom ettirish — `start`. Tekshiruv daqiqada bir marta, shuning uchun bitta tick'ning batch'i qadar oshib ketishi mumkin |
-| `dailyBudgetUzs` | `number` | ❌ | Xuddi shu, lekin kompaniya vaqt zonasidagi bir kun uchun (yarim tundan boshlab) |
-| `maxAiOverflowPercent` | `number` (0–100) | ❌ | Faqat `PREDICTIVE`: so'nggi 30 daqiqada javob berilgan qo'ng'iroqlarning necha foizini AI agent olishi mumkin. Shunga yetganda dialer har bo'sh operatorga bittadan teradi (PROGRESSIVE tezligi); 75% iga yetganda oldindan terish yarimga tushadi. `0` — hech qachon oldindan termaydi. Standart `20`. `PUT` da berilmasa — avvalgi qiymat qoladi |
-| `targetOrdering` | `string` | ❌ | Kutayotgan nishonlardan qaysilari birinchi teriladi: `FIFO` (standart — navbatga eng oldin tushgani) yoki `SCORE` (to'lash ehtimoli yuqorisi birinchi, raqam odatda gaplashadigan soatda bonus bilan) — [SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi). `AI` va `PREDICTIVE` kampaniyalarda ishlaydi. `PUT` da berilmasa — avvalgi qiymat qoladi |
+| `retry.policy` | `object` | ❌ | Disposition bo'yicha retry qoidalari: `{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}}`. `delayMinutes` — shu natijadan keyingi kutish (`retryIntervalMinutes` va standartlardan ustun); `maxAttempts` — oxirgi natija shu bo'lsa, shuncha urinishdan keyin nishon `EXHAUSTED` (kampaniya `maxAttempts`idan oshmaydi). Qoida bo'lmagan disposition uchun `retryIntervalMinutes`, u `0` bo'lsa standartlar (`NO_ANSWER` 180 min, `FAILED` 15 min, `VOICEMAIL` 120 min, `CALLBACK_REQUESTED` 60 min). **Ikkinchi kanal — SMS:** qoidaga `smsText` (va ixtiyoriy `smsOnAttempt`) qo'shilsa, qo'ng'iroq shu natija bilan tugaganda raqamga SMS ketadi: `{"NO_ANSWER": {"delayMinutes": 180, "smsText": "{{clientName | Hurmatli mijoz}}, sizga qo'ng'iroq qildik. Qulay vaqtda qayta qo'ng'iroq qilamiz.", "smsOnAttempt": 1}}` — "javob bermadi → SMS → 3 soatdan keyin qayta qo'ng'iroq". `smsText` da nishon faktlari (`{{fakt}}`, `{{fakt | zaxira}}`) va `{{phone}}`; ko'pi bilan 459 belgi. `smsOnAttempt` — faqat shu urinish shu natija bilan tugaganda yuboriladi (qayta-qayta yubormaslik uchun); `null` — har safar. Yakuniy natijada ham ishlaydi (`PROMISE_TO_PAY` → tasdiq SMS). `WRONG_NUMBER` va `DO_NOT_CALL` ga SMS qo'yib bo'lmaydi (`400 CAMPAIGN_FOLLOW_UP_SMS_NOT_ALLOWED`) — begona odam mijoz ma'lumotini o'qimasligi uchun; nishon `doNotCall` bo'lsa ham yuborilmaydi. SMS platformada yoqilgan bo'lishi kerak (`voice-agent.sms`, Eskiz); yiqilgan SMS nishonni qayta rejalashtirishga xalaqit bermaydi |
+| `schedule.startAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan boshlanish. `start` shu vaqtdan **oldin** bosilsa kampaniya `SCHEDULED` bo'lib turadi va daqiqalik sweep vaqti kelganda `ACTIVE` qiladi (`startAt` o'tib ketgan yoki `null` bo'lsa — darhol `ACTIVE`). `start?immediate=true` rejani chetlab hozir boshlaydi |
+| `schedule.endAt` | `string` (ISO-8601, UTC) | ❌ | Rejalashtirilgan tugash: `ACTIVE` kampaniya shu vaqtda nishonlar qolgan bo'lsa ham `COMPLETED` qilinadi (`CAMPAIGN_FINISHED` bildirishnomasi). `endAt` `startAt`dan keyin bo'lishi shart — `400 CAMPAIGN_SCHEDULE_INVALID`; o'tib ketgan `endAt` bilan `start` — `409 CAMPAIGN_END_PASSED` |
+| `limits.budgetUzs` | `number` | ❌ | Butun kampaniya uchun xarajat tavani (so'm). Yakunlangan (`SETTLED`) qo'ng'iroqlar summasi shunga yetganda dialer kampaniyani `PAUSED` qiladi va `CAMPAIGN_PAUSED` bildirishnomasi (`BUDGET_CAP`) yuboradi; davom ettirish — `start`. Tekshiruv daqiqada bir marta, shuning uchun bitta tick'ning batch'i qadar oshib ketishi mumkin |
+| `limits.dailyBudgetUzs` | `number` | ❌ | Xuddi shu, lekin kompaniya vaqt zonasidagi bir kun uchun (yarim tundan boshlab) |
+| `dialing.maxAiOverflowPercent` | `number` (0–100) | ❌ | Faqat `PREDICTIVE`: so'nggi 30 daqiqada javob berilgan qo'ng'iroqlarning necha foizini AI agent olishi mumkin. Shunga yetganda dialer har bo'sh operatorga bittadan teradi (PROGRESSIVE tezligi); 75% iga yetganda oldindan terish yarimga tushadi. `0` — hech qachon oldindan termaydi. Standart `20`. `PUT` da berilmasa — avvalgi qiymat qoladi |
+| `dialing.targetOrdering` | `string` | ❌ | Kutayotgan nishonlardan qaysilari birinchi teriladi: `FIFO` (standart — navbatga eng oldin tushgani) yoki `SCORE` (to'lash ehtimoli yuqorisi birinchi, raqam odatda gaplashadigan soatda bonus bilan) — [SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi). `AI` va `PREDICTIVE` kampaniyalarda ishlaydi. `PUT` da berilmasa — avvalgi qiymat qoladi |
 
 > ⚠️ **Muhim o'zgarish.** Kampaniya endi faqat *kimga va qachon* qo'ng'iroq qilishni
 > ushlaydi. `scenarioId`, `defaultLanguage`, `ttsVoice`, `languageVoices`, `agentPersona`,
@@ -89,10 +122,13 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 
 ### `PUT /api/campaigns/{id}` — Kampaniyani tahrirlash
 
-Body (`UpdateCampaignRequest`) — `CreateCampaignRequest` bilan bir xil, faqat **`type` va
-`dialMode` yo'q** (ular yaratilgandan keyin o'zgarmaydi). `aiAgentId` va `callQueueId` esa
-o'zgartirilishi mumkin: kampaniyani boshqa ovoz yoki boshqa skript bilan yuritish uchun uni
-klonlash shart emas. Ular kampaniyaning `dialMode`iga qarab yaratishdagidek tekshiriladi.
+Body (`UpdateCampaignRequest`) — `CreateCampaignRequest` bilan bir xil guruhlar, faqat **`type`
+yo'q**, `dialing.mode` esa **e'tiborsiz qoldiriladi** (ikkalasi yaratilgandan keyin o'zgarmaydi).
+`aiAgentId` va `dialing.callQueueId` esa o'zgartirilishi mumkin: kampaniyani boshqa ovoz yoki
+boshqa skript bilan yuritish uchun uni klonlash shart emas. Ular kampaniyaning `dialing.mode`iga
+qarab yaratishdagidek tekshiriladi. `PUT` — to'liq tahrir: tashlab ketilgan guruh maydonlari ham
+bo'sh (`0` / `null`) yoziladi; istisno — `schedule.dialWindowStart/End`,
+`dialing.maxAiOverflowPercent` va `dialing.targetOrdering`, ular berilmasa avvalgi qiymat qoladi.
 
 Javob — yangilangan `CampaignRow`.
 
@@ -119,38 +155,50 @@ dialer tufayli `409` olmaydi (tahrir bu ustunlarni yozmaydi ham).
     "name": "Kechikkan to'lovlar - Mart 2026",
     "type": "DEBT_COLLECTION",
     "status": "ACTIVE",
-    "dialWindowStart": "09:00:00",
-    "dialWindowEnd": "18:00:00",
-    "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
-    "maxAttempts": 3,
-    "retryIntervalMinutes": 0,
-    "maxConcurrentCalls": 20,
-    "dailyCallCap": 0,
     "aiAgentId": 7,
     "aiAgentName": "Qarz undirish — o'zbekcha",
     "companyId": 1,
     "createdBy": 3,
     "createdByName": "Aziz Bekmurodov",
     "priority": 3,
-    "retryPolicy": { "VOICEMAIL": { "maxAttempts": 1, "delayMinutes": 120 } },
-    "startAt": "2026-09-15T04:00:00Z",
-    "endAt": null,
-    "budgetUzs": 5000000,
-    "dailyBudgetUzs": null,
-    "recurrenceType": "CRON",
-    "recurringDayOfMonth": null,
-    "cronExpression": "0 0 9 ? * MON-FRI",
-    "autoResetTargets": false,
+    "schedule": {
+      "startAt": "2026-09-15T04:00:00Z",
+      "endAt": null,
+      "dialWindowStart": "09:00:00",
+      "dialWindowEnd": "18:00:00",
+      "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]
+    },
+    "retry": {
+      "maxAttempts": 3,
+      "intervalMinutes": 0,
+      "policy": { "VOICEMAIL": { "maxAttempts": 1, "delayMinutes": 120 } }
+    },
+    "limits": {
+      "maxConcurrentCalls": 20,
+      "dailyCallCap": 0,
+      "budgetUzs": 5000000,
+      "dailyBudgetUzs": null
+    },
+    "recurrence": {
+      "type": "CRON",
+      "dayOfMonth": null,
+      "cronExpression": "0 0 9 ? * MON-FRI",
+      "autoResetTargets": false
+    },
+    "dialing": {
+      "mode": "AI",
+      "callQueueId": null,
+      "maxAiOverflowPercent": 20,
+      "targetOrdering": "FIFO"
+    },
+    "stats": {
+      "totalTargets": 1200,
+      "calledTargets": 750,
+      "pendingTargets": 450,
+      "completedTargets": 700
+    },
     "lastRunAt": "2026-03-05T09:00:00Z",
-    "totalTargets": 1200,
-    "calledTargets": 750,
-    "pendingTargets": 450,
-    "completedTargets": 700,
-    "version": 4,
-    "dialMode": "AI",
-    "callQueueId": null,
-    "maxAiOverflowPercent": 20,
-    "targetOrdering": "FIFO"
+    "version": 4
   },
   "message": null,
   "messageCode": null,

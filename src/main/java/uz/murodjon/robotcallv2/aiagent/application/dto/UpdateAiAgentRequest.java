@@ -1,21 +1,20 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * Full edit of an agent ({@code PUT /api/ai-agents/{id}}).
+ * Full edit of an agent ({@code PUT /api/ai-agents/{id}}). The groups are the same as
+ * {@link AiAgentRow} returns, so a form can send back what it read; a null field — or a
+ * group left out — keeps the agent's value.
  *
  * <p>{@code version} is the one {@link AiAgentRow} carried when the form was opened — the
  * draft row's lock counter, not {@code publishedVersion}. An agent saved by someone else
@@ -31,72 +30,29 @@ import java.util.Set;
 public record UpdateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 500) String description,
-        Long scenarioId,
-        AgentTemplate templateId,
-        String engineProfileId,
-        String firstMessage,
-        String systemPrompt,
-        ScenarioMode scenarioMode,
-        ScenarioDefinition scenarioDefinition,
-        Boolean preemptiveGeneration,
-        Boolean ivrNavigationEnabled,
-        Boolean useRag,
         String language,
-        PipelineMode pipelineMode,
-        String realtimeProvider,
-        String pipecatStt,
-        String pipecatLlm,
-        String pipecatTts,
-        String sttProvider,
-        String sttModel,
-        String ttsProvider,
-        String ttsModel,
-        String ttsVoice,
-        Double voiceSpeed,
-        Double voiceStability,
-        Double voiceSimilarityBoost,
-        Map<String, String> languageVoices,
-        Map<String, Double> languageVoiceSpeeds,
         AgentPersona persona,
+        String engineProfileId,
+        AgentScriptDto script,
+        AgentSpeechEngineDto speechEngine,
+        AgentVoiceDto voice,
         @Size(max = 120) String llmModel,
         @Size(max = 120) String fastLlmModel,
         Double temperature,
         Integer maxOutputTokens,
+        AgentAmbienceDto ambience,
+        @Valid AgentCallBehaviourDto callBehaviour,
+        AgentLimitsDto limits,
+        AgentDataPolicyDto dataPolicy,
+        Boolean preemptiveGeneration,
+        Boolean ivrNavigationEnabled,
+        Boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,
-        Boolean zeroPiiRetention,
-        Boolean storeCallAudio,
-        Integer conversationRetentionDays,
-        RealtimeFactsDelivery realtimeFactsDelivery,
-        Integer maxConversationDurationSeconds,
-        Integer silenceEndCallTimeoutSeconds,
-        Integer turnTimeoutSeconds,
-        Integer concurrentCallsLimit,
-        Integer dailyCallsLimit,
         AgentWebhookConfig initiationWebhook,
         AgentWebhookConfig postCallWebhook,
-        AmbientSound ambientSound,
-        Double ambientSoundVolume,
-        Double ambientSoundFadeInSeconds,
-        AmbientSound thinkingSound,
-        Double thinkingSoundVolume,
-        Boolean noiseCancellationEnabled,
-        NoiseCancellationMode noiseCancellationMode,
-        Boolean emotionAdaptiveVoice,
-        SpeakingWarmth speakingWarmth,
-        Boolean dtmfInputEnabled,
-        VoicemailAction voicemailAction,
-        @Size(max = 500) String voicemailMessage,
-        Boolean midCallSmsEnabled,
-        @Size(max = 500) String midCallSmsTemplate,
-        String transferPhoneNumber,
-        String transferMessage,
-        Long transferQueueId,
-        InterruptionSensitivity interruptionSensitivity,
-        Integer endpointingDelayMs,
         Set<Long> sipTrunkIds,
         Boolean enabled,
-        Long version,
-        Long preConversationAudioFileId
+        Long version
 ) {
 }

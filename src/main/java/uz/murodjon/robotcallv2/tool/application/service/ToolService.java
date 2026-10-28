@@ -23,6 +23,8 @@ import uz.murodjon.robotcallv2.tool.application.port.output.ToolRepository;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolSpeech;
 import uz.murodjon.robotcallv2.tool.domain.service.ToolValidator;
 
 import java.time.Instant;
@@ -35,6 +37,10 @@ public class ToolService implements ToolUseCase {
     private static final Logger log = LoggerFactory.getLogger(ToolService.class);
     private final ObjectMapper objectMapper;
     private static final TypeReference<Map<String, Object>> RESULT_TYPE = new TypeReference<>() {};
+    /** An update that leaves a whole group out changes nothing in it. */
+    private static final ToolHttpConfigDto NO_HTTP =
+            new ToolHttpConfigDto(null, null, null, null, null, null, null, null, null, null);
+    private static final ToolSpeechDto NO_SPEECH = new ToolSpeechDto(null, null, null);
 
     private final ToolRepository toolRepository;
     private final AiAgentUseCase aiAgentUseCase;
@@ -58,11 +64,14 @@ public class ToolService implements ToolUseCase {
     @Override
     @Transactional
     public ToolRow createTool(long companyId, CreateToolRequest request) {
-        requireCallableApiUrl(request.apiUrl());
+        if (request.http().url() == null || request.http().url().isBlank()) {
+            throw new ValidationException(ErrorCode.TOOL_URL_REQUIRED);
+        }
+        requireCallableApiUrl(request.http().url());
         requireValidMapping(request.responseMapping());
         Tool tool = mapper.fromCreateRequest(companyId, request);
-        ToolValidator.validateBody(tool.apiBody(), tool.bodySchema());
-        requireValidAuth(tool.auth());
+        ToolValidator.validateBody(tool.http().body(), tool.http().bodySchema());
+        requireValidAuth(tool.http().auth());
         Tool saved = toolRepository.save(tool);
         log.info("Created tool {} for company {}", saved.id(), companyId);
         return mapper.toRow(saved);
@@ -80,38 +89,44 @@ public class ToolService implements ToolUseCase {
     public ToolRow updateTool(long companyId, long id, UpdateToolRequest request) {
         Tool existing = toolRepository.findByCompanyIdAndId(companyId, id)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.TOOL_NOT_FOUND, id));
-        requireCallableApiUrl(request.apiUrl());
+        ToolHttpConfigDto http = request.http() != null ? request.http() : NO_HTTP;
+        ToolSpeechDto speech = request.speech() != null ? request.speech() : NO_SPEECH;
+        requireCallableApiUrl(http.url());
         requireValidMapping(request.responseMapping());
 
+        ToolHttpConfig existingHttp = existing.http();
+        ToolSpeech existingSpeech = existing.speech();
         Tool updated = new Tool(
                 existing.id(),
                 existing.companyId(),
                 request.name() != null ? request.name() : existing.name(),
                 request.description() != null ? request.description() : existing.description(),
-                request.apiUrl() != null ? request.apiUrl() : existing.apiUrl(),
-                request.apiMethod() != null ? request.apiMethod() : existing.apiMethod(),
-                request.apiHeaders() != null ? request.apiHeaders() : existing.apiHeaders(),
-                request.apiBody() != null ? request.apiBody() : existing.apiBody(),
-                request.apiQueryParams() != null ? request.apiQueryParams() : existing.apiQueryParams(),
-                request.apiPathParams() != null ? request.apiPathParams() : existing.apiPathParams(),
-                request.responseTimeoutSecs() != null ? request.responseTimeoutSecs() : existing.responseTimeoutSecs(),
+                new ToolHttpConfig(
+                        http.url() != null ? http.url() : existingHttp.url(),
+                        http.method() != null ? http.method() : existingHttp.method(),
+                        http.headers() != null ? http.headers() : existingHttp.headers(),
+                        http.body() != null ? http.body() : existingHttp.body(),
+                        http.queryParams() != null ? http.queryParams() : existingHttp.queryParams(),
+                        http.pathParams() != null ? http.pathParams() : existingHttp.pathParams(),
+                        http.bodySchema() != null ? http.bodySchema() : existingHttp.bodySchema(),
+                        http.responseTimeoutSecs() != null ? http.responseTimeoutSecs() : existingHttp.responseTimeoutSecs(),
+                        http.retryAttempts() != null ? http.retryAttempts() : existingHttp.retryAttempts(),
+                        http.auth() == null ? existingHttp.auth() : http.auth().type() == null ? null : http.auth()),
                 request.dynamicVariables() != null ? request.dynamicVariables() : existing.dynamicVariables(),
-                request.disableInterruptions() != null ? request.disableInterruptions() : existing.disableInterruptions(),
-                request.forcePreToolSpeech() != null ? request.forcePreToolSpeech() : existing.forcePreToolSpeech(),
-                request.preToolSpeech() != null ? request.preToolSpeech() : existing.preToolSpeech(),
-                existing.createdAt(),
-                Instant.now(),
+                new ToolSpeech(
+                        speech.disableInterruptions() != null ? speech.disableInterruptions() : existingSpeech.disableInterruptions(),
+                        speech.forcePreToolSpeech() != null ? speech.forcePreToolSpeech() : existingSpeech.forcePreToolSpeech(),
+                        speech.preToolSpeech() != null ? speech.preToolSpeech() : existingSpeech.preToolSpeech()),
                 request.responseMapping() != null ? request.responseMapping() : existing.responseMapping(),
-                request.retryAttempts() != null ? request.retryAttempts() : existing.retryAttempts(),
                 request.maxCallsPerCall() != null ? request.maxCallsPerCall() : existing.maxCallsPerCall(),
-                request.bodySchema() != null ? request.bodySchema() : existing.bodySchema(),
                 request.effect() != null ? request.effect() : existing.effect(),
                 request.requiresConfirmation() != null ? request.requiresConfirmation() : existing.requiresConfirmation(),
                 request.readbackTemplate() != null ? request.readbackTemplate() : existing.readbackTemplate(),
-                request.auth() == null ? existing.auth() : request.auth().type() == null ? null : request.auth()
+                existing.createdAt(),
+                Instant.now()
         );
-        ToolValidator.validateBody(updated.apiBody(), updated.bodySchema());
-        requireValidAuth(updated.auth());
+        ToolValidator.validateBody(updated.http().body(), updated.http().bodySchema());
+        requireValidAuth(updated.http().auth());
 
         Tool saved = toolRepository.save(updated);
         log.info("Updated tool {} for company {}", id, companyId);

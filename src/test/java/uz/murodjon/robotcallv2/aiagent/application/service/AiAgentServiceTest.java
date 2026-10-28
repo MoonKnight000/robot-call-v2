@@ -9,6 +9,9 @@ import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentCallBehaviourDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentDataPolicyDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentScriptDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
@@ -283,39 +286,32 @@ class AiAgentServiceTest {
     private static CreateAiAgentRequest createRequest(AgentTemplate templateId, AgentPersona persona, Long transferQueueId,
                                                       Boolean zeroPiiRetention) {
         return new CreateAiAgentRequest(
-                " Sotuv agenti ", null, null, templateId, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, persona, null, null,
-                null, null, null, null, zeroPiiRetention,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null, null,
-                null, null, null, null, null,
-                transferQueueId, null, null, null, null,
-                null);
+                " Sotuv agenti ", null, null, persona, null,
+                new AgentScriptDto(templateId, null, null, null, null, null),
+                null, null,
+                null, null, null, null,
+                null,
+                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, null, transferQueueId, null),
+                null,
+                new AgentDataPolicyDto(zeroPiiRetention, null, null, null),
+                null, null, null,
+                null, null,
+                null, null,
+                null, null);
     }
 
     /** Only the name and the lock version; everything else left as the agent has it. */
     private static UpdateAiAgentRequest updateRequest(String name, Long version) {
         return new UpdateAiAgentRequest(
-                name, null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null, null,
-                null, null, null, null, null,
-                null, null, null, null, null,
-                version, null);
+                name, null, null, null, null,
+                null, null, null,
+                null, null, null, null,
+                null, null, null, null,
+                null, null, null,
+                null, null,
+                null, null,
+                null, null,
+                version);
     }
 
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {

@@ -166,8 +166,8 @@ public class HttpToolExecutor {
                     session.channelId(), tool.name(), tool.maxCallsPerCall());
             return toolResponseFormatter.formatLimitReached(tool.maxCallsPerCall());
         }
-        if (tool.forcePreToolSpeech() && tool.preToolSpeech() != null && !tool.preToolSpeech().isBlank()) {
-            session.addToolReply(tool.preToolSpeech().trim());
+        if (tool.speech().forcePreToolSpeech() && tool.speech().preToolSpeech() != null && !tool.speech().preToolSpeech().isBlank()) {
+            session.addToolReply(tool.speech().preToolSpeech().trim());
         }
 
         Map<String, String> secrets = tool.companyId() != null
@@ -178,8 +178,8 @@ public class HttpToolExecutor {
         long started = System.nanoTime();
 
         try {
-            int timeoutSeconds = (tool.responseTimeoutSecs() != null && tool.responseTimeoutSecs() > 0)
-                    ? tool.responseTimeoutSecs()
+            int timeoutSeconds = (tool.http().responseTimeoutSecs() != null && tool.http().responseTimeoutSecs() > 0)
+                    ? tool.http().responseTimeoutSecs()
                     : DEFAULT_TIMEOUT_SECONDS;
 
             String resolvedUrl = toolRequestTemplates.resolveUrl(tool, callVariables, args, secrets);
@@ -192,7 +192,7 @@ public class HttpToolExecutor {
                         session.channelId(), tool.name());
                 return toolResponseFormatter.formatBlocked();
             }
-            String method = (tool.apiMethod() != null ? tool.apiMethod().toUpperCase() : "POST");
+            String method = (tool.http().method() != null ? tool.http().method().toUpperCase() : "POST");
 
             PublicHttpRequest request = PublicHttpRequest.create(method, uri)
                     .setTimeout(Duration.ofSeconds(timeoutSeconds))
@@ -200,11 +200,11 @@ public class HttpToolExecutor {
 
             // Apply Headers
             boolean hasContentType = false;
-            if (tool.apiHeaders() != null) {
-                for (ToolKeyValuePair header : tool.apiHeaders()) {
+            if (tool.http().headers() != null) {
+                for (ToolKeyValuePair header : tool.http().headers()) {
                     // A tool with its own OAuth client authenticates with the token below.
                     if (header.key() != null && !header.key().isBlank()
-                            && !(tool.auth() != null && AUTHORIZATION_HEADER.equalsIgnoreCase(header.key().trim()))) {
+                            && !(tool.http().auth() != null && AUTHORIZATION_HEADER.equalsIgnoreCase(header.key().trim()))) {
                         String headerValue = toolRequestTemplates.resolveTemplate(header.value(), callVariables, args, secrets);
                         request.addHeader(header.key().trim(), headerValue);
                         if ("content-type".equalsIgnoreCase(header.key().trim())) {
@@ -216,9 +216,9 @@ public class HttpToolExecutor {
 
             // Fresh or cached (UNIVERSAL-OPERATOR-PLAN B.5). A token that cannot be had fails the
             // call below like any other request that did not go out.
-            if (tool.auth() != null && tool.companyId() != null) {
+            if (tool.http().auth() != null && tool.companyId() != null) {
                 request.addHeader(AUTHORIZATION_HEADER,
-                        "Bearer " + oauthTokens.findAccessToken(tool.companyId(), tool.auth(), secrets));
+                        "Bearer " + oauthTokens.findAccessToken(tool.companyId(), tool.http().auth(), secrets));
             }
 
             // A retried POST must not become a second order: the key is the same on every
@@ -240,9 +240,9 @@ public class HttpToolExecutor {
             PublicHttpResponse response = sendWithRetry(tool, session, request);
 
             log.info("[{}] Tool '{}' responded with status {}", session.channelId(), tool.name(), response.statusCode());
-            if (response.statusCode() == 401 && tool.auth() != null && tool.companyId() != null) {
+            if (response.statusCode() == 401 && tool.http().auth() != null && tool.companyId() != null) {
                 // Refused before it ran out — revoked or rotated. The next call asks for a new one.
-                oauthTokens.evictToken(tool.companyId(), tool.auth(), secrets);
+                oauthTokens.evictToken(tool.companyId(), tool.http().auth(), secrets);
             }
 
             // Already capped at MAX_RESPONSE_BYTES; the rest of the stream was never read.
@@ -287,7 +287,7 @@ public class HttpToolExecutor {
      */
     private PublicHttpResponse sendWithRetry(Tool tool, DialogOutcomeSink session, PublicHttpRequest request)
             throws IOException, InterruptedException {
-        int retries = tool.retryAttempts();
+        int retries = tool.http().retryAttempts();
         for (int attempt = 0; ; attempt++) {
             try {
                 PublicHttpResponse response = httpClient.send(request);
@@ -323,7 +323,7 @@ public class HttpToolExecutor {
     }
 
     private static boolean hasHeader(Tool tool, String name) {
-        return tool.apiHeaders().stream()
+        return tool.http().headers().stream()
                 .anyMatch(header -> header.key() != null && header.key().trim().equalsIgnoreCase(name));
     }
 

@@ -765,11 +765,10 @@ ON CONFLICT (ai_agent_id, language) DO NOTHING;
 -- at 18:00 would look like a broken install to whoever tries it in the evening. Fill them
 -- in once the hours are real — fallback_message below is what a caller then hears.
 -- ---------------------------------------------------------------------------
-INSERT INTO inbound_route (company_id, did_number, ai_agent_id, route_type, queue_strategy,
-                           ring_timeout_sec, failover_action, after_hours_action, fallback_message, enabled)
+INSERT INTO inbound_route (company_id, did_number, ai_agent_id, after_hours_action, fallback_message, enabled)
 SELECT 1, '600',
        (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona' LIMIT 1),
-       'SCENARIO', 'RING_ALL', 20, 'SCENARIO', 'PLAY_MESSAGE_AND_HANGUP',
+       'PLAY_MESSAGE_AND_HANGUP',
        'Hozir ish vaqtimiz tugagan. Iltimos, dushanbadan jumagacha soat 9:00 dan 18:00 gacha qo''ng''iroq qiling.',
        true
 WHERE NOT EXISTS (SELECT 1 FROM inbound_route WHERE company_id = 1 AND did_number = '600');
@@ -833,11 +832,10 @@ ON CONFLICT (company_id) DO NOTHING;
 -- Looked up by name, like the placeholder campaigns above: campaign.name has no unique
 -- constraint, so a rerun must not add a second copy.
 -- ---------------------------------------------------------------------------
-INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id,
+INSERT INTO campaign (company_id, name, type, status, ai_agent_id,
                       dial_window_start, dial_window_end, max_attempts, retry_interval_minutes,
                       max_concurrent_calls, daily_call_cap, recurrence_type, auto_reset_targets)
 SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
-       '{}',
        (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
        '09:00:00', '18:00:00', 3, 120, 10, 200, 'DAILY', false
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik');
@@ -886,10 +884,9 @@ ON CONFLICT (campaign_id) DO NOTHING;
 -- whichever collected variable is not named as the phone, the client id or the language
 -- becomes one of the target's facts.
 -- ---------------------------------------------------------------------------
-INSERT INTO campaign (company_id, name, type, status, script_config, ai_agent_id,
+INSERT INTO campaign (company_id, name, type, status, ai_agent_id,
                       dial_window_start, dial_window_end, recurrence_type)
 SELECT 1, 'Namuna — CHAINED manba', 'DEBT_COLLECTION', 'DRAFT',
-       '{}',
        (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
        '09:00:00', '18:00:00', 'ONCE'
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba');
@@ -1658,10 +1655,10 @@ BEGIN
 
     -- ACTIVE, split A/B between the cascade pipeline and the realtime one. The targets still
     -- waiting are due 30 days out, so this campaign is live on every screen without dialling.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, retry_interval_minutes, max_concurrent_calls, daily_call_cap, priority, retry_policy,
                           budget_uzs, daily_budget_uzs, last_run_at, created_at, created_by)
-    VALUES (1, v_debt, 'Qarzdorlik — sentabr', 'DEBT_COLLECTION', 'ACTIVE', '{}', '09:00', '19:00',
+    VALUES (1, v_debt, 'Qarzdorlik — sentabr', 'DEBT_COLLECTION', 'ACTIVE', '09:00', '19:00',
             3, 120, 10, 150, 4,
             '{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}, "HUNG_UP": {"maxAttempts": 2, "delayMinutes": 60}}'::jsonb,
             2000000, 300000, now() - interval '1 day', now() - interval '6 days', v_admin)
@@ -1712,9 +1709,9 @@ BEGIN
             'phone', 'id', 'lang', false, false, false, now() - interval '6 days', 14);
 
     -- PAUSED on the realtime agent; resuming it dials nothing for 30 days.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, retry_interval_minutes, max_concurrent_calls, created_at, created_by)
-    VALUES (1, v_debt_rt, 'Qarzdorlik — realtime test', 'DEBT_COLLECTION', 'PAUSED', '{}', '09:00', '18:00',
+    VALUES (1, v_debt_rt, 'Qarzdorlik — realtime test', 'DEBT_COLLECTION', 'PAUSED', '09:00', '18:00',
             2, 60, 5, now() - interval '4 days', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day)
@@ -1729,9 +1726,9 @@ BEGIN
 
     -- The one campaign meant to be started: its only target is 600, which the dialer rings
     -- on the local softphone endpoint instead of the trunk — the whole outbound path, free.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, retry_interval_minutes, max_concurrent_calls, priority, created_at, created_by)
-    VALUES (1, v_debt, 'Softfon test', 'DEBT_COLLECTION', 'PAUSED', '{}', '00:00', '23:59',
+    VALUES (1, v_debt, 'Softfon test', 'DEBT_COLLECTION', 'PAUSED', '00:00', '23:59',
             1, 0, 1, 5, now() - interval '1 day', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day)
@@ -1742,9 +1739,9 @@ BEGIN
            'PENDING', 0
     FROM contact c WHERE c.company_id = 1 AND c.phone = '600';
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, max_concurrent_calls, last_run_at, created_at, created_by)
-    VALUES (1, v_survey, 'Mijozlar so''rovnomasi (NPS)', 'SURVEY', 'COMPLETED', '{}', '10:00', '19:00',
+    VALUES (1, v_survey, 'Mijozlar so''rovnomasi (NPS)', 'SURVEY', 'COMPLETED', '10:00', '19:00',
             2, 5, now() - interval '4 days', now() - interval '8 days', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day)
@@ -1755,9 +1752,9 @@ BEGIN
     JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
 
     -- SCHEDULED: goes ACTIVE by itself at start_at, 30 days from the day the database was seeded.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, max_concurrent_calls, start_at, end_at, created_at, created_by)
-    VALUES (1, v_reminder, 'Uchrashuv eslatmasi — oktabr', 'SURVEY', 'SCHEDULED', '{}', '10:00', '18:00',
+    VALUES (1, v_reminder, 'Uchrashuv eslatmasi — oktabr', 'SURVEY', 'SCHEDULED', '10:00', '18:00',
             2, 3, v_later, v_later + interval '7 days', now() - interval '2 days', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day)
@@ -1769,28 +1766,28 @@ BEGIN
     JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
 
     -- Recurring shapes, none of which can dial: no targets, or ARCHIVED.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, recurrence_type, created_at, created_by)
-    VALUES (1, v_notify, 'Haftalik to''lov eslatmasi', 'DEBT_COLLECTION', 'ARCHIVED', '{}', 'WEEKLY', now() - interval '60 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, recurrence_type, created_at, created_by)
+    VALUES (1, v_notify, 'Haftalik to''lov eslatmasi', 'DEBT_COLLECTION', 'ARCHIVED', 'WEEKLY', now() - interval '60 days', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day) VALUES (v_camp, 'MONDAY');
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, recurrence_type, recurring_day_of_month,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, recurrence_type, recurring_day_of_month,
                           dial_window_start, dial_window_end, created_at, created_by)
-    VALUES (1, v_notify, 'Oylik eslatma (5-sana)', 'SURVEY', 'DRAFT', '{}', 'MONTHLY', 5, '10:00', '17:00',
+    VALUES (1, v_notify, 'Oylik eslatma (5-sana)', 'SURVEY', 'DRAFT', 'MONTHLY', 5, '10:00', '17:00',
             now() - interval '14 days', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS d;
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, recurrence_type, cron_expression,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, recurrence_type, cron_expression,
                           created_at, created_by)
-    VALUES (1, v_debt, 'CRON — dushanba 10:00', 'DEBT_COLLECTION', 'ARCHIVED', '{}', 'CRON', '0 0 10 * * MON',
+    VALUES (1, v_debt, 'CRON — dushanba 10:00', 'DEBT_COLLECTION', 'ARCHIVED', 'CRON', '0 0 10 * * MON',
             now() - interval '30 days', v_admin);
 
     -- Where callers who ask to be called back land: the queues and the sales route point here.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, retry_interval_minutes, max_concurrent_calls, created_at, created_by)
-    VALUES (1, v_night, 'Qayta qo''ng''iroqlar (callback)', 'SURVEY', 'DRAFT', '{}', '09:00', '18:00',
+    VALUES (1, v_night, 'Qayta qo''ng''iroqlar (callback)', 'SURVEY', 'DRAFT', '09:00', '18:00',
             2, 30, 2, now() - interval '10 days', v_admin)
     RETURNING id INTO v_callback;
     INSERT INTO campaign_dial_day (campaign_id, day)
@@ -1934,14 +1931,14 @@ BEGIN
                     'bye', jsonb_build_object('type', 'HANGUP'))),
             NULL, 0);
 
-    INSERT INTO inbound_route (company_id, did_number, ai_agent_id, route_type, schedule_id, call_flow_id,
+    INSERT INTO inbound_route (company_id, did_number, ai_agent_id, schedule_id, call_flow_id,
                                callback_campaign_id, fallback_message, enabled, created_at) VALUES
-        (1, '+998712000100', v_reception, 'SCENARIO', v_sched, v_flow, v_callback,
+        (1, '+998712000100', v_reception, v_sched, v_flow, v_callback,
          'Hozir ish vaqtimiz tugagan. Iltimos, ertaga soat 9:00 dan keyin qo''ng''iroq qiling.', true, now() - interval '10 days'),
-        (1, '+998712000200', v_sales, 'SCENARIO', v_sched, NULL, v_callback,
+        (1, '+998712000200', v_sales, v_sched, NULL, v_callback,
          'Sotuv bo''limi ish vaqti: dushanba–shanba, 9:00–18:00.', true, now() - interval '8 days'),
-        (1, '+998712000300', v_prompt, 'SCENARIO', NULL, NULL, NULL, NULL, true, now() - interval '5 days'),
-        (1, '+998712000400', v_reception, 'SCENARIO', NULL, NULL, NULL, NULL, false, now() - interval '30 days');
+        (1, '+998712000300', v_prompt, NULL, NULL, NULL, NULL, true, now() - interval '5 days'),
+        (1, '+998712000400', v_reception, NULL, NULL, NULL, NULL, false, now() - interval '30 days');
 
     -- Prefixes are digits without '+', matched longest-first; 'anonymous' is a hidden number.
     INSERT INTO inbound_caller_rule (company_id, phone_prefix, action, message, note) VALUES
@@ -2700,9 +2697,9 @@ BEGIN
         (v_c2, 'Анна Ли',             '+998712345602', 'lead', NULL),
         (v_c2, 'Dilshod Rahimov',     '+998712345603', 'lead', NULL);
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, script_config, dial_window_start, dial_window_end,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
                           max_attempts, max_concurrent_calls, created_at, created_by)
-    VALUES (v_c2, v_agent, 'Демо: обзвон лидов', 'SURVEY', 'PAUSED', '{}', '10:00', '19:00', 2, 3, now() - interval '3 days', v_admin)
+    VALUES (v_c2, v_agent, 'Демо: обзвон лидов', 'SURVEY', 'PAUSED', '10:00', '19:00', 2, 3, now() - interval '3 days', v_admin)
     RETURNING id INTO v_camp;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
@@ -2713,8 +2710,8 @@ BEGIN
            CASE WHEN c.phone = '+998901230001' THEN NULL ELSE now() + interval '30 days' END
     FROM contact c WHERE c.company_id = v_c2;
 
-    INSERT INTO inbound_route (company_id, did_number, ai_agent_id, route_type, enabled)
-    VALUES (v_c2, '+998712345600', v_agent, 'SCENARIO', true);
+    INSERT INTO inbound_route (company_id, did_number, ai_agent_id, enabled)
+    VALUES (v_c2, '+998712345600', v_agent, true);
 
     INSERT INTO knowledge_base_item (company_id, item_key, topic, title, answer_uz, answer_ru, keywords) VALUES
         (v_c2, 'delivery', 'delivery', 'Yetkazib berish',

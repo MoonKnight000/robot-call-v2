@@ -12,21 +12,14 @@ public class InboundRouteEntityMapper {
         if (entity == null) {
             return null;
         }
-        // ai_agent_id is null for a route that rings a queue, an IVR or a user.
+        // ai_agent_id is null for a route that only runs a call flow.
         return new InboundRoute(
                 entity.getId(),
                 entity.getCompanyId(),
                 entity.getDidNumber(),
                 entity.getAiAgentId(),
-                entity.getRouteType(),
-                entity.getTargetDestination(),
-                entity.getQueueStrategy(),
-                entity.getRingTimeoutSec(),
-                entity.getFailoverAction(),
-                entity.getFailoverDestination(),
                 entity.getAfterHoursAction(),
                 entity.getAfterHoursDestination(),
-                entity.getIvrMenuConfig(),
                 entity.getBusinessHoursStart(),
                 entity.getBusinessHoursEnd(),
                 entity.getFallbackMessage(),

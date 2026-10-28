@@ -76,7 +76,7 @@ public class RecurringCampaignScheduler {
                 ZonedDateTime now = ZonedDateTime.now(config != null ? clock.withZone(config.zoneId()) : clock);
                 if (isDue(c, now)) {
                     log.info("Recurring campaign {} ({}) is due. Triggering execution...", c.id(), c.name());
-                    campaignUseCase.triggerRecurrenceRun(c.companyId(), c.id(), c.autoResetTargets());
+                    campaignUseCase.triggerRecurrenceRun(c.companyId(), c.id(), c.recurrence().autoResetTargets());
                 }
             } catch (Exception e) {
                 log.error("Failed to evaluate recurrence for campaign {}: {}", c.id(), e.getMessage(), e);
@@ -85,7 +85,7 @@ public class RecurringCampaignScheduler {
     }
 
     public boolean isDue(Campaign c, ZonedDateTime now) {
-        if (c.recurrenceType() == null || c.recurrenceType() == RecurrenceType.ONCE) {
+        if (c.recurrence().type() == null || c.recurrence().type() == RecurrenceType.ONCE) {
             return false;
         }
 
@@ -99,14 +99,14 @@ public class RecurringCampaignScheduler {
         LocalDate today = now.toLocalDate();
         LocalTime time = now.toLocalTime();
 
-        LocalTime windowStart = c.dialWindowStart() != null ? c.dialWindowStart() : LocalTime.MIN;
-        LocalTime windowEnd = c.dialWindowEnd() != null ? c.dialWindowEnd() : LocalTime.MAX;
+        LocalTime windowStart = c.schedule().dialWindowStart() != null ? c.schedule().dialWindowStart() : LocalTime.MIN;
+        LocalTime windowEnd = c.schedule().dialWindowEnd() != null ? c.schedule().dialWindowEnd() : LocalTime.MAX;
         if (time.isBefore(windowStart) || time.isAfter(windowEnd)) {
             return false;
         }
 
         DayOfWeek currentDayOfWeek = now.getDayOfWeek();
-        if (!c.allowedDays().contains(currentDayOfWeek)) {
+        if (!c.schedule().allowedDays().contains(currentDayOfWeek)) {
             return false;
         }
 
@@ -117,9 +117,9 @@ public class RecurringCampaignScheduler {
             }
         }
 
-        return switch (c.recurrenceType()) {
+        return switch (c.recurrence().type()) {
             case DAILY -> true;
-            case WEEKLY -> c.allowedDays().contains(currentDayOfWeek);
+            case WEEKLY -> c.schedule().allowedDays().contains(currentDayOfWeek);
             case MONTHLY -> matchesMonthly(c, today);
             case CRON -> matchesCron(c, now);
             default -> false;
@@ -127,26 +127,26 @@ public class RecurringCampaignScheduler {
     }
 
     private boolean matchesMonthly(Campaign c, LocalDate today) {
-        if (c.recurringDayOfMonth() == null) {
+        if (c.recurrence().dayOfMonth() == null) {
             return today.getDayOfMonth() == 1;
         }
-        int targetDay = c.recurringDayOfMonth();
+        int targetDay = c.recurrence().dayOfMonth();
         int maxDaysInMonth = today.lengthOfMonth();
         int effectiveDay = Math.min(targetDay, maxDaysInMonth);
         return today.getDayOfMonth() == effectiveDay;
     }
 
     private boolean matchesCron(Campaign c, ZonedDateTime now) {
-        if (c.cronExpression() == null || c.cronExpression().isBlank()) {
+        if (c.recurrence().cronExpression() == null || c.recurrence().cronExpression().isBlank()) {
             return false;
         }
         try {
-            CronExpression cron = CronExpression.parse(c.cronExpression().trim());
+            CronExpression cron = CronExpression.parse(c.recurrence().cronExpression().trim());
             ZonedDateTime lastCheck = now.minusMinutes(1);
             ZonedDateTime next = cron.next(lastCheck);
             return next != null && !next.isAfter(now);
         } catch (Exception e) {
-            log.warn("Invalid cron expression for campaign {}: {}", c.id(), c.cronExpression());
+            log.warn("Invalid cron expression for campaign {}: {}", c.id(), c.recurrence().cronExpression());
             return false;
         }
     }

@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentAdvancedDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentCallBehaviourDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentDataPolicyDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentLimitsDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentPronunciationDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentScenarioDto;
@@ -217,11 +219,12 @@ class AiAgentSettingsServiceTest {
     /** Only the data-policy pair and the transfer queue; every other field left as the agent has it. */
     private static AgentAdvancedDto advanced(Boolean zeroPiiRetention, Boolean storeCallAudio, Long transferQueueId) {
         return new AgentAdvancedDto(
-                null, null, null, storeCallAudio, zeroPiiRetention,
-                null, null, null, null,
-                null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
-                null, null, transferQueueId, null, null);
+                null, null, null,
+                null, null,
+                null, null,
+                null,
+                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, null, transferQueueId, null),
+                new AgentDataPolicyDto(zeroPiiRetention, storeCallAudio, null, null));
     }
 
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {

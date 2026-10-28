@@ -6,14 +6,14 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "Qarzdorlik eslatmasi - May 2026",
   "type": "DEBT_COLLECTION",
-  "dialWindowStart": "09:00:00",
-  "dialWindowEnd": "19:00:00",
-  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
-  "maxAttempts": 3,
-  "retryIntervalMinutes": 60,
-  "maxConcurrentCalls": 10,
-  "dailyCallCap": 500,
-  "aiAgentId": 1
+  "aiAgentId": 1,
+  "schedule": {
+    "dialWindowStart": "09:00:00",
+    "dialWindowEnd": "19:00:00",
+    "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]
+  },
+  "retry": { "maxAttempts": 3, "intervalMinutes": 60 },
+  "limits": { "maxConcurrentCalls": 10, "dailyCallCap": 500 }
 }
 
 ### Create Operator Campaign (PREVIEW — operators of queue 1 dial it, no AI agent)
@@ -24,10 +24,8 @@ Authorization: Bearer {{auth_token}}
 {
   "name": "Sotuv - operatorlar",
   "type": "SURVEY",
-  "dialMode": "PREVIEW",
-  "callQueueId": 1,
-  "dialWindowStart": "09:00:00",
-  "dialWindowEnd": "19:00:00"
+  "dialing": { "mode": "PREVIEW", "callQueueId": 1 },
+  "schedule": { "dialWindowStart": "09:00:00", "dialWindowEnd": "19:00:00" }
 }
 
 ### Filter Campaigns
@@ -52,14 +50,14 @@ Authorization: Bearer {{auth_token}}
 
 {
   "name": "Qarzdorlik eslatmasi - May 2026 (Updated)",
-  "dialWindowStart": "09:30:00",
-  "dialWindowEnd": "18:30:00",
-  "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"],
-  "maxAttempts": 4,
-  "retryIntervalMinutes": 45,
-  "maxConcurrentCalls": 15,
-  "dailyCallCap": 600,
-  "aiAgentId": 1
+  "aiAgentId": 1,
+  "schedule": {
+    "dialWindowStart": "09:30:00",
+    "dialWindowEnd": "18:30:00",
+    "dialDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"]
+  },
+  "retry": { "maxAttempts": 4, "intervalMinutes": 45 },
+  "limits": { "maxConcurrentCalls": 15, "dailyCallCap": 600 }
 }
 
 ### Clone Campaign

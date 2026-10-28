@@ -97,6 +97,114 @@ AddTargetsResponse:
   - added
   - skippedDuplicates
   - skippedDoNotCall
+CampaignDialingDto:
+  type: object
+  description: '`CampaignDialing` as the campaign endpoints read and write it.'
+  properties:
+    mode:
+      type: string
+      enum: [AI, PREVIEW, PROGRESSIVE, PREDICTIVE]
+      description: who talks to the clients; AI by default. Fixed once the campaign exists — PUT ignores it
+    callQueueId:
+      type: integer
+      format: int64
+      description: the operator queue whose members take the calls — required for every mode but AI
+    maxAiOverflowPercent:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 100
+      description: 'PREDICTIVE: share of answered calls the AI agent may take; default 20'
+    targetOrdering:
+      type: string
+      enum: [FIFO, SCORE]
+CampaignLimitsDto:
+  type: object
+  description: '`CampaignLimits` as the campaign endpoints read and write it.'
+  properties:
+    maxConcurrentCalls:
+      type: integer
+      format: int32
+    dailyCallCap:
+      type: integer
+      format: int32
+      description: most calls a day; 0 for unlimited
+    budgetUzs:
+      type: integer
+      format: int64
+      minimum: 1
+    dailyBudgetUzs:
+      type: integer
+      format: int64
+      minimum: 1
+CampaignRecurrenceDto:
+  type: object
+  description: '`CampaignRecurrence` as the campaign endpoints read and write it.'
+  properties:
+    type:
+      $ref: '#/RecurrenceType'
+    dayOfMonth:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 31
+    cronExpression:
+      type: string
+    autoResetTargets:
+      type: boolean
+CampaignRetryDto:
+  type: object
+  description: '`CampaignRetry` as the campaign endpoints read and write it.'
+  properties:
+    maxAttempts:
+      type: integer
+      format: int32
+    intervalMinutes:
+      type: integer
+      format: int32
+      description: minutes before the next try; 0 leaves it to the per-disposition defaults
+    policy:
+      type: object
+      description: per-disposition retry rules, keyed by disposition
+      additionalProperties:
+        $ref: '#/RetryRule'
+CampaignScheduleDto:
+  type: object
+  description: '`CampaignSchedule` as the campaign endpoints read and write it.'
+  properties:
+    startAt:
+      type: string
+      format: date-time
+    endAt:
+      type: string
+      format: date-time
+    dialWindowStart:
+      type: string
+      example: 09:00:00
+    dialWindowEnd:
+      type: string
+      example: 18:00:00
+    dialDays:
+      type: array
+      items:
+        type: string
+        enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
+      uniqueItems: true
+CampaignTargetStats:
+  type: object
+  properties:
+    totalTargets:
+      type: integer
+      format: int64
+    calledTargets:
+      type: integer
+      format: int64
+    pendingTargets:
+      type: integer
+      format: int64
+    completedTargets:
+      type: integer
+      format: int64
 CampaignFilter:
   type: object
   properties:
@@ -150,7 +258,7 @@ CampaignFilter:
       format: date-time
 CampaignRow:
   type: object
-  description: '`Campaign` enriched for the API response with names resolved from the ids it carries (backend-uchun-talablar.md §16/§18) — a projection over `campaign`, `ai_agent` and `app_user`, so it takes the `<Noun>Row` suffix rather than bare `Campaign`.'
+  description: '`Campaign` enriched for the API response with names resolved from the ids it carries (backend-uchun-talablar.md §16/§18). The groups are the ones `UpdateCampaignRequest` takes.'
   properties:
     id:
       type: integer
@@ -161,39 +269,6 @@ CampaignRow:
       $ref: '#/CampaignType'
     status:
       $ref: '#/CampaignStatus'
-    dialWindowStart:
-      type: string
-      example: 09:00:00
-      description: 'Format: `HH:mm` Format: `HH:mm`'
-    dialWindowEnd:
-      type: string
-      example: 09:00:00
-      description: 'Format: `HH:mm` Format: `HH:mm`'
-    dialDays:
-      type: array
-      items:
-        type: string
-        enum:
-        - MONDAY
-        - TUESDAY
-        - WEDNESDAY
-        - THURSDAY
-        - FRIDAY
-        - SATURDAY
-        - SUNDAY
-      uniqueItems: true
-    maxAttempts:
-      type: integer
-      format: int32
-    retryIntervalMinutes:
-      type: integer
-      format: int32
-    maxConcurrentCalls:
-      type: integer
-      format: int32
-    dailyCallCap:
-      type: integer
-      format: int32
     aiAgentId:
       type: integer
       format: int64
@@ -207,94 +282,37 @@ CampaignRow:
       format: int64
     createdByName:
       type: string
-    recurrenceType:
-      $ref: '#/RecurrenceType'
-    recurringDayOfMonth:
-      type: integer
-      format: int32
-    cronExpression:
-      type: string
-    autoResetTargets:
-      type: boolean
-    lastRunAt:
-      type: string
-      format: date-time
     priority:
       type: integer
       format: int32
-    retryPolicy:
-      type: object
-      properties:
-        PROMISE_TO_PAY:
-          $ref: '#/RetryRule'
-        REFUSED:
-          $ref: '#/RetryRule'
-        NO_ANSWER:
-          $ref: '#/RetryRule'
-        CARRIER_REJECTED:
-          $ref: '#/RetryRule'
-        WRONG_NUMBER:
-          $ref: '#/RetryRule'
-        DO_NOT_CALL:
-          $ref: '#/RetryRule'
-        HUNG_UP:
-          $ref: '#/RetryRule'
-        TRANSFERRED:
-          $ref: '#/RetryRule'
-        VOICEMAIL:
-          $ref: '#/RetryRule'
-        CALLBACK_REQUESTED:
-          $ref: '#/RetryRule'
-        FAILED:
-          $ref: '#/RetryRule'
-        COMPLETED:
-          $ref: '#/RetryRule'
-        GOAL_REACHED:
-          $ref: '#/RetryRule'
-        GOAL_NOT_REACHED:
-          $ref: '#/RetryRule'
-      additionalProperties: false
-    startAt:
+    schedule:
+      $ref: '#/CampaignScheduleDto'
+    retry:
+      $ref: '#/CampaignRetryDto'
+    limits:
+      $ref: '#/CampaignLimitsDto'
+    recurrence:
+      $ref: '#/CampaignRecurrenceDto'
+    dialing:
+      $ref: '#/CampaignDialingDto'
+    stats:
+      $ref: '#/CampaignTargetStats'
+    lastRunAt:
       type: string
       format: date-time
-    endAt:
-      type: string
-      format: date-time
-    budgetUzs:
-      type: integer
-      format: int64
-    dailyBudgetUzs:
-      type: integer
-      format: int64
-    totalTargets:
-      type: integer
-      format: int64
-    calledTargets:
-      type: integer
-      format: int64
-    pendingTargets:
-      type: integer
-      format: int64
-    completedTargets:
-      type: integer
-      format: int64
     version:
       type: integer
       format: int64
   required:
   - id
-  - maxAttempts
-  - retryIntervalMinutes
-  - maxConcurrentCalls
-  - dailyCallCap
-  - aiAgentId
   - companyId
-  - autoResetTargets
   - priority
-  - totalTargets
-  - calledTargets
-  - pendingTargets
-  - completedTargets
+  - schedule
+  - retry
+  - limits
+  - recurrence
+  - dialing
+  - stats
   - version
 CampaignRowPage:
   type: object
@@ -549,133 +567,34 @@ CampaignVariantUpdateRequest:
   - active
 CreateCampaignRequest:
   type: object
-  description: |-
-    A new calling job (`POST /api/campaigns`).
-
-    Only who is called and when. The voice, the persona, the scenario, the model and the trunks come from the `aiAgentId` — see `POST /api/ai-agents`.
+  description: A new calling job (`POST /api/campaigns`). Only who is called and when — the voice, scenario and model come from `aiAgentId`. Each group may be left out as a whole.
   properties:
     name:
       type: string
       minLength: 1
     type:
-      allOf:
-      - $ref: '#/CampaignType'
-      description: required (backend-uchun-talablar.md §9a) — previously an omitted/blank value silently fell back to `DEBT_COLLECTION`, which surprised callers that meant to leave it unset; a missing value is now a 400
+      $ref: '#/CampaignType'
     aiAgentId:
       type: integer
       format: int64
-      description: 'required: the agent from `GET /api/ai-agents` whose voice and scenario this campaign''s calls run under. Changeable later — an agent is a way of speaking, not the campaign''s identity'
-    dialWindowStart:
-      type: string
-      example: 09:00:00
-      description: 'Format: `HH:mm` Format: `HH:mm`'
-    dialWindowEnd:
-      type: string
-      example: 09:00:00
-      description: 'Format: `HH:mm` Format: `HH:mm`'
-    dialDays:
-      type: array
-      items:
-        type: string
-        enum:
-        - MONDAY
-        - TUESDAY
-        - WEDNESDAY
-        - THURSDAY
-        - FRIDAY
-        - SATURDAY
-        - SUNDAY
-      uniqueItems: true
-      description: days this campaign may dial on (`["MONDAY", ...]`); omit or leave empty for every day of the week (§11.2)
-    maxAttempts:
-      type: integer
-      format: int32
-    retryIntervalMinutes:
-      type: integer
-      format: int32
-      description: minutes before a client who did not answer (or whose call failed) is dialled again; 0 leaves it to the per-disposition defaults, which wait longer after a voicemail than after a busy line. A retry lands inside the dial window either way
-    maxConcurrentCalls:
-      type: integer
-      format: int32
-    dailyCallCap:
-      type: integer
-      format: int32
-      description: most calls this campaign may place in one day; 0 or omitted for unlimited. A spend ceiling — every call costs STT, LLM, TTS and trunk minutes, and a campaign with 50 000 targets will spend them all
-    recurrenceType:
-      allOf:
-      - $ref: '#/RecurrenceType'
-      description: 'repetition schedule: ONCE (default), DAILY, WEEKLY, MONTHLY, CRON. Anything but ONCE re-runs the campaign on its own; pair it with a target source (`PUT /api/campaigns/{id`/target-source}) to have each run dial a freshly fetched list instead of the same one'
-    recurringDayOfMonth:
-      type: integer
-      format: int32
-      description: specific day of the month for MONTHLY recurrence (1-31)
-      minimum: 1
-      maximum: 31
-    cronExpression:
-      type: string
-      description: custom cron expression for CRON recurrence
-    autoResetTargets:
-      type: boolean
-      description: whether targets are automatically reset to PENDING when recurrence triggers
     priority:
       type: integer
       format: int32
       minimum: 1
       maximum: 5
-    retryPolicy:
-      type: object
-      properties:
-        PROMISE_TO_PAY:
-          $ref: '#/RetryRule'
-        REFUSED:
-          $ref: '#/RetryRule'
-        NO_ANSWER:
-          $ref: '#/RetryRule'
-        CARRIER_REJECTED:
-          $ref: '#/RetryRule'
-        WRONG_NUMBER:
-          $ref: '#/RetryRule'
-        DO_NOT_CALL:
-          $ref: '#/RetryRule'
-        HUNG_UP:
-          $ref: '#/RetryRule'
-        TRANSFERRED:
-          $ref: '#/RetryRule'
-        VOICEMAIL:
-          $ref: '#/RetryRule'
-        CALLBACK_REQUESTED:
-          $ref: '#/RetryRule'
-        FAILED:
-          $ref: '#/RetryRule'
-        COMPLETED:
-          $ref: '#/RetryRule'
-        GOAL_REACHED:
-          $ref: '#/RetryRule'
-        GOAL_NOT_REACHED:
-          $ref: '#/RetryRule'
-      additionalProperties: false
-    startAt:
-      type: string
-      format: date-time
-    endAt:
-      type: string
-      format: date-time
-    budgetUzs:
-      type: integer
-      format: int64
-      minimum: 1
-    dailyBudgetUzs:
-      type: integer
-      format: int64
-      minimum: 1
+    schedule:
+      $ref: '#/CampaignScheduleDto'
+    retry:
+      $ref: '#/CampaignRetryDto'
+    limits:
+      $ref: '#/CampaignLimitsDto'
+    recurrence:
+      $ref: '#/CampaignRecurrenceDto'
+    dialing:
+      $ref: '#/CampaignDialingDto'
   required:
   - name
   - type
-  - aiAgentId
-  - maxAttempts
-  - retryIntervalMinutes
-  - maxConcurrentCalls
-  - dailyCallCap
 CreateCampaignResponse:
   type: object
   properties:
@@ -1055,10 +974,7 @@ TargetSyncResult:
   - skippedDoNotCall
 UpdateCampaignRequest:
   type: object
-  description: |-
-    Full edit of a campaign (`PUT /api/campaigns/{id`}) — the same shape as `CreateCampaignRequest`, minus `type`, which is fixed at creation.
-
-    `version` is the one `CampaignRow` carried when the form was opened; a campaign saved by someone else since is answered 409 instead of being overwritten. Optional, so an older client that does not send it keeps working.
+  description: Full edit of a campaign (`PUT /api/campaigns/{id}`) — the same groups as `CreateCampaignRequest`, minus `type`; `dialing.mode` is ignored. `version` is the one `CampaignRow` carried when the form was opened; a campaign saved by someone else since is answered 409.
   properties:
     name:
       type: string
@@ -1066,111 +982,26 @@ UpdateCampaignRequest:
     aiAgentId:
       type: integer
       format: int64
-    dialWindowStart:
-      type: string
-      example: 09:00:00
-      description: 'Format: `HH:mm` Format: `HH:mm`'
-    dialWindowEnd:
-      type: string
-      example: 09:00:00
-      description: 'Format: `HH:mm` Format: `HH:mm`'
-    dialDays:
-      type: array
-      items:
-        type: string
-        enum:
-        - MONDAY
-        - TUESDAY
-        - WEDNESDAY
-        - THURSDAY
-        - FRIDAY
-        - SATURDAY
-        - SUNDAY
-      uniqueItems: true
-    maxAttempts:
-      type: integer
-      format: int32
-    retryIntervalMinutes:
-      type: integer
-      format: int32
-    maxConcurrentCalls:
-      type: integer
-      format: int32
-    dailyCallCap:
-      type: integer
-      format: int32
-    recurrenceType:
-      $ref: '#/RecurrenceType'
-    recurringDayOfMonth:
-      type: integer
-      format: int32
-      minimum: 1
-      maximum: 31
-    cronExpression:
-      type: string
-    autoResetTargets:
-      type: boolean
     priority:
       type: integer
       format: int32
       minimum: 1
       maximum: 5
-    retryPolicy:
-      type: object
-      properties:
-        PROMISE_TO_PAY:
-          $ref: '#/RetryRule'
-        REFUSED:
-          $ref: '#/RetryRule'
-        NO_ANSWER:
-          $ref: '#/RetryRule'
-        CARRIER_REJECTED:
-          $ref: '#/RetryRule'
-        WRONG_NUMBER:
-          $ref: '#/RetryRule'
-        DO_NOT_CALL:
-          $ref: '#/RetryRule'
-        HUNG_UP:
-          $ref: '#/RetryRule'
-        TRANSFERRED:
-          $ref: '#/RetryRule'
-        VOICEMAIL:
-          $ref: '#/RetryRule'
-        CALLBACK_REQUESTED:
-          $ref: '#/RetryRule'
-        FAILED:
-          $ref: '#/RetryRule'
-        COMPLETED:
-          $ref: '#/RetryRule'
-        GOAL_REACHED:
-          $ref: '#/RetryRule'
-        GOAL_NOT_REACHED:
-          $ref: '#/RetryRule'
-      additionalProperties: false
-    startAt:
-      type: string
-      format: date-time
-    endAt:
-      type: string
-      format: date-time
-    budgetUzs:
-      type: integer
-      format: int64
-      minimum: 1
-    dailyBudgetUzs:
-      type: integer
-      format: int64
-      minimum: 1
+    schedule:
+      $ref: '#/CampaignScheduleDto'
+    retry:
+      $ref: '#/CampaignRetryDto'
+    limits:
+      $ref: '#/CampaignLimitsDto'
+    recurrence:
+      $ref: '#/CampaignRecurrenceDto'
+    dialing:
+      $ref: '#/CampaignDialingDto'
     version:
       type: integer
       format: int64
   required:
   - name
-  - aiAgentId
-  - maxAttempts
-  - retryIntervalMinutes
-  - maxConcurrentCalls
-  - dailyCallCap
 UpdateTargetSourceRequest:
   type: object
   description: |-

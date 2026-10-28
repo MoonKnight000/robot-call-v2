@@ -8,8 +8,10 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolSpeech;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.entity.ToolEntity;
 
 import java.time.Instant;
@@ -42,27 +44,27 @@ public class ToolEntityMapper {
                 entity.getCompanyId(),
                 entity.getName(),
                 entity.getDescription(),
-                entity.getApiUrl(),
-                entity.getApiMethod(),
-                read(entity.getApiHeaders(), KV_LIST_TYPE, List.of()),
-                read(entity.getApiBody(), PARAM_LIST_TYPE, List.of()),
-                read(entity.getApiQueryParams(), PARAM_LIST_TYPE, List.of()),
-                read(entity.getApiPathParams(), PARAM_LIST_TYPE, List.of()),
-                entity.getResponseTimeoutSecs(),
+                new ToolHttpConfig(
+                        entity.getApiUrl(),
+                        entity.getApiMethod(),
+                        read(entity.getApiHeaders(), KV_LIST_TYPE, List.of()),
+                        read(entity.getApiBody(), PARAM_LIST_TYPE, List.of()),
+                        read(entity.getApiQueryParams(), PARAM_LIST_TYPE, List.of()),
+                        read(entity.getApiPathParams(), PARAM_LIST_TYPE, List.of()),
+                        read(entity.getBodySchema(), SCHEMA_TYPE, Map.of()),
+                        entity.getResponseTimeoutSecs(),
+                        entity.getRetryAttempts(),
+                        read(entity.getAuth(), AUTH_TYPE, null)),
                 read(entity.getDynamicVariables(), KV_LIST_TYPE, List.of()),
-                entity.isDisableInterruptions(),
-                entity.isForcePreToolSpeech(),
-                entity.getPreToolSpeech(),
-                entity.getCreatedAt(),
-                entity.getUpdatedAt(),
+                new ToolSpeech(entity.isDisableInterruptions(), entity.isForcePreToolSpeech(),
+                        entity.getPreToolSpeech()),
                 read(entity.getResponseMapping(), MAPPING_TYPE, Map.of()),
-                entity.getRetryAttempts(),
                 entity.getMaxCallsPerCall(),
-                read(entity.getBodySchema(), SCHEMA_TYPE, Map.of()),
                 entity.getEffect(),
                 entity.isRequiresConfirmation(),
                 entity.getReadbackTemplate(),
-                read(entity.getAuth(), AUTH_TYPE, null)
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
         );
     }
 
@@ -75,25 +77,26 @@ public class ToolEntityMapper {
         entity.setCompany(company);
         entity.setName(domain.name());
         entity.setDescription(domain.description());
-        entity.setApiUrl(domain.apiUrl());
-        entity.setApiMethod(domain.apiMethod());
-        entity.setApiHeaders(write(domain.apiHeaders()));
-        entity.setApiBody(write(domain.apiBody()));
-        entity.setApiQueryParams(write(domain.apiQueryParams()));
-        entity.setApiPathParams(write(domain.apiPathParams()));
-        entity.setResponseTimeoutSecs(domain.responseTimeoutSecs());
+        ToolHttpConfig http = domain.http();
+        entity.setApiUrl(http.url());
+        entity.setApiMethod(http.method());
+        entity.setApiHeaders(write(http.headers()));
+        entity.setApiBody(write(http.body()));
+        entity.setApiQueryParams(write(http.queryParams()));
+        entity.setApiPathParams(write(http.pathParams()));
+        entity.setResponseTimeoutSecs(http.responseTimeoutSecs());
         entity.setDynamicVariables(write(domain.dynamicVariables()));
-        entity.setDisableInterruptions(domain.disableInterruptions());
-        entity.setForcePreToolSpeech(domain.forcePreToolSpeech());
-        entity.setPreToolSpeech(domain.preToolSpeech());
+        entity.setDisableInterruptions(domain.speech().disableInterruptions());
+        entity.setForcePreToolSpeech(domain.speech().forcePreToolSpeech());
+        entity.setPreToolSpeech(domain.speech().preToolSpeech());
         entity.setResponseMapping(domain.responseMapping().isEmpty() ? null : write(domain.responseMapping()));
-        entity.setRetryAttempts(domain.retryAttempts());
+        entity.setRetryAttempts(http.retryAttempts());
         entity.setMaxCallsPerCall(domain.maxCallsPerCall());
-        entity.setBodySchema(domain.bodySchema().isEmpty() ? null : write(domain.bodySchema()));
+        entity.setBodySchema(http.bodySchema().isEmpty() ? null : write(http.bodySchema()));
         entity.setEffect(domain.effect());
         entity.setRequiresConfirmation(domain.requiresConfirmation());
         entity.setReadbackTemplate(domain.readbackTemplate());
-        entity.setAuth(domain.auth() == null ? null : write(domain.auth()));
+        entity.setAuth(http.auth() == null ? null : write(http.auth()));
         entity.setCreatedAt(domain.createdAt() != null ? domain.createdAt() : Instant.now());
         entity.setUpdatedAt(domain.updatedAt() != null ? domain.updatedAt() : Instant.now());
         return entity;

@@ -11,6 +11,11 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseC
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialing;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
@@ -156,16 +161,12 @@ class PreviewDialServiceTest {
                 .name("Preview")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(status)
-                .dialWindowStart(LocalTime.of(9, 0))
-                .dialWindowEnd(LocalTime.of(20, 0))
-                .dialDays(Set.of())
-                .maxAttempts(3)
-                .retryIntervalMinutes(24)
-                .maxConcurrentCalls(5)
+                .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
+                .retry(new CampaignRetry(3, 24, null))
+                .limits(new CampaignLimits(5, 0, null, null))
                 .companyId(COMPANY_ID)
-                .recurrenceType(RecurrenceType.ONCE)
-                .dialMode(DialMode.PREVIEW)
-                .callQueueId(QUEUE_ID)
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
+                .dialing(new CampaignDialing(DialMode.PREVIEW, QUEUE_ID, Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT, null))
                 .build();
     }
 

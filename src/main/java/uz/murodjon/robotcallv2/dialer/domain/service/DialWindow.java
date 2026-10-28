@@ -27,12 +27,12 @@ public final class DialWindow {
         if (config != null && config.isHoliday(LocalDate.now(local))) {
             return false; // a company holiday (NEXT-PLAN C.4)
         }
-        Set<DayOfWeek> days = campaign.allowedDays();
+        Set<DayOfWeek> days = campaign.schedule().allowedDays();
         if (days != null && !days.isEmpty() && !days.contains(LocalDate.now(local).getDayOfWeek())) {
             return false;
         }
         LocalTime now = LocalTime.now(local);
-        if (!withinRange(now, campaign.dialWindowStart(), campaign.dialWindowEnd())) {
+        if (!withinRange(now, campaign.schedule().dialWindowStart(), campaign.schedule().dialWindowEnd())) {
             return false;
         }
         return config == null || withinRange(now, config.dialWindowStart(), config.dialWindowEnd());
@@ -53,8 +53,8 @@ public final class DialWindow {
             return true;
         }
         LocalTime recipientLocalTime = LocalTime.now(clock.withZone(recipientZone));
-        LocalTime start = campaign.dialWindowStart() != null ? campaign.dialWindowStart() : LocalTime.of(8, 0);
-        LocalTime end = campaign.dialWindowEnd() != null ? campaign.dialWindowEnd() : LocalTime.of(20, 0);
+        LocalTime start = campaign.schedule().dialWindowStart() != null ? campaign.schedule().dialWindowStart() : LocalTime.of(8, 0);
+        LocalTime end = campaign.schedule().dialWindowEnd() != null ? campaign.schedule().dialWindowEnd() : LocalTime.of(20, 0);
         return withinRange(recipientLocalTime, start, end);
     }
 

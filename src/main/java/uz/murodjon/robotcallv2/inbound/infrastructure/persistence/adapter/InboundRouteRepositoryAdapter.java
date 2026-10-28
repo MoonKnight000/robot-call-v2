@@ -8,9 +8,6 @@ import uz.murodjon.robotcallv2.inbound.application.port.output.InboundRouteRepos
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRouteFilter;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
-import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundRouteEntity;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.mapper.InboundRouteEntityMapper;
 import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.repository.InboundRouteJpaRepository;
@@ -44,15 +41,8 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
         entity.setCompany(companyJpaRepository.getReferenceById(companyId));
         entity.setDidNumber(route.didNumber());
         entity.setAiAgent(aiAgentReference(route.aiAgentId()));
-        entity.setRouteType(route.routeType() != null ? route.routeType() : InboundRouteType.SCENARIO);
-        entity.setTargetDestination(route.targetDestination());
-        entity.setQueueStrategy(route.queueStrategy() != null ? route.queueStrategy() : QueueStrategy.RING_ALL);
-        entity.setRingTimeoutSec(route.ringTimeoutSec() > 0 ? route.ringTimeoutSec() : 20);
-        entity.setFailoverAction(route.failoverAction() != null ? route.failoverAction() : InboundFailoverAction.SCENARIO);
-        entity.setFailoverDestination(route.failoverDestination());
         entity.setAfterHoursAction(route.afterHoursAction() != null ? route.afterHoursAction() : InboundAfterHoursAction.PLAY_MESSAGE_AND_HANGUP);
         entity.setAfterHoursDestination(route.afterHoursDestination());
-        entity.setIvrMenuConfig(route.ivrMenuConfig());
         entity.setBusinessHoursStart(route.businessHoursStart());
         entity.setBusinessHoursEnd(route.businessHoursEnd());
         entity.setFallbackMessage(route.fallbackMessage());
@@ -70,15 +60,8 @@ public class InboundRouteRepositoryAdapter implements InboundRouteRepository {
         jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             entity.setDidNumber(route.didNumber());
             entity.setAiAgent(aiAgentReference(route.aiAgentId()));
-            if (route.routeType() != null) entity.setRouteType(route.routeType());
-            entity.setTargetDestination(route.targetDestination());
-            if (route.queueStrategy() != null) entity.setQueueStrategy(route.queueStrategy());
-            if (route.ringTimeoutSec() > 0) entity.setRingTimeoutSec(route.ringTimeoutSec());
-            if (route.failoverAction() != null) entity.setFailoverAction(route.failoverAction());
-            entity.setFailoverDestination(route.failoverDestination());
             if (route.afterHoursAction() != null) entity.setAfterHoursAction(route.afterHoursAction());
             entity.setAfterHoursDestination(route.afterHoursDestination());
-            entity.setIvrMenuConfig(route.ivrMenuConfig());
             entity.setBusinessHoursStart(route.businessHoursStart());
             entity.setBusinessHoursEnd(route.businessHoursEnd());
             entity.setFallbackMessage(route.fallbackMessage());

@@ -17,6 +17,7 @@ import uz.murodjon.robotcallv2.pack.application.port.output.PackCatalogPort;
 import uz.murodjon.robotcallv2.pack.application.port.output.PackGeneratorPort;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackCatalogFeed;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
+import uz.murodjon.robotcallv2.pack.domain.entity.PackTool;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 import uz.murodjon.robotcallv2.pack.domain.service.PackSecrets;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -29,7 +30,6 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.tool.application.dto.ImportToolsRequest;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolImportUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -113,9 +113,9 @@ public class PackService implements PackUseCase {
      */
     @Override
     public VerticalPack generatePack(long companyId, GeneratePackRequest request) {
-        List<Tool> tools = request.hasApi()
+        List<PackTool> tools = request.hasApi()
                 ? toolImportUseCase.findTools(new ImportToolsRequest(request.openApiUrl(), request.openApiSpec(),
-                        null, request.baseUrl(), request.secretPrefix()))
+                        null, request.baseUrl(), request.secretPrefix())).stream().map(PackMapper::toPackTool).toList()
                 : List.of();
         String language = companyConfigUseCase.resolveLanguage(companyId, request.language());
         VerticalPack draft = packGenerator.generate(request.business(), language, tools);
@@ -140,7 +140,8 @@ public class PackService implements PackUseCase {
     public VerticalPack exportAgent(long companyId, long agentId, Integer version) {
         AiAgent agent = aiAgentUseCase.requireAgentVersion(companyId, agentId, version);
         ScenarioDefinition scenario = aiAgentUseCase.resolveScenario(companyId, agent).definition();
-        List<Tool> tools = toolUseCase.findAgentToolDefinitions(companyId, agentId);
+        List<PackTool> tools = toolUseCase.findAgentToolDefinitions(companyId, agentId).stream()
+                .map(PackMapper::toPackTool).toList();
         auditUseCase.record(companyId, "PACK_EXPORT", "ai_agent", String.valueOf(agentId),
                 "version " + (version != null ? version : "draft"));
         // A catalog feed's address and a conversion goal belong to the company, not to the agent.
@@ -169,7 +170,7 @@ public class PackService implements PackUseCase {
     private PackInstallResponse install(long companyId, VerticalPack pack, InstallPackRequest request) {
         long agentId = aiAgentUseCase.createAgent(companyId, mapper.toCreateAiAgentRequest(pack.agent())).id();
         List<Long> toolIds = new ArrayList<>();
-        for (Tool tool : pack.tools()) {
+        for (PackTool tool : pack.tools()) {
             Long toolId = toolUseCase.createTool(companyId, mapper.toCreateToolRequest(tool)).id();
             toolUseCase.attachTool(companyId, agentId, toolId);
             toolIds.add(toolId);

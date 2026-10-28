@@ -141,13 +141,13 @@ public class PreviewDialService implements PreviewDialUseCase {
     /** The company's PREVIEW campaign, which the current user dials as a member of its queue. */
     private Campaign requirePreviewCampaign(long companyId, long campaignId, long userId) {
         Campaign campaign = campaignUseCase.requireCampaign(companyId, campaignId);
-        if (campaign.dialMode() != DialMode.PREVIEW) {
-            throw new ConflictException(ErrorCode.CAMPAIGN_NOT_PREVIEW, campaignId, campaign.dialMode());
+        if (campaign.dialing().mode() != DialMode.PREVIEW) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_NOT_PREVIEW, campaignId, campaign.dialing().mode());
         }
-        if (campaign.callQueueId() == null) {
+        if (campaign.dialing().callQueueId() == null) {
             throw new ConflictException(ErrorCode.CAMPAIGN_HAS_NO_QUEUE, campaignId);
         }
-        CallQueue queue = callQueueUseCase.findQueue(companyId, campaign.callQueueId());
+        CallQueue queue = callQueueUseCase.findQueue(companyId, campaign.dialing().callQueueId());
         if (queue == null) {
             throw new ConflictException(ErrorCode.CAMPAIGN_HAS_NO_QUEUE, campaignId);
         }

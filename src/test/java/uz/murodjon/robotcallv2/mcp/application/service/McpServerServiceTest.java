@@ -87,7 +87,7 @@ class McpServerServiceTest {
         holding(Permission.AGENT_DRAFT_EDIT);
 
         callTool("create_agent", """
-                {"name":"Sotuv","systemPrompt":"Siz sotuv operatorisiz","enabled":true}""");
+                {"name":"Sotuv","script":{"systemPrompt":"Siz sotuv operatorisiz"},"enabled":true}""");
 
         ArgumentCaptor<CreateAiAgentRequest> request = ArgumentCaptor.forClass(CreateAiAgentRequest.class);
         verify(aiAgentUseCase).createAgent(eq(COMPANY_ID), request.capture());
@@ -103,7 +103,7 @@ class McpServerServiceTest {
         when(aiAgentUseCase.findAgentRow(COMPANY_ID, 7L)).thenReturn(liveOnDraft);
 
         JsonNode answer = callTool("update_agent_draft", """
-                {"agentId":7,"systemPrompt":"yangi"}""");
+                {"agentId":7,"script":{"systemPrompt":"yangi"}}""");
 
         assertThat(answer.at("/result/content/0/text").asText()).startsWith("MCP_AGENT_LIVE_ON_DRAFT");
         verify(aiAgentUseCase, never()).updateAgent(anyLong(), anyLong(), any());

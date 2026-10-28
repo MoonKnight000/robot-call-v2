@@ -4,9 +4,6 @@ import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
-import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -38,36 +35,11 @@ public class InboundRouteEntity {
     private AiAgentEntity aiAgent;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "route_type", nullable = false)
-    private InboundRouteType routeType = InboundRouteType.SCENARIO;
-
-    @Column(name = "target_destination")
-    private String targetDestination;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "queue_strategy", nullable = false)
-    private QueueStrategy queueStrategy = QueueStrategy.RING_ALL;
-
-    @Column(name = "ring_timeout_sec", nullable = false)
-    private int ringTimeoutSec = 20;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "failover_action", nullable = false)
-    private InboundFailoverAction failoverAction = InboundFailoverAction.SCENARIO;
-
-    @Column(name = "failover_destination")
-    private String failoverDestination;
-
-    @Enumerated(EnumType.STRING)
     @Column(name = "after_hours_action", nullable = false)
     private InboundAfterHoursAction afterHoursAction = InboundAfterHoursAction.PLAY_MESSAGE_AND_HANGUP;
 
     @Column(name = "after_hours_destination")
     private String afterHoursDestination;
-
-    @Column(name = "ivr_menu_config", columnDefinition = "TEXT")
-    private String ivrMenuConfig;
-
 
     @Column(name = "business_hours_start")
     private LocalTime businessHoursStart;
@@ -133,54 +105,6 @@ public class InboundRouteEntity {
         return aiAgent != null ? aiAgent.getId() : null;
     }
 
-    public InboundRouteType getRouteType() {
-        return routeType;
-    }
-
-    public void setRouteType(InboundRouteType routeType) {
-        this.routeType = routeType != null ? routeType : InboundRouteType.SCENARIO;
-    }
-
-    public String getTargetDestination() {
-        return targetDestination;
-    }
-
-    public void setTargetDestination(String targetDestination) {
-        this.targetDestination = targetDestination;
-    }
-
-    public QueueStrategy getQueueStrategy() {
-        return queueStrategy;
-    }
-
-    public void setQueueStrategy(QueueStrategy queueStrategy) {
-        this.queueStrategy = queueStrategy != null ? queueStrategy : QueueStrategy.RING_ALL;
-    }
-
-    public int getRingTimeoutSec() {
-        return ringTimeoutSec;
-    }
-
-    public void setRingTimeoutSec(int ringTimeoutSec) {
-        this.ringTimeoutSec = ringTimeoutSec;
-    }
-
-    public InboundFailoverAction getFailoverAction() {
-        return failoverAction;
-    }
-
-    public void setFailoverAction(InboundFailoverAction failoverAction) {
-        this.failoverAction = failoverAction != null ? failoverAction : InboundFailoverAction.SCENARIO;
-    }
-
-    public String getFailoverDestination() {
-        return failoverDestination;
-    }
-
-    public void setFailoverDestination(String failoverDestination) {
-        this.failoverDestination = failoverDestination;
-    }
-
     public InboundAfterHoursAction getAfterHoursAction() {
         return afterHoursAction;
     }
@@ -195,14 +119,6 @@ public class InboundRouteEntity {
 
     public void setAfterHoursDestination(String afterHoursDestination) {
         this.afterHoursDestination = afterHoursDestination;
-    }
-
-    public String getIvrMenuConfig() {
-        return ivrMenuConfig;
-    }
-
-    public void setIvrMenuConfig(String ivrMenuConfig) {
-        this.ivrMenuConfig = ivrMenuConfig;
     }
 
 

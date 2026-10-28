@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.pack.domain.service;
 
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.pack.domain.entity.PackTool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 
 import java.util.List;
@@ -30,9 +30,9 @@ public final class PackSecrets {
     private PackSecrets() {
     }
 
-    public static List<PackSecret> of(List<Tool> tools) {
+    public static List<PackSecret> of(List<PackTool> tools) {
         Map<String, String> byKey = new TreeMap<>();
-        for (Tool tool : tools) {
+        for (PackTool tool : tools) {
             addPlaceholders(byKey, tool.apiUrl());
             for (ToolKeyValuePair header : tool.apiHeaders()) {
                 addPlaceholders(byKey, header.value());

@@ -157,7 +157,7 @@ public class DialerService {
         // Operator campaigns are dialled for their queue's operators, not by this loop — and
         // left out before the priority split, so they take no share of the AI batch.
         List<Campaign> active = campaignUseCase.findActiveCampaigns().stream()
-                .filter(campaign -> campaign.dialMode().placesAiCalls())
+                .filter(campaign -> campaign.dialing().mode().placesAiCalls())
                 .toList();
         if (active.isEmpty()) {
             return;
@@ -230,12 +230,12 @@ public class DialerService {
             }
             // The campaign's own ceiling (campaign.maxConcurrentCalls) — 0 means no ceiling
             // of its own, only the company's and the platform's.
-            int freeCampaign = campaign.maxConcurrentCalls() > 0
-                    ? campaign.maxConcurrentCalls() - state.countActiveForCampaign(campaign.id())
+            int freeCampaign = campaign.limits().maxConcurrentCalls() > 0
+                    ? campaign.limits().maxConcurrentCalls() - state.countActiveForCampaign(campaign.id())
                     : Integer.MAX_VALUE;
             if (freeCampaign <= 0) {
                 log.debug("Campaign {} concurrency saturated (active={}/max={})", campaign.id(),
-                        state.countActiveForCampaign(campaign.id()), campaign.maxConcurrentCalls());
+                        state.countActiveForCampaign(campaign.id()), campaign.limits().maxConcurrentCalls());
                 continue;
             }
             int free = Math.min(Math.min(freePlatform, freeCompany), freeCampaign);
@@ -294,7 +294,7 @@ public class DialerService {
                 batch = (int) Math.min(batch, freeOnTrunks);
             }
 
-            List<CampaignTarget> due = campaign.targetOrdering() == TargetOrdering.SCORE
+            List<CampaignTarget> due = campaign.dialing().targetOrdering() == TargetOrdering.SCORE
                     ? campaignTargetUseCase.claimDueTargetsByScore(campaign.id(), batch, companyHour(campaign.companyId()))
                     : campaignTargetUseCase.claimDueTargets(campaign.id(), batch);
             if (due.isEmpty()) {
@@ -443,7 +443,7 @@ public class DialerService {
     }
 
     private int remainingToday(Campaign campaign, LocalDate today) {
-        int cap = campaign.dailyCallCap();
+        int cap = campaign.limits().dailyCallCap();
         if (cap <= 0) {
             return Integer.MAX_VALUE;
         }
@@ -526,7 +526,7 @@ public class DialerService {
      * the line is crossed still settles, so the overshoot is at most one tick's batch.
      */
     private boolean overBudget(Campaign campaign) {
-        if (campaign.budgetUzs() == null && campaign.dailyBudgetUzs() == null) {
+        if (campaign.limits().budgetUzs() == null && campaign.limits().dailyBudgetUzs() == null) {
             return false;
         }
         Instant now = Instant.now(clock);
@@ -535,16 +535,16 @@ public class DialerService {
             return false;
         }
         budgetCheckedAt.put(campaign.id(), now);
-        if (campaign.budgetUzs() != null
-                && callBilling.sumSpentUzsByCampaign(campaign.companyId(), campaign.id(), null) >= campaign.budgetUzs()) {
+        if (campaign.limits().budgetUzs() != null
+                && callBilling.sumSpentUzsByCampaign(campaign.companyId(), campaign.id(), null) >= campaign.limits().budgetUzs()) {
             return true;
         }
-        if (campaign.dailyBudgetUzs() != null) {
+        if (campaign.limits().dailyBudgetUzs() != null) {
             CompanyConfig config = companyConfigUseCase.find(campaign.companyId());
             ZoneId zone = config != null ? config.zoneId() : clock.getZone();
             Instant dayStart = LocalDate.now(clock.withZone(zone)).atStartOfDay(zone).toInstant();
             return callBilling.sumSpentUzsByCampaign(campaign.companyId(), campaign.id(), dayStart)
-                    >= campaign.dailyBudgetUzs();
+                    >= campaign.limits().dailyBudgetUzs();
         }
         return false;
     }

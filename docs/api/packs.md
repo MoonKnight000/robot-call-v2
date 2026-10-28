@@ -131,7 +131,7 @@ Maqsad maydoni — `orderId`: `create_order` 2xx javobida `orderId` kelsa, qo'ng
 bilan tugaydi.
 
 **Magazin API shartnomasi.** Paket quyidagi ko'rinishdagi API'ni kutadi. Magazin API'si boshqacha
-bo'lsa, o'rnatilgandan keyin tool'ning `apiUrl`, `bodySchema` va `responseMapping` maydonlari
+bo'lsa, o'rnatilgandan keyin tool'ning `http.url`, `http.bodySchema` va `responseMapping` maydonlari
 `PUT /api/tools/{id}` bilan moslanadi.
 
 | Tool | So'rov | Kutilgan javob |
@@ -599,8 +599,16 @@ Paketga nimalar kiradi:
 | `catalogFeed`, `conversionGoal` | Har doim `null`: feed manzili va konversiya maqsadi kompaniyaniki |
 
 `key` — `agent-{agentId}`, `industry` — `null`. `id`, `companyId`, `createdAt` kabi saqlash
-maydonlari tool va test holatlarida qoladi, lekin o'rnatishda e'tiborga olinmaydi. Har bir export
+maydonlari test holatlarida qoladi, lekin o'rnatishda e'tiborga olinmaydi. Tool'larda ular endi
+chiqmaydi; eski export'larda bo'lsa — qabul qilinadi va tashlab yuboriladi. Har bir export
 audit'ga `PACK_EXPORT` bo'lib yoziladi.
+
+**Pack'dagi tool shakli tekis qoladi.** `/api/tools` endpointlari 2026-10-28 dan `http` / `speech`
+guruhlarini ishlatadi ([tools.md](tools.md)), lekin pack fayllari (`packs/*.json`, export, `generate`
+javobi, `install-draft` tanasi) avvalgi tekis maydonlarda: `apiUrl`, `apiMethod`, `apiHeaders`,
+`apiBody`, `apiQueryParams`, `apiPathParams`, `bodySchema`, `responseTimeoutSecs`, `retryAttempts`,
+`auth`, `disableInterruptions`, `forcePreToolSpeech`, `preToolSpeech` va h.k. (`PackTool`). Shuning
+uchun git'da saqlangan eski export'lar o'zgarishsiz o'rnatiladi.
 
 | Status | `messageCode` | Qachon |
 |---|---|---|

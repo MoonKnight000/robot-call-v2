@@ -19,7 +19,7 @@ import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.pack.domain.entity.PackTool;
 
 import java.util.List;
 
@@ -55,7 +55,7 @@ public class SpringAiPackGeneratorAdapter implements PackGeneratorPort {
     }
 
     @Override
-    public VerticalPack generate(String business, String language, List<Tool> tools) {
+    public VerticalPack generate(String business, String language, List<PackTool> tools) {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
             throw new ConflictException(ErrorCode.PACK_GENERATOR_NOT_CONFIGURED);
@@ -84,7 +84,7 @@ public class SpringAiPackGeneratorAdapter implements PackGeneratorPort {
                         .maxOutputTokens(packGeneratorProperties.maxTokens()).build();
     }
 
-    private static String describe(String business, String language, List<Tool> tools) {
+    private static String describe(String business, String language, List<PackTool> tools) {
         StringBuilder sb = new StringBuilder();
         sb.append("BUSINESS:\n").append(business).append("\n\n");
         sb.append("AGENT LANGUAGE: ").append(language != null && !language.isBlank() ? language : "uz-UZ").append('\n');
@@ -94,7 +94,7 @@ public class SpringAiPackGeneratorAdapter implements PackGeneratorPort {
             return sb.toString();
         }
         sb.append("\nTOOLS THE AGENT WILL HAVE (taken from the API document, do not change them):\n");
-        for (Tool tool : tools) {
+        for (PackTool tool : tools) {
             sb.append("- ").append(tool.name()).append(" (").append(tool.apiMethod()).append("): ")
                     .append(tool.description() == null ? "" : tool.description()).append('\n');
         }

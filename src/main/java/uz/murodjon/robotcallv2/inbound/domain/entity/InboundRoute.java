@@ -1,36 +1,29 @@
 package uz.murodjon.robotcallv2.inbound.domain.entity;
 
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
-import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
 
 import java.time.Instant;
 import java.time.LocalTime;
 
 /**
- * Domain model of inbound_route with OnlinePBX / Virtual ATS capabilities (ROADMAP C.1).
+ * Which DID answers with what (ROADMAP C.1). Queues, IVR menus and forwards are built as a
+ * {@code callFlowId}; a route without one is answered by {@code aiAgentId} in its hours.
  *
- * @param callbackCampaignId the campaign a caller who asks to be called back is added to,
- *                           due at the time they named; null records the request only
- * @param scheduleId         the business schedule whose hours the route keeps; wins over
- *                           {@code businessHoursStart/End}
- * @param callFlowId         the published call flow a call runs; null answers with {@code aiAgentId}
+ * @param afterHoursAction      what a flowless route does once its hours are over
+ * @param afterHoursDestination the night agent's id for {@code AI_AGENT}; null uses {@code aiAgentId}
+ * @param callbackCampaignId    the campaign a caller who asks to be called back is added to,
+ *                              due at the time they named; null records the request only
+ * @param scheduleId            the business schedule whose hours the route keeps; wins over
+ *                              {@code businessHoursStart/End}
+ * @param callFlowId            the published call flow a call runs; null answers with {@code aiAgentId}
  */
 public record InboundRoute(
         long id,
         long companyId,
         String didNumber,
         Long aiAgentId,
-        InboundRouteType routeType,
-        String targetDestination,
-        QueueStrategy queueStrategy,
-        int ringTimeoutSec,
-        InboundFailoverAction failoverAction,
-        String failoverDestination,
         InboundAfterHoursAction afterHoursAction,
         String afterHoursDestination,
-        String ivrMenuConfig,
         LocalTime businessHoursStart,
         LocalTime businessHoursEnd,
         String fallbackMessage,
@@ -43,9 +36,8 @@ public record InboundRoute(
 
     /** This route answered by {@code agentId} instead — every other setting is kept. */
     public InboundRoute withAiAgentId(Long agentId) {
-        return new InboundRoute(id, companyId, didNumber, agentId, routeType, targetDestination, queueStrategy,
-                ringTimeoutSec, failoverAction, failoverDestination, afterHoursAction, afterHoursDestination,
-                ivrMenuConfig, businessHoursStart, businessHoursEnd, fallbackMessage, callbackCampaignId,
-                scheduleId, callFlowId, enabled, createdAt);
+        return new InboundRoute(id, companyId, didNumber, agentId, afterHoursAction, afterHoursDestination,
+                businessHoursStart, businessHoursEnd, fallbackMessage, callbackCampaignId, scheduleId, callFlowId,
+                enabled, createdAt);
     }
 }

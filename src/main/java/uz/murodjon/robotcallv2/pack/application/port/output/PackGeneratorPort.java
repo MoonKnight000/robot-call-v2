@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.pack.application.port.output;
 
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.pack.domain.entity.PackTool;
 
 import java.util.List;
 
@@ -21,5 +21,5 @@ import java.util.List;
  */
 public interface PackGeneratorPort {
 
-    VerticalPack generate(String business, String language, List<Tool> tools);
+    VerticalPack generate(String business, String language, List<PackTool> tools);
 }

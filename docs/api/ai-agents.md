@@ -187,32 +187,83 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 {
   "name": "Operator Dilnoza (Savdo va Qabul)",
   "description": "Kiruvchi mijozlarni kutib oluvchi va savollariga javob beruvchi bot",
-  "templateId": "BUSINESS",
-  "scenarioId": null,
-  "firstMessage": "Assalomu alaykum! Kompaniyamizga xush kelibsiz. Sizga qanday yordam bera olaman?",
-  "systemPrompt": "Siz kompaniyaning samimiy savdo menejerisiz. Mijozning ismini va qiziqayotgan mahsulotini aniqlang.",
-  "preemptiveGeneration": true,
-  "ivrNavigationEnabled": true,
-  "useRag": true,
   "language": "uz-UZ",
-  "sttProvider": "gemini",
-  "sttModel": "gemini-3.5-transcribe-live",
-  "ttsProvider": "gemini",
-  "ttsModel": "gemini-3.8-flash-tts",
-  "ttsVoice": "gemini-tts-aoede-uz",
-  "voiceSpeed": 1.05,
-  "voiceStability": 0.8,
-  "voiceSimilarityBoost": 0.8,
-  "languageVoices": {
-    "uz-UZ": "gemini-tts-aoede-uz",
-    "ru-RU": "gemini-tts-aoede-ru"
-  },
-  "languageVoiceSpeeds": { "ru-RU": 1.1 },
   "persona": "AI_ASSISTANT",
+  "engineProfileId": null,
+  "script": {
+    "templateId": "BUSINESS",
+    "scenarioId": null,
+    "mode": "PROMPT",
+    "definition": null,
+    "firstMessage": "Assalomu alaykum! Kompaniyamizga xush kelibsiz. Sizga qanday yordam bera olaman?",
+    "systemPrompt": "Siz kompaniyaning samimiy savdo menejerisiz. Mijozning ismini va qiziqayotgan mahsulotini aniqlang."
+  },
+  "speechEngine": {
+    "mode": "CASCADE",
+    "realtimeProvider": null,
+    "pipecatStt": null,
+    "pipecatLlm": null,
+    "pipecatTts": null,
+    "sttProvider": "gemini",
+    "sttModel": "gemini-3.5-transcribe-live",
+    "ttsProvider": "gemini",
+    "ttsModel": "gemini-3.8-flash-tts"
+  },
+  "voice": {
+    "defaultVoice": "gemini-tts-aoede-uz",
+    "speed": 1.05,
+    "stability": 0.8,
+    "similarityBoost": 0.8,
+    "perLanguage": {
+      "uz-UZ": "gemini-tts-aoede-uz",
+      "ru-RU": "gemini-tts-aoede-ru"
+    },
+    "perLanguageSpeed": { "ru-RU": 1.1 },
+    "emotionAdaptive": true,
+    "warmth": "BALANCED"
+  },
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite",
   "temperature": 0.6,
   "maxOutputTokens": 300,
+  "ambience": {
+    "background": "OFFICE",
+    "backgroundVolume": 0.35,
+    "backgroundFadeInSeconds": 1.5,
+    "thinking": "OFF",
+    "thinkingVolume": 0.35,
+    "noiseCancellationEnabled": true,
+    "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION"
+  },
+  "callBehaviour": {
+    "interruptionSensitivity": "MEDIUM",
+    "endpointingDelayMs": 700,
+    "dtmfInputEnabled": true,
+    "voicemailAction": "LEAVE_MESSAGE",
+    "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
+    "midCallSmsEnabled": false,
+    "midCallSmsTemplate": null,
+    "transferPhoneNumber": null,
+    "transferMessage": null,
+    "transferQueueId": 4,
+    "preConversationAudioFileId": null
+  },
+  "limits": {
+    "concurrentCallsLimit": 15,
+    "dailyCallsLimit": 500,
+    "maxConversationDurationSeconds": 600,
+    "silenceEndCallTimeoutSeconds": 25,
+    "turnTimeoutSeconds": 10
+  },
+  "dataPolicy": {
+    "zeroPiiRetention": false,
+    "storeCallAudio": true,
+    "conversationRetentionDays": 60,
+    "realtimeFactsDelivery": null
+  },
+  "preemptiveGeneration": true,
+  "ivrNavigationEnabled": true,
+  "useRag": true,
   "dataNeeded": [
     { "id": "client_name", "type": "string", "name": "Mijoz ismi", "description": "Mijozning to'liq ismi" },
     { "id": "product_name", "type": "string", "name": "Mahsulot nomi", "description": "Mijoz qiziqqan tovar" }
@@ -220,15 +271,6 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
   "dataEvaluation": [
     { "id": "satisfaction", "name": "Mijoz roziligi", "criteria": "Mijoz ijobiy kayfiyatda xayrlashdimi" }
   ],
-  "zeroPiiRetention": false,
-  "storeCallAudio": true,
-  "conversationRetentionDays": 60,
-  "realtimeFactsDelivery": null,
-  "maxConversationDurationSeconds": 600,
-  "silenceEndCallTimeoutSeconds": 25,
-  "turnTimeoutSeconds": 10,
-  "concurrentCallsLimit": 15,
-  "dailyCallsLimit": 500,
   "initiationWebhook": {
     "url": "https://api.example.com/webhooks/call-started",
     "headers": { "Authorization": "Bearer secret_token" },
@@ -239,25 +281,42 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "headers": { "Authorization": "Bearer secret_token" },
     "timeoutSeconds": 10
   },
-  "ambientSound": "OFFICE",
-  "ambientSoundVolume": 0.35,
-  "ambientSoundFadeInSeconds": 1.5,
-  "thinkingSound": "OFF",
-  "thinkingSoundVolume": 0.35,
-  "noiseCancellationEnabled": true,
-  "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
-  "emotionAdaptiveVoice": true,
-  "speakingWarmth": "BALANCED",
-  "dtmfInputEnabled": true,
-  "voicemailAction": "LEAVE_MESSAGE",
-  "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
-  "midCallSmsEnabled": false,
-  "midCallSmsTemplate": null,
-  "transferQueueId": 4,
   "sipTrunkIds": [1, 2],
   "enabled": true
 }
 ```
+
+> **Maydon guruhlari (2026-10-28 dan, breaking change).** Agent sozlamalari domain'dagi
+> guruhlar bo'yicha ichma-ich obyektlarda keladi: `script`, `speechEngine`, `voice`, `ambience`,
+> `callBehaviour`, `limits`, `dataPolicy`. Shu shakl `POST`, `PUT` va javob (`AiAgentRow`) da bir
+> xil, shuning uchun forma `GET` da o'qiganini `PUT` ga qaytara oladi. Har qanday guruhni butunlay
+> tashlab ketish mumkin: `POST` da u standart qiymatlarni oladi, `PUT` da agentniki saqlanadi.
+> Guruh ichida `null` maydon ham xuddi shunday ishlaydi. Quyidagi matnda maydonlar qisqa nomi
+> bilan tilga olinadi. Eski tekis nomlar quyidagi yangi yo'llarga o'tdi:
+>
+> | Eski (tekis) | Yangi yo'l |
+> |---|---|
+> | `templateId`, `scenarioId`, `firstMessage`, `systemPrompt` | `script.templateId`, `script.scenarioId`, `script.firstMessage`, `script.systemPrompt` |
+> | `scenarioMode`, `scenarioDefinition` | `script.mode`, `script.definition` |
+> | `pipelineMode` | `speechEngine.mode` |
+> | `realtimeProvider`, `pipecatStt/Llm/Tts`, `sttProvider`, `sttModel`, `ttsProvider`, `ttsModel` | `speechEngine.<o'sha nom>` |
+> | `ttsVoice` | `voice.defaultVoice` |
+> | `voiceSpeed`, `voiceStability`, `voiceSimilarityBoost` | `voice.speed`, `voice.stability`, `voice.similarityBoost` |
+> | `languageVoices`, `languageVoiceSpeeds` | `voice.perLanguage`, `voice.perLanguageSpeed` |
+> | `emotionAdaptiveVoice`, `speakingWarmth` | `voice.emotionAdaptive`, `voice.warmth` |
+> | `ambientSound`, `ambientSoundVolume`, `ambientSoundFadeInSeconds` | `ambience.background`, `ambience.backgroundVolume`, `ambience.backgroundFadeInSeconds` |
+> | `thinkingSound`, `thinkingSoundVolume` | `ambience.thinking`, `ambience.thinkingVolume` |
+> | `noiseCancellationEnabled`, `noiseCancellationMode` | `ambience.<o'sha nom>` |
+> | `dtmfInputEnabled`, `voicemail*`, `midCallSms*`, `transfer*`, `interruptionSensitivity`, `endpointingDelayMs`, `preConversationAudioFileId` | `callBehaviour.<o'sha nom>` |
+> | `maxConversationDurationSeconds`, `silenceEndCallTimeoutSeconds`, `turnTimeoutSeconds`, `concurrentCallsLimit`, `dailyCallsLimit` | `limits.<o'sha nom>` |
+> | `zeroPiiRetention`, `storeCallAudio`, `conversationRetentionDays`, `realtimeFactsDelivery` | `dataPolicy.<o'sha nom>` |
+>
+> Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
+> `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `preemptiveGeneration`,
+> `ivrNavigationEnabled`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
+> `postCallWebhook`, `sipTrunkIds`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
+> `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`,
+> `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
 
 > **`voicemailAction`** — avtootvetchik aniqlanganda: `HANGUP` (go'shakni qo'yish),
 > `LEAVE_MESSAGE` (bipdan keyin `voicemailMessage` aytiladi), `LEAVE_MESSAGE_AND_SMS`
@@ -269,8 +328,8 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > agent hali hech narsa demasdan chalinadi (yozib olingan ogohlantirish, brend jingle) va dialog u
 > tugaguncha kutadi. Har qanday sample rate qabul qilinadi (8 kHz ga keltiriladi), stereo — chap kanal.
 > Fayl qo'ng'iroq kompaniyasiniki bo'lishi shart; o'qib bo'lmasa (o'chirilgan, boshqa kompaniyaniki,
-> WAV emas) qo'ng'iroq usiz davom etadi va serverda WARN log yoziladi. `null` — yo'q. Sozlamalar
-> ekrani (`/settings`) bu maydonni o'zgartirmaydi.
+> WAV emas) qo'ng'iroq usiz davom etadi va serverda WARN log yoziladi. `null` — yo'q. U
+> `callBehaviour` guruhida, shuning uchun `PUT /api/ai-agents/{id}/advanced` orqali ham o'zgaradi.
 
 > **Speech engine maydonlari qo'ng'iroqda qanday qo'llanadi:**
 > - `sttProvider` — shu agent qo'ng'iroqlarini tanigan provayder. Saqlashda
@@ -667,10 +726,6 @@ qo'shimcha so'rov ketmaydi.
     "useRag": true,
     "preemptiveGeneration": true,
     "ivrNavigationEnabled": false,
-    "storeCallAudio": true,
-    "zeroPiiRetention": false,
-    "conversationRetentionDays": 60,
-    "realtimeFactsDelivery": "TOOL",
     "initiationWebhook": {
       "url": "https://api.example.com/webhooks/call-started",
       "headers": { "Authorization": "Bearer secret_token" },
@@ -681,21 +736,36 @@ qo'shimcha so'rov ketmaydi.
       "headers": { "Authorization": "Bearer secret_token" },
       "timeoutSeconds": 10
     },
-    "ambientSound": "OFFICE",
-    "ambientSoundVolume": 0.35,
-    "ambientSoundFadeInSeconds": 1.5,
-    "thinkingSound": "KEYBOARD_TYPING",
-    "thinkingSoundVolume": 0.30,
-    "noiseCancellationEnabled": true,
-    "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION",
     "emotionAdaptiveVoice": true,
     "speakingWarmth": "BALANCED",
-    "dtmfInputEnabled": true,
-    "voicemailAction": "LEAVE_MESSAGE",
-    "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
-    "midCallSmsEnabled": false,
-    "midCallSmsTemplate": null,
-    "transferQueueId": 4
+    "ambience": {
+      "background": "OFFICE",
+      "backgroundVolume": 0.35,
+      "backgroundFadeInSeconds": 1.5,
+      "thinking": "KEYBOARD_TYPING",
+      "thinkingVolume": 0.30,
+      "noiseCancellationEnabled": true,
+      "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION"
+    },
+    "callBehaviour": {
+      "interruptionSensitivity": "MEDIUM",
+      "endpointingDelayMs": 700,
+      "dtmfInputEnabled": true,
+      "voicemailAction": "LEAVE_MESSAGE",
+      "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
+      "midCallSmsEnabled": false,
+      "midCallSmsTemplate": null,
+      "transferPhoneNumber": null,
+      "transferMessage": null,
+      "transferQueueId": 4,
+      "preConversationAudioFileId": null
+    },
+    "dataPolicy": {
+      "zeroPiiRetention": false,
+      "storeCallAudio": true,
+      "conversationRetentionDays": 60,
+      "realtimeFactsDelivery": "TOOL"
+    }
   },
   "message": null,
   "messageCode": null,

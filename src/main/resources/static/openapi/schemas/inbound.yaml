@@ -26,24 +26,9 @@ CreateInboundRouteRequest:
     aiAgentId:
       type: integer
       format: int64
-    routeType:
-      $ref: '#/InboundRouteType'
-    targetDestination:
-      type: string
-    queueStrategy:
-      $ref: '#/QueueStrategy'
-    ringTimeoutSec:
-      type: integer
-      format: int32
-    failoverAction:
-      $ref: '#/InboundFailoverAction'
-    failoverDestination:
-      type: string
     afterHoursAction:
       $ref: '#/InboundAfterHoursAction'
     afterHoursDestination:
-      type: string
-    ivrMenuConfig:
       type: string
     businessHoursStart:
       type: string
@@ -154,23 +139,6 @@ InboundCallerRulePage:
   - totalPages
   - currentPage
   - totalElements
-InboundFailoverAction:
-  type: string
-  enum:
-  - SCENARIO
-  - VOICEMAIL
-  - EXTERNAL_FORWARD
-  - HANGUP
-  description: |-
-    Action to take when operators do not answer within the ring timeout.
-
-    - `SCENARIO` — Fall back to AI Voice Agent scenario.
-
-    - `VOICEMAIL` — Fall back to Voicemail recording.
-
-    - `EXTERNAL_FORWARD` — Forward to a backup external mobile number.
-
-    - `HANGUP` — Play busy tone or farewell and hang up.
 InboundRouteFilter:
   type: object
   description: Pagination + filter + sort for POST /api/inbound-routes/list.
@@ -215,24 +183,9 @@ InboundRouteRow:
       format: int64
     aiAgentName:
       type: string
-    routeType:
-      $ref: '#/InboundRouteType'
-    targetDestination:
-      type: string
-    queueStrategy:
-      $ref: '#/QueueStrategy'
-    ringTimeoutSec:
-      type: integer
-      format: int32
-    failoverAction:
-      $ref: '#/InboundFailoverAction'
-    failoverDestination:
-      type: string
     afterHoursAction:
       $ref: '#/InboundAfterHoursAction'
     afterHoursDestination:
-      type: string
-    ivrMenuConfig:
       type: string
     businessHoursStart:
       type: string
@@ -260,7 +213,6 @@ InboundRouteRow:
       format: date-time
   required:
   - id
-  - ringTimeoutSec
   - enabled
 InboundRouteRowPage:
   type: object
@@ -283,52 +235,6 @@ InboundRouteRowPage:
   - totalPages
   - currentPage
   - totalElements
-InboundRouteType:
-  type: string
-  enum:
-  - SCENARIO
-  - OPERATOR_QUEUE
-  - EXTENSION
-  - EXTERNAL_NUMBER
-  - STICKY_AGENT
-  - IVR_MENU
-  - VOICEMAIL
-  description: |-
-    Type of inbound call handling / routing target in the Virtual PBX.
-
-    - `SCENARIO` — Route to AI Voice Agent (Scenario).
-
-    - `OPERATOR_QUEUE` — Route to human operator call queue.
-
-    - `EXTENSION` — Route to a specific internal SIP extension (e.g. 101, 102).
-
-    - `EXTERNAL_NUMBER` — Forward to an external mobile or landline phone number.
-
-    - `STICKY_AGENT` — Sticky agent routing: route directly to the client's assigned manager from CRM.
-
-    - `IVR_MENU` — Interactive Voice Response (IVR) menu with DTMF or voice choices.
-
-    - `VOICEMAIL` — Send caller directly to Voicemail.
-QueueStrategy:
-  type: string
-  enum:
-  - RING_ALL
-  - ROUND_ROBIN
-  - FEWEST_CALLS
-  - LEAST_RECENT
-  - RANDOM
-  description: |-
-    Call distribution strategies across available operators in a queue.
-
-    - `RING_ALL` — Ring all available operators simultaneously.
-
-    - `ROUND_ROBIN` — Distribute calls sequentially in a cycle across operators.
-
-    - `FEWEST_CALLS` — Route to the operator with the fewest handled calls today.
-
-    - `LEAST_RECENT` — Route to the operator who has been idle the longest.
-
-    - `RANDOM` — Choose a random available operator.
 SaveCallerRuleRequest:
   type: object
   description: Body of POST/PUT /api/inbound-caller-rules.
@@ -357,24 +263,9 @@ UpdateInboundRouteRequest:
     aiAgentId:
       type: integer
       format: int64
-    routeType:
-      $ref: '#/InboundRouteType'
-    targetDestination:
-      type: string
-    queueStrategy:
-      $ref: '#/QueueStrategy'
-    ringTimeoutSec:
-      type: integer
-      format: int32
-    failoverAction:
-      $ref: '#/InboundFailoverAction'
-    failoverDestination:
-      type: string
     afterHoursAction:
       $ref: '#/InboundAfterHoursAction'
     afterHoursDestination:
-      type: string
-    ivrMenuConfig:
       type: string
     businessHoursStart:
       type: string

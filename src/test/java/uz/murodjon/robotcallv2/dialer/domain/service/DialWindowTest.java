@@ -3,6 +3,10 @@ package uz.murodjon.robotcallv2.dialer.domain.service;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
@@ -24,15 +28,12 @@ class DialWindowTest {
                 .name("Test Campaign")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
-                .dialWindowStart(start)
-                .dialWindowEnd(end)
-                .dialDays(Set.of())
-                .maxAttempts(3)
-                .retryIntervalMinutes(24)
-                .maxConcurrentCalls(5)
+                .schedule(new CampaignSchedule(null, null, start, end, Set.of()))
+                .retry(new CampaignRetry(3, 24, null))
+                .limits(new CampaignLimits(5, 0, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
-                .recurrenceType(RecurrenceType.ONCE)
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
                 .build();
     }
 

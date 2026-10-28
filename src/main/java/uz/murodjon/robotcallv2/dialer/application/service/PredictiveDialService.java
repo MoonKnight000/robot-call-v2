@@ -129,7 +129,7 @@ public class PredictiveDialService {
             return;
         }
         for (Campaign campaign : campaignUseCase.findActiveCampaigns()) {
-            if (campaign.dialMode() != DialMode.PREDICTIVE || campaign.callQueueId() == null
+            if (campaign.dialing().mode() != DialMode.PREDICTIVE || campaign.dialing().callQueueId() == null
                     || campaign.aiAgentId() == null) {
                 continue;
             }
@@ -151,18 +151,18 @@ public class PredictiveDialService {
         if (!agent.enabled()) {
             return; // nobody to take the overflow: not a call is placed ahead of the operators
         }
-        CallQueue queue = callQueueUseCase.findQueue(companyId, campaign.callQueueId());
+        CallQueue queue = callQueueUseCase.findQueue(companyId, campaign.dialing().callQueueId());
         if (queue == null) {
             return;
         }
         int calls = DialPacingCalculator.countCallsToPlace(countFreeOperators(companyId, queue),
                 predictiveDialer.countUndecided(campaign.id()), predictiveDialer.findStats(campaign.id()),
-                campaign.maxAiOverflowPercent());
+                campaign.dialing().maxAiOverflowPercent());
         calls = Math.min(calls, countFreeSlots(campaign));
         if (calls <= 0) {
             return;
         }
-        List<CampaignTarget> due = campaign.targetOrdering() == TargetOrdering.SCORE
+        List<CampaignTarget> due = campaign.dialing().targetOrdering() == TargetOrdering.SCORE
                 ? campaignTargetUseCase.claimDueTargetsByScore(campaign.id(), calls,
                         LocalTime.now(clock.withZone(config.zoneId())).getHour())
                 : campaignTargetUseCase.claimDueTargets(campaign.id(), calls);
@@ -191,8 +191,8 @@ public class PredictiveDialService {
         int freePlatform = Math.min(dialerProperties.maxConcurrentCalls(),
                 state.countClusterCapacity(rtpProperties.mediaCapacity())) - state.countActiveTotal();
         int freeCompany = companyConcurrency.countFree(campaign.companyId());
-        int freeCampaign = campaign.maxConcurrentCalls() > 0
-                ? campaign.maxConcurrentCalls() - state.countActiveForCampaign(campaign.id())
+        int freeCampaign = campaign.limits().maxConcurrentCalls() > 0
+                ? campaign.limits().maxConcurrentCalls() - state.countActiveForCampaign(campaign.id())
                 : Integer.MAX_VALUE;
         return Math.min(Math.min(freePlatform, freeCompany), freeCampaign);
     }
@@ -218,7 +218,7 @@ public class PredictiveDialService {
             OutboundCall aiCall = outboundCallPreparer.prepare(new CallTask(campaign.id(), target.id(),
                     target.clientId(), target.phone(), language, target.contextData(), companyId, agent.id(),
                     null, null, null, null, null));
-            predictiveDialer.dial(campaign.callQueueId(), aiCall);
+            predictiveDialer.dial(campaign.dialing().callQueueId(), aiCall);
             log.info("Predictive: target {} ({}) of campaign {} dialled", target.id(),
                     PhoneMasker.mask(target.phone()), campaign.id());
         } catch (Exception e) {

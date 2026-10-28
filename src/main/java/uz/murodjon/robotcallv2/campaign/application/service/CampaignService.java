@@ -15,7 +15,12 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignReposito
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialing;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
@@ -88,99 +93,99 @@ public class CampaignService implements CampaignUseCase {
     }
 
     private static final Set<DayOfWeek> DEFAULT_DIAL_DAYS = EnumSet.allOf(DayOfWeek.class);
+    /** A group the request left out: every field empty, read exactly like the omitted fields it stands for. */
+    private static final CampaignScheduleDto NO_SCHEDULE = new CampaignScheduleDto(null, null, null, null, null);
+    private static final CampaignRetryDto NO_RETRY = new CampaignRetryDto(0, 0, null);
+    private static final CampaignLimitsDto NO_LIMITS = new CampaignLimitsDto(0, 0, null, null);
+    private static final CampaignRecurrenceDto NO_RECURRENCE = new CampaignRecurrenceDto(null, null, null, null);
+    private static final CampaignDialingDto NO_DIALING = new CampaignDialingDto(null, null, null, null);
 
     @Override
     public CreateCampaignResponse createCampaign(long companyId, CreateCampaignRequest request) {
-        DialMode dialMode = request.dialModeOrDefault();
-        AiAgent agent = requireDialers(companyId, dialMode, request.aiAgentId(), request.callQueueId());
-        int dailyCallCap = Math.max(0, request.dailyCallCap());
+        CampaignScheduleDto schedule = request.schedule() != null ? request.schedule() : NO_SCHEDULE;
+        CampaignRetryDto retry = request.retry() != null ? request.retry() : NO_RETRY;
+        CampaignLimitsDto limits = request.limits() != null ? request.limits() : NO_LIMITS;
+        CampaignRecurrenceDto recurrence = request.recurrence() != null ? request.recurrence() : NO_RECURRENCE;
+        CampaignDialingDto dialing = request.dialing() != null ? request.dialing() : NO_DIALING;
+        DialMode dialMode = dialing.mode() != null ? dialing.mode() : DialMode.AI;
+        AiAgent agent = requireDialers(companyId, dialMode, request.aiAgentId(), dialing.callQueueId());
+        int dailyCallCap = Math.max(0, limits.dailyCallCap());
         CompanyConfig companyConfig = companyConfigUseCase.find(companyId);
-        LocalTime dialWindowStart = resolveWindowBound(request.dialWindowStart(),
+        LocalTime dialWindowStart = resolveWindowBound(schedule.dialWindowStart(),
                 companyConfig != null ? companyConfig.dialWindowStart() : null, LocalTime.of(9, 0));
-        LocalTime dialWindowEnd = resolveWindowBound(request.dialWindowEnd(),
+        LocalTime dialWindowEnd = resolveWindowBound(schedule.dialWindowEnd(),
                 companyConfig != null ? companyConfig.dialWindowEnd() : null, LocalTime.of(20, 0));
         requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
-        campaignValidator.validateRetryPolicy(request.retryPolicyOrNone());
+        campaignValidator.validateRetryPolicy(retry.policyOrNone());
         Campaign row = Campaign.builder()
                 .name(request.name())
                 .type(request.type())
                 .status(CampaignStatus.DRAFT)
-                .dialWindowStart(dialWindowStart)
-                .dialWindowEnd(dialWindowEnd)
-                .dialDays(request.dialDays() != null && !request.dialDays().isEmpty()
-                        ? request.dialDays() : DEFAULT_DIAL_DAYS)
-                .maxAttempts(request.maxAttempts() > 0 ? request.maxAttempts() : 3)
-                .retryIntervalMinutes(Math.max(0, request.retryIntervalMinutes()))
-                .maxConcurrentCalls(request.maxConcurrentCalls() > 0 ? request.maxConcurrentCalls() : 20)
-                .dailyCallCap(dailyCallCap)
                 .aiAgentId(agent != null ? agent.id() : null)
                 .companyId(companyId)
-                .recurrenceType(request.recurrenceTypeOrDefault())
-                .recurringDayOfMonth(request.recurringDayOfMonth())
-                .cronExpression(request.cronExpression())
-                .autoResetTargets(request.autoResetTargetsOrDefault())
                 .priority(request.priorityOrDefault())
-                .retryPolicy(request.retryPolicyOrNone())
-                .startAt(request.startAt())
-                .endAt(request.endAt())
-                .budgetUzs(request.budgetUzs())
-                .dailyBudgetUzs(request.dailyBudgetUzs())
-                .dialMode(dialMode)
-                .callQueueId(request.callQueueId())
-                .maxAiOverflowPercent(request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
-                        : Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT)
-                .targetOrdering(request.targetOrdering())
+                .schedule(new CampaignSchedule(schedule.startAt(), schedule.endAt(), dialWindowStart, dialWindowEnd,
+                        schedule.dialDays() != null && !schedule.dialDays().isEmpty()
+                                ? schedule.dialDays() : DEFAULT_DIAL_DAYS))
+                .retry(new CampaignRetry(retry.maxAttempts() > 0 ? retry.maxAttempts() : 3,
+                        Math.max(0, retry.intervalMinutes()), retry.policyOrNone()))
+                .limits(new CampaignLimits(limits.maxConcurrentCalls() > 0 ? limits.maxConcurrentCalls() : 20,
+                        dailyCallCap, limits.budgetUzs(), limits.dailyBudgetUzs()))
+                .recurrence(new CampaignRecurrence(recurrence.typeOrDefault(), recurrence.dayOfMonth(),
+                        recurrence.cronExpression(), recurrence.autoResetTargetsOrDefault()))
+                .dialing(new CampaignDialing(dialMode, dialing.callQueueId(),
+                        dialing.maxAiOverflowPercent() != null ? dialing.maxAiOverflowPercent()
+                                : Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT,
+                        dialing.targetOrdering()))
                 .build();
-        requireSchedule(request.startAt(), request.endAt());
+        requireSchedule(schedule.startAt(), schedule.endAt());
         long id = campaignRepository.create(companyId, row);
         auditUseCase.record(companyId, "CAMPAIGN_CREATE", "campaign", String.valueOf(id),
                 request.name() + " (" + dialMode + ", agent " + (agent != null ? agent.name() : "-")
-                        + ", queue " + (request.callQueueId() != null ? request.callQueueId() : "-")
+                        + ", queue " + (dialing.callQueueId() != null ? dialing.callQueueId() : "-")
                         + ", cap/day=" + dailyCallCap
-                        + ", recurrence=" + request.recurrenceTypeOrDefault() + ")");
+                        + ", recurrence=" + recurrence.typeOrDefault() + ")");
         return new CreateCampaignResponse(id, CampaignStatus.DRAFT);
     }
 
     @Override
     public CampaignRow updateCampaign(long companyId, long id, UpdateCampaignRequest request) {
+        CampaignScheduleDto schedule = request.schedule() != null ? request.schedule() : NO_SCHEDULE;
+        CampaignRetryDto retry = request.retry() != null ? request.retry() : NO_RETRY;
+        CampaignLimitsDto limits = request.limits() != null ? request.limits() : NO_LIMITS;
+        CampaignRecurrenceDto recurrence = request.recurrence() != null ? request.recurrence() : NO_RECURRENCE;
+        CampaignDialingDto dialing = request.dialing() != null ? request.dialing() : NO_DIALING;
         Campaign existing = requireCampaign(companyId, id);
-        AiAgent agent = requireDialers(existing.companyId(), existing.dialMode(), request.aiAgentId(),
-                request.callQueueId());
+        AiAgent agent = requireDialers(existing.companyId(), existing.dialing().mode(), request.aiAgentId(),
+                dialing.callQueueId());
         // An omitted window keeps the one the campaign has.
-        LocalTime dialWindowStart = resolveWindowBound(request.dialWindowStart(), existing.dialWindowStart(), null);
-        LocalTime dialWindowEnd = resolveWindowBound(request.dialWindowEnd(), existing.dialWindowEnd(), null);
+        LocalTime dialWindowStart = resolveWindowBound(schedule.dialWindowStart(),
+                existing.schedule().dialWindowStart(), null);
+        LocalTime dialWindowEnd = resolveWindowBound(schedule.dialWindowEnd(), existing.schedule().dialWindowEnd(), null);
         requireWindowWithinCompany(existing.companyId(), dialWindowStart, dialWindowEnd);
-        campaignValidator.validateRetryPolicy(request.retryPolicyOrNone());
+        campaignValidator.validateRetryPolicy(retry.policyOrNone());
         // The type, status, company, creator, last run and dial mode stay the existing campaign's.
         Campaign row = existing.toBuilder()
                 .name(request.name())
-                .dialWindowStart(dialWindowStart)
-                .dialWindowEnd(dialWindowEnd)
-                .dialDays(request.dialDays())
-                .maxAttempts(request.maxAttempts())
-                .retryIntervalMinutes(Math.max(0, request.retryIntervalMinutes()))
-                .maxConcurrentCalls(request.maxConcurrentCalls())
-                .dailyCallCap(Math.max(0, request.dailyCallCap()))
                 .aiAgentId(agent != null ? agent.id() : null)
-                .recurrenceType(request.recurrenceTypeOrDefault())
-                .recurringDayOfMonth(request.recurringDayOfMonth())
-                .cronExpression(request.cronExpression())
-                .autoResetTargets(request.autoResetTargetsOrDefault())
                 .priority(request.priorityOrDefault())
-                .retryPolicy(request.retryPolicyOrNone())
-                .startAt(request.startAt())
-                .endAt(request.endAt())
-                .budgetUzs(request.budgetUzs())
-                .dailyBudgetUzs(request.dailyBudgetUzs())
+                .schedule(new CampaignSchedule(schedule.startAt(), schedule.endAt(), dialWindowStart, dialWindowEnd,
+                        schedule.dialDays()))
+                .retry(new CampaignRetry(retry.maxAttempts(), Math.max(0, retry.intervalMinutes()),
+                        retry.policyOrNone()))
+                .limits(new CampaignLimits(limits.maxConcurrentCalls(), Math.max(0, limits.dailyCallCap()),
+                        limits.budgetUzs(), limits.dailyBudgetUzs()))
+                .recurrence(new CampaignRecurrence(recurrence.typeOrDefault(), recurrence.dayOfMonth(),
+                        recurrence.cronExpression(), recurrence.autoResetTargetsOrDefault()))
+                .dialing(new CampaignDialing(existing.dialing().mode(), dialing.callQueueId(),
+                        dialing.maxAiOverflowPercent() != null ? dialing.maxAiOverflowPercent()
+                                : existing.dialing().maxAiOverflowPercent(),
+                        dialing.targetOrdering() != null ? dialing.targetOrdering()
+                                : existing.dialing().targetOrdering()))
                 // Not sent: the version just read, so a client that predates it edits as before.
                 .version(request.version() != null ? request.version() : existing.version())
-                .callQueueId(request.callQueueId())
-                .maxAiOverflowPercent(request.maxAiOverflowPercent() != null ? request.maxAiOverflowPercent()
-                        : existing.maxAiOverflowPercent())
-                .targetOrdering(request.targetOrdering() != null ? request.targetOrdering()
-                        : existing.targetOrdering())
                 .build();
-        requireSchedule(request.startAt(), request.endAt());
+        requireSchedule(schedule.startAt(), schedule.endAt());
         if (!campaignRepository.update(companyId, id, row)) {
             throw new ConflictException(ErrorCode.ENTITY_VERSION_CONFLICT, "campaign", id);
         }
@@ -357,12 +362,12 @@ public class CampaignService implements CampaignUseCase {
             throw new ConflictException(ErrorCode.CAMPAIGN_HAS_NO_TARGETS, campaignId);
         }
         Instant now = clock.instant();
-        if (c.endAt() != null && !c.endAt().isAfter(now)) {
-            throw new ConflictException(ErrorCode.CAMPAIGN_END_PASSED, campaignId, c.endAt());
+        if (c.schedule().endAt() != null && !c.schedule().endAt().isAfter(now)) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_END_PASSED, campaignId, c.schedule().endAt());
         }
         // A future startAt parks the campaign; "immediate" overrides it — the operator is
         // standing at the button and wants it now, whatever the plan said.
-        if (!immediate && c.startAt() != null && c.startAt().isAfter(now)) {
+        if (!immediate && c.schedule().startAt() != null && c.schedule().startAt().isAfter(now)) {
             setStatus(companyId, campaignId, CampaignStatus.SCHEDULED);
             return new CampaignStatusResponse(campaignId, CampaignStatus.SCHEDULED);
         }

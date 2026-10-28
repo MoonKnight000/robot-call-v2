@@ -58,37 +58,56 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
 {
   "name": "check_delivery_status",
   "description": "Mijozning buyurtma raqami bo'yicha yetkazib berish holatini aniqlash",
-  "apiUrl": "https://api.mycompany.uz/v1/orders/{order_id}/track",
-  "apiMethod": "GET",
-  "apiHeaders": [
-    { "key": "Authorization", "value": "Bearer my-secret-api-token" },
-    { "key": "X-Company-Id", "value": "{{company_id}}" }
-  ],
-  "apiQueryParams": [
-    { "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }
-  ],
-  "apiPathParams": [
-    {
-      "name": "order_id",
-      "type": "string",
-      "valueType": "LLM Prompt",
-      "description": "Mijoz aytgan 6 xonali buyurtma raqami",
-      "required": true
-    }
-  ],
-  "apiBody": null,
-  "responseTimeoutSecs": 5,
+  "http": {
+    "url": "https://api.mycompany.uz/v1/orders/{order_id}/track",
+    "method": "GET",
+    "headers": [
+      { "key": "Authorization", "value": "Bearer my-secret-api-token" },
+      { "key": "X-Company-Id", "value": "{{company_id}}" }
+    ],
+    "queryParams": [
+      { "name": "phone", "type": "string", "valueType": "Dynamic Variable", "value": "phone" }
+    ],
+    "pathParams": [
+      {
+        "name": "order_id",
+        "type": "string",
+        "valueType": "LLM Prompt",
+        "description": "Mijoz aytgan 6 xonali buyurtma raqami",
+        "required": true
+      }
+    ],
+    "body": null,
+    "bodySchema": null,
+    "responseTimeoutSecs": 5,
+    "retryAttempts": 1,
+    "auth": null
+  },
   "dynamicVariables": [
     { "key": "source", "value": "voice_bot_v2" }
   ],
-  "disableInterruptions": true,
-  "forcePreToolSpeech": true,
-  "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman.",
+  "speech": {
+    "disableInterruptions": true,
+    "forcePreToolSpeech": true,
+    "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman."
+  },
   "responseMapping": { "order_status": "$.data.status", "eta": "$.data.eta" },
-  "retryAttempts": 1,
   "maxCallsPerCall": 3
 }
 ```
+
+> **Maydon guruhlari (2026-10-28 dan, breaking change).** So'rov qanday yuborilishi `http`
+> ichida, tool ishlayotganda mijoz nima eshitishi `speech` ichida. Shakl `POST`, `PUT` va javob
+> (`ToolRow`) da bir xil. Eski → yangi: `apiUrl` → `http.url`, `apiMethod` → `http.method`,
+> `apiHeaders` → `http.headers`, `apiBody` → `http.body`, `apiQueryParams` → `http.queryParams`,
+> `apiPathParams` → `http.pathParams`, `bodySchema`, `responseTimeoutSecs`, `retryAttempts`, `auth` →
+> `http.*`; `disableInterruptions`, `forcePreToolSpeech`, `preToolSpeech` → `speech.*`. Yuqori
+> darajada qoladi: `name`, `description`, `dynamicVariables`, `responseMapping`, `maxCallsPerCall`,
+> `effect`, `requiresConfirmation`, `readbackTemplate`. `POST` da `http` majburiy (berilmasa —
+> `400 VALIDATION_FAILED`, `http.url` bo'sh bo'lsa — `400 TOOL_URL_REQUIRED`). `PUT` da guruhni yoki
+> guruh ichidagi maydonni tashlab ketish o'sha qiymatni o'zgartirmaydi.
+> **Pack fayllari o'zgarmaydi:** `packs/*.json` va eksport qilingan pack'lardagi tool'lar avvalgi
+> tekis shaklda qoladi ([packs.md](packs.md)).
 
 ### Maydonlar tavsifi:
 
@@ -96,27 +115,27 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
 |---|---|---|---|
 | `name` | string | **Majburiy** | Tool nomi (kichik lotin harflari va pastki chiziq tavsiya etiladi) |
 | `description` | string | **Majburiy** | Tool nima vazifa bajarishi. LLM ushbu tavsifga qarab uni qachon chaqirishni hal qiladi |
-| `apiUrl` | string | **Majburiy** | Chaqiriladigan REST API manzili (masalan `https://api.crm.com/leads`) |
-| `apiMethod` | string | **Majburiy** | HTTP metod: `GET`, `POST`, `PUT`, `DELETE`, `PATCH` |
-| `apiHeaders` | array | Ixtiyoriy | Sarlavhalar ro'yxati (`[{"key": "Authorization", "value": "..."}]`) |
-| `apiQueryParams` | array | Ixtiyoriy | URL query parametrlari — parametr obyektlari ro'yxati (pastga qarang) |
-| `apiPathParams` | array | Ixtiyoriy | URL ichidagi `{param}` o'zgaruvchilari — parametr obyektlari ro'yxati |
-| `apiBody` | array | Ixtiyoriy | `POST`/`PUT` tanasi — parametr obyektlari ro'yxati, JSON obyektga aylantiriladi. Ichma-ich obyekt yoki ro'yxat kerak bo'lsa — `bodySchema` (§3.1) |
-| `responseTimeoutSecs`| int | Standart: 10 | Maksimal kutish vaqti (sekund) |
+| `http.url` | string | **Majburiy** (`POST`) | Chaqiriladigan REST API manzili (masalan `https://api.crm.com/leads`) |
+| `http.method` | string | Standart: `POST` | HTTP metod: `GET`, `POST`, `PUT`, `DELETE`, `PATCH` |
+| `http.headers` | array | Ixtiyoriy | Sarlavhalar ro'yxati (`[{"key": "Authorization", "value": "..."}]`) |
+| `http.queryParams` | array | Ixtiyoriy | URL query parametrlari — parametr obyektlari ro'yxati (pastga qarang) |
+| `http.pathParams` | array | Ixtiyoriy | URL ichidagi `{param}` o'zgaruvchilari — parametr obyektlari ro'yxati |
+| `http.body` | array | Ixtiyoriy | `POST`/`PUT` tanasi — parametr obyektlari ro'yxati, JSON obyektga aylantiriladi. Ichma-ich obyekt yoki ro'yxat kerak bo'lsa — `bodySchema` (§3.1) |
+| `http.responseTimeoutSecs` | int | Standart: 10 | Maksimal kutish vaqti (sekund) |
 | `dynamicVariables` | array | Ixtiyoriy | Qo'shimcha o'zgaruvchilar (`[{"key": "...", "value": "..."}]`) |
-| `disableInterruptions`| bool| Standart: false| Tool javobi kutilayotganda mijoz gapini to'xtatmaslik (barge-in block) |
-| `forcePreToolSpeech` | bool | Standart: false| API chaqirishdan oldin `preToolSpeech` aytilishini majburiy qilish |
-| `preToolSpeech` | string| Ixtiyoriy | Chaqiruv boshlanishida robot o'qiydigan jumla ("Bir daqiqa...") |
+| `speech.disableInterruptions` | bool| Standart: false| Tool javobi kutilayotganda mijoz gapini to'xtatmaslik (barge-in block) |
+| `speech.forcePreToolSpeech` | bool | Standart: `true` | API chaqirishdan oldin `preToolSpeech` aytilishini majburiy qilish |
+| `speech.preToolSpeech` | string| Ixtiyoriy | Chaqiruv boshlanishida robot o'qiydigan jumla ("Bir daqiqa...") |
 | `responseMapping` | object | Ixtiyoriy | Nom → JSONPath (`$.data.status`, `$.items[0].eta`). Berilsa modelga **faqat shu maydonlar** boradi (`{"order_status": "shipped"}`), butun javob emas. Javobda yo'q yo'l tushib qoladi. `$` bilan boshlanmagan yo'l — `400 TOOL_RESPONSE_MAPPING_INVALID`. Bo'sh — butun javob (4000 belgigacha). 2xx javobda mapping maydonlari qo'ng'iroq natijasiga ham shu nomlar bilan yoziladi — ssenariyning `goal` maydoni shu nomda bo'lsa, qo'ng'iroq `GOAL_REACHED` bilan tugaydi ([scenarios.md](scenarios.md)). 2xx javobda modelga borgan raqamlar (narx, jami, buyurtma raqami) agent ovoz chiqarib aytishi mumkin bo'lgan raqamlarga qo'shiladi — fact guard ularni to'qilgan deb bloklamaydi |
-| `retryAttempts` | int | Standart: 0 | 5xx yoki tarmoq xatosidan keyin qayta urinishlar soni (0–3), kutish 300 ms, 600 ms, … 4xx qayta yuborilmaydi. Standart 0: yarim bajarilgan `POST` so'ralmasdan ikki marta ketmasin |
+| `http.retryAttempts` | int | Standart: 0 | 5xx yoki tarmoq xatosidan keyin qayta urinishlar soni (0–3), kutish 300 ms, 600 ms, … 4xx qayta yuborilmaydi. Standart 0: yarim bajarilgan `POST` so'ralmasdan ikki marta ketmasin |
 | `maxCallsPerCall` | int | Standart: 3 | Bitta qo'ng'iroqda tool necha marta chaqirilishi mumkin; oshsa so'rov yuborilmaydi va modelga `status: 429` bilan "qayta chaqirmang" deyiladi. `0` — cheklovsiz |
-| `bodySchema` | object | Ixtiyoriy | Ichma-ich body uchun JSON Schema (`{"type": "object", "properties": {...}}`) — §3.1. `apiBody` bilan birga berilsa `400 TOOL_BODY_AMBIGUOUS` |
+| `http.bodySchema` | object | Ixtiyoriy | Ichma-ich body uchun JSON Schema (`{"type": "object", "properties": {...}}`) — §3.1. `http.body` bilan birga berilsa `400 TOOL_BODY_AMBIGUOUS` |
 | `effect` | string | Standart: `GET` → `READ`, boshqasi → `WRITE` | `READ` / `WRITE` / `DESTRUCTIVE` — §3.2. `DESTRUCTIVE` modelga hech qachon berilmaydi |
 | `requiresConfirmation` | bool | Standart: `WRITE` uchun `true` | Chaqiruv mijozga o'qib beriladi va faqat aniq "ha"dan keyin yuboriladi — §3.2 |
 | `readbackTemplate` | string | Ixtiyoriy (≤500) | Tasdiq jumlasi, har argument `{{nomi}}` bilan: `"{{items}}, manzil {{address}}. Tasdiqlaysizmi?"`. Bo'sh — jumlani model o'zi tuzadi |
-| `auth` | object | Ixtiyoriy | Tool'ning o'z OAuth mijozi — §3.4. `PUT` da `null` — o'zgarmaydi, `{}` — olib tashlanadi |
+| `http.auth` | object | Ixtiyoriy | Tool'ning o'z OAuth mijozi — §3.4. `PUT` da `null` — o'zgarmaydi, `{}` — olib tashlanadi |
 
-### Parametr obyekti (`apiQueryParams`, `apiPathParams`, `apiBody` elementi):
+### Parametr obyekti (`http.queryParams`, `http.pathParams`, `http.body` elementi):
 
 | Maydon | Turi | Majburiylik | Tavsif |
 |---|---|---|---|
@@ -140,7 +159,7 @@ Noma'lum yoki bo'sh `valueType` — `LLM Prompt` deb qabul qilinadi.
 
 ### `{{secrets.KEY}}` — maxfiy qiymatlar
 
-`apiUrl` va `apiHeaders[].value` ichida `{{secrets.KEY}}` yozish mumkin; qiymat chaqiruv
+`http.url` va `http.headers[].value` ichida `{{secrets.KEY}}` yozish mumkin; qiymat chaqiruv
 paytida kompaniyaning [secrets](secrets.md) omboridan olinadi. Noma'lum kalit
 o'zgartirilmay qoladi — shunda so'rov muvaffaqiyatsiz bo'ladi va xato ko'rinadi.
 
@@ -150,7 +169,7 @@ bo'lib qoladi. Log'da va modelga qaytadigan xatoda ular `***` bilan yashiriladi.
 
 ### 3.1. `bodySchema` — ichma-ich body
 
-`apiBody` faqat yassi obyektni ta'riflay oladi. Haqiqiy buyurtma esa
+`http.body` faqat yassi obyektni ta'riflay oladi. Haqiqiy buyurtma esa
 `{"items": [{"sku", "qty"}], "address": {...}}` ko'rinishida bo'ladi. Bunday body JSON Schema
 bilan beriladi, va model butun obyektni bitta chaqiruvda to'ldiradi:
 
@@ -191,11 +210,11 @@ Maydon qiymati qayerdan kelishini `x-source` belgilaydi. `x-source` bo'lmasa, ma
 - O'zgaruvchi yoki secret topilmasa, maydon body'dan tushib qoladi.
 - Sinash: `POST /api/tools/{id}/test` ga `"args": {"items": [{"sku": "A1", "qty": 2}], "address": {"street": "Chilonzor 5"}}`
   berilsa, endpoint'ga aynan shu ichma-ich JSON va `x-source` maydonlari ketadi.
-- `PUT` da `apiBody` dan `bodySchema` ga o'tishda `"apiBody": []` ham yuboring. `bodySchema` ni o'chirish uchun `{}` yuboriladi.
+- `PUT` da `http.body` dan `bodySchema` ga o'tishda `"http": {"body": []}` ham yuboring. `bodySchema` ni o'chirish uchun `{}` yuboriladi.
 
 | Xato | Qachon |
 |---|---|
-| `400 TOOL_BODY_AMBIGUOUS` | `apiBody` ham, `bodySchema` ham berilgan |
+| `400 TOOL_BODY_AMBIGUOUS` | `http.body` ham, `bodySchema` ham berilgan |
 | `400 TOOL_BODY_SCHEMA_ROOT_INVALID` | Ildiz `{"type": "object", "properties": {...}}` emas |
 | `400 TOOL_BODY_SOURCE_INVALID` | `x-source` — `static`/`variable`/`secret` dan boshqa narsa |
 | `400 TOOL_BODY_SOURCE_IN_ARRAY` | `x-source` ro'yxat elementlari (`items`) ichida — ularni har doim model to'ldiradi |
@@ -257,7 +276,7 @@ Tarmoqqa chiqqan har bir so'rov uchun bitta qator yoziladi: `tool_id`, `call_att
 ### 3.4. `auth` — OAuth 2.0 client credentials
 
 API kalit (header yoki query'da) va doimiy Bearer token uchun alohida sozlama kerak emas: `{{secrets.KEY}}` ni
-`apiHeaders` ga (`"Authorization": "Bearer {{secrets.CRM_TOKEN}}"`) yoki `apiUrl` ga (`...?api_key={{secrets.CRM_KEY}}`)
+`http.headers` ga (`"Authorization": "Bearer {{secrets.CRM_TOKEN}}"`) yoki `http.url` ga (`...?api_key={{secrets.CRM_KEY}}`)
 yozish yetadi. Alohida tur faqat tool **o'zi token olishi** kerak bo'lganda — OAuth 2.0 `client_credentials`:
 
 ```json
@@ -273,13 +292,13 @@ yozish yetadi. Alohida tur faqat tool **o'zi token olishi** kerak bo'lganda — 
 | Maydon | Ma'nosi |
 |---|---|
 | `type` | Hozircha faqat `OAUTH2_CLIENT_CREDENTIALS` |
-| `tokenUrl` | Token endpoint'i; `{{secrets.KEY}}` bo'lishi mumkin. `apiUrl` bilan bir xil tekshiriladi (ommaviy manzil, §6.1) |
+| `tokenUrl` | Token endpoint'i; `{{secrets.KEY}}` bo'lishi mumkin. `http.url` bilan bir xil tekshiriladi (ommaviy manzil, §6.1) |
 | `clientIdSecret` / `clientSecretSecret` | Client id va secret saqlangan [secret](secrets.md) **kalitlari** — qiymatlarning o'zi emas |
 | `scope` | So'raladigan scope'lar, bo'shliq bilan; ixtiyoriy |
 
 - Token `POST tokenUrl` bilan olinadi: `grant_type=client_credentials`, client id/secret — `Authorization: Basic`
   (RFC 6749 §2.3.1). Javobdagi `access_token` har so'rovga `Authorization: Bearer ...` bo'lib qo'yiladi; tool'ning
-  `apiHeaders` dagi `Authorization` bu holda e'tiborga olinmaydi.
+  `http.headers` dagi `Authorization` bu holda e'tiborga olinmaydi.
 - Token instance xotirasida keshlanadi va `expires_in` tugashidan 60 soniya oldin yangilanadi (`expires_in`
   bo'lmasa — 1 soat). API `401` qaytarsa token tashlanadi, keyingi chaqiruv yangisini oladi.
 - Token olinmasa (secret yo'q, `4xx`, javobda `access_token` yo'q) so'rov yuborilmaydi: qo'ng'iroqda model oddiy
@@ -320,12 +339,17 @@ hujjatdagi `CREATED_AT` misoli ham).
         "id": 1,
         "name": "check_delivery_status",
         "description": "Mijozning buyurtma raqami bo'yicha yetkazib berish holatini aniqlash",
-        "apiUrl": "https://api.mycompany.uz/v1/orders/{order_id}/track",
-        "apiMethod": "GET",
-        "responseTimeoutSecs": 5,
-        "disableInterruptions": true,
-        "forcePreToolSpeech": true,
-        "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman.",
+        "http": {
+          "url": "https://api.mycompany.uz/v1/orders/{order_id}/track",
+          "method": "GET",
+          "responseTimeoutSecs": 5,
+          "...": "..."
+        },
+        "speech": {
+          "disableInterruptions": true,
+          "forcePreToolSpeech": true,
+          "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman."
+        },
         "createdAt": "2026-09-06T12:00:00Z",
         "updatedAt": "2026-09-06T12:00:00Z"
       }
@@ -384,7 +408,7 @@ Agar ushbu tool qaysidir faol AI Agentga biriktirilgan bo'lsa, o'chirishga ruxsa
 
 ## 6. Manzil va javob cheklovlari
 
-### 6.1. `apiUrl` ommaviy bo'lishi shart
+### 6.1. `http.url` ommaviy bo'lishi shart
 
 Tool manzili faqat ommaviy `http(s)` manzil bo'la oladi. Loopback (`127.0.0.1`,
 `localhost`), link-local (`169.254.0.0/16`), xususiy tarmoq (`10/8`, `172.16/12`,
@@ -467,7 +491,7 @@ Tanlangan har bir amaldan bitta tool, bitta tranzaksiyada — biri o'tmasa hech 
 {
   "accept": true,
   "data": {
-    "tools": [ { "id": 101, "name": "getOrder", "apiUrl": "https://api.shop.example.uz/v1/orders/{id}", "...": "..." } ],
+    "tools": [ { "id": 101, "name": "getOrder", "http": { "url": "https://api.shop.example.uz/v1/orders/{id}", "...": "..." } } ],
     "secretKeys": ["SHOP_TOKEN"]
   }
 }
@@ -479,15 +503,15 @@ Tanlangan har bir amaldan bitta tool, bitta tranzaksiyada — biri o'tmasa hech 
 
 | Hujjatda | Tool'da |
 |---|---|
-| `servers[0].url` (o'zgaruvchilar `default` bilan; nisbiy bo'lsa hujjat manziliga nisbatan) + path | `apiUrl`. Absolyut manzil chiqmasa — `baseUrl` bering |
+| `servers[0].url` (o'zgaruvchilar `default` bilan; nisbiy bo'lsa hujjat manziliga nisbatan) + path | `http.url`. Absolyut manzil chiqmasa — `baseUrl` bering |
 | `operationId` | `name` (harf/raqam/`_` dan boshqasi `_` ga). Yo'q bo'lsa — `<method>_<path>`: `get_catalog` |
 | `summary` + `description` | `description` (≤ 500) |
-| `in: path` / `in: query` parametrlar | `apiPathParams` / `apiQueryParams`, `LLM Prompt` — model to'ldiradi; `enum` → `allowedValues`. `header`/`cookie` parametrlar olinmaydi |
+| `in: path` / `in: query` parametrlar | `http.pathParams` / `http.queryParams`, `LLM Prompt` — model to'ldiradi; `enum` → `allowedValues`. `header`/`cookie` parametrlar olinmaydi |
 | `requestBody` → `application/json` (yoki `+json`) sxemasi | `bodySchema`: lokal `$ref` lar ichiga qo'yiladi, `allOf` birlashtiriladi, `oneOf`/`anyOf` dan birinchisi, `readOnly` maydonlar (id kabi) olib tashlanadi. JSON bo'lmagan yoki obyekt bo'lmagan body — amal import qilinmaydi |
 | `GET` / `POST`, `PUT`, `PATCH` / `DELETE` | `effect`: `READ` / `WRITE` (tasdiq bilan, §3.2) / `DESTRUCTIVE` (modelga berilmaydi) |
 | `security` → `http bearer` | `Authorization: Bearer {{secrets.<P>_TOKEN}}` |
 | `http basic` | `Authorization: Basic {{secrets.<P>_BASIC_AUTH}}` — secret'ga `base64(login:parol)` yoziladi |
-| `apiKey` (header / query / cookie) | shu nomli header / `apiUrl` ga `?name={{secrets.<P>_API_KEY}}` / `Cookie` |
+| `apiKey` (header / query / cookie) | shu nomli header / `http.url` ga `?name={{secrets.<P>_API_KEY}}` / `Cookie` |
 | `oauth2` `clientCredentials` | `auth` (§3.4), `<P>_CLIENT_ID`, `<P>_CLIENT_SECRET`, scope'lar talabdan |
 | boshqa `oauth2` oqimlari, `openIdConnect` | `Authorization: Bearer {{secrets.<P>_TOKEN}}` — tokenni kompaniya o'zi qo'yadi |
 

@@ -16,6 +16,10 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseC
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialing;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
@@ -199,16 +203,12 @@ class PredictiveDialServiceTest {
                 .name("Predictive")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
-                .dialWindowStart(LocalTime.of(9, 0))
-                .dialWindowEnd(LocalTime.of(20, 0))
-                .dialDays(Set.of())
-                .maxAttempts(3)
-                .retryIntervalMinutes(24)
+                .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
+                .retry(new CampaignRetry(3, 24, null))
                 .aiAgentId(AGENT_ID)
                 .companyId(COMPANY_ID)
-                .recurrenceType(RecurrenceType.ONCE)
-                .dialMode(DialMode.PREDICTIVE)
-                .callQueueId(QUEUE_ID)
+                .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
+                .dialing(new CampaignDialing(DialMode.PREDICTIVE, QUEUE_ID, Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT, null))
                 .build();
     }
 }

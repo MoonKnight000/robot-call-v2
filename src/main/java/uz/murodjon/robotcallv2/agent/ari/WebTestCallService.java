@@ -159,7 +159,7 @@ class WebTestCallService {
     private OutboundCall buildWebTestProfile(long companyId, long campaignId, Long targetId, Integer agentVersion) {
         Campaign campaign = campaignUseCase.requireCampaign(companyId, campaignId);
         if (campaign.aiAgentId() == null) {
-            throw new ConflictException(ErrorCode.CAMPAIGN_NOT_AI, campaignId, campaign.dialMode());
+            throw new ConflictException(ErrorCode.CAMPAIGN_NOT_AI, campaignId, campaign.dialing().mode());
         }
         // The draft by default — a browser test is how an editor hears a change before publishing it.
         AiAgent agent = aiAgentService.requireAgentVersion(campaign.companyId(), campaign.aiAgentId(), agentVersion);

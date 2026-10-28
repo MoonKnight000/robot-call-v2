@@ -4,6 +4,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
@@ -52,18 +56,13 @@ class RecurringCampaignSchedulerTest {
                 .name("Test Recurring")
                 .type(CampaignType.DEBT_COLLECTION)
                 .status(status)
-                .dialWindowStart(windowStart)
-                .dialWindowEnd(windowEnd)
-                .dialDays(dialDays)
-                .maxAttempts(3)
-                .maxConcurrentCalls(10)
+                .schedule(new CampaignSchedule(null, null, windowStart, windowEnd, dialDays))
+                .retry(new CampaignRetry(3, 0, null))
+                .limits(new CampaignLimits(10, 0, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
                 .createdBy(1L)
-                .recurrenceType(recurrenceType)
-                .recurringDayOfMonth(recurringDayOfMonth)
-                .cronExpression(cronExpression)
-                .autoResetTargets(true)
+                .recurrence(new CampaignRecurrence(recurrenceType, recurringDayOfMonth, cronExpression, true))
                 .build();
     }
 

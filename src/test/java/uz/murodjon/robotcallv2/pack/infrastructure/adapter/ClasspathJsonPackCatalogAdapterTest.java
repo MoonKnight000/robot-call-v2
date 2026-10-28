@@ -3,9 +3,9 @@ package uz.murodjon.robotcallv2.pack.infrastructure.adapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackSecret;
+import uz.murodjon.robotcallv2.pack.domain.entity.PackTool;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
-import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 import uz.murodjon.robotcallv2.tool.domain.service.ToolValidator;
@@ -63,7 +63,7 @@ class ClasspathJsonPackCatalogAdapterTest {
     @Test
     void everyToolIsOneTheToolEndpointAccepts() {
         for (VerticalPack pack : catalog.findAll()) {
-            for (Tool tool : pack.tools()) {
+            for (PackTool tool : pack.tools()) {
                 assertThatCode(() -> ToolValidator.validateBody(tool.apiBody(), tool.bodySchema()))
                         .as(tool.name()).doesNotThrowAnyException();
                 assertThat(tool.effect()).as(tool.name()).isNotEqualTo(ToolEffect.DESTRUCTIVE);
@@ -77,9 +77,10 @@ class ClasspathJsonPackCatalogAdapterTest {
     @Test
     void everyWritingToolAsksForConfirmation() {
         for (VerticalPack pack : catalog.findAll()) {
-            for (Tool tool : pack.tools()) {
+            for (PackTool tool : pack.tools()) {
+                // A pack file keeps the field as written; left out, the install turns it on for a WRITE tool.
                 if (tool.effect() == ToolEffect.WRITE) {
-                    assertThat(tool.requiresConfirmation()).as(tool.name()).isTrue();
+                    assertThat(tool.requiresConfirmation()).as(tool.name()).isNotEqualTo(Boolean.FALSE);
                 }
             }
         }
@@ -90,7 +91,7 @@ class ClasspathJsonPackCatalogAdapterTest {
     void everySecretTheToolsReadIsDeclared() {
         for (VerticalPack pack : catalog.findAll()) {
             Set<String> referenced = new HashSet<>();
-            for (Tool tool : pack.tools()) {
+            for (PackTool tool : pack.tools()) {
                 collectSecretReferences(tool.apiUrl(), referenced);
                 for (ToolKeyValuePair header : tool.apiHeaders()) {
                     collectSecretReferences(header.value(), referenced);

@@ -45,10 +45,6 @@ public class CampaignEntity {
     @Column(nullable = false)
     private CampaignStatus status;
 
-    @Column(name = "script_config", nullable = false)
-    @JdbcTypeCode(SqlTypes.JSON)
-    private String scriptConfig;
-
     @Column(name = "dial_window_start", nullable = false)
     private LocalTime dialWindowStart;
 
@@ -184,14 +180,6 @@ public class CampaignEntity {
 
     public void setStatus(CampaignStatus status) {
         this.status = status;
-    }
-
-    public String getScriptConfig() {
-        return scriptConfig;
-    }
-
-    public void setScriptConfig(String scriptConfig) {
-        this.scriptConfig = scriptConfig;
     }
 
     public LocalTime getDialWindowStart() {

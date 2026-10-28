@@ -108,7 +108,7 @@ public class ProgressiveDialService {
             return;
         }
         for (Campaign campaign : campaignUseCase.findActiveCampaigns()) {
-            if (campaign.dialMode() != DialMode.PROGRESSIVE || campaign.callQueueId() == null) {
+            if (campaign.dialing().mode() != DialMode.PROGRESSIVE || campaign.dialing().callQueueId() == null) {
                 continue;
             }
             try {
@@ -125,7 +125,7 @@ public class ProgressiveDialService {
         if (!DialWindow.isOpen(campaign, config, clock) || !callBillingUseCase.hasBalanceForCall(companyId)) {
             return;
         }
-        CallQueue queue = callQueueUseCase.findQueue(companyId, campaign.callQueueId());
+        CallQueue queue = callQueueUseCase.findQueue(companyId, campaign.dialing().callQueueId());
         if (queue == null) {
             return;
         }

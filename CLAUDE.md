@@ -24,7 +24,7 @@ Campaign ──aiAgentId──▶ AiAgent ──script.scenarioId──▶ Scena
 |---|---|---|---|
 | Savol | Kimga va qachon qo'ng'iroq qilinadi? | Kim gapiradi, qanday ovozda, qaysi model bilan? | Nima deydi, qaysi bosqichlarda, qayerga o'tadi? |
 | Saqlaydi | targetlar (CSV/CRM/`TargetSource`), dial oynasi va kunlari, `maxAttempts`, `RetryPolicy`, concurrency, kunlik limit, budjet, `priority`, `startAt/endAt`, takrorlanish, `dialMode` (AI yoki operator rejimlari), `callQueueId`, A/B `CampaignVariant` | til, `persona`, ovoz (`AiAgentVoice`), STT/TTS (`AiAgentSpeechEngine`), LLM (`llmModel`, `fastLlmModel`, temperature), fon tovushi, `callBehaviour`, limitlar, data policy, `firstMessage`, initiation/post-call webhook, `dataNeeded`/`dataEvaluation`, talaffuz qoidalari, SIP trunklar, versiyalar/publish | `StageDef` bosqichlar (`purpose`, `allowedTransitions`, `transitionConditions`, `branches`, `staticLine`, `requiredOutcomes`, `allowedTools`, `emotion`, bosqich `model` i), `GlobalNode`, `factSchema`, `outcomeSchema`, `tools`, `rolePrompt`, `guardrails`, `styleExamples`, `disclosureText`, `factWebhook` |
-| SAQLAMAYDI | ovoz, model, ssenariy matni | kimga/qachon qo'ng'iroq qilish; bosqichlar grafi (agar `scenarioId` bo'lsa) | ovoz, persona, model tanlovi, kompaniya sozlamalari |
+| SAQLAMAYDI | ovoz, model, ssenariy matni (yagona istisno — A/B `CampaignVariant`, pastda) | kimga/qachon qo'ng'iroq qilish; bosqichlar grafi (agar `scenarioId` bo'lsa) | ovoz, persona, model tanlovi, kompaniya sozlamalari |
 | Egasi / umumiylik | Kompaniyaniki | Kompaniyaniki, draft + published snapshot | Umumiy va **versiyalangan** (`scenarioKey` + `version`), built-in shablonlar bor |
 
 **Agent ssenariyni qayerdan oladi** (`AiAgentService.resolveScenario`, ustuvorlik tartibida):
@@ -38,6 +38,10 @@ Campaign ──aiAgentId──▶ AiAgent ──script.scenarioId──▶ Scena
 - "Ovozni/tilni/modelni almashtirish" → AI Agent.
 - "Ertaga 9:00–18:00 da shu ro'yxatga, 3 marta urinib" → Campaign.
 - "Bir xil kampaniyada ikki xil prompt/agentni sinash" → `CampaignVariant` (`promptOverride` faqat `rolePrompt` ni almashtiradi, `aiAgentId` — boshqa agent).
+  **Ataylab qilingan istisno:** variant `ttsVoiceId` va `pipelineMode` ni ham override qila oladi
+  (`DialerService` qo'ng'iroqqa o'tkazadi) — faqat A/B sinov uchun, agentni klonlamasdan ovoz/pipeline
+  solishtirish. Bu Campaign'ga ovoz/model qo'shish uchun pretsedent emas: boshqa har qanday ovoz
+  yoki model sozlamasi AI Agent'da qoladi.
 - Kiruvchi qo'ng'iroq Campaign'siz ishlaydi: `InboundRoute` to'g'ridan-to'g'ri `aiAgentId` (yoki `callFlowId`) ga ishora qiladi.
 - **Mavzu va yo'nalish — ikki xil o'q.** Mavzu (qarz / eslatma / lid) = Scenario, uni
   `ScenarioDefinition.callPurpose` bir gapda aytadi; bitta ssenariy — bitta mavzu. Yo'nalish

@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aiagent.application.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.dto.*;
+import uz.murodjon.robotcallv2.aiagent.application.mapper.AiAgentSettingsMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentSettingsUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
@@ -113,36 +114,17 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
     @Override
     public AgentLimitsDto findLimits(long companyId, long agentId) {
         AiAgent agent = drafts.requireAgent(companyId, agentId);
-        return new AgentLimitsDto(
-                agent.limits().concurrentCallsLimit(),
-                agent.limits().dailyCallsLimit(),
-                agent.limits().maxConversationDurationSeconds(),
-                agent.limits().silenceEndCallTimeoutSeconds(),
-                agent.limits().turnTimeoutSeconds()
-        );
+        return AgentLimitsDto.of(agent.limits());
     }
 
     @Override
     @Transactional
     public AgentLimitsDto updateLimits(long companyId, long agentId, AgentLimitsDto request) {
         AiAgent existing = drafts.requireAgent(companyId, agentId);
-        AiAgentLimits limits = existing.limits();
-        AiAgent updated = existing.withLimits(new AiAgentLimits(
-                request.maxConversationDurationSeconds() != null ? request.maxConversationDurationSeconds() : limits.maxConversationDurationSeconds(),
-                request.silenceEndCallTimeoutSeconds() != null ? request.silenceEndCallTimeoutSeconds() : limits.silenceEndCallTimeoutSeconds(),
-                request.turnTimeoutSeconds() != null ? request.turnTimeoutSeconds() : limits.turnTimeoutSeconds(),
-                request.concurrentCallsLimit() != null ? request.concurrentCallsLimit() : limits.concurrentCallsLimit(),
-                request.dailyCallsLimit() != null ? request.dailyCallsLimit() : limits.dailyCallsLimit()
-        ));
+        AiAgent updated = existing.withLimits(AiAgentSettingsMapper.toAiAgentLimits(request, existing.limits()));
         drafts.update(companyId, agentId, updated);
         auditUseCase.record(companyId, "AI_AGENT_LIMITS_UPDATE", "ai_agent", String.valueOf(agentId), updated.name());
-        return new AgentLimitsDto(
-                updated.limits().concurrentCallsLimit(),
-                updated.limits().dailyCallsLimit(),
-                updated.limits().maxConversationDurationSeconds(),
-                updated.limits().silenceEndCallTimeoutSeconds(),
-                updated.limits().turnTimeoutSeconds()
-        );
+        return AgentLimitsDto.of(updated.limits());
     }
 
     @Override
@@ -152,31 +134,13 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                 agent.useRag(),
                 agent.preemptiveGeneration(),
                 agent.ivrNavigationEnabled(),
-                agent.dataPolicy().storeCallAudio(),
-                agent.dataPolicy().zeroPiiRetention(),
-                agent.dataPolicy().conversationRetentionDays(),
-                agent.dataPolicy().realtimeFactsDelivery(),
                 agent.initiationWebhook(),
                 agent.postCallWebhook(),
-                agent.ambience().background(),
-                agent.ambience().backgroundVolume(),
-                agent.ambience().backgroundFadeInSeconds(),
-                agent.ambience().thinking(),
-                agent.ambience().thinkingVolume(),
-                agent.ambience().noiseCancellationEnabled(),
-                agent.ambience().noiseCancellationMode(),
                 agent.voice().emotionAdaptive(),
                 agent.voice().warmth(),
-                agent.callBehaviour().dtmfInputEnabled(),
-                agent.callBehaviour().voicemailAction(),
-                agent.callBehaviour().voicemailMessage(),
-                agent.callBehaviour().midCallSmsEnabled(),
-                agent.callBehaviour().midCallSmsTemplate(),
-                agent.callBehaviour().transferPhoneNumber(),
-                agent.callBehaviour().transferMessage(),
-                agent.callBehaviour().transferQueueId(),
-                agent.callBehaviour().interruptionSensitivity(),
-                agent.callBehaviour().endpointingDelayMs()
+                AgentAmbienceDto.of(agent.ambience()),
+                AgentCallBehaviourDto.of(agent.callBehaviour()),
+                AgentDataPolicyDto.of(agent.dataPolicy())
         );
     }
 
@@ -185,41 +149,16 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
     public AgentAdvancedDto updateAdvanced(long companyId, long agentId, AgentAdvancedDto request) {
         AiAgent existing = drafts.requireAgent(companyId, agentId);
         AiAgentDrafts.requireCallableWebhookUrls(request.initiationWebhook(), request.postCallWebhook());
-        drafts.requireOwnQueue(companyId, request.transferQueueId());
-        boolean zeroPii = request.zeroPiiRetention() != null ? request.zeroPiiRetention() : existing.dataPolicy().zeroPiiRetention();
-        boolean storeAudio = request.storeCallAudio() != null ? request.storeCallAudio() : existing.dataPolicy().storeCallAudio();
-        AiAgentDrafts.requireCompatibleDataPolicy(zeroPii, storeAudio);
+        drafts.requireOwnQueue(companyId, request.callBehaviour() != null ? request.callBehaviour().transferQueueId() : null);
+        AiAgentDataPolicy dataPolicy = AiAgentSettingsMapper.toAiAgentDataPolicy(request.dataPolicy(), existing.dataPolicy());
+        AiAgentDrafts.requireCompatibleDataPolicy(dataPolicy.zeroPiiRetention(), dataPolicy.storeCallAudio());
 
-        AiAgentAmbience ambience = existing.ambience();
-        AiAgentCallBehaviour behaviour = existing.callBehaviour();
         AiAgentVoice voice = existing.voice();
 
         AiAgent updated = existing.withAdvanced(
-                new AiAgentAmbience(
-                        request.ambientSound() != null ? request.ambientSound() : ambience.background(),
-                        request.ambientSoundVolume() != null ? request.ambientSoundVolume() : ambience.backgroundVolume(),
-                        request.ambientSoundFadeInSeconds() != null ? request.ambientSoundFadeInSeconds() : ambience.backgroundFadeInSeconds(),
-                        request.thinkingSound() != null ? request.thinkingSound() : ambience.thinking(),
-                        request.thinkingSoundVolume() != null ? request.thinkingSoundVolume() : ambience.thinkingVolume(),
-                        request.noiseCancellationEnabled() != null ? request.noiseCancellationEnabled() : ambience.noiseCancellationEnabled(),
-                        request.noiseCancellationMode() != null ? request.noiseCancellationMode() : ambience.noiseCancellationMode()),
-                new AiAgentCallBehaviour(
-                        request.interruptionSensitivity() != null ? request.interruptionSensitivity() : behaviour.interruptionSensitivity(),
-                        request.endpointingDelayMs() != null ? request.endpointingDelayMs() : behaviour.endpointingDelayMs(),
-                        request.dtmfInputEnabled() != null ? request.dtmfInputEnabled() : behaviour.dtmfInputEnabled(),
-                        request.voicemailAction() != null ? request.voicemailAction() : behaviour.voicemailAction(),
-                        request.voicemailMessage() != null ? request.voicemailMessage() : behaviour.voicemailMessage(),
-                        request.midCallSmsEnabled() != null ? request.midCallSmsEnabled() : behaviour.midCallSmsEnabled(),
-                        request.midCallSmsTemplate() != null ? request.midCallSmsTemplate() : behaviour.midCallSmsTemplate(),
-                        request.transferPhoneNumber() != null ? request.transferPhoneNumber() : behaviour.transferPhoneNumber(),
-                        request.transferMessage() != null ? request.transferMessage() : behaviour.transferMessage(),
-                        request.transferQueueId() != null ? request.transferQueueId() : behaviour.transferQueueId(),
-                        behaviour.preConversationAudioFileId()),
-                new AiAgentDataPolicy(
-                        zeroPii,
-                        storeAudio,
-                        request.conversationRetentionDays() != null ? request.conversationRetentionDays() : existing.dataPolicy().conversationRetentionDays(),
-                        request.realtimeFactsDelivery() != null ? request.realtimeFactsDelivery() : existing.dataPolicy().realtimeFactsDelivery()),
+                AiAgentSettingsMapper.toAiAgentAmbience(request.ambience(), existing.ambience()),
+                AiAgentSettingsMapper.toAiAgentCallBehaviour(request.callBehaviour(), existing.callBehaviour()),
+                dataPolicy,
                 voice.withEmotionAdaptive(
                         request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive())
                         .withWarmth(request.speakingWarmth() != null ? request.speakingWarmth() : voice.warmth()),

@@ -1,6 +1,7 @@
 # `aiagent` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
 AgentAdvancedDto:
   type: object
+  description: The "advanced" settings section. The groups are the same ones `AiAgentRow` carries; of the voice only the two delivery switches belong here.
   properties:
     useRag:
       type: boolean
@@ -8,52 +9,64 @@ AgentAdvancedDto:
       type: boolean
     ivrNavigationEnabled:
       type: boolean
-    storeCallAudio:
-      type: boolean
-    zeroPiiRetention:
-      type: boolean
-    conversationRetentionDays:
-      type: integer
-      format: int32
-    realtimeFactsDelivery:
-      $ref: '#/RealtimeFactsDelivery'
     initiationWebhook:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
       $ref: '#/AgentWebhookConfig'
-    ambientSound:
-      $ref: '#/AmbientSound'
-    ambientSoundVolume:
-      type: number
-      format: double
-    ambientSoundFadeInSeconds:
-      type: number
-      format: double
-    thinkingSound:
-      $ref: '#/AmbientSound'
-    thinkingSoundVolume:
-      type: number
-      format: double
-    noiseCancellationEnabled:
-      type: boolean
-    noiseCancellationMode:
-      $ref: '#/NoiseCancellationMode'
     emotionAdaptiveVoice:
       type: boolean
     speakingWarmth:
       type: string
       enum: [RESERVED, BALANCED, WARM]
       description: how much warmth the agent's wording carries; BALANCED by default
+    ambience:
+      $ref: '#/AgentAmbienceDto'
+    callBehaviour:
+      $ref: '#/AgentCallBehaviourDto'
+    dataPolicy:
+      $ref: '#/AgentDataPolicyDto'
+AgentAmbienceDto:
+  type: object
+  description: '`AiAgentAmbience` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
+  properties:
+    background:
+      $ref: '#/AmbientSound'
+    backgroundVolume:
+      type: number
+      format: double
+    backgroundFadeInSeconds:
+      type: number
+      format: double
+    thinking:
+      $ref: '#/AmbientSound'
+    thinkingVolume:
+      type: number
+      format: double
+    noiseCancellationEnabled:
+      type: boolean
+    noiseCancellationMode:
+      $ref: '#/NoiseCancellationMode'
+AgentCallBehaviourDto:
+  type: object
+  description: '`AiAgentCallBehaviour` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
+  properties:
+    interruptionSensitivity:
+      $ref: '#/InterruptionSensitivity'
+    endpointingDelayMs:
+      type: integer
+      format: int32
     dtmfInputEnabled:
       type: boolean
     voicemailAction:
       $ref: '#/VoicemailAction'
     voicemailMessage:
       type: string
+      maxLength: 500
     midCallSmsEnabled:
       type: boolean
     midCallSmsTemplate:
       type: string
+      maxLength: 500
     transferPhoneNumber:
       type: string
     transferMessage:
@@ -61,11 +74,91 @@ AgentAdvancedDto:
     transferQueueId:
       type: integer
       format: int64
-    interruptionSensitivity:
-      $ref: '#/InterruptionSensitivity'
-    endpointingDelayMs:
+    preConversationAudioFileId:
+      type: integer
+      format: int64
+AgentDataPolicyDto:
+  type: object
+  description: '`AiAgentDataPolicy` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
+  properties:
+    zeroPiiRetention:
+      type: boolean
+    storeCallAudio:
+      type: boolean
+    conversationRetentionDays:
       type: integer
       format: int32
+    realtimeFactsDelivery:
+      $ref: '#/RealtimeFactsDelivery'
+AgentScriptDto:
+  type: object
+  description: '`AiAgentScript` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
+  properties:
+    templateId:
+      $ref: '#/AgentTemplate'
+    scenarioId:
+      type: integer
+      format: int64
+    mode:
+      $ref: '#/ScenarioMode'
+    definition:
+      $ref: scenario.yaml#/ScenarioDefinition
+    firstMessage:
+      type: string
+    systemPrompt:
+      type: string
+AgentSpeechEngineDto:
+  type: object
+  description: '`AiAgentSpeechEngine` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
+  properties:
+    mode:
+      $ref: ../common.yaml#/schemas/PipelineMode
+    realtimeProvider:
+      type: string
+    pipecatStt:
+      type: string
+    pipecatLlm:
+      type: string
+    pipecatTts:
+      type: string
+    sttProvider:
+      type: string
+    sttModel:
+      type: string
+    ttsProvider:
+      type: string
+    ttsModel:
+      type: string
+AgentVoiceDto:
+  type: object
+  description: '`AiAgentVoice` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
+  properties:
+    defaultVoice:
+      type: string
+      description: a tts_voice id; `GET /api/ai-agents/voices` lists them
+    speed:
+      type: number
+      format: double
+    stability:
+      type: number
+      format: double
+    similarityBoost:
+      type: number
+      format: double
+    perLanguage:
+      type: object
+      additionalProperties:
+        type: string
+    perLanguageSpeed:
+      type: object
+      additionalProperties:
+        type: number
+        format: double
+    emotionAdaptive:
+      type: boolean
+    warmth:
+      type: string
+      enum: [RESERVED, BALANCED, WARM]
 AgentAnalysisDto:
   type: object
   properties:
@@ -400,7 +493,7 @@ AiAgentFilter:
       type: boolean
 AiAgentRow:
   type: object
-  description: '`AiAgent` representation returned to the agent screens.'
+  description: '`AiAgent` representation returned to the agent screens. The groups are the ones `UpdateAiAgentRequest` takes, so the form can send back what it read.'
   properties:
     id:
       type: integer
@@ -412,71 +505,22 @@ AiAgentRow:
       type: string
     description:
       type: string
-    scenarioId:
-      type: integer
-      format: int64
-    scenarioName:
-      type: string
-    templateId:
-      $ref: '#/AgentTemplate'
-    firstMessage:
-      type: string
-    systemPrompt:
-      type: string
-    scenarioMode:
-      $ref: '#/ScenarioMode'
-    scenarioDefinition:
-      $ref: scenario.yaml#/ScenarioDefinition
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
-    useRag:
-      type: boolean
     language:
       type: string
-    pipelineMode:
-      $ref: ../common.yaml#/schemas/PipelineMode
-    realtimeProvider:
-      type: string
-    pipecatStt:
-      type: string
-    pipecatLlm:
-      type: string
-    pipecatTts:
-      type: string
-    sttProvider:
-      type: string
-    sttModel:
-      type: string
-    ttsProvider:
-      type: string
-    ttsModel:
-      type: string
-    ttsVoice:
-      type: string
-    voiceSpeed:
-      type: number
-      format: double
-    voiceStability:
-      type: number
-      format: double
-    voiceSimilarityBoost:
-      type: number
-      format: double
-    languageVoices:
-      type: object
-      additionalProperties:
-        type: string
-    languageVoiceSpeeds:
-      type: object
-      additionalProperties:
-        type: number
-        format: double
     persona:
       $ref: ../common.yaml#/schemas/AgentPersona
     disclosureEnabled:
       type: boolean
+    engineProfileId:
+      type: string
+    script:
+      $ref: '#/AgentScriptDto'
+    scenarioName:
+      type: string
+    speechEngine:
+      $ref: '#/AgentSpeechEngineDto'
+    voice:
+      $ref: '#/AgentVoiceDto'
     llmModel:
       type: string
     fastLlmModel:
@@ -487,6 +531,20 @@ AiAgentRow:
     maxOutputTokens:
       type: integer
       format: int32
+    ambience:
+      $ref: '#/AgentAmbienceDto'
+    callBehaviour:
+      $ref: '#/AgentCallBehaviourDto'
+    limits:
+      $ref: '#/AgentLimitsDto'
+    dataPolicy:
+      $ref: '#/AgentDataPolicyDto'
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    useRag:
+      type: boolean
     dataNeeded:
       type: array
       items:
@@ -495,79 +553,10 @@ AiAgentRow:
       type: array
       items:
         $ref: '#/DataEvaluationCriterion'
-    zeroPiiRetention:
-      type: boolean
-    storeCallAudio:
-      type: boolean
-    conversationRetentionDays:
-      type: integer
-      format: int32
-    realtimeFactsDelivery:
-      $ref: '#/RealtimeFactsDelivery'
-    maxConversationDurationSeconds:
-      type: integer
-      format: int32
-    silenceEndCallTimeoutSeconds:
-      type: integer
-      format: int32
-    turnTimeoutSeconds:
-      type: integer
-      format: int32
-    concurrentCallsLimit:
-      type: integer
-      format: int32
-    dailyCallsLimit:
-      type: integer
-      format: int32
     initiationWebhook:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
       $ref: '#/AgentWebhookConfig'
-    ambientSound:
-      $ref: '#/AmbientSound'
-    ambientSoundVolume:
-      type: number
-      format: double
-    ambientSoundFadeInSeconds:
-      type: number
-      format: double
-    thinkingSound:
-      $ref: '#/AmbientSound'
-    thinkingSoundVolume:
-      type: number
-      format: double
-    noiseCancellationEnabled:
-      type: boolean
-    noiseCancellationMode:
-      $ref: '#/NoiseCancellationMode'
-    emotionAdaptiveVoice:
-      type: boolean
-    speakingWarmth:
-      type: string
-      enum: [RESERVED, BALANCED, WARM]
-      description: how much warmth the agent's wording carries; BALANCED by default
-    dtmfInputEnabled:
-      type: boolean
-    voicemailAction:
-      $ref: '#/VoicemailAction'
-    voicemailMessage:
-      type: string
-    midCallSmsEnabled:
-      type: boolean
-    midCallSmsTemplate:
-      type: string
-    transferPhoneNumber:
-      type: string
-    transferMessage:
-      type: string
-    transferQueueId:
-      type: integer
-      format: int64
-    interruptionSensitivity:
-      $ref: '#/InterruptionSensitivity'
-    endpointingDelayMs:
-      type: integer
-      format: int32
     pronunciationRules:
       type: array
       items:
@@ -603,16 +592,17 @@ AiAgentRow:
   required:
   - id
   - companyId
+  - disclosureEnabled
+  - script
+  - speechEngine
+  - voice
+  - ambience
+  - callBehaviour
+  - limits
+  - dataPolicy
   - preemptiveGeneration
   - ivrNavigationEnabled
   - useRag
-  - disclosureEnabled
-  - zeroPiiRetention
-  - storeCallAudio
-  - noiseCancellationEnabled
-  - emotionAdaptiveVoice
-  - dtmfInputEnabled
-  - midCallSmsEnabled
   - enabled
   - hasDraftChanges
   - version
@@ -683,7 +673,7 @@ AmbientSound:
     `#KEYBOARD_TYPING` is the odd one out: it is not a room the bot is calling from but a thing the bot is doing, so it is played only while a reply is being composed rather than for the whole call.
 CreateAiAgentRequest:
   type: object
-  description: A new AI agent (`POST /api/ai-agents`).
+  description: A new AI agent (`POST /api/ai-agents`). Each group may be left out as a whole; the agent then takes that group's defaults.
   properties:
     name:
       type: string
@@ -692,67 +682,18 @@ CreateAiAgentRequest:
     description:
       type: string
       maxLength: 500
-    scenarioId:
-      type: integer
-      format: int64
-    templateId:
-      $ref: '#/AgentTemplate'
-    firstMessage:
-      type: string
-    systemPrompt:
-      type: string
-    scenarioMode:
-      $ref: '#/ScenarioMode'
-    scenarioDefinition:
-      $ref: scenario.yaml#/ScenarioDefinition
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
-    useRag:
-      type: boolean
     language:
       type: string
-    pipelineMode:
-      $ref: ../common.yaml#/schemas/PipelineMode
-    realtimeProvider:
-      type: string
-    pipecatStt:
-      type: string
-    pipecatLlm:
-      type: string
-    pipecatTts:
-      type: string
-    sttProvider:
-      type: string
-    sttModel:
-      type: string
-    ttsProvider:
-      type: string
-    ttsModel:
-      type: string
-    ttsVoice:
-      type: string
-    voiceSpeed:
-      type: number
-      format: double
-    voiceStability:
-      type: number
-      format: double
-    voiceSimilarityBoost:
-      type: number
-      format: double
-    languageVoices:
-      type: object
-      additionalProperties:
-        type: string
-    languageVoiceSpeeds:
-      type: object
-      additionalProperties:
-        type: number
-        format: double
     persona:
       $ref: ../common.yaml#/schemas/AgentPersona
+    engineProfileId:
+      type: string
+    script:
+      $ref: '#/AgentScriptDto'
+    speechEngine:
+      $ref: '#/AgentSpeechEngineDto'
+    voice:
+      $ref: '#/AgentVoiceDto'
     llmModel:
       type: string
       maxLength: 120
@@ -765,6 +706,20 @@ CreateAiAgentRequest:
     maxOutputTokens:
       type: integer
       format: int32
+    ambience:
+      $ref: '#/AgentAmbienceDto'
+    callBehaviour:
+      $ref: '#/AgentCallBehaviourDto'
+    limits:
+      $ref: '#/AgentLimitsDto'
+    dataPolicy:
+      $ref: '#/AgentDataPolicyDto'
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    useRag:
+      type: boolean
     dataNeeded:
       type: array
       items:
@@ -773,79 +728,10 @@ CreateAiAgentRequest:
       type: array
       items:
         $ref: '#/DataEvaluationCriterion'
-    zeroPiiRetention:
-      type: boolean
-    storeCallAudio:
-      type: boolean
-    conversationRetentionDays:
-      type: integer
-      format: int32
-    realtimeFactsDelivery:
-      $ref: '#/RealtimeFactsDelivery'
-    maxConversationDurationSeconds:
-      type: integer
-      format: int32
-    silenceEndCallTimeoutSeconds:
-      type: integer
-      format: int32
-    turnTimeoutSeconds:
-      type: integer
-      format: int32
-    concurrentCallsLimit:
-      type: integer
-      format: int32
-    dailyCallsLimit:
-      type: integer
-      format: int32
     initiationWebhook:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
       $ref: '#/AgentWebhookConfig'
-    ambientSound:
-      $ref: '#/AmbientSound'
-    ambientSoundVolume:
-      type: number
-      format: double
-    ambientSoundFadeInSeconds:
-      type: number
-      format: double
-    thinkingSound:
-      $ref: '#/AmbientSound'
-    thinkingSoundVolume:
-      type: number
-      format: double
-    noiseCancellationEnabled:
-      type: boolean
-    noiseCancellationMode:
-      $ref: '#/NoiseCancellationMode'
-    emotionAdaptiveVoice:
-      type: boolean
-    speakingWarmth:
-      type: string
-      enum: [RESERVED, BALANCED, WARM]
-      description: how much warmth the agent's wording carries; BALANCED by default
-    dtmfInputEnabled:
-      type: boolean
-    voicemailAction:
-      $ref: '#/VoicemailAction'
-    voicemailMessage:
-      type: string
-    midCallSmsEnabled:
-      type: boolean
-    midCallSmsTemplate:
-      type: string
-    transferPhoneNumber:
-      type: string
-    transferMessage:
-      type: string
-    transferQueueId:
-      type: integer
-      format: int64
-    interruptionSensitivity:
-      $ref: '#/InterruptionSensitivity'
-    endpointingDelayMs:
-      type: integer
-      format: int32
     sipTrunkIds:
       type: array
       items:
@@ -1122,7 +1008,7 @@ TemplatePresetDto:
 UpdateAiAgentRequest:
   type: object
   description: |-
-    Full edit of an agent (`PUT /api/ai-agents/{id`}).
+    Full edit of an agent (`PUT /api/ai-agents/{id}`). The groups are the same as `AiAgentRow` returns; a null field — or a group left out — keeps the agent's value.
 
     `version` is the one `AiAgentRow` carried when the form was opened — the draft row's lock counter, not `publishedVersion`. An agent saved by someone else since is answered 409 instead of being overwritten. Optional, so an older client that does not send it keeps working.
   properties:
@@ -1133,67 +1019,18 @@ UpdateAiAgentRequest:
     description:
       type: string
       maxLength: 500
-    scenarioId:
-      type: integer
-      format: int64
-    templateId:
-      $ref: '#/AgentTemplate'
-    firstMessage:
-      type: string
-    systemPrompt:
-      type: string
-    scenarioMode:
-      $ref: '#/ScenarioMode'
-    scenarioDefinition:
-      $ref: scenario.yaml#/ScenarioDefinition
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
-    useRag:
-      type: boolean
     language:
       type: string
-    pipelineMode:
-      $ref: ../common.yaml#/schemas/PipelineMode
-    realtimeProvider:
-      type: string
-    pipecatStt:
-      type: string
-    pipecatLlm:
-      type: string
-    pipecatTts:
-      type: string
-    sttProvider:
-      type: string
-    sttModel:
-      type: string
-    ttsProvider:
-      type: string
-    ttsModel:
-      type: string
-    ttsVoice:
-      type: string
-    voiceSpeed:
-      type: number
-      format: double
-    voiceStability:
-      type: number
-      format: double
-    voiceSimilarityBoost:
-      type: number
-      format: double
-    languageVoices:
-      type: object
-      additionalProperties:
-        type: string
-    languageVoiceSpeeds:
-      type: object
-      additionalProperties:
-        type: number
-        format: double
     persona:
       $ref: ../common.yaml#/schemas/AgentPersona
+    engineProfileId:
+      type: string
+    script:
+      $ref: '#/AgentScriptDto'
+    speechEngine:
+      $ref: '#/AgentSpeechEngineDto'
+    voice:
+      $ref: '#/AgentVoiceDto'
     llmModel:
       type: string
       maxLength: 120
@@ -1206,6 +1043,20 @@ UpdateAiAgentRequest:
     maxOutputTokens:
       type: integer
       format: int32
+    ambience:
+      $ref: '#/AgentAmbienceDto'
+    callBehaviour:
+      $ref: '#/AgentCallBehaviourDto'
+    limits:
+      $ref: '#/AgentLimitsDto'
+    dataPolicy:
+      $ref: '#/AgentDataPolicyDto'
+    preemptiveGeneration:
+      type: boolean
+    ivrNavigationEnabled:
+      type: boolean
+    useRag:
+      type: boolean
     dataNeeded:
       type: array
       items:
@@ -1214,81 +1065,10 @@ UpdateAiAgentRequest:
       type: array
       items:
         $ref: '#/DataEvaluationCriterion'
-    zeroPiiRetention:
-      type: boolean
-    storeCallAudio:
-      type: boolean
-    conversationRetentionDays:
-      type: integer
-      format: int32
-    realtimeFactsDelivery:
-      $ref: '#/RealtimeFactsDelivery'
-    maxConversationDurationSeconds:
-      type: integer
-      format: int32
-    silenceEndCallTimeoutSeconds:
-      type: integer
-      format: int32
-    turnTimeoutSeconds:
-      type: integer
-      format: int32
-    concurrentCallsLimit:
-      type: integer
-      format: int32
-    dailyCallsLimit:
-      type: integer
-      format: int32
     initiationWebhook:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
       $ref: '#/AgentWebhookConfig'
-    ambientSound:
-      $ref: '#/AmbientSound'
-    ambientSoundVolume:
-      type: number
-      format: double
-    ambientSoundFadeInSeconds:
-      type: number
-      format: double
-    thinkingSound:
-      $ref: '#/AmbientSound'
-    thinkingSoundVolume:
-      type: number
-      format: double
-    noiseCancellationEnabled:
-      type: boolean
-    noiseCancellationMode:
-      $ref: '#/NoiseCancellationMode'
-    emotionAdaptiveVoice:
-      type: boolean
-    speakingWarmth:
-      type: string
-      enum: [RESERVED, BALANCED, WARM]
-      description: how much warmth the agent's wording carries; BALANCED by default
-    dtmfInputEnabled:
-      type: boolean
-    voicemailAction:
-      $ref: '#/VoicemailAction'
-    voicemailMessage:
-      type: string
-      maxLength: 500
-    midCallSmsEnabled:
-      type: boolean
-    midCallSmsTemplate:
-      type: string
-      maxLength: 500
-    transferPhoneNumber:
-      type: string
-    transferMessage:
-      type: string
-    transferQueueId:
-      type: integer
-      format: int64
-    interruptionSensitivity:
-      $ref: '#/InterruptionSensitivity'
-    endpointingDelayMs:
-      type: integer
-      format: int32
     sipTrunkIds:
       type: array
       items:

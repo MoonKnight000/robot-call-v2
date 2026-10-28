@@ -18,9 +18,6 @@ import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleU
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundFailoverAction;
-import uz.murodjon.robotcallv2.inbound.domain.enums.InboundRouteType;
-import uz.murodjon.robotcallv2.inbound.domain.enums.QueueStrategy;
 import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessHoursVerdict;
 
@@ -71,9 +68,7 @@ class InboundCallGateTest {
 
     private InboundRoute createRoute(InboundAfterHoursAction afterHoursAction, String afterHoursDestination) {
         return new InboundRoute(
-                10L, 1L, "+998712001122", 5L, InboundRouteType.SCENARIO, null,
-                QueueStrategy.RING_ALL, 30, InboundFailoverAction.HANGUP, null,
-                afterHoursAction, afterHoursDestination, null,
+                10L, 1L, "+998712001122", 5L, afterHoursAction, afterHoursDestination,
                 LocalTime.of(9, 0), LocalTime.of(18, 0), null,
                 null, null, null, true, Instant.now()
         );

@@ -86,23 +86,23 @@ class OpenApiToolImporterTest {
     void pathAndQueryParametersBecomeTheModelsArguments() {
         Tool tool = operation("getOrder").tool();
 
-        assertThat(tool.apiUrl()).isEqualTo(SERVER + "/orders/{id}");
-        assertThat(tool.apiMethod()).isEqualTo("GET");
+        assertThat(tool.http().url()).isEqualTo(SERVER + "/orders/{id}");
+        assertThat(tool.http().method()).isEqualTo("GET");
         assertThat(tool.effect()).isEqualTo(ToolEffect.READ);
-        assertThat(tool.apiPathParams()).singleElement().satisfies(parameter -> {
+        assertThat(tool.http().pathParams()).singleElement().satisfies(parameter -> {
             assertThat(parameter.name()).isEqualTo("id");
             assertThat(parameter.required()).isTrue();
             assertThat(parameter.description()).isEqualTo("Order id");
         });
         // The header parameter is the configuration's, not the model's.
-        assertThat(tool.apiQueryParams()).extracting(ToolParamConfig::name).containsExactly("expand");
+        assertThat(tool.http().queryParams()).extracting(ToolParamConfig::name).containsExactly("expand");
     }
 
     @Test
     void aBearerSchemeReadsTheTokenFromASecretNamedAfterTheTitle() {
         OpenApiOperation operation = operation("getOrder");
 
-        assertThat(operation.tool().apiHeaders()).containsExactly(
+        assertThat(operation.tool().http().headers()).containsExactly(
                 new ToolKeyValuePair("Authorization", "Bearer {{secrets.SHOP_API_TOKEN}}", null, null));
         assertThat(operation.secretKeys()).containsExactly("SHOP_API_TOKEN");
     }
@@ -111,33 +111,33 @@ class OpenApiToolImporterTest {
     void aJsonBodyIsInlinedWithoutTheFieldsTheServerFills() {
         Tool tool = operation("createOrder").tool();
 
-        Map<String, Object> schema = tool.bodySchema();
+        Map<String, Object> schema = tool.http().bodySchema();
         assertThat(schema.get("type")).isEqualTo("object");
         assertThat(map(schema.get("properties"))).containsOnlyKeys("items");
         assertThat(schema.get("required")).isEqualTo(List.of("items"));
         Map<String, Object> items = map(map(schema.get("properties")).get("items"));
         assertThat(map(map(items.get("items")).get("properties"))).containsOnlyKeys("sku", "qty");
         assertThat(tool.effect()).isEqualTo(ToolEffect.WRITE);
-        assertThatCode(() -> ToolValidator.validateBody(tool.apiBody(), tool.bodySchema())).doesNotThrowAnyException();
+        assertThatCode(() -> ToolValidator.validateBody(tool.http().body(), tool.http().bodySchema())).doesNotThrowAnyException();
     }
 
     @Test
     void anOauthClientCredentialsSchemeBecomesTheToolsOwnClient() {
         OpenApiOperation operation = operation("createOrder");
 
-        assertThat(operation.tool().auth().type()).isEqualTo(ToolAuthType.OAUTH2_CLIENT_CREDENTIALS);
-        assertThat(operation.tool().auth().tokenUrl()).isEqualTo("https://eu.shop.example/oauth/token");
-        assertThat(operation.tool().auth().scope()).isEqualTo("orders");
+        assertThat(operation.tool().http().auth().type()).isEqualTo(ToolAuthType.OAUTH2_CLIENT_CREDENTIALS);
+        assertThat(operation.tool().http().auth().tokenUrl()).isEqualTo("https://eu.shop.example/oauth/token");
+        assertThat(operation.tool().http().auth().scope()).isEqualTo("orders");
         assertThat(operation.secretKeys()).containsExactly("SHOP_API_CLIENT_ID", "SHOP_API_CLIENT_SECRET");
-        assertThatCode(() -> ToolValidator.validateAuth(operation.tool().auth())).doesNotThrowAnyException();
+        assertThatCode(() -> ToolValidator.validateAuth(operation.tool().http().auth())).doesNotThrowAnyException();
     }
 
     @Test
     void anApiKeyInTheQueryGoesIntoTheAddressAndAnUnnamedOperationGetsAnId() {
         OpenApiOperation operation = operation("get_catalog");
 
-        assertThat(operation.tool().apiUrl()).isEqualTo(SERVER + "/catalog?api_key={{secrets.SHOP_API_API_KEY}}");
-        assertThat(operation.tool().apiQueryParams()).singleElement()
+        assertThat(operation.tool().http().url()).isEqualTo(SERVER + "/catalog?api_key={{secrets.SHOP_API_API_KEY}}");
+        assertThat(operation.tool().http().queryParams()).singleElement()
                 .satisfies(parameter -> assertThat(parameter.allowedValues()).containsExactly("a", "b"));
     }
 

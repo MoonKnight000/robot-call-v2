@@ -201,9 +201,10 @@ public final class OpenApiToolImporter {
         Tool tool = unsupported != null ? null : new Tool(null, null,
                 uniqueName(operationId, usedNames),
                 descriptionOf(summary, textOf(operation.get("description")), method, path),
-                apiUrl, method.toUpperCase(Locale.ROOT), headers, List.of(), queryParams, pathParams,
-                null, List.of(), false, false, null, null, null, Map.of(), 0, Tool.DEFAULT_MAX_CALLS_PER_CALL,
-                bodySchema, effectOf(method), null, null, auth);
+                new ToolHttpConfig(apiUrl, method.toUpperCase(Locale.ROOT), headers, List.of(), queryParams,
+                        pathParams, bodySchema, null, 0, auth),
+                List.of(), new ToolSpeech(false, false, null), Map.of(), Tool.DEFAULT_MAX_CALLS_PER_CALL,
+                effectOf(method), null, null, null, null);
         return new OpenApiOperation(operationId, method.toUpperCase(Locale.ROOT), path, summary, tool,
                 List.copyOf(secretKeys), unsupported);
     }

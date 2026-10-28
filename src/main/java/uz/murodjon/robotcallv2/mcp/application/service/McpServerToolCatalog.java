@@ -59,10 +59,11 @@ public class McpServerToolCatalog {
             "name": {"type": "string", "maxLength": 255},
             "description": {"type": "string", "maxLength": 500},
             "language": {"type": "string", "description": "uz-UZ, ru-RU, ..."},
-            "firstMessage": {"type": "string", "description": "What the agent says when the call connects"},
-            "systemPrompt": {"type": "string", "description": "The agent's instructions (scenarioMode PROMPT)"},
-            "scenarioMode": {"type": "string", "enum": ["PROMPT", "STRUCTURED_STEPS"]},
-            "scenarioDefinition": {"type": "object", "description": "Stages, facts and guardrails (scenarioMode STRUCTURED_STEPS); the shape export_agent returns under agent.scenario"},
+            "script": {"type": "object", "properties": {
+              "firstMessage": {"type": "string", "description": "What the agent says when the call connects"},
+              "systemPrompt": {"type": "string", "description": "The agent's instructions (mode PROMPT)"},
+              "mode": {"type": "string", "enum": ["PROMPT", "STRUCTURED_STEPS"]},
+              "definition": {"type": "object", "description": "Stages, facts and guardrails (mode STRUCTURED_STEPS); the shape export_agent returns under agent.scenario"}}},
             "llmModel": {"type": "string"},
             "temperature": {"type": "number"}""";
 

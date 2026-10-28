@@ -57,41 +57,20 @@ Qo'ng'iroqqa javob berishdan **oldin** (mijoz hali gudok eshitayotganda), tartib
 
 ---
 
-## Eski (legacy) maydonlar
-
-Quyidagi maydonlar saqlanadi va javobda qaytadi, lekin **hozirgi qo'ng'iroq yo'li ularni
-o'qimaydi** — ular hech qanday xatti-harakatga ta'sir qilmaydi:
+## Olib tashlangan maydonlar (2026-10-28, V22)
 
 `routeType`, `targetDestination`, `queueStrategy`, `ringTimeoutSec`, `failoverAction`,
-`failoverDestination`, `afterHoursAction`, `afterHoursDestination`, `ivrMenuConfig`.
+`failoverDestination`, `ivrMenuConfig` marshrutdan **olib tashlandi** (API, domain va DB
+ustunlari). Ularni qo'ng'iroq yo'li allaqachon o'qimas edi, shuning uchun hech bir marshrutning
+xatti-harakati o'zgarmaydi. Eski klient ularni yuborsa — noma'lum maydon sifatida jimgina
+e'tiborsiz qoladi; javobda endi chiqmaydi.
 
-Operatorlar navbati, ichki raqam, tashqi raqam, IVR menyu, ovozli pochta va ish vaqtidan
-tashqari amallar endi [call flow](call-flows.md) tugunlari bilan quriladi
-(`QUEUE`, `EXTENSION`, `RING_GROUP`, `FORWARD_EXTERNAL`, `MENU`, `VOICEMAIL`, `SCHEDULE`,
-`CALLBACK_OFFER`). Yangi UI'da bu maydonlarni ko'rsatmang; mavjud qiymatlar ma'lumot uchun
-qoldirilgan. Ma'lumot uchun ularning qiymatlari:
+Operatorlar navbati, ichki raqam, tashqi raqam, IVR menyu va ovozli pochta
+[call flow](call-flows.md) tugunlari bilan quriladi (`QUEUE`, `EXTENSION`, `RING_GROUP`,
+`FORWARD_EXTERNAL`, `MENU`, `VOICEMAIL`, `SCHEDULE`, `CALLBACK_OFFER`).
 
-### Marshrutlash turlari (`InboundRouteType`)
-
-| Turi | Izoh |
-|---|---|
-| `SCENARIO` | AI Ovozli Agent (standart) |
-| `OPERATOR_QUEUE` | Operatorlar guruhi / navbatiga yo'naltirish |
-| `EXTENSION` | Aniq ichki SIP raqamiga yo'naltirish (masalan: `101`, `102`) |
-| `EXTERNAL_NUMBER` | Tashqi mobil yoki shahar raqamiga yo'naltirish (masalan: `+998901234567`) |
-| `STICKY_AGENT` | CRM dagi mijozga biriktirilgan shaxsiy mas'ul menejeriga to'g'ridan-to'g'ri ulash |
-| `IVR_MENU` | Ovozli/DTMF menyu (1 - Sotuv, 2 - AI Bot va h.k.) |
-| `VOICEMAIL` | To'g'ridan-to'g'ri ovozli pochta xabari yozib olish |
-
-### Navbat strategiyalari (`QueueStrategy`)
-
-| Strategiya | Izoh |
-|---|---|
-| `RING_ALL` | Barcha bo'sh operatorlarga birdaniga jiringlaydi (standart) |
-| `ROUND_ROBIN` | Operatorlar bo'ylab navbatma-navbat taqsimlaydi |
-| `FEWEST_CALLS` | Bugun eng kam qo'ng'iroq qabul qilgan operatorga yo'naltiradi |
-| `LEAST_RECENT` | Eng uzoq vaqt kutib turgan bo'sh operatorga yo'naltiradi |
-| `RANDOM` | Tasodifiy bo'sh operatorga |
+`afterHoursAction` / `afterHoursDestination` **qoladi** — flow'siz marshrutning ish vaqtidan
+tashqari xatti-harakati (yuqoridagi 4-qadam).
 
 ### Ish vaqtidan tashqari amallar (`InboundAfterHoursAction`)
 
@@ -100,11 +79,7 @@ qoldirilgan. Ma'lumot uchun ularning qiymatlari:
 | `PLAY_MESSAGE_AND_HANGUP` | `fallbackMessage` matnini o'qib berib, qo'ng'iroqni tugatadi (standart) |
 | `AI_AGENT` | Tungi AI Ovozli yordamchi ssenariysiga ulaydi |
 | `VOICEMAIL` | Mijozga audio xabar qoldirish imkonini beradi |
-| `FORWARD_EXTERNAL` | Navbatchi xodim mobil raqamiga (`afterHoursDestination`) yo'naltiradi |
-
-### Javob bo'lmaganda (`InboundFailoverAction`)
-
-`SCENARIO` (standart), `VOICEMAIL`, `EXTERNAL_FORWARD`, `HANGUP`.
+| `FORWARD_EXTERNAL` | ⚠️ Flow'siz marshrutda **amalga oshirilmagan** — `PLAY_MESSAGE_AND_HANGUP` kabi ishlaydi. Navbatchi raqamga yo'naltirish uchun call flow'ning `SCHEDULE` → `FORWARD_EXTERNAL` tugunlarini ishlating |
 
 ---
 
@@ -144,7 +119,8 @@ flow'siz, AI agent javob beradigan marshrut:
 | `businessHoursStart` / `businessHoursEnd` | `HH:mm` | ❌ | Eski, oddiy ish vaqti: har kuni shu oyna (kompaniya zonasida, bayramlar hisobga olinadi). `end < start` — tungi oyna (`22:00`–`06:00`). Ikkalasi teng bo'lishi mumkin emas. Berilmasa (va `scheduleId` ham bo'lmasa) — 24/7 ochiq |
 | `fallbackMessage` | string | ❌ | Ish vaqtidan tashqari (yoki agentsiz marshrutda) aytiladigan matn. Bo'sh bo'lsa ish vaqtidan tashqari ibora jadvaldan avtomatik yasaladi ("… Ertaga soat to'qqizda ishni boshlaymiz.") |
 | `callbackCampaignId` | long | ❌ | Qo'ng'iroq qiluvchi "keyinroq qo'ng'iroq qiling, soat 5 da" desa (yakuniy xulosada `callbackAt`), u shu kampaniyaga **yangi nishon** bo'lib qo'shiladi va aynan o'sha vaqtga rejalashtiriladi (kampaniyaning dial-window'i hisobga olinadi). Kampaniya shu kompaniyaniki bo'lishi shart, aks holda `404`. Kampaniya `ACTIVE` bo'lmasa nishon navbatda kutadi. `null` — so'rov faqat qo'ng'iroq natijasiga yoziladi, hech kim qayta qo'ng'iroq qilmaydi |
-| `routeType`, `targetDestination`, `queueStrategy`, `ringTimeoutSec`, `failoverAction`, `failoverDestination`, `afterHoursAction`, `afterHoursDestination`, `ivrMenuConfig` | — | ❌ | [Eski maydonlar](#eski-legacy-maydonlar) — saqlanadi, lekin ishlatilmaydi |
+| `afterHoursAction` | `InboundAfterHoursAction` | ❌ | Flow'siz marshrut ish vaqtidan tashqarida nima qiladi ([jadval](#ish-vaqtidan-tashqari-amallar-inboundafterhoursaction)). Standart `PLAY_MESSAGE_AND_HANGUP`; `PUT` da `null` — avvalgi qiymat qoladi |
+| `afterHoursDestination` | string | ❌ | `AI_AGENT` uchun tungi agent ID'si; bo'sh bo'lsa — marshrutning `aiAgentId`si |
 
 Yangi marshrut har doim `enabled: true` bilan yaratiladi.
 
@@ -157,15 +133,8 @@ Yangi marshrut har doim `enabled: true` bilan yaratiladi.
     "didNumber": "998712345678",
     "aiAgentId": 9,
     "aiAgentName": "Kirish so'rovlari agenti",
-    "routeType": "SCENARIO",
-    "targetDestination": null,
-    "queueStrategy": "RING_ALL",
-    "ringTimeoutSec": 20,
-    "failoverAction": "SCENARIO",
-    "failoverDestination": null,
     "afterHoursAction": "PLAY_MESSAGE_AND_HANGUP",
     "afterHoursDestination": null,
-    "ivrMenuConfig": null,
     "businessHoursStart": null,
     "businessHoursEnd": null,
     "fallbackMessage": null,
@@ -245,9 +214,8 @@ maydonlar, plus `enabled`:
 > ⚠️ `PUT` — **to'liq almashtirish**. Yuborilmagan `callFlowId`, `scheduleId`, `aiAgentId`,
 > soatlar, `fallbackMessage`, `callbackCampaignId` `null` bo'ladi (flow yoki jadvalni
 > olib tashlash uchun ham shunchaki `null` yuboring). **`enabled` yuborilmasa — `false`**
-> (marshrut o'chadi), shuning uchun uni har doim yuboring. Eski enum maydonlar
-> (`routeType`, `queueStrategy`, `ringTimeoutSec`, `failoverAction`, `afterHoursAction`)
-> `null` bo'lsa avvalgi qiymati qoladi.
+> (marshrut o'chadi), shuning uchun uni har doim yuboring. `afterHoursAction` `null` bo'lsa
+> avvalgi qiymati qoladi; `afterHoursDestination` esa boshqa maydonlar kabi `null` bo'ladi.
 
 **Xatolar:** `INBOUND_ROUTE_NOT_FOUND` (404) va `POST` dagi barcha xatolar
 (`INBOUND_ROUTE_DID_EXISTS` faqat `enabled: true` bo'lsa tekshiriladi;
@@ -413,9 +381,9 @@ Huquq: **INBOUND_ROUTE_EDIT** · Javob — `data: null`. Qoida butunlay o'chiril
 
 Yangi baza ko'tarilganda (`R__seed_data.sql`) bitta marshrut allaqachon mavjud:
 
-| `didNumber` | `aiAgentId` | `routeType` | Ish vaqti |
-|---|---|---|---|
-| `600` | `Kiruvchi qabulxona` agenti | `SCENARIO` | belgilanmagan (24/7) |
+| `didNumber` | `aiAgentId` | Ish vaqti |
+|---|---|---|
+| `600` | `Kiruvchi qabulxona` agenti | belgilanmagan (24/7) |
 
 `600` — dialplan'dagi softphone test raqami (`asterisk/etc/asterisk/extensions.conf`,
 `[from-internal]`): trunk'siz, faqat registratsiya qilingan softphone bilan kiruvchi

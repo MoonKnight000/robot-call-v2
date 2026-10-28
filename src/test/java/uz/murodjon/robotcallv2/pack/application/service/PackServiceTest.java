@@ -35,8 +35,10 @@ import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
+import uz.murodjon.robotcallv2.tool.application.mapper.ToolMapper;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolImportUseCase;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.List;
 
@@ -103,9 +105,9 @@ class PackServiceTest {
 
         ArgumentCaptor<CreateAiAgentRequest> agentRequest = ArgumentCaptor.forClass(CreateAiAgentRequest.class);
         verify(aiAgentUseCase).createAgent(eq(COMPANY_ID), agentRequest.capture());
-        assertThat(agentRequest.getValue().scenarioDefinition()).isEqualTo(ecommerce.agent().scenario());
+        assertThat(agentRequest.getValue().script().definition()).isEqualTo(ecommerce.agent().scenario());
         // Company tools are offered only on the cascade pipeline.
-        assertThat(agentRequest.getValue().pipelineMode()).isEqualTo(PipelineMode.CASCADE);
+        assertThat(agentRequest.getValue().speechEngine().mode()).isEqualTo(PipelineMode.CASCADE);
 
         int toolCount = ecommerce.tools().size();
         verify(toolUseCase, times(toolCount)).attachTool(COMPANY_ID, AGENT_ID, TOOL_ID);
@@ -170,7 +172,11 @@ class PackServiceTest {
                 .thenReturn(AiAgentFixtures.agent(AGENT_ID, COMPANY_ID, 3L, "uz", null));
         when(aiAgentUseCase.resolveScenario(eq(COMPANY_ID), any())).thenReturn(new Scenario(3L, "s", 1, "S", "",
                 false, true, ecommerce.agent().scenario(), null, null));
-        when(toolUseCase.findAgentToolDefinitions(COMPANY_ID, AGENT_ID)).thenReturn(ecommerce.tools());
+        // The stored tools are what installing the pack's own tools would have saved.
+        List<Tool> stored = ecommerce.tools().stream()
+                .map(tool -> new ToolMapper().fromCreateRequest(COMPANY_ID, new PackMapper().toCreateToolRequest(tool)))
+                .toList();
+        when(toolUseCase.findAgentToolDefinitions(COMPANY_ID, AGENT_ID)).thenReturn(stored);
 
         VerticalPack exported = service.exportAgent(COMPANY_ID, AGENT_ID, null);
 
@@ -179,7 +185,7 @@ class PackServiceTest {
         service.installDraft(COMPANY_ID, new InstallDraftRequest(exported, null, null));
         ArgumentCaptor<CreateAiAgentRequest> agentRequest = ArgumentCaptor.forClass(CreateAiAgentRequest.class);
         verify(aiAgentUseCase).createAgent(eq(COMPANY_ID), agentRequest.capture());
-        assertThat(agentRequest.getValue().scenarioDefinition()).isEqualTo(ecommerce.agent().scenario());
+        assertThat(agentRequest.getValue().script().definition()).isEqualTo(ecommerce.agent().scenario());
         verify(toolUseCase, times(ecommerce.tools().size())).attachTool(COMPANY_ID, AGENT_ID, TOOL_ID);
     }
 
