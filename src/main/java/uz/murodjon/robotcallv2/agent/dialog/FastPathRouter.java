@@ -145,7 +145,7 @@ public class FastPathRouter {
         if (isClosingGratitude(normalized, isRu, s)) {
             String reply = DialogPhrases.gratitudeReply(s.language());
             log.info("[{}] Fast-path matched: GRATITUDE_CLOSE", s.channelId());
-            Disposition disp = s.disposition() != null ? s.disposition() : Disposition.ANSWERED;
+            Disposition disp = s.disposition() != null ? s.disposition() : Disposition.COMPLETED;
             return FastPathResult.endWithDisposition(reply, disp);
         }
 
@@ -185,7 +185,7 @@ public class FastPathRouter {
         if (words.length <= 6 && matchesAny(normalized, isRu ? PURPOSE_RU : PURPOSE_UZ)) {
             String purpose = s.scenario() != null ? s.scenario().callPurpose() : null;
             if (purpose != null && !purpose.isBlank()) {
-                java.util.Map<String, String> facts = s.context() != null ? s.context().facts() : java.util.Map.of();
+                java.util.Map<String, Object> facts = s.context() != null ? s.context().facts() : java.util.Map.of();
                 String rendered = PromptTemplateEngine.render(purpose.trim(), facts);
                 String purposeReply = isRu
                         ? "Я звоню вам по поводу: " + rendered + "."

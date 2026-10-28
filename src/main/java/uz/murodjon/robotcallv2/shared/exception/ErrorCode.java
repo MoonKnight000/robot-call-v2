@@ -561,6 +561,7 @@ public enum ErrorCode {
     KNOWLEDGE_SOURCE_FETCH_INTERRUPTED("knowledge source %s: the fetch was interrupted"),
     WEBHOOK_PAYLOAD_UNSERIALIZABLE("the webhook payload could not be serialised as JSON"),
     KNOWLEDGE_SOURCE_EMPTY("the document carries no readable text — a scanned PDF has no text layer"),
+    PARAM_REQUIRED("%s"),
 
     // framework-level (ApiExceptionHandler) — not an AppException, but the same envelope
     VALIDATION_FAILED("Validation failed"),

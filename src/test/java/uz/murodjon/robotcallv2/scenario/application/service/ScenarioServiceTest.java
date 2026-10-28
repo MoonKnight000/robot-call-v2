@@ -164,7 +164,7 @@ class ScenarioServiceTest {
         when(repo.deactivate("custom-key", 1)).thenReturn(false);
 
         assertThatThrownBy(() -> scenarioService.update(1L, 5L,
-                new UpdateScenarioRequest("New", "D", 1, validDefinition())))
+                new UpdateScenarioRequest("New", "D", validDefinition(), 1)))
                 .isInstanceOf(ConflictException.class);
         verify(repo, never()).insertVersion(anyLong(), anyString(), anyInt(), any(), any(), anyBoolean(), any(), any());
     }
@@ -180,7 +180,7 @@ class ScenarioServiceTest {
         when(repo.find(1L, 9L)).thenReturn(sampleScenario(9L, "custom-key", false));
         when(users.findNamesByIds(anyLong(), any())).thenReturn(Map.of(1L, "Admin"));
 
-        ScenarioRow updated = scenarioService.update(1L, 5L, new UpdateScenarioRequest("New", "D", null, validDefinition()));
+        ScenarioRow updated = scenarioService.update(1L, 5L, new UpdateScenarioRequest("New", "D", validDefinition(), null));
 
         assertThat(updated.id()).isEqualTo(9L);
         verify(repo).deactivate("custom-key", 2);

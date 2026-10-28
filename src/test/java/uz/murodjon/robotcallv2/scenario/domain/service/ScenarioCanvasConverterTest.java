@@ -53,8 +53,8 @@ class ScenarioCanvasConverterTest {
 
         ScenarioDefinition original = new ScenarioDefinition(
                 List.of(greeting, offer, end, wrongPerson),
-                List.of(new FactField("clientName", "string", "Mijoz ismi"),
-                        new FactField("debtAmount", "number", "Qarz summasi")),
+                List.of(new FactField("clientName", "string", true, "Mijoz ismi"),
+                        new FactField("debtAmount", "number", true, "Qarz summasi")),
                 List.of(),
                 List.of(new OutcomeField("identified", "boolean", "Tasdiqlandi")),
                 "Siz professional sotuvchisiz.",

@@ -170,7 +170,7 @@ public class ScenarioService implements ScenarioUseCase {
         Scenario current = requireScenario(companyId, id);
         ScenarioDefinition def = ScenarioCanvasConverter.toScenarioDefinition(canvas, current.definition());
         String name = canvas.name() != null && !canvas.name().isBlank() ? canvas.name() : current.name();
-        UpdateScenarioRequest request = new UpdateScenarioRequest(name, current.description(), canvas.version(), def);
+        UpdateScenarioRequest request = new UpdateScenarioRequest(name, current.description(), def, canvas.version());
         return update(companyId, id, request);
     }
 
