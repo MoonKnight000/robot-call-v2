@@ -16,10 +16,13 @@ public class AuthControllerImpl implements AuthController {
 
     private final AuthUseCase authUseCase;
     private final SignupUseCase signupUseCase;
+    private final RefreshTokenCookie refreshCookie;
 
-    public AuthControllerImpl(AuthUseCase authUseCase, SignupUseCase signupUseCase) {
+    public AuthControllerImpl(AuthUseCase authUseCase, SignupUseCase signupUseCase,
+                              RefreshTokenCookie refreshCookie) {
         this.authUseCase = authUseCase;
         this.signupUseCase = signupUseCase;
+        this.refreshCookie = refreshCookie;
     }
 
     @Override
@@ -29,12 +32,12 @@ public class AuthControllerImpl implements AuthController {
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> login(LoginRequest request, String clientAddress) {
-        return RefreshTokenCookie.respondWith(authUseCase.login(request, clientAddress));
+        return refreshCookie.respondWith(authUseCase.login(request, clientAddress));
     }
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> activate(ActivateRequest request) {
-        return RefreshTokenCookie.respondWith(authUseCase.activate(request));
+        return refreshCookie.respondWith(authUseCase.activate(request));
     }
 
     @Override
@@ -45,18 +48,18 @@ public class AuthControllerImpl implements AuthController {
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> resetPassword(ResetPasswordRequest request) {
-        return RefreshTokenCookie.respondWith(authUseCase.resetPassword(request));
+        return refreshCookie.respondWith(authUseCase.resetPassword(request));
     }
 
     @Override
     public ResponseEntity<ResponseData<LoginResponse>> refresh(RefreshTokenRequest request, String refreshTokenCookie) {
-        return RefreshTokenCookie.respondWith(authUseCase.refresh(request, refreshTokenCookie));
+        return refreshCookie.respondWith(authUseCase.refresh(request, refreshTokenCookie));
     }
 
     @Override
     public ResponseEntity<ResponseData<Void>> logout() {
         authUseCase.logout();
-        return RefreshTokenCookie.respondCleared();
+        return refreshCookie.respondCleared();
     }
 
     @Override

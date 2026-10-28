@@ -4,6 +4,9 @@ voice-agent:
   security:
     # Empty = no cross-origin browser may call the API (never a wildcard).
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5174,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:3000}
+    # Secure flag on the refresh-token cookie. Off only for plain-HTTP LAN dev
+    # (http://192.168.x.x) — browsers drop Secure cookies there; localhost is fine either way.
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:true}
     jwt:
       secret: ${JWT_SECRET:}
       # Short on purpose: revocation (logout, password/role change, block) is enforced

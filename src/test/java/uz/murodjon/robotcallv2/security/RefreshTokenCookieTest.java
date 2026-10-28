@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,7 +24,7 @@ class RefreshTokenCookieTest {
         LoginResponse login = new LoginResponse("access", Instant.now().plusSeconds(3600), "refresh-value",
                 Instant.now().plus(Duration.ofDays(30)), null);
 
-        ResponseEntity<ResponseData<LoginResponse>> response = RefreshTokenCookie.respondWith(login);
+        ResponseEntity<ResponseData<LoginResponse>> response = cookie(true).respondWith(login);
 
         String cookie = response.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
         assertThat(cookie).startsWith("refresh_token=refresh-value;")
@@ -34,10 +35,21 @@ class RefreshTokenCookieTest {
 
     @Test
     void clearedCookieExpiresAtOnceOnTheSamePath() {
-        String cookie = RefreshTokenCookie.respondCleared().getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+        String cookie = cookie(true).respondCleared().getHeaders().getFirst(HttpHeaders.SET_COOKIE);
 
         assertThat(cookie).startsWith("refresh_token=;").contains("Path=/api/auth", "HttpOnly", "Secure");
         assertThat(maxAge(cookie)).isZero();
+    }
+
+    @Test
+    void secureFlagIsDroppedOnlyWhenTurnedOff() {
+        String cookie = cookie(false).respondCleared().getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+
+        assertThat(cookie).contains("HttpOnly", "SameSite=Strict").doesNotContain("Secure");
+    }
+
+    private static RefreshTokenCookie cookie(boolean secure) {
+        return new RefreshTokenCookie(new SecurityProperties(List.of(), secure));
     }
 
     private static long maxAge(String cookie) {
