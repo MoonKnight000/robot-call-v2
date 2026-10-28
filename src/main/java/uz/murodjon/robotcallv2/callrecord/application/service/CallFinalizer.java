@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.callrecord.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
@@ -85,6 +86,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
     private final ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider;
     private final String llmModel;
 
+    @Autowired
     public CallFinalizer(CallRecordService callRecordService, SummaryService summaryService,
                          CallQualityUseCase callQualityUseCase,
                          ScorecardUseCase scorecardUseCase,

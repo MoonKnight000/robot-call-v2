@@ -94,8 +94,11 @@ public class CampaignService implements CampaignUseCase {
         DialMode dialMode = request.dialModeOrDefault();
         AiAgent agent = requireDialers(companyId, dialMode, request.aiAgentId(), request.callQueueId());
         int dailyCallCap = Math.max(0, request.dailyCallCap());
-        LocalTime dialWindowStart = request.dialWindowStart() != null ? request.dialWindowStart() : LocalTime.of(9, 0);
-        LocalTime dialWindowEnd = request.dialWindowEnd() != null ? request.dialWindowEnd() : LocalTime.of(20, 0);
+        CompanyConfig companyConfig = companyConfigUseCase.find(companyId);
+        LocalTime dialWindowStart = resolveWindowBound(request.dialWindowStart(),
+                companyConfig != null ? companyConfig.dialWindowStart() : null, LocalTime.of(9, 0));
+        LocalTime dialWindowEnd = resolveWindowBound(request.dialWindowEnd(),
+                companyConfig != null ? companyConfig.dialWindowEnd() : null, LocalTime.of(20, 0));
         requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
         campaignValidator.validateRetryPolicy(request.retryPolicyOrNone());
         Campaign row = Campaign.builder()
@@ -143,13 +146,16 @@ public class CampaignService implements CampaignUseCase {
         Campaign existing = requireCampaign(companyId, id);
         AiAgent agent = requireDialers(existing.companyId(), existing.dialMode(), request.aiAgentId(),
                 request.callQueueId());
-        requireWindowWithinCompany(existing.companyId(), request.dialWindowStart(), request.dialWindowEnd());
+        // An omitted window keeps the one the campaign has.
+        LocalTime dialWindowStart = resolveWindowBound(request.dialWindowStart(), existing.dialWindowStart(), null);
+        LocalTime dialWindowEnd = resolveWindowBound(request.dialWindowEnd(), existing.dialWindowEnd(), null);
+        requireWindowWithinCompany(existing.companyId(), dialWindowStart, dialWindowEnd);
         campaignValidator.validateRetryPolicy(request.retryPolicyOrNone());
         // The type, status, company, creator, last run and dial mode stay the existing campaign's.
         Campaign row = existing.toBuilder()
                 .name(request.name())
-                .dialWindowStart(request.dialWindowStart())
-                .dialWindowEnd(request.dialWindowEnd())
+                .dialWindowStart(dialWindowStart)
+                .dialWindowEnd(dialWindowEnd)
                 .dialDays(request.dialDays())
                 .maxAttempts(request.maxAttempts())
                 .retryIntervalMinutes(Math.max(0, request.retryIntervalMinutes()))
@@ -210,6 +216,17 @@ public class CampaignService implements CampaignUseCase {
             throw new NotFoundException(ErrorCode.CALL_QUEUE_NOT_FOUND, callQueueId);
         }
         return aiAgentId != null ? aiAgentUseCase.requireAgent(companyId, aiAgentId) : null;
+    }
+
+    /**
+     * One end of a campaign's dial window: the one asked for, else the fallback — on create the
+     * company's own dial window, so a campaign that names no hours calls in the company's.
+     */
+    private static LocalTime resolveWindowBound(LocalTime requested, LocalTime fallback, LocalTime lastResort) {
+        if (requested != null) {
+            return requested;
+        }
+        return fallback != null ? fallback : lastResort;
     }
 
     private void requireWindowWithinCompany(long companyId, LocalTime start, LocalTime end) {

@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.*;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionChange;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -46,6 +47,11 @@ public class AiAgentControllerImpl implements AiAgentController {
     @Override
     public ResponseEntity<ResponseData<EngineOptionsResponse>> getEngineOptions() {
         return ResponseEntity.ok(ResponseData.ok(aiAgentCatalogUseCase.findEngineOptions()));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<EngineProfile>>> getEngineProfiles() {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentCatalogUseCase.findEngineProfiles()));
     }
 
     @Override

@@ -8,7 +8,10 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinitionBuilder;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 
 import java.util.List;
 
@@ -48,6 +51,11 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
     @Transactional
     public AgentScenarioDto updateScenario(long companyId, long agentId, AgentScenarioDto request) {
         AiAgent existing = drafts.requireAgent(companyId, agentId);
+        // A shared scenario outranks the agent's own definition when a call starts, so a step
+        // edit saved here would never be spoken.
+        if (existing.script().scenarioId() != null) {
+            throw new ConflictException(ErrorCode.AI_AGENT_SCENARIO_SHARED, agentId, existing.script().scenarioId());
+        }
         String rolePrompt = request.systemPrompt() != null ? request.systemPrompt().trim() : existing.script().systemPrompt();
         String firstMessage = request.firstMessage() != null ? request.firstMessage().trim() : existing.script().firstMessage();
         ScenarioMode mode = request.scenarioModeOrDefault();
@@ -62,11 +70,14 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                     .build());
         }
 
-        ScenarioDefinition def = ScenarioDefinition.builder()
+        // What this form does not carry (tools, outcomes, global nodes, ...) stays as the agent has it.
+        ScenarioDefinition current = existing.script().definition();
+        ScenarioDefinitionBuilder base = current != null
+                ? current.toBuilder()
+                : ScenarioDefinition.builder().tools(List.of()).outcomeSchema(List.of());
+        ScenarioDefinition def = base
                 .stages(stages)
                 .factSchema(request.factSchemaOrEmpty())
-                .tools(List.of())
-                .outcomeSchema(List.of())
                 .rolePrompt(rolePrompt != null ? rolePrompt : "")
                 .guardrails(request.guardrailsOrEmpty())
                 .disclosureText(request.disclosureText())

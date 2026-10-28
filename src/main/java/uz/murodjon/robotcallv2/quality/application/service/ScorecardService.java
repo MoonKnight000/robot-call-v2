@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.quality.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -61,6 +62,7 @@ public class ScorecardService implements ScorecardUseCase {
                 companyConfigUseCase, notificationUseCase, currentUser, null);
     }
 
+    @Autowired
     public ScorecardService(ScorecardCriterionRepository scorecardCriterionRepository,
                             CallScorecardRepository callScorecardRepository, ScorecardJudgePort scorecardJudgePort,
                             AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase,

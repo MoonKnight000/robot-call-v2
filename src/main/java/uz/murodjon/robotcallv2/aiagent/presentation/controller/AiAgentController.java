@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentEvalRun;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentVersionChange;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -35,6 +36,14 @@ public interface AiAgentController {
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/engine-options")
     ResponseEntity<ResponseData<EngineOptionsResponse>> getEngineOptions();
+
+    /**
+     * Ready-made engine bundles (speed / cost / quality) this build can run in full. A profile
+     * whose provider or model is missing here is left out of the list.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/engine-profiles")
+    ResponseEntity<ResponseData<List<EngineProfile>>> getEngineProfiles();
 
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping

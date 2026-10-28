@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.storage.infrastructure.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Object-storage settings, shared by every {@code stored_file} use — call recordings,
@@ -26,6 +27,9 @@ public record AudioStorageProperties(
         String ffmpegPath,
         int bitrateKbps
 ) {
+    // Two constructors leave Spring unable to pick one, so it falls back to a no-arg one that
+    // a record does not have; this one is the binding constructor.
+    @ConstructorBinding
     public AudioStorageProperties {
         if (bucket == null || bucket.isBlank()) {
             bucket = "files";

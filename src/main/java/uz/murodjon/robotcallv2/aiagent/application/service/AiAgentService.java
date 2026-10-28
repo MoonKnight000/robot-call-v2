@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentCatalogUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
@@ -32,6 +33,7 @@ import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -56,6 +58,7 @@ public class AiAgentService implements AiAgentUseCase {
     private final ApplicationEventPublisher eventPublisher;
     /** Which callers a running rollout sends to its candidate (requireCallAgent). */
     private final AgentRolloutRepository rolloutRepository;
+    private final AiAgentCatalogUseCase aiAgentCatalogUseCase;
 
     public AiAgentService(
             AiAgentRepository repository,
@@ -68,9 +71,11 @@ public class AiAgentService implements AiAgentUseCase {
             AuditUseCase auditUseCase,
             CurrentUser currentUser,
             ApplicationEventPublisher eventPublisher,
-            AgentRolloutRepository rolloutRepository
+            AgentRolloutRepository rolloutRepository,
+            AiAgentCatalogUseCase aiAgentCatalogUseCase
     ) {
         this.rolloutRepository = rolloutRepository;
+        this.aiAgentCatalogUseCase = aiAgentCatalogUseCase;
         this.repository = repository;
         this.versionRepository = versionRepository;
         this.drafts = drafts;
@@ -118,10 +123,20 @@ public class AiAgentService implements AiAgentUseCase {
         // The voice and model families depend on which pipeline this agent will run, so the
         // mode has to be settled before anything is checked against it.
         PipelineMode pipelineMode = request.pipelineMode() != null ? request.pipelineMode() : PipelineMode.CASCADE;
+        // A profile fills only what the request left out, like a template does for the prompts.
+        EngineProfile profile = request.engineProfileId() != null
+                ? aiAgentCatalogUseCase.requireEngineProfile(request.engineProfileId()) : EngineProfile.NONE;
+        String sttProvider = request.sttProvider() != null ? request.sttProvider() : profile.sttProvider();
+        // The profile's recognizer model belongs to its own provider, so it never rides along
+        // with a provider the request chose itself.
+        String sttModel = request.sttModel() != null ? request.sttModel()
+                : request.sttProvider() == null ? profile.sttModel() : null;
         String realtimeProvider = engineGuard.requireKnownRealtimeProvider(pipelineMode, request.realtimeProvider());
         String ttsVoice = engineGuard.requireKnownVoice(companyId, pipelineMode, request.ttsVoice());
-        String llmModel = engineGuard.requireKnownModel(pipelineMode, realtimeProvider, request.llmModel());
-        String fastLlmModel = engineGuard.requireKnownFastModel(request.fastLlmModel());
+        String llmModel = engineGuard.requireKnownModel(pipelineMode, realtimeProvider,
+                request.llmModel() != null ? request.llmModel() : profile.llmModel());
+        String fastLlmModel = engineGuard.requireKnownFastModel(
+                request.fastLlmModel() != null ? request.fastLlmModel() : profile.fastLlmModel());
         Map<String, String> checkedLanguageVoices =
                 engineGuard.requireKnownVoicePerLanguage(companyId, pipelineMode, request.languageVoices());
 
@@ -152,8 +167,8 @@ public class AiAgentService implements AiAgentUseCase {
                         trimmed(request.pipecatStt()),
                         trimmed(request.pipecatLlm()),
                         trimmed(request.pipecatTts()),
-                        engineGuard.requireKnownSttProvider(request.sttProvider()),
-                        engineGuard.requireKnownSttModel(request.sttProvider(), request.sttModel()),
+                        engineGuard.requireKnownSttProvider(sttProvider),
+                        engineGuard.requireKnownSttModel(sttProvider, sttModel),
                         engineGuard.requireKnownTtsProvider(request.ttsProvider()),
                         engineGuard.requireKnownTtsModel(request.ttsProvider(), request.ttsModel())))
                 .voice(new AiAgentVoice(
@@ -198,8 +213,8 @@ public class AiAgentService implements AiAgentUseCase {
                         request.realtimeFactsDelivery()))
                 .llmModel(llmModel)
                 .fastLlmModel(fastLlmModel)
-                .temperature(request.temperature())
-                .maxOutputTokens(request.maxOutputTokens())
+                .temperature(request.temperature() != null ? request.temperature() : profile.temperature())
+                .maxOutputTokens(request.maxOutputTokens() != null ? request.maxOutputTokens() : profile.maxOutputTokens())
                 .preemptiveGeneration(request.preemptiveGeneration() != null && request.preemptiveGeneration())
                 .ivrNavigationEnabled(request.ivrNavigationEnabled() == null || request.ivrNavigationEnabled())
                 .useRag(request.useRag() != null && request.useRag())
@@ -246,13 +261,22 @@ public class AiAgentService implements AiAgentUseCase {
                         ? request.realtimeProvider() : existing.speechEngine().realtimeProvider())
                 : existing.speechEngine().realtimeProvider();
 
-        String llmModel = (request.llmModel() != null)
-                ? engineGuard.requireKnownModel(pipelineMode, realtimeProvider, request.llmModel())
+        // A profile picked in this edit replaces the agent's engine choices; a field the request
+        // names itself still wins over the profile's.
+        EngineProfile profile = request.engineProfileId() != null
+                ? aiAgentCatalogUseCase.requireEngineProfile(request.engineProfileId()) : null;
+
+        String requestedLlmModel = chooseValue(request.llmModel(), profile, EngineProfile::llmModel);
+        String llmModel = (requestedLlmModel != null)
+                ? engineGuard.requireKnownModel(pipelineMode, realtimeProvider, requestedLlmModel)
                 : existing.llmModel();
 
-        String fastLlmModel = (request.fastLlmModel() != null)
-                ? engineGuard.requireKnownFastModel(request.fastLlmModel())
+        String requestedFastLlmModel = chooseValue(request.fastLlmModel(), profile, EngineProfile::fastLlmModel);
+        String fastLlmModel = (requestedFastLlmModel != null)
+                ? engineGuard.requireKnownFastModel(requestedFastLlmModel)
                 : existing.fastLlmModel();
+        Double temperature = chooseValue(request.temperature(), profile, EngineProfile::temperature);
+        Integer maxOutputTokens = chooseValue(request.maxOutputTokens(), profile, EngineProfile::maxOutputTokens);
 
         Map<String, String> languageVoices = (request.languageVoices() != null)
                 ? engineGuard.requireKnownVoicePerLanguage(companyId, pipelineMode, request.languageVoices())
@@ -269,8 +293,13 @@ public class AiAgentService implements AiAgentUseCase {
         // The model is checked against the provider it will actually run on, which is the
         // one this request leaves behind — changing only the model must not be validated
         // against a provider the agent no longer has, nor the other way round.
-        String sttProvider = request.sttProvider() != null
-                ? engineGuard.requireKnownSttProvider(request.sttProvider()) : speechEngine.sttProvider();
+        String requestedSttProvider = chooseValue(request.sttProvider(), profile, EngineProfile::sttProvider);
+        String sttProvider = requestedSttProvider != null
+                ? engineGuard.requireKnownSttProvider(requestedSttProvider) : speechEngine.sttProvider();
+        // The profile's recognizer model belongs to its own provider, so it never rides along
+        // with a provider the request chose itself.
+        String requestedSttModel = request.sttModel() != null ? request.sttModel()
+                : request.sttProvider() == null && profile != null ? profile.sttModel() : null;
         String ttsProvider = request.ttsProvider() != null
                 ? engineGuard.requireKnownTtsProvider(request.ttsProvider()) : speechEngine.ttsProvider();
         AiAgentVoice voice = existing.voice();
@@ -300,8 +329,8 @@ public class AiAgentService implements AiAgentUseCase {
                         request.pipecatLlm() != null ? trimmed(request.pipecatLlm()) : speechEngine.pipecatLlm(),
                         request.pipecatTts() != null ? trimmed(request.pipecatTts()) : speechEngine.pipecatTts(),
                         sttProvider,
-                        request.sttModel() != null
-                                ? engineGuard.requireKnownSttModel(sttProvider, request.sttModel()) : speechEngine.sttModel(),
+                        requestedSttModel != null
+                                ? engineGuard.requireKnownSttModel(sttProvider, requestedSttModel) : speechEngine.sttModel(),
                         ttsProvider,
                         request.ttsModel() != null
                                 ? engineGuard.requireKnownTtsModel(ttsProvider, request.ttsModel()) : speechEngine.ttsModel()))
@@ -348,8 +377,8 @@ public class AiAgentService implements AiAgentUseCase {
                         request.realtimeFactsDelivery() != null ? request.realtimeFactsDelivery() : dataPolicy.realtimeFactsDelivery()))
                 .llmModel(llmModel)
                 .fastLlmModel(fastLlmModel)
-                .temperature(request.temperature() != null ? request.temperature() : existing.temperature())
-                .maxOutputTokens(request.maxOutputTokens() != null ? request.maxOutputTokens() : existing.maxOutputTokens())
+                .temperature(temperature != null ? temperature : existing.temperature())
+                .maxOutputTokens(maxOutputTokens != null ? maxOutputTokens : existing.maxOutputTokens())
                 .preemptiveGeneration(request.preemptiveGeneration() != null ? request.preemptiveGeneration() : existing.preemptiveGeneration())
                 .ivrNavigationEnabled(request.ivrNavigationEnabled() != null ? request.ivrNavigationEnabled() : existing.ivrNavigationEnabled())
                 .useRag(request.useRag() != null ? request.useRag() : existing.useRag())
@@ -401,12 +430,14 @@ public class AiAgentService implements AiAgentUseCase {
         Map<Long, AiAgentVersion> published = versionRepository.findPublishedByAgentIds(companyId,
                         agents.stream().map(AiAgent::id).toList()).stream()
                 .collect(Collectors.toMap(AiAgentVersion::agentId, v -> v));
+        List<EngineProfile> profiles = aiAgentCatalogUseCase.findEngineProfiles();
         List<AiAgentRow> rows = agents.stream()
                 .map(agent -> {
                     AiAgentVersion live = published.get(agent.id());
                     return AiAgentRow.of(agent,
                             agent.script().scenarioId() != null ? scenarioNames.get(agent.script().scenarioId()) : null,
                             agent.createdBy() != null ? creatorNames.get(agent.createdBy()) : null,
+                            findEngineProfileId(agent, profiles),
                             live != null ? live.version() : null,
                             live != null && !AiAgentSnapshot.isSameConfiguration(agent, live.snapshot()));
                 })
@@ -586,7 +617,25 @@ public class AiAgentService implements AiAgentUseCase {
         String createdByName = agent.createdBy() != null
                 ? userUseCase.findNamesByIds(companyId, List.of(agent.createdBy())).get(agent.createdBy())
                 : null;
-        return AiAgentRow.of(agent, scenarioName, createdByName, publishedVersion, hasDraftChanges);
+        return AiAgentRow.of(agent, scenarioName, createdByName,
+                findEngineProfileId(agent, aiAgentCatalogUseCase.findEngineProfiles()), publishedVersion, hasDraftChanges);
+    }
+
+    /** The offered profile whose engine choices the agent has exactly, or null when they were tuned by hand. */
+    private static String findEngineProfileId(AiAgent agent, List<EngineProfile> profiles) {
+        return profiles.stream()
+                .filter(profile -> profile.isAppliedTo(agent))
+                .map(EngineProfile::id)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** What the request names, else the profile's value, else null — the caller then keeps the agent's own. */
+    private static <T> T chooseValue(T requested, EngineProfile profile, Function<EngineProfile, T> field) {
+        if (requested != null) {
+            return requested;
+        }
+        return profile != null ? field.apply(profile) : null;
     }
 
     /** A trimmed value, or null — a blank engine name means "the configured default". */

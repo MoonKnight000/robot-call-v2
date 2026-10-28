@@ -12,11 +12,13 @@ import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentCatalogUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVersion;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.TemplateDefaults;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVersionStatus;
@@ -58,6 +60,7 @@ class AiAgentServiceTest {
     private AuditUseCase auditUseCase;
     private CurrentUser currentUser;
     private ApplicationEventPublisher eventPublisher;
+    private AiAgentCatalogUseCase catalogUseCase;
     private AiAgentService service;
 
     @BeforeEach
@@ -68,6 +71,7 @@ class AiAgentServiceTest {
         auditUseCase = mock(AuditUseCase.class);
         currentUser = mock(CurrentUser.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
+        catalogUseCase = mock(AiAgentCatalogUseCase.class);
         AiAgentDrafts drafts = new AiAgentDrafts(repository, versionRepository,
                 mock(AiModelConfigUseCase.class), mock(SipTrunkUseCase.class), companyConfigUseCase);
         AiAgentEngineGuard engineGuard = new AiAgentEngineGuard(mock(SttProviderSelector.class),
@@ -75,7 +79,7 @@ class AiAgentServiceTest {
                 mock(AiModelUseCase.class), companyConfigUseCase);
         service = new AiAgentService(repository, versionRepository, drafts, engineGuard, mock(ScenarioUseCase.class),
                 companyConfigUseCase, mock(UserUseCase.class), auditUseCase, currentUser, eventPublisher,
-                mock(AgentRolloutRepository.class));
+                mock(AgentRolloutRepository.class), catalogUseCase);
         when(companyConfigUseCase.resolveLanguage(eq(COMPANY_ID), any())).thenReturn("uz-UZ");
     }
 
@@ -166,6 +170,24 @@ class AiAgentServiceTest {
         assertThat(written.getValue().name()).isEqualTo("Yangi nom");
         assertThat(written.getValue().script()).isEqualTo(agent().script());
         verify(auditUseCase).record(COMPANY_ID, "AI_AGENT_UPDATE", "ai_agent", String.valueOf(AGENT_ID), "Yangi nom");
+    }
+
+    /** The simple form shows the profile the agent's engine choices match, and none once tuned by hand. */
+    @Test
+    void findAgentRowNamesTheEngineProfileTheAgentMatches() {
+        AiAgent agent = agent();
+        EngineProfile matching = new EngineProfile("balanced", "Muvozanatli", null,
+                agent.speechEngine().sttProvider(), agent.speechEngine().sttModel(), agent.llmModel(),
+                agent.fastLlmModel(), agent.temperature(), agent.maxOutputTokens());
+        EngineProfile other = new EngineProfile("quality", "Sifatli", null,
+                "google", "latest_long", "other-model", "other-fast", 0.9, 999);
+        when(catalogUseCase.findEngineProfiles()).thenReturn(List.of(other, matching));
+        when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(agent);
+
+        assertThat(service.findAgentRow(COMPANY_ID, AGENT_ID).engineProfileId()).isEqualTo("balanced");
+
+        when(catalogUseCase.findEngineProfiles()).thenReturn(List.of(other));
+        assertThat(service.findAgentRow(COMPANY_ID, AGENT_ID).engineProfileId()).isNull();
     }
 
     @Test
@@ -261,7 +283,7 @@ class AiAgentServiceTest {
     private static CreateAiAgentRequest createRequest(AgentTemplate templateId, AgentPersona persona, Long transferQueueId,
                                                       Boolean zeroPiiRetention) {
         return new CreateAiAgentRequest(
-                " Sotuv agenti ", null, null, templateId, null,
+                " Sotuv agenti ", null, null, templateId, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
@@ -280,7 +302,7 @@ class AiAgentServiceTest {
     /** Only the name and the lock version; everything else left as the agent has it. */
     private static UpdateAiAgentRequest updateRequest(String name, Long version) {
         return new UpdateAiAgentRequest(
-                name, null, null, null, null,
+                name, null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null, null,

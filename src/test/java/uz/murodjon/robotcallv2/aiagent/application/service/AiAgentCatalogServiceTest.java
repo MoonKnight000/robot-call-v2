@@ -7,18 +7,30 @@ import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
 import uz.murodjon.robotcallv2.aiagent.application.dto.EngineOptionsResponse;
 import uz.murodjon.robotcallv2.aiagent.application.dto.TemplatePresetDto;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.TemplateDefaults;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentTemplates;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.config.EngineProfileProperties;
+import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class AiAgentCatalogServiceTest {
 
+    private static final EngineProfile FAST = new EngineProfile("fast", "Fast", "cheap", "yandex", "general",
+            "gemini-3.5-flash-lite", "gemini-3.5-flash-lite", 0.3, 200);
+    private static final EngineProfile QUALITY = new EngineProfile("quality", "Quality", "best", "yandex", "general",
+            "gpt-5.6-sol", "gemini-3.5-flash-lite", 0.3, 300);
+
+    private AiAgentEngineGuard engineGuard;
     private SttProviderSelector sttProviderSelector;
     private TtsProviderSelector ttsProviderSelector;
     private RealtimeProviderRegistry realtimeProviderRegistry;
@@ -29,7 +41,24 @@ class AiAgentCatalogServiceTest {
         sttProviderSelector = mock(SttProviderSelector.class);
         ttsProviderSelector = mock(TtsProviderSelector.class);
         realtimeProviderRegistry = mock(RealtimeProviderRegistry.class);
-        service = new AiAgentCatalogService(sttProviderSelector, ttsProviderSelector, realtimeProviderRegistry);
+        engineGuard = mock(AiAgentEngineGuard.class);
+        service = new AiAgentCatalogService(sttProviderSelector, ttsProviderSelector, realtimeProviderRegistry,
+                new EngineProfileProperties(List.of(FAST, QUALITY)), engineGuard);
+    }
+
+    @Test
+    void findEngineProfilesLeavesOutAProfileThisBuildCannotRun() {
+        when(engineGuard.requireKnownModel(PipelineMode.CASCADE, null, "gpt-5.6-sol"))
+                .thenThrow(new ValidationException(ErrorCode.AI_MODEL_UNKNOWN, "gpt-5.6-sol", List.of()));
+
+        assertThat(service.findEngineProfiles()).containsExactly(FAST);
+    }
+
+    @Test
+    void requireEngineProfileNamesWhatIsOfferedWhenTheIdIsUnknown() {
+        assertThat(service.requireEngineProfile("fast")).isEqualTo(FAST);
+        assertThatThrownBy(() -> service.requireEngineProfile("missing"))
+                .isInstanceOf(ValidationException.class);
     }
 
     @Test
@@ -65,7 +94,9 @@ class AiAgentCatalogServiceTest {
     @Test
     void findTemplatesOffersThePresetsWithBlankLast() {
         assertThat(service.findTemplates("uz-UZ")).extracting(TemplatePresetDto::templateId)
-                .containsExactly(AgentTemplate.BUSINESS, AgentTemplate.SUPPORT, AgentTemplate.MEDICAL, AgentTemplate.BLANK);
+                .containsExactly(AgentTemplate.BUSINESS, AgentTemplate.SUPPORT, AgentTemplate.MEDICAL,
+                        AgentTemplate.DEBT_REMINDER, AgentTemplate.LEAD_QUALIFICATION, AgentTemplate.SURVEY,
+                        AgentTemplate.BLANK);
     }
 
     @Test

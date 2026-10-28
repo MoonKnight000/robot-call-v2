@@ -21,12 +21,19 @@ import java.util.Set;
  * draft row's lock counter, not {@code publishedVersion}. An agent saved by someone else
  * since is answered 409 instead of being overwritten. Optional, so an older client that
  * does not send it keeps working.
+ *
+ * <p>The same six fields as {@link CreateAiAgentRequest} are saved but not read by a call yet.
+ *
+ * <p>{@code engineProfileId} replaces the agent's recognizer, models, temperature and reply cap
+ * with that profile's ({@code GET /api/ai-agents/engine-profiles}); any of those fields sent
+ * alongside it still wins.
  */
 public record UpdateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 500) String description,
         Long scenarioId,
         AgentTemplate templateId,
+        String engineProfileId,
         String firstMessage,
         String systemPrompt,
         ScenarioMode scenarioMode,

@@ -22,6 +22,7 @@ public record AiAgentRow(
         Long scenarioId,
         String scenarioName,
         AgentTemplate templateId,
+        String engineProfileId,
         String firstMessage,
         String systemPrompt,
         ScenarioMode scenarioMode,
@@ -97,6 +98,8 @@ public record AiAgentRow(
 ) {
 
     /**
+     * @param engineProfileId  the engine profile whose choices the agent has exactly, or null when
+     *                         they were tuned by hand — what the simple form shows as picked
      * @param publishedVersion the version calls run on; null while the agent was never published
      *                         (then calls run on the draft itself)
      * @param hasDraftChanges  the draft differs from {@code publishedVersion} — a publish would change calls
@@ -104,7 +107,7 @@ public record AiAgentRow(
      * <p>{@code version} is the draft row's lock counter, which {@code PUT /api/ai-agents/{id}}
      * takes back; 0 on a row built from a published snapshot.
      */
-    public static AiAgentRow of(AiAgent agent, String scenarioName, String createdByName,
+    public static AiAgentRow of(AiAgent agent, String scenarioName, String createdByName, String engineProfileId,
                                 Integer publishedVersion, boolean hasDraftChanges) {
         return new AiAgentRow(
                 agent.id(),
@@ -114,6 +117,7 @@ public record AiAgentRow(
                 agent.script().scenarioId(),
                 scenarioName,
                 agent.script().templateId(),
+                engineProfileId,
                 agent.script().firstMessage(),
                 agent.script().systemPrompt(),
                 agent.script().mode(),

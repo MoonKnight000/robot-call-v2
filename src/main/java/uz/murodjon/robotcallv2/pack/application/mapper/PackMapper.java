@@ -42,7 +42,7 @@ public class PackMapper {
         AiAgentDataPolicy policy = agent.dataPolicy();
         return new CreateAiAgentRequest(
                 agent.name(), agent.description(),
-                null, null,                                    // scenarioId, templateId
+                null, null, null,                              // scenarioId, templateId, engineProfileId
                 agent.firstMessage(), agent.scenario().rolePrompt(),
                 ScenarioMode.STRUCTURED_STEPS, agent.scenario(),
                 null, null, agent.useRag(),                    // preemptiveGeneration, ivrNavigationEnabled

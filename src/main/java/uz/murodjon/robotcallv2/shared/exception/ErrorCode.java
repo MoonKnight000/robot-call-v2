@@ -165,6 +165,7 @@ public enum ErrorCode {
     REALTIME_MODEL_PROVIDER_MISMATCH("Realtime model '%s' belongs to engine '%s' — set realtimeProvider to it"),
     ENGINE_STT_PROVIDER_UNKNOWN("Unknown STT provider '%s'; available: %s"),
     ENGINE_TTS_PROVIDER_UNKNOWN("Unknown TTS provider '%s'; available: %s"),
+    ENGINE_PROFILE_UNKNOWN("Unknown engine profile '%s'; available: %s"),
     ENGINE_REALTIME_NOT_AVAILABLE("REALTIME mode has no engine wired in this build — use CASCADE"),
     ENGINE_REALTIME_PROVIDER_UNKNOWN("Unknown realtime engine '%s'; available: %s"),
     ENGINE_REALTIME_PROVIDER_REQUIRED("realtimeProvider is required — no default is configured; pick one of %s"),

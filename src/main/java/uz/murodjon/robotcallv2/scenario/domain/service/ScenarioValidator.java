@@ -119,8 +119,8 @@ public final class ScenarioValidator {
     }
 
     /**
-     * A condition only says when an allowed transition is taken; one on a stage the graph
-     * does not lead to would read to the model as permission to go there, and be refused.
+     * A condition's target is already an allowed transition ({@link StageDef}); an empty one
+     * tells the model nothing about when to take it.
      */
     private static void checkTransitionConditions(List<StageDef> stages, List<String> errors) {
         if (stages == null) {
@@ -131,10 +131,7 @@ public final class ScenarioValidator {
                 continue;
             }
             for (Map.Entry<String, String> condition : s.transitionConditions().entrySet()) {
-                if (s.allowedTransitions() == null || !s.allowedTransitions().contains(condition.getKey())) {
-                    errors.add("transition condition of stage " + s.id() + " is for " + condition.getKey()
-                            + ", which is not in its allowedTransitions");
-                } else if (condition.getValue() == null || condition.getValue().isBlank()) {
+                if (condition.getValue() == null || condition.getValue().isBlank()) {
                     errors.add("transition condition of stage " + s.id() + " for " + condition.getKey()
                             + " must not be empty");
                 }

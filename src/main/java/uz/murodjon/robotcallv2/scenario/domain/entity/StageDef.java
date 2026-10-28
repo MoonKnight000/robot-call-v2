@@ -1,7 +1,9 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @param model    the LLM this stage runs on instead of the agent's, or null to keep the agent's.
@@ -14,7 +16,9 @@ import java.util.Map;
  *                 settle what was known before the call ({@code branches}); what the client
  *                 answers is for the model to judge, and a bare list of stage names left it to
  *                 guess which answer leads where. A target with no entry is taken on the
- *                 target's own purpose; null or empty = none
+ *                 target's own purpose; null or empty = none. Every key is also an allowed
+ *                 transition: a stage may list its next steps here alone, each with its condition,
+ *                 and leave {@code allowedTransitions} for the unconditional ones
  * @param staticLine the first thing said on entering this stage, word for word, with {@code {{fact}}}
  *                 templates filled in by the code — the debt notice, a legal sentence: lines
  *                 whose wording is the company's, not the model's to compose. The model is
@@ -37,6 +41,17 @@ public record StageDef(
         String staticLine,
         List<String> requiredOutcomes
 ) {
+    public StageDef {
+        if (transitionConditions != null && !transitionConditions.isEmpty()) {
+            Set<String> merged = new LinkedHashSet<>();
+            if (allowedTransitions != null) {
+                merged.addAll(allowedTransitions);
+            }
+            merged.addAll(transitionConditions.keySet());
+            allowedTransitions = List.copyOf(merged);
+        }
+    }
+
     public static StageDefBuilder builder() {
         return new StageDefBuilder();
     }

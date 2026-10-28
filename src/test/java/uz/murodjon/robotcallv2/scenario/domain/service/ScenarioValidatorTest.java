@@ -158,7 +158,27 @@ class ScenarioValidatorTest {
     }
 
     @Test
-    void aTransitionConditionOnAStageTheGraphDoesNotLeadToReturnsError() {
+    void aTransitionConditionAloneMakesItsTargetAllowed() {
+        ScenarioDefinition def = new ScenarioDefinition(
+                List.of(
+                        StageDef.builder()
+                                .id("ASK_TIME")
+                                .purpose("Vaqti bormi so'rang")
+                                .allowedTools(List.of())
+                                .transitionConditions(Map.of("RESCHEDULE", "mijoz bandman desa"))
+                                .build(),
+                        new StageDef("RESCHEDULE", "Qachon qulay ekanini so'rang", List.of(), List.of())
+                ),
+                List.of(), List.of(),
+                List.of(new OutcomeField("res", "string", "Desc")),
+                "Prompt", List.of(), null);
+
+        assertThat(def.stages().get(0).allowedTransitions()).containsExactly("RESCHEDULE");
+        assertThat(ScenarioValidator.validate(def)).isEmpty();
+    }
+
+    @Test
+    void aTransitionConditionOnAnUnknownStageReturnsError() {
         ScenarioDefinition def = new ScenarioDefinition(
                 List.of(
                         StageDef.builder()
@@ -174,9 +194,7 @@ class ScenarioValidatorTest {
                 List.of(new OutcomeField("res", "string", "Desc")),
                 "Prompt", List.of(), null);
 
-        List<String> errors = ScenarioValidator.validate(def);
-        assertThat(errors).contains(
-                "transition condition of stage ASK_TIME is for RESCHEDULE, which is not in its allowedTransitions");
+        assertThat(ScenarioValidator.validate(def)).contains("stage ASK_TIME transitions to unknown stage RESCHEDULE");
     }
 
     @Test

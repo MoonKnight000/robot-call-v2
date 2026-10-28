@@ -13,7 +13,8 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 │                       AI AGENT                              │
 │                                                             │
 │  1. BEHAVIOR & TEMPLATE                                     │
-│     • templateId: BUSINESS | SUPPORT | MEDICAL | BLANK      │
+│     • templateId: BUSINESS | SUPPORT | MEDICAL |            │
+│       DEBT_REMINDER | LEAD_QUALIFICATION | SURVEY | BLANK   │
 │     • firstMessage: 0ms kechikish bilan ochilish salomi     │
 │     • systemPrompt: agentning roli, skripti va qoidalari    │
 │     • scenarioId: ixtiyoriy (tashqi FSM senariy yoki null)  │
@@ -110,7 +111,7 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
   "accept": true,
   "data": [
     {
-      "id": "BUSINESS",
+      "templateId": "BUSINESS",
       "name": "Business Agent",
       "description": "General purpose business calls, lead qualification, and customer questions",
       "defaults": {
@@ -129,6 +130,54 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
   ]
 }
 ```
+
+Ro'yxat tartibi: `BUSINESS`, `SUPPORT`, `MEDICAL` (kiruvchi qo'ng'iroqlar uchun), `DEBT_REMINDER`
+(qarz eslatma), `LEAD_QUALIFICATION` (ariza bo'yicha qayta qo'ng'iroq), `SURVEY` (qisqa so'rovnoma),
+oxirida `BLANK`. Shablon faqat `systemPrompt`, `firstMessage`, `dataNeeded` va `dataEvaluation`
+ni to'ldiradi; ovoz va model o'zgarmaydi. `POST /api/ai-agents` da `templateId` berilsa va bu
+maydonlar bo'sh bo'lsa, shablon qiymatlari tushadi — alohida "shablondan yaratish" endpointi yo'q.
+`DEBT_REMINDER` summa, muddat va chegirmani faqat qo'ng'iroq ma'lumotlaridan olishni buyuradi.
+
+### 3.1. `GET /api/ai-agents/engine-profiles` — Tayyor dvigatel to'plamlari
+
+Permission: `AI_AGENT_READ`. Tezlik / narx / sifat bo'yicha tayyor to'plamlar. Faqat shu build
+to'liq ishga tushira oladigan profillar qaytadi (provayder kaliti yo'q yoki model katalogda yo'q
+bo'lsa profil ro'yxatda chiqmaydi).
+
+```json
+{
+  "accept": true,
+  "data": [
+    {
+      "id": "balanced",
+      "label": "Muvozanatli",
+      "description": "Odatiy qo'ng'iroqlar uchun narx va aql muvozanati",
+      "sttProvider": "yandex",
+      "sttModel": "general",
+      "llmModel": "gemini-3.8-flash",
+      "fastLlmModel": "gemini-3.5-flash-lite",
+      "temperature": 0.3,
+      "maxOutputTokens": 300
+    }
+  ]
+}
+```
+
+`POST /api/ai-agents` da `engineProfileId` berilsa, profil **faqat so'rovda berilmagan**
+maydonlarni to'ldiradi: `sttProvider`, `sttModel`, `llmModel`, `fastLlmModel`, `temperature`,
+`maxOutputTokens`. Ovoz profilga kirmaydi — sintezatorni ovozning o'zi belgilaydi. So'rov o'z
+`sttProvider` ini bersa, profilning `sttModel` i olinmaydi (u o'z provayderiga tegishli).
+Ro'yxatda yo'q id — `400 ENGINE_PROFILE_UNKNOWN`. Profillar `voice-agent.engine-profiles.items`
+(`config/misc.yml`) da, o'zgartirish uchun kod kerak emas.
+
+`PUT /api/ai-agents/{id}` da ham `engineProfileId` qabul qilinadi: profil agentning shu olti
+maydonini **almashtiradi** (bo'sh qoldirilganlarini emas, hammasini); so'rovda o'sha maydonlardan
+biri ham kelsa — so'rovniki ustun. `engineProfileId` yuborilmasa — agentning dvigatel sozlamalari
+o'zgarmaydi.
+
+Agent javobida (`AiAgentRow`) `engineProfileId` — agentning olti maydoni aynan mos keladigan
+profil id si, mos kelmasa `null` (qo'lda sozlangan — UI "Maxsus" deb ko'rsatadi). Bu saqlanmaydi,
+har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'lib qoladi.
 
 ---
 
@@ -341,6 +390,20 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 > so'ralmaydi.
 > - Javobda (`AiAgentRow`, `GET .../advanced`) ham qaytadi.
 
+> **Hozircha qo'ng'iroqqa ta'sir qilmaydigan maydonlar.** Quyidagilar saqlanadi, tahrirlanadi va
+> javobda qaytadi, lekin qo'ng'iroq jarayoni ularni **o'qimaydi** (2026-10-28 da kod bo'yicha tekshirilgan):
+>
+> | Maydon | Izoh |
+> |---|---|
+> | `preemptiveGeneration` | Oldindan generatsiyani umumiy `voice-agent.dialog.preemptive` boshqaradi, agent flagi emas |
+> | `ivrNavigationEnabled` | IVR'da tugma bosish ssenariydagi `ToolDef` orqali; bu flag o'qilmaydi |
+> | `voiceStability`, `voiceSimilarityBoost` | Hech bir TTS provayder ularni olmaydi |
+> | `endpointingDelayMs` | Gap tugashini umumiy `voice-agent.stt.endpointing` aniqlaydi |
+> | `turnTimeoutSeconds` | Navbat vaqt chegarasi agent bo'yicha qo'llanmaydi |
+>
+> Frontend ularni oddiy formada ko'rsatmasin va "Qo'shimcha"da ham o'zgartirish ta'sir qiladi deb va'da
+> bermasin. Maydonlar API'dan olib tashlanmagan (mavjud klientlar buzilmasin).
+
 ---
 
 ## 5. `POST /api/ai-agents/filter` — Ro'yxat va qidiruv
@@ -447,6 +510,22 @@ Yuqoridagi maydonlarni yuborish orqali agentning ssenariy va xulq-atvorini yangi
 `stages[]` — ssenariydagi `StageDef` ning aynan o'zi: `branches` va mijoz javobiga qarab
 o'tish shartlari (`transitionConditions`) ham shu yerda yuboriladi —
 [scenarios.md](scenarios.md#-transitionconditions--mijoz-javobiga-qarab-tarmoqlanish).
+
+**Qoidalar:**
+
+- **Umumiy ssenariydagi agent.** Agentda `scenarioId` bo'lsa (u umumiy `Scenario` qatorini
+  gapiradi), `PUT` — `409 AI_AGENT_SCENARIO_SHARED`: qo'ng'iroqda `scenarioId` agentning o'z
+  `definition` idan ustun, shuning uchun bu yerdagi tahrir saqlanib, hech qachon aytilmas edi.
+  Avval `PUT /api/ai-agents/{id}` da `scenarioId: null` yuboring (agent o'z ssenariysiga o'tadi),
+  yoki umumiy ssenariyni `scenarios.md` orqali tahrirlang — u shu ssenariyni gapiradigan **barcha**
+  agentlarga ta'sir qiladi. Bunday agentda `GET` bo'sh `stages` qaytaradi (u faqat agentning o'z
+  `definition` ini o'qiydi); umumiy ssenariy `scenarioId` / `scenarioName` bilan agent qatorida (`AiAgentRow`).
+- **Forma olib yurmaydigan narsalar saqlanadi.** `PUT` faqat ushbu javobdagi maydonlarni almashtiradi;
+  agentning mavjud `definition` idagi `tools`, `outcomeSchema`, `factWebhook`, `styleExamples`,
+  `globalNodes` o'zgarmaydi.
+- **`scenarioMode` — faqat yorliq.** Qo'ng'iroqda u o'qilmaydi: ssenariy `scenarioId` → `definition` →
+  `systemPrompt` tartibida tanlanadi. Mijoz yuborgan qiymat haqiqatga mos bo'lmasligi mumkin, shuning
+  uchun UI rejimni undan emas, [quickstart.md](quickstart.md#oddiy-va-bosqichli-ssenariy) dagi qoidadan aniqlasin.
 
 ---
 

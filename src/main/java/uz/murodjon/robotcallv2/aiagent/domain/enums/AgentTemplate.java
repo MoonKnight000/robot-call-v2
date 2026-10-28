@@ -7,5 +7,8 @@ public enum AgentTemplate {
     BUSINESS,
     SUPPORT,
     MEDICAL,
+    DEBT_REMINDER,
+    LEAD_QUALIFICATION,
+    SURVEY,
     BLANK
 }

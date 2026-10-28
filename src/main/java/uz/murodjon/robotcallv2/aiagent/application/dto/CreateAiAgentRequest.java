@@ -16,12 +16,18 @@ import java.util.Set;
 
 /**
  * A new AI agent ({@code POST /api/ai-agents}).
+ *
+ * <p>Saved and returned but not read by a call yet: {@code preemptiveGeneration},
+ * {@code ivrNavigationEnabled}, {@code voiceStability}, {@code voiceSimilarityBoost},
+ * {@code endpointingDelayMs}, {@code turnTimeoutSeconds}. The deployment-wide
+ * {@code voice-agent.dialog.preemptive} is what speculation follows.
  */
 public record CreateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 500) String description,
         Long scenarioId,
         AgentTemplate templateId,
+        String engineProfileId,
         String firstMessage,
         String systemPrompt,
         ScenarioMode scenarioMode,

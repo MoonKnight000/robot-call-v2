@@ -20,6 +20,8 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -254,6 +256,55 @@ class CampaignServiceTest {
         verify(campaigns).create(eq(1L), written.capture());
         assertThat(written.getValue().dialMode()).isEqualTo(DialMode.AI);
         assertThat(written.getValue().aiAgentId()).isEqualTo(AI_AGENT_ID);
+    }
+
+    /** A campaign that names no hours calls in the company's own dial window. */
+    @Test
+    void campaignWithoutWindowTakesTheCompanysDialWindow() {
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(companyConfig.find(1L)).thenReturn(CompanyConfig.settings(LocalTime.of(10, 0), LocalTime.of(18, 0),
+                "Asia/Tashkent", Language.UZ_UZ, List.of(Language.UZ_UZ), null, 0, 0, false, false));
+
+        service.createCampaign(1L, createRequestWithWindow(null, null));
+
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).create(eq(1L), written.capture());
+        assertThat(written.getValue().dialWindowStart()).isEqualTo(LocalTime.of(10, 0));
+        assertThat(written.getValue().dialWindowEnd()).isEqualTo(LocalTime.of(18, 0));
+    }
+
+    @Test
+    void campaignWithoutWindowOrCompanySettingsCallsNineToEight() {
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+
+        service.createCampaign(1L, createRequestWithWindow(null, null));
+
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).create(eq(1L), written.capture());
+        assertThat(written.getValue().dialWindowStart()).isEqualTo(LocalTime.of(9, 0));
+        assertThat(written.getValue().dialWindowEnd()).isEqualTo(LocalTime.of(20, 0));
+    }
+
+    @Test
+    void updateCampaignWithoutWindowKeepsItsOwn() {
+        when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
+        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
+
+        service.updateCampaign(1L, CAMPAIGN_ID, new UpdateCampaignRequest("c", AI_AGENT_ID, null, null,
+                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
+                null, null, null, null, null, null, null, null));
+
+        ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
+        verify(campaigns).update(eq(1L), eq(CAMPAIGN_ID), written.capture());
+        assertThat(written.getValue().dialWindowStart()).isEqualTo(LocalTime.of(9, 0));
+        assertThat(written.getValue().dialWindowEnd()).isEqualTo(LocalTime.of(20, 0));
+    }
+
+    private static CreateCampaignRequest createRequestWithWindow(LocalTime start, LocalTime end) {
+        return new CreateCampaignRequest("c", CampaignType.SURVEY, AI_AGENT_ID, start, end,
+                Set.of(DayOfWeek.MONDAY), 3, 0, 5, 0, RecurrenceType.ONCE, null, null, false, null, null,
+                null, null, null, null, null, null, null, null);
     }
 
     private static CreateCampaignRequest createRequest(DialMode dialMode, Long aiAgentId, Long callQueueId) {

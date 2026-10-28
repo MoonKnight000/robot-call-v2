@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +53,7 @@ public class ConversionService implements ConversionUseCase {
     private final CallAttemptUseCase callAttemptUseCase;
     private final ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider;
 
+    @Autowired
     public ConversionService(ConversionGoalRepository goalRepository,
                              ConversionRepository conversionRepository,
                              CallAttemptUseCase callAttemptUseCase,

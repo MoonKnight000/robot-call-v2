@@ -84,6 +84,59 @@ voice-agent:
   agent-eval:
     publish-gate: ${AGENT_EVAL_PUBLISH_GATE:}
 
+  # One-click engine bundles on the agent form (speed / cost / quality) — EngineProfileProperties.
+  # An agent keeps whatever the request names itself; a profile only fills the rest. The voice is
+  # not part of it: it decides the synthesizer. GET /api/ai-agents/engine-profiles lists only the
+  # profiles this build can run in full, so the same id may appear once per chat provider — only
+  # the one whose models are in the catalog (spring.ai.model.chat) is offered.
+  engine-profiles:
+    items:
+      - id: fast
+        label: Tez va arzon
+        description: Qisqa javoblar, eng past narx va kechikish
+        stt-provider: yandex
+        stt-model: general
+        llm-model: gemini-3.5-flash-lite
+        fast-llm-model: gemini-3.5-flash-lite
+        temperature: 0.3
+        max-output-tokens: 200
+      - id: balanced
+        label: Muvozanatli
+        description: Odatiy qo'ng'iroqlar uchun narx va aql muvozanati
+        stt-provider: yandex
+        stt-model: general
+        llm-model: gemini-3.8-flash
+        fast-llm-model: gemini-3.5-flash-lite
+        temperature: 0.3
+        max-output-tokens: 300
+      - id: fast
+        label: Tez va arzon
+        description: Qisqa javoblar, eng past narx va kechikish
+        stt-provider: yandex
+        stt-model: general
+        llm-model: gpt-5.6-luna
+        fast-llm-model: gpt-5.6-luna
+        temperature: 0.3
+        max-output-tokens: 200
+      - id: balanced
+        label: Muvozanatli
+        description: Odatiy qo'ng'iroqlar uchun narx va aql muvozanati
+        stt-provider: yandex
+        stt-model: general
+        llm-model: gpt-5.6-terra
+        fast-llm-model: gpt-5.6-luna
+        temperature: 0.3
+        max-output-tokens: 300
+      - id: quality
+        label: Sifatli
+        description: Murakkab suhbatlar uchun kuchliroq model, sekinroq va qimmatroq
+        stt-provider: yandex
+        stt-model: general
+        llm-model: gpt-5.6-sol
+        fast-llm-model: gpt-5.6-luna
+        temperature: 0.3
+        max-output-tokens: 400
+
   # Success rate, turnaround SLO and speculation hit rate — AlertingProperties
   alerting:
     enabled: ${ALERTING_ENABLED:true}

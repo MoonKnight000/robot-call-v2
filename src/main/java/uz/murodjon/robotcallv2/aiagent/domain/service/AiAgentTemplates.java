@@ -28,6 +28,9 @@ public final class AiAgentTemplates {
             case BUSINESS -> businessPreset(isUzbek, isRussian);
             case SUPPORT -> supportPreset(isUzbek, isRussian);
             case MEDICAL -> medicalPreset(isUzbek, isRussian);
+            case DEBT_REMINDER -> debtReminderPreset(isUzbek, isRussian);
+            case LEAD_QUALIFICATION -> leadQualificationPreset(isUzbek, isRussian);
+            case SURVEY -> surveyPreset(isUzbek, isRussian);
             case BLANK -> new TemplateDefaults("", "", List.of(), List.of());
         };
     }
@@ -78,6 +81,79 @@ public final class AiAgentTemplates {
         );
         List<DataEvaluationCriterion> criteria = List.of(
                 new DataEvaluationCriterion("escalation_needed", "Escalation needed", "Whether the support issue should be escalated to a human team member")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults debtReminderPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Это голосовой помощник компании. Я звоню напомнить о задолженности. Удобно сейчас говорить?";
+            systemPrompt = "Вы вежливый голосовой агент, который напоминает клиенту об оплате. Называйте суммы, сроки и скидки только из данных звонка, ничего не придумывайте. Не угрожайте и не давите. Выясните, когда клиент сможет оплатить, зафиксируйте обещанную дату и подтвердите её. Если клиент оспаривает долг, не спорьте, а зафиксируйте причину.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Bu kompaniyaning ovozli yordamchisi. To'lov bo'yicha eslatma uchun qo'ng'iroq qilyapman. Hozir gaplashishga qulaymi?";
+            systemPrompt = "Siz mijozga to'lov haqida xushmuomalalik bilan eslatuvchi ovozli agentsiz. Summa, muddat va chegirmani faqat qo'ng'iroq ma'lumotlaridan oling, o'zingizdan hech narsa to'qimang. Tahdid qilmang va bosim o'tkazmang. Mijoz qachon to'lay olishini aniqlang, va'da qilingan sanani yozib oling va tasdiqlang. Agar mijoz qarzga e'tiroz bildirsa, bahslashmang, sababini yozib oling.";
+        } else {
+            firstMessage = "Hello! This is the company's voice assistant calling with a payment reminder. Is now a good time to talk?";
+            systemPrompt = "You are a polite voice agent reminding a customer about a payment. State amounts, due dates, and discounts only from the call data and never invent them. Do not threaten or pressure. Find out when the customer can pay, record the promised date, and confirm it. If the customer disputes the debt, do not argue; record the reason.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("promised_payment_date", "String", "Promised payment date", "Date the customer promises to pay"),
+                new DataExtractionField("dispute_reason", "String", "Dispute reason", "Why the customer disputes the debt, if they do")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("payment_promised", "Payment promised", "Whether the customer committed to a payment date")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults leadQualificationPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Вы оставляли заявку, и я хочу уточнить пару деталей. Удобно сейчас поговорить?";
+            systemPrompt = "Вы голосовой агент, который перезванивает по заявкам. Выясните, что интересует клиента, ориентировочный бюджет и удобное время для связи с менеджером. Задавайте по одному вопросу за раз. Не называйте цены и условия, которых нет в данных звонка.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Siz ariza qoldirgan edingiz, bir-ikki tafsilotni aniqlashtirmoqchiman. Hozir gaplashishga qulaymi?";
+            systemPrompt = "Siz arizalar bo'yicha qayta qo'ng'iroq qiluvchi ovozli agentsiz. Mijozni nima qiziqtirishini, taxminiy byudjetini va menejer bog'lanishi uchun qulay vaqtni aniqlang. Har safar bitta savol bering. Qo'ng'iroq ma'lumotlarida yo'q narx va shartlarni aytmang.";
+        } else {
+            firstMessage = "Hello! You left a request with us and I'd like to confirm a few details. Is now a good time to talk?";
+            systemPrompt = "You are a voice agent calling back about a request. Find out what the customer is interested in, the approximate budget, and a good time for a manager to reach them. Ask one question at a time. Do not state prices or terms that are not in the call data.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("interest", "String", "Interest", "What the customer is interested in"),
+                new DataExtractionField("budget", "String", "Budget", "Approximate budget the customer mentions"),
+                new DataExtractionField("preferred_contact_time", "String", "Preferred contact time", "When a manager should call back")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("qualified_lead", "Qualified lead", "Whether the customer is a real prospect worth a manager's time")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults surveyPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Мы проводим короткий опрос о качестве обслуживания, он займёт около минуты. Можно задать пару вопросов?";
+            systemPrompt = "Вы голосовой агент, проводящий короткий опрос. Задавайте вопросы по одному, не комментируйте и не оспаривайте ответы. Попросите оценить обслуживание от 1 до 5 и спросите, что можно улучшить. Поблагодарите за время и завершите разговор.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Xizmat sifati bo'yicha qisqa so'rovnoma o'tkazyapmiz, bir daqiqa vaqt oladi. Ikki-uch savol bersam bo'ladimi?";
+            systemPrompt = "Siz qisqa so'rovnoma o'tkazuvchi ovozli agentsiz. Savollarni birma-bir bering, javoblarga izoh bermang va bahslashmang. Xizmatni 1 dan 5 gacha baholashni so'rang va nimani yaxshilash mumkinligini so'rang. Vaqt ajratgani uchun rahmat ayting va suhbatni yakunlang.";
+        } else {
+            firstMessage = "Hello! We're running a short service-quality survey that takes about a minute. May I ask a couple of questions?";
+            systemPrompt = "You are a voice agent running a short survey. Ask questions one at a time and do not comment on or argue with answers. Ask the customer to rate the service from 1 to 5 and what could be improved. Thank them for their time and end the call.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("satisfaction_score", "String", "Satisfaction score", "Rating from 1 to 5 given by the customer"),
+                new DataExtractionField("improvement_comment", "String", "Improvement comment", "What the customer says could be improved")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("survey_completed", "Survey completed", "Whether the customer answered the questions")
         );
         return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
     }

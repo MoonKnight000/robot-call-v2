@@ -323,7 +323,7 @@ buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `
 | Branch `goTo` — shu bosqichning `allowedTransitions` ichida | `branch of stage X goes to Y, which is not in its allowedTransitions` |
 | Birinchi bosqichda `staticLine` yo'q (qo'ng'iroqni agentning `firstMessage` i ochadi) | `the first stage X cannot have a staticLine — …` |
 | `requiredOutcomes` yakuniy bosqichda yo'q, nomlari bo'sh emas | `terminal stage X cannot have requiredOutcomes — …`, `stage X has a blank required outcome` |
-| `transitionConditions` kaliti — shu bosqichning `allowedTransitions` ichida, qiymati bo'sh emas | `transition condition of stage X is for Y, which is not in its allowedTransitions`, `transition condition of stage X for Y must not be empty` |
+| `transitionConditions` kaliti — mavjud bosqich (kalit avtomatik `allowedTransitions` ga qo'shiladi), qiymati bo'sh emas | `stage X transitions to unknown stage Y`, `transition condition of stage X for Y must not be empty` |
 | `tools[].name` universal nomlardan biri bo'lmaydi: `transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall` | `tool name 'X' is reserved …` |
 | Fakt / tool / tool parametri / outcome nomlari bo'sh emas va takrorlanmaydi | `a fact has a blank name`, `duplicate tool name: X`, … |
 | `outcomeSchema` kamida bitta maydon | `outcomeSchema must not be empty — …` |
@@ -366,8 +366,16 @@ so'rashga" o'tish. Ikki xil tarmoqlanish bor, ularni adashtirmang:
   tushadi — ikkala pipeline'da (cascade annex va realtime bosqichlar ro'yxati) va `transitionTo`
   javobida.
 - Shartsiz qoldirilgan o'tish ham ruxsat — LLM uni keyingi bosqichning `purpose` iga qarab tanlaydi.
-- Ruxsat etilgan o'tishlar grafi o'zgarmaydi: shart faqat *qachon* ni aytadi, *qayerga* ni
-  `allowedTransitions` belgilaydi.
+- `transitionConditions` dagi har bir kalit avtomatik ravishda `allowedTransitions` ga ham
+  qo'shiladi (saqlashda ham, javobda ham). Shuning uchun shartli o'tishni ikki marta yozish shart
+  emas: `allowedTransitions` da faqat shartsiz o'tishlar qolsa yetadi. UI "Keyingi qadam →
+  bosqich, qachon: …" ko'rinishida bitta ro'yxat bilan ishlashi mumkin:
+
+```json
+{ "id": "ASK_TIME", "purpose": "Vaqti bormi, so'rang", "allowedTools": [],
+  "transitionConditions": { "OFFER": "vaqtim bor desa", "RESCHEDULE": "bandman desa" } }
+```
+  → javobda `"allowedTransitions": ["OFFER", "RESCHEDULE"]`.
 
 ---
 

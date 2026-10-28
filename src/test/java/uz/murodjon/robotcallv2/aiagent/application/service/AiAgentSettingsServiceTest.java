@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentLimits;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentScript;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
@@ -21,6 +22,8 @@ import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCa
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModelConfig;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.exception.*;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
@@ -140,6 +143,8 @@ class AiAgentSettingsServiceTest {
 
     @Test
     void updateScenarioWithoutStagesSpeaksOneConversationStage() {
+        when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(ownScript(null));
+
         service.updateScenario(COMPANY_ID, AGENT_ID,
                 new AgentScenarioDto(null, " Assalomu alaykum ", " Siz yordamchisiz ", null, null, null, null, null));
 
@@ -147,8 +152,38 @@ class AiAgentSettingsServiceTest {
         assertThat(written.script().mode()).isEqualTo(ScenarioMode.PROMPT);
         assertThat(written.script().firstMessage()).isEqualTo("Assalomu alaykum");
         assertThat(written.script().systemPrompt()).isEqualTo("Siz yordamchisiz");
-        assertThat(written.script().scenarioId()).isEqualTo(3L);
+        assertThat(written.script().scenarioId()).isNull();
         assertThat(written.script().definition().stages()).extracting(StageDef::id).containsExactly("CONVERSATION");
+    }
+
+    /** The shared scenario would win at call time, so the edit would be saved and never spoken. */
+    @Test
+    void updateScenarioOfAnAgentOnASharedScenarioIsRefused() {
+        assertRefused(() -> service.updateScenario(COMPANY_ID, AGENT_ID,
+                        new AgentScenarioDto(null, null, "Siz yordamchisiz", null, null, null, null, null)),
+                ConflictException.class, ErrorCode.AI_AGENT_SCENARIO_SHARED);
+        verify(repository, never()).update(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void updateScenarioKeepsTheOutcomesTheFormDoesNotCarry() {
+        OutcomeField outcome = new OutcomeField("interested", "boolean", "Mijoz qiziqdimi", true);
+        ScenarioDefinition current = ScenarioDefinition.builder()
+                .stages(List.of()).factSchema(List.of()).tools(List.of())
+                .outcomeSchema(List.of(outcome)).rolePrompt("eski").guardrails(List.of()).build();
+        when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(ownScript(current));
+
+        service.updateScenario(COMPANY_ID, AGENT_ID,
+                new AgentScenarioDto(ScenarioMode.STRUCTURED_STEPS, null, "yangi", null, null, null, null, null));
+
+        ScenarioDefinition written = written().script().definition();
+        assertThat(written.outcomeSchema()).containsExactly(outcome);
+        assertThat(written.rolePrompt()).isEqualTo("yangi");
+    }
+
+    /** The shared fixture agent, speaking its own script instead of scenario 3. */
+    private static AiAgent ownScript(ScenarioDefinition definition) {
+        return AGENT.withScenario(new AiAgentScript(null, null, ScenarioMode.PROMPT, definition, null, null));
     }
 
     @Test
