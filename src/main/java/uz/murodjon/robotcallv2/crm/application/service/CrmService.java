@@ -269,6 +269,10 @@ public class CrmService implements CrmUseCase {
             append(text, "Uchrashuv", "Sotuv ofisiga belgilandi");
         }
         appendOutcome(text, "Shartnoma raqami", summary.outcome().get("contractNumber"));
+        if (Boolean.TRUE.equals(summary.outcome().get("managerCallbackRequested"))) {
+            append(text, "Menejer qayta qo'ng'iroq qilsin", String.valueOf(
+                    summary.outcome().getOrDefault("managerCallbackReason", "ha")));
+        }
         if (summary.sentiment() != null) {
             append(text, "Kayfiyat", summary.sentiment().name());
         }

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
 import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
@@ -44,6 +45,7 @@ class RealtimeToolRunner {
     private final RealtimeProperties realtimeProperties;
     private final RealtimeMetrics metrics;
     private final StageScriptRunner stageScriptRunner;
+    private final CrmCatalogUseCase crmCatalog;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -54,12 +56,13 @@ class RealtimeToolRunner {
 
     RealtimeToolRunner(KnowledgeRetrievalUseCase knowledgeRetrieval, CatalogSearchUseCase catalogSearch,
                        RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
-                       StageScriptRunner stageScriptRunner) {
+                       StageScriptRunner stageScriptRunner, CrmCatalogUseCase crmCatalog) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
         this.stageScriptRunner = stageScriptRunner;
+        this.crmCatalog = crmCatalog;
     }
 
     /**
@@ -88,6 +91,12 @@ class RealtimeToolRunner {
         if (catalogSearch.existsByCompanyIdAndAgentId(s.companyId(), agentId)) {
             callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
                     .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch))
+                    .build().getToolCallbacks()));
+        }
+        // The developer's Uysot lookups, for a company connected to Uysot (RealEstateTools).
+        if (crmCatalog != null && crmCatalog.isUysotConnected(s.companyId())) {
+            callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
+                    .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog))
                     .build().getToolCallbacks()));
         }
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()

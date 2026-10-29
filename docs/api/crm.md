@@ -122,3 +122,31 @@ Faqat `SALE` holatidagilar, eng arzonidan boshlab. Hamma maydon ixtiyoriy; `limi
   ]
 }
 ```
+
+---
+
+# Agentning ko'chmas mulk tool'lari (Uysot)
+
+Kompaniya Uysot'ga ulangan bo'lsa, uning **har bir** agentiga (ovozli cascade, realtime va chat)
+quyidagi tool'lar avtomatik beriladi — ssenariyda e'lon qilish shart emas, istalgan bosqichda
+ishlaydi (katalog qidiruvi kabi: faqat o'qiydi, CRM'da hech narsa o'zgartirmaydi).
+
+| Tool | Qachon | Nima qaytaradi |
+|---|---|---|
+| `searchFlats(rooms, maxPrice, minPrice, complexName, floorFrom, floorTo)` | "3 xonali bormi?", "60 mingga nima bor?" | Sotuvdagi 3 ta eng arzon xonadon: majmua, blok, xona, m², qavat, narx |
+| `listResidentialComplexes()` | "Qaysi loyihalaringiz bor?" | Sotuvdagi majmualar nomi |
+| `getContractBalance(contractNumber?)` | "Qancha qoldi?", "Qarzim qancha?" | Shartnoma summasi, to'langan, qoldiq, kechikish kunlari, navbatdagi to'lov |
+| `getPaymentSchedule(contractNumber?)` | "To'lov jadvalim qanday?" | To'lanmagan navbatdagi 3 ta to'lov (sana, summa, muddati o'tganmi) |
+| `requestManagerCallback(reason, preferredTime?)` | "Menejer bilan gaplashmoqchiman", chegirma/shartlar | Outcome'ga `managerCallbackRequested` yozadi → qo'ng'iroqdan keyin CRM task |
+
+**Shartnoma qanday topiladi:** tool'ga berilgan raqam → qo'ng'iroq faktidagi `contractNumber` →
+mijoz telefoni bo'yicha faol shartnomalar (bir nechta bo'lsa — eng ko'p kechikkani).
+
+**Guardrail:** tool javobidagi har bir raqam `FactGuard` ga "aytish mumkin" deb beriladi; agent narx,
+qoldiq yoki sana to'qiy olmaydi. Uysot javob bermasa tool "ma'lumot hozir mavjud emas" deydi va agent
+mijozga menejer aniqlashtirishini aytadi.
+
+**Qo'ng'iroqdan keyin:** ssenariy `outcomeSchema`sida `managerCallbackRequested` (boolean) bo'lsa va
+xulosa uni `true` desa, Uysot'da "Mijozga qayta qo'ng'iroq qiling (AI bot)" task'i yaratiladi
+(`real_estate` va `real_estate_contract` paketlarida bu maydon bor). Task mas'ul xodimi — CRM
+sozlamasidagi `aiEmployeeId`.

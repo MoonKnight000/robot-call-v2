@@ -36,7 +36,10 @@
         {"name": "promisedDate", "type": "string", "description": "Mijoz to'lov qilishga va'da bergan sana (yyyy-MM-dd)", "goal": true},
         {"name": "promisedAmount", "type": "number", "description": "To'lanishi va'da qilingan summa"},
         {"name": "paymentMethod", "type": "string", "description": "To'lov usuli: ILOVA, BANK_OTKAZMASI, KASSA"},
-        {"name": "reasonCode", "type": "string", "description": "Kechikish sababi: MAOSH_KUTILMOQDA, BANK_KUTISH, VAQTINCHA_QIYINCHILIK, BOSHQA"}
+        {"name": "reasonCode", "type": "string", "description": "Kechikish sababi: MAOSH_KUTILMOQDA, BANK_KUTISH, VAQTINCHA_QIYINCHILIK, BOSHQA"},
+        {"name": "contractNumber", "type": "string", "description": "Suhbatda tilga olingan shartnoma raqami"},
+        {"name": "managerCallbackRequested", "type": "boolean", "description": "Mijoz menejer o'zi qayta qo'ng'iroq qilishini so'radimi"},
+        {"name": "managerCallbackReason", "type": "string", "description": "Mijoz menejer bilan nima haqida gaplashmoqchi"}
       ],
       "rolePrompt": "Siz ko'chmas mulk va qurilish kompaniyasining mijozlar hisob-kitob bo'limi professional ovozli konsultantisiz. Vazifangiz — xonadon xaridi bo'yicha tuzilgan shartnomaning navbatdagi to'lovi haqida xushmuomala eslatish, to'lov rejasini aniqlash va aniq to'lov va'dasi sanasini olish. Siz mijoz bilan hamisha samimiy, do'stona va hurmat bilan gaplashasiz. Aslo bosim qilmang yoki dag'al ohang ishlatmang.",
       "guardrails": [

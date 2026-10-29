@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
@@ -54,9 +55,10 @@ public class TurnTools {
     private final McpToolCallbackFactory mcpToolCallbackFactory;
     private final CatalogSearchUseCase catalogSearch;
     private final StageScriptRunner stageScriptRunner;
+    private final CrmCatalogUseCase crmCatalog;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null);
     }
 
     @Autowired
@@ -66,7 +68,8 @@ public class TurnTools {
             HttpToolExecutor httpToolExecutor,
             McpToolCallbackFactory mcpToolCallbackFactory,
             CatalogSearchUseCase catalogSearch,
-            StageScriptRunner stageScriptRunner
+            StageScriptRunner stageScriptRunner,
+            CrmCatalogUseCase crmCatalog
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
@@ -74,6 +77,7 @@ public class TurnTools {
         this.mcpToolCallbackFactory = mcpToolCallbackFactory;
         this.catalogSearch = catalogSearch;
         this.stageScriptRunner = stageScriptRunner;
+        this.crmCatalog = crmCatalog;
     }
 
     /**
@@ -141,6 +145,8 @@ public class TurnTools {
         callbacks.addAll(mcp);
         List<ToolCallback> catalog = catalogTools(s);
         callbacks.addAll(catalog);
+        List<ToolCallback> realEstate = realEstateTools(s);
+        callbacks.addAll(realEstate);
         if (!dialogProperties.stateScopedTools()) {
             return callbacks;
         }
@@ -152,6 +158,7 @@ public class TurnTools {
         // a lookup the caller may need at any stage, and it changes nothing.
         mcp.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         catalog.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
+        realEstate.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
                 .toList();
@@ -194,6 +201,28 @@ public class TurnTools {
         }
         return List.of(MethodToolCallbackProvider.builder()
                 .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch))
+                .build().getToolCallbacks());
+    }
+
+    /**
+     * The developer's Uysot lookups ({@link RealEstateTools}), for a company connected to Uysot.
+     * Asked once per call and kept on the session, like the catalog: the answer is a lookup the
+     * caller may need at any stage, and it changes nothing in the CRM.
+     */
+    private List<ToolCallback> realEstateTools(DialogSession s) {
+        if (crmCatalog == null) {
+            return List.of();
+        }
+        Boolean available = s.realEstateAvailable();
+        if (available == null) {
+            available = crmCatalog.isUysotConnected(s.companyId());
+            s.setRealEstateAvailable(available);
+        }
+        if (!available) {
+            return List.of();
+        }
+        return List.of(MethodToolCallbackProvider.builder()
+                .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog))
                 .build().getToolCallbacks());
     }
 
