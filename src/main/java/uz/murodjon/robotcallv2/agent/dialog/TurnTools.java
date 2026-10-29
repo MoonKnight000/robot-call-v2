@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
@@ -447,6 +448,9 @@ public class TurnTools {
             }
             try {
                 String result = callback.call(call.arguments());
+                if (!result.startsWith("ERROR:")) {
+                    s.publishWebhookEvent(AgentWebhookEvent.TOOL_EXECUTED, Map.of("toolName", call.name()));
+                }
                 log.debug("[{}] tool {}({}) -> {}", s.channelId(), call.name(), call.arguments(), result);
                 if (!result.isBlank()) {
                     results.add(result);

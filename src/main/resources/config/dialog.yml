@@ -57,6 +57,10 @@ voice-agent:
     # One summary request — SummaryProperties#timeoutMs.
     timeout-ms: ${SUMMARY_TIMEOUT_MS:60000}
 
+  # Real-time intent detection — IntentProperties
+  intent:
+    enabled: ${INTENT_DETECTION_ENABLED:true}
+
   # DialogProperties documents every value below, including why the zeroes are zero.
   dialog:
     enabled: ${DIALOG_ENABLED:true}

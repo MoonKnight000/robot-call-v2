@@ -22,6 +22,10 @@ public class StageDefBuilder {
     private Map<String, String> transitionConditions;
     private String staticLine;
     private List<String> requiredOutcomes;
+    private StageType type;
+    private StagePosition position;
+    private String globalCondition;
+    private StageAction action;
 
     StageDefBuilder() {
     }
@@ -37,6 +41,10 @@ public class StageDefBuilder {
         this.transitionConditions = source.transitionConditions();
         this.staticLine = source.staticLine();
         this.requiredOutcomes = source.requiredOutcomes();
+        this.type = source.type();
+        this.position = source.position();
+        this.globalCondition = source.globalCondition();
+        this.action = source.action();
     }
 
     public StageDefBuilder id(String id) {

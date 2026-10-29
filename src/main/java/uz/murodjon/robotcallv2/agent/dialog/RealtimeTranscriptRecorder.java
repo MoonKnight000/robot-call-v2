@@ -79,11 +79,12 @@ class RealtimeTranscriptRecorder {
         }
         int violations = s.recordFactViolation();
         metrics.factGuardSpoken();
-        log.error("[{}] fact guard: figures {} were SPOKEN in {} but are not in the call facts ({}) "
-                        + "— text was: {}",
-                s.channelId(), bad, s.state(), s.context() != null ? s.context().facts() : null, text);
+        String safeFigures = PiiRedactor.redact(String.join(", ", bad));
+        log.error("[{}] fact guard: figures {} were SPOKEN in {} but are not in the call facts "
+                        + "— spoken text was: {}",
+                s.channelId(), safeFigures, s.state(), PiiRedactor.redact(text));
         callAttemptUseCase.recordError(s.callAttemptId(),
-                "fact guard: spoken figures not in call facts: " + String.join(", ", bad));
+                "fact guard: spoken figures not in call facts: " + safeFigures);
 
         int limit = dialogProperties.factViolationEscalateAfter();
         if (limit <= 0 || violations < limit || s.isEnded()) {

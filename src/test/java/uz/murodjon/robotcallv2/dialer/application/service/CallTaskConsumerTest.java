@@ -38,6 +38,8 @@ import uz.murodjon.robotcallv2.scenario.application.port.input.FactWebhookUseCas
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -146,6 +148,30 @@ class CallTaskConsumerTest {
         verify(dialerState).release(1L, 1L);
         verify(campaignTargetUseCase).applyOutcome(1L, 100L, Disposition.DO_NOT_CALL);
         verify(ariService, never()).originate(anyString(), anyLong(), any(OutboundCall.class));
+    }
+
+    @Test
+    void recordsDoNotCallWhenFinalOriginationGuardFindsNewOptOut() {
+        CallTask task = new CallTask(1L, 100L, 200L, "998901234567", "uz", "{}", 1L, 7L,
+                null, null, null, null, null);
+        ScenarioDefinition definition = new ScenarioDefinition(List.of(), List.of(), List.of(), List.of(),
+                "system prompt", List.of(), "disclosure");
+        Scenario scenario = new Scenario(10L, "test-scenario", 1, "Test", "Desc", false, true,
+                definition, Instant.now(), 1L);
+        when(aiAgents.requireCallAgent(1L, 7L, "998901234567"))
+                .thenReturn(AiAgentFixtures.agent(7L, 1L, 10L, "uz", "dilfuza"));
+        when(aiAgents.resolveScenario(eq(1L), any())).thenReturn(scenario);
+        when(crmClient.fetchClient(1L, 200L)).thenReturn(new CrmClientSnapshot("Ali",
+                new BigDecimal("500000"), "UZS", LocalDate.now(), "CTR-1", "uz", null, null));
+        when(ariService.originate(eq("998901234567"), eq(1L), any(OutboundCall.class)))
+                .thenThrow(new ConflictException(ErrorCode.CALL_NUMBER_ON_DO_NOT_CALL_LIST, "998901234567"));
+
+        consumer.process(task, dialerState);
+
+        verify(callRecordService).recordUnplacedAttempt(1L, 100L, "998901234567", "uz",
+                Disposition.DO_NOT_CALL, "number is in the do-not-call list");
+        verify(campaignTargetUseCase).applyOutcome(1L, 100L, Disposition.DO_NOT_CALL);
+        verify(campaignTargetUseCase, never()).applyOutcome(1L, 100L, Disposition.FAILED);
     }
 
     @Test

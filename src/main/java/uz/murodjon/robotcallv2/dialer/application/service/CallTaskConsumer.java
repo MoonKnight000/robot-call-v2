@@ -22,6 +22,8 @@ import uz.murodjon.robotcallv2.dialer.application.port.output.PhoneNumberScrubbe
 import uz.murodjon.robotcallv2.dialer.domain.entity.ScrubResult;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.exception.AppException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 
 import java.time.Instant;
@@ -200,14 +202,27 @@ public class CallTaskConsumer {
             log.info("Originated target {} -> channel {} (lang={}, trunkId={})",
                     task.targetId(), channelId, outboundCall.language(), task.sipTrunkId());
         } catch (Exception e) {
-            log.warn("Originate failed for target {} ({}): {}", task.targetId(), PhoneMasker.mask(task.phone()),
-                    e.getMessage());
+            boolean doNotCall = e instanceof AppException appException
+                    && appException.code() == ErrorCode.CALL_NUMBER_ON_DO_NOT_CALL_LIST;
+            if (doNotCall) {
+                log.info("Target {} ({}) was added to the do-not-call list before origination",
+                        task.targetId(), PhoneMasker.mask(task.phone()));
+            } else {
+                log.warn("Originate failed for target {} ({}): {}", task.targetId(), PhoneMasker.mask(task.phone()),
+                        e.getMessage());
+            }
             state.release(task.companyId(), task.campaignId());
             state.releaseTrunk(task.sipTrunkId());
             // The hold is given back either way: a call that never reached Asterisk has no
             // finalizer to settle it, and one whose originate threw leaves no attempt row
             // to charge against.
             callBilling.releaseReservation(task.companyId(), task.targetId());
+            if (doNotCall) {
+                callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
+                        task.language(), Disposition.DO_NOT_CALL, "number is in the do-not-call list");
+                campaignTargetUseCase.applyOutcome(task.companyId(), task.targetId(), Disposition.DO_NOT_CALL);
+                return;
+            }
             if (!originateReached) {
                 callAttemptUseCase.recordUnplacedAttempt(task.companyId(), task.targetId(), task.phone(),
                         task.language(), Disposition.FAILED, "call preparation failed: " + e.getMessage());

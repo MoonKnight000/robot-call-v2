@@ -66,9 +66,17 @@ class CallSessionRegistry {
         return phases.get(channelId) == CallPhase.ACTIVE;
     }
 
-    /** StasisStart of a call whose media is about to be set up: none → {@link CallPhase#SETTING_UP}. */
-    void markSettingUp(String channelId) {
-        phases.putIfAbsent(channelId, CallPhase.SETTING_UP);
+    /** Claims the first setup for a channel while its media is being prepared. */
+    boolean markSettingUp(String channelId) {
+        boolean[] started = new boolean[1];
+        phases.compute(channelId, (id, current) -> {
+            if (current != null) {
+                return current;
+            }
+            started[0] = true;
+            return CallPhase.SETTING_UP;
+        });
+        return started[0];
     }
 
     /**

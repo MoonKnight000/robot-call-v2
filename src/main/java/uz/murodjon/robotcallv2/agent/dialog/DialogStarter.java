@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
@@ -23,9 +24,11 @@ public class DialogStarter {
     private static final Logger log = LoggerFactory.getLogger(DialogStarter.class);
 
     private final RealtimeDialogEngine realtimeDialogEngine;
+    private final RealtimeMetrics realtimeMetrics;
 
-    public DialogStarter(RealtimeDialogEngine realtimeDialogEngine) {
+    public DialogStarter(RealtimeDialogEngine realtimeDialogEngine, RealtimeMetrics realtimeMetrics) {
         this.realtimeDialogEngine = realtimeDialogEngine;
+        this.realtimeMetrics = realtimeMetrics;
     }
 
     /**
@@ -41,6 +44,9 @@ public class DialogStarter {
                 : PipelineMode.CASCADE;
         if (mode.usesRealtimeEngine() && !realtimeDialogEngine.available()) {
             log.warn("[{}] agent is set to {} but no engine is available — running cascade", channelId, mode);
+            String engine = agent != null && agent.speechEngine() != null
+                    ? agent.speechEngine().realtimeProvider() : null;
+            realtimeMetrics.realtimeFallback(engine);
             return PipelineMode.CASCADE;
         }
         return mode;

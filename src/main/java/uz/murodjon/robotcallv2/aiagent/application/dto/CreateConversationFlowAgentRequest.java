@@ -21,6 +21,7 @@ public record CreateConversationFlowAgentRequest(
         AiAgentChannel channel,
         @NotNull ScenarioDefinition flowDefinition,
         String firstMessage,
+        String engineProfileId,
         AgentVoiceDto voice,
         AgentSpeechEngineDto speechEngine,
         @Size(max = 120) String llmModel,

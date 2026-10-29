@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.agent.realtime.RealtimeAudioBridge;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -16,6 +17,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
@@ -94,6 +96,9 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     /** What the caller last heard the engine say — a caller line inside it is the bot's echo. */
     private volatile String lastAgentText = "";
     private volatile String state;
+    private volatile BiConsumer<AgentWebhookEvent, Map<String, Object>> webhookEventPublisher;
+    private final AtomicBoolean voicemailEventPublished = new AtomicBoolean();
+    private volatile CustomerSentiment lastCustomerSentiment = CustomerSentiment.NEUTRAL;
     /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
     private volatile Consumer<String> dtmfSender;
     /** Set when the agent allows a mid-call SMS ({@link MidCallSmsSender}); null otherwise. */
@@ -181,10 +186,15 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     @Override
     public void setState(String state) {
+        String previousState = this.state;
         if (!Objects.equals(this.state, state)) {
             this.stageEnteredTurn = turnCount;
         }
         this.state = state;
+        if (previousState != null && !Objects.equals(previousState, state)) {
+            publishWebhookEvent(AgentWebhookEvent.STAGE_TRANSITION,
+                    Map.of("fromStage", previousState, "toStage", state == null ? "" : state));
+        }
     }
 
     /**
@@ -203,16 +213,28 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     @Override
     public void recordOutcome(String key, Object value) {
         outcomeLedger.recordOutcome(key, value);
+        if (key != null && value != null) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("key", key);
+            if (value instanceof String text) {
+                data.put("value", PiiRedactor.redact(text));
+            } else if (value instanceof Number || value instanceof Boolean || value instanceof Enum<?>) {
+                data.put("value", value);
+            }
+            publishWebhookEvent(AgentWebhookEvent.FACT_EXTRACTED, data);
+        }
     }
 
     @Override
     public void setDisposition(Disposition disposition) {
         outcomeLedger.setDisposition(disposition);
+        publishVoicemailEvent(disposition);
     }
 
     @Override
     public void end(Disposition disposition) {
         outcomeLedger.setDisposition(disposition);
+        publishVoicemailEvent(disposition);
         this.ended = true;
     }
 
@@ -228,6 +250,10 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     @Override
     public void setTransferReason(String reason) {
         outcomeLedger.setTransferReason(reason);
+        if (reason != null && !reason.isBlank()) {
+            publishWebhookEvent(AgentWebhookEvent.TRANSFER_REQUESTED,
+                    Map.of("reason", PiiRedactor.redact(reason)));
+        }
     }
 
     /** See {@link DialogSession#setDtmfSender} — same wiring, speech-to-speech engine. */
@@ -294,9 +320,14 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         return false;
     }
 
-    /** No-op: nothing on this pipeline adjusts its voice or prompt per reply. */
     @Override
     public void noteCallerMood(CustomerSentiment mood) {
+        CustomerSentiment next = mood != null ? mood : CustomerSentiment.NEUTRAL;
+        CustomerSentiment previous = lastCustomerSentiment;
+        lastCustomerSentiment = next;
+        if (previous != next) {
+            publishWebhookEvent(AgentWebhookEvent.SENTIMENT_CHANGE, Map.of("sentiment", next.name()));
+        }
     }
 
     /** No-op: the engine keeps its own tool results in its context. */
@@ -735,5 +766,40 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     public synchronized String transcriptText() {
         return String.join("\n", transcript);
+    }
+
+    public void setWebhookEventPublisher(BiConsumer<AgentWebhookEvent, Map<String, Object>> publisher) {
+        this.webhookEventPublisher = publisher;
+    }
+
+    @Override
+    public boolean isWebhookEventEnabled(AgentWebhookEvent event) {
+        return event != null && agent != null && agent.postCallWebhook() != null
+                && agent.postCallWebhook().events().contains(event) && webhookEventPublisher != null;
+    }
+
+    @Override
+    public void publishWebhookEvent(AgentWebhookEvent event, Map<String, Object> data) {
+        BiConsumer<AgentWebhookEvent, Map<String, Object>> publisher = webhookEventPublisher;
+        if (publisher == null || !isWebhookEventEnabled(event)) {
+            return;
+        }
+        Map<String, Object> safeData = new HashMap<>();
+        if (data != null) {
+            data.forEach((key, value) -> {
+                if (value instanceof String text) {
+                    safeData.put(key, PiiRedactor.redact(text));
+                } else if (value instanceof Number || value instanceof Boolean || value instanceof Enum<?>) {
+                    safeData.put(key, value);
+                }
+            });
+        }
+        publisher.accept(event, Map.copyOf(safeData));
+    }
+
+    private void publishVoicemailEvent(Disposition disposition) {
+        if (disposition == Disposition.VOICEMAIL && voicemailEventPublished.compareAndSet(false, true)) {
+            publishWebhookEvent(AgentWebhookEvent.VOICEMAIL_DETECTED, Map.of());
+        }
     }
 }

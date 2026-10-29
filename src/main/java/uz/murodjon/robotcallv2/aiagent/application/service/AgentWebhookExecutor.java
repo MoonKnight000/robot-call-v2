@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCas
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.InitiationWebhookResult;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
@@ -173,6 +174,48 @@ public class AgentWebhookExecutor implements AgentWebhookUseCase {
         } catch (Exception e) {
             log.warn("[{}] Post-call webhook failed for agent {}: {}",
                     callAttemptId, agent.id(), e.getMessage());
+        }
+    }
+
+    @Override
+    @Async
+    public void executeEvent(long companyId, long callAttemptId, String channelId, AiAgent agent,
+                             AgentWebhookEvent event, Map<String, Object> data) {
+        if (agent == null || agent.postCallWebhook() == null || event == null
+                || !agent.postCallWebhook().events().contains(event)) {
+            return;
+        }
+        AgentWebhookConfig config = agent.postCallWebhook();
+        if (config.webhookUrl() == null || config.webhookUrl().isBlank()) {
+            return;
+        }
+
+        try {
+            String targetUrl = resolveSecrets(companyId, config.webhookUrl());
+            if (PublicUrlGuard.parsePublic(targetUrl) == null) {
+                log.warn("[{}] Agent event webhook for agent {} is not publicly callable — skipped",
+                        callAttemptId, agent.id());
+                return;
+            }
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("event", event.name());
+            payload.put("companyId", companyId);
+            payload.put("callAttemptId", callAttemptId);
+            payload.put("channelId", channelId);
+            payload.put("agentId", agent.id());
+            payload.put("agentName", agent.name());
+            payload.put("occurredAt", java.time.Instant.now().toString());
+            if (data != null && !data.isEmpty()) {
+                payload.put("data", Map.copyOf(data));
+            }
+
+            boolean delivered = webhookDelivery.deliver(companyId, "AGENT_EVENT_" + event.name(), targetUrl,
+                    resolveHeaders(companyId, config), payload);
+            log.info("[{}] Agent event webhook {} for agent {} {}", callAttemptId, event, agent.id(),
+                    delivered ? "delivered" : "queued for retry");
+        } catch (Exception e) {
+            log.warn("[{}] Agent event webhook {} failed for agent {}: {}",
+                    callAttemptId, event, agent.id(), e.getMessage());
         }
     }
 

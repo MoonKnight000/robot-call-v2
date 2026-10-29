@@ -113,7 +113,7 @@ public class AiAgentService implements AiAgentUseCase {
     public AiAgentRow createSinglePromptAgent(long companyId, CreateSinglePromptAgentRequest request) {
         return createAgent(companyId, toCreateRequest(AiAgentMode.SINGLE_PROMPT, null, request.systemPrompt(),
                 request.name(), request.description(), request.language(), request.channel(), request.firstMessage(),
-                request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
+                request.engineProfileId(), request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
                 request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
                 request.sipTrunkIds()));
     }
@@ -122,7 +122,7 @@ public class AiAgentService implements AiAgentUseCase {
     public AiAgentRow createConversationFlowAgent(long companyId, CreateConversationFlowAgentRequest request) {
         return createAgent(companyId, toCreateRequest(AiAgentMode.CONVERSATIONAL_FLOW, request.flowDefinition(), null,
                 request.name(), request.description(), request.language(), request.channel(), request.firstMessage(),
-                request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
+                request.engineProfileId(), request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
                 request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
                 request.sipTrunkIds()));
     }
@@ -131,13 +131,14 @@ public class AiAgentService implements AiAgentUseCase {
     private static CreateAiAgentRequest toCreateRequest(AiAgentMode mode, ScenarioDefinition flowDefinition,
                                                         String systemPrompt, String name, String description,
                                                         String language, AiAgentChannel channel, String firstMessage,
+                                                        String engineProfileId,
                                                         AgentVoiceDto voice, AgentSpeechEngineDto speechEngine,
                                                         String llmModel, Double temperature, Integer maxOutputTokens,
                                                         AgentAmbienceDto ambience, List<DataExtractionField> dataNeeded,
                                                         List<DataEvaluationCriterion> dataEvaluation,
                                                         Set<Long> sipTrunkIds) {
         return new CreateAiAgentRequest(name, description, language,
-                channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, null,
+                channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
                 speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
                 null, null, null, false, dataNeeded, dataEvaluation, null, null, sipTrunkIds, true);
@@ -182,15 +183,14 @@ public class AiAgentService implements AiAgentUseCase {
         // mode has to be settled before anything is checked against it.
         PipelineMode pipelineMode = engineRequest.mode() != null ? engineRequest.mode() : PipelineMode.CASCADE;
         // A profile fills only what the request left out, like a template does for the prompts.
-        EngineProfile profile = request.engineProfileId() != null
-                ? aiAgentCatalogUseCase.requireEngineProfile(request.engineProfileId()) : EngineProfile.NONE;
+        EngineProfile profile = resolveEngineProfile(request.engineProfileId());
         String sttProvider = engineRequest.sttProvider() != null ? engineRequest.sttProvider() : profile.sttProvider();
         // The profile's recognizer model belongs to its own provider, so it never rides along
         // with a provider the request chose itself.
         String sttModel = engineRequest.sttModel() != null ? engineRequest.sttModel()
                 : engineRequest.sttProvider() == null ? profile.sttModel() : null;
         String realtimeProvider = engineGuard.requireKnownRealtimeProvider(pipelineMode, engineRequest.realtimeProvider());
-        String ttsVoice = engineGuard.requireKnownVoice(companyId, pipelineMode, voiceRequest.defaultVoice());
+        String ttsVoice = engineGuard.resolveDefaultVoice(companyId, pipelineMode, language, voiceRequest.defaultVoice());
         String llmModel = engineGuard.requireKnownModel(pipelineMode, realtimeProvider,
                 request.llmModel() != null ? request.llmModel() : profile.llmModel());
         String fastLlmModel = engineGuard.requireKnownFastModel(
@@ -629,6 +629,20 @@ public class AiAgentService implements AiAgentUseCase {
     }
 
     /** What the request names, else the profile's value, else null — the caller then keeps the agent's own. */
+    private EngineProfile resolveEngineProfile(String engineProfileId) {
+        if (engineProfileId != null && !engineProfileId.isBlank()) {
+            return aiAgentCatalogUseCase.requireEngineProfile(engineProfileId.trim());
+        }
+        List<EngineProfile> runnable = aiAgentCatalogUseCase.findEngineProfiles();
+        if (runnable.isEmpty()) {
+            return EngineProfile.NONE;
+        }
+        return runnable.stream()
+                .filter(p -> "balanced".equalsIgnoreCase(p.id()))
+                .findFirst()
+                .orElse(runnable.getFirst());
+    }
+
     private static <T> T chooseValue(T requested, EngineProfile profile, Function<EngineProfile, T> field) {
         if (requested != null) {
             return requested;

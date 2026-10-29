@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -88,14 +89,16 @@ public class ClientInputGate {
     private final VoicemailDrop voicemailDrop;
     private final CallMetrics callMetrics;
     private final FloorLearning floorLearning;
+    private final IntentDetector intentDetector;
 
     public ClientInputGate(DialogProperties dialogProperties, SttProperties sttProperties, LanguageDetector languageDetector,
                            DialogMetrics metrics, DialogTranscript transcript,
                            TurnRunner turnRunner, DialogExecutors executors,
                            DialogTuningProperties dialogTuning, LlmTurnClient llmTurnClient,
-                           VoicemailDrop voicemailDrop,
-                           CallMetrics callMetrics,
-                           FloorLearning floorLearning) {
+                            VoicemailDrop voicemailDrop,
+                            CallMetrics callMetrics,
+                            FloorLearning floorLearning,
+                            IntentDetector intentDetector) {
         this.floorLearning = floorLearning;
         this.callMetrics = callMetrics;
         this.dialogTuning = dialogTuning;
@@ -108,6 +111,7 @@ public class ClientInputGate {
         this.transcript = transcript;
         this.turnRunner = turnRunner;
         this.executors = executors;
+        this.intentDetector = intentDetector;
     }
 
     /** Feeds a final client transcript into the conversation as the next turn. */
@@ -213,6 +217,11 @@ public class ClientInputGate {
         }
 
         adaptLanguage(s, text);
+        if (s.isWebhookEventEnabled(AgentWebhookEvent.INTENT_DETECTED) && !FloorRules.isBackchannel(text)) {
+            intentDetector.detectAsync(text, null, detected -> s.publishWebhookEvent(
+                    AgentWebhookEvent.INTENT_DETECTED,
+                    java.util.Map.of("intent", detected.intent().name(), "confidence", detected.confidence())));
+        }
 
         // When the bot was paused waiting on a barge-in (MEDIUM/LOW sensitivity), the caller's
         // complete utterance has now arrived. If it was only a listener sound ("aha", "tushunarli"),

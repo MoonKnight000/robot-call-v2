@@ -19,6 +19,7 @@ public record CreateSinglePromptAgentRequest(
         AiAgentChannel channel,
         @NotBlank String systemPrompt,
         String firstMessage,
+        String engineProfileId,
         AgentVoiceDto voice,
         AgentSpeechEngineDto speechEngine,
         @Size(max = 120) String llmModel,

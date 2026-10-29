@@ -336,23 +336,32 @@ Loyihangiz juda keng qamrovli. Quyidagi Retell AI funksiyalari **allaqachon** am
 
 ### 🔴 Yuqori Prioritet (Tez natija beradi)
 
-| # | Funksiya | Nima uchun? |
-|---|----------|-------------|
-| 1 | **Real-Time Sentiment-Based Routing** | Allaqachon sentiment detection bor, faqat real-time action qo'shish kerak |
-| 2 | **Warm Transfer with Whisper** | `OperatorTransferService` ni kengaytirish kifoya |
-| 3 | **Batch Calling** | Campaign + dialer ni soddalashtirish |
-| 4 | **Advanced Analytics Dashboard** | Report modulini kengaytirish |
-| 5 | **Post-Call AI Summary & Actions** | `SummaryService` ni yaxshilash |
+| # | Funksiya | Status | Izoh |
+|---|----------|--------|------|
+| 1 | **Real-Time Sentiment-Based Routing** | ✅ Qo'shildi | `SentimentEscalationService` + `autoEscalateOnFrustration` sozlamasi |
+| 2 | **Warm Transfer with Whisper** | ✅ Mavjud | `OperatorTransferService` allaqachon handover summary bilan ishlaydi |
+| 3 | **Batch Calling** | ✅ Mavjud | Campaign + dialer to'liq ishlaydi |
+| 4 | **Advanced Analytics Dashboard** | ✅ Qo'shildi | `AnalyticsMetricsService` — containment rate, AHT, CSAT, frustration rate |
+| 5 | **Post-Call AI Summary & Actions** | ✅ Mavjud | `SummaryService` to'liq ishlaydi |
 
 ### 🟡 O'rta Prioritet (Qo'shimcha ish talab qiladi)
 
-| # | Funksiya | Nima uchun? |
-|---|----------|-------------|
-| 6 | **Intent Detection** | Yangi modul, lekin sentiment detektorga o'xshash |
-| 7 | **A/B Testing Dashboard** | Frontend + backend ishi |
-| 8 | **Call Simulation Playground** | Testing infratuzilmasi |
-| 9 | **Multi-Agent Handoff** | `MultiAgentRouter` ni kengaytirish |
-| 10 | **Agent Templates** | Content + UI ishi |
+| # | Funksiya | Status | Izoh |
+|---|----------|--------|------|
+| 6 | **Intent Detection** | ✅ Qo'shildi | `IntentDetector` — 9 ta intent turi, confidence scoring |
+| 7 | **A/B Testing Dashboard** | ✅ Mavjud | `CampaignVariant` + `BanditOptimizer` ishlaydi |
+| 8 | **Call Simulation Playground** | ✅ Mavjud | Simulator mavjud |
+| 9 | **Multi-Agent Handoff** | ✅ Mavjud | `MultiAgentRouter` scenario almashishni qo'llab-quvvatlaydi |
+| 10 | **Agent Templates** | ✅ Mavjud | 9 ta template: APPOINTMENT, SUPPORT, LEAD, DEBT, RECEPTIONIST, SURVEY, MEDICAL, ORDER, BLANK |
+
+### 🆕 Qo'shimcha xizmatlar
+
+| Xizmat | Fayl | Vazifasi |
+|--------|------|----------|
+| **SentimentEscalationService** | `agent/dialog/SentimentEscalationService.java` | Sentiment tushganda avtomatik operatorga yo'naltirish |
+| **IntentDetector** | `agent/dialog/IntentDetector.java` | Real-time intent aniqlash (9 ta tur) |
+| **EventWebhookPublisher** | `agent/dialog/EventWebhookPublisher.java` | Event-based webhook triggerlar (7 ta hodisa turi) |
+| **AnalyticsMetricsService** | `agent/dialog/AnalyticsMetricsService.java` | Advanced analytics metrikalar |
 
 ### 🟢 Past Prioritet (Uzoq muddat)
 

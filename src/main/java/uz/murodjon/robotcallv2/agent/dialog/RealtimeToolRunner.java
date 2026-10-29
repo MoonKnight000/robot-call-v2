@@ -7,6 +7,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
@@ -20,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -214,6 +216,9 @@ class RealtimeToolRunner {
                 return "ERROR: no such tool";
             }
             String result = callback.call(argumentsJson);
+            if (!result.startsWith("ERROR:")) {
+                s.publishWebhookEvent(AgentWebhookEvent.TOOL_EXECUTED, Map.of("toolName", name));
+            }
             log.info("[{}] tool {} -> {}", s.channelId(), name, result);
             return result;
         } catch (Exception e) {

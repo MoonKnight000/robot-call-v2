@@ -10,6 +10,7 @@ import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.secret.domain.service.SecretPlaceholders;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -473,6 +474,15 @@ public class HttpToolExecutor {
         @Override
         public boolean handOffToAgent(long agentId) {
             return false;
+        }
+
+        @Override
+        public boolean isWebhookEventEnabled(AgentWebhookEvent event) {
+            return false;
+        }
+
+        @Override
+        public void publishWebhookEvent(AgentWebhookEvent event, Map<String, Object> data) {
         }
 
         @Override

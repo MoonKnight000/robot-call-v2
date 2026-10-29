@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
 
 import java.util.List;
@@ -14,6 +16,8 @@ import java.util.List;
  * and versioned, while the voice a company reads it in is neither, so one company changing
  * a voice would have meant a new version of everybody's script.
  */
+@JsonDeserialize(using = ScenarioDefinitionDeserializer.class)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ScenarioDefinition(
         List<StageDef> stages,
         List<FactField> factSchema,

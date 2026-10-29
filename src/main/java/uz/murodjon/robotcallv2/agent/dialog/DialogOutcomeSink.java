@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -153,4 +154,10 @@ public interface DialogOutcomeSink {
      *         not published, or this pipeline cannot swap scenarios mid-call
      */
     boolean handOffToAgent(long agentId);
+
+    /** Whether this call's agent selected the given call-time webhook event. */
+    boolean isWebhookEventEnabled(AgentWebhookEvent event);
+
+    /** Publishes a selected call-time webhook event, if this pipeline has a live callback. */
+    void publishWebhookEvent(AgentWebhookEvent event, Map<String, Object> data);
 }

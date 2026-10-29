@@ -98,7 +98,9 @@ public class AiAgentEntityMapper {
                         callBehaviour.getTransferPhoneNumber(),
                         callBehaviour.getTransferMessage(),
                         callBehaviour.getTransferQueueId(),
-                        callBehaviour.getPreConversationAudioFileId()))
+                        callBehaviour.getPreConversationAudioFileId(),
+                        callBehaviour.getAutoEscalateOnFrustration(),
+                        callBehaviour.getFrustrationThreshold()))
                 .limits(new AiAgentLimits(
                         limits.getMaxConversationDurationSeconds(),
                         limits.getSilenceEndCallTimeoutSeconds(),
@@ -213,7 +215,9 @@ public class AiAgentEntityMapper {
                 behaviour.transferPhoneNumber(),
                 behaviour.transferMessage(),
                 behaviour.transferQueueId(),
-                behaviour.preConversationAudioFileId());
+                behaviour.preConversationAudioFileId(),
+                behaviour.autoEscalateOnFrustration(),
+                behaviour.frustrationThreshold());
     }
 
     private static AiAgentLimitsEntity toLimitsEntity(AiAgentLimits limits) {

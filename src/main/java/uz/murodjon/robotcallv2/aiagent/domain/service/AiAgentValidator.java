@@ -24,7 +24,7 @@ public final class AiAgentValidator {
     private static final double MAX_TEMPERATURE = 2.0;
     private static final int MAX_OUTPUT_TOKENS = 4096;
     private static final int MAX_SYSTEM_PROMPT_CHARS = 12_000;
-    private static final Set<String> DATA_FIELD_TYPES = Set.of("string", "number", "boolean", "date", "enum");
+    private static final Set<String> DATA_FIELD_TYPES = Set.of("string", "number", "boolean", "date", "enum", "phone", "email");
 
     private AiAgentValidator() {
     }

@@ -23,6 +23,10 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  *                                {@code transferPhoneNumber} (docs/INBOUND-PBX-PLAN.md §7.4)
  * @param preConversationAudioFileId an uploaded WAV played as soon as the call is up, before the
  *                                agent says anything — a recorded notice or a jingle; null = none
+ * @param autoEscalateOnFrustration auto-transfer to operator when sentiment drops to FRUSTRATED;
+ *                                null = disabled (RETELL_AI_GAP_ANALYSIS.md #1)
+ * @param frustrationThreshold how many consecutive FRUSTRATED turns before auto-escalation triggers;
+ *                                default 2 if null
  */
 public record AiAgentCallBehaviour(
         InterruptionSensitivity interruptionSensitivity,
@@ -34,7 +38,11 @@ public record AiAgentCallBehaviour(
         String transferPhoneNumber,
         String transferMessage,
         Long transferQueueId,
-        Long preConversationAudioFileId
+        Long preConversationAudioFileId,
+        /** Auto-transfer to operator when sentiment drops to FRUSTRATED; null = disabled */
+        Boolean autoEscalateOnFrustration,
+        /** How many consecutive FRUSTRATED turns before auto-escalation triggers; default 2 */
+        Integer frustrationThreshold
 ) {
     public AiAgentCallBehaviour {
         if (interruptionSensitivity == null) {
@@ -50,7 +58,16 @@ public record AiAgentCallBehaviour(
                                 boolean midCallSmsEnabled, String midCallSmsTemplate, String transferPhoneNumber,
                                 String transferMessage, Long transferQueueId) {
         this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage,
-                midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, null);
+                midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, null, null, null);
+    }
+
+    public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity,
+                                boolean dtmfInputEnabled, VoicemailAction voicemailAction, String voicemailMessage,
+                                boolean midCallSmsEnabled, String midCallSmsTemplate, String transferPhoneNumber,
+                                String transferMessage, Long transferQueueId, Long preConversationAudioFileId) {
+        this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage,
+                midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId,
+                preConversationAudioFileId, null, null);
     }
 
     /** Whether this agent can hand the caller to a person at all. */

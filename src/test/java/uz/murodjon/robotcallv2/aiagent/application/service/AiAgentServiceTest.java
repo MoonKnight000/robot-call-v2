@@ -283,15 +283,34 @@ class AiAgentServiceTest {
                 snapshot.withPublishedVersion(number), null, Instant.parse("2026-09-01T10:00:00Z"), null);
     }
 
+    @Test
+    void createAgentWithoutEngineChoicesTakesTheBalancedEngineProfile() {
+        EngineProfile balanced = new EngineProfile("balanced", "Muvozanatli", null,
+                "yandex", "general", "gemini-3.8-flash", "gemini-3.5-flash-lite", 0.3, 300);
+        when(catalogUseCase.findEngineProfiles()).thenReturn(List.of(balanced));
+        when(repository.create(any())).thenReturn(AGENT_ID);
+        when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(agent());
+
+        service.createAgent(COMPANY_ID, createRequest(null, null, null, null));
+
+        ArgumentCaptor<AiAgent> created = ArgumentCaptor.forClass(AiAgent.class);
+        verify(repository).create(created.capture());
+        AiAgent agent = created.getValue();
+        assertThat(agent.llmModel()).isEqualTo("gemini-3.8-flash");
+        assertThat(agent.fastLlmModel()).isEqualTo("gemini-3.5-flash-lite");
+        assertThat(agent.speechEngine().sttProvider()).isEqualTo("yandex");
+        assertThat(agent.speechEngine().sttModel()).isEqualTo("general");
+    }
+
     private static CreateAiAgentRequest createRequest(AgentTemplate templateId, AgentPersona persona, Long transferQueueId,
                                                       Boolean zeroPiiRetention) {
         return new CreateAiAgentRequest(
-                " Sotuv agenti ", null, null, persona, null,
+                " Sotuv agenti ", null, null, null, null, persona, null,
                 new AgentScriptDto(templateId, null, null, null, null, null),
                 null, null,
                 null, null, null, null,
                 null,
-                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null),
+                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null),
                 null,
                 new AgentDataPolicyDto(zeroPiiRetention, null, null, null),
                 null,
@@ -303,7 +322,7 @@ class AiAgentServiceTest {
     /** Only the name and the lock version; everything else left as the agent has it. */
     private static UpdateAiAgentRequest updateRequest(String name, Long version) {
         return new UpdateAiAgentRequest(
-                name, null, null, null, null,
+                name, null, null, null, null, null, null,
                 null, null, null,
                 null, null, null, null,
                 null, null, null, null,

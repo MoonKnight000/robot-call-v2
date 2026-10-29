@@ -43,6 +43,12 @@ public class AiAgentCallBehaviourEntity {
     @Column(name = "pre_conversation_audio_file_id")
     private Long preConversationAudioFileId;
 
+    @Column(name = "auto_escalate_on_frustration")
+    private Boolean autoEscalateOnFrustration;
+
+    @Column(name = "frustration_threshold")
+    private Integer frustrationThreshold;
+
     protected AiAgentCallBehaviourEntity() {
     }
 
@@ -51,7 +57,8 @@ public class AiAgentCallBehaviourEntity {
                                       String voicemailMessage, boolean midCallSmsEnabled,
                                       String midCallSmsTemplate, String transferPhoneNumber,
                                       String transferMessage, Long transferQueueId,
-                                      Long preConversationAudioFileId) {
+                                      Long preConversationAudioFileId,
+                                      Boolean autoEscalateOnFrustration, Integer frustrationThreshold) {
         this.interruptionSensitivity = interruptionSensitivity != null
                 ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
         this.dtmfInputEnabled = dtmfInputEnabled;
@@ -63,6 +70,8 @@ public class AiAgentCallBehaviourEntity {
         this.transferMessage = transferMessage;
         this.transferQueueId = transferQueueId;
         this.preConversationAudioFileId = preConversationAudioFileId;
+        this.autoEscalateOnFrustration = autoEscalateOnFrustration;
+        this.frustrationThreshold = frustrationThreshold;
     }
 
     public InterruptionSensitivity getInterruptionSensitivity() {
@@ -103,5 +112,13 @@ public class AiAgentCallBehaviourEntity {
 
     public Long getPreConversationAudioFileId() {
         return preConversationAudioFileId;
+    }
+
+    public Boolean getAutoEscalateOnFrustration() {
+        return autoEscalateOnFrustration;
+    }
+
+    public Integer getFrustrationThreshold() {
+        return frustrationThreshold;
     }
 }

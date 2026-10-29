@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.audio.SpeechLevelNormalizer;
 import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
@@ -11,7 +12,9 @@ import uz.murodjon.robotcallv2.agent.realtime.*;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.RealtimeFactsDelivery;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
@@ -35,6 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Drives a call that runs on a speech-to-speech engine ({@code PipelineMode.REALTIME}) —
@@ -120,6 +124,8 @@ public class RealtimeDialogEngine implements CallDialog {
     private final RealtimeToolRunner toolRunner;
     private final RealtimeTranscriptRecorder transcriptRecorder;
     private final AgentHandoffResolver agentHandoffResolver;
+    private final AgentWebhookUseCase agentWebhookUseCase;
+    private final IntentDetector intentDetector;
 
     private final Map<String, RealtimeDialogSession> sessions = new ConcurrentHashMap<>();
     /**
@@ -138,7 +144,9 @@ public class RealtimeDialogEngine implements CallDialog {
                                 RealtimeWatchdogRunner watchdogRunner, LanguageDetector languageDetector,
                                 MidCallSmsSender midCallSmsSender, DialogPolicy dialogPolicy,
                                 RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder,
-                                AgentHandoffResolver agentHandoffResolver) {
+                                AgentHandoffResolver agentHandoffResolver,
+                                AgentWebhookUseCase agentWebhookUseCase,
+                                IntentDetector intentDetector) {
         this.registry = registry;
         this.promptFactory = promptFactory;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -156,6 +164,8 @@ public class RealtimeDialogEngine implements CallDialog {
         this.toolRunner = toolRunner;
         this.transcriptRecorder = transcriptRecorder;
         this.agentHandoffResolver = agentHandoffResolver;
+        this.agentWebhookUseCase = agentWebhookUseCase;
+        this.intentDetector = intentDetector;
     }
 
     @Override
@@ -207,6 +217,8 @@ public class RealtimeDialogEngine implements CallDialog {
         }
         RealtimeDialogSession session = new RealtimeDialogSession(channelId, language, callAttemptId,
                 companyId, agent, scenario, context, endpoint, hangup, transfer);
+        session.setWebhookEventPublisher((event, data) -> agentWebhookUseCase.executeEvent(
+                companyId, callAttemptId, channelId, agent, event, data));
         session.setSttDriven(halfCascade);
         session.setDtmfSender(dtmf);
         session.setInbound(callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null);
@@ -445,6 +457,7 @@ public class RealtimeDialogEngine implements CallDialog {
             CallMdc.with(channelId, () -> log.debug("[{}] caller backchannel ignored while bot is playing: '{}'", channelId, said));
             return;
         }
+        detectIntentIfSelected(s, said);
         RealtimeSession engine = s.engine();
         if (s.isSttDriven() && engine != null) {
             engine.sendUserText(said);
@@ -787,6 +800,7 @@ public class RealtimeDialogEngine implements CallDialog {
             session.touch();
             // With our own recognizer on this call, the caller's lines come from onCallerFinal.
             if (isFinal && !bridge.hasTranscriptTap()) {
+                detectIntentIfSelected(session, text);
                 CallMdc.with(session.channelId(), () -> {
                     transcriptRecorder.recordLine(session, "CLIENT", text);
                     // What the caller said is personal data: kept in the transcript, not in INFO logs.
@@ -944,6 +958,16 @@ public class RealtimeDialogEngine implements CallDialog {
                 engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), continuation));
             });
         }
+    }
+
+    private void detectIntentIfSelected(RealtimeDialogSession session, String text) {
+        if (!session.isWebhookEventEnabled(AgentWebhookEvent.INTENT_DETECTED)
+                || text == null || text.isBlank() || FloorRules.isBackchannel(text)) {
+            return;
+        }
+        intentDetector.detectAsync(text, null, detected -> session.publishWebhookEvent(
+                AgentWebhookEvent.INTENT_DETECTED,
+                Map.of("intent", detected.intent().name(), "confidence", detected.confidence())));
     }
 
     /**

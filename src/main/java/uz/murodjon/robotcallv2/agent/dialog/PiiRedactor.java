@@ -9,6 +9,10 @@ import java.util.regex.Pattern;
  */
 public final class PiiRedactor {
 
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"
+    );
+
     // 16-digit card numbers with optional spaces or hyphens (8600 xxxx xxxx xxxx, 9860..., 4xxx..., 5xxx..., etc.)
     private static final Pattern CARD_PATTERN = Pattern.compile(
             "\\b(?<prefix>\\d{4})[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?(?<suffix>\\d{4})\\b"
@@ -41,6 +45,8 @@ public final class PiiRedactor {
         }
 
         String result = text;
+
+        result = EMAIL_PATTERN.matcher(result).replaceAll("[EMAIL]");
 
         // Redact cards -> 8600 **** **** 1234
         Matcher cardMatcher = CARD_PATTERN.matcher(result);

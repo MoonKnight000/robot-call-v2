@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 
 import java.util.LinkedHashSet;
@@ -38,6 +39,7 @@ import java.util.Set;
  * @param action   the settings of a non-conversation type ({@link StageAction}); null for
  *                 CONVERSATION, LOGIC_SPLIT, ENDING and NOTE
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record StageDef(
         String id,
         String purpose,

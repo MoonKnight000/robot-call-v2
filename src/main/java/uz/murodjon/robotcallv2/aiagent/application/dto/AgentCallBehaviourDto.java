@@ -19,12 +19,17 @@ public record AgentCallBehaviourDto(
         String transferPhoneNumber,
         String transferMessage,
         Long transferQueueId,
-        Long preConversationAudioFileId
+        Long preConversationAudioFileId,
+        /** Auto-transfer to operator when sentiment drops to FRUSTRATED */
+        Boolean autoEscalateOnFrustration,
+        /** How many consecutive FRUSTRATED turns before auto-escalation triggers (default 2) */
+        Integer frustrationThreshold
 ) {
 
     public static AgentCallBehaviourDto of(AiAgentCallBehaviour behaviour) {
         return new AgentCallBehaviourDto(behaviour.interruptionSensitivity(), behaviour.dtmfInputEnabled(), behaviour.voicemailAction(), behaviour.voicemailMessage(),
                 behaviour.midCallSmsEnabled(), behaviour.midCallSmsTemplate(), behaviour.transferPhoneNumber(),
-                behaviour.transferMessage(), behaviour.transferQueueId(), behaviour.preConversationAudioFileId());
+                behaviour.transferMessage(), behaviour.transferQueueId(), behaviour.preConversationAudioFileId(),
+                behaviour.autoEscalateOnFrustration(), behaviour.frustrationThreshold());
     }
 }

@@ -201,7 +201,10 @@ class CallSetupService {
         }
         log.info("StasisStart: channel {} ({}) args {}", channelId, name, args);
         String inboundDid = INBOUND_ARG.equals(kind) ? argument : null;
-        callSessionRegistry.markSettingUp(channelId);
+        if (!callSessionRegistry.markSettingUp(channelId)) {
+            log.debug("Ignoring duplicate StasisStart for channel {}", channelId);
+            return;
+        }
         callExecutor.execute(() -> CallMdc.with(channelId, () -> {
             try {
                 setupMedia(channelId, name, channel, inboundDid);
@@ -217,8 +220,11 @@ class CallSetupService {
      * dialled for it: from here on the call is an outbound AI call, ended and settled by teardown.
      */
     void startOutboundAiCall(String channelId, String channelName, OutboundCall call) {
+        if (!callSessionRegistry.markSettingUp(channelId)) {
+            log.debug("Ignoring duplicate outbound setup for channel {}", channelId);
+            return;
+        }
         outboundCallTrackingUseCase.register(channelId, call);
-        callSessionRegistry.markSettingUp(channelId);
         callExecutor.execute(() -> CallMdc.with(channelId, () -> {
             try {
                 setupMedia(channelId, channelName, null, null);

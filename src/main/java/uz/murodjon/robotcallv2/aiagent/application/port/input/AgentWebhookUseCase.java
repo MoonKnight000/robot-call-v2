@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.aiagent.application.port.input;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.InitiationWebhookResult;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.Map;
@@ -21,4 +22,8 @@ public interface AgentWebhookUseCase {
     void executePostCall(long companyId, long callAttemptId, String phone, AiAgent agent, Disposition disposition,
                          Integer durationSeconds, String summary, String recordingUrl, Map<String, Object> outcome,
                          Object transcript);
+
+    /** Sends a selected call-time event asynchronously to the agent's post-call webhook. */
+    void executeEvent(long companyId, long callAttemptId, String channelId, AiAgent agent,
+                      AgentWebhookEvent event, Map<String, Object> data);
 }

@@ -27,12 +27,14 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
+import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Pattern;
 
 /**
  * Produces the structured {@link CallSummary} from a finished call's transcript
@@ -43,7 +45,7 @@ import java.util.concurrent.*;
  * and the agent's {@code dataNeeded} / {@code dataEvaluation} analysis configuration.
  *
  * <p>The agent's analysis is structured (NEXT-PLAN A.5): each {@code dataNeeded} value is
- * read in its declared type — a value that does not parse earns the model one more try,
+ * read in its declared type and format — a value that does not parse earns the model one more try,
  * then its key lands in {@code extractionErrors} — and each {@code dataEvaluation}
  * criterion comes back as {@code {verdict: PASS|FAIL|N/A, reason}} under
  * {@code outcome.evaluation}.
@@ -64,6 +66,9 @@ public class SummaryService {
     private static final String TOPICS_KEY = "topics";
     private static final int MAX_TOPICS = 3;
     private static final int MAX_TOPIC_CHARS = 60;
+    private static final Pattern EMAIL_ADDRESS = Pattern.compile(
+            "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+                    + "@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,63}$");
 
     private static final String SYSTEM_PROMPT_HEADER = PromptText.text("call-summary.txt");
 
@@ -159,9 +164,9 @@ public class SummaryService {
             if (!invalid.isEmpty()) {
                 // One more try, told exactly which fields came back in the wrong shape. The
                 // first answer stays if the retry fails: it is still a usable summary.
-                log.info("Summary: {} extracted field(s) had the wrong type, asking once more: {}", invalid.size(), invalid);
+                log.info("Summary: {} extracted field(s) had an invalid type or format, asking once more: {}", invalid.size(), invalid);
                 try {
-                    raw = ask(client, options, system + "\nIN THE PREVIOUS ANSWER THESE FIELDS HAD THE WRONG TYPE: "
+                    raw = ask(client, options, system + "\nIN THE PREVIOUS ANSWER THESE FIELDS HAD AN INVALID TYPE OR FORMAT: "
                             + String.join(", ", invalid)
                             + ". Return them in the stated type or leave them null.", transcript, tokens);
                 } catch (Exception e) {
@@ -239,7 +244,7 @@ public class SummaryService {
                 sb.append("\nExtract the following fields from the transcript (data_needed). The JSON key is ")
                         .append("the name before the brackets; the value is in the stated type: string — text, number — ")
                         .append("digits only, boolean — true or false, date — YYYY-MM-DD, enum — one of the options ")
-                        .append("in the description:\n");
+                        .append("in the description, phone — a valid UZ local or international number, email — a valid email address:\n");
                 for (DataExtractionField f : agent.dataNeeded()) {
                     sb.append("- ").append(fieldKey(f)).append(" (").append(typeOf(f)).append("): ")
                             .append(f.name() != null ? f.name() : "").append(" — ")
@@ -373,7 +378,7 @@ public class SummaryService {
      * The value in its declared type, or null when it is missing or cannot be read as one.
      * Dates stay text ({@code YYYY-MM-DD}) so the outcome serializes without a date module.
      */
-    private static Object coerce(Object value, String type) {
+    static Object coerce(Object value, String type) {
         if (!isPresent(value)) {
             return null;
         }
@@ -383,11 +388,23 @@ public class SummaryService {
                 case "number" -> value instanceof Number ? value : new BigDecimal(text.replace(" ", ""));
                 case "boolean" -> value instanceof Boolean ? value : booleanOf(text);
                 case "date" -> LocalDate.parse(text.length() > 10 ? text.substring(0, 10) : text).toString();
+                case "phone" -> validPhone(text) ? text : null;
+                case "email" -> validEmail(text) ? text : null;
                 default -> text;
             };
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private static boolean validPhone(String text) {
+        String normalized = PhoneNumbers.normalize(text);
+        return normalized != null && PhoneNumbers.E164_REGEX.matches(normalized);
+    }
+
+    private static boolean validEmail(String text) {
+        int at = text.indexOf('@');
+        return text.length() <= 254 && at > 0 && at <= 64 && EMAIL_ADDRESS.matcher(text).matches();
     }
 
     private static Boolean booleanOf(String text) {

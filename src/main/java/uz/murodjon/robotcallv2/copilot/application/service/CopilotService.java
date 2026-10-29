@@ -152,7 +152,7 @@ public class CopilotService implements CopilotUseCase {
                 } catch (IOException ignored) {
                 }
             }
-        });
+        }));
 
         return () -> {
             cancelled.set(true);

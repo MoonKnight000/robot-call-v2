@@ -123,13 +123,11 @@ public class RealtimeMetrics {
     }
 
     /**
-     * The engine could not be kept and the call continued on the cascade pipeline — or,
-     * when that was not possible, was hung up. Should be rare; every one is a caller who
-     * heard the voice change mid-call.
+     * Realtime was unavailable or could not be kept, so the call used cascade or was hung up.
      */
     public void realtimeFallback(String engine) {
         Counter.builder(FALLBACKS)
-                .description("realtime calls that lost their engine and fell back to the cascade pipeline")
+                .description("realtime calls that fell back to the cascade pipeline")
                 .tag("engine", tagValue(engine))
                 .register(registry)
                 .increment();

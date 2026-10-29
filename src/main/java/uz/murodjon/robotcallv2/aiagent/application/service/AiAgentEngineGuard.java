@@ -124,6 +124,24 @@ class AiAgentEngineGuard {
         return checked;
     }
 
+    /**
+     * Resolves the requested voice, or picks the first selectable voice for the agent's language
+     * when creating/defaulting on a CASCADE pipeline. REALTIME leaves voices to its engine.
+     */
+    String resolveDefaultVoice(long companyId, PipelineMode pipelineMode, String language, String requestedVoice) {
+        if (requestedVoice != null && !requestedVoice.isBlank()) {
+            return requireKnownVoice(companyId, pipelineMode, requestedVoice);
+        }
+        if (pipelineMode.usesRealtimeEngine()) {
+            return null;
+        }
+        List<TtsVoice> selectable = ttsVoiceUseCase.findSelectableByCompanyIdAndMode(companyId, pipelineMode, language);
+        if (selectable != null && !selectable.isEmpty()) {
+            return selectable.getFirst().id();
+        }
+        return null;
+    }
+
     String requireKnownVoice(long companyId, PipelineMode pipelineMode, String ttsVoice) {
         if (ttsVoice == null || ttsVoice.isBlank()) {
             return null;

@@ -124,8 +124,12 @@ class OutboundDialService {
 
     private String originate(String rawNumber, long companyId, Long sipTrunkId, OutboundCall outboundCall) {
         String number = PhoneNumbers.require(rawNumber);
-        if (outboundCall == null && !isLocalNumber(number)) {
-            requireDialAllowed(companyId, rawNumber, number);
+        if (!isLocalNumber(number)) {
+            if (outboundCall == null) {
+                requireDialAllowed(companyId, rawNumber, number);
+            } else {
+                requireNotOnDoNotCallList(companyId, rawNumber, number);
+            }
         }
         String callId = "call-" + System.currentTimeMillis();
         long targetId = outboundCall != null ? outboundCall.targetId() : CallAttempt.NO_TARGET;
@@ -233,15 +237,18 @@ class OutboundDialService {
     }
 
     /**
-     * Every outside number dialled on a company's behalf passes here — except the campaign
-     * dialer's own calls, which CallTaskConsumer has already checked against the
-     * do-not-call list and held money for, and which it records as attempts when refused.
+     * Every outside number dialled on a company's behalf passes here. Campaign calls are
+     * checked here again after the dialer's earlier check, closing the queue/preparation gap.
      * Manual and test calls, operator callbacks, queue forwards and consult legs used to
      * skip all three checks: a suspended or unpaid company kept dialling, and a number on
      * the do-not-call list could still be rung by hand.
      */
     private void requireDialAllowed(long companyId, String rawNumber, String number) {
         requireCompanyMayCall(companyId);
+        requireNotOnDoNotCallList(companyId, rawNumber, number);
+    }
+
+    private void requireNotOnDoNotCallList(long companyId, String rawNumber, String number) {
         // do_not_call.phone is stored as typed, so the normalised form alone would miss
         // "998901234567" or " +998 90 ..." entries.
         Set<String> forms = new LinkedHashSet<>(List.of(number, number.startsWith("+") ? number.substring(1) : number,

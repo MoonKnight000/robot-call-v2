@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
+
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Webhook configuration for agent initiation or post-call callback.
@@ -12,6 +15,7 @@ import java.util.Map;
  * @param dynamicVariables variables to pass (initiation)
  * @param transcript       whether to send call transcript (post-call)
  * @param audioUrl         whether to send recorded audio URL (post-call)
+ * @param events           call-time events sent to the configured post-call webhook
  */
 public record AgentWebhookConfig(
         String webhookUrl,
@@ -19,7 +23,8 @@ public record AgentWebhookConfig(
         Map<String, String> headers,
         Map<String, String> dynamicVariables,
         Boolean transcript,
-        Boolean audioUrl
+        Boolean audioUrl,
+        Set<AgentWebhookEvent> events
 ) {
     public AgentWebhookConfig {
         if (headers == null) {
@@ -28,5 +33,15 @@ public record AgentWebhookConfig(
         if (dynamicVariables == null) {
             dynamicVariables = Map.of();
         }
+        if (events == null) {
+            events = Set.of();
+        } else {
+            events = Set.copyOf(events);
+        }
+    }
+
+    public AgentWebhookConfig(String webhookUrl, String method, Map<String, String> headers,
+                              Map<String, String> dynamicVariables, Boolean transcript, Boolean audioUrl) {
+        this(webhookUrl, method, headers, dynamicVariables, transcript, audioUrl, Set.of());
     }
 }

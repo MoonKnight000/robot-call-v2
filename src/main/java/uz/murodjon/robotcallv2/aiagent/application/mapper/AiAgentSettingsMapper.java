@@ -48,7 +48,9 @@ public final class AiAgentSettingsMapper {
                 dto.transferMessage() != null ? dto.transferMessage() : base.transferMessage(),
                 dto.transferQueueId() != null ? dto.transferQueueId() : base.transferQueueId(),
                 dto.preConversationAudioFileId() != null
-                        ? dto.preConversationAudioFileId() : base.preConversationAudioFileId());
+                        ? dto.preConversationAudioFileId() : base.preConversationAudioFileId(),
+                dto.autoEscalateOnFrustration() != null ? dto.autoEscalateOnFrustration() : base.autoEscalateOnFrustration(),
+                dto.frustrationThreshold() != null ? dto.frustrationThreshold() : base.frustrationThreshold());
     }
 
     public static AiAgentLimits toAiAgentLimits(AgentLimitsDto dto, AiAgentLimits base) {

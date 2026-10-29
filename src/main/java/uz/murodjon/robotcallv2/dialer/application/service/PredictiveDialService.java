@@ -36,6 +36,8 @@ import uz.murodjon.robotcallv2.operator.application.port.input.OperatorPresenceU
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorSipAccount;
 import uz.murodjon.robotcallv2.operator.domain.enums.OperatorStatus;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.exception.AppException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 
@@ -213,8 +215,8 @@ public class PredictiveDialService {
             return;
         }
         state.reserve(companyId, campaign.id());
+        String language = target.language() != null ? target.language() : agent.language();
         try {
-            String language = target.language() != null ? target.language() : agent.language();
             OutboundCall aiCall = outboundCallPreparer.prepare(new CallTask(campaign.id(), target.id(),
                     target.clientId(), target.phone(), language, target.contextData(), companyId, agent.id(),
                     null, null, null, null, null));
@@ -222,6 +224,16 @@ public class PredictiveDialService {
             log.info("Predictive: target {} ({}) of campaign {} dialled", target.id(),
                     PhoneMasker.mask(target.phone()), campaign.id());
         } catch (Exception e) {
+            if (e instanceof AppException appException
+                    && appException.code() == ErrorCode.CALL_NUMBER_ON_DO_NOT_CALL_LIST) {
+                log.info("Predictive: target {} of campaign {} skipped: number is on the do-not-call list",
+                        target.id(), campaign.id());
+                state.release(companyId, campaign.id());
+                callAttemptUseCase.recordUnplacedAttempt(companyId, target.id(), target.phone(),
+                        language, Disposition.DO_NOT_CALL, "number is in the do-not-call list");
+                campaignTargetUseCase.applyOutcome(companyId, target.id(), Disposition.DO_NOT_CALL);
+                return;
+            }
             // The attempt the claim counted stands: the call was tried and failed.
             log.warn("Predictive: target {} of campaign {} could not be dialled: {}", target.id(), campaign.id(),
                     e.getMessage());

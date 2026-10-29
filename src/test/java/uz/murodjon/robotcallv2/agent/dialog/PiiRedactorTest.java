@@ -23,6 +23,13 @@ class PiiRedactorTest {
     }
 
     @Test
+    void redactsEmailAddresses() {
+        String input = "Email: First.Last+tag@example.co.uz yoki support@example.com";
+
+        assertThat(PiiRedactor.redact(input)).isEqualTo("Email: [EMAIL] yoki [EMAIL]");
+    }
+
+    @Test
     void redactsUzcardNumbers() {
         String input = "Mening Uzcard kartam 8600123456789012 raqami";
         String redacted = PiiRedactor.redact(input);

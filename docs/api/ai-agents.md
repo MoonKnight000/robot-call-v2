@@ -423,6 +423,17 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > tekshirilmaydi, lekin yuborish paytida tekshiriladi. Imzo (`X-RobotCall-Signature`)
 > va tekshirish tartibi — [webhooks.md](webhooks.md) §3.
 
+> **Qo'ng'iroq ichidagi webhook eventlari** `postCallWebhook.events` orqali tanlanadi; bo'sh
+> ro'yxat — faqat mavjud `CALL_COMPLETED` callback'i yuboriladi. Eventlar bir xil URL,
+> header, secret resolution, imzo va retry mexanizmidan foydalanadi; yuborish qo'ng'iroq
+> oqimini kutdirmaydi. Tanlanadigan qiymatlar: `SENTIMENT_CHANGE`, `FACT_EXTRACTED`,
+> `TOOL_EXECUTED`, `STAGE_TRANSITION`, `TRANSFER_REQUESTED`, `VOICEMAIL_DETECTED` va
+> `INTENT_DETECTED`. Event payload'ida `event`, `companyId`, `callAttemptId`, `channelId`,
+> `agentId`, `agentName`, `occurredAt` hamda tegishli `data` bo'ladi. `FACT_EXTRACTED`
+> da scalar `value` yuboriladi; matndagi karta/passport/PINFL/CVV/email PII qiymatlari
+> redakt qilinadi. Caller transkripti event payload'iga kiritilmaydi. `INTENT_DETECTED`
+> faqat intent aniqlagich mavjud va yoqilgan bo'lsa yuboriladi.
+
 > **`transferQueueId`** (long, ixtiyoriy) — [operatorlar navbati](call-queues.md) ID si.
 > Berilgan bo'lsa, agent qo'ng'iroqni odamga uzatganda mijoz shu **navbatga** tushadi:
 > kutish musiqasi, "Sizning navbatingiz — ...", operatorga whisper va screen pop, navbat
@@ -603,6 +614,18 @@ QuickVoice uslubidagi mustaqil `Analysis` bo'limi. Agent butun konfiguratsiyasin
         "type": "string",
         "name": "Qulay vaqt",
         "description": "Mijozga yetkazib berish uchun qulay vaqt oralig'i"
+      },
+      {
+        "id": "callback_number",
+        "type": "phone",
+        "name": "Qayta qo'ng'iroq raqami",
+        "description": "Mijoz aytgan telefon raqami"
+      },
+      {
+        "id": "email",
+        "type": "email",
+        "name": "Email",
+        "description": "Mijoz aytgan email manzil"
       }
     ],
     "dataEvaluation": [
@@ -623,6 +646,10 @@ QuickVoice uslubidagi mustaqil `Analysis` bo'limi. Agent butun konfiguratsiyasin
   "errors": null
 }
 ```
+
+`dataNeeded[].type` qiymatlari registrga sezgir emas: `string`, `number`, `boolean`, `date`, `enum`, `phone` yoki `email`.
+`phone` qiymati UZ mahalliy raqami yoki xalqaro E.164 raqami sifatida, `email` esa odatiy email sintaksisi bo'yicha tekshiriladi.
+Noto'g'ri format topilsa, modeldan bir marta qayta ajratish so'raladi; qiymat yana yaroqsiz bo'lsa, natijaga kiritilmaydi va kaliti `extractionErrors` ro'yxatiga yoziladi.
 
 ### `PUT /api/ai-agents/{id}/analysis`
 Yuqoridagi formatdagi JSON obyekt yuboriladi va agentning tahlil mezonlari yangilanadi.
@@ -725,7 +752,8 @@ qo'shimcha so'rov ketmaydi.
     "postCallWebhook": {
       "url": "https://api.example.com/webhooks/call-ended",
       "headers": { "Authorization": "Bearer secret_token" },
-      "timeoutSeconds": 10
+      "timeoutSeconds": 10,
+      "events": ["STAGE_TRANSITION", "TRANSFER_REQUESTED"]
     },
     "emotionAdaptiveVoice": true,
     "speakingWarmth": "BALANCED",

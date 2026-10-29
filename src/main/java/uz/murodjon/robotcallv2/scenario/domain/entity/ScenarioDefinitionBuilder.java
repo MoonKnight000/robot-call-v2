@@ -23,6 +23,8 @@ public class ScenarioDefinitionBuilder {
     private List<StyleExample> styleExamples;
     private List<GlobalNode> globalNodes;
     private String callPurpose;
+    private String startStageId;
+    private TransitionMode transitionMode;
 
     ScenarioDefinitionBuilder() {
     }
@@ -39,6 +41,8 @@ public class ScenarioDefinitionBuilder {
         this.styleExamples = source.styleExamples();
         this.globalNodes = source.globalNodes();
         this.callPurpose = source.callPurpose();
+        this.startStageId = source.startStageId();
+        this.transitionMode = source.transitionMode();
     }
 
     public ScenarioDefinitionBuilder stages(List<StageDef> stages) {

@@ -21,7 +21,8 @@ class CallSessionRegistryTest {
 
     @Test
     void aCallSetUpWithoutInterruptionBecomesActive() {
-        registry.markSettingUp("c1");
+        assertThat(registry.markSettingUp("c1")).isTrue();
+        assertThat(registry.markSettingUp("c1")).isFalse();
         assertThat(registry.isActive("c1")).isFalse();
 
         assertThat(registry.register(session("c1"))).isTrue();

@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
@@ -66,6 +67,7 @@ public class DialogEngine implements CallDialog {
     private final TtsProperties ttsProperties;
     private final OwnLlmChatModels ownLlmChatModels;
     private final AgentHandoffResolver agentHandoffResolver;
+    private final AgentWebhookUseCase agentWebhookUseCase;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
@@ -89,7 +91,8 @@ public class DialogEngine implements CallDialog {
                         SttProperties sttProperties,
                         TtsProperties ttsProperties,
                         OwnLlmChatModels ownLlmChatModels,
-                        AgentHandoffResolver agentHandoffResolver) {
+                        AgentHandoffResolver agentHandoffResolver,
+                        AgentWebhookUseCase agentWebhookUseCase) {
         this.dialogProperties = dialogProperties;
         this.callAttemptUseCase = callAttemptUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -111,6 +114,7 @@ public class DialogEngine implements CallDialog {
         this.ttsProperties = ttsProperties;
         this.ownLlmChatModels = ownLlmChatModels;
         this.agentHandoffResolver = agentHandoffResolver;
+        this.agentWebhookUseCase = agentWebhookUseCase;
     }
 
     @Override
@@ -228,6 +232,10 @@ public class DialogEngine implements CallDialog {
                 .pronunciationRules(agent != null ? agent.pronunciationRules() : List.of())
                 .agent(agent)
                 .build();
+        if (!simulated) {
+            session.setWebhookEventPublisher((event, data) -> agentWebhookUseCase.executeEvent(
+                    companyId, callAttemptId, channelId, agent, event, data));
+        }
         if (simulated) {
             session.setMcpTools(List.of());
         } else {

@@ -744,7 +744,7 @@ DataExtractionField:
       description: unique field identifier (e.g. "caller_name", "callback_number")
     type:
       type: string
-      description: data type (e.g. "String", "Number", "Boolean")
+      description: Case-insensitive data type: string, number, boolean, date, enum, phone, or email. Phone and email values are format-validated after extraction.
     name:
       type: string
       description: human-readable display label
