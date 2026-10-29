@@ -22,6 +22,9 @@ import java.time.LocalDate;
  * @param contractCancelDays days of further non-payment before the contract is cancelled
  *                          under its own terms, or {@code null} when there is no such
  *                          clause to state
+ * @param leadId            the CRM's own id of the lead this snapshot was read from, or {@code null}
+ *                          when the connector does not report one — what a chat that learned the
+ *                          person's number writes its note onto
  */
 public record CrmClientSnapshot(
         String name,
@@ -31,8 +34,16 @@ public record CrmClientSnapshot(
         String contractNumber,
         String preferredLanguage,
         BigDecimal penaltyAmount,
-        BigDecimal contractCancelDays
+        BigDecimal contractCancelDays,
+        Long leadId
 ) {
+
+    public CrmClientSnapshot(String name, BigDecimal debtAmount, String currency, LocalDate dueDate,
+                             String contractNumber, String preferredLanguage, BigDecimal penaltyAmount,
+                             BigDecimal contractCancelDays) {
+        this(name, debtAmount, currency, dueDate, contractNumber, preferredLanguage, penaltyAmount,
+                contractCancelDays, null);
+    }
 
     private static final Logger log = LoggerFactory.getLogger(CrmClientSnapshot.class);
 
@@ -49,7 +60,8 @@ public record CrmClientSnapshot(
                 text(n, "contractNumber", "contract_number", "contract"),
                 text(n, "preferredLanguage", "preferred_language", "language"),
                 decimal(n, "penaltyAmount", "penalty_amount", "penalty", "peniya"),
-                decimal(n, "contractCancelDays", "contract_cancel_days", "cancel_days"));
+                decimal(n, "contractCancelDays", "contract_cancel_days", "cancel_days"),
+                n.path("id").canConvertToLong() && n.path("id").asLong() > 0 ? n.path("id").asLong() : null);
     }
 
     private static String text(JsonNode n, String... names) {

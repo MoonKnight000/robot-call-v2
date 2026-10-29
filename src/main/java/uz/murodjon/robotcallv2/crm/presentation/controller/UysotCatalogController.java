@@ -29,6 +29,13 @@ public interface UysotCatalogController {
     @GetMapping("/houses")
     ResponseEntity<ResponseData<List<CrmHouse>>> houses(@CurrentCompanyId long companyId);
 
+    /** The person behind a phone number: their Uysot lead and active contracts (Client 360). */
+    @PreAuthorize("hasAuthority('CONTACT_READ')")
+    @GetMapping("/clients/{phone}")
+    ResponseEntity<ResponseData<CrmClientProfile>> client(
+            @CurrentCompanyId long companyId,
+            @PathVariable String phone);
+
     /** Flats on sale, cheapest first — exactly what the agent's {@code searchFlats} tool sees. */
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @PostMapping("/flats/search")

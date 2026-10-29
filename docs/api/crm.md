@@ -150,3 +150,31 @@ mijozga menejer aniqlashtirishini aytadi.
 xulosa uni `true` desa, Uysot'da "Mijozga qayta qo'ng'iroq qiling (AI bot)" task'i yaratiladi
 (`real_estate` va `real_estate_contract` paketlarida bu maydon bor). Task mas'ul xodimi — CRM
 sozlamasidagi `aiEmployeeId`.
+
+---
+
+## `GET /api/crm/uysot/clients/{phone}` — Mijoz profili (Client 360)
+
+Telefon bo'yicha Uysot'dagi lid va faol shartnomalar. Huquq: `CONTACT_READ`.
+Telefon formati `/api/memory/{phone}` bilan bir xil; noto'g'ri raqam → `400 PHONE_INVALID`.
+Uysot ulanmagan → `409 CRM_NOT_CONNECTED`. Lid topilmasa `lead` = `null`.
+
+Xotira (`GET /api/memory/{phone}`) bilan birga ko'rsatiladi: xotira — **biz** u bilan nima
+gaplashganimiz, bu — **CRM** u haqida nima biladi.
+
+```json
+{
+  "accept": true,
+  "data": {
+    "phone": "+998901234567",
+    "lead": { "name": "Ali Valiyev", "debtAmount": 50000, "currency": "USD", "dueDate": null,
+              "contractNumber": "UY-123", "preferredLanguage": null, "penaltyAmount": null,
+              "contractCancelDays": null, "leadId": 99436 },
+    "contracts": [
+      { "id": 10, "number": "UY-123", "clientName": "Ali Valiyev", "amount": 80000, "paidAmount": 30000,
+        "residue": 50000, "currency": "USD", "delayDays": 12, "status": "ACTIVE", "leadId": 99436,
+        "responsibleEmployeeId": 252, "responsibleEmployeeName": "Dilshod Karimov" }
+    ]
+  }
+}
+```

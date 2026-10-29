@@ -272,6 +272,22 @@ suhbat davom etadi; suhbat yakunlangan, xabarlar chegarasi tugagan yoki juda uzo
 **yangisi ochiladi va agent salomlashadi**. Botga yozgan odamga "yangi sessiya boshlang" deb aytish
 mumkin emas: u hozirgina yozdi.
 
+## Telefon raqamini ulashish (mijozni tanish)
+
+Yangi suhbatning salomlashuvi ostida bir martalik **"📱 Raqamimni yuborish"** tugmasi chiqadi
+(rus tilidagi botda — "📱 Отправить мой номер"). Odam bossa, Telegram uning **o'z** kontaktini yuboradi:
+
+- raqam suhbatga biriktiriladi (`outcome.phone`) — shundan keyin agent mijozning **xotirasini**
+  (avvalgi qo'ng'iroq va chatlar) ko'radi va Uysot tool'lari (`getContractBalance`,
+  `getPaymentSchedule`) shu raqam bo'yicha ishlaydi;
+- CRM'da raqam bo'yicha lid qidiriladi: ismi (`clientName`), shartnoma raqami (`contractNumber`)
+  faktga, lid ID'si (`crmLeadId`) suhbatga yoziladi;
+- suhbat tugaganda xotiraga yoziladi va lid kartochkasiga izoh tushadi
+  ("AI agent bilan Telegram orqali yozishma bo'ldi.").
+
+Boshqa odamning kontakt kartasi (`contact.user_id` ≠ yozuvchi) e'tiborga olinmaydi. Agent kontaktni
+"Mening telefon raqamim: +998…" matni sifatida ko'radi.
+
 ## Xatolar Telegram tomonida qanday ko'rinadi
 
 Update qabul qilinganini bildirish uchun endpoint deyarli har doim `200` qaytaradi. Sabab: Telegram
@@ -283,5 +299,5 @@ mos kelmadi (`403`).
 **Cheklovlar** chat bilan umumiy: `CHAT_MAX_MESSAGES`, `CHAT_DAILY_SESSIONS` (Redis'da, agent
 bo'yicha), `CHAT_SESSION_TTL_MINUTES`. Saqlash muddati ham bir xil — `RetentionService`.
 
-**Hozircha yo'q:** guruh chatlari maxsus ishlov (bot guruhda har xabarga javob beradi), inline tugmalar,
+**Hozircha yo'q:** guruh chatlari maxsus ishlov (bot guruhda har xabarga javob beradi), inline tugmalar (raqam ulashishdan boshqa),
 fayl/rasm qabul qilish, bot menyusi (`/start` maxsus emas — oddiy matn sifatida boradi).

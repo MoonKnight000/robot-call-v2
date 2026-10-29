@@ -33,6 +33,11 @@ public class UysotCatalogControllerImpl implements UysotCatalogController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<CrmClientProfile>> client(long companyId, String phone) {
+        return ResponseEntity.ok(ResponseData.ok(crmCatalogUseCase.findClientProfile(companyId, phone)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<List<CrmFlat>>> searchFlats(long companyId, FlatSearchFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(crmCatalogUseCase.searchFlats(companyId, filter)));
     }

@@ -55,4 +55,27 @@ class TelegramUpdatesTest {
 
         assertThat(update.text()).hasSize(4096);
     }
+
+    @Test
+    void readsTheSendersOwnSharedContactAsTheirPhone() {
+        TelegramUpdate update = TelegramUpdates.read(Map.of("message", Map.of(
+                "chat", Map.of("id", 77L),
+                "from", Map.of("id", 77L),
+                "contact", Map.of("user_id", 77L, "phone_number", "998901234567"))));
+
+        assertThat(update.contactPhone()).isEqualTo("+998901234567");
+        assertThat(update.text()).isEqualTo(TelegramUpdates.CONTACT_SHARED_TEXT + "+998901234567");
+    }
+
+    @Test
+    void ignoresSomebodyElsesContactCard() {
+        TelegramUpdate update = TelegramUpdates.read(Map.of("message", Map.of(
+                "chat", Map.of("id", 77L),
+                "from", Map.of("id", 77L),
+                "text", "mana",
+                "contact", Map.of("user_id", 5L, "phone_number", "+998901234567"))));
+
+        assertThat(update.contactPhone()).isNull();
+        assertThat(update.text()).isEqualTo("mana");
+    }
 }

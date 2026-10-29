@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.crm.application.service;
 
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.output.UysotCatalogPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.*;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.UysotCatalogProperties;
@@ -9,6 +10,7 @@ import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -38,14 +40,16 @@ public class CrmCatalogService implements CrmCatalogUseCase {
     private final UysotCatalogPort catalogPort;
     private final UysotCatalogProperties catalogProperties;
     private final Clock clock;
+    private final CrmUseCase crmUseCase;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
     public CrmCatalogService(CrmConnectionResolver connectionResolver, UysotCatalogPort catalogPort,
-                             UysotCatalogProperties catalogProperties, Clock clock) {
+                             UysotCatalogProperties catalogProperties, Clock clock, CrmUseCase crmUseCase) {
         this.connectionResolver = connectionResolver;
         this.catalogPort = catalogPort;
         this.catalogProperties = catalogProperties;
         this.clock = clock;
+        this.crmUseCase = crmUseCase;
     }
 
     @Override
@@ -102,6 +106,14 @@ public class CrmCatalogService implements CrmCatalogUseCase {
     public List<CrmPipe> findPipes(long companyId) {
         return cached("pipes:" + companyId, catalogProperties.directoryTtl(),
                 () -> catalogPort.findPipes(requireUysot(companyId)));
+    }
+
+    @Override
+    public CrmClientProfile findClientProfile(long companyId, String phone) {
+        String normalized = PhoneNumbers.require(phone);
+        CrmConnection connection = requireUysot(companyId);
+        return new CrmClientProfile(normalized, crmUseCase.findByPhone(companyId, normalized),
+                catalogPort.findActiveContractsByPhone(connection, normalized));
     }
 
     private CrmConnection requireUysot(long companyId) {

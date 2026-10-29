@@ -19,6 +19,9 @@ public final class TelegramUpdates {
     /** Telegram's own cap on a message; anything longer is not a message this platform has to hold. */
     private static final int MAX_TEXT_CHARS = 4096;
 
+    /** What a shared contact reads as in the conversation, the number appended. */
+    public static final String CONTACT_SHARED_TEXT = "Mening telefon raqamim: ";
+
     private TelegramUpdates() {
     }
 
@@ -33,6 +36,11 @@ public final class TelegramUpdates {
         }
         Object text = fields.get("text");
         Object chat = fields.get("chat");
+        String contactPhone = ownContactPhone(fields);
+        if (contactPhone != null && !(text instanceof String)) {
+            // The share-my-number button sends a contact and no text; the agent hears it as words.
+            text = CONTACT_SHARED_TEXT + contactPhone;
+        }
         if (!(text instanceof String written) || written.isBlank() || !(chat instanceof Map<?, ?> chatFields)) {
             return null;
         }
@@ -41,7 +49,27 @@ public final class TelegramUpdates {
             return null;
         }
         String trimmed = written.length() > MAX_TEXT_CHARS ? written.substring(0, MAX_TEXT_CHARS) : written;
-        return new TelegramUpdate(numberAsText(chatId), trimmed.trim());
+        return new TelegramUpdate(numberAsText(chatId), trimmed.trim(), contactPhone);
+    }
+
+    /**
+     * The number in a shared contact, when it is the sender's own: Telegram fills
+     * {@code contact.user_id} with the contact's account, and a forwarded card of somebody else
+     * must not become the identity this conversation is written under.
+     */
+    private static String ownContactPhone(Map<?, ?> message) {
+        if (!(message.get("contact") instanceof Map<?, ?> contact) || !(message.get("from") instanceof Map<?, ?> from)) {
+            return null;
+        }
+        Object owner = contact.get("user_id");
+        Object sender = from.get("id");
+        Object phone = contact.get("phone_number");
+        if (owner == null || sender == null || !numberAsText(owner).equals(numberAsText(sender))
+                || !(phone instanceof String number) || number.isBlank()) {
+            return null;
+        }
+        String trimmed = number.trim();
+        return trimmed.startsWith("+") ? trimmed : "+" + trimmed;
     }
 
     /** Jackson reads a chat id as a Long or an Integer; neither may reach the database as "123.0". */

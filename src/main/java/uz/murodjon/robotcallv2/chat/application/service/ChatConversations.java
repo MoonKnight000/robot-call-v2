@@ -24,6 +24,8 @@ import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
 import uz.murodjon.robotcallv2.chat.infrastructure.config.ChatProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
+import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
@@ -75,6 +77,11 @@ class ChatConversations {
 
     private static final Logger log = LoggerFactory.getLogger(ChatConversations.class);
 
+    /** Where a conversation keeps the person's number once it learns it. */
+    private static final String PHONE_KEY = "phone";
+    /** Where it keeps the CRM lead that number belongs to — what its note is written onto. */
+    private static final String CRM_LEAD_KEY = "crmLeadId";
+
     /** What the agent is told when it has no opening line of its own — the bootstrap a call's greeting turn uses. */
     private static final String GREETING_BOOTSTRAP =
             "[SYSTEM: The client has started a chat. Greet them briefly as planned and ask how you can "
@@ -90,11 +97,12 @@ class ChatConversations {
     private final TextTurnEngine textTurnEngine;
     private final ChatProperties chatProperties;
     private final Clock clock;
+    private final CrmUseCase crmUseCase;
 
     ChatConversations(ChatSessionRepository repository, ChatQuotaPort chatQuota, AiAgentUseCase aiAgentUseCase,
                       ToolUseCase toolUseCase, AiModelConfigUseCase aiModelConfigUseCase,
                       CompanyUseCase companyUseCase, ClientMemoryUseCase clientMemoryUseCase, TextTurnEngine textTurnEngine,
-                      ChatProperties chatProperties, Clock clock) {
+                      ChatProperties chatProperties, Clock clock, CrmUseCase crmUseCase) {
         this.repository = repository;
         this.chatQuota = chatQuota;
         this.aiAgentUseCase = aiAgentUseCase;
@@ -105,6 +113,7 @@ class ChatConversations {
         this.textTurnEngine = textTurnEngine;
         this.chatProperties = chatProperties;
         this.clock = clock;
+        this.crmUseCase = crmUseCase;
     }
 
     /**
@@ -173,6 +182,46 @@ class ChatConversations {
             rememberIfEnded(saved, dialog, agent, disposition);
         }
         return new ChatTurn(turn.line(), saved);
+    }
+
+    /**
+     * The person's number, learned mid-conversation (a Telegram contact share): kept on the
+     * conversation so every later turn has their memory and the agent's CRM tools, and looked up
+     * in the CRM once — their name and contract become facts, the lead is where the chat's note
+     * goes when it ends. A number already known is left as it is.
+     */
+    ChatSession attachPhone(ChatSession session, String rawPhone) {
+        String phone = PhoneNumbers.normalize(rawPhone);
+        if (phone == null || phone.equals(extractPhone(session.outcome()))) {
+            return session;
+        }
+        Map<String, Object> outcome = new LinkedHashMap<>(session.outcome());
+        outcome.put(PHONE_KEY, phone);
+        try {
+            CrmClientSnapshot client = crmUseCase.findByPhone(session.companyId(), phone);
+            if (client != null) {
+                putIfAbsent(outcome, "clientName", client.name());
+                putIfAbsent(outcome, "contractNumber", client.contractNumber());
+                if (client.leadId() != null) {
+                    outcome.put(CRM_LEAD_KEY, client.leadId());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[chat {}] CRM lookup by phone failed: {}", session.sessionKey(), e.getMessage());
+        }
+        return repository.save(session.afterTurn(session.stage(), outcome, session.disposition(), session.ended(), 0,
+                session.lastMessageAt()));
+    }
+
+    /** Whether the person behind this conversation is known by number yet. */
+    boolean hasPhone(ChatSession session) {
+        return extractPhone(session.outcome()) != null;
+    }
+
+    private static void putIfAbsent(Map<String, Object> outcome, String key, String value) {
+        if (value != null && !value.isBlank() && !outcome.containsKey(key)) {
+            outcome.put(key, value);
+        }
     }
 
     /** Whether this conversation may still be written to, and why not when it may not. */
@@ -307,7 +356,7 @@ class ChatConversations {
         if (outcome == null || outcome.isEmpty()) {
             return null;
         }
-        for (String key : List.of("phone", "clientPhone", "client_phone", "phoneNumber", "phone_number", "callerNumber", "contactPhone")) {
+        for (String key : List.of(PHONE_KEY, "clientPhone", "client_phone", "phoneNumber", "phone_number", "callerNumber", "contactPhone")) {
             Object val = outcome.get(key);
             if (val != null && !val.toString().isBlank()) {
                 String normalized = PhoneNumbers.normalize(val.toString());
@@ -340,9 +389,20 @@ class ChatConversations {
                     ? dialog.outcome()
                     : session.outcome();
             clientMemoryUseCase.rememberCall(session.companyId(), phone, rememberedCall, facts);
+            postCrmNote(session, summary);
         } catch (Exception e) {
             log.warn("[chat {}] could not update client memory: {}", session.sessionKey(), e.getMessage());
         }
+    }
+
+    /** The conversation on the person's CRM lead, when their number led to one ({@link #attachPhone}). */
+    private void postCrmNote(ChatSession session, String summary) {
+        if (!(session.outcome().get(CRM_LEAD_KEY) instanceof Number leadId)) {
+            return;
+        }
+        String channel = session.telegramBotId() != null ? "Telegram" : "Sayt chati";
+        crmUseCase.postNote(session.companyId(), leadId.longValue(),
+                "AI agent bilan " + channel + " orqali yozishma bo'ldi.\n" + summary);
     }
 
     private String resolveChatSummary(ChatSession session, DialogSession dialog, Disposition disposition) {
