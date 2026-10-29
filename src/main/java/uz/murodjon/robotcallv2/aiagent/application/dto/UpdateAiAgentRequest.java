@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.util.List;
@@ -29,6 +31,8 @@ public record UpdateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 500) String description,
         String language,
+        AiAgentChannel channel,
+        AiAgentMode mode,
         AgentPersona persona,
         String engineProfileId,
         AgentScriptDto script,

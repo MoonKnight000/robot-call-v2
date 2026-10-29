@@ -16,13 +16,13 @@ holat). `ADMIN` — kompaniyaning o'z admini, faqat **o'z** kompaniyasini
 ko'radi/tahrirlaydi va **hech qachon o'z holatini o'zi o'zgartira olmaydi**
 — avval bu yerda `PUT /api/companies/{id}` orqali `status` ham
 o'zgartirilar edi, endi bu maydon butunlay olib tashlangan, faqat
-`SUPERADMIN` (`PUT /api/companies/{id}/status`) o'zgartira oladi. `SUPERADMIN`
+`SUPERADMIN` (`PUT /api/companies/{id}/platform`) o'zgartira oladi. `SUPERADMIN`
 roli `POST /api/users/invite` / `PUT /api/users/{id}/role` orqali
 berilmaydi (`UserService` rad etadi) — birinchi superadmin hisobi qo'lda,
 to'g'ridan-to'g'ri bazaga yoziladi.
 
 **Ikki resurs bor:**
-- **Company** — identifikatsiya: nom, holat (`ACTIVE`/`SUSPENDED`), logotip URL'i
+- **Company** — identifikatsiya: nom, holat (`ACTIVE`/`SUSPENDED`/`DELETED`/`EXPIRED`), logotip URL'i
   va manzil (backend-uchun-talablar.md §5 — sozlama emas, identifikatsiya
   ma'lumoti sifatida shu yerda).
 - **CompanyConfig** — sozlamalar: qo'llab-quvvatlanadigan tillar ro'yxati,
@@ -57,12 +57,12 @@ Yaratilgan kompaniya `status: "ACTIVE"` bilan va yuqorida aytilgan default
 
 ```json
 { "id": 2, "name": "Ikkinchi kompaniya", "status": "ACTIVE", "createdAt": "2026-08-01T09:00:00Z",
-  "logoFileId": null, "address": null, "maxConcurrentCalls": null }
+  "logoFileId": null, "address": null, "maxConcurrentCalls": null, "disabledFeatures": [], "disabledIntegrations": [], "expiresAt": null }
 ```
 
 `maxConcurrentCalls` — kompaniyaning parallel dialer qo'ng'iroqlari limiti (tarif); `null` —
 platforma standarti. Faqat `SUPERADMIN` o'zgartiradi
-([pastda](#put-apicompaniesidconcurrency-limit--parallel-qongiroqlar-limiti)).
+([`PUT /api/companies/{id}/platform`](#put-apicompaniesidplatform--kompaniyani-platforma-tomonidan-tahrirlash)).
 
 ---
 
@@ -74,10 +74,11 @@ o'z kompaniyasidan boshqasini ko'ra olmaydi.
 Body — `CompanyFilter`:
 
 ```json
-{ "page": 0, "size": 20, "orders": { "NAME": "ASC" }, "search": "Ikkinchi" }
+{ "page": 0, "size": 20, "orders": { "NAME": "ASC" }, "search": "Ikkinchi", "status": null }
 ```
 
-`search` — nom bo'yicha erkin qidiruv, bo'sh/`null` — filtr yo'q. Saralanadigan
+`search` — nom bo'yicha erkin qidiruv, bo'sh/`null` — filtr yo'q. `status` — `ACTIVE`/`SUSPENDED`/`DELETED`/`EXPIRED`; `null` bo'lsa
+`DELETED` kompaniyalar ro'yxatda ko'rinmaydi (o'chirilganlarni ko'rish va tiklash uchun `"status": "DELETED"`). Saralanadigan
 ustunlar: `ID`, `NAME`, `STATUS`, `CREATED_AT`. Standart: `NAME ASC`.
 
 Javob — `PageableData<Company>` (`Company` shakli yuqorida).
@@ -116,49 +117,89 @@ Javob — yangilangan `Company`.
 
 ---
 
-## `PUT /api/companies/{id}/status` — holatni o'zgartirish
+## `PUT /api/companies/{id}/platform` — kompaniyani platforma tomonidan tahrirlash
 
-**SUPERADMIN-only** (report #3) — kompaniyaning `ACTIVE`/`SUSPENDED`
-holatini o'zgartirishning yagona yo'li. Kompaniyaning o'z ADMINi bu
-endpointga umuman kira olmaydi (`403`, `SecurityConfig`).
+**SUPERADMIN-only.** Kompaniya haqidagi hamma platforma sozlamalari bitta formada: nom, manzil, holat
+(bloklash / blokdan chiqarish / o'chirish), amal qilish muddati, parallel qo'ng'iroqlar limiti va feature'lar.
+**Barcha maydonlar almashtiriladi** — frontend yuklangan `Company` ni o'zgartirib qaytaradi.
 
-**Request body** (`UpdateCompanyStatusRequest`):
-
-```json
-{ "status": "SUSPENDED" }
-```
-
-Javob — yangilangan `Company`.
-
-**`SUSPENDED` nima qiladi:**
-- kompaniya foydalanuvchilarining barcha ochiq sessiyalari va access tokenlari darhol bekor qilinadi;
-- `POST /api/auth/login` (to'g'ri parol bilan ham) va `POST /api/auth/refresh` → `403 COMPANY_SUSPENDED`;
-- kompaniyaning `X-Api-Key` kalitlari ishlamaydi (`401`);
-- dialer uning `ACTIVE` kampaniyalarini terishni to'xtatadi (kampaniyalar statusi o'zgarmaydi —
-  `ACTIVE`ga qaytarilganda davom etadi).
-
----
-
-## `PUT /api/companies/{id}/concurrency-limit` — parallel qo'ng'iroqlar limiti
-
-**SUPERADMIN-only** — kompaniya tarifiga ko'ra bir vaqtda nechta dialer qo'ng'irog'ini ushlab
-tura olishi. Kompaniyaning o'z ADMINi o'zgartira olmaydi (`403`).
-
-**Request body** (`UpdateCompanyConcurrencyLimitRequest`):
+**Request body** (`UpdateCompanyByPlatformRequest`):
 
 ```json
-{ "maxConcurrentCalls": 40 }
+{
+  "name": "Ikkinchi kompaniya",
+  "address": "Toshkent, Chilonzor",
+  "status": "ACTIVE",
+  "expiresAt": "2026-12-31T23:59:59Z",
+  "maxConcurrentCalls": 40,
+  "disabledFeatures": ["ALERTING"],
+  "disabledIntegrations": ["BITRIX24"]
+}
 ```
 
 | Maydon | Turi | Majburiy | Izoh |
 |---|---|---|---|
-| `maxConcurrentCalls` | `number` (1–10000) \| `null` | ❌ | `null` — platforma standartiga qaytarish (`voice-agent.dialer.max-concurrent-calls-per-company`) |
+| `name` | `string` (≤120) | ✅ | |
+| `address` | `string` (≤255) \| `null` | ❌ | `null` — tozalaydi |
+| `status` | `ACTIVE` \| `SUSPENDED` \| `DELETED` \| `EXPIRED` | ✅ | `SUSPENDED` — bloklash, `ACTIVE` — blokdan chiqarish, `DELETED` — soft delete. `ACTIVE` va `EXPIRED` ikkalasi "platforma yopmagan" degani: ochiq yoki muddati tugaganligi `expiresAt` dan kelib chiqadi |
+| `expiresAt` | ISO vaqt \| `null` | ❌ | obuna tugaydigan vaqt; `null` — muddat yo'q |
+| `maxConcurrentCalls` | `number` (1–10000) | `null` | ❌ | kompaniya tarifiga ko'ra bir vaqtda nechta dialer qo'ng'irog'i; `null` — platforma standarti (`voice-agent.dialer.max-concurrent-calls-per-company`). Keyingi dialer tick'idan (≈5 s) kuchga kiradi; platformaning umumiy chegarasi (RTP portlar) bundan ustun. Hozirgi holat — [`GET /api/concurrency`](concurrency.md) |
+| `disabledFeatures` | `Feature[]` | ✅ | o'chirilgan feature'lar (`VOICE_AGENT`, `CHAT_AGENT`, `ALERTING`, `INTEGRATIONS`, `QUALITY_ASSURANCE`); `[]` — hammasi yoqiq |
+| `disabledIntegrations` | `IntegrationProvider[]` | ✅ | o'chirilgan integratsiya provayderlari (`UYSOT`, `AMOCRM`, `KOMMO`, `BITRIX24`, `GOOGLE_DRIVE`, `NOTION`, `ASTERISK`); `[]` — hammasi yoqiq |
 
-Javob — yangilangan `Company`. Keyingi dialer tick'idan (≈5 s) kuchga kiradi. Platformaning umumiy
-chegarasi (RTP portlar) bundan ustun turadi — limit shundan katta bo'lsa ham ortig'i terilmaydi.
-Hozirgi holat — [`GET /api/concurrency`](concurrency.md). Audit: `COMPANY_CONCURRENCY_LIMIT_UPDATE`.
+Javob — yangilangan `Company`. Audit: `COMPANY_PLATFORM_UPDATE`.
 
-Xatolar: `400 VALIDATION_FAILED` (1 dan kichik yoki 10000 dan katta), `404` (kompaniya yo'q).
+**Holat va muddat:**
+- `SUSPENDED` / `DELETED` — platformaning qarori, sana qanday bo'lishidan qat'iy nazar turadi. `DELETED` — yumshoq o'chirish: ma'lumot bazada qoladi, kompaniya `POST /api/companies/list` da (standart filtrda) ko'rinmaydi; tiklash — `status: "ACTIVE"` yuborish.
+- `ACTIVE`/`EXPIRED` yuborilganda: `expiresAt` o'tib ketgan bo'lsa kompaniya shu zahoti `EXPIRED` bo'ladi,
+  kelajakda yoki `null` bo'lsa shu zahoti `ACTIVE`. Muddati tugagan kompaniyani ochish uchun sanani uzaytiring.
+- Muddat o'tganda `CompanyExpiryJob` (har daqiqa) `ACTIVE` kompaniyani o'zi `EXPIRED` qiladi (audit `COMPANY_EXPIRED`).
+- `SUSPENDED`, `DELETED` va `EXPIRED` bir xil oqibat beradi: sessiyalar bekor, login/refresh `403 COMPANY_SUSPENDED`,
+  API kalitlar va dialer to'xtaydi, kiruvchi qo'ng'iroqlar rad etiladi. Holat o'zgargandagina sessiyalar bekor qilinadi.
+
+**Feature'lar:** `disabledFeatures` — platforma kompaniya uchun o'chirgan mahsulotlar; `[]` — hammasi yoqiq.
+Holat `company_feature` jadvalida (kompaniya × feature × `enabled`); qatori yo'q feature yoqiq hisoblanadi, shuning
+uchun keyinroq qo'shilgan yangi feature barcha kompaniyada o'zi yoqiq bo'ladi. O'chirish mumkin bo'lganlar:
+
+| Feature | Nimani yopadi (huquq guruhlari) |
+|---|---|
+| `VOICE_AGENT` | kampaniyalar, qo'ng'iroqlar, jonli qo'ng'iroqlar, operatorlar, kontaktlar, DNC, kiruvchi yo'nalishlar, call flow, navbatlar, javobsiz qo'ng'iroqlar, SIP trunklar, ovozlar (`CAMPAIGN`, `CALL`, `LIVE`, `OPERATOR`, `CONTACT`, `DO_NOT_CALL`, `INBOUND_ROUTE`, `CALL_FLOW`, `CALL_QUEUE`, `MISSED_CALL`, `SIP_TRUNK`, `VOICE`) |
+| `CHAT_AGENT` | Telegram botlar va chat tarixi (`CHAT_AGENT`) |
+| `ALERTING` | alert qoidalari (`ALERT`) |
+| `INTEGRATIONS` | CRM va boshqa integratsiyalar (`INTEGRATION`) |
+| `QUALITY_ASSURANCE` | review inbox va scorecard (`QUALITY_REVIEW`) |
+
+`CORE` — platformaning o'zi (dashboard, hisobotlar, audit, foydalanuvchilar, rollar, kompaniya, billing, API kalitlar,
+AI modellar, bildirishnoma kanallari) va voice hamda chat agent **umumiy ishlatadigan agent/ssenariy/bilim bazasi
+muharriri** (`AI_AGENT`, `SCENARIO`). U o'chirilmaydi: `disabledFeatures` ichida `CORE` bo'lsa
+`400 COMPANY_FEATURE_NOT_SWITCHABLE`.
+
+**Foydalanuvchilardan huquq olib tashlash:** har bir huquq aynan bitta feature'ga tegishli
+(`GET /api/roles/permissions` har guruh bilan `feature` ni qaytaradi). Feature o'chirilganda uning barcha huquqlari
+(`*_READ`/`*_EDIT`) kompaniyaning **hamma foydalanuvchisi va API kalitidan** olib tashlanadi — rolida bo'lsa ham:
+endpointlari `403` beradi, `GET /api/auth/me` dagi `permissions` da ko'rinmaydi, kompaniya admini ularni boshqa
+rolga bera olmaydi (o'zida yo'q huquqni bera olmaydi). Rollarning o'zi o'zgarmaydi, shuning uchun feature qayta
+yoqilganda hamma narsa avvalgidek qaytadi. Ro'yxat o'zgarganda kompaniya foydalanuvchilari sessiyalari bekor
+qilinadi (keyingi login yangi huquqlar bilan).
+
+**Ish vaqtida ham to'xtaydi** (faqat panel/API emas — ma'lumot saqlanadi, feature qayta yoqilsa davom etadi):
+
+| Feature | O'chiq bo'lsa |
+|---|---|
+| `VOICE_AGENT` | dialer kompaniya kampaniyalarini tanlamaydi; navbatda turgan target terilmaydi; qo'lda va brauzer (widget/test) qo'ng'irog'i `403 COMPANY_FEATURE_DISABLED`; kiruvchi qo'ng'iroq "kompaniya mavjud emas" xabari bilan yopiladi |
+| `CHAT_AGENT` | `POST /api/public/widgets/{key}/chat` va `.../chat/{session}` — `403 COMPANY_FEATURE_DISABLED`; `POST /api/public/telegram/{botId}` `200` qaytaradi (Telegram qayta yubormasligi uchun), lekin javob berilmaydi |
+| `ALERTING` | alert scheduler kompaniya qoidalarini baholamaydi, bildirishnoma yuborilmaydi |
+| `INTEGRATIONS` | qo'ng'iroqdan keyingi CRM yozuvlari (eslatma, bosqich, tarix) va CRM'dan o'qish bajarilmaydi — qo'ng'iroq CRM'siz davom etadi; Uysot webhook `skipped` javobi bilan qaytadi |
+| `QUALITY_ASSURANCE` | qo'ng'iroqdan keyingi sifat hakami (LLM) va operator scorecard ishga tushmaydi |
+
+**Integratsiyalar:** `disabledIntegrations` — `INTEGRATIONS` feature'i yoqiq bo'lganda ham alohida provayderni yopadi. Holat `company_integration_access` jadvalida (kompaniya × provayder × `enabled`; qatori yo'q — yoqiq). O'chirilgan provayderni ulab bo'lmaydi, ulangani ishlamaydi, kompaniya katalogida `DISABLED_BY_PLATFORM` ko'rinadi ([settings.md](settings.md#5-crm-integratsiyalari-apisettingsintegrations)).
+
+Faqat shu kompaniyaga tegadi: boshqa kompaniyalar o'z feature'lari bilan ishlayveradi.
+
+Xatolar: `400 VALIDATION_FAILED`, `400 COMPANY_FEATURE_NOT_SWITCHABLE` (`CORE`), `404`, `409 COMPANY_DEFAULT_PROTECTED` —
+platforma administratori kiradigan default kompaniya (`voice-agent.company.default-id`) bloklanmaydi,
+o'chirilmaydi va unga muddat qo'yilmaydi.
+
 
 ---
 
@@ -291,3 +332,17 @@ yaratilganda avtomatik config oladi.
 | `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)). `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
 
 **Response** — yangilangan `CompanyConfig`.
+
+---
+
+## Platforma uchun to'liq ro'yxat — kompaniyaning hamma sozlamalari
+
+Hammasi `SUPERADMIN` token bilan, istalgan kompaniya `{id}` si uchun ishlaydi:
+
+| Nima | Endpoint |
+|---|---|
+| Logotip (rasm) | `POST /api/companies/{id}/logo` |
+| Nom, manzil, holat (blok/unblok/o'chirish), muddat, limit, feature'lar — bitta forma | `PUT /api/companies/{id}/platform` |
+| Ish vaqti, tillar, tatil kunlari, limitlar | `GET` / `PUT /api/companies/{id}/config` |
+| Foydalanuvchilar, rollar | `/api/companies/{id}/users`, `/roles` — [users.md](users.md) |
+| SIP trunklar | `/api/companies/{id}/sip-trunks` — [sip-trunks.md](sip-trunks.md) |

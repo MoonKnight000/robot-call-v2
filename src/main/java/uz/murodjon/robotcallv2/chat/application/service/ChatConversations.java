@@ -7,6 +7,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.agent.dialog.DialogSession;
+import uz.murodjon.robotcallv2.agent.dialog.PromptTemplateEngine;
 import uz.murodjon.robotcallv2.agent.dialog.TextTurn;
 import uz.murodjon.robotcallv2.agent.dialog.TextTurnEngine;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
@@ -23,18 +24,25 @@ import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
 import uz.murodjon.robotcallv2.chat.infrastructure.config.ChatProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
+import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
+import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -78,13 +86,14 @@ class ChatConversations {
     private final ToolUseCase toolUseCase;
     private final AiModelConfigUseCase aiModelConfigUseCase;
     private final CompanyUseCase companyUseCase;
+    private final ClientMemoryUseCase clientMemoryUseCase;
     private final TextTurnEngine textTurnEngine;
     private final ChatProperties chatProperties;
     private final Clock clock;
 
     ChatConversations(ChatSessionRepository repository, ChatQuotaPort chatQuota, AiAgentUseCase aiAgentUseCase,
                       ToolUseCase toolUseCase, AiModelConfigUseCase aiModelConfigUseCase,
-                      CompanyUseCase companyUseCase, TextTurnEngine textTurnEngine,
+                      CompanyUseCase companyUseCase, ClientMemoryUseCase clientMemoryUseCase, TextTurnEngine textTurnEngine,
                       ChatProperties chatProperties, Clock clock) {
         this.repository = repository;
         this.chatQuota = chatQuota;
@@ -92,6 +101,7 @@ class ChatConversations {
         this.toolUseCase = toolUseCase;
         this.aiModelConfigUseCase = aiModelConfigUseCase;
         this.companyUseCase = companyUseCase;
+        this.clientMemoryUseCase = clientMemoryUseCase;
         this.textTurnEngine = textTurnEngine;
         this.chatProperties = chatProperties;
         this.clock = clock;
@@ -114,17 +124,25 @@ class ChatConversations {
             throw new ConflictException(ErrorCode.CHAT_DAILY_LIMIT_REACHED, agent.id());
         }
         ScenarioDefinition scenario = scenarioOf(session, agent);
-        // A channel that did not ask for a language gets the agent's own, settled here so the
-        // conversation is stored with the language it is actually being held in.
-        ChatSession saved = repository.save(session.language() != null && !session.language().isBlank()
-                ? session : session.withLanguage(agent.language()));
-        DialogSession dialog = newDialogSession(saved, agent, scenario);
+        String phone = extractPhone(session.outcome());
+        ClientMemory memory = findMemory(session.companyId(), phone);
+        // The client's remembered language, else the channel's, else the agent's — settled here so
+        // the conversation is stored (and rebuilt) with the language it is actually being held in.
+        String resolvedLanguage = CallLanguage.resolve(memory != null ? memory.preferredLanguage() : null,
+                session.language(), agent.language());
+        ChatSession saved = repository.save(session.withLanguage(resolvedLanguage));
+        DialogSession dialog = newDialogSession(saved, agent, scenario, phone, memory);
         String greeting = greet(dialog, agent);
         repository.addMessage(ChatMessage.written(saved.id(), ChatRole.AGENT, greeting));
         // The stage from the dialog, not the one it started in: an agent with no opening line
         // of its own greets by taking a turn, and that turn may already have moved the FSM.
-        ChatSession afterGreeting = repository.save(saved.afterTurn(dialog.state(), dialog.outcome(), null,
-                false, 1, clock.instant()));
+        boolean ended = dialog.isEnded();
+        Disposition disposition = ended ? dialog.disposition() : null;
+        ChatSession afterGreeting = repository.save(saved.afterTurn(dialog.state(), dialog.outcome(), disposition,
+                ended, 1, clock.instant()));
+        if (ended) {
+            rememberIfEnded(afterGreeting, dialog, agent, disposition);
+        }
         return new StartedChat(afterGreeting, greeting);
     }
 
@@ -151,6 +169,9 @@ class ChatConversations {
         Disposition disposition = ended ? dialog.disposition() : null;
         ChatSession saved = repository.save(session.afterTurn(dialog.state(), dialog.outcome(), disposition,
                 ended, 2, clock.instant()));
+        if (ended) {
+            rememberIfEnded(saved, dialog, agent, disposition);
+        }
         return new ChatTurn(turn.line(), saved);
     }
 
@@ -190,7 +211,7 @@ class ChatConversations {
         AiAgent agent = aiAgentUseCase.requirePublishedAgent(companyId, agentId);
         ScenarioDefinition scenario = aiAgentUseCase.resolveScenario(companyId, agent).definition();
         return scenario != null && scenario.stages() != null && !scenario.stages().isEmpty()
-                ? scenario.stages().get(0).id()
+                ? scenario.findStartStage().id()
                 : "CONVERSATION";
     }
 
@@ -213,9 +234,11 @@ class ChatConversations {
     private String greet(DialogSession dialog, AiAgent agent) {
         String firstMessage = agent.script().firstMessage();
         if (firstMessage != null && !firstMessage.isBlank()) {
-            dialog.history().add(new AssistantMessage(firstMessage.trim()));
-            dialog.setLastAgentText(firstMessage.trim());
-            return firstMessage.trim();
+            Map<String, Object> facts = dialog.context() != null ? dialog.context().facts() : Map.of();
+            String rendered = PromptTemplateEngine.render(firstMessage.trim(), facts);
+            dialog.history().add(new AssistantMessage(rendered));
+            dialog.setLastAgentText(rendered);
+            return rendered;
         }
         TextTurn turn = textTurnEngine.reply(dialog, GREETING_BOOTSTRAP);
         if (turn.isEmpty()) {
@@ -226,7 +249,9 @@ class ChatConversations {
 
     /** The conversation as the agent left it: its stage, what its tools recorded, and everything said. */
     private DialogSession rebuild(ChatSession session, AiAgent agent) {
-        DialogSession dialog = newDialogSession(session, agent, scenarioOf(session, agent));
+        String phone = extractPhone(session.outcome());
+        DialogSession dialog = newDialogSession(session, agent, scenarioOf(session, agent), phone,
+                findMemory(session.companyId(), phone));
         dialog.setState(session.stage());
         session.outcome().forEach(dialog::recordOutcome);
         for (ChatMessage message : repository.findMessages(session.id())) {
@@ -245,15 +270,21 @@ class ChatConversations {
      * no endpoint, no watchdog, no hangup, no voice. The company's tools are the real ones,
      * and the MCP tool set is left unbuilt so the turn builds it exactly as a call does.
      */
-    private DialogSession newDialogSession(ChatSession session, AiAgent agent, ScenarioDefinition scenario) {
+    private DialogSession newDialogSession(ChatSession session, AiAgent agent, ScenarioDefinition scenario,
+                                           String phone, ClientMemory memory) {
         // The chat widget stays on the platform's model even for a company on its own LLM (3.14 covers calls).
         EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(session.companyId())
                 .withoutOwnLlm()
                 .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
         Company company = companyUseCase.findById(session.companyId());
         List<Tool> tools = toolUseCase.findAgentToolDefinitions(session.companyId(), agent.id());
+        Map<String, Object> facts = new LinkedHashMap<>(session.outcome());
+        if (!facts.containsKey("clientName") && memory != null && memory.preferredName() != null && !memory.preferredName().isBlank()) {
+            facts.put("clientName", memory.preferredName());
+        }
+
         DialogSession dialog = DialogSession.builder("chat-" + session.sessionKey(), session.language())
-                .context(new CallContext(Map.of(), null))
+                .context(new CallContext(facts, null, memory, phone))
                 .scenario(scenario)
                 .companyId(session.companyId())
                 .disclosureEnabled(false)
@@ -266,6 +297,73 @@ class ChatConversations {
                 .build();
         dialog.setFastModel(agent.fastLlmModel());
         return dialog;
+    }
+
+    private ClientMemory findMemory(long companyId, String phone) {
+        return phone != null ? clientMemoryUseCase.findByCompanyIdAndPhone(companyId, phone) : null;
+    }
+
+    private String extractPhone(Map<String, Object> outcome) {
+        if (outcome == null || outcome.isEmpty()) {
+            return null;
+        }
+        for (String key : List.of("phone", "clientPhone", "client_phone", "phoneNumber", "phone_number", "callerNumber", "contactPhone")) {
+            Object val = outcome.get(key);
+            if (val != null && !val.toString().isBlank()) {
+                String normalized = PhoneNumbers.normalize(val.toString());
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void rememberIfEnded(ChatSession session, DialogSession dialog, AiAgent agent, Disposition disposition) {
+        String phone = extractPhone(session.outcome());
+        if (phone == null) {
+            phone = extractPhone(dialog.outcome());
+        }
+        if (phone == null) {
+            return;
+        }
+        try {
+            Scenario scenario = aiAgentUseCase.resolveScenario(session.companyId(), agent);
+            String summary = resolveChatSummary(session, dialog, disposition);
+            RememberedCall rememberedCall = new RememberedCall(
+                    clock.instant(),
+                    scenario != null ? scenario.scenarioKey() : null,
+                    disposition,
+                    summary
+            );
+            Map<String, Object> facts = !dialog.outcome().isEmpty()
+                    ? dialog.outcome()
+                    : session.outcome();
+            clientMemoryUseCase.rememberCall(session.companyId(), phone, rememberedCall, facts);
+        } catch (Exception e) {
+            log.warn("[chat {}] could not update client memory: {}", session.sessionKey(), e.getMessage());
+        }
+    }
+
+    private String resolveChatSummary(ChatSession session, DialogSession dialog, Disposition disposition) {
+        Object summaryObj = dialog.outcome().get("summary");
+        if (summaryObj != null && !summaryObj.toString().isBlank()) {
+            return summaryObj.toString().trim();
+        }
+        Object noteObj = dialog.outcome().get("note");
+        if (noteObj != null && !noteObj.toString().isBlank()) {
+            return noteObj.toString().trim();
+        }
+        String channel = session.telegramBotId() != null ? "Telegram" : "Chat Widget";
+        StringBuilder sb = new StringBuilder(channel).append(" conversation");
+        if (disposition != null) {
+            sb.append(" ended with ").append(disposition);
+        }
+        if (dialog.lastAgentText() != null && !dialog.lastAgentText().isBlank()) {
+            String lastText = dialog.lastAgentText().trim();
+            sb.append(": ").append(lastText.length() > 200 ? lastText.substring(0, 200) + "..." : lastText);
+        }
+        return sb.toString();
     }
 
     private AiAgent requireAgent(ChatSession session) {

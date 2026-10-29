@@ -105,7 +105,8 @@ public final class ScenarioCanvasConverter {
                 int branchIndex = 0;
                 for (StageBranch branch : stage.branches()) {
                     String edgeId = "e_branch_" + stage.id() + "_" + branch.goTo() + "_" + branchIndex++;
-                    String label = branch.fact() + " " + branch.operator() + (branch.value() != null ? " " + branch.value() : "");
+                    String label = !branch.operator().needsFact() ? "else"
+                            : branch.fact() + " " + branch.operator() + (branch.value() != null ? " " + branch.value() : "");
                     Map<String, Object> branchData = new LinkedHashMap<>();
                     branchData.put("fact", branch.fact());
                     branchData.put("operator", branch.operator().name());
@@ -262,6 +263,8 @@ public final class ScenarioCanvasConverter {
                 }
             }
 
+            // This canvas carries no node type, global condition or action; they are kept from the saved stage.
+            StageDef saved = fallback != null ? fallback.findStage(stageId) : null;
             reconstructedStages.add(new StageDef(
                     stageId,
                     purpose != null ? purpose : stageId,
@@ -272,7 +275,12 @@ public final class ScenarioCanvasConverter {
                     branches.isEmpty() ? null : branches,
                     transitionConditions.isEmpty() ? null : transitionConditions,
                     staticLine,
-                    requiredOutcomes.isEmpty() ? null : requiredOutcomes
+                    requiredOutcomes.isEmpty() ? null : requiredOutcomes,
+                    saved != null ? saved.type() : null,
+                    stageNode.position() != null
+                            ? new StagePosition(stageNode.position().x(), stageNode.position().y()) : null,
+                    saved != null ? saved.globalCondition() : null,
+                    saved != null ? saved.action() : null
             ));
         }
 
@@ -302,7 +310,9 @@ public final class ScenarioCanvasConverter {
                 fallback != null ? fallback.factWebhook() : null,
                 fallback != null ? fallback.styleExamples() : null,
                 globalNodes.isEmpty() ? (fallback != null ? fallback.globalNodes() : null) : globalNodes,
-                callPurpose
+                callPurpose,
+                fallback != null ? fallback.startStageId() : null,
+                fallback != null ? fallback.transitionMode() : null
         );
     }
 

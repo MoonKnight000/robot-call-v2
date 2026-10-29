@@ -1,5 +1,17 @@
-### Ask the copilot — a new conversation (sessionId null)
+### Ask the copilot — streaming response (SSE)
 POST http://localhost:8080/api/copilot/ask
+Accept: text/event-stream
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "sessionId": null,
+  "message": "Oxirgi 7 kunda qaysi agentda transferlar ko'paydi va nega?"
+}
+
+### Ask the copilot — a new conversation (JSON response)
+POST http://localhost:8080/api/copilot/ask
+Accept: application/json
 Content-Type: application/json
 Authorization: Bearer {{auth_token}}
 

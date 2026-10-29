@@ -13,6 +13,8 @@ public enum ErrorCode {
     TARGET_NOT_FOUND("Target %s not found"),
     COMPANY_NOT_FOUND("Company %s not found"),
     COMPANY_CONFIG_NOT_FOUND("Company config %s not found"),
+    COMPANY_DEFAULT_PROTECTED("company %s hosts the platform administrator — it cannot be suspended, deleted or given an expiry date"),
+    COMPANY_FEATURE_NOT_SWITCHABLE("feature %s is part of the platform itself and cannot be switched off"),
     CONTACT_NOT_FOUND("Contact %s not found"),
     CLIENT_MEMORY_NOT_FOUND("No memory for client %s yet"),
     CRM_INTEGRATION_NOT_FOUND("CRM integration %s not found"),
@@ -70,6 +72,7 @@ public enum ErrorCode {
     CHAT_MODEL_NOT_CONFIGURED("No chat model is configured — set GEMINI_API_KEY or OPENAI_API_KEY"),
     CHAT_DAILY_LIMIT_REACHED("Agent %s has held every chat it may hold today"),
     CHAT_SESSION_NOT_FOUND("Chat %s not found"),
+    PHONE_NUMBER_NOT_FOUND("Phone number %s not found"),
     CHAT_SESSION_ENDED("Chat %s is over — start a new one"),
     CHAT_SESSION_FULL("A chat holds at most %s messages — start a new one"),
     CHAT_SESSION_EXPIRED("The chat was quiet for more than %s minute(s) — start a new one"),
@@ -98,7 +101,9 @@ public enum ErrorCode {
     CROSS_COMPANY_ACCESS_FORBIDDEN("cross-company access forbidden"),
     SIP_TRUNK_MANUAL_ENDPOINT_FORBIDDEN(
             "only a platform admin can point a trunk at a hand-configured PJSIP endpoint — use host/sipUsername/sipPassword"),
-    COMPANY_SUSPENDED("this company is suspended — contact the platform administrator"),
+    COMPANY_SUSPENDED("this company is suspended or removed — contact the platform administrator"),
+    COMPANY_FEATURE_DISABLED("%s is not enabled for this company — contact the platform administrator"),
+    COMPANY_INTEGRATION_DISABLED("integration %s is not enabled for this company — contact the platform administrator"),
     ROLE_PERMISSION_NOT_HELD("you cannot grant %s — your own role does not have it"),
     INBOUND_ROUTE_DID_PLATFORM_ONLY("only a platform admin can assign or change a route's DID number"),
     HUMAN_LIKE_PERSONA_PLATFORM_ONLY("only a platform admin can allow or withdraw a human-like agent persona"),
@@ -252,6 +257,7 @@ public enum ErrorCode {
     AI_AGENT_DATA_FIELD_TYPE_INVALID("dataNeeded field '%s' has type '%s'; allowed: string, number, boolean, date, enum"),
     AI_AGENT_TRANSFER_PHONE_INVALID("transferPhoneNumber '%s' is not a valid phone number"),
     AI_AGENT_LIMIT_EXCEEDS_COMPANY_CAP("maxConversationDurationSeconds %s exceeds the company cap of %s seconds"),
+    CONCURRENCY_LIMIT_OUT_OF_RANGE("Concurrency channels must be between 1 and %s"),
     TARGET_SOURCE_URL_INVALID("target source url must be an http(s) address, got '%s'"),
     /** @deprecated superseded by TARGET_SOURCE_RESPONSE_NOT_JSON / _NOT_ARRAY; kept because the frontend may still translate it. */
     @Deprecated
@@ -351,6 +357,7 @@ public enum ErrorCode {
     SCORECARD_ANSWER_UNKNOWN("Answer %s is not on call %s's scorecard"),
 
     // conflict
+    LIVEKIT_DISABLED("the company uses the LiveKit telephony engine, but LiveKit is not enabled on this server"),
     CONTACT_PHONE_EXISTS("Contact with phone %s already exists"),
     SUBJECT_ERASURE_NOT_CONFIRMED("Erasing a person's data cannot be undone — repeat the request with confirm=true"),
     TTS_PROVIDER_UNAVAILABLE("No TTS provider available for language %s"),
@@ -428,6 +435,8 @@ public enum ErrorCode {
     OPERATOR_NOT_REACHABLE("Operator %s has no SIP account or is not signed in"),
     CALL_FLOW_NOT_PUBLISHED("Call flow %s has never been published"),
     CALLER_RULE_PREFIX_EXISTS("A caller rule for %s already exists"),
+    PHONE_NUMBER_ALREADY_PURCHASED("Phone number %s is already purchased"),
+    PHONE_NUMBER_ALREADY_EXISTS("Phone number %s already exists"),
     MISSED_CALL_ALREADY_OPEN("Phone %s already has an open missed call (%s)"),
     CALL_NOT_WITH_OPERATOR("Call %s is not connected to an operator"),
     CALL_CONSULT_NOT_ACTIVE("Call %s has no consultation in progress"),

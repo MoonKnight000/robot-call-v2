@@ -230,6 +230,46 @@
         $ref: ../common.yaml#/responses/Forbidden
       '404':
         $ref: ../common.yaml#/responses/NotFound
+/api/companies/{id}/platform:
+  put:
+    tags:
+    - Companies
+    summary: Kompaniyani platforma tomonidan tahrirlash
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: company_updateByPlatform
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/company.yaml#/UpdateCompanyByPlatformRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/company.yaml#/Company
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
 /api/companies/{id}/logo:
   post:
     tags:
@@ -256,46 +296,6 @@
                 format: binary
             required:
             - file
-    responses:
-      '200':
-        description: OK
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: ../common.yaml#/schemas/ResponseData
-              - type: object
-                properties:
-                  data:
-                    $ref: ../schemas/company.yaml#/Company
-      '400':
-        $ref: ../common.yaml#/responses/BadRequest
-      '401':
-        $ref: ../common.yaml#/responses/Unauthorized
-      '403':
-        $ref: ../common.yaml#/responses/Forbidden
-      '404':
-        $ref: ../common.yaml#/responses/NotFound
-/api/companies/{id}/status:
-  put:
-    tags:
-    - Companies
-    summary: Holatni o'zgartirish
-    description: '**Huquq:** `PLATFORM_ADMIN`'
-    operationId: company_updateStatus
-    parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: ../schemas/company.yaml#/UpdateCompanyStatusRequest
     responses:
       '200':
         description: OK

@@ -18,7 +18,7 @@ public interface IntegrationController {
 
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/catalog")
-    ResponseEntity<ResponseData<List<CrmCatalogEntry>>> catalog();
+    ResponseEntity<ResponseData<List<IntegrationCatalogEntry>>> catalog(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping

@@ -59,6 +59,7 @@ public class McpServerToolCatalog {
             "name": {"type": "string", "maxLength": 255},
             "description": {"type": "string", "maxLength": 500},
             "language": {"type": "string", "description": "uz-UZ, ru-RU, ..."},
+            "mode": {"type": "string", "enum": ["SINGLE_PROMPT", "CONVERSATIONAL_FLOW"]},
             "script": {"type": "object", "properties": {
               "firstMessage": {"type": "string", "description": "What the agent says when the call connects"},
               "systemPrompt": {"type": "string", "description": "The agent's instructions (mode PROMPT)"},

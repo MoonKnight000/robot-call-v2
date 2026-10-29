@@ -116,6 +116,14 @@ public enum Permission {
     QUALITY_REVIEW_READ("qrv.r", PermissionGroup.QUALITY_REVIEW),
     QUALITY_REVIEW_EDIT("qrv.w", PermissionGroup.QUALITY_REVIEW),
 
+    /** The text channels — Telegram bots and the chats they hold — as their own page, apart from the voice agent. */
+    CHAT_AGENT_READ("cha.r", PermissionGroup.CHAT_AGENT),
+    CHAT_AGENT_EDIT("cha.w", PermissionGroup.CHAT_AGENT),
+
+    /** Alert rules that watch call metrics and notify; the delivery channels stay under NOTIFICATION_SETTINGS. */
+    ALERT_READ("alr.r", PermissionGroup.ALERT),
+    ALERT_EDIT("alr.w", PermissionGroup.ALERT),
+
     /** Tenant onboarding and suspension — platform staff only, never grantable to a company role. */
     PLATFORM_ADMIN("plt.a", PermissionGroup.PLATFORM, PermissionScope.PLATFORM);
 
@@ -137,6 +145,11 @@ public enum Permission {
 
     public String code() {
         return code;
+    }
+
+    /** The product the platform can switch off that takes this permission with it. */
+    public Feature feature() {
+        return group.feature();
     }
 
     public PermissionGroup group() {

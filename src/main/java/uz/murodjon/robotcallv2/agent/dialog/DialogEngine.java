@@ -65,6 +65,7 @@ public class DialogEngine implements CallDialog {
     private final SttProperties sttProperties;
     private final TtsProperties ttsProperties;
     private final OwnLlmChatModels ownLlmChatModels;
+    private final AgentHandoffResolver agentHandoffResolver;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
@@ -87,7 +88,8 @@ public class DialogEngine implements CallDialog {
                         VoicemailDrop voicemailDrop,
                         SttProperties sttProperties,
                         TtsProperties ttsProperties,
-                        OwnLlmChatModels ownLlmChatModels) {
+                        OwnLlmChatModels ownLlmChatModels,
+                        AgentHandoffResolver agentHandoffResolver) {
         this.dialogProperties = dialogProperties;
         this.callAttemptUseCase = callAttemptUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -108,6 +110,7 @@ public class DialogEngine implements CallDialog {
         this.sttProperties = sttProperties;
         this.ttsProperties = ttsProperties;
         this.ownLlmChatModels = ownLlmChatModels;
+        this.agentHandoffResolver = agentHandoffResolver;
     }
 
     @Override
@@ -227,9 +230,14 @@ public class DialogEngine implements CallDialog {
                 .build();
         if (simulated) {
             session.setMcpTools(List.of());
-        } else if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
-            session.setMidCallSmsSender(smsText ->
-                    midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), smsText));
+        } else {
+            // The model may text the caller only where the agent allows it (TurnTools); an SMS
+            // stage of the flow is the flow's own decision and needs the sender regardless.
+            if (agent != null && (agent.callBehaviour().midCallSmsEnabled() || StageEntry.sendsSms(scenario))) {
+                session.setMidCallSmsSender(smsText ->
+                        midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), smsText));
+            }
+            session.setAgentScenarioResolver(agentId -> agentHandoffResolver.findPublishedScenario(companyId, agentId));
         }
         session.setDtmfSender(dtmf);
         boolean inbound = callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null;
@@ -239,7 +247,7 @@ public class DialogEngine implements CallDialog {
         // own llmModel is: a survey agent and a collections agent share a deployment and
         // not a tolerance for a weaker model. Null leaves the installation default.
         String agentFastModel = agent != null ? agent.fastLlmModel() : null;
-        if (agentFastModel != null && AiModel.isRealtimeModel(agentFastModel)) {
+        if (AiModel.isRealtimeModel(agentFastModel)) {
             agentFastModel = null;
         }
         session.setFastModel(agentFastModel);
@@ -534,7 +542,8 @@ public class DialogEngine implements CallDialog {
                 asString(c, "contractNumber"),
                 s.state(),
                 s.transferReason(),
-                callTranscriptUseCase.findTranscriptText(s.callAttemptId()));
+                callTranscriptUseCase.findTranscriptText(s.callAttemptId()),
+                StageEntry.findTransferTarget(s.scenario(), s.state()));
     }
 
     public DialogSession findSession(String channelId) {

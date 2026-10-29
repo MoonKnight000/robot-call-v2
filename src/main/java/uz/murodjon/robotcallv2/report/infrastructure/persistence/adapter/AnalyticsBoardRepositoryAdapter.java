@@ -18,9 +18,10 @@ import uz.murodjon.robotcallv2.report.infrastructure.persistence.repository.Anal
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.toTimestamptz;
 
 @Component
 public class AnalyticsBoardRepositoryAdapter implements AnalyticsBoardRepository {
@@ -147,52 +148,40 @@ public class AnalyticsBoardRepositoryAdapter implements AnalyticsBoardRepository
             case SUCCESS_RATE -> "COALESCE(100.0 * count(*) FILTER (WHERE a.disposition IN ('COMPLETED', 'PROMISE_TO_PAY', 'GOAL_REACHED')) / NULLIF(count(*), 0), 0.0)";
             case AVG_DURATION_SECONDS -> "COALESCE(avg(a.duration_sec) FILTER (WHERE a.answered_at IS NOT NULL), 0.0)";
             case PTP_COUNT -> "count(*) FILTER (WHERE a.disposition = 'PROMISE_TO_PAY')";
-            case TOTAL_COST_UZS -> "COALESCE(sum(a.duration_sec) * 10, 0)";
-            case AVG_LATENCY_MS -> "COALESCE(avg(a.duration_sec) * 100, 0.0)";
+            case TOTAL_COST_UZS -> "COALESCE(sum(b.total_uzs) FILTER (WHERE b.status = 'SETTLED'), 0)";
+            case AVG_LATENCY_MS -> "COALESCE(avg(ct.avg_turn_latency_ms), 0.0)";
         };
 
-        StringBuilder sql = new StringBuilder("""
+        // Only the grouping and the aggregate vary, and both come from enum switches above;
+        // every value is a bound parameter. call_billing and call_technical are one row per call.
+        String sql = """
             SELECT %s AS grp_key,
                    %s AS grp_val,
                    count(*) AS call_total
             FROM call_attempt a
-            LEFT JOIN campaign c ON a.campaign_id = c.id
-            LEFT JOIN ai_agent ag ON c.ai_agent_id = ag.id
+            LEFT JOIN campaign_target t ON t.id = a.target_id
+            LEFT JOIN campaign c ON c.id = t.campaign_id
+            LEFT JOIN ai_agent ag ON ag.id = a.ai_agent_id
+            LEFT JOIN call_billing b ON b.call_attempt_id = a.id
+            LEFT JOIN call_technical ct ON ct.call_id = a.id
             WHERE a.company_id = :companyId
               AND a.created_at >= :from
               AND a.created_at <= :to
-            """.formatted(selectGroup, metricAgg));
+              AND (CAST(:campaignId AS bigint) IS NULL OR t.campaign_id = CAST(:campaignId AS bigint))
+              AND (CAST(:agentId AS bigint) IS NULL OR a.ai_agent_id = CAST(:agentId AS bigint))
+            GROUP BY %s ORDER BY grp_key ASC LIMIT 100
+            """.formatted(selectGroup, metricAgg, selectGroup);
 
-        if (campaignId != null) {
-            sql.append(" AND a.campaign_id = :campaignId ");
-        }
-        if (agentId != null) {
-            sql.append(" AND (c.ai_agent_id = :agentId) ");
-        }
-
-        sql.append(" GROUP BY %s ORDER BY grp_key ASC LIMIT 100".formatted(selectGroup));
-
-        var client = jdbcClient.sql(sql.toString())
+        return jdbcClient.sql(sql)
                 .param("companyId", companyId)
-                .param("from", effectiveFrom)
-                .param("to", effectiveTo);
-
-        if (campaignId != null) {
-            client.param("campaignId", campaignId);
-        }
-        if (agentId != null) {
-            client.param("agentId", agentId);
-        }
-
-        List<AnalyticsDataPoint> points = new ArrayList<>();
-        client.query((rs, rowNum) -> {
-            String key = rs.getString("grp_key");
-            double val = rs.getDouble("grp_val");
-            double total = rs.getDouble("call_total");
-            points.add(new AnalyticsDataPoint(key != null ? key : "N/A", key != null ? key : "N/A", val, total));
-            return null;
-        }).list();
-
-        return points;
+                .param("from", toTimestamptz(effectiveFrom))
+                .param("to", toTimestamptz(effectiveTo))
+                .param("campaignId", campaignId)
+                .param("agentId", agentId)
+                .query((rs, rowNum) -> {
+                    String key = rs.getString("grp_key") != null ? rs.getString("grp_key") : "N/A";
+                    return new AnalyticsDataPoint(key, key, rs.getDouble("grp_val"), rs.getDouble("call_total"));
+                })
+                .list();
     }
 }

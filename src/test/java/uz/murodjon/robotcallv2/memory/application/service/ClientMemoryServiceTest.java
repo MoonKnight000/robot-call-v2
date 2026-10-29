@@ -56,6 +56,17 @@ class ClientMemoryServiceTest {
     }
 
     @Test
+    void rememberCallCapturesPreferredNameAndLanguageWhenPresentInFacts() {
+        service.rememberCall(COMPANY, PHONE,
+                call("2026-08-01T09:00:00Z", Disposition.SUCCESSFUL, "Chat summary"),
+                Map.of("clientName", "Jasur", "language", "uz-UZ"));
+
+        ClientMemory saved = savedMemory();
+        assertThat(saved.preferredName()).isEqualTo("Jasur");
+        assertThat(saved.preferredLanguage()).isEqualTo("uz-UZ");
+    }
+
+    @Test
     void keepsOnlyTheThreeNewestCallsNewestFirst() {
         List<RememberedCall> existing = List.of(
                 call("2026-08-03T09:00:00Z", Disposition.HUNG_UP, "third"),

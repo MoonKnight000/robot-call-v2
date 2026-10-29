@@ -19,3 +19,14 @@ Authorization: Bearer {{auth_token}}
 GET http://localhost:8080/api/webhook-deliveries/listen
 Accept: text/event-stream
 Authorization: Bearer {{auth_token}}
+
+### 4. Inbound LiveKit SIP Gateway dispatch webhook (Public)
+POST http://localhost:8080/api/webhooks/livekit/sip
+Content-Type: application/json
+
+{
+  "callId": "lk-sip-call-001",
+  "caller": "+998901234567",
+  "called": "+998712000000",
+  "sipTrunkId": "trunk-livekit-main"
+}

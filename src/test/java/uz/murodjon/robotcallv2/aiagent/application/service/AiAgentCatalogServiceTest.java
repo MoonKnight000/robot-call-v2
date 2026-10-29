@@ -94,9 +94,9 @@ class AiAgentCatalogServiceTest {
     @Test
     void findTemplatesOffersThePresetsWithBlankLast() {
         assertThat(service.findTemplates("uz-UZ")).extracting(TemplatePresetDto::templateId)
-                .containsExactly(AgentTemplate.BUSINESS, AgentTemplate.SUPPORT, AgentTemplate.MEDICAL,
-                        AgentTemplate.DEBT_REMINDER, AgentTemplate.LEAD_QUALIFICATION, AgentTemplate.SURVEY,
-                        AgentTemplate.BLANK);
+                .containsExactly(AgentTemplate.APPOINTMENT_BOOKING, AgentTemplate.SUPPORT,
+                        AgentTemplate.LEAD_QUALIFICATION, AgentTemplate.DEBT_REMINDER, AgentTemplate.INBOUND_RECEPTIONIST,
+                        AgentTemplate.SURVEY, AgentTemplate.MEDICAL, AgentTemplate.ORDER_TRACKING, AgentTemplate.BLANK);
     }
 
     @Test
@@ -104,7 +104,7 @@ class AiAgentCatalogServiceTest {
         TemplatePresetDto russian = service.findTemplates("ru-RU").getFirst();
         TemplatePresetDto uzbek = service.findTemplates("uz-UZ").getFirst();
 
-        assertThat(russian.defaults()).isEqualTo(AiAgentTemplates.getPreset(AgentTemplate.BUSINESS, "ru-RU"));
+        assertThat(russian.defaults()).isEqualTo(AiAgentTemplates.getPreset(AgentTemplate.APPOINTMENT_BOOKING, "ru-RU"));
         assertThat(russian.defaults().firstMessage()).isNotEqualTo(uzbek.defaults().firstMessage());
     }
 

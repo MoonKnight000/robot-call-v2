@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.crm.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.crm.application.dto.UysotLeadPayloadDto;
 import uz.murodjon.robotcallv2.crm.application.dto.UysotLeadWebhookEvent;
 import uz.murodjon.robotcallv2.crm.application.dto.UysotWebhookResult;
@@ -30,7 +31,7 @@ class UysotWebhookServiceTest {
     void setUp() {
         instantCallUseCase = mock(InstantCallUseCase.class);
         secretUseCase = mock(SecretUseCase.class);
-        service = new UysotWebhookService(instantCallUseCase, secretUseCase);
+        service = new UysotWebhookService(instantCallUseCase, secretUseCase, CompanyFixtures.openCompanyUseCase());
     }
 
     @Test

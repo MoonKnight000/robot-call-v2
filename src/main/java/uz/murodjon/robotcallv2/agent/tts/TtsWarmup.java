@@ -120,7 +120,7 @@ public class TtsWarmup {
         }
         if (!agent.speechEngine().mode().speaksWithTts()) {
             log.debug("Skipping TTS warm-up for campaign {} — agent speaks with its realtime engine's voice",
-                    campaign.id(), campaign.companyId());
+                    campaign.id());
             return;
         }
 

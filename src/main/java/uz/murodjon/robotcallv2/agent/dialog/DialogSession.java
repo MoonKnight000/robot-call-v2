@@ -30,6 +30,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.LongFunction;
 import java.util.function.Predicate;
 
 /**
@@ -117,6 +118,14 @@ public class DialogSession implements DialogOutcomeSink {
     private final List<PronunciationRule> pronunciationRules;
     private final AiAgent agent;
     private volatile Predicate<String> midCallSmsSender;
+    /** The published scenario of one of the call's company agents, by agent id; null when the call cannot hand off. */
+    private volatile LongFunction<ScenarioDefinition> agentScenarioResolver;
+    /**
+     * How far the model has got with the current stage's one job ({@link StageEntry#needsModelAction}):
+     * 0 on entry, 1 once it has been asked to run it, 2 once asked to move on. Reset by every
+     * {@link #setState}, so re-entering a stage runs its job again.
+     */
+    private volatile int stageActionStep;
 
     /** Whose name the §11.1 disclosure is spoken in — the company this call's campaign belongs to. */
     private final String companyName;
@@ -211,10 +220,10 @@ public class DialogSession implements DialogOutcomeSink {
         this.languageVoices = builder.languageVoices == null ? Map.of() : Map.copyOf(builder.languageVoices);
         this.context = builder.context;
         this.scenario = builder.scenario;
-        // The scenario's first declared stage is its entry point, by convention
-        // (ROADMAP A.3 — every builtin template already lists its opening stage first).
+        // The scenario's start stage is its entry point: startStageId, or else the first declared
+        // stage (ROADMAP A.3 — every builtin template already lists its opening stage first).
         this.state = (scenario != null && scenario.stages() != null && !scenario.stages().isEmpty())
-                ? scenario.stages().get(0).id()
+                ? scenario.findStartStage().id()
                 : "CONVERSATION";
         this.endpoint = builder.endpoint;
         this.hangup = builder.hangup;
@@ -259,6 +268,29 @@ public class DialogSession implements DialogOutcomeSink {
     public boolean triggerMidCallSms(String text) {
         Predicate<String> sender = midCallSmsSender;
         return sender != null && text != null && !text.isBlank() && sender.test(text.trim());
+    }
+
+    public void setAgentScenarioResolver(LongFunction<ScenarioDefinition> agentScenarioResolver) {
+        this.agentScenarioResolver = agentScenarioResolver;
+    }
+
+    @Override
+    public boolean handOffToAgent(long agentId) {
+        LongFunction<ScenarioDefinition> resolver = agentScenarioResolver;
+        ScenarioDefinition next = resolver == null ? null : resolver.apply(agentId);
+        if (next == null || next.stages() == null || next.stages().isEmpty()) {
+            return false;
+        }
+        switchScenario(next);
+        return true;
+    }
+
+    public int stageActionStep() {
+        return stageActionStep;
+    }
+
+    public void setStageActionStep(int stageActionStep) {
+        this.stageActionStep = stageActionStep;
     }
 
     public String firstMessage() {
@@ -489,14 +521,14 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     /**
-     * Hand the rest of this call to {@code next} ({@link MultiAgentRouter}): its first stage
+     * Hand the rest of this call to {@code next} ({@link MultiAgentRouter}): its start stage
      * becomes the current one, and the cached prompt prefix is dropped because that is
      * where the scenario's role and rules live. The history stays — what was already said
      * stays said, and the new scenario's model needs it.
      */
     public void switchScenario(ScenarioDefinition next) {
         this.scenario = next;
-        setState(next.stages().get(0).id());
+        setState(next.findStartStage().id());
         this.systemPrefix = null;
     }
 
@@ -542,6 +574,7 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setState(String state) {
         this.state = state;
+        this.stageActionStep = 0;
         if (state != null) {
             stageAttempts.putIfAbsent(state, 0);
         }

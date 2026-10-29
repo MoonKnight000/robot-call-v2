@@ -25,6 +25,11 @@ public class McpControllerImpl implements McpController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<List<McpConnectionRow>>> agentConnections(long companyId, long agentId) {
+        return ResponseEntity.ok(ResponseData.ok(mcpUseCase.findAgentConnections(companyId, agentId)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<McpConnectionRow>> createConnection(long companyId,
                                                                           McpConnectionRequest request) {
         return ResponseEntity.ok(ResponseData.ok(mcpUseCase.createConnection(companyId, request)));

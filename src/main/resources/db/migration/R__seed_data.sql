@@ -1,5 +1,5 @@
 -- Seed data: everything a fresh database needs to place and answer a call without a
--- single API call first — bootstrap tenant and owner, the voice and model catalogs, the
+-- single API call first — bootstrap tenant and the platform admin, the voice and model catalogs, the
 -- built-in scenario templates, three ready AI agents, the inbound route that answers the
 -- softphone test extension and the knowledge base. Flyway repeatable migration — reruns whenever this file's checksum changes, so
 -- every statement below guards against re-insertion.
@@ -53,9 +53,25 @@ ON CONFLICT (company_id, code) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('app_role', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_role), 1), true);
 
--- Users are seeded in the TEST DATA section at the bottom, every one with the test password
--- Test12345! — a published credential. Because company 1 then has users, UserBootstrap
--- does not create the BOOTSTRAP_ADMIN_* account.
+-- The platform admin: platform staff, not a tenant user. SUPERADMIN is the only role holding
+-- PLATFORM_ADMIN (SystemRole), which is what opens company CRUD, platform trunks and users,
+-- the number marketplace and every other company's data (CompanyAccessGuard). It lives in
+-- company 1 for the same reason UserBootstrap's first admin does: a user needs a company,
+-- and the bootstrap tenant is the one that always exists.
+--
+-- Login: platform / platform@robotcall.uz. The password is not written down here; it was
+-- handed over with this change — change it after the first login (PUT /api/profile/password).
+-- Guarded by username and never refreshed, so a changed password survives a reseed. Because
+-- company 1 has a user from here on, UserBootstrap does not create the BOOTSTRAP_ADMIN_*
+-- account.
+INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status, position)
+SELECT 1, 'Platforma administratori', 'platform@robotcall.uz', 'platform',
+       '$2a$12$LEjDtXWZDfTGd6GJwFcYDuj5Ti0DKLgkxT8BuyDf3Ba7uDZ19W//K',
+       (SELECT id FROM app_role WHERE company_id = 1 AND code = 'SUPERADMIN'), 'ACTIVE', 'Platforma egasi'
+WHERE NOT EXISTS (SELECT 1 FROM app_user WHERE username = 'platform' OR email = 'platform@robotcall.uz');
+
+-- Everyone else is seeded in the TEST DATA section at the bottom, every one with the test
+-- password Test12345! — a published credential.
 
 -- TTS Voice Catalog: Yandex, Aisha, Gemini Live, and Gemini TTS voices
 INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
@@ -692,11 +708,13 @@ ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
 -- caller is waiting through, and nothing is uploaded yet for it to find. Turn it on for
 -- this agent once a knowledge source is. The keyword knowledge base seeded at the bottom
 -- of this file answers without it either way.
-INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
+-- OMNICHANNEL: the same agent answers the phone, the website widget and the Telegram bot.
+INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language, persona,
                       first_message, pipeline_mode, stt_provider, tts_provider, llm_model, tts_voice,
                       ambient_sound, use_rag, voicemail_action, transfer_message)
 SELECT 1, 'Kiruvchi qabulxona',
        'Kiruvchi qo''ng''iroqlarga javob beradi: savolga bilim bazasidan javob, kerak bo''lsa operatorga uzatadi.',
+       'OMNICHANNEL', 'CONVERSATIONAL_FLOW',
        (SELECT id FROM scenario WHERE scenario_key = 'reception' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
        -- Opens with the question, not with a greeting: company_config.disclosure_text is
@@ -710,11 +728,12 @@ WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvc
 -- Outbound collections, cascade pipeline: Yandex recognition, Gemini for the turn,
 -- Yandex synthesis. The default for placed calls — every tuning knob in
 -- config/speech.yml is calibrated against this chain.
-INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
+INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language, persona,
                       pipeline_mode, stt_provider, tts_provider, llm_model, tts_voice,
                       ambient_sound, use_rag, voicemail_action, voicemail_message, transfer_message)
 SELECT 1, 'Qarzdorlik (cascade)',
        'Chiquvchi qarzdorlik qo''ng''irog''i: STT + LLM + TTS zanjiri (Yandex + Gemini).',
+       'VOICE', 'CONVERSATIONAL_FLOW',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
        'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'nigora',
@@ -728,11 +747,12 @@ WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdo
 -- The same call on a speech-to-speech engine. llm_model is the realtime model here, not
 -- a text one (RealtimeCallConfig#modelOr), and tts_voice must be a catalog id owned by
 -- the same provider or the engine falls back to the voice it was deployed with.
-INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
+INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language, persona,
                       pipeline_mode, realtime_provider, llm_model, tts_voice,
                       ambient_sound, use_rag, voicemail_action, voicemail_message, transfer_message)
 SELECT 1, 'Qarzdorlik (realtime)',
        'Chiquvchi qarzdorlik qo''ng''irog''i: Gemini Live nativ audio (speech-to-speech).',
+       'VOICE', 'CONVERSATIONAL_FLOW',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
        'REALTIME', 'gemini-live', 'gemini-3.8-live', 'gemini-aoede-uz',
@@ -1004,6 +1024,8 @@ ON CONFLICT (company_id, item_key) DO NOTHING;
 --   Login        superadmin / admin / developer / supervisor / operator1..operator4 / viewer
 --                (operator4 is BLOCKED, yangi.operator is INVITED), all with Test12345!.
 --                Demo tenant (company 2): demo.admin / Test12345!
+--                Partner tenant: partner.admin / Test12345!; its trial client: sammikro.admin / Test12345!
+--                The platform admin (platform) is not a test account — see the top of this file.
 --   Encryption   every *_enc / secret / sealed value below is AES-GCM under
 --                ENCRYPTION_SECRET_KEY=GC7Yp1NZ///WEtW4JGOpgGxhoCWHLNKvn7hw2WtXt1Q=
 --                Put that in .env, or the secrets read back masked-empty and the operator
@@ -2759,5 +2781,454 @@ BEGIN
     VALUES ('PAY-SEED-D001', v_c2, v_admin, 300000, 'BANK_TRANSFER', 'COMPLETED', now() - interval '3 days', now() - interval '3 days');
     INSERT INTO company_billing (company_id, plan_code, plan_name, balance_uzs, reserved_uzs, auto_recharge)
     VALUES (v_c2, 'START_MONTHLY', 'Start', 300000 - v_total, 0, false);
+END
+$seed$;
+
+-- ---------------------------------------------------------------------------
+-- Company 1's newer screens: agent channels, caller ID rotation, the number marketplace,
+-- alerts, promises to pay, operator wrap-up and scorecards, AI call quality and insights,
+-- tool logs, the Telegram bot and chats, the copilot, analytics boards.
+--
+-- Built on the call history above (sip_call_id 'seed-*'), so every row here points at a
+-- call that exists. Nothing here creates a call or moves money: the billing block above
+-- stays the whole story of company 1's balance.
+-- ---------------------------------------------------------------------------
+DO $seed$
+DECLARE
+    v_admin     BIGINT;
+    v_sup       BIGINT;
+    v_op1       BIGINT;
+    v_op2       BIGINT;
+    v_reception BIGINT;
+    v_debt      BIGINT;
+    v_sales     BIGINT;
+    v_prompt    BIGINT;
+    v_trunk     BIGINT;
+    v_flow      BIGINT;
+    v_camp_sept BIGINT;
+    v_pool      BIGINT;
+    v_wu_done   BIGINT;
+    v_wu_retry  BIGINT;
+    v_wu_ptp    BIGINT;
+    v_crit1     BIGINT;
+    v_crit2     BIGINT;
+    v_crit3     BIGINT;
+    v_crit4     BIGINT;
+    v_t_order   BIGINT;
+    v_t_balance BIGINT;
+    v_kb_paid   BIGINT;
+    v_bot       BIGINT;
+    v_widget    BIGINT;
+    v_chat      BIGINT;
+    v_copilot   BIGINT;
+    v_board     BIGINT;
+    v_c01       call_attempt%ROWTYPE;
+    v_c02       call_attempt%ROWTYPE;
+    v_c07       call_attempt%ROWTYPE;
+    v_c17       call_attempt%ROWTYPE;
+    v_c18       call_attempt%ROWTYPE;
+    v_c21       call_attempt%ROWTYPE;
+BEGIN
+    IF EXISTS (SELECT 1 FROM wrap_up_code WHERE company_id = 1 AND name = 'To''lovga rozi') THEN
+        RETURN;
+    END IF;
+
+    SELECT id INTO v_admin FROM app_user WHERE username = 'admin';
+    SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
+    SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
+    SELECT id INTO v_op2 FROM app_user WHERE username = 'operator2';
+    SELECT id INTO v_reception FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona';
+    SELECT id INTO v_debt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)';
+    SELECT id INTO v_sales FROM ai_agent WHERE company_id = 1 AND name = 'Sotuv menejeri';
+    SELECT id INTO v_prompt FROM ai_agent WHERE company_id = 1 AND name = 'Erkin suhbat (PROMPT rejimi)';
+    SELECT id INTO v_trunk FROM sip_trunk WHERE company_id = 1 AND pjsip_endpoint = 'trunk-endpoint';
+    SELECT id INTO v_flow FROM call_flow WHERE company_id = 1 AND name = 'Asosiy IVR';
+    SELECT id INTO v_camp_sept FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — sentabr';
+    SELECT id INTO v_t_order FROM tool WHERE company_id = 1 AND name = 'buyurtma_holati';
+    SELECT id INTO v_t_balance FROM tool WHERE company_id = 1 AND name = 'tolov_qoldigi';
+    SELECT id INTO v_kb_paid FROM knowledge_base_item WHERE company_id = 1 AND topic = 'payment' ORDER BY id LIMIT 1;
+    SELECT * INTO v_c01 FROM call_attempt WHERE sip_call_id = 'seed-c01';
+    SELECT * INTO v_c02 FROM call_attempt WHERE sip_call_id = 'seed-c02';
+    SELECT * INTO v_c07 FROM call_attempt WHERE sip_call_id = 'seed-c07';
+    SELECT * INTO v_c17 FROM call_attempt WHERE sip_call_id = 'seed-c17';
+    SELECT * INTO v_c18 FROM call_attempt WHERE sip_call_id = 'seed-c18';
+    SELECT * INTO v_c21 FROM call_attempt WHERE sip_call_id = 'seed-c21';
+
+    -- Agent channel and mode, for every agent seeded so far (the demo tenant's too): a
+    -- scenario-driven agent is a CONVERSATIONAL_FLOW, a prompt-only one a SINGLE_PROMPT.
+    -- Outbound agents only ever speak; the reception and PROMPT agents also chat.
+    UPDATE ai_agent SET agent_mode = CASE WHEN scenario_mode = 'STRUCTURED_STEPS' THEN 'CONVERSATIONAL_FLOW'
+                                          ELSE 'SINGLE_PROMPT' END;
+    UPDATE ai_agent SET channel = 'VOICE'
+     WHERE id NOT IN (v_reception, v_prompt);
+    UPDATE ai_agent SET channel = 'OMNICHANNEL', speaking_warmth = 'WARM' WHERE id = v_prompt;
+    UPDATE ai_agent SET speaking_warmth = 'RESERVED' WHERE company_id = 1 AND name = 'Bildirishnoma (OpenAI realtime)';
+
+    -- Company limits the platform sets, and the main trunk's contracted channels.
+    UPDATE company SET max_concurrent_calls = 20 WHERE id = 1;
+    UPDATE sip_trunk SET max_channels = 30, max_cps = 5 WHERE id = v_trunk;
+
+    -- Caller ID rotation for the collections campaign, which also orders its queue by score.
+    INSERT INTO caller_id_pool (company_id, name, strategy, description)
+    VALUES (1, 'Qarzdorlik raqamlari', 'HIGHEST_ANSWER_RATE', 'Undiruv kampaniyalari uchun chiquvchi raqamlar')
+    RETURNING id INTO v_pool;
+    INSERT INTO caller_id_pool_number (pool_id, phone, label, usage_count, answer_count, status, cooling_until, last_used_at) VALUES
+        (v_pool, '+998712000101', 'Asosiy',            412, 198, 'ACTIVE',       NULL,                        now() - interval '1 day 03:00'),
+        (v_pool, '+998712000102', 'Zaxira 1',          388, 171, 'ACTIVE',       NULL,                        now() - interval '1 day 02:40'),
+        (v_pool, '+998712000103', 'Zaxira 2',          530,  92, 'COOLING_DOWN', now() + interval '2 days',   now() - interval '2 days'),
+        (v_pool, '+998712000104', 'Eski (spam deb belgilangan)', 260, 21, 'DISABLED', NULL,                    now() - interval '25 days');
+    INSERT INTO caller_id_pool (company_id, name, strategy, description)
+    VALUES (1, 'So''rovnoma raqamlari', 'ROUND_ROBIN', NULL);
+
+    UPDATE campaign SET target_ordering = 'SCORE', caller_id_pool_id = v_pool WHERE id = v_camp_sept;
+    UPDATE campaign_target t
+       SET score = s.score, best_call_hour = s.hour, scored_at = now() - interval '6 hours'
+      FROM (VALUES ('+998901230003', 64, 18), ('+998901230008', 41, 10), ('+998901230010', 77, 12),
+                   ('+998901230013', 58, 19)) AS s(phone, score, hour)
+     WHERE t.campaign_id = v_camp_sept AND t.phone = s.phone;
+
+    -- The marketplace: numbers the platform still holds (company NULL), and the two company 1
+    -- bought — the main IVR number and the sales line.
+    INSERT INTO phone_number (company_id, phone_number, nickname, type, category, status, monthly_fee, price_per_channel,
+                              max_supported_channels, allocated_channels, provider_trunk_id, inbound_agent_id,
+                              inbound_call_flow_id, auto_renew, purchased_at, expires_at, created_by) VALUES
+        (1,    '+998712000100', 'Asosiy raqam (IVR)', 'MARKETPLACE_PURCHASED', 'GOLD',     'ASSIGNED',  450000.00, 25000.00, 30, 10,
+         v_trunk, NULL, v_flow, true,  now() - interval '40 days', now() + interval '20 days', v_admin),
+        (1,    '+998712000200', 'Sotuv liniyasi',     'MARKETPLACE_PURCHASED', 'SILVER',   'ASSIGNED',  250000.00, 20000.00, 20, 5,
+         v_trunk, v_sales, NULL, true,  now() - interval '35 days', now() + interval '25 days', v_admin),
+        (1,    '+998712000300', 'O''z trunkimiz',     'BYO_SIP_TRUNK',         'STANDARD', 'ASSIGNED',       0.00,     0.00, 10, 2,
+         v_trunk, v_prompt, NULL, false, now() - interval '5 days', NULL, v_admin),
+        (NULL, '+998712007777', NULL, 'MARKETPLACE_PURCHASED', 'PLATINUM', 'AVAILABLE', 1500000.00, 30000.00, 60, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
+        (NULL, '+998712001000', NULL, 'MARKETPLACE_PURCHASED', 'GOLD',     'AVAILABLE',  450000.00, 25000.00, 30, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
+        (NULL, '+998712003030', NULL, 'MARKETPLACE_PURCHASED', 'SILVER',   'AVAILABLE',  250000.00, 20000.00, 20, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
+        (NULL, '+998712004581', NULL, 'MARKETPLACE_PURCHASED', 'STANDARD', 'AVAILABLE',  120000.00, 15000.00, 10, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
+        (NULL, '+998712004592', NULL, 'MARKETPLACE_PURCHASED', 'STANDARD', 'AVAILABLE',  120000.00, 15000.00, 10, 1, NULL, NULL, NULL, true, NULL, NULL, NULL);
+
+    -- Alert rules: one fired yesterday (and is cooling down), one quiet, one per agent, one off.
+    INSERT INTO alert_rule (company_id, name, metric, comparator, threshold, window_minutes, min_calls, cooldown_minutes,
+                            ai_agent_id, enabled, last_value, last_evaluated_at, last_triggered_at) VALUES
+        (1, 'Muvaffaqiyat 20% dan pastga tushdi', 'SUCCESS_RATE', 'BELOW', 20, 1440, 10, 360,
+         NULL, true, 14.3, now() - interval '5 minutes', now() - interval '1 day 01:00'),
+        (1, 'Texnik xatolar ko''paydi', 'FAILED_CALL_RATE', 'ABOVE', 15, 60, 10, 60,
+         NULL, true, 9.1, now() - interval '5 minutes', NULL),
+        (1, 'Qarzdorlik agenti sekin javob bermoqda', 'AVG_TURN_LATENCY_MS', 'ABOVE', 1800, 30, 5, 120,
+         v_debt, true, 1120, now() - interval '5 minutes', NULL),
+        (1, 'Qo''ng''iroqlar to''xtab qoldi', 'CALL_COUNT', 'BELOW', 1, 120, 0, 240,
+         NULL, false, NULL, NULL, NULL);
+
+    -- The promise c01 made, kept a day later (the payme conversion above), and how this company
+    -- follows promises up.
+    INSERT INTO payment_promise (company_id, call_attempt_id, target_id, phone, promised_date, promised_amount, status,
+                                 reminder_sent_at, resolved_at, created_at)
+    SELECT 1, v_c01.id, v_c01.target_id, v_c01.phone, r.promised_date, r.promised_amount, 'KEPT',
+           NULL, v_c01.ended_at + interval '1 day', r.created_at
+    FROM call_result r WHERE r.call_id = v_c01.id;
+    INSERT INTO payment_promise_settings (company_id, reminder_enabled, reminder_days_before, reminder_template, grace_days,
+                                          recall_on_broken, payment_goal_key)
+    VALUES (1, true, 1, 'Hurmatli mijoz, {date} sanasida {amount} so''m to''lovni eslatamiz. Uysot.', 2, true, 'payment');
+
+    -- Wrap-up codes, and the three operator calls closed with them.
+    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'Muammo hal qilindi', 'DONE', false)
+    RETURNING id INTO v_wu_done;
+    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'Qayta qo''ng''iroq', 'RETRY', true)
+    RETURNING id INTO v_wu_retry;
+    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'To''lovga rozi', 'DONE', false)
+    RETURNING id INTO v_wu_ptp;
+    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at, enabled) VALUES
+        (1, 'Noto''g''ri raqam', 'EXHAUSTED', false, true),
+        (1, 'Eski kod (o''chiq)', 'DONE', false, false);
+
+    INSERT INTO call_wrap_up (call_attempt_id, company_id, wrap_up_code_id, code_name, outcome, operator_user_id, note,
+                              callback_at, created_at) VALUES
+        (v_c07.id, 1, v_wu_retry, 'Qayta qo''ng''iroq', 'RETRY', v_op1,
+         'Mijoz iyundagi chekni yuboradi, buxgalteriya tekshirgach qayta qo''ng''iroq qilamiz.',
+         now() + interval '2 days', v_c07.ended_at + interval '40 seconds'),
+        (v_c18.id, 1, v_wu_done, 'Muammo hal qilindi', 'DONE', v_op2,
+         'Shartnoma bo''yicha savolga javob berildi.', NULL, v_c18.ended_at + interval '25 seconds'),
+        (v_c21.id, 1, v_wu_ptp, 'To''lovga rozi', 'DONE', v_sup,
+         'VIP mijoz, oy oxirigacha to''laydi. Kutish uzoq bo''lganidan norozi.', NULL, v_c21.ended_at + interval '30 seconds');
+
+    -- Who talked how much on the two inbound operator calls.
+    INSERT INTO call_talk_metrics (call_id, analysed_ms, client_talk_ms, operator_talk_ms, overtalk_ms, silence_ms,
+                                   longest_silence_ms, created_at) VALUES
+        (v_c18.id, 480000, 205000, 231000, 6000, 38000, 7000, v_c18.ended_at + interval '1 minute'),
+        (v_c21.id, 290000, 168000,  82000, 14000, 26000, 61000, v_c21.ended_at + interval '1 minute');
+
+    -- Scorecards: the judge's marks, one confirmed, one waiting in the review inbox.
+    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
+        (1, 'Salomlashish', 'Operator o''zini va kompaniyani tanishtirdimi?', 2) RETURNING id INTO v_crit1;
+    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
+        (1, 'Ehtiyojni aniqlash', 'Operator mijozning savolini aniqlashtiruvchi savollar bilan tushundimi?', 3) RETURNING id INTO v_crit2;
+    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
+        (1, 'Yechim taklif qilish', 'Operator aniq yechim yoki keyingi qadamni aytdimi?', 4) RETURNING id INTO v_crit3;
+    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
+        (1, 'Xayrlashish', 'Operator suhbatni xushmuomalalik bilan yakunladimi?', 1) RETURNING id INTO v_crit4;
+    INSERT INTO scorecard_criterion (company_id, name, instruction, weight, enabled) VALUES
+        (1, 'Skript bo''yicha gapirish (eski)', 'Operator skriptdagi iboralarni so''zma-so''z aytdimi?', 1, false);
+
+    INSERT INTO call_scorecard (call_id, company_id, operator_user_id, score, judged_score, sentiment, needs_review,
+                                review_status, review_note, reviewed_by, reviewed_at, prompt_tokens, completion_tokens,
+                                cached_tokens, created_at) VALUES
+        (v_c18.id, 1, v_op2, 90, 90, 'POSITIVE', false, 'CONFIRMED', NULL, v_sup, v_c18.ended_at + interval '3 hours',
+         5400, 620, 1800, v_c18.ended_at + interval '2 minutes'),
+        (v_c21.id, 1, v_sup, NULL, 40, 'NEGATIVE', true, 'PENDING', NULL, NULL, NULL,
+         3900, 540, 1200, v_c21.ended_at + interval '2 minutes');
+    INSERT INTO call_scorecard_answer (call_id, criterion_id, criterion_name, weight, answer, judged_answer, evidence) VALUES
+        (v_c18.id, v_crit1, 'Salomlashish',         2, 'YES', 'YES', '"Assalomu alaykum, Uysot, Aziz eshitadi"'),
+        (v_c18.id, v_crit2, 'Ehtiyojni aniqlash',   3, 'YES', 'YES', '"Qaysi shartnoma haqida so''rayapsiz?"'),
+        (v_c18.id, v_crit3, 'Yechim taklif qilish', 4, 'YES', 'YES', 'To''lov jadvalini SMS bilan yuborishni taklif qildi'),
+        (v_c18.id, v_crit4, 'Xayrlashish',          1, 'NO',  'NO',  NULL),
+        (v_c21.id, v_crit1, 'Salomlashish',         2, 'YES', 'YES', NULL),
+        (v_c21.id, v_crit2, 'Ehtiyojni aniqlash',   3, 'NO',  'NO',  'Mijozni ikki marta kuttirib qo''ydi'),
+        (v_c21.id, v_crit3, 'Yechim taklif qilish', 4, 'NO',  'NO',  'Aniq to''lov sanasi kelishilmadi'),
+        (v_c21.id, v_crit4, 'Xayrlashish',          1, 'YES', 'YES', NULL);
+    INSERT INTO call_scorecard_topic (call_id, topic) VALUES
+        (v_c18.id, 'shartnoma'), (v_c18.id, 'to''lov jadvali'),
+        (v_c21.id, 'kutish vaqti'), (v_c21.id, 'to''lov'), (v_c21.id, 'shikoyat');
+
+    -- The quality judge's verdict on the AI calls, and what a person made of the flagged ones.
+    INSERT INTO call_quality (company_id, call_attempt_id, ai_agent_id, agent_version, disposition, score,
+                              guardrail_violation, language_mismatch, talked_over_client, outcome_correct, goal_reached,
+                              unanswered_question, tool_misuse, note, needs_review, turn_count, repair_count,
+                              tool_error_count, barge_in_count, no_input_prompt_count, low_confidence_count, repeat_call,
+                              review_status, review_reason, reviewed_by, reviewed_at, knowledge_item_id, created_at)
+    SELECT 1, c.id, c.ai_agent_id, NULL, c.disposition, q.score,
+           q.guardrail, false, q.talked_over, q.outcome_ok, q.goal, q.unanswered, false, q.note, q.review IS NOT NULL,
+           q.turns, q.repairs, 0, q.barge, 0, q.lowconf, false,
+           q.review, q.reason,
+           CASE WHEN q.review IN ('AGENT_CORRECT', 'AGENT_WRONG') THEN v_sup END,
+           CASE WHEN q.review IN ('AGENT_CORRECT', 'AGENT_WRONG') THEN c.ended_at + interval '5 hours' END,
+           CASE WHEN q.k = 'c17' THEN v_kb_paid END,
+           c.ended_at + interval '1 minute'
+    FROM (VALUES
+        ('c01', 94, false, false, true,  true,  false, 'Va''da aniq sana va summa bilan olindi.',              NULL,            NULL,                                      8, 0, 1, 0),
+        ('c02', 78, false, false, true,  false, false, 'Mijozning holatiga hamdardlik bildirildi, bosim yo''q.', NULL,            NULL,                                      7, 1, 0, 1),
+        ('c07', 71, false, true,  true,  false, false, 'Agent mijozning gapini bir marta bo''lib yubordi.',     'AGENT_CORRECT', 'Summaga e''tirozda operatorga to''g''ri uzatdi', 7, 1, 2, 0),
+        ('c09', 88, false, false, true,  false, false, NULL,                                                  NULL,            NULL,                                      3, 0, 0, 0),
+        ('c10', 52, false, false, false, false, true,  'Mijoz band ekanini aytdi, agent qayta qo''ng''iroq vaqtini so''ramadi.', 'PENDING', 'Callback taklif qilinmagan', 2, 0, 0, 1),
+        ('c13', 96, false, false, true,  true,  false, NULL,                                                  NULL,            NULL,                                      9, 0, 0, 0),
+        ('c16', 91, false, false, true,  true,  false, 'Byudjet va muddat aniqlandi, demo belgilandi.',        NULL,            NULL,                                      9, 0, 0, 0),
+        ('c17', 64, false, false, true,  true,  true,  'Uzum Bank orqali to''lov haqidagi savolga to''liq javob yo''q edi.', 'AGENT_WRONG', 'Bilim bazasida Uzum Bank yo''q edi — qo''shildi', 7, 1, 0, 2)
+    ) AS q(k, score, guardrail, talked_over, outcome_ok, goal, unanswered, note, review, reason, turns, repairs, barge, lowconf)
+    JOIN call_attempt c ON c.sip_call_id = 'seed-' || q.k;
+
+    INSERT INTO agent_insight (company_id, ai_agent_id, type, title, detail, suggestion, call_count, sample_call_ids, status,
+                               decision_reason, decided_by, decided_at, created_at) VALUES
+        (1, v_debt, 'PROMPT_FIX', 'Band mijozga qayta qo''ng''iroq vaqti taklif qilinmayapti',
+         'Kecha 3 ta qo''ng''iroqda mijoz "band man" deganda agent suhbatni tugatgan.',
+         'IDENTITY_CHECK bosqichiga: "Mijoz band bo''lsa, qulay vaqtni so''rab, callback yozing" qoidasini qo''shing.',
+         3, jsonb_build_array((SELECT id FROM call_attempt WHERE sip_call_id = 'seed-c10')), 'PROPOSED', NULL, NULL, NULL,
+         now() - interval '8 hours'),
+        (1, v_reception, 'KB_GAP', 'Uzum Bank orqali to''lov haqida javob yo''q',
+         'Mijozlar Uzum Bank ilovasi orqali to''lash mumkinmi deb so''rashmoqda.',
+         'Bilim bazasiga Uzum Bank orqali to''lov yo''riqnomasini qo''shing.',
+         2, jsonb_build_array(v_c17.id), 'ACCEPTED', 'Qo''shildi', v_sup, now() - interval '20 hours',
+         now() - interval '1 day 02:00'),
+        (1, v_debt, 'PRONUNCIATION', '"SH-2025" shartnoma raqami harfma-harf o''qilmoqda',
+         'Agent shartnoma raqamini "es-ha" deb o''qiydi.', 'Talaffuz qoidasi: "SH" → "sha".',
+         4, jsonb_build_array(v_c01.id, v_c02.id), 'REJECTED', 'Mijozlar raqamni shunday tushunadi', v_admin,
+         now() - interval '2 days', now() - interval '3 days');
+
+    -- A finished re-analysis of last week's collections calls.
+    INSERT INTO call_reanalysis_job (company_id, ai_agent_id, range_from, range_to, status, total_calls, processed_calls,
+                                     updated_calls, failed_calls, prompt_tokens, completion_tokens, charged_uzs, last_call_id,
+                                     created_at, started_at, finished_at)
+    VALUES (1, v_debt, now() - interval '7 days', now() - interval '1 day', 'COMPLETED', 14, 14, 11, 0, 68000, 9400, 3100,
+            (SELECT max(id) FROM call_attempt WHERE sip_call_id LIKE 'seed-c%'),
+            now() - interval '20 hours', now() - interval '20 hours', now() - interval '19 hours 52 minutes');
+
+    -- What the company tools answered on the calls that used them.
+    INSERT INTO tool_execution (company_id, tool_id, call_attempt_id, tool_name, status, http_status, latency_ms, args_hash,
+                                error, created_at) VALUES
+        (1, v_t_balance, v_c01.id, 'tolov_qoldigi', 'OK',         200,  420, md5('c01-balance') || md5('1'), NULL,
+         v_c01.answered_at + interval '12 seconds'),
+        (1, v_t_balance, v_c07.id, 'tolov_qoldigi', 'OK',         200,  380, md5('c07-balance') || md5('1'), NULL,
+         v_c07.answered_at + interval '25 seconds'),
+        (1, v_t_balance, v_c02.id, 'tolov_qoldigi', 'HTTP_ERROR', 503, 1210, md5('c02-balance') || md5('1'),
+         'HTTP 503: {"error":"maintenance"}', v_c02.answered_at + interval '14 seconds'),
+        (1, v_t_order,   v_c17.id, 'buyurtma_holati', 'FAILED',  NULL, 8000, md5('c17-order') || md5('1'),
+         'Read timed out after 8 s', v_c17.answered_at + interval '15 seconds');
+
+    -- The CRM note for c02 that ran out of retries (its call_result says so too).
+    INSERT INTO outbox_message (company_id, kind, call_attempt_id, payload, idempotency_key, status, attempts,
+                                next_attempt_at, last_error, created_at)
+    VALUES (1, 'CRM_NOTE', v_c02.id, jsonb_build_object('callId', v_c02.id, 'phone', v_c02.phone),
+            'CRM_NOTE:' || v_c02.id, 'DEAD', 5, v_c02.ended_at + interval '3 hours',
+            'CRM ulanmagan: Uysot OAuth tokeni yo''q (CRM_INTEGRATION_NOT_CONNECTED)', v_c02.ended_at + interval '20 seconds');
+
+    -- The reception agent on Telegram (token in the TELEGRAM_BOT_TOKEN secret; no webhook
+    -- registered yet), and conversations from both text channels.
+    INSERT INTO telegram_bot (company_id, ai_agent_id, name, token_secret_key, webhook_secret, language, webhook_url, enabled)
+    VALUES (1, v_reception, 'Uysot yordamchi bot', 'TELEGRAM_BOT_TOKEN', md5('seed-telegram-webhook'), 'uz-UZ', NULL, true)
+    RETURNING id INTO v_bot;
+    SELECT id INTO v_widget FROM agent_widget WHERE widget_key = 'wgt_seedreception01';
+
+    INSERT INTO chat_session (session_key, company_id, ai_agent_id, widget_id, language, stage, outcome, disposition, ended,
+                              message_count, created_at, last_message_at)
+    VALUES (md5('seed-chat-1'), 1, v_reception, v_widget, 'uz-UZ', 'CLOSING', '{"resolved": true}'::jsonb, 'COMPLETED', true,
+            4, now() - interval '3 hours', now() - interval '2 hours 57 minutes')
+    RETURNING id INTO v_chat;
+    INSERT INTO chat_message (chat_session_id, role, text, created_at) VALUES
+        (v_chat, 'CLIENT', 'Salom, to''lovni kartadan qilsa bo''ladimi?', now() - interval '3 hours'),
+        (v_chat, 'AGENT',  'Ha, Click, Payme yoki Uzum Bank ilovasida shartnoma raqamingizni kiritib to''lashingiz mumkin.', now() - interval '2 hours 59 minutes'),
+        (v_chat, 'CLIENT', 'Rahmat!', now() - interval '2 hours 58 minutes'),
+        (v_chat, 'AGENT',  'Arzimaydi! Yana savolingiz bo''lsa, yozing.', now() - interval '2 hours 57 minutes');
+
+    INSERT INTO chat_session (session_key, company_id, ai_agent_id, telegram_bot_id, telegram_chat_id, language, stage,
+                              outcome, ended, message_count, created_at, last_message_at)
+    VALUES (md5('seed-chat-2'), 1, v_reception, v_bot, '512340001', 'ru-RU', 'ANSWER_QUESTION', '{}'::jsonb, false,
+            3, now() - interval '25 minutes', now() - interval '24 minutes')
+    RETURNING id INTO v_chat;
+    INSERT INTO chat_message (chat_session_id, role, text, created_at) VALUES
+        (v_chat, 'CLIENT', 'Здравствуйте, до скольки вы работаете в субботу?', now() - interval '25 minutes'),
+        (v_chat, 'AGENT',  'Здравствуйте! В субботу мы работаем с 10:00 до 15:00.', now() - interval '24 minutes 50 seconds'),
+        (v_chat, 'CLIENT', 'А можно приехать без записи?', now() - interval '24 minutes');
+
+    -- The admin asked the copilot about yesterday; it called one tool to answer.
+    INSERT INTO copilot_session (company_id, user_id, title, created_at, updated_at)
+    VALUES (1, v_admin, 'Kechagi qo''ng''iroqlar tahlili', now() - interval '2 hours', now() - interval '1 hour 58 minutes')
+    RETURNING id INTO v_copilot;
+    INSERT INTO copilot_message (session_id, company_id, role, content, tool_name, tool_arguments, prompt_tokens,
+                                 completion_tokens, charged_uzs, created_at) VALUES
+        (v_copilot, 1, 'USER', 'Kecha nechta qo''ng''iroq bo''ldi va nechtasi va''da bilan tugadi?', NULL, NULL, 0, 0, 0,
+         now() - interval '2 hours'),
+        (v_copilot, 1, 'TOOL', '{"total": 9, "items": [{"disposition": "PROMISE_TO_PAY"}, {"disposition": "TRANSFERRED"}, "…"]}',
+         'list_calls', '{"from": "yesterday", "size": 50}', 0, 0, 0, now() - interval '1 hour 59 minutes'),
+        (v_copilot, 1, 'ASSISTANT', 'Kecha 9 ta qo''ng''iroq bo''ldi: 6 tasiga javob berildi, 1 tasi to''lov va''dasi bilan tugadi, 1 tasi operatorga uzatildi.',
+         NULL, NULL, 2400, 180, 140, now() - interval '1 hour 58 minutes');
+
+    -- The default analytics board the dashboard opens with.
+    INSERT INTO analytics_board (company_id, name, description, is_default)
+    VALUES (1, 'Asosiy ko''rsatkichlar', 'Kunlik nazorat paneli', true)
+    RETURNING id INTO v_board;
+    INSERT INTO analytics_board_widget (board_id, title, widget_type, metric, group_by, time_range, grid_row, grid_col,
+                                        grid_width, grid_height) VALUES
+        (v_board, 'Qo''ng''iroqlar',         'KPI_CARD',   'CALL_COUNT',           NULL,          'LAST_7_DAYS',  0, 0, 3, 2),
+        (v_board, 'Muvaffaqiyat',            'KPI_CARD',   'SUCCESS_RATE',         NULL,          'LAST_7_DAYS',  0, 3, 3, 2),
+        (v_board, 'To''lov va''dalari',      'KPI_CARD',   'PTP_COUNT',            NULL,          'LAST_7_DAYS',  0, 6, 3, 2),
+        (v_board, 'Xarajat (so''m)',         'KPI_CARD',   'TOTAL_COST_UZS',       NULL,          'LAST_7_DAYS',  0, 9, 3, 2),
+        (v_board, 'Kunlar kesimida',         'LINE_CHART', 'CALL_COUNT',           'DATE',        'LAST_30_DAYS', 2, 0, 8, 4),
+        (v_board, 'Natijalar',               'PIE_CHART',  'CALL_COUNT',           'DISPOSITION', 'LAST_7_DAYS',  2, 8, 4, 4),
+        (v_board, 'Agentlar bo''yicha',      'BAR_CHART',  'AVG_DURATION_SECONDS', 'AGENT',       'LAST_7_DAYS',  6, 0, 6, 4),
+        (v_board, 'Kechikish (ms)',          'TABLE',      'AVG_LATENCY_MS',       'AGENT',       'LAST_7_DAYS',  6, 6, 6, 4);
+    INSERT INTO analytics_board (company_id, name, description, is_default)
+    VALUES (1, 'Tillar kesimi', NULL, false)
+    RETURNING id INTO v_board;
+    INSERT INTO analytics_board_widget (board_id, title, widget_type, metric, group_by, grid_width) VALUES
+        (v_board, 'Til bo''yicha qo''ng''iroqlar', 'PIE_CHART', 'CALL_COUNT', 'LANGUAGE', 6),
+        (v_board, 'Til bo''yicha muvaffaqiyat',   'BAR_CHART', 'SUCCESS_RATE', 'LANGUAGE', 6);
+
+    -- Barge-in phrases the turn-taking has already learned (platform-wide).
+    INSERT INTO learned_floor_rule (phrase, decision, occurrences, status) VALUES
+        ('ha-ha',       'CONTINUE', 41, 'APPROVED'),
+        ('xo''p',       'CONTINUE', 36, 'APPROVED'),
+        ('mhm',         'CONTINUE', 58, 'APPROVED'),
+        ('tushunarli',  'CONTINUE', 22, 'APPROVED'),
+        ('to''xtang',   'STOP',     17, 'APPROVED'),
+        ('bir daqiqa',  'STOP',      9, 'LEARNING'),
+        ('ага',         'CONTINUE', 30, 'APPROVED'),
+        ('подождите',   'STOP',     12, 'APPROVED'),
+        ('ну',          'CONTINUE',  4, 'BLOCKED')
+    ON CONFLICT (phrase) DO NOTHING;
+END
+$seed$;
+
+-- ---------------------------------------------------------------------------
+-- What the platform admin manages: feature and integration switches, plan limits, a
+-- white-label partner with a client on a free trial, an expired and a suspended company.
+-- None of these tenants has a trunk, an agent or a campaign, so none of them can dial.
+-- ---------------------------------------------------------------------------
+DO $seed$
+DECLARE
+    v_hash    CONSTANT TEXT := '$2a$12$OXJCG27t4EEQWD9lMVvccOXLLZDeh9IYyfsVxg.UTs5nq4N.ii0NO'; -- Test12345!
+    v_demo    BIGINT;
+    v_partner BIGINT;
+    v_client  BIGINT;
+    v_old     BIGINT;
+    v_blocked BIGINT;
+    v_c       BIGINT;
+    v_config  BIGINT;
+BEGIN
+    IF EXISTS (SELECT 1 FROM company WHERE name = 'CallPro Hamkor MChJ') THEN
+        RETURN;
+    END IF;
+
+    SELECT id INTO v_demo FROM company WHERE name = 'Demo Savdo MChJ';
+
+    -- The demo tenant is on a small plan: three lines, no chat agent, no QA module, no Kommo
+    -- or knowledge-base imports, and a subscription that ends in two months.
+    UPDATE company SET max_concurrent_calls = 3, expires_at = now() + interval '60 days' WHERE id = v_demo;
+    INSERT INTO company_feature (company_id, feature, enabled) VALUES
+        (v_demo, 'CHAT_AGENT', false),
+        (v_demo, 'QUALITY_ASSURANCE', false),
+        (v_demo, 'ALERTING', true);
+    INSERT INTO company_integration_access (company_id, provider, enabled) VALUES
+        (v_demo, 'AMOCRM', true),
+        (v_demo, 'KOMMO', false),
+        (v_demo, 'GOOGLE_DRIVE', false),
+        (v_demo, 'NOTION', false);
+
+    INSERT INTO company (name, status, address, max_concurrent_calls, created_at)
+    VALUES ('CallPro Hamkor MChJ', 'ACTIVE', 'Toshkent, Mustaqillik shoh ko''chasi 59', 50, now() - interval '90 days')
+    RETURNING id INTO v_partner;
+    INSERT INTO company (name, status, address, max_concurrent_calls, expires_at, created_at)
+    VALUES ('Samarqand Mikromoliya', 'ACTIVE', 'Samarqand, Registon ko''chasi 12', 2, now() + interval '11 days',
+            now() - interval '3 days')
+    RETURNING id INTO v_client;
+    INSERT INTO company (name, status, address, expires_at, created_at)
+    VALUES ('Eski Mijoz MChJ', 'EXPIRED', 'Buxoro', now() - interval '10 days', now() - interval '200 days')
+    RETURNING id INTO v_old;
+    INSERT INTO company (name, status, address, created_at)
+    VALUES ('Bloklangan Savdo', 'SUSPENDED', 'Namangan', now() - interval '120 days')
+    RETURNING id INTO v_blocked;
+
+    -- Settings and system roles for each, as CompanyService would provision them.
+    FOREACH v_c IN ARRAY ARRAY[v_partner, v_client, v_old, v_blocked] LOOP
+        INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone, default_language)
+        VALUES (v_c, '09:00', '20:00', 'Asia/Tashkent', 'uz-UZ')
+        RETURNING id INTO v_config;
+        INSERT INTO company_config_language (company_config_id, ord, language) VALUES (v_config, 0, 'uz-UZ'), (v_config, 1, 'ru-RU');
+        INSERT INTO app_role (company_id, code, name, is_system)
+        SELECT v_c, r.code, r.name, true
+        FROM (VALUES ('DEVELOPER', 'Developer'), ('ADMIN', 'Administrator'), ('OPERATOR', 'Operator'),
+                     ('VIEWER', 'Viewer'), ('SUPERVISOR', 'Supervisor'), ('SUPERADMIN', 'Superadmin')) AS r(code, name);
+    END LOOP;
+
+    INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status, phone, position) VALUES
+        (v_partner, 'Bobur Ahmedov', 'partner.admin@test.uz', 'partner.admin', v_hash,
+         (SELECT id FROM app_role WHERE company_id = v_partner AND code = 'ADMIN'), 'ACTIVE', '+998901117700', 'Direktor'),
+        (v_client, 'Sitora Hakimova', 'sammikro.admin@test.uz', 'sammikro.admin', v_hash,
+         (SELECT id FROM app_role WHERE company_id = v_client AND code = 'ADMIN'), 'ACTIVE', '+998662330011', 'Bosh mutaxassis'),
+        (v_old, 'Eski admin', 'old.admin@test.uz', 'old.admin', v_hash,
+         (SELECT id FROM app_role WHERE company_id = v_old AND code = 'ADMIN'), 'ACTIVE', NULL, NULL);
+
+    -- The partner's white label, and the client it signed up.
+    INSERT INTO partner_branding (company_id, product_name, domain, logo_url, primary_color, support_email, support_phone)
+    VALUES (v_partner, 'CallPro AI', 'app.callpro.example.uz', 'https://callpro.example.uz/logo.svg', '#7C3AED',
+            'support@callpro.example.uz', '+998712009900');
+    INSERT INTO partner_client (client_company_id, partner_company_id, created_at)
+    VALUES (v_client, v_partner, now() - interval '3 days');
+
+    -- The partner pays monthly; its client is spending its free trial.
+    INSERT INTO billing_ledger (company_id, entry_type, amount_uzs, balance_before_uzs, balance_after_uzs, reference_type,
+                                reference_id, idempotency_key, created_at) VALUES
+        (v_partner, 'TOPUP', 15000000, 0, 15000000, 'payment_topup', 'PAY-SEED-P001', 'topup:PAY-SEED-P001', now() - interval '30 days'),
+        (v_client, 'TRIAL_CREDIT', 200000, 0, 200000, 'billing_trial', v_client::text, 'trial:' || v_client, now() - interval '3 days'),
+        (v_old, 'TOPUP', 1000000, 0, 1000000, 'payment_topup', 'PAY-SEED-O001', 'topup:PAY-SEED-O001', now() - interval '190 days');
+    INSERT INTO payment_topup (payment_id, company_id, amount_uzs, payment_method, status, created_at, paid_at) VALUES
+        ('PAY-SEED-P001', v_partner, 15000000, 'BANK_TRANSFER', 'COMPLETED', now() - interval '30 days', now() - interval '30 days'),
+        ('PAY-SEED-O001', v_old,      1000000, 'PAYME',         'COMPLETED', now() - interval '190 days', now() - interval '190 days');
+    INSERT INTO billing_trial (company_id, credit_uzs, granted_at, expires_at)
+    VALUES (v_client, 200000, now() - interval '3 days', now() + interval '11 days');
+    INSERT INTO company_billing (company_id, plan_code, plan_name, balance_uzs, reserved_uzs, auto_recharge) VALUES
+        (v_partner, 'ENTERPRISE_MONTHLY', 'Enterprise', 15000000, 0, true),
+        (v_client,  'TRIAL',              'Sinov',          200000, 0, false),
+        (v_old,     'START_MONTHLY',      'Start',         1000000, 0, false);
+
+    INSERT INTO audit_log (company_id, actor, action, entity, entity_id, detail, ip_address, created_at) VALUES
+        (v_partner, 'partner.admin', 'PARTNER_CLIENT_CREATE', 'company', v_client::text, 'Samarqand Mikromoliya',
+         '10.0.0.21', now() - interval '3 days'),
+        (v_blocked, 'platform', 'COMPANY_UPDATE', 'company', v_blocked::text, 'status: SUSPENDED (to''lov qilinmagan)',
+         '10.0.0.5', now() - interval '15 days');
 END
 $seed$;

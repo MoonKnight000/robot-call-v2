@@ -10,7 +10,10 @@ import uz.murodjon.robotcallv2.callflow.infrastructure.persistence.mapper.CallFl
 import uz.murodjon.robotcallv2.callflow.infrastructure.persistence.repository.CallFlowJpaRepository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class CallFlowRepositoryAdapter implements CallFlowRepository {
@@ -76,5 +79,14 @@ public class CallFlowRepositoryAdapter implements CallFlowRepository {
     @Override
     public long count(long companyId) {
         return jpaRepository.countByCompanyId(companyId);
+    }
+
+    @Override
+    public Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return jpaRepository.findByCompanyIdAndIdIn(companyId, ids).stream()
+                .collect(Collectors.toMap(CallFlowEntity::getId, CallFlowEntity::getName));
     }
 }

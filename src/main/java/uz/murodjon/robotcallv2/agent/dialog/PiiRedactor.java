@@ -11,17 +11,17 @@ public final class PiiRedactor {
 
     // 16-digit card numbers with optional spaces or hyphens (8600 xxxx xxxx xxxx, 9860..., 4xxx..., 5xxx..., etc.)
     private static final Pattern CARD_PATTERN = Pattern.compile(
-            "\\b(?<prefix>\\d{4})[\\s\\-]?(?:\\d{4})[\\s\\-]?(?:\\d{4})[\\s\\-]?(?<suffix>\\d{4})\\b"
+            "\\b(?<prefix>\\d{4})[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?(?<suffix>\\d{4})\\b"
     );
 
     // 9-character Uzbekistan Passport in Latin or Cyrillic (e.g. AA 1234567, AB7654321, АА 1234567)
     private static final Pattern PASSPORT_PATTERN = Pattern.compile(
-            "\\b(?<series>[A-Za-zА-Яа-яЁё]{2})[\\s\\-]?(?:\\d{4})(?<suffix>\\d{3})\\b"
+            "\\b(?<series>[A-Za-zА-Яа-яЁё]{2})[\\s\\-]?\\d{4}(?<suffix>\\d{3})\\b"
     );
 
     // 14-digit PINFL (JSHSHIR), optional spaces or hyphens
     private static final Pattern PINFL_PATTERN = Pattern.compile(
-            "\\b(?<prefix>\\d{4})(?:[\\s\\-]?\\d{6})[\\s\\-]?(?<suffix>\\d{4})\\b"
+            "\\b(?<prefix>\\d{4})[\\s\\-]?\\d{6}[\\s\\-]?(?<suffix>\\d{4})\\b"
     );
 
     // 3-digit or 4-digit CVV / CVC with optional Uzbek labels (e.g. cvv 123, cvv kodi 123, xavfsizlik kodi 123)

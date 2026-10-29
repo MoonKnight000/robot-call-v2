@@ -108,10 +108,10 @@ bo'lmaydi.
 
 ```json
 {
-  "data": [
-    { "group": "DASHBOARD", "permissions": ["DASHBOARD_READ"] },
-    { "group": "CAMPAIGN", "permissions": ["CAMPAIGN_READ", "CAMPAIGN_EDIT"] },
-    { "group": "AI_AGENT", "permissions": ["AI_AGENT_READ", "AI_AGENT_EDIT", "AGENT_EVAL_RUN", "AGENT_DRAFT_EDIT"] },
+    { "group": "DASHBOARD", "feature": "CORE", "permissions": ["DASHBOARD_READ"] },
+    { "group": "CAMPAIGN", "feature": "VOICE_AGENT", "permissions": ["CAMPAIGN_READ", "CAMPAIGN_EDIT"] },
+    { "group": "CHAT_AGENT", "feature": "CHAT_AGENT", "permissions": ["CHAT_AGENT_READ", "CHAT_AGENT_EDIT"] },
+    { "group": "AI_AGENT", "feature": "CORE", "permissions": ["AI_AGENT_READ", "AI_AGENT_EDIT", "AGENT_EVAL_RUN", "AGENT_DRAFT_EDIT"] }
     { "group": "SCENARIO", "permissions": ["SCENARIO_READ", "SCENARIO_EDIT", "KNOWLEDGE_BASE_READ", "KNOWLEDGE_BASE_EDIT"] }
   ],
   "message": null,
@@ -122,6 +122,11 @@ bo'lmaydi.
 ```
 
 Guruh va permission nomlarini frontend o'zi tarjima qiladi (backend matn yubormaydi).
+
+`feature` — guruh qaysi mahsulotga tegishli (`CORE`, `VOICE_AGENT`, `CHAT_AGENT`, `ALERTING`, `INTEGRATIONS`,
+`QUALITY_ASSURANCE`). Platforma kompaniya uchun feature'ni o'chirsa, uning guruhlaridagi huquqlar kompaniyaning hech
+kimida bo'lmaydi — frontend ularni shu kompaniyaning `GET /api/auth/me` dagi `permissions` ro'yxatiga qarab
+yashiradi ([companies.md](companies.md)).
 
 ---
 
@@ -214,6 +219,8 @@ so'rovda `401` olib, qayta login qiladilar.
 | `BILLING` | `BILLING_READ` | `BILLING_EDIT` |
 | `API_KEY` | `API_KEY_READ` | `API_KEY_EDIT` |
 | `QUALITY_REVIEW` | `QUALITY_REVIEW_READ` | `QUALITY_REVIEW_EDIT` |
+| `CHAT_AGENT` | `CHAT_AGENT_READ` | `CHAT_AGENT_EDIT` |
+| `ALERT` | `ALERT_READ` | `ALERT_EDIT` |
 | `PLATFORM` | — | `PLATFORM_ADMIN` (faqat SUPERADMIN) |
 
 Yangi guruhlar:
@@ -230,6 +237,13 @@ Yangi guruhlar:
   guruhi `["LIVE_READ", "LIVE_EDIT", "CALL_MONITOR"]` bo'lib keladi.
 - **`QUALITY_REVIEW`** — sifat hakami belgilagan AI qo'ng'iroqlar va ularga odam bahosi
   ([call-reviews.md](call-reviews.md)). `ADMIN` va `SUPERVISOR` da bor, API kalitiga berilmaydi.
+- **`CHAT_AGENT`** — matnli kanallar: Telegram botlar va ular olib borgan suhbatlar tarixi
+  ([chat.md](chat.md)). Ilgari `AI_AGENT_*` (botlar) va `REPORT_READ` (suhbatlar tarixi) ostida edi; voice agentdan
+  ajratildi, shunda platforma modulni kompaniya uchun alohida yoqib/o'chira oladi. Eski huquqi borlarga yangisi
+  avtomatik berilgan (migratsiya `V26`); `OPERATOR`, `SUPERVISOR`, `VIEWER` da `CHAT_AGENT_READ` bor.
+  API kalitiga faqat `CHAT_AGENT_READ` beriladi.
+- **`ALERT`** — metrikalarni kuzatuvchi alert qoidalari ([alert-rules.md](alert-rules.md)). Ilgari
+  `NOTIFICATION_SETTINGS_*` ostida edi; yetkazish kanallari (`/api/settings/notifications`) o'sha guruhda qoladi.
 
 **Permissionsiz endpointlar** (har qanday login qilgan foydalanuvchi uchun ochiq):
 `/api/auth/me`, `/api/auth/logout`, `/api/profile/**`, `/api/notifications/**`,

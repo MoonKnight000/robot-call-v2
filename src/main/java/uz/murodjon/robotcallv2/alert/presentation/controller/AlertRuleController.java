@@ -20,40 +20,40 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 @RequestMapping("/api/alert-rules")
 public interface AlertRuleController {
 
-    @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_EDIT')")
+    @PreAuthorize("hasAuthority('ALERT_EDIT')")
     @PostMapping
     ResponseEntity<ResponseData<AlertRule>> create(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody SaveAlertRuleRequest request);
 
-    @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_READ')")
+    @PreAuthorize("hasAuthority('ALERT_READ')")
     @PostMapping("/filter")
     ResponseEntity<ResponseData<PageableData<AlertRule>>> filter(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody AlertRuleFilter filter);
 
-    @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_READ')")
+    @PreAuthorize("hasAuthority('ALERT_READ')")
     @GetMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<AlertRule>> get(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
 
     /** Replaces the settings; the last value and last firing are kept. */
-    @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_EDIT')")
+    @PreAuthorize("hasAuthority('ALERT_EDIT')")
     @PutMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<AlertRule>> update(
             @CurrentCompanyId long companyId,
             @PathVariable long id,
             @Valid @RequestBody SaveAlertRuleRequest request);
 
-    @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_EDIT')")
+    @PreAuthorize("hasAuthority('ALERT_EDIT')")
     @DeleteMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<Void>> delete(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
 
     /** The rule's metric right now and whether it would fire. Sends nothing, changes nothing. */
-    @PreAuthorize("hasAuthority('NOTIFICATION_SETTINGS_READ')")
+    @PreAuthorize("hasAuthority('ALERT_READ')")
     @GetMapping("/{id:\\d+}/preview")
     ResponseEntity<ResponseData<AlertRulePreviewResponse>> preview(
             @CurrentCompanyId long companyId,

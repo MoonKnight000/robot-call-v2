@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
+
 import java.util.List;
 import java.util.Map;
 
@@ -87,8 +89,28 @@ public class StageDefBuilder {
         return this;
     }
 
+    public StageDefBuilder type(StageType type) {
+        this.type = type;
+        return this;
+    }
+
+    public StageDefBuilder position(StagePosition position) {
+        this.position = position;
+        return this;
+    }
+
+    public StageDefBuilder globalCondition(String globalCondition) {
+        this.globalCondition = globalCondition;
+        return this;
+    }
+
+    public StageDefBuilder action(StageAction action) {
+        this.action = action;
+        return this;
+    }
+
     public StageDef build() {
         return new StageDef(id, purpose, allowedTransitions, allowedTools, emotion, model, branches,
-                transitionConditions, staticLine, requiredOutcomes);
+                transitionConditions, staticLine, requiredOutcomes, type, position, globalCondition, action);
     }
 }

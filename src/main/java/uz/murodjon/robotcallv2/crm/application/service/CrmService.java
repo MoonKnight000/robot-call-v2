@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
@@ -16,6 +17,7 @@ import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegration
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 
 import java.time.Instant;
 import java.util.List;
@@ -46,11 +48,14 @@ public class CrmService implements CrmUseCase {
     private final CrmProperties crmProperties;
     private final CrmIntegrationUseCase crmIntegrationUseCase;
     private final List<CrmConnectorPort> connectors;
+    private final CompanyUseCase companyUseCase;
 
-    public CrmService(CrmProperties crmProperties, CrmIntegrationUseCase crmIntegrationUseCase, List<CrmConnectorPort> connectors) {
+    public CrmService(CrmProperties crmProperties, CrmIntegrationUseCase crmIntegrationUseCase, List<CrmConnectorPort> connectors,
+                      CompanyUseCase companyUseCase) {
         this.crmProperties = crmProperties;
         this.crmIntegrationUseCase = crmIntegrationUseCase;
         this.connectors = connectors;
+        this.companyUseCase = companyUseCase;
     }
 
     @Override
@@ -225,7 +230,8 @@ public class CrmService implements CrmUseCase {
     /**
      * Where this company's CRM traffic goes, or {@code null} when there is nowhere to send
      * it. A connection that cannot be read — a stored secret that no longer decrypts —
-     * counts as nowhere: the call goes ahead without the CRM.
+     * counts as nowhere: the call goes ahead without the CRM. So does a company the platform has
+     * switched integrations off for.
      */
     private Route routeFor(long companyId) {
         CrmConnection connection;
@@ -236,6 +242,10 @@ public class CrmService implements CrmUseCase {
             return null;
         }
         if (connection == null) {
+            return null;
+        }
+        // A provider the platform switched off for this company is nowhere to send to, even if it is connected.
+        if (!companyUseCase.isIntegrationAvailable(companyId, IntegrationProvider.valueOf(connection.provider().name()))) {
             return null;
         }
         for (CrmConnectorPort connector : connectors) {

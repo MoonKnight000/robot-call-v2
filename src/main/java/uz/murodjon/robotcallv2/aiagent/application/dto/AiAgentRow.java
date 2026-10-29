@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.aiagent.application.dto;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
@@ -17,6 +19,8 @@ public record AiAgentRow(
         String name,
         String description,
         String language,
+        AiAgentChannel channel,
+        AiAgentMode mode,
         AgentPersona persona,
         boolean disclosureEnabled,
         String engineProfileId,
@@ -68,6 +72,8 @@ public record AiAgentRow(
                 agent.name(),
                 agent.description(),
                 agent.language(),
+                agent.channel(),
+                agent.mode(),
                 agent.persona(),
                 agent.disclosureEnabled(),
                 engineProfileId,

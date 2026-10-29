@@ -9,7 +9,8 @@ import java.util.Optional;
 
 public interface CrmIntegrationUseCase {
 
-    List<CrmCatalogEntry> findCatalog();
+    /** The catalog as the company sees it: what the platform has switched off for it is marked, not hidden. */
+    List<IntegrationCatalogEntry> findCatalog(long companyId);
 
     CrmIntegrationRow findByCompanyId(long companyId);
 

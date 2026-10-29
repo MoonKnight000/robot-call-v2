@@ -324,7 +324,7 @@ public final class AmbientSoundGenerator {
                     y2_3 = y1_3;
                     y1_3 = out3;
 
-                    double voiceSample = out1 * 1.0 + out2 * 0.55 + out3 * 0.28;
+                    double voiceSample = out1 + out2 * 0.55 + out3 * 0.28;
 
                     // Phrase envelope (in/out fade)
                     double phraseFade = Math.min(1.0, Math.min(k, phraseLength - k) / (double) edge);

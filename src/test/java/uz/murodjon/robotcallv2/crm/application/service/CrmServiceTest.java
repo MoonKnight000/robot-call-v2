@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.crm.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
@@ -189,7 +190,7 @@ class CrmServiceTest {
     void providerNoConnectorSupportsLeavesTheCompanyUnconnected() {
         when(integrations.findConnection(COMPANY_ID)).thenReturn(Optional.of(
                 new CrmConnection(CrmProvider.BITRIX24, "https://acme.bitrix24.kz/rest/1/code", null)));
-        CrmService withoutBitrix24 = new CrmService(uysotProperties(), integrations, List.of(uysot, amoCrm));
+        CrmService withoutBitrix24 = new CrmService(uysotProperties(), integrations, List.of(uysot, amoCrm), CompanyFixtures.openCompanyUseCase());
 
         assertFalse(withoutBitrix24.isConnected(COMPANY_ID));
         assertNull(withoutBitrix24.findByPhone(COMPANY_ID, PHONE));
@@ -251,7 +252,7 @@ class CrmServiceTest {
     }
 
     private CrmService client(CrmProperties crmProperties) {
-        return new CrmService(crmProperties, integrations, List.of(uysot, amoCrm, bitrix24));
+        return new CrmService(crmProperties, integrations, List.of(uysot, amoCrm, bitrix24), CompanyFixtures.openCompanyUseCase());
     }
 
     private static CrmConnectorPort connectorFor(CrmProvider... providers) {

@@ -43,19 +43,50 @@ CrmAuthMethod:
   enum:
   - OAUTH
   - API_TOKEN
-CrmCatalogEntry:
+IntegrationCatalogEntry:
   type: object
-  description: 'One row of GET /api/settings/integrations/catalog (report #10).'
+  description: One row of GET /api/settings/integrations/catalog, as one company sees it.
   properties:
     provider:
-      $ref: '#/CrmProvider'
+      $ref: '#/IntegrationProvider'
     displayName:
       type: string
+    category:
+      $ref: '#/IntegrationCategory'
     authMethod:
       $ref: '#/CrmAuthMethod'
+      description: null while the provider is only COMING_SOON.
+    status:
+      $ref: '#/IntegrationCatalogStatus'
     available:
       type: boolean
+      description: status == AVAILABLE.
   required:
+  - provider
+  - status
+  - available
+IntegrationProvider:
+  type: string
+  enum:
+  - UYSOT
+  - AMOCRM
+  - KOMMO
+  - BITRIX24
+  - GOOGLE_DRIVE
+  - NOTION
+  - ASTERISK
+IntegrationCategory:
+  type: string
+  enum:
+  - CRM
+  - KNOWLEDGE_BASE
+  - TELEPHONY
+IntegrationCatalogStatus:
+  type: string
+  enum:
+  - AVAILABLE
+  - COMING_SOON
+  - DISABLED_BY_PLATFORM
   - available
 CrmGrant:
   type: object

@@ -1,6 +1,14 @@
 # Asterisk, media and the outbound dialer. Nothing here is a Spring detail — every value
 # has a counterpart in asterisk/etc/asterisk/*.conf.
 voice-agent:
+  telephony:
+    # Retell-style LiveKit WebRTC & SIP Telephony Engine
+    livekit:
+      enabled: ${LIVEKIT_ENABLED:false}
+      host: ${LIVEKIT_HOST:http://localhost:7880}
+      api-key: ${LIVEKIT_API_KEY:}
+      api-secret: ${LIVEKIT_API_SECRET:}
+      sip-trunk-id: ${LIVEKIT_SIP_TRUNK_ID:}
   # ARI (call control) — AsteriskProperties. Credentials must match ari.conf [robot_call].
   asterisk:
     enabled: ${ASTERISK_ENABLED:true}

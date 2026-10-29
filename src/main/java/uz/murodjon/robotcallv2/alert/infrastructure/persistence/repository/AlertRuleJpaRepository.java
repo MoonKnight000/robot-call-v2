@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.alert.infrastructure.persistence.entity.AlertRuleEntity;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,7 +20,10 @@ public interface AlertRuleJpaRepository extends JpaRepository<AlertRuleEntity, L
 
     long countByCompanyId(Long companyId);
 
-    List<AlertRuleEntity> findByEnabledTrueOrderById();
+    /** Enabled rules of companies that have not had {@code feature} switched off — what the scheduler evaluates. */
+    @Query("SELECT r FROM AlertRuleEntity r WHERE r.enabled = true AND NOT EXISTS (SELECT 1 FROM CompanyFeatureEntity f "
+            + "WHERE f.company.id = r.companyId AND f.feature = :feature AND f.enabled = false) ORDER BY r.id")
+    List<AlertRuleEntity> findEnabledWithFeature(@Param("feature") Feature feature);
 
     @Modifying
     @Transactional

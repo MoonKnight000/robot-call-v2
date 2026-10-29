@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.Campai
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.mapper.CampaignEntityMapper;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignJpaRepository;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.shared.util.LikePatterns;
@@ -99,7 +100,7 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
 
     @Override
     public List<Campaign> findActive() {
-        return campaignJpaRepository.findByStatusAndCompany_StatusOrderById(CampaignStatus.ACTIVE, CompanyStatus.ACTIVE).stream()
+        return campaignJpaRepository.findDispatchable(CampaignStatus.ACTIVE, CompanyStatus.ACTIVE, Feature.VOICE_AGENT).stream()
                 .map(mapper::toCampaign)
                 .toList();
     }

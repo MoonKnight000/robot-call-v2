@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
+import uz.murodjon.robotcallv2.agent.livekit.LiveKitTelephonyService;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -13,9 +14,10 @@ import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase
 import uz.murodjon.robotcallv2.callrecord.application.dto.CallOriginateResponse;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
-import uz.murodjon.robotcallv2.company.domain.entity.Company;
-import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
@@ -23,10 +25,10 @@ import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
-import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
@@ -66,6 +68,8 @@ class OutboundDialService {
     private final PendingCallRegistry pendingCallRegistry;
     private final TrunkCallPacer trunkCallPacer;
     private final ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider;
+    private final CompanyConfigUseCase companyConfigUseCase;
+    private final LiveKitTelephonyService liveKitTelephonyService;
 
     OutboundDialService(AsteriskProperties asteriskProperties,
                         AriClient ariClient,
@@ -82,7 +86,9 @@ class OutboundDialService {
                         AuditUseCase audit,
                         PendingCallRegistry pendingCallRegistry,
                         TrunkCallPacer trunkCallPacer,
-                        ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider) {
+                        ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider,
+                        CompanyConfigUseCase companyConfigUseCase,
+                        LiveKitTelephonyService liveKitTelephonyService) {
         this.asteriskProperties = asteriskProperties;
         this.ariClient = ariClient;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -99,6 +105,8 @@ class OutboundDialService {
         this.pendingCallRegistry = pendingCallRegistry;
         this.trunkCallPacer = trunkCallPacer;
         this.callerIdPoolUseCaseProvider = callerIdPoolUseCaseProvider;
+        this.companyConfigUseCase = companyConfigUseCase;
+        this.liveKitTelephonyService = liveKitTelephonyService;
     }
 
     String originate(String rawNumber, long companyId) {
@@ -126,6 +134,12 @@ class OutboundDialService {
         // conversation on one language — the row is written now and never rewritten, so a
         // literal here left the call held in uz-UZ but reported as "uz".
         String language = outboundCall != null ? outboundCall.language() : dialogProperties.language();
+
+        CompanyConfig config = companyConfigUseCase.find(companyId);
+        if (config != null && config.telephonyEngine() == TelephonyEngine.LIVEKIT) {
+            return originateViaLiveKit(companyId, targetId, number, language, sipTrunkId, outboundCall, callId);
+        }
+
         List<SipTrunkRow> candidateTrunks;
         try {
             candidateTrunks = isLocalNumber(number) ? Collections.singletonList(null)
@@ -191,6 +205,34 @@ class OutboundDialService {
     }
 
     /**
+     * The LiveKit engine's originate. One id names the attempt row, the tracking entry and the
+     * room, so whatever ends the call finds all three; a dispatch that fails leaves a closed row,
+     * as an Asterisk originate that fails does.
+     */
+    private String originateViaLiveKit(long companyId, long targetId, String number, String language,
+                                       Long sipTrunkId, OutboundCall outboundCall, String callId) {
+        String channelId = "livekit-" + callId;
+        SipTrunkRow trunk;
+        try {
+            trunk = isLocalNumber(number) ? null : resolveTrunkForCall(companyId, sipTrunkId);
+            liveKitTelephonyService.dispatchOutboundSipCall(liveKitTelephonyService.createCallRoom(channelId),
+                    number, callerIdFor(trunk, outboundCall, companyId));
+        } catch (RuntimeException e) {
+            callAttemptUseCase.recordUnplacedAttempt(companyId, targetId, number, language,
+                    Disposition.FAILED, "LiveKit dispatch failed: " + e.getMessage());
+            throw e;
+        }
+        callAttemptUseCase.startAttempt(companyId, targetId, channelId, number, language, null,
+                outboundCall != null ? outboundCall.variantId() : null);
+        if (outboundCall != null) {
+            outboundCallTrackingUseCase.register(channelId, outboundCall);
+        }
+        log.info("Originated LiveKit call {} to {} (trunkId={}) -> room/channel {}",
+                callId, PhoneMasker.mask(number), trunk != null ? trunk.id() : sipTrunkId, channelId);
+        return channelId;
+    }
+
+    /**
      * Every outside number dialled on a company's behalf passes here — except the campaign
      * dialer's own calls, which CallTaskConsumer has already checked against the
      * do-not-call list and held money for, and which it records as attempts when refused.
@@ -209,12 +251,9 @@ class OutboundDialService {
         }
     }
 
-    /** A suspended company, or one without the money for a call, starts no call of any kind — browser ones included. */
+    /** A suspended company, one without the voice agent, or one without the money for a call, starts no call of any kind — browser ones included. */
     void requireCompanyMayCall(long companyId) {
-        Company company = companyUseCase.findById(companyId);
-        if (company != null && company.status() == CompanyStatus.SUSPENDED) {
-            throw new ForbiddenException(ErrorCode.COMPANY_SUSPENDED);
-        }
+        companyUseCase.requireFeatureEnabled(companyId, Feature.VOICE_AGENT);
         if (!callBillingUseCase.hasBalanceForCall(companyId)) {
             throw new ConflictException(ErrorCode.CALL_BALANCE_INSUFFICIENT);
         }

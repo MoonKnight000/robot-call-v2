@@ -126,7 +126,7 @@ public class ApiKeyService implements ApiKeyUseCase {
         }
         // A suspended tenant's integrations stop with its users, not only its logins.
         Company company = companyUseCase.findById(apiKey.companyId());
-        if (company == null || company.status() == CompanyStatus.SUSPENDED) {
+        if (company == null || company.status() != CompanyStatus.ACTIVE) {
             return null;
         }
         // Best-effort: a key that authenticated must not be refused because the stamp
@@ -136,6 +136,7 @@ public class ApiKeyService implements ApiKeyUseCase {
         } catch (Exception e) {
             log.debug("Could not stamp API key {} as used: {}", prefix, e.getMessage());
         }
-        return apiKey;
+        // A feature the platform switched off for the company is off for its keys too.
+        return apiKey.withScopes(company.retainEnabled(apiKey.scopes()));
     }
 }

@@ -24,6 +24,11 @@ public class AgentWidgetControllerImpl implements AgentWidgetController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<List<WidgetRow>>> list(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(agentWidgetUseCase.findWidgets(companyId)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<List<WidgetRow>>> listByAgent(long companyId, long agentId) {
         return ResponseEntity.ok(ResponseData.ok(agentWidgetUseCase.findWidgetsByAgentId(companyId, agentId)));
     }

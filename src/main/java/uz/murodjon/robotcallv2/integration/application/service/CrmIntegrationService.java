@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
@@ -18,9 +20,11 @@ import uz.murodjon.robotcallv2.integration.domain.entity.OAuthTokenReply;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmAuthMethod;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
+import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationCatalogStatus;
 import uz.murodjon.robotcallv2.integration.domain.service.CrmIntegrationValidator;
 import uz.murodjon.robotcallv2.integration.infrastructure.config.UysotOAuthProperties;
 import uz.murodjon.robotcallv2.shared.exception.*;
+import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
@@ -50,11 +54,13 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     private final UysotOAuthProperties uysotOAuthProperties;
     private final OAuthStateStorePort oauthStateStorePort;
     private final AuditUseCase audit;
+    private final CompanyUseCase companyUseCase;
     private final ObjectMapper objectMapper;
     private final UysotOAuthPort uysotOAuthPort;
 
     public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
-                                 OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, UysotOAuthPort uysotOAuthPort,
+                                 OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, CompanyUseCase companyUseCase,
+                                 UysotOAuthPort uysotOAuthPort,
                                  ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.repository = repository;
@@ -62,17 +68,30 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         this.uysotOAuthProperties = uysotOAuthProperties;
         this.oauthStateStorePort = oauthStateStorePort;
         this.audit = audit;
+        this.companyUseCase = companyUseCase;
         this.uysotOAuthPort = uysotOAuthPort;
     }
 
     @Override
-    public List<CrmCatalogEntry> findCatalog() {
+    public List<IntegrationCatalogEntry> findCatalog(long companyId) {
+        Company company = companyUseCase.findById(companyId);
         return List.of(
-                new CrmCatalogEntry(CrmProvider.UYSOT, "Uysot CRM", CrmAuthMethod.OAUTH, true),
-                new CrmCatalogEntry(CrmProvider.AMOCRM, "amoCRM", CrmAuthMethod.API_TOKEN, true),
-                new CrmCatalogEntry(CrmProvider.KOMMO, "Kommo CRM (Global amoCRM)", CrmAuthMethod.API_TOKEN, true),
-                new CrmCatalogEntry(CrmProvider.BITRIX24, "Bitrix24", CrmAuthMethod.API_TOKEN, true)
-        );
+                catalogEntry(IntegrationProvider.UYSOT, "Uysot CRM", CrmAuthMethod.OAUTH, company),
+                catalogEntry(IntegrationProvider.AMOCRM, "amoCRM", CrmAuthMethod.API_TOKEN, company),
+                catalogEntry(IntegrationProvider.KOMMO, "Kommo CRM (Global amoCRM)", CrmAuthMethod.API_TOKEN, company),
+                catalogEntry(IntegrationProvider.BITRIX24, "Bitrix24", CrmAuthMethod.API_TOKEN, company),
+                catalogEntry(IntegrationProvider.GOOGLE_DRIVE, "Google Drive", null, company),
+                catalogEntry(IntegrationProvider.NOTION, "Notion", null, company),
+                catalogEntry(IntegrationProvider.ASTERISK, "Asterisk", null, company));
+    }
+
+    private static IntegrationCatalogEntry catalogEntry(IntegrationProvider provider, String displayName,
+                                                        CrmAuthMethod authMethod, Company company) {
+        IntegrationCatalogStatus status = !provider.available() ? IntegrationCatalogStatus.COMING_SOON
+                : company != null && !company.isEnabled(provider) ? IntegrationCatalogStatus.DISABLED_BY_PLATFORM
+                : IntegrationCatalogStatus.AVAILABLE;
+        return new IntegrationCatalogEntry(provider, displayName, provider.category(), authMethod, status,
+                status == IntegrationCatalogStatus.AVAILABLE);
     }
 
     @Override
@@ -85,6 +104,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
 
     @Override
     public CrmIntegrationRow connect(long companyId, ConnectIntegrationRequest request) {
+        companyUseCase.requireIntegrationEnabled(companyId, IntegrationProvider.UYSOT);
         CrmIntegrationValidator.validateAppName(request.appName());
         CrmIntegration saved = repository.saveAppInfo(companyId, request.appName(), writeGrants(request.grants()));
         audit.record(companyId, "CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId), request.appName());
@@ -93,6 +113,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
 
     @Override
     public CrmIntegrationRow connectAccount(long companyId, ConnectCrmAccountRequest request) {
+        companyUseCase.requireIntegrationEnabled(companyId, IntegrationProvider.valueOf(request.provider().name()));
         CrmIntegrationValidator.validateAccount(request.provider(), request.accessToken());
         String baseUrl = CrmIntegrationValidator.normalizeBaseUrl(request.baseUrl());
         // Screened here so a bad address is a 400 now — and again by the connector before
@@ -117,6 +138,7 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
 
     @Override
     public AuthorizeUrlResponse buildAuthorizeUrl(long companyId) {
+        companyUseCase.requireIntegrationEnabled(companyId, IntegrationProvider.UYSOT);
         // The tokens this flow ends with are stored encrypted — no key, no point starting it.
         requireCipher();
         if (!uysotOAuthProperties.configured()) {

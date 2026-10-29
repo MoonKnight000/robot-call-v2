@@ -1,0 +1,383 @@
+# `phonenumber` feature'ining ma'lumot turlari (request/response DTO, domain, enum).
+AddPoolNumberRequest:
+  type: object
+  description: Platforma ma'muri tomonidan hovuzga yangi telefon raqami qo'shish so'rovi
+  properties:
+    phoneNumber:
+      type: string
+      minLength: 1
+      example: "+998712000101"
+      description: E.164 formatidagi telefon raqami
+    category:
+      $ref: '#/PhoneNumberCategory'
+    monthlyFee:
+      type: number
+      format: double
+      minimum: 0
+      example: 50000.00
+      description: Oylik abonent to'lovi (so'mda)
+    pricePerChannel:
+      type: number
+      format: double
+      minimum: 0
+      example: 5000.00
+      description: Har bir parallel qo'ng'iroq kanali uchun oylik narx
+    maxSupportedChannels:
+      type: integer
+      format: int32
+      minimum: 1
+      example: 20
+      description: Maksimal qo'llab-quvvatlanadigan parallel kanallar soni
+    providerTrunkId:
+      type: integer
+      format: int64
+      nullable: true
+      description: Platforma provayder SIP trunk identifikatori
+  required:
+  - phoneNumber
+  - monthlyFee
+
+PhoneNumberCategory:
+  type: string
+  enum:
+  - STANDARD
+  - SILVER
+  - GOLD
+  - PLATINUM
+  description: |-
+    Telefon raqamining vizual toifasi:
+    - `STANDARD` — Oddiy raqam
+    - `SILVER` — Kumush toifadagi raqam
+    - `GOLD` — Oltin toifadagi esda qolarli raqam
+    - `PLATINUM` — Eng yuqori premium toifadagi raqam
+
+PhoneNumberFilter:
+  type: object
+  description: Telefon raqamlari bo'yicha qidiruv, sahifalash va saralash filtri
+  properties:
+    page:
+      type: integer
+      format: int32
+      minimum: 0
+      example: 0
+    size:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 500
+      example: 20
+    orders:
+      type: object
+      properties:
+        ID:
+          $ref: ../common.yaml#/schemas/SortDirection
+        PHONE_NUMBER:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CATEGORY:
+          $ref: ../common.yaml#/schemas/SortDirection
+        MONTHLY_FEE:
+          $ref: ../common.yaml#/schemas/SortDirection
+        STATUS:
+          $ref: ../common.yaml#/schemas/SortDirection
+        CREATED_AT:
+          $ref: ../common.yaml#/schemas/SortDirection
+      additionalProperties: false
+      description: Saralash maydonlari va yo'nalishi (ASC/DESC). Berilmasa CREATED_AT DESC; marketplace'ni narx bo'yicha ko'rish uchun MONTHLY_FEE ASC yuboring.
+    search:
+      type: string
+      description: Qidiruv so'zi (telefon raqami yoki taxallus bo'yicha)
+    category:
+      $ref: '#/PhoneNumberCategory'
+    status:
+      $ref: '#/PhoneNumberStatus'
+    type:
+      $ref: '#/PhoneNumberType'
+
+PhoneNumberRow:
+  type: object
+  description: Telefon raqami haqida batafsil ma'lumot qatori
+  properties:
+    id:
+      type: integer
+      format: int64
+      example: 1
+    companyId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 10
+      description: Raqam biriktirilgan kompaniya ID si (bo'sh raqamlarda null)
+    phoneNumber:
+      type: string
+      example: "+998712000101"
+      description: E.164 formatidagi telefon raqami
+    nickname:
+      type: string
+      nullable: true
+      example: "Asosiy savdo liniyasi"
+      description: Kompaniya tomonidan berilgan ichki nom (taxallus)
+    type:
+      $ref: '#/PhoneNumberType'
+    category:
+      $ref: '#/PhoneNumberCategory'
+    status:
+      $ref: '#/PhoneNumberStatus'
+    monthlyFee:
+      type: number
+      format: double
+      example: 50000.00
+      description: Oylik abonent to'lovi (so'mda)
+    pricePerChannel:
+      type: number
+      format: double
+      example: 5000.00
+      description: Har bir kanal uchun oylik narx
+    maxSupportedChannels:
+      type: integer
+      format: int32
+      example: 20
+      description: Maksimal qo'llab-quvvatlanadigan parallel kanallar soni
+    allocatedChannels:
+      type: integer
+      format: int32
+      example: 5
+      description: Kompaniya uchun ajratilgan parallel kanallar soni
+    totalMonthlyCost:
+      type: number
+      format: double
+      example: 75000.00
+      description: Jami oylik to'lov (monthlyFee + pricePerChannel * allocatedChannels)
+    inboundAgentId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 1
+      description: Kiruvchi qo'ng'iroqlarni qabul qiluvchi AI agent ID si
+    inboundAgentName:
+      type: string
+      nullable: true
+      example: "Dilnavoz"
+      description: Kiruvchi qo'ng'iroqlarni qabul qiluvchi AI agent nomi
+    inboundCallFlowId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 3
+      description: Kiruvchi qo'ng'iroqlarni yo'naltiruvchi CallFlow (IVR) ID si
+    inboundCallFlowName:
+      type: string
+      nullable: true
+      example: "Asosiy IVR menyu"
+      description: Kiruvchi CallFlow nomi
+    autoRenew:
+      type: boolean
+      example: true
+      description: Oylik avtomatik uzaytirish yoqilganmi
+    purchasedAt:
+      type: string
+      format: date-time
+      nullable: true
+      description: Xarid qilingan vaqt
+    expiresAt:
+      type: string
+      format: date-time
+      nullable: true
+      description: To'langan muddat tugash vaqti
+    createdAt:
+      type: string
+      format: date-time
+      description: Yaratilgan vaqt
+  required:
+  - id
+  - phoneNumber
+  - type
+  - category
+  - status
+  - monthlyFee
+  - pricePerChannel
+  - maxSupportedChannels
+  - allocatedChannels
+  - totalMonthlyCost
+  - autoRenew
+  - createdAt
+
+PhoneNumberRowPage:
+  type: object
+  description: '`PhoneNumberRow` sahifasi'
+  properties:
+    totalPages:
+      type: integer
+      format: int32
+    currentPage:
+      type: integer
+      format: int32
+    totalElements:
+      type: integer
+      format: int64
+    data:
+      type: array
+      items:
+        $ref: '#/PhoneNumberRow'
+  required:
+  - totalPages
+  - currentPage
+  - totalElements
+  - data
+
+PhoneNumberStatus:
+  type: string
+  enum:
+  - AVAILABLE
+  - ASSIGNED
+  description: |-
+    Telefon raqami holati:
+    - `AVAILABLE` — Sotuvda/hovuzda mavjud (xarid qilish uchun ochiq)
+    - `ASSIGNED` — Kompaniyaga biriktirilgan va faol (bo'shatilgan raqam yana `AVAILABLE` bo'ladi)
+
+PhoneNumberTableField:
+  type: string
+  enum:
+  - ID
+  - PHONE_NUMBER
+  - CATEGORY
+  - MONTHLY_FEE
+  - STATUS
+  - CREATED_AT
+  description: Telefon raqamlari jadvalini saralash ustunlari
+
+PhoneNumberType:
+  type: string
+  enum:
+  - MARKETPLACE_PURCHASED
+  - BYO_SIP_TRUNK
+  description: |-
+    Telefon raqami turi:
+    - `MARKETPLACE_PURCHASED` — Platforma bozoridan sotib olingan raqam
+    - `BYO_SIP_TRUNK` — Shaxsiy SIP trunk orqali ulangan tashqi raqam (BYON)
+
+PurchaseNumberRequest:
+  type: object
+  description: Bozordan telefon raqamini xarid qilish so'rovi
+  properties:
+    poolNumberId:
+      type: integer
+      format: int64
+      example: 1
+      description: Tanlangan hovuz raqami identifikatori
+    allocatedChannels:
+      type: integer
+      format: int32
+      minimum: 1
+      example: 5
+      description: Bir vaqtning o'zidagi parallel qo'ng'iroq liniyalari (kanallar) soni
+    nickname:
+      type: string
+      nullable: true
+      example: "Mijozlar qo'llab-quvvatlash"
+      description: Raqam uchun erkin taxallus
+    inboundAgentId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 1
+      description: Kiruvchi qo'ng'iroqlarni qabul qiluvchi dastlabki AI agent
+    inboundCallFlowId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 3
+      description: Agent o'rniga kiruvchi qo'ng'iroqlarni boshqaradigan e'lon qilingan Call Flow (IVR)
+    autoRenew:
+      type: boolean
+      nullable: true
+      example: true
+      description: Har oy balansdan avtomatik yechib uzaytirish
+  required:
+  - poolNumberId
+  - allocatedChannels
+
+TestSipConnectionRequest:
+  type: object
+  description: BYO SIP Trunk ulanishini sinab ko'rish so'rovi
+  properties:
+    host:
+      type: string
+      minLength: 1
+      example: "sip.telnyx.com"
+      description: SIP server host manzili yoki IP
+    port:
+      type: integer
+      format: int32
+      example: 5060
+      description: SIP porti (standart: 5060)
+    username:
+      type: string
+      nullable: true
+      example: "sip_username"
+      description: SIP avtorizatsiya foydalanuvchi nomi
+    password:
+      type: string
+      nullable: true
+      example: "sip_secret_key"
+      description: SIP paroli
+    transport:
+      type: string
+      nullable: true
+      example: "TCP"
+      description: SIP transport protokoli (UDP, TCP, TLS)
+  required:
+  - host
+
+TestSipConnectionResponse:
+  type: object
+  description: SIP ulanishini test qilish natijasi
+  properties:
+    connected:
+      type: boolean
+      example: true
+      description: Ulanish muvaffaqiyatli amalga oshganmi
+    roundTripMs:
+      type: integer
+      format: int64
+      example: 45
+      description: Tarmoq kechikish vaqti (ms)
+    status:
+      type: string
+      example: "OK"
+      description: Holat kodi yoki qisqa matn
+    details:
+      type: string
+      nullable: true
+      example: "SIP/2.0 200 OK received in 45ms"
+      description: Qo'shimcha diagnostika ma'lumotlari
+  required:
+  - connected
+  - roundTripMs
+  - status
+
+UpdateInboundRoutingRequest:
+  type: object
+  description: Telefon raqami kiruvchi qo'ng'iroqlarini yo'naltirish sozlamalarini yangilash
+  properties:
+    nickname:
+      type: string
+      nullable: true
+      example: "Asosiy qo'llab-quvvatlash"
+      description: Kompaniya ichidagi erkin nom (taxallus)
+    inboundAgentId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 2
+      description: Kiruvchi qo'ng'iroqlarni qabul qiluvchi AI agent ID si
+    inboundCallFlowId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 5
+      description: Kiruvchi qo'ng'iroqlarni qabul qiluvchi CallFlow (IVR) ID si
+    autoRenew:
+      type: boolean
+      nullable: true
+      example: true
+      description: Oylik avtomatik uzaytirish

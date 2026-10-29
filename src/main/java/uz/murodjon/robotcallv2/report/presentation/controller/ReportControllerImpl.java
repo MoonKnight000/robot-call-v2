@@ -105,7 +105,7 @@ public class ReportControllerImpl implements ReportController {
 
     @Override
     public ResponseEntity<ResponseData<List<DashboardOutcome>>> outcomesDistribution(long companyId, String from, String to, Long campaignId) {
-        return dashboardOutcomes(companyId, from, to, campaignId);
+        return ResponseEntity.ok(ResponseData.ok(dashboardReportUseCase.findDashboardOutcomes(companyId, from, to, campaignId)));
     }
 
     @Override

@@ -24,7 +24,7 @@ public final class InboundRouteValidator {
     }
 
     public static void validateBusinessHours(LocalTime start, LocalTime end) {
-        if (start != null && end != null && start.equals(end)) {
+        if (start != null && start.equals(end)) {
             throw new ValidationException(ErrorCode.INBOUND_ROUTE_HOURS_IDENTICAL);
         }
     }

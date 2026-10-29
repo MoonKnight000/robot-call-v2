@@ -25,7 +25,7 @@ class ScenarioCanvasSimulatorTest {
                 List.of(new StageBranch("paidInFull", BranchOperator.EQUALS, "true", "SUCCESS_END")),
                 Map.of("NEGOTIATE", "Mijoz rozi bo'ldi", "CANCEL", "Mijoz rad etdi"),
                 "Assalomu alaykum {{clientName}}, sizda {{debtAmount | \"0\"}} so'm to'lov mavjud.",
-                List.of("contacted")
+                List.of("contacted"), null, null, null, null
         );
 
         StageDef negotiate = new StageDef(
@@ -38,7 +38,7 @@ class ScenarioCanvasSimulatorTest {
                 null,
                 Map.of("SUCCESS_END", "Sana kelishildi"),
                 "Qaysi sanada to'lovni amalga oshirasiz?",
-                List.of("paymentDate")
+                List.of("paymentDate"), null, null, null, null
         );
 
         StageDef successEnd = new StageDef(
@@ -51,7 +51,7 @@ class ScenarioCanvasSimulatorTest {
                 null,
                 null,
                 "Rahmat, sizga SMS yuborildi. Xayr!",
-                null
+                null, null, null, null, null
         );
 
         StageDef cancel = new StageDef(
@@ -64,7 +64,7 @@ class ScenarioCanvasSimulatorTest {
                 null,
                 null,
                 "Tushunarli, ma'lumot qayd etildi.",
-                null
+                null, null, null, null, null
         );
 
         List<GlobalNode> globalNodes = List.of(
@@ -82,7 +82,7 @@ class ScenarioCanvasSimulatorTest {
                 null,
                 null,
                 globalNodes,
-                "Qarzdorlik eslatmasi"
+                "Qarzdorlik eslatmasi", null, null
         );
     }
 

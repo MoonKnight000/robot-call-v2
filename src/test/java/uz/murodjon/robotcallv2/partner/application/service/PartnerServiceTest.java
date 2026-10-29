@@ -83,7 +83,7 @@ class PartnerServiceTest {
         when(repository.findBrandingByCompanyId(PARTNER_ID)).thenReturn(BRAND);
         when(users.findByUsername("aziz")).thenReturn(Optional.empty());
         when(companies.create(new CreateCompanyRequest("Do'kon"))).thenReturn(
-                new Company(CLIENT_ID, "Do'kon", null, null, null, null, null));
+                new Company(CLIENT_ID, "Do'kon", null, null, null, null, null, null, null, null));
         when(users.inviteFirstAdmin(CLIENT_ID, "Aziz", "aziz", "aziz@dokon.uz"))
                 .thenReturn(new InviteUserResponse(1L, "aziz@dokon.uz", "token-1", Instant.EPOCH));
 
@@ -96,7 +96,7 @@ class PartnerServiceTest {
 
     @Test
     void anotherPartnersDomainIsRefused() {
-        when(companies.findById(PARTNER_ID)).thenReturn(new Company(PARTNER_ID, "P", null, null, null, null, null));
+        when(companies.findById(PARTNER_ID)).thenReturn(new Company(PARTNER_ID, "P", null, null, null, null, null, null, null, null));
         when(repository.existsBrandingByDomainAndCompanyIdNot("app.smartcall.uz", PARTNER_ID)).thenReturn(true);
 
         assertRefused(() -> service.upsertBrandingByPlatform(PARTNER_ID, brandingRequest()), ErrorCode.PARTNER_DOMAIN_TAKEN);
@@ -105,7 +105,7 @@ class PartnerServiceTest {
 
     @Test
     void aClientCannotBecomeAPartner() {
-        when(companies.findById(CLIENT_ID)).thenReturn(new Company(CLIENT_ID, "C", null, null, null, null, null));
+        when(companies.findById(CLIENT_ID)).thenReturn(new Company(CLIENT_ID, "C", null, null, null, null, null, null, null, null));
         when(repository.findClientByClientCompanyId(CLIENT_ID)).thenReturn(new PartnerClient(PARTNER_ID, CLIENT_ID, Instant.EPOCH));
 
         assertRefused(() -> service.upsertBrandingByPlatform(CLIENT_ID, brandingRequest()), ErrorCode.PARTNER_CLIENT_IS_PARTNER);

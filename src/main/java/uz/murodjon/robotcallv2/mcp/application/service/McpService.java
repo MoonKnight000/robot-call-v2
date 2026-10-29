@@ -71,6 +71,13 @@ public class McpService implements McpUseCase {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<McpConnectionRow> findAgentConnections(long companyId, long agentId) {
+        aiAgentUseCase.requireAgent(companyId, agentId);
+        return connectionRepository.findByAgentId(companyId, agentId).stream().map(mapper::toRow).toList();
+    }
+
+    @Override
     @Transactional
     public McpConnectionRow createConnection(long companyId, McpConnectionRequest request) {
         String name = request.name().trim();

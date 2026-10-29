@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
+
 import java.util.List;
 
 /**
@@ -32,8 +34,18 @@ public record ScenarioDefinition(
          * reminder and a lead follow-up cannot be told apart only by guessing from the role
          * prompt; null = the role prompt and the stages are all it has.
          */
-        String callPurpose
+        String callPurpose,
+        /** The stage a call opens on; null = the first of {@code stages}. */
+        String startStageId,
+        /** Which stages the model may move a call to ({@link TransitionMode}); null = {@link TransitionMode#RIGID}. */
+        TransitionMode transitionMode
 ) {
+    public ScenarioDefinition {
+        if (transitionMode == null) {
+            transitionMode = TransitionMode.RIGID;
+        }
+    }
+
     public static ScenarioDefinitionBuilder builder() {
         return new ScenarioDefinitionBuilder();
     }
@@ -47,7 +59,7 @@ public record ScenarioDefinition(
     public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
                               List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
                               String disclosureText) {
-        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, null, null, null, null);
+        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, null, null, null, null, null, null);
     }
 
     /**
@@ -65,6 +77,18 @@ public record ScenarioDefinition(
             return this;
         }
         return toBuilder().rolePrompt(prompt).build();
+    }
+
+    /**
+     * The stage a call opens on: {@code startStageId}, or the first stage when it is unset or
+     * names no stage; null when there are no stages.
+     */
+    public StageDef findStartStage() {
+        if (stages == null || stages.isEmpty()) {
+            return null;
+        }
+        StageDef start = findStage(startStageId);
+        return start != null ? start : stages.get(0);
     }
 
     public StageDef findStage(String id) {

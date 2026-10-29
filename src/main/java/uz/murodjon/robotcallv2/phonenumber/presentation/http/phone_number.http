@@ -1,0 +1,93 @@
+### 1. Platform Admin - Add a phone number to platform inventory pool
+POST {{host}}/api/platform/phone-numbers
+Authorization: Bearer {{platformAdminToken}}
+Content-Type: application/json
+
+{
+  "phoneNumber": "+998712000101",
+  "category": "GOLD",
+  "monthlyFee": 50000,
+  "pricePerChannel": 5000,
+  "maxSupportedChannels": 20
+}
+
+### 2. Platform Admin - Batch import phone numbers
+POST {{host}}/api/platform/phone-numbers/batch
+Authorization: Bearer {{platformAdminToken}}
+Content-Type: application/json
+
+[
+  {
+    "phoneNumber": "+998712000102",
+    "category": "SILVER",
+    "monthlyFee": 30000,
+    "pricePerChannel": 5000,
+    "maxSupportedChannels": 10
+  },
+  {
+    "phoneNumber": "+998712000103",
+    "category": "STANDARD",
+    "monthlyFee": 20000,
+    "pricePerChannel": 4000,
+    "maxSupportedChannels": 5
+  }
+]
+
+### 3. Tenant - Browse Marketplace available numbers
+POST {{host}}/api/phone-numbers/marketplace
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### 4. Tenant - Purchase phone number with 5 concurrent channels
+POST {{host}}/api/phone-numbers/purchase
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "poolNumberId": 1,
+  "allocatedChannels": 5,
+  "nickname": "Sales Hotline",
+  "inboundAgentId": 1,
+  "autoRenew": true
+}
+
+### 5. Tenant - List Purchased Numbers
+POST {{host}}/api/phone-numbers/list
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "page": 0,
+  "size": 10
+}
+
+### 6. Tenant - Update Inbound Routing (assign to AI Agent or CallFlow)
+PUT {{host}}/api/phone-numbers/1/routing
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "nickname": "Primary Receptionist",
+  "inboundAgentId": 2,
+  "autoRenew": true
+}
+
+### 7. Tenant - Test SIP Connection (BYO SIP Trunking verification)
+POST {{host}}/api/phone-numbers/test-connection
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "host": "sip.telnyx.com",
+  "port": 5060,
+  "transport": "TCP"
+}
+
+### 8. Tenant - Release Number back to pool
+DELETE {{host}}/api/phone-numbers/1
+Authorization: Bearer {{tenantToken}}

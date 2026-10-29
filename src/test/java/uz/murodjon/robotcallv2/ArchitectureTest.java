@@ -48,7 +48,7 @@ class ArchitectureTest {
             "expire", "export", "extract", "fetch", "filter", "finalize", "find", "finish", "generate", "handle",
             "hangup", "has", "hold", "import", "inject", "insert", "install", "invite", "is", "list", "listen",
             "login", "logout", "make", "mark", "monitor", "notify", "originate", "parse", "pause",
-            "peek", "play", "post", "prepare", "preview", "publish", "record", "refresh", "register",
+            "peek", "play", "post", "prepare", "preview", "publish", "purchase", "record", "refresh", "register",
             "release", "remember", "remove", "render", "replace", "report", "request", "require",
             "reject", "reserve", "reset", "resolve", "retry", "revoke", "rollback", "rotate", "run", "save",
             "say", "schedule", "search", "send", "set", "settle", "setup", "simulate", "start",

@@ -42,4 +42,17 @@ class StageBranchEvaluatorTest {
         assertThat(StageBranchEvaluator.findTarget(branches, Map.<String, Object>of("segment", "basic")::get))
                 .isEqualTo("STANDARD_OFFER");
     }
+
+    @Test
+    void theAlwaysBranchIsTakenWhenNoneBeforeItHoldsAndReadsNoFact() {
+        List<StageBranch> branches = List.of(
+                new StageBranch("debtAmount", BranchOperator.GREATER, "0", "DEBT_NOTICE"),
+                new StageBranch(null, BranchOperator.ALWAYS, null, "CLOSING"));
+
+        // Map.of()::get throws on a null key, so the ALWAYS branch must not look its fact up.
+        assertThat(StageBranchEvaluator.findTarget(branches, Map.<String, Object>of("debtAmount", 0)::get))
+                .isEqualTo("CLOSING");
+        assertThat(StageBranchEvaluator.findTarget(branches, Map.<String, Object>of("debtAmount", 10)::get))
+                .isEqualTo("DEBT_NOTICE");
+    }
 }

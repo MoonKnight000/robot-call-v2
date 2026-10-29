@@ -67,6 +67,14 @@ public class AgentWidgetRepositoryAdapter implements AgentWidgetRepository {
 
     @Override
     @Transactional(readOnly = true)
+    public List<AgentWidget> findByCompanyId(long companyId) {
+        return jpaRepository.findByCompanyIdOrderByCreatedAtDesc(companyId)
+                .stream()
+                .map(mapper::toAgentWidget)
+                .toList();
+    }
+
+    @Override
     public List<AgentWidget> findByCompanyIdAndAgentId(long companyId, long agentId) {
         return jpaRepository.findByCompanyIdAndAgentIdOrderByCreatedAtDesc(companyId, agentId)
                 .stream()

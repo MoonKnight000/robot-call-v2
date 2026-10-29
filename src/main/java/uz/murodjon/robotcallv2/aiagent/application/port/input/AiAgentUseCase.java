@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.aiagent.application.port.input;
 
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.dto.CreateSinglePromptAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.dto.CreateConversationFlowAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
@@ -20,6 +22,10 @@ import java.util.Map;
 public interface AiAgentUseCase {
 
     AiAgentRow createAgent(long companyId, CreateAiAgentRequest request);
+
+    AiAgentRow createSinglePromptAgent(long companyId, CreateSinglePromptAgentRequest request);
+
+    AiAgentRow createConversationFlowAgent(long companyId, CreateConversationFlowAgentRequest request);
 
     AiAgentRow updateAgent(long companyId, long id, UpdateAiAgentRequest request);
 

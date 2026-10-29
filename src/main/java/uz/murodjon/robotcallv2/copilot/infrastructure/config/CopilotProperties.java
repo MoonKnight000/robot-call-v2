@@ -20,7 +20,7 @@ public record CopilotProperties(
 
     public CopilotProperties {
         if (model == null || model.isBlank()) {
-            model = "gemini-3.8-pro";
+            model = "gemini-3.8-flash";
         }
         if (maxTokens <= 0) {
             maxTokens = 4096;

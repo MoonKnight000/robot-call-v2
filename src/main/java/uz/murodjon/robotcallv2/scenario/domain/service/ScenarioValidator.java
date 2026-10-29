@@ -1,9 +1,11 @@
 package uz.murodjon.robotcallv2.scenario.domain.service;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Structural checks a ScenarioDefinition must pass before it can be saved.
@@ -11,12 +13,24 @@ import java.util.*;
 public final class ScenarioValidator {
 
     private static final Set<String> RESERVED_TOOL_NAMES = Set.of(
-            "transitionTo", "endCall", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall");
+            "transitionTo", "endCall", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
+            "extractVariables");
 
     private static final Set<String> ALLOWED_WEBHOOK_METHODS = Set.of("GET", "POST");
 
     /** Two seconds. This wait sits inside the dispatch loop, ahead of every other target's call. */
     static final int MAX_FACT_WEBHOOK_TIMEOUT_MS = 2000;
+
+    /** Digits with an optional leading +: a transfer goes out through a SIP trunk, which takes nothing else. */
+    private static final Pattern TRANSFER_NUMBER = Pattern.compile("\\+?[0-9]{3,15}");
+
+    /** DTMF tones and {@code w}, the half-second pause an IVR needs between menu levels. */
+    private static final Pattern DTMF_DIGITS = Pattern.compile("[0-9*#w]{1,32}");
+
+    /** Ten SMS segments; a longer text is not a message a caller reads during a call. */
+    private static final int MAX_SMS_TEXT_LENGTH = 1600;
+
+    private static final int MAX_CODE_LENGTH = 20_000;
 
     private ScenarioValidator() {
     }
@@ -28,9 +42,12 @@ public final class ScenarioValidator {
             return errors;
         }
         checkStages(def.stages(), errors);
-        checkBranches(def.stages(), errors);
+        checkStart(def, errors);
+        StageDef start = def.findStartStage();
+        checkBranches(def.stages(), start, errors);
         checkTransitionConditions(def.stages(), errors);
-        checkStaticLines(def.stages(), errors);
+        checkStaticLines(start, errors);
+        checkStageTypes(def, errors);
         checkRequiredOutcomes(def.stages(), errors);
         checkNamesUnique("fact", def.factSchema() == null ? List.of()
                 : def.factSchema().stream().map(FactField::name).toList(), errors);
@@ -87,26 +104,53 @@ public final class ScenarioValidator {
     }
 
     /**
-     * A branch is a transition the code takes instead of the model, so it may only take one
-     * the graph already allows. The first stage cannot branch: the call opens on it with
-     * the greeting already spoken, before any transition the branches would ride on.
+     * The stage named by {@code startStageId} must exist, and must be one a call can open on: a
+     * conversation, because the call opens with the agent's first message already spoken and
+     * the caller answering it; and not a global one, which is reached by its condition, not by
+     * the call starting.
      */
-    private static void checkBranches(List<StageDef> stages, List<String> errors) {
+    private static void checkStart(ScenarioDefinition def, List<String> errors) {
+        if (def.stages() == null || def.stages().isEmpty()) {
+            return;
+        }
+        if (def.startStageId() != null && def.findStage(def.startStageId()) == null) {
+            errors.add("startStageId " + def.startStageId() + " is not a stage");
+            return;
+        }
+        StageDef start = def.findStartStage();
+        if (start.type() != StageType.CONVERSATION) {
+            errors.add("the start stage " + start.id() + " must be a CONVERSATION stage, not " + start.type());
+        }
+        if (start.globalCondition() != null) {
+            errors.add("the start stage " + start.id() + " cannot be global");
+        }
+    }
+
+    /**
+     * A branch is a transition the code takes instead of the model, so it may only take one
+     * the graph already allows. The start stage cannot branch: the call opens on it with
+     * the greeting already spoken, before any transition the branches would ride on.
+     * {@code ALWAYS} holds for every call, so a branch after it would never be taken.
+     */
+    private static void checkBranches(List<StageDef> stages, StageDef start, List<String> errors) {
         if (stages == null || stages.isEmpty()) {
             return;
         }
-        for (int i = 0; i < stages.size(); i++) {
-            StageDef s = stages.get(i);
+        for (StageDef s : stages) {
             if (s.branches() == null || s.branches().isEmpty()) {
                 continue;
             }
-            if (i == 0) {
-                errors.add("the first stage " + s.id() + " cannot have branches");
+            if (s == start) {
+                errors.add("the start stage " + s.id() + " cannot have branches");
                 continue;
             }
-            for (StageBranch branch : s.branches()) {
-                if (branch == null || branch.fact() == null || branch.fact().isBlank() || branch.operator() == null) {
+            for (int i = 0; i < s.branches().size(); i++) {
+                StageBranch branch = s.branches().get(i);
+                if (branch == null || branch.operator() == null
+                        || (branch.operator().needsFact() && (branch.fact() == null || branch.fact().isBlank()))) {
                     errors.add("a branch of stage " + s.id() + " needs 'fact' and 'operator'");
+                } else if (!branch.operator().needsFact() && i != s.branches().size() - 1) {
+                    errors.add("the ALWAYS branch of stage " + s.id() + " must be its last");
                 } else if (branch.operator().needsValue() && (branch.value() == null || branch.value().isBlank())) {
                     errors.add("branch on " + branch.fact() + " in stage " + s.id() + " needs a 'value' for "
                             + branch.operator());
@@ -140,17 +184,126 @@ public final class ScenarioValidator {
     }
 
     /**
-     * The call opens on the first stage with the agent's own first message already spoken,
+     * The call opens on the start stage with the agent's own first message already spoken,
      * so a line of its own there would either never be said or be said twice.
      */
-    private static void checkStaticLines(List<StageDef> stages, List<String> errors) {
-        if (stages == null || stages.isEmpty()) {
+    private static void checkStaticLines(StageDef start, List<String> errors) {
+        if (start == null) {
             return;
         }
-        StageDef first = stages.get(0);
-        if (first.staticLine() != null && !first.staticLine().isBlank()) {
-            errors.add("the first stage " + first.id() + " cannot have a staticLine — the agent's firstMessage opens the call");
+        if (start.staticLine() != null && !start.staticLine().isBlank()) {
+            errors.add("the start stage " + start.id() + " cannot have a staticLine — the agent's firstMessage opens the call");
         }
+    }
+
+    /**
+     * What each {@link StageType} needs to do its job. A stage that only does one thing and
+     * passes the call on must have somewhere to pass it; an ending must not; a note takes no
+     * part in the graph at all, so nothing may lead into it either.
+     */
+    private static void checkStageTypes(ScenarioDefinition def, List<String> errors) {
+        if (def.stages() == null) {
+            return;
+        }
+        Set<String> notes = new HashSet<>();
+        Set<String> outcomes = new HashSet<>();
+        def.stages().stream().filter(s -> s.type() == StageType.NOTE).forEach(s -> notes.add(s.id()));
+        if (def.outcomeSchema() != null) {
+            def.outcomeSchema().forEach(o -> outcomes.add(o.name()));
+        }
+        for (StageDef s : def.stages()) {
+            boolean hasNext = s.allowedTransitions() != null && !s.allowedTransitions().isEmpty();
+            if (s.type().passesCallOn() && !hasNext) {
+                errors.add(s.type() + " stage " + s.id() + " needs a transition to pass the call on");
+            }
+            if ((s.type() == StageType.ENDING || s.type() == StageType.NOTE) && hasNext) {
+                errors.add(s.type() + " stage " + s.id() + " cannot have transitions");
+            }
+            if (hasNext) {
+                for (String target : s.allowedTransitions()) {
+                    if (notes.contains(target)) {
+                        errors.add("stage " + s.id() + " transitions to NOTE " + target);
+                    }
+                }
+            }
+            if (s.globalCondition() != null && (s.globalCondition().isBlank() || s.type() == StageType.NOTE)) {
+                errors.add("global stage " + s.id() + " needs a non-empty globalCondition and cannot be a NOTE");
+            }
+            checkStageAction(s, outcomes, errors);
+        }
+    }
+
+    private static void checkStageAction(StageDef s, Set<String> outcomes, List<String> errors) {
+        StageAction action = s.action();
+        switch (s.type()) {
+            case LOGIC_SPLIT -> {
+                if (s.branches() == null || s.branches().isEmpty()
+                        || s.branches().getLast() == null || s.branches().getLast().operator() == null
+                        || s.branches().getLast().operator().needsFact()) {
+                    errors.add("LOGIC_SPLIT stage " + s.id() + " needs branches ending with an ALWAYS branch");
+                }
+                if (s.transitionConditions() != null && !s.transitionConditions().isEmpty()) {
+                    errors.add("LOGIC_SPLIT stage " + s.id() + " decides by branches only, not transitionConditions");
+                }
+            }
+            case FUNCTION -> {
+                if (action == null || isBlank(action.toolName())) {
+                    errors.add("FUNCTION stage " + s.id() + " needs action.toolName");
+                }
+            }
+            case MCP -> {
+                if (action == null || action.mcpConnectionId() == null || isBlank(action.toolName())) {
+                    errors.add("MCP stage " + s.id() + " needs action.mcpConnectionId and action.toolName");
+                }
+            }
+            case CALL_TRANSFER -> {
+                if (action == null || isBlank(action.transferTo()) || !TRANSFER_NUMBER.matcher(action.transferTo().trim()).matches()) {
+                    errors.add("CALL_TRANSFER stage " + s.id() + " needs action.transferTo as a phone number");
+                }
+            }
+            case PRESS_DIGIT -> {
+                if (action == null || isBlank(action.digits()) || !DTMF_DIGITS.matcher(action.digits()).matches()) {
+                    errors.add("PRESS_DIGIT stage " + s.id() + " needs action.digits of 0-9, *, # and w");
+                }
+            }
+            case AGENT_TRANSFER -> {
+                if (action == null || action.targetAgentId() == null) {
+                    errors.add("AGENT_TRANSFER stage " + s.id() + " needs action.targetAgentId");
+                }
+            }
+            case SMS -> {
+                if (action == null || isBlank(action.smsText())) {
+                    errors.add("SMS stage " + s.id() + " needs action.smsText");
+                } else if (action.smsText().length() > MAX_SMS_TEXT_LENGTH) {
+                    errors.add("SMS stage " + s.id() + " text must not exceed " + MAX_SMS_TEXT_LENGTH + " characters");
+                }
+            }
+            case EXTRACT_VARIABLE -> {
+                if (action == null || action.extractFields() == null || action.extractFields().isEmpty()) {
+                    errors.add("EXTRACT_VARIABLE stage " + s.id() + " needs action.extractFields");
+                } else {
+                    for (String field : action.extractFields()) {
+                        if (!outcomes.contains(field)) {
+                            errors.add("EXTRACT_VARIABLE stage " + s.id() + " extracts " + field
+                                    + ", which is not in outcomeSchema");
+                        }
+                    }
+                }
+            }
+            case CODE -> {
+                if (action == null || isBlank(action.code())) {
+                    errors.add("CODE stage " + s.id() + " needs action.code");
+                } else if (action.code().length() > MAX_CODE_LENGTH) {
+                    errors.add("CODE stage " + s.id() + " code must not exceed " + MAX_CODE_LENGTH + " characters");
+                }
+            }
+            case CONVERSATION, ENDING, NOTE -> {
+            }
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /** A stage with nowhere to go has nothing to hold the call back from. */
@@ -200,9 +353,10 @@ public final class ScenarioValidator {
             return;
         }
 
+        // A note is never entered: it neither ends a call nor needs a way out.
         Set<String> terminals = new HashSet<>();
         for (StageDef s : stages) {
-            if (s.allowedTransitions() == null || s.allowedTransitions().isEmpty()) {
+            if (s.type() != StageType.NOTE && (s.allowedTransitions() == null || s.allowedTransitions().isEmpty())) {
                 terminals.add(s.id());
             }
         }
@@ -215,7 +369,7 @@ public final class ScenarioValidator {
             byId.put(s.id(), s);
         }
         for (StageDef s : stages) {
-            if (!canReachTerminal(s.id(), byId, terminals, new HashSet<>())) {
+            if (s.type() != StageType.NOTE && !canReachTerminal(s.id(), byId, terminals, new HashSet<>())) {
                 errors.add("stage " + s.id() + " cannot reach any terminal stage (deadlock)");
             }
         }

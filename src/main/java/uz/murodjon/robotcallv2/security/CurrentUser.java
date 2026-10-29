@@ -27,4 +27,12 @@ public interface CurrentUser {
 
     /** The current request's User-Agent, cut to 255 characters; empty off a request thread. */
     Optional<String> userAgent();
+
+    /**
+     * Wraps a runnable to run with the current user's security context on another thread
+     * (e.g. an asynchronous or virtual thread).
+     */
+    default Runnable wrap(Runnable action) {
+        return action;
+    }
 }

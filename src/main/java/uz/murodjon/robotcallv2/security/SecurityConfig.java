@@ -180,6 +180,8 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.GET, "/api/settings/integrations/uysot/callback").permitAll();
                     // Inbound Uysot CRM webhooks (e.g. LEAD_CREATED speed-to-lead)
                     auth.requestMatchers(HttpMethod.POST, "/api/public/uysot/webhook").permitAll();
+                    // Inbound LiveKit SIP Gateway dispatch webhooks
+                    auth.requestMatchers(HttpMethod.POST, "/api/webhooks/livekit/sip", "/api/webhooks/livekit/**").permitAll();
                     // The embed script on a customer's own website reads its widget's
                     // configuration and books its calls before anyone has logged into
                     // anything. The widget key is the only credential it has, and the

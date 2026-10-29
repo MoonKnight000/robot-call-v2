@@ -1,0 +1,266 @@
+# Platform users — PLATFORM_ADMIN manages any company's users (PlatformUserController).
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/companies/{companyId}/users:
+  get:
+    tags:
+    - Users
+    summary: Kompaniya foydalanuvchilari
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_list
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/user.yaml#/UserRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/users/{id}:
+  get:
+    tags:
+    - Users
+    summary: Bitta foydalanuvchi
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_get
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/user.yaml#/UserRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/roles:
+  get:
+    tags:
+    - Users
+    summary: Kompaniya rollari
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_findRoles
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/role.yaml#/RoleRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/users/invite:
+  post:
+    tags:
+    - Users
+    summary: Taklif qilish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_invite
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/user.yaml#/InviteUserRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/user.yaml#/InviteUserResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/users/{id}/role:
+  put:
+    tags:
+    - Users
+    summary: Rol o'zgartirish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_changeRole
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/user.yaml#/UpdateUserRoleRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/user.yaml#/UserRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/users/{id}/block:
+  put:
+    tags:
+    - Users
+    summary: Bloklash
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_block
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/user.yaml#/UserRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/users/{id}/unblock:
+  put:
+    tags:
+    - Users
+    summary: Blokdan chiqarish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformUser_unblock
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/user.yaml#/UserRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

@@ -13,6 +13,9 @@ public interface McpUseCase {
 
     List<McpConnectionRow> findConnections(long companyId);
 
+    /** Connections attached to one of the company's agents. */
+    List<McpConnectionRow> findAgentConnections(long companyId, long agentId);
+
     /**
      * Saves the connection and immediately asks the server what it has.
      *

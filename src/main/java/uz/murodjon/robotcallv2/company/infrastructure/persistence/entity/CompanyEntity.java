@@ -1,10 +1,18 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
+import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * JPA entity for company (ROADMAP B.1).
@@ -36,6 +44,19 @@ public class CompanyEntity {
 
     @Column(name = "max_concurrent_calls")
     private Integer maxConcurrentCalls;
+
+    // Eager on purpose, like a role's permissions: every use of a company needs its switches, and there are
+    // a handful of rows. SUBSELECT: a listed page of companies loads all of them in one query.
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    private Set<CompanyFeatureEntity> features = new LinkedHashSet<>();
+
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    private Set<CompanyIntegrationAccessEntity> integrationAccess = new LinkedHashSet<>();
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
 
     public Long getId() {
         return id;
@@ -95,5 +116,37 @@ public class CompanyEntity {
 
     public void setMaxConcurrentCalls(Integer maxConcurrentCalls) {
         this.maxConcurrentCalls = maxConcurrentCalls;
+    }
+
+    public Set<CompanyIntegrationAccessEntity> getIntegrationAccess() {
+        return integrationAccess;
+    }
+
+    /** Integrations the platform switched off. */
+    public Set<IntegrationProvider> getDisabledIntegrations() {
+        return integrationAccess.stream()
+                .filter(row -> !row.isEnabled())
+                .map(CompanyIntegrationAccessEntity::getProvider)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(IntegrationProvider.class)));
+    }
+
+    public Set<CompanyFeatureEntity> getFeatures() {
+        return features;
+    }
+
+    /** Features the platform switched off. */
+    public Set<Feature> getDisabledFeatures() {
+        return features.stream()
+                .filter(row -> !row.isEnabled())
+                .map(CompanyFeatureEntity::getFeature)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(Feature.class)));
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(Instant expiresAt) {
+        this.expiresAt = expiresAt;
     }
 }

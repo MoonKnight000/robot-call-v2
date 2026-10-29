@@ -119,13 +119,13 @@ u ham `voice-agent.retention.conversation-days` bo'yicha o'chiriladi (`Retention
 # Panel: suhbatlar ekrani — `/api/chats`
 
 Vidjet va Telegram suhbatlarini supervayzer o'qiydi. **Faqat o'qish** — panel suhbatga yozmaydi va
-uni ochmaydi. Huquq — qo'ng'iroqlar ro'yxati va transkriptlari bilan bir xil (`REPORT_READ`): chat
+uni ochmaydi. Huquq — qo'ng'iroqlar ro'yxati va transkriptlari bilan bir xil (`CHAT_AGENT_READ`): chat
 transkripti ham xuddi shunday ma'lumot.
 
 | Metod | URL | Permission | Tavsif |
 |---|---|---|---|
-| `POST` | `/api/chats/list` | `REPORT_READ` | Kompaniya suhbatlari, sahifalab |
-| `GET` | `/api/chats/{id}` | `REPORT_READ` | Bitta suhbat: natija va to'liq transkript |
+| `POST` | `/api/chats/list` | `CHAT_AGENT_READ` | Kompaniya suhbatlari, sahifalab |
+| `GET` | `/api/chats/{id}` | `CHAT_AGENT_READ` | Bitta suhbat: natija va to'liq transkript |
 
 ## Ro'yxat
 
@@ -225,10 +225,10 @@ kirish va chiqish yo'lida.
 
 | Metod | URL | Permission | Tavsif |
 |---|---|---|---|
-| `GET` | `/api/telegram-bots` | `AI_AGENT_READ` | Kompaniya botlari |
-| `POST` | `/api/telegram-bots` | `AI_AGENT_EDIT` | Botni agentga bog'lash |
-| `POST` | `/api/telegram-bots/{botId}/webhook` | `AI_AGENT_EDIT` | Telegram'ga "update'larni shu manzilga yubor" deyish |
-| `DELETE` | `/api/telegram-bots/{botId}` | `AI_AGENT_EDIT` | Botni o'chirish (Telegram'dagi webhook ham olib tashlanadi) |
+| `GET` | `/api/telegram-bots` | `CHAT_AGENT_READ` | Kompaniya botlari |
+| `POST` | `/api/telegram-bots` | `CHAT_AGENT_EDIT` | Botni agentga bog'lash |
+| `POST` | `/api/telegram-bots/{botId}/webhook` | `CHAT_AGENT_EDIT` | Telegram'ga "update'larni shu manzilga yubor" deyish |
+| `DELETE` | `/api/telegram-bots/{botId}` | `CHAT_AGENT_EDIT` | Botni o'chirish (Telegram'dagi webhook ham olib tashlanadi) |
 | `POST` | `/api/public/telegram/{botId}` | Ochiq (secret header) | **Telegram serverlari chaqiradi**, frontend emas |
 
 ## Ulash tartibi

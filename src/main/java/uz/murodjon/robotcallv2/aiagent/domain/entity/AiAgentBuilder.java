@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
@@ -19,6 +21,8 @@ public class AiAgentBuilder {
     private String name;
     private String description;
     private String language;
+    private AiAgentChannel channel;
+    private AiAgentMode mode;
     private AgentPersona persona;
     private AiAgentScript script;
     private AiAgentSpeechEngine speechEngine;
@@ -54,6 +58,8 @@ public class AiAgentBuilder {
         this.name = source.name();
         this.description = source.description();
         this.language = source.language();
+        this.channel = source.channel();
+        this.mode = source.mode();
         this.persona = source.persona();
         this.script = source.script();
         this.speechEngine = source.speechEngine();
@@ -106,6 +112,16 @@ public class AiAgentBuilder {
         return this;
     }
 
+    public AiAgentBuilder channel(AiAgentChannel channel) {
+        this.channel = channel;
+        return this;
+    }
+
+    public AiAgentBuilder mode(AiAgentMode mode) {
+        this.mode = mode;
+        return this;
+    }
+
     public AiAgentBuilder persona(AgentPersona persona) {
         this.persona = persona;
         return this;
@@ -113,6 +129,9 @@ public class AiAgentBuilder {
 
     public AiAgentBuilder script(AiAgentScript script) {
         this.script = script;
+        if (script != null && script.mode() != null && this.mode == null) {
+            this.mode = AiAgentMode.fromScenarioMode(script.mode());
+        }
         return this;
     }
 
@@ -232,10 +251,39 @@ public class AiAgentBuilder {
     }
 
     public AiAgent build() {
-        return new AiAgent(id, companyId, name, description, language, persona, script, speechEngine, voice,
-                ambience, callBehaviour, limits, dataPolicy, llmModel, fastLlmModel, temperature, maxOutputTokens,
-                useRag, dataNeeded, dataEvaluation, initiationWebhook,
-                postCallWebhook, pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy,
-                publishedVersion, version);
+        return new AiAgent(
+                id,
+                companyId,
+                name,
+                description,
+                language,
+                channel,
+                mode,
+                persona,
+                script,
+                speechEngine,
+                voice,
+                ambience,
+                callBehaviour,
+                limits,
+                dataPolicy,
+                llmModel,
+                fastLlmModel,
+                temperature,
+                maxOutputTokens,
+                useRag,
+                dataNeeded,
+                dataEvaluation,
+                initiationWebhook,
+                postCallWebhook,
+                pronunciationRules,
+                postCallActions,
+                sipTrunkIds,
+                enabled,
+                createdAt,
+                createdBy,
+                publishedVersion,
+                version
+        );
     }
 }

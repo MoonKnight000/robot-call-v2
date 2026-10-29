@@ -8,8 +8,8 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
 import java.util.List;
 
 /**
- * Built-in agent templates providing preset behavior (prompts, first messages,
- * data extraction fields, and evaluation criteria).
+ * Built-in agent templates matching Retell AI standard blueprints and business presets.
+ * Provides high-performing prompts, first messages, data extraction fields, and evaluation criteria.
  */
 public final class AiAgentTemplates {
 
@@ -17,45 +17,145 @@ public final class AiAgentTemplates {
     }
 
     public static TemplateDefaults getPreset(AgentTemplate template, String language) {
-        if (template == null || template == AgentTemplate.BLANK) {
-            return new TemplateDefaults("", "", List.of(), List.of());
-        }
-
         boolean isUzbek = language == null || language.startsWith("uz");
         boolean isRussian = language != null && language.startsWith("ru");
 
-        return switch (template) {
-            case BUSINESS -> businessPreset(isUzbek, isRussian);
+        return switch (template != null ? template : AgentTemplate.BLANK) {
+            case APPOINTMENT_BOOKING -> appointmentBookingPreset(isUzbek, isRussian);
             case SUPPORT -> supportPreset(isUzbek, isRussian);
-            case MEDICAL -> medicalPreset(isUzbek, isRussian);
-            case DEBT_REMINDER -> debtReminderPreset(isUzbek, isRussian);
             case LEAD_QUALIFICATION -> leadQualificationPreset(isUzbek, isRussian);
+            case DEBT_REMINDER -> debtCollectionPreset(isUzbek, isRussian);
+            case INBOUND_RECEPTIONIST -> receptionistPreset(isUzbek, isRussian);
             case SURVEY -> surveyPreset(isUzbek, isRussian);
+            case MEDICAL -> clinicIntakePreset(isUzbek, isRussian);
+            case ORDER_TRACKING -> orderTrackingPreset(isUzbek, isRussian);
+            case BUSINESS -> businessPreset(isUzbek, isRussian);
             case BLANK -> new TemplateDefaults("", "", List.of(), List.of());
         };
     }
 
-    private static TemplateDefaults businessPreset(boolean isUzbek, boolean isRussian) {
+    private static TemplateDefaults appointmentBookingPreset(boolean isUzbek, boolean isRussian) {
         String firstMessage;
         String systemPrompt;
         if (isRussian) {
-            firstMessage = "Здравствуйте! Спасибо за звонок. Я помогу ответить на вопросы, зафиксировать данные или перевести вас на нужного специалиста. Чем могу помочь?";
-            systemPrompt = "Вы профессиональный деловой голосовой агент. Отвечайте кратко и понятно. Выясните причину звонка, предоставьте информацию, запишите контактные данные для обратной связи и подтвердите следующий шаг перед завершением разговора. Если требуется человек, сообщите, что сотрудник свяжется.";
+            firstMessage = "Здравствуйте! Рад помочь вам с записью. На какую услугу и какую дату вас записать?";
+            systemPrompt = "Вы вежливый голосовой администратор для записи клиентов. Помогите выбрать услугу, уточните удобную дату и время, проверьте доступность через инструменты и подтвердите контактные данные перед бронированием. Отвечайте лаконично (1-2 предложения), не говорите длинными абзацами.";
         } else if (isUzbek) {
-            firstMessage = "Assalomu alaykum! Qo'ng'iroq qilganingiz uchun tashakkur. Savollaringizga javob berishim, ma'lumotlarni yozib olishim yoki kerakli mutaxassisga yo'naltirishim mumkin. Qanday yordam bera olaman?";
-            systemPrompt = "Siz professional biznes telefon agentisiz. Javoblaringizni lo'nda va aniq saqlang. Qo'ng'iroq qiluvchining maqsadini aniqlang, ma'lum ma'lumotlar asosida javob bering, agar qayta bog'lanish kerak bo'lsa kontaktlarni yozib oling va qo'ng'iroqni yakunlashdan oldin keyingi qadamni tasdiqlang. Agar masala inson mutaxassisni talab qilsa, xodim tez orada bog'lanishini tushuntiring.";
+            firstMessage = "Assalomu alaykum! Qabulga yozilishda yordam berishdan xursandman. Sizni qaysi xizmatimizga va qaysi kunga yozib qo'yay?";
+            systemPrompt = "Siz xushmuomala virtual administrator ekansiz. Mijozga xizmat turini tanlashda yordam bering, qulay sana va vaqtni so'rang, mavjud bo'sh vaqtlarni tekshiring va bron qilishdan oldin ism hamda telefon raqamini tasdiqlang. Javoblaringiz 1-2 gapdan oshmasin, lo'nda va insoniy gapiring.";
         } else {
-            firstMessage = "Hi, thanks for calling. I can help answer questions, capture details, or route the next step. How can I help?";
-            systemPrompt = "You are a professional business phone agent. Keep responses concise and clear. Identify why the caller is calling, answer using known business information when available, collect contact details when follow-up is needed, and confirm the next step before ending the call. If the request needs a human, explain that a team member will follow up.";
+            firstMessage = "Hello! Thanks for reaching out. I'd be happy to help you schedule an appointment. What service and date were you looking for?";
+            systemPrompt = "You are a professional appointment booking voice agent. Help the caller pick a service, inquire about their preferred date and time, check availability using tools, and confirm contact details before finalizing the booking. Keep your responses short and conversational.";
         }
 
         List<DataExtractionField> fields = List.of(
-                new DataExtractionField("caller_name", "String", "Caller name", "Name the caller provides during the call"),
-                new DataExtractionField("callback_number", "String", "Callback number", "Best phone number for follow-up"),
-                new DataExtractionField("reason_for_call", "String", "Reason for call", "Short summary of what the caller needs")
+                new DataExtractionField("service_name", "String", "Service name", "Requested service or procedure"),
+                new DataExtractionField("appointment_date", "String", "Appointment date", "Preferred date in YYYY-MM-DD"),
+                new DataExtractionField("appointment_time", "String", "Appointment time", "Preferred time"),
+                new DataExtractionField("caller_name", "String", "Caller name", "Full name of the client")
         );
         List<DataEvaluationCriterion> criteria = List.of(
-                new DataEvaluationCriterion("human_follow_up_needed", "Human follow-up needed", "Whether the caller needs a person to follow up after the call")
+                new DataEvaluationCriterion("booking_completed", "Booking completed", "Whether the appointment was successfully booked")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults receptionistPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Компания приветствует вас. С каким отделом или специалистом вас соединить?";
+            systemPrompt = "Вы умный виртуальный секретарь приемной. Выясните цель звонка, определите нужный отдел (продажи, поддержка, бухгалтерия) и переведите звонок. Если специалиста нет на месте, запишите имя, телефон и краткое сообщение для обратной связи.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Kompaniyamizga xush kelibsiz. Sizni qaysi bo'lim yoki mutaxassis bilan bog'lay?";
+            systemPrompt = "Siz aqlli virtual kotibasiz. Qo'ng'iroq qiluvchining maqsadini aniqlang, kerakli bo'limga (savdo, qo'llab-quvvatlash, buxgalteriya) transfer qiling. Agar xodim joyida bo'lmasa, qayta bog'lanish uchun mijoz ismi va xabarini yozib oling.";
+        } else {
+            firstMessage = "Hello! Thanks for calling our office. Which department or specialist would you like to speak with?";
+            systemPrompt = "You are a professional front-desk receptionist voice agent. Identify the caller's objective, route to the appropriate department, or take a message if staff is unavailable. Keep your communication clear and welcoming.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("caller_name", "String", "Caller name", "Caller name"),
+                new DataExtractionField("intended_department", "String", "Intended department", "Department or person requested"),
+                new DataExtractionField("message", "String", "Message", "Message left by caller if transferred or staff busy")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("routed_successfully", "Routed successfully", "Whether the call was routed or a clear message was taken")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults orderTrackingPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Служба доставки заказов. Назовите номер вашего заказа или телефон, чтобы я проверил статус.";
+            systemPrompt = "Вы голосовой ассистент интернет-магазина и доставки. Помогите узнать статус посылки, ориентировочную дату прибытия или обновить адрес доставки. Будьте точны с номерами и адресами.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Buyurtmalarni yetkazish xizmati. Buyurtma holatini tekshirishim uchun buyurtma raqami yoki telefoningizni aytsangiz bo'ladimi?";
+            systemPrompt = "Siz buyurtma va yetkazib berish bo'yicha ovozli yordamchisiz. Mijozga buyurtmasining qayerdaligini, qachon yetib kelishini aytishda yoki manzilni o'zgartirishda yordam bering. Raqam va manzillarni aniq qayd qiling.";
+        } else {
+            firstMessage = "Hello! Thanks for calling order support. Could you provide your order number or phone number so I can look up the status?";
+            systemPrompt = "You are an e-commerce order tracking voice agent. Retrieve order status, verify shipping destination, and assist with delivery updates. Keep answers precise and numbers clearly formatted.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("order_number", "String", "Order number", "The order number provided"),
+                new DataExtractionField("order_status", "String", "Order status", "Current status of the order (in transit, delivered, etc)"),
+                new DataExtractionField("address_updated", "Boolean", "Address updated", "Whether shipping address was modified")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("status_provided", "Status provided", "Whether the caller received accurate tracking details")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults debtCollectionPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Я звоню из финансового отдела по поводу вашего договора. У вас есть минута обсудить текущий платеж?";
+            systemPrompt = "Вы вежливый, но уверенный голосовой агент по урегулированию задолженности. Сообщите сумму долга и срок, согласуйте точную дату обещания платежа (Promise to Pay) или выясните причину задержки. Не угрожайте, соблюдайте деловой тон.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Moliya bo'limidan shartnomangiz yuzasidan bog'lanyapman. To'lov bo'yicha gaplashib olishga 1 daqiqa vaqtingiz bormi?";
+            systemPrompt = "Siz xushmuomala, ammo qat'iy moliya xodimisiz. Kechikkan to'lov summasi va muddatini eslatib, aniq qaysi sanagacha to'lay olishini (to'lov va'dasi) kelishing yoki sababini yozib oling. Hurmat bilan, ammo maqsadga yo'naltirilgan gapiring.";
+        } else {
+            firstMessage = "Hello! I am calling from the financial department regarding your account. Do you have a moment to discuss your recent payment?";
+            systemPrompt = "You are a professional, courteous payment resolution voice agent. Remind the customer about the balance, negotiate a concrete promise-to-pay date, and record reasons if they cannot pay. Maintain a calm, respectful tone.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("promised_date", "String", "Promised date", "Date agreed to make payment in YYYY-MM-DD"),
+                new DataExtractionField("promised_amount", "Number", "Promised amount", "Amount promised to pay"),
+                new DataExtractionField("refusal_reason", "String", "Refusal reason", "Reason given if unable or unwilling to pay")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("promise_secured", "Promise secured", "Whether a valid payment commitment was made")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults leadQualificationPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Я звоню по поводу заявки, которую вы оставляли у нас на сайте. У вас есть минута обсудить детали?";
+            systemPrompt = "Вы голосовой агент квалификации лидов. Уточните потребности клиента, текущие задачи, примерный бюджет и согласуйте демо-встречу со специалистом. Будьте энергичны, дружелюбны и задавайте по одному вопросу за раз.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Saytimizda qoldirgan arizangiz bo'yicha bog'lanyapman. Tafsilotlarni bilish uchun 1 daqiqa vaqtingiz bormi?";
+            systemPrompt = "Siz lidlarni saralovchi savdo bo'yicha ovozli agentsiz. Mijozning ehtiyoji, byudjeti va qiziqish darajasini aniqlang, mutaxassis bilan demo uchrashuv belgilang. Do'stona, qisqa va qiziqarli gapiring.";
+        } else {
+            firstMessage = "Hi, I'm calling about the request you submitted on our website. Do you have a quick minute to chat?";
+            systemPrompt = "You are a friendly lead qualification voice agent. Confirm interest, understand requirements, budget timeframe, and schedule a product demo with an account manager.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("interest_level", "String", "Interest level", "HIGH, MEDIUM, or LOW"),
+                new DataExtractionField("budget_range", "String", "Budget range", "Approximate budget discussed"),
+                new DataExtractionField("demo_scheduled", "Boolean", "Demo scheduled", "Whether demo appointment was booked")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("lead_qualified", "Lead qualified", "Whether the lead is qualified for sales follow-up")
         );
         return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
     }
@@ -71,7 +171,7 @@ public final class AiAgentTemplates {
             systemPrompt = "Siz mijozlarni qo'llab-quvvatlash bo'yicha telefon agentisiz. Diqqat bilan tinglang, har safar faqat bitta aniq savol bering, muammo mazmuni va aloqa ma'lumotlarini to'plang va keyin nima bo'lishini tasdiqlang. Xotirjam va aniq bo'ling.";
         } else {
             firstMessage = "Hi, thanks for contacting support. Tell me what happened, and I will collect the details needed for the next step.";
-            systemPrompt = "You are a customer support phone agent. Listen carefully, ask one focused question at a time, collect the issue summary and contact information, and confirm what will happen next. Be calm and specific. Do not promise fixes, refunds, or timelines unless they are provided by connected tools or verified knowledge.";
+            systemPrompt = "You are a customer support phone agent. Listen carefully, ask one focused question at a time, collect the issue summary and contact information, and confirm what will happen next. Be calm and specific.";
         }
 
         List<DataExtractionField> fields = List.of(
@@ -80,56 +180,7 @@ public final class AiAgentTemplates {
                 new DataExtractionField("urgency", "String", "Urgency", "How urgent the caller says the issue is")
         );
         List<DataEvaluationCriterion> criteria = List.of(
-                new DataEvaluationCriterion("escalation_needed", "Escalation needed", "Whether the support issue should be escalated to a human team member")
-        );
-        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
-    }
-
-    private static TemplateDefaults debtReminderPreset(boolean isUzbek, boolean isRussian) {
-        String firstMessage;
-        String systemPrompt;
-        if (isRussian) {
-            firstMessage = "Здравствуйте! Это голосовой помощник компании. Я звоню напомнить о задолженности. Удобно сейчас говорить?";
-            systemPrompt = "Вы вежливый голосовой агент, который напоминает клиенту об оплате. Называйте суммы, сроки и скидки только из данных звонка, ничего не придумывайте. Не угрожайте и не давите. Выясните, когда клиент сможет оплатить, зафиксируйте обещанную дату и подтвердите её. Если клиент оспаривает долг, не спорьте, а зафиксируйте причину.";
-        } else if (isUzbek) {
-            firstMessage = "Assalomu alaykum! Bu kompaniyaning ovozli yordamchisi. To'lov bo'yicha eslatma uchun qo'ng'iroq qilyapman. Hozir gaplashishga qulaymi?";
-            systemPrompt = "Siz mijozga to'lov haqida xushmuomalalik bilan eslatuvchi ovozli agentsiz. Summa, muddat va chegirmani faqat qo'ng'iroq ma'lumotlaridan oling, o'zingizdan hech narsa to'qimang. Tahdid qilmang va bosim o'tkazmang. Mijoz qachon to'lay olishini aniqlang, va'da qilingan sanani yozib oling va tasdiqlang. Agar mijoz qarzga e'tiroz bildirsa, bahslashmang, sababini yozib oling.";
-        } else {
-            firstMessage = "Hello! This is the company's voice assistant calling with a payment reminder. Is now a good time to talk?";
-            systemPrompt = "You are a polite voice agent reminding a customer about a payment. State amounts, due dates, and discounts only from the call data and never invent them. Do not threaten or pressure. Find out when the customer can pay, record the promised date, and confirm it. If the customer disputes the debt, do not argue; record the reason.";
-        }
-
-        List<DataExtractionField> fields = List.of(
-                new DataExtractionField("promised_payment_date", "String", "Promised payment date", "Date the customer promises to pay"),
-                new DataExtractionField("dispute_reason", "String", "Dispute reason", "Why the customer disputes the debt, if they do")
-        );
-        List<DataEvaluationCriterion> criteria = List.of(
-                new DataEvaluationCriterion("payment_promised", "Payment promised", "Whether the customer committed to a payment date")
-        );
-        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
-    }
-
-    private static TemplateDefaults leadQualificationPreset(boolean isUzbek, boolean isRussian) {
-        String firstMessage;
-        String systemPrompt;
-        if (isRussian) {
-            firstMessage = "Здравствуйте! Вы оставляли заявку, и я хочу уточнить пару деталей. Удобно сейчас поговорить?";
-            systemPrompt = "Вы голосовой агент, который перезванивает по заявкам. Выясните, что интересует клиента, ориентировочный бюджет и удобное время для связи с менеджером. Задавайте по одному вопросу за раз. Не называйте цены и условия, которых нет в данных звонка.";
-        } else if (isUzbek) {
-            firstMessage = "Assalomu alaykum! Siz ariza qoldirgan edingiz, bir-ikki tafsilotni aniqlashtirmoqchiman. Hozir gaplashishga qulaymi?";
-            systemPrompt = "Siz arizalar bo'yicha qayta qo'ng'iroq qiluvchi ovozli agentsiz. Mijozni nima qiziqtirishini, taxminiy byudjetini va menejer bog'lanishi uchun qulay vaqtni aniqlang. Har safar bitta savol bering. Qo'ng'iroq ma'lumotlarida yo'q narx va shartlarni aytmang.";
-        } else {
-            firstMessage = "Hello! You left a request with us and I'd like to confirm a few details. Is now a good time to talk?";
-            systemPrompt = "You are a voice agent calling back about a request. Find out what the customer is interested in, the approximate budget, and a good time for a manager to reach them. Ask one question at a time. Do not state prices or terms that are not in the call data.";
-        }
-
-        List<DataExtractionField> fields = List.of(
-                new DataExtractionField("interest", "String", "Interest", "What the customer is interested in"),
-                new DataExtractionField("budget", "String", "Budget", "Approximate budget the customer mentions"),
-                new DataExtractionField("preferred_contact_time", "String", "Preferred contact time", "When a manager should call back")
-        );
-        List<DataEvaluationCriterion> criteria = List.of(
-                new DataEvaluationCriterion("qualified_lead", "Qualified lead", "Whether the customer is a real prospect worth a manager's time")
+                new DataEvaluationCriterion("issue_captured", "Issue captured", "Whether the issue was understood and documented")
         );
         return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
     }
@@ -158,27 +209,52 @@ public final class AiAgentTemplates {
         return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
     }
 
-    private static TemplateDefaults medicalPreset(boolean isUzbek, boolean isRussian) {
+    private static TemplateDefaults clinicIntakePreset(boolean isUzbek, boolean isRussian) {
         String firstMessage;
         String systemPrompt;
         if (isRussian) {
-            firstMessage = "Здравствуйте! Я помогу с записью на прием, уточню детали или передам сообщение врачу. Чем могу помочь?";
-            systemPrompt = "Вы голосовой администратор медицинской клиники. Помогайте с записью на прием, фиксацией данных и сообщениями для персонала. Не ставьте диагнозы и не давайте медицинских рекомендаций. При неотложных симптомах направляйте в службу скорой помощи.";
+            firstMessage = "Здравствуйте! Клиника приветствует вас. Я помогу с записью на прием или отвечу на вопросы. На что вы жалуетесь?";
+            systemPrompt = "Вы голосовой администратор медицинской клиники. Помогайте с записью на прием и фиксацией жалоб. Не ставьте диагнозы и не давайте клинических рекомендаций. При неотложных симптомах немедленно направляйте в службу скорой помощи (103).";
         } else if (isUzbek) {
-            firstMessage = "Assalomu alaykum! Qabulga yozilish, ma'lumotlarni aniqlash yoki shifokorga xabar qoldirishda yordam bera olaman. Sizni qanday masala qiziqtiryapti?";
-            systemPrompt = "Siz ehtiyotkor tibbiy qabulxona telefon agentisiz. Qabulga yozish, birlamchi ma'lumotlarni olish va xodimlarga xabar yetkazishda yordam bering. Diagnostika qilmang, tibbiy maslahat bermang va klinik qarorlar chiqarmang. Agar qo'ng'iroq qiluvchi shoshilinch alomatlarni bayon qilsa, darhol tez yordamga murojaat qilishni ayting.";
+            firstMessage = "Assalomu alaykum! Klinikamizga xush kelibsiz. Qabulga yozilish yoki shifokor tanlashda yordam beraman. Qanday shikoyatingiz bor?";
+            systemPrompt = "Siz tibbiy qabulxona telefon yordamchisisiz. Bemor shikoyatlarini aniqlab, mutaxassisga yozilishda yordam bering. Tibbiy tashxis qo'ymang va dorilar tavsiya qilmang. Agar bemor favqulodda xavfli alomatlarni aytsa, darhol 103 (Tez yordam) ga murojaat qilishni ayting.";
         } else {
-            firstMessage = "Hi, thanks for calling. I can help with scheduling, intake details, or a message for the care team. How can I help today?";
-            systemPrompt = "You are a careful medical front-desk phone agent. Help with scheduling, intake details, and messages for staff. Do not diagnose, provide medical advice, or make clinical decisions. If the caller describes an emergency or urgent symptoms, tell them to call emergency services or seek immediate medical care. Confirm names, dates, callback numbers, and next steps clearly.";
+            firstMessage = "Hi, thanks for calling our healthcare clinic. I can help with patient intake and appointments. What symptoms are you experiencing?";
+            systemPrompt = "You are a careful medical front-desk voice agent. Help with intake details and scheduling. Do not diagnose or prescribe. If caller describes emergency symptoms, direct them immediately to emergency services (911/103).";
         }
 
         List<DataExtractionField> fields = List.of(
                 new DataExtractionField("patient_name", "String", "Patient name", "Patient name as provided by the caller"),
-                new DataExtractionField("callback_number", "String", "Callback number", "Best phone number for the care team to use"),
-                new DataExtractionField("appointment_reason", "String", "Appointment reason", "Brief non-diagnostic reason for the appointment or message")
+                new DataExtractionField("chief_complaint", "String", "Chief complaint", "Primary health concern or symptoms"),
+                new DataExtractionField("urgency_level", "String", "Urgency level", "EMERGENCY, URGENT, or ROUTINE")
         );
         List<DataEvaluationCriterion> criteria = List.of(
-                new DataEvaluationCriterion("urgent_or_emergency", "Urgent or emergency", "Whether the caller described an emergency or urgent medical concern")
+                new DataEvaluationCriterion("emergency_triaged", "Emergency triaged", "Whether caller was screened for urgent symptoms")
+        );
+        return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
+    }
+
+    private static TemplateDefaults businessPreset(boolean isUzbek, boolean isRussian) {
+        String firstMessage;
+        String systemPrompt;
+        if (isRussian) {
+            firstMessage = "Здравствуйте! Спасибо за звонок. Я помогу ответить на вопросы, зафиксировать данные или перевести вас на нужного специалиста. Чем могу помочь?";
+            systemPrompt = "Вы профессиональный деловой голосовой агент. Отвечайте кратко и понятно. Выясните причину звонка, предоставьте информацию, запишите контактные данные для обратной связи и подтвердите следующий шаг перед завершением разговора.";
+        } else if (isUzbek) {
+            firstMessage = "Assalomu alaykum! Qo'ng'iroq qilganingiz uchun tashakkur. Savollaringizga javob berishim, ma'lumotlarni yozib olishim yoki kerakli mutaxassisga yo'naltirishim mumkin. Qanday yordam bera olaman?";
+            systemPrompt = "Siz professional biznes telefon agentisiz. Javoblaringizni lo'nda va aniq saqlang. Qo'ng'iroq qiluvchining maqsadini aniqlang, ma'lumot bering va keyingi qadamni tasdiqlang.";
+        } else {
+            firstMessage = "Hi, thanks for calling. I can help answer questions, capture details, or route the next step. How can I help?";
+            systemPrompt = "You are a professional business phone agent. Keep responses concise and clear. Identify why the caller is calling, collect contact details when follow-up is needed, and confirm next steps.";
+        }
+
+        List<DataExtractionField> fields = List.of(
+                new DataExtractionField("caller_name", "String", "Caller name", "Name the caller provides during the call"),
+                new DataExtractionField("callback_number", "String", "Callback number", "Best phone number for follow-up"),
+                new DataExtractionField("reason_for_call", "String", "Reason for call", "Short summary of what the caller needs")
+        );
+        List<DataEvaluationCriterion> criteria = List.of(
+                new DataEvaluationCriterion("human_follow_up_needed", "Human follow-up needed", "Whether the caller needs a person to follow up")
         );
         return new TemplateDefaults(firstMessage, systemPrompt, fields, criteria);
     }

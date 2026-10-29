@@ -212,10 +212,7 @@ public final class TargetCsvImporter {
         if (csv == null || csv.isBlank()) {
             return List.of();
         }
-        List<String> lines = new ArrayList<>();
-        for (String line : csv.replace("\r\n", "\n").replace('\r', '\n').split("\n")) {
-            lines.add(line);
-        }
+        List<String> lines = new ArrayList<>(Arrays.asList(csv.replace("\r\n", "\n").replace('\r', '\n').split("\n")));
         while (!lines.isEmpty() && lines.get(lines.size() - 1).isBlank()) {
             lines.remove(lines.size() - 1);
         }

@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearc
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ class RealtimeToolRunner {
     private final CatalogSearchUseCase catalogSearch;
     private final RealtimeProperties realtimeProperties;
     private final RealtimeMetrics metrics;
+    private final StageScriptRunner stageScriptRunner;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -51,11 +53,13 @@ class RealtimeToolRunner {
     private final ExecutorService toolExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     RealtimeToolRunner(KnowledgeRetrievalUseCase knowledgeRetrieval, CatalogSearchUseCase catalogSearch,
-                       RealtimeProperties realtimeProperties, RealtimeMetrics metrics) {
+                       RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
+                       StageScriptRunner stageScriptRunner) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
+        this.stageScriptRunner = stageScriptRunner;
     }
 
     /**
@@ -87,7 +91,7 @@ class RealtimeToolRunner {
                     .build().getToolCallbacks()));
         }
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
-                .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
+                .toolObjects(new DialogTools(s, stageScriptRunner)).build().getToolCallbacks()) {
             String name = fixed.getToolDefinition().name();
             if ("sendMidCallSms".equals(name)) {
                 if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
@@ -114,6 +118,11 @@ class RealtimeToolRunner {
                     callbacks.add(ScenarioToolCallbackFactory.build(toolDef, s));
                 }
             }
+        }
+        // Declared once for every EXTRACT_VARIABLE stage of the flow, used only inside one (refuse).
+        ToolDef extraction = StageEntry.findExtractionToolForFlow(s.scenario());
+        if (extraction != null) {
+            callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
         return callbacks;
     }
@@ -248,6 +257,16 @@ class RealtimeToolRunner {
                     + "First say this stage's line and ask the client for the exact day.";
         }
         if (DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES.contains(name)) {
+            return null;
+        }
+        StageDef current = s.scenario() == null ? null : s.scenario().findStage(s.state());
+        if (StageEntry.EXTRACT_TOOL_NAME.equals(name)) {
+            return current != null && current.type() == StageType.EXTRACT_VARIABLE ? null
+                    : "ERROR: " + name + " can only be called in a stage that reads values out of the conversation.";
+        }
+        // A FUNCTION stage exists to call its tool, whatever its tool list says.
+        if (current != null && current.type() == StageType.FUNCTION && current.action() != null
+                && name.equals(current.action().toolName())) {
             return null;
         }
         // A stage's list governs the scenario's own tools and nothing else. getFact, the

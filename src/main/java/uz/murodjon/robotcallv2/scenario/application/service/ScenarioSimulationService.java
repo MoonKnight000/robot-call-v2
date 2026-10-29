@@ -68,7 +68,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
         }
 
         String defaultInitialStage = definition.stages() != null && !definition.stages().isEmpty()
-                ? definition.stages().get(0).id()
+                ? definition.findStartStage().id()
                 : "GREETING";
 
         String currentState = request.currentState() != null && !request.currentState().isBlank()
@@ -190,7 +190,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
     private PersonaTestResult runSinglePersonaTest(long companyId, ScenarioDefinition def, String name, String personaPrompt, List<String> clientTurns) {
         List<Map<String, String>> transcript = new ArrayList<>();
         String currentState = def.stages() != null && !def.stages().isEmpty()
-                ? def.stages().get(0).id()
+                ? def.findStartStage().id()
                 : "GREETING";
         String disposition = "IN_PROGRESS";
         boolean passed = true;

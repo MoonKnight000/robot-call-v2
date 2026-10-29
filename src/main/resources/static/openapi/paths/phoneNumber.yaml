@@ -1,0 +1,200 @@
+# Phone numbers — Phone Number Marketplace, BYON and inbound routing management (PhoneNumberController).
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/phone-numbers/marketplace:
+  post:
+    tags:
+    - Phone Numbers
+    summary: Bozordagi mavjud telefon raqamlari
+    description: '**Huquq:** `SIP_TRUNK_READ`'
+    operationId: phoneNumber_findMarketplaceNumbers
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/PhoneNumberFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/phone-numbers/purchase:
+  post:
+    tags:
+    - Phone Numbers
+    summary: Raqamni xarid qilish
+    description: '**Huquq:** `SIP_TRUNK_EDIT`'
+    operationId: phoneNumber_purchaseNumber
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/PurchaseNumberRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
+/api/phone-numbers/list:
+  post:
+    tags:
+    - Phone Numbers
+    summary: Kompaniyaning xarid qilingan raqamlari ro'yxati
+    description: '**Huquq:** `SIP_TRUNK_READ`'
+    operationId: phoneNumber_findCompanyNumbers
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/PhoneNumberFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/phone-numbers/{id}/routing:
+  put:
+    tags:
+    - Phone Numbers
+    summary: Kiruvchi marshrutlash sozlamalarini yangilash
+    description: '**Huquq:** `SIP_TRUNK_EDIT`'
+    operationId: phoneNumber_updateInboundRouting
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/UpdateInboundRoutingRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/phone-numbers/{id}:
+  delete:
+    tags:
+    - Phone Numbers
+    summary: Raqamni bekor qilish (bo'shatish)
+    description: '**Huquq:** `SIP_TRUNK_EDIT`'
+    operationId: phoneNumber_releaseNumber
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/phone-numbers/test-connection:
+  post:
+    tags:
+    - Phone Numbers
+    summary: SIP ulanishini test qilish (BYON)
+    description: '**Huquq:** `SIP_TRUNK_EDIT`'
+    operationId: phoneNumber_testSipConnection
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/TestSipConnectionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/TestSipConnectionResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden

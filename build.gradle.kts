@@ -108,10 +108,20 @@ dependencies {
     // The silero_vad.onnx model file is supplied at runtime (voice-agent.vad.model-path).
     implementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
     // Tokenizer for the text end-of-turn model (NAMO, voice-agent.text-turn); reads its tokenizer.json.
-    implementation("ai.djl.huggingface:tokenizers:0.33.0")
+    implementation("ai.djl.huggingface:tokenizers:0.39.0")
+
+    // CODE stage of a scenario flow — the company's own JavaScript, run in a constrained
+    // GraalJS sandbox (no host, file or network access) by agent/dialog/StageScriptRunner.
+    implementation("org.graalvm.polyglot:polyglot:24.2.1")
+    implementation("org.graalvm.polyglot:js-community:24.2.1")
 
     // Object storage — upload call recordings to MinIO/S3 (PROJECT.md §2.3, Stage 9).
     implementation("io.minio:minio:8.6.0")
+    // minio 8.6.0 drags in vulnerable transitive versions of these two; pinned above what it asks for.
+    constraints {
+        implementation("org.bouncycastle:bcprov-jdk18on:1.86") { because("minio 8.6.0 pulls 1.81, flagged by Qodana (Mend.io)") }
+        implementation("org.xerial.snappy:snappy-java:1.1.10.12") { because("minio 8.6.0 pulls 1.1.10.7, flagged by Qodana (Mend.io)") }
+    }
 
     // Metrics — Micrometer Prometheus registry, exposed at /actuator/prometheus (Stage 12).
     implementation("io.micrometer:micrometer-registry-prometheus")

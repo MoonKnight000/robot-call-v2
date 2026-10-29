@@ -24,6 +24,7 @@ import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearc
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
@@ -52,9 +53,10 @@ public class TurnTools {
     private final HttpToolExecutor httpToolExecutor;
     private final McpToolCallbackFactory mcpToolCallbackFactory;
     private final CatalogSearchUseCase catalogSearch;
+    private final StageScriptRunner stageScriptRunner;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null);
     }
 
     @Autowired
@@ -63,13 +65,15 @@ public class TurnTools {
             ObjectProvider<ChatModel> chatModelProvider,
             HttpToolExecutor httpToolExecutor,
             McpToolCallbackFactory mcpToolCallbackFactory,
-            CatalogSearchUseCase catalogSearch
+            CatalogSearchUseCase catalogSearch,
+            StageScriptRunner stageScriptRunner
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
         this.httpToolExecutor = httpToolExecutor;
         this.mcpToolCallbackFactory = mcpToolCallbackFactory;
         this.catalogSearch = catalogSearch;
+        this.stageScriptRunner = stageScriptRunner;
     }
 
     /**
@@ -90,7 +94,7 @@ public class TurnTools {
         Set<String> declared = declaredToolNames(s.scenario());
         List<ToolCallback> callbacks = new ArrayList<>();
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
-                .toolObjects(new DialogTools(s)).build().getToolCallbacks()) {
+                .toolObjects(new DialogTools(s, stageScriptRunner)).build().getToolCallbacks()) {
             String name = fixed.getToolDefinition().name();
             if ("sendMidCallSms".equals(name)) {
                 if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
@@ -127,6 +131,11 @@ public class TurnTools {
                             : httpToolExecutor.buildCallback(tool, s, callVars));
                 }
             }
+        }
+        // An EXTRACT_VARIABLE stage's one tool: a parameter per outcome field it reads (StageEntry).
+        ToolDef extraction = StageEntry.findExtractionTool(s.scenario(), SystemPromptFactory.stageOf(s.scenario(), s.state()));
+        if (extraction != null) {
+            callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
         List<ToolCallback> mcp = mcpTools(s);
         callbacks.addAll(mcp);
@@ -213,6 +222,12 @@ public class TurnTools {
         // debt-collection's GREETING/CLOSING/etc. stages rely on the empty-list case to
         // exclude recordPaymentPromise/recordRefusalReason.
         List<String> perStage = stage != null ? stage.allowedTools() : null;
+        if (stage != null && stage.type() == StageType.FUNCTION && stage.action() != null) {
+            allowed.add(stage.action().toolName());
+        }
+        if (stage != null && stage.type() == StageType.EXTRACT_VARIABLE) {
+            allowed.add(StageEntry.EXTRACT_TOOL_NAME);
+        }
         if (perStage == null) {
             if (s.scenario().tools() != null) {
                 s.scenario().tools().forEach(t -> allowed.add(t.name()));

@@ -3,7 +3,10 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
+import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
@@ -101,8 +104,11 @@ public class RealtimeSystemPromptFactory {
 
         sb.append("\nCONVERSATION STAGES (you move between them with the transitionTo tool):\n");
         for (StageDef stage : def.stages()) {
-            String purpose = PromptTemplateEngine.render(stage.purpose(), facts);
-            sb.append("- ").append(stage.id()).append(": ").append(purpose);
+            if (stage.type() == StageType.NOTE) {
+                continue; // a comment on the editor's canvas, never entered
+            }
+            String purpose = stage.purpose() == null ? "" : PromptTemplateEngine.render(stage.purpose(), facts);
+            sb.append("- ").append(stage.id()).append(": ").append(purpose).append(StageEntry.describeKind(stage));
             String staticLine = SystemPromptFactory.renderStaticLine(stage, facts);
             if (staticLine != null) {
                 sb.append(" First line (EXACTLY this): «").append(staticLine).append("»");
@@ -113,6 +119,7 @@ public class RealtimeSystemPromptFactory {
             }
             sb.append('\n');
         }
+        appendGlobalStages(sb, def);
         sb.append("Current stage: ").append(s.state()).append(".\n");
         // A realtime call has no per-turn annex to re-state where the FSM may go next, so
         // the whole graph is here and the walking rules have to be here with it. On a
@@ -141,7 +148,7 @@ public class RealtimeSystemPromptFactory {
                 // "transition first" read as "leave before saying anything" and the
                 // greeting, the introduction and the §11.1 disclosure were never spoken.
                 .append("- EXCEPTION — THE FIRST LINE: when the call starts you are already in the ")
-                .append(def.stages().get(0).id())
+                .append(def.findStartStage().id())
                 .append(" stage; you do not need to move to it. First greet and introduce ")
                 .append("yourself, then call transitionTo.\n")
                 // A speaking engine turns whatever it "writes" into audio. On a real call the
@@ -149,7 +156,7 @@ public class RealtimeSystemPromptFactory {
                 // the caller heard `transitionTo("IDENTITY_CHECK")` and the stage never moved.
                 .append("- Call tools only through function calls. NEVER say a tool name (transitionTo, endCall ")
                 .append("and others), its parameters or stage names (")
-                .append(def.stages().get(0).id())
+                .append(def.findStartStage().id())
                 .append(" and others) out loud — the client hears them.\n")
                 // The engine asks for a stage and its outcome in one batch of tool calls,
                 // and on a recorded call that turned a caller's "alo" into a payment
@@ -236,6 +243,29 @@ public class RealtimeSystemPromptFactory {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * The stages reachable without a drawn edge: the global ones from anywhere, and in a FLEX
+     * flow every conversation stage. They are listed once here rather than after every
+     * stage's "→", which would repeat them as many times as the flow has stages.
+     */
+    private static void appendGlobalStages(StringBuilder sb, ScenarioDefinition def) {
+        StringBuilder global = new StringBuilder();
+        for (StageDef stage : def.stages()) {
+            if (stage.globalCondition() != null && !stage.globalCondition().isBlank()) {
+                global.append("  - ").append(stage.id()).append(" — if: ").append(stage.globalCondition().trim()).append('\n');
+            }
+        }
+        if (!global.isEmpty()) {
+            sb.append("FROM ANY STAGE you may also move with transitionTo to (this is not skipping a stage):\n")
+                    .append(global);
+        }
+        if (def.transitionMode() == TransitionMode.FLEX) {
+            sb.append("FLEXIBLE ORDER: when the client has already moved the conversation on, you may move ")
+                    .append("with transitionTo straight to whichever CONVERSATION stage fits, not only to the ")
+                    .append("stages after \"→\".\n");
+        }
     }
 
     private static void appendFacts(StringBuilder sb, RealtimeDialogSession s, boolean factsInPrompt) {

@@ -97,6 +97,10 @@ tags:
   description: Operator hisoblari, navbat a'zoligi va SIP webphone ma'lumotlari
 - name: Payment Webhooks
   description: Payment gateway callback processing for Click and Payme merchant services
+- name: Phone Numbers
+  description: Telefon raqamlari bozori (Marketplace), xarid qilish, BYON va kiruvchi marshrutlash
+- name: Platform Phone Numbers
+  description: Platforma ma'murlari uchun telefon raqamlari hovuzi (inventory pool) boshqaruvi
 - name: Public Widget Chat
   description: Public text conversation channel for website AI agents
 - name: Reports
@@ -344,10 +348,10 @@ paths:
     $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D
   /api/companies/{id}/config:
     $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1config
+  /api/companies/{id}/platform:
+    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1platform
   /api/companies/{id}/logo:
     $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1logo
-  /api/companies/{id}/status:
-    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1status
   /api/contacts:
     $ref: paths/contact.yaml#/~1api~1contacts
   /api/contacts/csv:
@@ -464,6 +468,26 @@ paths:
     $ref: paths/pack.yaml#/~1api~1packs~1install-draft
   /api/packs/{key}/install:
     $ref: paths/pack.yaml#/~1api~1packs~1%7Bkey%7D~1install
+  /api/phone-numbers/list:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1list
+  /api/phone-numbers/marketplace:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1marketplace
+  /api/phone-numbers/purchase:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1purchase
+  /api/phone-numbers/test-connection:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1test-connection
+  /api/phone-numbers/{id}:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1%7Bid%7D
+  /api/phone-numbers/{id}/routing:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1%7Bid%7D~1routing
+  /api/platform/phone-numbers:
+    $ref: paths/platformPhoneNumber.yaml#/~1api~1platform~1phone-numbers
+  /api/platform/phone-numbers/batch:
+    $ref: paths/platformPhoneNumber.yaml#/~1api~1platform~1phone-numbers~1batch
+  /api/platform/phone-numbers/list:
+    $ref: paths/platformPhoneNumber.yaml#/~1api~1platform~1phone-numbers~1list
+  /api/platform/phone-numbers/{id}:
+    $ref: paths/platformPhoneNumber.yaml#/~1api~1platform~1phone-numbers~1%7Bid%7D
   /api/profile:
     $ref: paths/profile.yaml#/~1api~1profile
   /api/profile/2fa/disable:
@@ -620,6 +644,16 @@ paths:
     $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1%7Bid%7D~1default
   /api/sip-trunks/{id}/status:
     $ref: paths/sip-trunk.yaml#/~1api~1sip-trunks~1%7Bid%7D~1status
+  /api/companies/{companyId}/sip-trunks:
+    $ref: paths/platformSipTrunk.yaml#/~1api~1companies~1%7BcompanyId%7D~1sip-trunks
+  /api/companies/{companyId}/sip-trunks/list:
+    $ref: paths/platformSipTrunk.yaml#/~1api~1companies~1%7BcompanyId%7D~1sip-trunks~1list
+  /api/companies/{companyId}/sip-trunks/status:
+    $ref: paths/platformSipTrunk.yaml#/~1api~1companies~1%7BcompanyId%7D~1sip-trunks~1status
+  /api/companies/{companyId}/sip-trunks/{id}:
+    $ref: paths/platformSipTrunk.yaml#/~1api~1companies~1%7BcompanyId%7D~1sip-trunks~1%7Bid%7D
+  /api/companies/{companyId}/sip-trunks/{id}/default:
+    $ref: paths/platformSipTrunk.yaml#/~1api~1companies~1%7BcompanyId%7D~1sip-trunks~1%7Bid%7D~1default
   /api/stt/preview:
     $ref: paths/speech-preview.yaml#/~1api~1stt~1preview
   /api/targets/{id}/do-not-call:
@@ -660,6 +694,20 @@ paths:
     $ref: paths/user.yaml#/~1api~1users~1%7Bid%7D~1role
   /api/users/{id}/unblock:
     $ref: paths/user.yaml#/~1api~1users~1%7Bid%7D~1unblock
+  /api/companies/{companyId}/users:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1users
+  /api/companies/{companyId}/users/{id}:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1users~1%7Bid%7D
+  /api/companies/{companyId}/roles:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1roles
+  /api/companies/{companyId}/users/invite:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1users~1invite
+  /api/companies/{companyId}/users/{id}/role:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1users~1%7Bid%7D~1role
+  /api/companies/{companyId}/users/{id}/block:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1users~1%7Bid%7D~1block
+  /api/companies/{companyId}/users/{id}/unblock:
+    $ref: paths/platformUser.yaml#/~1api~1companies~1%7BcompanyId%7D~1users~1%7Bid%7D~1unblock
   /api/v1/files/upload:
     $ref: paths/file.yaml#/~1api~1v1~1files~1upload
   /api/voicemail-boxes:

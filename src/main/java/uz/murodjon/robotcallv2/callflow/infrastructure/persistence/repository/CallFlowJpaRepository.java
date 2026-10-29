@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import uz.murodjon.robotcallv2.callflow.infrastructure.persistence.entity.CallFlowEntity;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,4 +17,6 @@ public interface CallFlowJpaRepository extends JpaRepository<CallFlowEntity, Lon
     List<CallFlowEntity> findByCompanyId(long companyId, Pageable pageable);
 
     long countByCompanyId(long companyId);
+
+    List<CallFlowEntity> findByCompanyIdAndIdIn(long companyId, Collection<Long> ids);
 }

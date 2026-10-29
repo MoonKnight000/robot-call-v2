@@ -161,10 +161,14 @@ ro'yxatiga ega, u shu modulning hujjatida ko'rsatilgan.
 | [alert-rules.md](alert-rules.md) | `/api/alert-rules` | NOTIFICATION_SETTINGS_READ / NOTIFICATION_SETTINGS_EDIT | Kompaniya o'zi sozlaydigan alert qoidalari: metrika (success/transfer/xato/norozi mijoz ulushi, latency, tool xatolari, qo'ng'iroqlar soni), chegara, oyna, cooldown; buzilsa `ALERT_TRIGGERED` bildirishnomasi (bell + Telegram/email/webhook), `/preview` |
 | [live.md](live.md) | `/api/live` | LIVE_READ | Real-vaqt monitoringi, SSE live audio stream, faol kanallar holati |
 | [sip-trunks.md](sip-trunks.md) | `/api/sip-trunks` | SIP_TRUNK_READ / SIP_TRUNK_EDIT | Asterisk SIP trunklar CRUD, balans va ulanish holati tekshiruvi |
+| [sip-trunks.md](sip-trunks.md#platforma-istalgan-kompaniya-trunklari--apicompaniescompanyidsip-trunks) | `/api/companies/{companyId}/sip-trunks` | PLATFORM_ADMIN | Platforma: istalgan kompaniya SIP trunklarini sozlash |
+| [phone-numbers.md](phone-numbers.md) | `/api/phone-numbers` | SIP_TRUNK_READ / SIP_TRUNK_EDIT | Raqamlar bozori: sotib olish, kiruvchi yo'naltirish, bo'shatish, SIP ulanishini sinash |
+| [phone-numbers.md](phone-numbers.md#9-platforma-pulni-boshqarish) | `/api/platform/phone-numbers` | PLATFORM_ADMIN | Platforma raqamlar puli: qo'shish (bittalab va ommaviy), ro'yxat, o'chirish |
 | [caller-id-pools.md](caller-id-pools.md) | `/api/caller-id-pools` | SIP_TRUNK_READ / SIP_TRUNK_EDIT | Caller ID raqamlar puli va rotatsiya strategiyalari (ROUND_ROBIN, RANDOM, LEAST_USED, HIGHEST_ANSWER_RATE), cooldown |
 | [operator.md](operator.md) | `/api/operator` | OPERATOR_READ / OPERATOR_EDIT | Operator ekrani: uzatilgan qo'ng'iroq konteksti, takeover, whisper |
 | [operators.md](operators.md) | `/api/operators` | OPERATOR_READ / OPERATOR_EDIT · USER_EDIT (SIP akkaunt) | Operatorlar: foydalanuvchiga SIP akkaunt berish / parolni tiklash / o'chirish (USER_EDIT), operatorlar ro'yxati, softfon uchun o'z SIP ma'lumotlari (`/me/sip-credentials`), o'z holati (`/me/status`), SSE hodisalar (`/me/events` — `CALL_OFFER`, `CALL_CONNECTED`, `CALL_ENDED`, `STATUS_CHANGED`, `MISSED_CALL`, `VOICEMAIL`) |
 | [users.md](users.md) | `/api/users` | USER_READ / USER_EDIT | Kompaniya xodimlarini taklif qilish (invite), rollar, bloklash |
+| [users.md](users.md#platforma-istalgan-kompaniya-foydalanuvchilari--apicompaniescompanyid) | `/api/companies/{companyId}/users`, `/roles` | PLATFORM_ADMIN | Platforma: istalgan kompaniya xodimlari va rollari, birinchi adminni taklif qilish |
 | [roles.md](roles.md) | `/api/roles` | ROLE_READ / ROLE_EDIT | Rollar va huquqlar: tizim rollari (DEVELOPER, ADMIN, OPERATOR, SUPERVISOR, VIEWER), kompaniyaning shaxsiy rollari (maks. 10 ta), permission katalogi |
 | [api-keys.md](api-keys.md) | `/api/api-keys` | API_KEY_READ / API_KEY_EDIT | Tashqi tizimlar uchun `X-Api-Key` kalitlari: yaratish (kalit bir marta ko'rinadi), bekor qilish, kalit ololmaydigan huquqlar ro'yxati |
 | [conversions.md](conversions.md) | `/api/conversions` | CAMPAIGN_READ / CAMPAIGN_EDIT | Konversiya maqsadlari va hodisalari: CRM "mijoz to'ladi" deb xabar beradi, tizim qaysi qo'ng'iroq/kampaniya/A-B variant keltirganini aniqlaydi; A/B hisobotiga xarajat va ROI ustunlari |
@@ -180,7 +184,7 @@ ro'yxatiga ega, u shu modulning hujjatida ko'rsatilgan.
 | [files.md](files.md) | `/api/files` | Auth | MinIO/S3 fayl yuklash, audio yozuvlar va avatarlar yuklab olish |
 | [search.md](search.md) | `/api/search` | CALL_READ / CAMPAIGN_READ | Tizim bo'ylab global qidiruv (kontaktlar, kampaniyalar, qo'ng'iroqlar) |
 | [notifications.md](notifications.md) | `/api/notifications` | Auth | In-app bell bildirishnomalari ro'yxati, o'qilganlik belgisi, individual toggle'lar |
-| [webhooks.md](webhooks.md) | `/api/webhook-deliveries` | AI_AGENT_READ / AI_AGENT_EDIT | **Chiquvchi** webhooklar (sozlanishi agent / bildirishnoma / call-flow da); yiqilgan yetkazishlar jurnali, `FAILED` ni qo'lda qayta yuborish (`/{id}/resend`), jonli developer SSE oqimi (`/listen`): qayerda sozlanadi, imzo (`X-RobotCall-Signature`), `X-RobotCall-Delivery`, qayta urinish, SSRF himoyasi + suhbat davomidagi SMS |
+| [webhooks.md](webhooks.md) | `/api/webhook-deliveries`, `/api/webhooks/livekit/sip` | AI_AGENT_READ / ochiq | Chiquvchi webhook yetkazishlar jurnali, qayta yuborish, jonli SSE oqimi va kiruvchi LiveKit SIP Gateway dispatch webhooki |
 | [partners.md](partners.md) | `/api/partners/{companyId}/branding`, `/api/partner/branding`, `/api/partner/clients`, `/api/branding`, `/api/public/branding` | PLATFORM_ADMIN / COMPANY_READ / COMPANY_EDIT / Auth / ochiq | Partner (reseller, white-label): partner brendi (nom, logo, rang, domen), partnerning mijoz kompaniyalari, panel va login sahifasi brendi |
 
 ---

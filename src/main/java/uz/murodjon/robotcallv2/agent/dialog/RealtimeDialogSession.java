@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 
 /**
@@ -46,7 +47,10 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private final long companyId;
     /** The agent behind this call; null on a manual test line that names none. */
     private final AiAgent agent;
-    private final ScenarioDefinition scenario;
+    /** Replaced only by an agent handoff ({@link #handOffToAgent}). */
+    private volatile ScenarioDefinition scenario;
+    /** Moves the call to another agent's flow and reconfigures the engine; null when the call cannot. */
+    private volatile LongPredicate agentHandoff;
     private final CallContext context;
     private final RtpEndpoint endpoint;
     private final Runnable hangup;
@@ -159,7 +163,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         this.endpoint = endpoint;
         this.hangup = hangup;
         this.transfer = transfer;
-        this.state = scenario.stages().get(0).id();
+        this.state = scenario.findStartStage().id();
     }
 
     @Override
@@ -243,6 +247,26 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     public boolean triggerMidCallSms(String text) {
         Predicate<String> sender = midCallSmsSender;
         return sender != null && text != null && !text.isBlank() && sender.test(text.trim());
+    }
+
+    public void setAgentHandoff(LongPredicate agentHandoff) {
+        this.agentHandoff = agentHandoff;
+    }
+
+    /**
+     * Only where the engine takes new instructions and tools mid-call ({@code
+     * RealtimeSession#updateConfiguration}); one configured once at setup keeps its scenario.
+     */
+    @Override
+    public boolean handOffToAgent(long agentId) {
+        LongPredicate handoff = agentHandoff;
+        return handoff != null && handoff.test(agentId);
+    }
+
+    /** Continue under {@code next} from its start stage; what was said stays in the engine's history. */
+    void switchScenario(ScenarioDefinition next) {
+        this.scenario = next;
+        setState(next.findStartStage().id());
     }
 
     public void setDtmfSender(Consumer<String> sender) {

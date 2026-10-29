@@ -46,14 +46,8 @@ public class CompanyControllerImpl implements CompanyController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Company>> updateStatus(long id, UpdateCompanyStatusRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateStatus(id, request)));
-    }
-
-    @Override
-    public ResponseEntity<ResponseData<Company>> updateConcurrencyLimit(long id,
-                                                                        UpdateCompanyConcurrencyLimitRequest request) {
-        return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateConcurrencyLimit(id, request)));
+    public ResponseEntity<ResponseData<Company>> updateByPlatform(long id, UpdateCompanyByPlatformRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(companyUseCase.updateByPlatform(id, request)));
     }
 
     @Override

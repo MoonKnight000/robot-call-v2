@@ -76,6 +76,10 @@ Permission:
   - API_KEY_EDIT
   - QUALITY_REVIEW_READ
   - QUALITY_REVIEW_EDIT
+  - CHAT_AGENT_READ
+  - CHAT_AGENT_EDIT
+  - ALERT_READ
+  - ALERT_EDIT
   - PLATFORM_ADMIN
   description: |-
     Every right the panel can grant, one pair per page: `*_READ` opens the page, `*_EDIT` allows creating, changing and deleting on it.
@@ -223,14 +227,28 @@ PermissionGroup:
   - BILLING
   - API_KEY
   - QUALITY_REVIEW
+  - CHAT_AGENT
+  - ALERT
   - PLATFORM
   description: The panel page a permission guards — the frontend renders the role editor grouped by this, and translates each name itself (same contract as `ErrorCode`).
+Feature:
+  type: string
+  enum:
+  - CORE
+  - VOICE_AGENT
+  - CHAT_AGENT
+  - ALERTING
+  - INTEGRATIONS
+  - QUALITY_ASSURANCE
+  description: A product the platform sells. CORE is the platform itself and cannot be switched off for a company; the rest can.
 PermissionGroupRow:
   type: object
   description: One page's worth of the permission catalog the role editor renders.
   properties:
     group:
       $ref: '#/PermissionGroup'
+    feature:
+      $ref: '#/Feature'
     permissions:
       type: array
       items:

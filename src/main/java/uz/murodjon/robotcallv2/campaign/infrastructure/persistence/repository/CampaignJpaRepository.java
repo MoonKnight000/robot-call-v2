@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 
 import java.time.Instant;
 import java.util.List;
@@ -33,7 +34,13 @@ public interface CampaignJpaRepository extends JpaRepository<CampaignEntity, Lon
     @Query("SELECT count(c) FROM CampaignEntity c WHERE c.company.id = :companyId")
     long countByCompanyId(@Param("companyId") long companyId);
 
-    List<CampaignEntity> findByStatusAndCompany_StatusOrderById(CampaignStatus status, CompanyStatus companyStatus);
+    /** The campaigns the dialer may work: in the given status, of a company in {@code companyStatus} that has not had {@code feature} switched off. */
+    @Query("SELECT c FROM CampaignEntity c WHERE c.status = :status AND c.company.status = :companyStatus "
+            + "AND NOT EXISTS (SELECT 1 FROM CompanyFeatureEntity f WHERE f.company = c.company "
+            + "AND f.feature = :feature AND f.enabled = false) ORDER BY c.id")
+    List<CampaignEntity> findDispatchable(@Param("status") CampaignStatus status,
+                                          @Param("companyStatus") CompanyStatus companyStatus,
+                                          @Param("feature") Feature feature);
 
     List<CampaignEntity> findByRecurrenceTypeNotAndStatusNot(RecurrenceType recurrenceType, CampaignStatus status);
 

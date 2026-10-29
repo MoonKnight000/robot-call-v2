@@ -31,24 +31,6 @@ Authorization: Bearer {{auth_token}}
   "address": "Tashkent, Amir Temur 1"
 }
 
-### Update Company Status
-PUT http://localhost:8080/api/companies/1/status
-Content-Type: application/json
-Authorization: Bearer {{auth_token}}
-
-{
-  "status": "ACTIVE"
-}
-
-### Set Company Concurrency Limit (SUPERADMIN; null — the platform default)
-PUT http://localhost:8080/api/companies/1/concurrency-limit
-Content-Type: application/json
-Authorization: Bearer {{auth_token}}
-
-{
-  "maxConcurrentCalls": 40
-}
-
 ### Get Company Config
 GET http://localhost:8080/api/companies/1/config
 Authorization: Bearer {{auth_token}}
@@ -65,4 +47,19 @@ Authorization: Bearer {{auth_token}}
   "defaultLanguage": "uz-UZ",
   "supportedLanguages": ["uz-UZ", "ru-RU"],
   "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda."
+}
+
+### Platform edit: name, status (ACTIVE / SUSPENDED = blocked / DELETED), expiry, call limit, features (SUPERADMIN)
+PUT http://localhost:8080/api/companies/2/platform
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Ikkinchi kompaniya",
+  "address": "Toshkent, Chilonzor",
+  "status": "ACTIVE",
+  "expiresAt": "2026-12-31T23:59:59Z",
+  "maxConcurrentCalls": 40,
+  "disabledFeatures": ["ALERTING"],
+  "disabledIntegrations": ["BITRIX24"]
 }

@@ -12,6 +12,8 @@ import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatTurn;
 import uz.murodjon.robotcallv2.chat.domain.entity.StartedChat;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
@@ -36,20 +38,23 @@ public class ChatService implements ChatUseCase {
     private final AgentWidgetUseCase widgetUseCase;
     private final CompanyConfigUseCase companyConfigUseCase;
     private final AuditUseCase auditUseCase;
+    private final CompanyUseCase companyUseCase;
 
     public ChatService(ChatConversations conversations, ChatSessionRepository repository,
-                       AgentWidgetUseCase widgetUseCase, CompanyConfigUseCase companyConfigUseCase,
+                       AgentWidgetUseCase widgetUseCase, CompanyConfigUseCase companyConfigUseCase, CompanyUseCase companyUseCase,
                        AuditUseCase auditUseCase) {
         this.conversations = conversations;
         this.repository = repository;
         this.widgetUseCase = widgetUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
         this.auditUseCase = auditUseCase;
+        this.companyUseCase = companyUseCase;
     }
 
     @Override
     public StartChatResponse startChat(String widgetKey, String origin, String language) {
         WidgetTarget target = widgetUseCase.findPublicTarget(widgetKey, origin);
+        companyUseCase.requireFeatureEnabled(target.companyId(), Feature.CHAT_AGENT);
         if (!conversations.modelAvailable()) {
             throw new ConflictException(ErrorCode.CHAT_MODEL_NOT_CONFIGURED);
         }
@@ -69,6 +74,7 @@ public class ChatService implements ChatUseCase {
     public ChatReplyResponse sendMessage(String widgetKey, String origin, String sessionKey,
                                          SendChatMessageRequest request) {
         WidgetTarget target = widgetUseCase.findPublicTarget(widgetKey, origin);
+        companyUseCase.requireFeatureEnabled(target.companyId(), Feature.CHAT_AGENT);
         ChatSession session = repository.findBySessionKey(sessionKey);
         // A conversation of another widget's agent is, to this request, one that does not exist.
         if (session == null || session.companyId() != target.companyId()

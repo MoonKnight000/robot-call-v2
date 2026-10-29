@@ -315,22 +315,34 @@ urinish yo'q (bir marta, best-effort).
 
 ## 5. CRM Integratsiyalari (`/api/settings/integrations`)
 
-Kompaniyalar tashqi CRM tizimlarini o'z hisoblariga to'liq ulashi mumkin: **Uysot CRM**, **amoCRM**, **Kommo (Global amoCRM)** va **Bitrix24**.
+Kompaniyalar tashqi CRM tizimlarini o'z hisoblariga to'liq ulashi mumkin (Google Drive, Notion va Asterisk katalogda "tez orada" holatida): **Uysot CRM**, **amoCRM**, **Kommo (Global amoCRM)** va **Bitrix24**.
 
 ### `GET /api/settings/integrations/catalog` — Mavjud integratsiyalar katalogi
 
-**Response** (`List<CrmCatalogEntry>`, `ResponseData` ichida). `authMethod` —
-`OAUTH` yoki `API_TOKEN`; `available: false` — provayder katalogda ko'rinadi, lekin hali
-ulanmaydi.
+**Response** (`List<IntegrationCatalogEntry>`, `ResponseData` ichida) — katalog **shu kompaniya ko'zi bilan**:
+platforma o'chirgan provayder yashirilmaydi, `DISABLED_BY_PLATFORM` deb belgilanadi.
+
+| Maydon | Izoh |
+|---|---|
+| `provider` | `UYSOT`, `AMOCRM`, `KOMMO`, `BITRIX24`, `GOOGLE_DRIVE`, `NOTION`, `ASTERISK` |
+| `category` | `CRM`, `KNOWLEDGE_BASE`, `TELEPHONY` — katalogni guruhlash uchun |
+| `authMethod` | `OAUTH` yoki `API_TOKEN`; `null` — hali `COMING_SOON` |
+| `status` | `AVAILABLE` — ulash mumkin; `COMING_SOON` — rejada, konnektor yo'q; `DISABLED_BY_PLATFORM` — platforma bu kompaniya uchun o'chirgan |
+| `available` | `status == AVAILABLE` (eski maydon, moslik uchun) |
 
 ```json
 [
-  { "provider": "UYSOT", "displayName": "Uysot CRM", "authMethod": "OAUTH", "available": true },
-  { "provider": "AMOCRM", "displayName": "amoCRM", "authMethod": "API_TOKEN", "available": true },
-  { "provider": "KOMMO", "displayName": "Kommo CRM (Global amoCRM)", "authMethod": "API_TOKEN", "available": true },
-  { "provider": "BITRIX24", "displayName": "Bitrix24", "authMethod": "API_TOKEN", "available": true }
+  { "provider": "UYSOT", "displayName": "Uysot CRM", "category": "CRM", "authMethod": "OAUTH", "status": "AVAILABLE", "available": true },
+  { "provider": "BITRIX24", "displayName": "Bitrix24", "category": "CRM", "authMethod": "API_TOKEN", "status": "DISABLED_BY_PLATFORM", "available": false },
+  { "provider": "GOOGLE_DRIVE", "displayName": "Google Drive", "category": "KNOWLEDGE_BASE", "authMethod": null, "status": "COMING_SOON", "available": false }
 ]
 ```
+
+**Platforma tomonidan o'chirilsa** ([companies.md](companies.md), `disabledIntegrations`): shu provayderni ulash
+(`PUT /uysot`, `authorize-url`, `PUT /account`) `403 COMPANY_INTEGRATION_DISABLED` beradi; allaqachon ulangan bo'lsa
+ham u CRM'ga yozmaydi va o'qimaydi (qo'ng'iroq CRM'siz davom etadi), ulanish ma'lumoti saqlanadi va provayder qayta
+yoqilsa ishga tushadi. Uysot o'chirilsa, Uysot webhook ham e'tiborsiz qoladi. Butun `INTEGRATIONS` feature'i o'chirilsa
+bu bo'lim umuman yopiladi.
 
 Kompaniyaga bir vaqtda **bitta** CRM ulanadi: Uysot — OAuth orqali (`PUT /uysot` →
 `authorize-url` → `callback`), amoCRM / Kommo / Bitrix24 — manzil va token bilan

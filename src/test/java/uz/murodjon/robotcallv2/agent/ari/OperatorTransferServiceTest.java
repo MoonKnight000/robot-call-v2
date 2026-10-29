@@ -101,7 +101,7 @@ class OperatorTransferServiceTest {
 
         OperatorSnapshot snapshot = new OperatorSnapshot(
                 CHANNEL_ID, "Vali Karimov", "500000", "UZS", "2026-11-01", "D-123",
-                "STAGE_2", "Mijoz operator talab qildi", "AI: Assalomu alaykum\nCLIENT: Operator kerak"
+                "STAGE_2", "Mijoz operator talab qildi", "AI: Assalomu alaykum\nCLIENT: Operator kerak", null
         );
         when(dialogRouter.operatorSnapshot(CHANNEL_ID)).thenReturn(snapshot);
 

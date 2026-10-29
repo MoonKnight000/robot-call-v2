@@ -1,9 +1,11 @@
 package uz.murodjon.robotcallv2.copilot.presentation.controller;
 
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
 import uz.murodjon.robotcallv2.copilot.application.dto.CopilotReplyResponse;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
@@ -23,9 +25,16 @@ import java.util.List;
 @RequestMapping("/api/copilot")
 public interface CopilotController {
 
+    /** One question; streams events as SSE. */
+    @PreAuthorize("hasAnyAuthority('AI_AGENT_READ', 'REPORT_READ')")
+    @PostMapping(value = "/ask", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    SseEmitter askStream(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody AskCopilotRequest request);
+
     /** One question; {@code sessionId} null starts a conversation. Answers once the model is done. */
     @PreAuthorize("hasAnyAuthority('AI_AGENT_READ', 'REPORT_READ')")
-    @PostMapping("/ask")
+    @PostMapping(value = "/ask", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<ResponseData<CopilotReplyResponse>> ask(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody AskCopilotRequest request);

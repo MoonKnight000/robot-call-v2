@@ -46,6 +46,12 @@ public record ApiKey(
                 null, expiresAt, null, null);
     }
 
+    /** The same key with a different set of rights — what it may do right now, not what it was granted. */
+    public ApiKey withScopes(Set<Permission> scopes) {
+        return new ApiKey(id, companyId, name, keyPrefix, keyHash, scopes, createdBy, lastUsedAt, expiresAt,
+                revokedAt, createdAt);
+    }
+
     /**
      * Whether this key may still authenticate a request.
      *

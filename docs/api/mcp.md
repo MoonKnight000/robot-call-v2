@@ -64,6 +64,7 @@ ko'ndirib bo'lmaydi. `usableToolCount` — aynan agentga yetib borgan son;
 | Metod | Yo'l | Izoh |
 |---|---|---|
 | `GET` | `/api/mcp/connections` | Ro'yxat |
+| `GET` | `/api/mcp/agents/{agentId}/connections` | Shu agentga biriktirilgan ulanishlar (`McpConnectionRow[]`; agent boshqa kompaniyaniki bo'lsa — `404 AI_AGENT_NOT_FOUND`) |
 | `POST` | `/api/mcp/connections` | Yaratish + darhol so'rash |
 | `PUT` | `/api/mcp/connections/{id}` | Yangilash + qayta so'rash |
 | `DELETE` | `/api/mcp/connections/{id}` | O'chirish |

@@ -32,7 +32,7 @@ final class DialogLines {
      * on, asking the client to repeat keeps the conversation alive.
      */
     static String fallback(DialogSession s) {
-        if (s.state().equals(s.scenario().stages().get(0).id()) && !s.isDisclosureSpoken()) {
+        if (s.state().equals(s.scenario().findStartStage().id()) && !s.isDisclosureSpoken()) {
             return disclosure(s);
         }
         if ("REASON_INQUIRY".equalsIgnoreCase(s.state())) {

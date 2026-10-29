@@ -47,11 +47,6 @@ final class ReportSql {
         return rs.wasNull() ? null : value;
     }
 
-    static Float floatOrNull(ResultSet rs, String column) throws SQLException {
-        float value = rs.getFloat(column);
-        return rs.wasNull() ? null : value;
-    }
-
     static Double doubleOrNull(ResultSet rs, String column) throws SQLException {
         double value = rs.getDouble(column);
         return rs.wasNull() ? null : value;

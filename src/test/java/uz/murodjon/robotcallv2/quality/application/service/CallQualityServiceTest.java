@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.agent.summary.CallQualityJudge;
 import uz.murodjon.robotcallv2.agent.summary.QualityVerdict;
+import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.quality.application.port.output.CallQualityRepository;
 import uz.murodjon.robotcallv2.quality.domain.entity.CallQuality;
 import uz.murodjon.robotcallv2.quality.domain.entity.FinishedCall;
@@ -40,7 +41,7 @@ class CallQualityServiceTest {
         repository = mock(CallQualityRepository.class);
         qualityJudge = mock(CallQualityJudge.class);
         toolExecutionUseCase = mock(ToolExecutionUseCase.class);
-        service = new CallQualityService(repository, qualityJudge, toolExecutionUseCase);
+        service = new CallQualityService(repository, qualityJudge, toolExecutionUseCase, CompanyFixtures.openCompanyUseCase());
     }
 
     @Test

@@ -1,7 +1,7 @@
 # Parallel qo'ng'iroqlar (concurrency) API
 
 `uz.murodjon.robotcallv2.dialer` · huquq: **LIVE_READ**; limitni o'rnatish — **PLATFORM_ADMIN**
-([companies.md](companies.md#put-apicompaniesidconcurrency-limit--parallel-qongiroqlar-limiti))
+([companies.md](companies.md#put-apicompaniesidplatform--kompaniyani-platforma-tomonidan-tahrirlash))
 
 Dialer bir vaqtda ushlab turadigan qo'ng'iroqlar uchta chegara bilan cheklanadi; eng kichigi ishlaydi:
 

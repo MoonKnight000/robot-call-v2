@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
+
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +30,13 @@ import java.util.Set;
  *                 all of: a client who refuses must still be able to move on. Checked in code
  *                 ({@code DialogTools.transitionTo}), so a model that believes the stage is done
  *                 cannot skip it; null or empty = none
+ * @param type     what the stage does ({@link StageType}); null = {@link StageType#CONVERSATION}
+ * @param position where the stage sits on the editor's canvas; null = laid out automatically
+ * @param globalCondition when set, the stage is global: the model may move the call into it
+ *                 from any stage once this holds ("the caller asks for a human"), with no edge
+ *                 drawn to it; null = reached only by its incoming transitions
+ * @param action   the settings of a non-conversation type ({@link StageAction}); null for
+ *                 CONVERSATION, LOGIC_SPLIT, ENDING and NOTE
  */
 public record StageDef(
         String id,
@@ -39,9 +48,16 @@ public record StageDef(
         List<StageBranch> branches,
         Map<String, String> transitionConditions,
         String staticLine,
-        List<String> requiredOutcomes
+        List<String> requiredOutcomes,
+        StageType type,
+        StagePosition position,
+        String globalCondition,
+        StageAction action
 ) {
     public StageDef {
+        if (type == null) {
+            type = StageType.CONVERSATION;
+        }
         if (transitionConditions != null && !transitionConditions.isEmpty()) {
             Set<String> merged = new LinkedHashSet<>();
             if (allowedTransitions != null) {
@@ -61,8 +77,11 @@ public record StageDef(
         return new StageDefBuilder(this);
     }
 
-    /** A plain stage: no emotion, model override, branches, conditions, fixed line or required outcomes. */
+    /**
+     * A plain conversation stage: no emotion, model override, branches, conditions, fixed line,
+     * required outcomes, canvas position, global condition or action.
+     */
     public StageDef(String id, String purpose, List<String> allowedTransitions, List<String> allowedTools) {
-        this(id, purpose, allowedTransitions, allowedTools, null, null, null, null, null, null);
+        this(id, purpose, allowedTransitions, allowedTools, null, null, null, null, null, null, null, null, null, null);
     }
 }

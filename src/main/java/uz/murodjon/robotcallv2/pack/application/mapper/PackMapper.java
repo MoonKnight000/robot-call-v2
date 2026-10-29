@@ -22,6 +22,8 @@ import uz.murodjon.robotcallv2.pack.domain.entity.PackCatalogFeed;
 import uz.murodjon.robotcallv2.pack.domain.entity.PackTool;
 import uz.murodjon.robotcallv2.pack.domain.entity.VerticalPack;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolHttpConfigDto;
@@ -50,6 +52,7 @@ public class PackMapper {
         AiAgentDataPolicy policy = agent.dataPolicy();
         return new CreateAiAgentRequest(
                 agent.name(), agent.description(), agent.language(),
+                AiAgentChannel.VOICE, AiAgentMode.CONVERSATIONAL_FLOW,
                 null, null,                                    // persona, engineProfileId
                 new AgentScriptDto(null, null, ScenarioMode.STRUCTURED_STEPS, agent.scenario(),
                         agent.firstMessage(), agent.scenario().rolePrompt()),

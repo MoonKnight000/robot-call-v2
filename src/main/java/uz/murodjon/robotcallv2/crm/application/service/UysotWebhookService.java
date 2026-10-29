@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.PromptSafeText;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.crm.application.dto.UysotLeadAttributionDto;
 import uz.murodjon.robotcallv2.crm.application.dto.UysotLeadPayloadDto;
 import uz.murodjon.robotcallv2.crm.application.dto.UysotLeadWebhookEvent;
@@ -12,6 +13,7 @@ import uz.murodjon.robotcallv2.crm.application.port.input.UysotWebhookUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.InstantCallRequest;
 import uz.murodjon.robotcallv2.dialer.application.dto.InstantCallResponse;
 import uz.murodjon.robotcallv2.dialer.application.port.input.InstantCallUseCase;
+import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 
@@ -32,10 +34,13 @@ public class UysotWebhookService implements UysotWebhookUseCase {
 
     private final InstantCallUseCase instantCallUseCase;
     private final SecretUseCase secretUseCase;
+    private final CompanyUseCase companyUseCase;
 
-    public UysotWebhookService(InstantCallUseCase instantCallUseCase, SecretUseCase secretUseCase) {
+    public UysotWebhookService(InstantCallUseCase instantCallUseCase, SecretUseCase secretUseCase,
+                               CompanyUseCase companyUseCase) {
         this.instantCallUseCase = instantCallUseCase;
         this.secretUseCase = secretUseCase;
+        this.companyUseCase = companyUseCase;
     }
 
     @Override
@@ -66,6 +71,11 @@ public class UysotWebhookService implements UysotWebhookUseCase {
                 log.warn("Uysot webhook {} for company {} rejected: invalid or missing X-Webhook-Secret", eventId, companyId);
                 return UysotWebhookResult.skipped(eventId, eventType, "Unauthorized: invalid webhook secret");
             }
+        }
+
+        if (!companyUseCase.isIntegrationAvailable(companyId, IntegrationProvider.UYSOT)) {
+            log.info("Uysot webhook {} for company {} ignored: company closed, or integrations or Uysot switched off", eventId, companyId);
+            return UysotWebhookResult.skipped(eventId, eventType, "Integrations are not enabled for this company");
         }
 
         if (!EVENT_LEAD_CREATED.equalsIgnoreCase(eventType)) {

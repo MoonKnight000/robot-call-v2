@@ -22,7 +22,7 @@ public final class StageBranchEvaluator {
             return null;
         }
         for (StageBranch branch : branches) {
-            if (holds(branch, facts.apply(branch.fact()))) {
+            if (!branch.operator().needsFact() || holds(branch, facts.apply(branch.fact()))) {
                 return branch.goTo();
             }
         }
@@ -41,6 +41,7 @@ public final class StageBranchEvaluator {
             case GREATER_OR_EQUAL -> present && compare(actual, branch.value()) >= 0;
             case LESS -> present && compare(actual, branch.value()) < 0;
             case LESS_OR_EQUAL -> present && compare(actual, branch.value()) <= 0;
+            case ALWAYS -> true;
         };
     }
 

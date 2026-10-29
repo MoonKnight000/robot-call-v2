@@ -187,7 +187,7 @@ class BillingServiceTest {
     void invoicePdfSuccess() {
         Invoice inv = new Invoice("INV-001", 1L, "Mart 2026", 1450000L, InvoiceStatus.PAID, Instant.now(), null, Instant.now());
         when(invoiceRepo.findById("INV-001")).thenReturn(Optional.of(inv));
-        when(companyUseCase.findById(1L)).thenReturn(new Company(1L, "Acme Corp", CompanyStatus.ACTIVE, Instant.now(), null, "Tashkent", null));
+        when(companyUseCase.findById(1L)).thenReturn(new Company(1L, "Acme Corp", CompanyStatus.ACTIVE, Instant.now(), null, "Tashkent", null, null, null, null));
         when(pdfService.generateInvoicePdf(eq(inv), eq("Acme Corp"))).thenReturn(new byte[]{1, 2, 3});
 
         byte[] bytes = service.renderInvoicePdf(1L, "INV-001");

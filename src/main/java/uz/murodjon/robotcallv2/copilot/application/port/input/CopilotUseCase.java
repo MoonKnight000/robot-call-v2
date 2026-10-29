@@ -6,6 +6,8 @@ import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.stream.EventSink;
+import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
 
 import java.util.List;
 
@@ -18,6 +20,9 @@ public interface CopilotUseCase {
 
     /** One question; a new conversation when {@code request.sessionId()} is null. */
     CopilotReplyResponse ask(long companyId, AskCopilotRequest request);
+
+    /** One question; streams events (session, tool_call, tool_result, delta, done, error) via sink. */
+    EventSubscription askStream(long companyId, AskCopilotRequest request, EventSink sink);
 
     PageableData<CopilotSession> filterSessions(long companyId, CopilotSessionFilter filter);
 

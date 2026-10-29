@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -142,6 +143,11 @@ public class CallFlowService implements CallFlowUseCase {
     public CallFlowGraph findPublishedGraph(long companyId, long id) {
         CallFlow flow = repository.find(companyId, id);
         return flow != null ? flow.publishedGraph() : null;
+    }
+
+    @Override
+    public Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids) {
+        return repository.findNamesByIds(companyId, ids);
     }
 
     /** Everything a node points at must exist and be this company's — a live call does not ask again. */

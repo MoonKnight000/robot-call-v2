@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * The company's concurrent dialer calls (docs/api/concurrency.md): its limit, how many it holds
  * now and how many slots are free. The limit is set per company by the platform
- * ({@code PUT /api/companies/{id}/concurrency-limit}).
+ * ({@code PUT /api/companies/{id}/platform}).
  */
 @RequestMapping("/api/concurrency")
 public interface ConcurrencyController {

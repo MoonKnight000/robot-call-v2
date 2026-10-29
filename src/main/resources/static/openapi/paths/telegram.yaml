@@ -44,7 +44,7 @@
     tags:
     - Telegram Bots
     summary: Telegram botlar ro'yxati
-    description: '**Huquq:** `AI_AGENT_READ`'
+    description: '**Huquq:** `CHAT_AGENT_READ`'
     operationId: telegram_list
     responses:
       '200':
@@ -71,7 +71,7 @@
     description: |-
       Registers a bot this company owns. The token is not sent here — it is stored once as a company secret and named by `tokenSecretKey` ([secrets.md]).
 
-      **Huquq:** `AI_AGENT_EDIT`
+      **Huquq:** `CHAT_AGENT_EDIT`
     operationId: telegram_create
     requestBody:
       required: true
@@ -102,7 +102,7 @@
     tags:
     - Telegram Bots
     summary: Telegram botni o'chirish
-    description: '**Huquq:** `AI_AGENT_EDIT`'
+    description: '**Huquq:** `CHAT_AGENT_EDIT`'
     operationId: telegram_delete
     parameters:
     - name: botId
@@ -135,7 +135,7 @@
     description: |-
       Tells Telegram where to send this bot's updates. The address is the operator's to give: it is the one their deployment answers on, which this application cannot know from the inside.
 
-      **Huquq:** `AI_AGENT_EDIT`
+      **Huquq:** `CHAT_AGENT_EDIT`
     operationId: telegram_registerWebhook
     parameters:
     - name: botId

@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.company.domain.entity;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import uz.murodjon.robotcallv2.company.domain.enums.Language;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.*;
@@ -26,6 +27,7 @@ import java.util.List;
  *                                   AI assistant, disclosure included
  * @param scorecardReviewThreshold   an operator call scored below this (0–100) goes to the
  *                                   review inbox (docs/OPERATOR-DIALER-ANALYTICS-PLAN.md §2.3b)
+ * @param telephonyEngine            telephony media engine (ASTERISK, LIVEKIT)
  */
 public record CompanyConfig(
         long id,
@@ -42,6 +44,7 @@ public record CompanyConfig(
         boolean humanLikePersonaAllowed,
         List<LocalDate> holidays,
         int scorecardReviewThreshold,
+        TelephonyEngine telephonyEngine,
         Instant createdAt
 ) {
 
@@ -49,6 +52,9 @@ public record CompanyConfig(
 
     public CompanyConfig {
         holidays = holidays == null ? List.of() : List.copyOf(holidays);
+        if (telephonyEngine == null) {
+            telephonyEngine = TelephonyEngine.ASTERISK;
+        }
     }
 
     /** Ordinary working hours: a collections call at 07:00 or 22:30 is itself a complaint. */
@@ -66,11 +72,6 @@ public record CompanyConfig(
     /**
      * What a tenant starts with before anyone edits its settings — the single definition,
      * used both when a company is created and when the default tenant is seeded at startup.
-     * A 09:00–20:00 window; no call while a promise to pay is still in its term — calling
-     * someone who has just agreed a date is the complaint, whatever the numbers; at most
-     * {@value #DEFAULT_MAX_ATTEMPTS_PER_PHONE_PER_WEEK} placed calls to a number a week and
-     * a day of quiet after a real conversation, which the company may loosen; and no
-     * human-like persona until a platform admin allows one.
      */
     public static CompanyConfig defaults() {
         return settings(DEFAULT_DIAL_WINDOW_START, DEFAULT_DIAL_WINDOW_END, DEFAULT_TIMEZONE,
@@ -90,23 +91,24 @@ public record CompanyConfig(
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
                 defaultLanguage, supportedLanguages, disclosureText,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
-                humanLikePersonaAllowed, List.of(), DEFAULT_SCORECARD_REVIEW_THRESHOLD, null);
+                humanLikePersonaAllowed, List.of(), DEFAULT_SCORECARD_REVIEW_THRESHOLD, null, null);
     }
 
     /**
      * The same, with the days the company does not call at all (NEXT-PLAN C.4) and the score
-     * below which an operator call is reviewed.
+     * below which an operator call is reviewed, and the telephony engine (null = the default one).
      */
     public static CompanyConfig settings(LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
                                          Language defaultLanguage, List<Language> supportedLanguages,
                                          String disclosureText, int maxAttemptsPerPhonePerWeek,
                                          int quietDaysAfterConversation, boolean respectPromisedDate,
                                          boolean humanLikePersonaAllowed, List<LocalDate> holidays,
-                                         int scorecardReviewThreshold) {
+                                         int scorecardReviewThreshold, TelephonyEngine telephonyEngine) {
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
                 defaultLanguage, supportedLanguages, disclosureText,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
-                humanLikePersonaAllowed, holidays, scorecardReviewThreshold, null);
+                humanLikePersonaAllowed, holidays, scorecardReviewThreshold,
+                telephonyEngine, null);
     }
 
     /** Whether any contact-frequency rule is switched on, so the dialer has history to read. */

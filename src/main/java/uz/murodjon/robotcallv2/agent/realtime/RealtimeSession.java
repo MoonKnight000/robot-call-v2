@@ -1,5 +1,9 @@
 package uz.murodjon.robotcallv2.agent.realtime;
 
+import org.springframework.ai.tool.ToolCallback;
+
+import java.util.List;
+
 /**
  * One live conversation with a {@link RealtimeProvider} — the handle the call pipeline
  * pushes the caller's audio into and closes when the call ends.
@@ -67,6 +71,18 @@ public interface RealtimeSession {
      * @param heardMs milliseconds of the interrupted reply that were played to the caller
      */
     default void truncatePlayback(long heardMs) {
+    }
+
+    /**
+     * Replace the engine's instructions and tools mid-call — what an AGENT_TRANSFER stage of
+     * a flow needs, since the call goes on under another agent's script. The conversation so
+     * far is kept.
+     *
+     * @return whether the engine took them; false for an engine that fixes both when the
+     *         session opens (Gemini Live's setup message), which is the default
+     */
+    default boolean updateConfiguration(String systemPrompt, List<ToolCallback> tools) {
+        return false;
     }
 
     /**

@@ -180,7 +180,7 @@ public class AuthService implements AuthUseCase {
      */
     private void requireCompanyActive(long companyId) {
         Company company = companyUseCase.findById(companyId);
-        if (company != null && company.status() == CompanyStatus.SUSPENDED) {
+        if (company != null && company.status() != CompanyStatus.ACTIVE) {
             throw new ForbiddenException(ErrorCode.COMPANY_SUSPENDED);
         }
     }
@@ -341,10 +341,14 @@ public class AuthService implements AuthUseCase {
         return new IssuedSession(response, Tokens.hash(refreshToken), refreshExpiresAt);
     }
 
-    /** Everything the role grants right now — what the new token will carry. */
+    /** Everything the role grants right now, less what the platform switched off for the company — what the new token will carry. */
     private Set<Permission> resolvePermissions(User user) {
         Role role = roleUseCase.findRole(user.companyId(), user.roleId());
-        return role == null ? Set.of() : role.permissions();
+        if (role == null) {
+            return Set.of();
+        }
+        Company company = companyUseCase.findById(user.companyId());
+        return company == null ? role.permissions() : company.retainEnabled(role.permissions());
     }
 
     private record IssuedSession(LoginResponse response, String refreshTokenHash, Instant refreshExpiresAt) {

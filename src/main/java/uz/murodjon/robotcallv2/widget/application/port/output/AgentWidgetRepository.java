@@ -14,6 +14,8 @@ public interface AgentWidgetRepository {
     /** Keyed without a company on purpose — the public endpoint has no tenant to scope by. */
     Optional<AgentWidget> findByWidgetKey(String widgetKey);
 
+    List<AgentWidget> findByCompanyId(long companyId);
+
     List<AgentWidget> findByCompanyIdAndAgentId(long companyId, long agentId);
 
     void deleteByCompanyIdAndId(long companyId, long id);

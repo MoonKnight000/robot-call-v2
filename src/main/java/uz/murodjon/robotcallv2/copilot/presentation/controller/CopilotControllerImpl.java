@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.copilot.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
 import uz.murodjon.robotcallv2.copilot.application.dto.CopilotReplyResponse;
 import uz.murodjon.robotcallv2.copilot.application.port.input.CopilotUseCase;
@@ -10,6 +11,7 @@ import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.shared.api.SseEventStreams;
 
 import java.util.List;
 
@@ -20,6 +22,11 @@ public class CopilotControllerImpl implements CopilotController {
 
     public CopilotControllerImpl(CopilotUseCase copilotUseCase) {
         this.copilotUseCase = copilotUseCase;
+    }
+
+    @Override
+    public SseEmitter askStream(long companyId, AskCopilotRequest request) {
+        return SseEventStreams.open(sink -> copilotUseCase.askStream(companyId, request, sink));
     }
 
     @Override

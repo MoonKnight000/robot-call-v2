@@ -89,9 +89,14 @@ class OperatorTransferService {
 
         AiAgent agent = session.agent();
         boolean toOperator = operatorEndpoint != null && !operatorEndpoint.isBlank();
+        // A CALL_TRANSFER stage of the call's flow names its own number, and that is where the
+        // flow means this caller to go — ahead of wherever the agent sends its transfers.
+        OperatorSnapshot snapshot = dialogRouter.operatorSnapshot(channelId);
+        String stageNumber = !toOperator && snapshot != null ? snapshot.transferTo() : null;
+        boolean toStageNumber = stageNumber != null && !stageNumber.isBlank();
         // An agent with a transfer queue hands over to the operators' queue — hold music, the
         // caller's position, the whisper — instead of ringing one fixed endpoint.
-        Long transferQueueId = !toOperator && agent != null ? agent.callBehaviour().transferQueueId() : null;
+        Long transferQueueId = !toOperator && !toStageNumber && agent != null ? agent.callBehaviour().transferQueueId() : null;
         if (transferQueueId != null) {
             flowCallService.transferCallToQueue(callAttemptUseCase.findCompanyIdByAttemptId(session.callAttemptId()), channelId, transferQueueId);
             return;
@@ -99,6 +104,8 @@ class OperatorTransferService {
         String targetEndpoint = null;
         if (toOperator) {
             targetEndpoint = asteriskProperties.buildOperatorDialString(operatorEndpoint.trim());
+        } else if (toStageNumber) {
+            targetEndpoint = "PJSIP/" + stageNumber.trim();
         } else if (agent != null && agent.callBehaviour().transferPhoneNumber() != null && !agent.callBehaviour().transferPhoneNumber().isBlank()) {
             String num = agent.callBehaviour().transferPhoneNumber().trim();
             targetEndpoint = num.startsWith("PJSIP/") || num.startsWith("SIP/") ? num : ("PJSIP/" + num);
@@ -124,7 +131,6 @@ class OperatorTransferService {
                     channelId, targetEndpoint, session.bridgeId());
 
             long companyId = callAttemptUseCase.findCompanyIdByAttemptId(session.callAttemptId());
-            OperatorSnapshot snapshot = dialogRouter.operatorSnapshot(channelId);
             String handoverSummary = buildHandoverSummary(snapshot);
 
             // A warm transfer: the operator reads who is on the line and what has been said

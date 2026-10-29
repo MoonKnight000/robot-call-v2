@@ -40,7 +40,7 @@ class CompanyConcurrencyServiceTest {
 
     private void givenCompanyLimit(Integer limit) {
         when(companyUseCase.findById(COMPANY_ID)).thenReturn(
-                new Company(COMPANY_ID, "c", CompanyStatus.ACTIVE, null, null, null, limit));
+                new Company(COMPANY_ID, "c", CompanyStatus.ACTIVE, null, null, null, limit, null, null, null));
     }
 
     @Test

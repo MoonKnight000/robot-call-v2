@@ -13,8 +13,9 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 │                       AI AGENT                              │
 │                                                             │
 │  1. BEHAVIOR & TEMPLATE                                     │
-│     • templateId: BUSINESS | SUPPORT | MEDICAL |            │
-│       DEBT_REMINDER | LEAD_QUALIFICATION | SURVEY | BLANK   │
+│     • templateId: APPOINTMENT_BOOKING | BUSINESS | SUPPORT |│
+│       LEAD_QUALIFICATION | DEBT_REMINDER | SURVEY | MEDICAL │
+│       INBOUND_RECEPTIONIST | ORDER_TRACKING | BLANK         │
 │     • firstMessage: 0ms kechikish bilan ochilish salomi     │
 │     • systemPrompt: agentning roli, skripti va qoidalari    │
 │     • scenarioId: ixtiyoriy (tashqi FSM senariy yoki null)  │
@@ -131,9 +132,10 @@ Agent yaratishdan oldin mavjud shablonlar va ularning default parametrlarini oli
 }
 ```
 
-Ro'yxat tartibi: `BUSINESS`, `SUPPORT`, `MEDICAL` (kiruvchi qo'ng'iroqlar uchun), `DEBT_REMINDER`
-(qarz eslatma), `LEAD_QUALIFICATION` (ariza bo'yicha qayta qo'ng'iroq), `SURVEY` (qisqa so'rovnoma),
-oxirida `BLANK`. Shablon faqat `systemPrompt`, `firstMessage`, `dataNeeded` va `dataEvaluation`
+Ro'yxat tartibi: `APPOINTMENT_BOOKING` (qabulga yozish), `SUPPORT` (qo'llab-quvvatlash), `LEAD_QUALIFICATION`
+(ariza bo'yicha qayta qo'ng'iroq), `DEBT_REMINDER` (qarz eslatma), `INBOUND_RECEPTIONIST` (virtual qabulxona),
+`SURVEY` (CSAT/NPS so'rovnoma), `MEDICAL` (klinika qabuli), `ORDER_TRACKING` (buyurtma holati), oxirida `BLANK`.
+`BUSINESS` ro'yxatda yo'q, lekin `templateId` sifatida hali qabul qilinadi. Shablon faqat `systemPrompt`, `firstMessage`, `dataNeeded` va `dataEvaluation`
 ni to'ldiradi; ovoz va model o'zgarmaydi. `POST /api/ai-agents` da `templateId` berilsa va bu
 maydonlar bo'sh bo'lsa, shablon qiymatlari tushadi — alohida "shablondan yaratish" endpointi yo'q.
 `DEBT_REMINDER` summa, muddat va chegirmani faqat qo'ng'iroq ma'lumotlaridan olishni buyuradi.

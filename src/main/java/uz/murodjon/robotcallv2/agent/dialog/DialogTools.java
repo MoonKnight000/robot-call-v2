@@ -6,7 +6,6 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
-import uz.murodjon.robotcallv2.scenario.domain.service.StageBranchEvaluator;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
@@ -76,9 +75,16 @@ public class DialogTools {
     private static final Pattern SMS_TEXT_SLOT = Pattern.compile("\\{\\{\\s*" + SMS_TEXT_PLACEHOLDER + "\\s*[|}]");
 
     private final DialogOutcomeSink session;
+    /** Runs a CODE stage's script; null where no stage script may run (a CODE stage then sets nothing). */
+    private final StageScriptRunner scripts;
+
+    public DialogTools(DialogOutcomeSink session, StageScriptRunner scripts) {
+        this.session = session;
+        this.scripts = scripts;
+    }
 
     public DialogTools(DialogOutcomeSink session) {
-        this.session = session;
+        this(session, null);
     }
 
     private void recordReply(String reply) {
@@ -99,35 +105,9 @@ public class DialogTools {
     }
 
     /**
-     * Takes the stage's branches ({@code StageBranch}) on from {@code entered}, without the
-     * model, until a stage has none that holds. Bounded by the number of stages: branches
-     * that send the call round in a circle stop where the circle closes.
-     *
-     * @return the stage the call ended up in
-     */
-    private String followBranches(String entered) {
-        ScenarioDefinition scenario = session.scenario();
-        CallContext context = session.context();
-        if (scenario == null || scenario.stages() == null || context == null) {
-            return entered;
-        }
-        String current = entered;
-        for (int hop = 0; hop < scenario.stages().size(); hop++) {
-            StageDef stage = scenario.findStage(current);
-            String target = stage == null ? null
-                    : StageBranchEvaluator.findTarget(stage.branches(), context::fact);
-            if (target == null) {
-                break;
-            }
-            session.setState(target);
-            log.info("[{}] dialog state -> {} (branch of {})", session.channelId(), target, current);
-            current = target;
-        }
-        return current;
-    }
-
-    /**
-     * The stages the scenario lets the current one move to, or empty when it names none.
+     * The stages the scenario lets the current one move to — its own transitions, the global
+     * stages and, in a FLEX flow, every conversation stage ({@link StageEntry#findReachableStages})
+     * — or empty when it names none.
      *
      * <p>Checked rather than trusted: a jump past these is only taken along the scenario's
      * own graph ({@link #pathTo}), so a stage the call cannot reach from here is still
@@ -135,9 +115,8 @@ public class DialogTools {
      * asks for each one to be served.
      */
     private List<String> allowedTransitions() {
-        StageDef stage = session.scenario() == null ? null : session.scenario().findStage(session.state());
-        List<String> allowed = stage == null ? null : stage.allowedTransitions();
-        return allowed == null ? List.of() : allowed;
+        ScenarioDefinition scenario = session.scenario();
+        return StageEntry.findReachableStages(scenario, scenario == null ? null : scenario.findStage(session.state()));
     }
 
     /**
@@ -202,8 +181,10 @@ public class DialogTools {
             recordReply(reply);
             return "State unchanged: stayed in the current stage " + session.state() + ".";
         }
-        List<String> required = findUnmetRequiredOutcomes(
-                session.scenario() == null ? null : session.scenario().findStage(session.state()));
+        // A global stage ("the caller asks for a person") answers the caller, not the stage
+        // they interrupted, so the stage's unfinished business does not hold it back.
+        List<String> required = StageEntry.isGlobal(session.scenario(), nextStage) ? List.of()
+                : findUnmetRequiredOutcomes(session.scenario() == null ? null : session.scenario().findStage(session.state()));
         if (!required.isEmpty()) {
             log.warn("[{}] refused transition {} -> {}: no required outcome {} recorded yet",
                     session.channelId(), session.state(), nextStage, required);
@@ -248,19 +229,25 @@ public class DialogTools {
         recordReply(reply);
         session.setState(nextStage);
         log.info("[{}] dialog state -> {}", session.channelId(), nextStage);
-        String landed = followBranches(nextStage);
+        String landed = StageEntry.enter(session, nextStage, scripts);
         // Where it may go from here, in the answer. The cascade path re-states this every
         // turn in the prompt annex; a realtime call has no annex, so this tool result is
         // the only place the model is told again — and on a recorded call it spent three
         // turns guessing stage names it was not allowed to reach.
-        String next = SystemPromptFactory.describeTransitions(
-                session.scenario() == null ? null : session.scenario().findStage(landed));
+        ScenarioDefinition scenario = session.scenario();
+        StageDef landedStage = scenario == null ? null : scenario.findStage(landed);
+        String next = SystemPromptFactory.describeReachableStages(scenario, landedStage);
         String moved = "Moved to stage " + landed
-                + (landed.equals(nextStage) ? "" : " (automatically, by the branches of " + nextStage + ")")
+                + (landed.equals(nextStage) ? "" : " (automatically, by the stages after " + nextStage + ")")
                 + (walked.isEmpty() ? "" : " (stages walked through: " + String.join(", ", walked) + ")");
-        return next.isEmpty()
+        // A stage whose job is the model's: on a realtime call this result is how it learns
+        // what to do now; the cascade pipeline asks for it in a turn of its own (TurnRunner).
+        String task = StageEntry.needsModelAction(landedStage) && !session.isEnded()
+                ? " " + StageEntry.describeTask(scenario, landedStage, 1, StageEntry.variables(session))
+                : "";
+        return (next.isEmpty()
                 ? moved
-                : moved + ". From this stage you can only move to " + next + ".";
+                : moved + ". From this stage you can only move to " + next + ".") + task;
     }
 
     @Tool(description = "Call when the client names an EXACT DAY themselves (e.g. \"10-oktabr\", \"ertaga\"). "

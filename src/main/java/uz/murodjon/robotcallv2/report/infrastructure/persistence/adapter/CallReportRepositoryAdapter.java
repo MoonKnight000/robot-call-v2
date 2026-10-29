@@ -5,11 +5,18 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallResultEntity;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallTalkMetricsEntity;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallTechnicalEntity;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallAttemptJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallResultJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallTalkMetricsJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallTechnicalJpaRepository;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallTranscriptJpaRepository;
 import uz.murodjon.robotcallv2.report.application.port.output.CallReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
-import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 
 import java.sql.ResultSet;
@@ -61,16 +68,26 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
             """;
 
     private final JdbcClient jdbc;
+    private final CallAttemptJpaRepository callAttemptJpaRepository;
+    private final CallResultJpaRepository callResultJpaRepository;
+    private final CallTranscriptJpaRepository callTranscriptJpaRepository;
+    private final CallTechnicalJpaRepository callTechnicalJpaRepository;
+    private final CallTalkMetricsJpaRepository callTalkMetricsJpaRepository;
 
-    public CallReportRepositoryAdapter(JdbcTemplate jdbcTemplate) {
+    public CallReportRepositoryAdapter(JdbcTemplate jdbcTemplate,
+                                       CallAttemptJpaRepository callAttemptJpaRepository,
+                                       CallResultJpaRepository callResultJpaRepository,
+                                       CallTranscriptJpaRepository callTranscriptJpaRepository,
+                                       CallTechnicalJpaRepository callTechnicalJpaRepository,
+                                       CallTalkMetricsJpaRepository callTalkMetricsJpaRepository) {
         this.jdbc = JdbcClient.create(jdbcTemplate);
+        this.callAttemptJpaRepository = callAttemptJpaRepository;
+        this.callResultJpaRepository = callResultJpaRepository;
+        this.callTranscriptJpaRepository = callTranscriptJpaRepository;
+        this.callTechnicalJpaRepository = callTechnicalJpaRepository;
+        this.callTalkMetricsJpaRepository = callTalkMetricsJpaRepository;
     }
 
-    private record CallExtras(String reasonCode, String sentiment, boolean needsFollowUp, String followUpNote,
-                              boolean escalated, String errorMessage) {
-
-        static final CallExtras NONE = new CallExtras(null, null, false, null, false, null);
-    }
 
     @Override
     public List<ReportedCall> findCalls(long companyId, Long campaignId, CallFilter filter) {
@@ -173,84 +190,46 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
             return null;
         }
 
-        List<TranscriptLine> transcript = jdbc.sql(
-                        "SELECT seq, role, text, dialog_state, ts_offset_ms, stt_confidence "
-                                + "FROM call_transcript WHERE call_id = :callId ORDER BY seq")
-                .param("callId", callId)
-                .query((rs, n) -> new TranscriptLine(
-                        rs.getInt("seq"), rs.getString("role"), rs.getString("text"), rs.getString("dialog_state"),
-                        rs.getInt("ts_offset_ms"), floatOrNull(rs, "stt_confidence")))
-                .list();
-
-        CallExtras extras = jdbc.sql(
-                        "SELECT r.reason_code, r.sentiment, r.needs_follow_up, r.follow_up_note, r.escalated, "
-                                + "a.error_message "
-                                + "FROM call_attempt a LEFT JOIN call_result r ON r.call_id = a.id WHERE a.id = :callId")
-                .param("callId", callId)
-                .query((rs, n) -> new CallExtras(rs.getString("reason_code"), rs.getString("sentiment"),
-                        rs.getBoolean("needs_follow_up"), rs.getString("follow_up_note"),
-                        rs.getBoolean("escalated"), rs.getString("error_message")))
-                .optional()
-                .orElse(CallExtras.NONE);
+        List<TranscriptLine> transcript = callTranscriptJpaRepository.findByCall_IdOrderBySeq(callId).stream()
+                .map(line -> new TranscriptLine(line.getSeq(), line.getRole(), line.getText(), line.getDialogState(),
+                        line.getTsOffsetMs(), line.getSttConfidence()))
+                .toList();
+        CallResultEntity result = callResultJpaRepository.findByCall_Id(callId).orElse(null);
+        String errorMessage = callAttemptJpaRepository.findByIdAndCompanyId(callId, companyId)
+                .map(CallAttemptEntity::getErrorMessage).orElse(null);
         return new CallReport(
                 call,
                 transcript,
-                enumOrNull(ReasonCode.class, extras.reasonCode()),
-                enumOrNull(Sentiment.class, extras.sentiment()),
-                extras.needsFollowUp(),
-                extras.followUpNote(),
-                extras.escalated(),
-                extras.errorMessage(),
-                findTechnicalMetrics(callId),
-                findTalkMetrics(callId));
+                result != null ? result.getReasonCode() : null,
+                result != null ? result.getSentiment() : null,
+                result != null && result.isNeedsFollowUp(),
+                result != null ? result.getFollowUpNote() : null,
+                result != null && result.isEscalated(),
+                errorMessage,
+                callTechnicalJpaRepository.findById(callId).map(CallReportRepositoryAdapter::toTechnicalMetrics).orElse(null),
+                callTalkMetricsJpaRepository.findById(callId).map(CallReportRepositoryAdapter::toTalkMetrics).orElse(null));
     }
 
-    private CallTechnicalMetrics findTechnicalMetrics(long callId) {
-        return jdbc.sql("SELECT channel_name, trunk, amd_result, stt_provider, tts_provider, tts_voice, "
-                        + "llm_model, prompt_tokens, completion_tokens, cached_tokens, turn_count, "
-                        + "avg_turn_latency_ms, max_turn_latency_ms, avg_llm_latency_ms, max_llm_latency_ms, "
-                        + "rtp_packets_received, rtp_packets_lost, rtp_jitter_ms, rtp_mos "
-                        + "FROM call_technical WHERE call_id = :callId")
-                .param("callId", callId)
-                .query((rs, n) -> new CallTechnicalMetrics(
-                        rs.getString("channel_name"), rs.getString("trunk"), rs.getString("amd_result"),
-                        rs.getString("stt_provider"), rs.getString("tts_provider"), rs.getString("tts_voice"),
-                        rs.getString("llm_model"),
-                        intOrNull(rs, "prompt_tokens"),
-                        intOrNull(rs, "completion_tokens"),
-                        intOrNull(rs, "cached_tokens"),
-                        intOrNull(rs, "turn_count"),
-                        intOrNull(rs, "avg_turn_latency_ms"),
-                        intOrNull(rs, "max_turn_latency_ms"),
-                        intOrNull(rs, "avg_llm_latency_ms"),
-                        intOrNull(rs, "max_llm_latency_ms"),
-                        intOrNull(rs, "rtp_packets_received"),
-                        intOrNull(rs, "rtp_packets_lost"),
-                        intOrNull(rs, "rtp_jitter_ms"),
-                        doubleOrNull(rs, "rtp_mos")))
-                .optional()
-                .orElse(null);
+    private static CallTechnicalMetrics toTechnicalMetrics(CallTechnicalEntity entity) {
+        return new CallTechnicalMetrics(
+                entity.getChannelName(), entity.getTrunk(), entity.getAmdResult(),
+                entity.getSttProvider(), entity.getTtsProvider(), entity.getTtsVoice(), entity.getLlmModel(),
+                entity.getPromptTokens(), entity.getCompletionTokens(), entity.getCachedTokens(),
+                entity.getTurnCount(), entity.getAvgTurnLatencyMs(), entity.getMaxTurnLatencyMs(),
+                entity.getAvgLlmLatencyMs(), entity.getMaxLlmLatencyMs(),
+                entity.getRtpPacketsReceived(), entity.getRtpPacketsLost(), entity.getRtpJitterMs(),
+                entity.getRtpMos());
     }
 
-    private CallTalkMetrics findTalkMetrics(long callId) {
-        return jdbc.sql("SELECT analysed_ms, client_talk_ms, operator_talk_ms, overtalk_ms, silence_ms, "
-                        + "longest_silence_ms FROM call_talk_metrics WHERE call_id = :callId")
-                .param("callId", callId)
-                .query((rs, n) -> new CallTalkMetrics(callId, rs.getInt("analysed_ms"), rs.getInt("client_talk_ms"),
-                        rs.getInt("operator_talk_ms"), rs.getInt("overtalk_ms"), rs.getInt("silence_ms"),
-                        rs.getInt("longest_silence_ms")))
-                .optional()
-                .orElse(null);
+    private static CallTalkMetrics toTalkMetrics(CallTalkMetricsEntity entity) {
+        return new CallTalkMetrics(entity.getId(), entity.getAnalysedMs(), entity.getClientTalkMs(),
+                entity.getOperatorTalkMs(), entity.getOvertalkMs(), entity.getSilenceMs(),
+                entity.getLongestSilenceMs());
     }
 
     @Override
     public Long findRecordingFileId(long companyId, long callId) {
-        return firstOrNull(jdbc.sql(
-                        "SELECT recording_file_id FROM call_attempt WHERE id = :callId AND company_id = :companyId")
-                .param("callId", callId)
-                .param("companyId", companyId)
-                .query((rs, n) -> longOrNull(rs, "recording_file_id"))
-                .list());
+        return callAttemptJpaRepository.findRecordingFileIdByIdAndCompanyId(callId, companyId).orElse(null);
     }
 
     @Override

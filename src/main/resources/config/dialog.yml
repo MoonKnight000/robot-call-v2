@@ -41,6 +41,13 @@ spring:
           max-tokens: 1024
 
 voice-agent:
+  # Panel AI copilot — CopilotProperties
+  copilot:
+    model: ${COPILOT_MODEL:gemini-3.8-flash}
+    max-tokens: ${COPILOT_MAX_TOKENS:4096}
+    max-tool-calls: ${COPILOT_MAX_TOOL_CALLS:15}
+    max-history: ${COPILOT_MAX_HISTORY:20}
+
   # Post-call summary — SummaryProperties
   summary:
     enabled: ${SUMMARY_ENABLED:true}

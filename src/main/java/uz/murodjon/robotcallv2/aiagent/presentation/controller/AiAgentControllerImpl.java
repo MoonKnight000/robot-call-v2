@@ -60,6 +60,16 @@ public class AiAgentControllerImpl implements AiAgentController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<AiAgentRow>> createSinglePrompt(long companyId, CreateSinglePromptAgentRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.createSinglePromptAgent(companyId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AiAgentRow>> createConversationFlow(long companyId, CreateConversationFlowAgentRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.createConversationFlowAgent(companyId, request)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<PageableData<AiAgentRow>>> filter(long companyId, AiAgentFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.filterAgents(companyId, filter)));
     }

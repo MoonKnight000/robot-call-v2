@@ -40,18 +40,15 @@ public interface CompanyController {
             @PathVariable long id,
             @Valid @RequestBody UpdateCompanyRequest request);
 
+    /**
+     * Platform-only: the whole company in one form — name, address, status (ACTIVE / SUSPENDED = blocked /
+     * DELETED), end date, call limit and switched-off features. Every field is replaced.
+     */
     @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
-    @PutMapping("/companies/{id}/status")
-    ResponseEntity<ResponseData<Company>> updateStatus(
+    @PutMapping("/companies/{id}/platform")
+    ResponseEntity<ResponseData<Company>> updateByPlatform(
             @PathVariable long id,
-            @Valid @RequestBody UpdateCompanyStatusRequest request);
-
-    /** Platform-only: how many dialer calls the company may hold at once; null — the platform default. */
-    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
-    @PutMapping("/companies/{id}/concurrency-limit")
-    ResponseEntity<ResponseData<Company>> updateConcurrencyLimit(
-            @PathVariable long id,
-            @Valid @RequestBody UpdateCompanyConcurrencyLimitRequest request);
+            @Valid @RequestBody UpdateCompanyByPlatformRequest request);
 
     @PreAuthorize("hasAuthority('COMPANY_EDIT')")
     @PostMapping("/companies/{id}/logo")

@@ -366,7 +366,7 @@ public class DashboardReportService implements DashboardReportUseCase {
             String line = "inbound".equalsIgnoreCase(l.direction()) ? "Kiruvchi liniya" : "Chiquvchi liniya";
             return new DashboardLiveItem("live_" + l.callId(), displayName,
                     l.campaignName() != null ? l.campaignName() : "To'g'ridan-to'g'ri", timer,
-                    l.startedAt().toString(), line);
+                    l.startedAt() != null ? l.startedAt().toString() : null, line);
         }).toList();
 
         // 9. Recent Calls

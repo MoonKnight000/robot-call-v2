@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.alert.domain.entity.AlertRuleFilter;
 import uz.murodjon.robotcallv2.alert.infrastructure.persistence.entity.AlertRuleEntity;
 import uz.murodjon.robotcallv2.alert.infrastructure.persistence.mapper.AlertRuleEntityMapper;
 import uz.murodjon.robotcallv2.alert.infrastructure.persistence.repository.AlertRuleJpaRepository;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 import java.time.Instant;
@@ -69,7 +70,7 @@ public class AlertRuleRepositoryAdapter implements AlertRuleRepository {
 
     @Override
     public List<AlertRule> findEnabled() {
-        return jpaRepository.findByEnabledTrueOrderById().stream().map(mapper::toAlertRule).toList();
+        return jpaRepository.findEnabledWithFeature(Feature.ALERTING).stream().map(mapper::toAlertRule).toList();
     }
 
     @Override

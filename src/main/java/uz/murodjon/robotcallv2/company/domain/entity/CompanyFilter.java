@@ -3,14 +3,16 @@ package uz.murodjon.robotcallv2.company.domain.entity;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Sort;
+import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyTableField;
 import uz.murodjon.robotcallv2.shared.api.FilterInterface;
 
 import java.util.LinkedHashMap;
 
-/** Pagination + filter + sort for POST /api/companies/list. */
+/** Pagination + filter + sort for POST /api/companies/list; a null status hides DELETED ones. */
 public record CompanyFilter(
         String search,
+        CompanyStatus status,
         @Min(0) Integer page,
         @Min(1) @Max(FilterInterface.MAX_SIZE) Integer size,
         LinkedHashMap<CompanyTableField, Sort.Direction> orders)

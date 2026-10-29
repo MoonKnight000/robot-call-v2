@@ -11,10 +11,17 @@ public enum BranchOperator {
     GREATER,
     GREATER_OR_EQUAL,
     LESS,
-    LESS_OR_EQUAL;
+    LESS_OR_EQUAL,
+    /** Always holds; neither the fact nor the value is read — a logic split's "else", kept last. */
+    ALWAYS;
 
     /** Whether the comparison needs a value to compare against. */
     public boolean needsValue() {
-        return this != EXISTS && this != MISSING;
+        return this != EXISTS && this != MISSING && this != ALWAYS;
+    }
+
+    /** Whether the comparison reads a fact at all. */
+    public boolean needsFact() {
+        return this != ALWAYS;
     }
 }

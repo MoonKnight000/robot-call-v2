@@ -94,9 +94,30 @@ public class ClientMemoryService implements ClientMemoryUseCase {
             });
         }
 
+        String preferredName = current.preferredName();
+        if ((preferredName == null || preferredName.isBlank()) && facts != null) {
+            Object name = facts.get("clientName");
+            if (name == null) {
+                name = facts.get("preferredName");
+            }
+            if (name != null && !name.toString().isBlank()) {
+                preferredName = name.toString().trim();
+            }
+        }
+        String preferredLanguage = current.preferredLanguage();
+        if ((preferredLanguage == null || preferredLanguage.isBlank()) && facts != null) {
+            Object lang = facts.get("preferredLanguage");
+            if (lang == null) {
+                lang = facts.get("language");
+            }
+            if (lang != null && !lang.toString().isBlank()) {
+                preferredLanguage = lang.toString().trim();
+            }
+        }
+
         repository.upsert(companyId, new ClientMemory(
                 current.id(), companyId, normalized,
-                current.preferredName(), current.preferredLanguage(), current.operatorNotes(),
+                preferredName, preferredLanguage, current.operatorNotes(),
                 recent, mergedFacts, Instant.now()));
     }
 

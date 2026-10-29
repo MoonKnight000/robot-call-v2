@@ -20,12 +20,12 @@ Faqat AI agent olib borgan qo'ng'iroqlar hisoblanadi; operator qo'ng'iroqlari ki
 
 | Metod | Yo'l | Huquq | Vazifasi |
 |---|---|---|---|
-| `POST` | `/api/alert-rules` | `NOTIFICATION_SETTINGS_EDIT` | Qoida yaratish |
-| `POST` | `/api/alert-rules/filter` | `NOTIFICATION_SETTINGS_READ` | Ro'yxat (sahifalangan) |
-| `GET` | `/api/alert-rules/{id}` | `NOTIFICATION_SETTINGS_READ` | Bitta qoida |
-| `PUT` | `/api/alert-rules/{id}` | `NOTIFICATION_SETTINGS_EDIT` | Sozlamalarni to'liq almashtirish |
-| `DELETE` | `/api/alert-rules/{id}` | `NOTIFICATION_SETTINGS_EDIT` | O'chirish |
-| `GET` | `/api/alert-rules/{id}/preview` | `NOTIFICATION_SETTINGS_READ` | Hozirgi qiymat va qoida ishlab ketadimi — hech narsa yubormaydi |
+| `POST` | `/api/alert-rules` | `ALERT_EDIT` | Qoida yaratish |
+| `POST` | `/api/alert-rules/filter` | `ALERT_READ` | Ro'yxat (sahifalangan) |
+| `GET` | `/api/alert-rules/{id}` | `ALERT_READ` | Bitta qoida |
+| `PUT` | `/api/alert-rules/{id}` | `ALERT_EDIT` | Sozlamalarni to'liq almashtirish |
+| `DELETE` | `/api/alert-rules/{id}` | `ALERT_EDIT` | O'chirish |
+| `GET` | `/api/alert-rules/{id}/preview` | `ALERT_READ` | Hozirgi qiymat va qoida ishlab ketadimi — hech narsa yubormaydi |
 
 ---
 

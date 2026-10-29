@@ -30,6 +30,11 @@ public interface AgentWidgetController {
             @CurrentCompanyId long companyId,
             @PathVariable long agentId);
 
+    /** Every widget of the company across all its agents, newest first. */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/widgets")
+    ResponseEntity<ResponseData<List<WidgetRow>>> list(@CurrentCompanyId long companyId);
+
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/widgets/{widgetId:\\d+}")
     ResponseEntity<ResponseData<WidgetRow>> get(

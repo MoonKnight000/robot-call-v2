@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.security;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
@@ -77,5 +78,22 @@ public class AuthenticatedCurrentUser implements CurrentUser {
         }
         String userAgent = servletAttrs.getRequest().getHeader("User-Agent");
         return Optional.ofNullable(userAgent).map(value -> value.substring(0, Math.min(value.length(), 255)));
+    }
+
+    @Override
+    public Runnable wrap(Runnable action) {
+        if (action == null) {
+            return () -> {};
+        }
+        SecurityContext context = SecurityContextHolder.getContext();
+        return () -> {
+            SecurityContext previous = SecurityContextHolder.getContext();
+            try {
+                SecurityContextHolder.setContext(context);
+                action.run();
+            } finally {
+                SecurityContextHolder.setContext(previous);
+            }
+        };
     }
 }

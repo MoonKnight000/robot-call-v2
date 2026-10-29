@@ -53,6 +53,8 @@ public class AiAgentEntityMapper {
                 .name(entity.getName())
                 .description(entity.getDescription())
                 .language(entity.getLanguage())
+                .channel(entity.getChannel())
+                .mode(entity.getAgentMode())
                 .persona(entity.getPersona())
                 .script(new AiAgentScript(
                         entity.getTemplateId(),
@@ -132,6 +134,8 @@ public class AiAgentEntityMapper {
         entity.setName(agent.name());
         entity.setDescription(agent.description());
         entity.setLanguage(agent.language());
+        entity.setChannel(agent.channel());
+        entity.setAgentMode(agent.mode());
         entity.setPersona(agent.persona());
         applyScript(entity, agent.script(), scenario);
         entity.setSpeechEngine(toSpeechEngineEntity(agent.speechEngine()));

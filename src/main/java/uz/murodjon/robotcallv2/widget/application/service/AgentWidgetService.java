@@ -21,7 +21,9 @@ import uz.murodjon.robotcallv2.widget.domain.entity.WidgetTheme;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class AgentWidgetService implements AgentWidgetUseCase {
@@ -122,6 +124,15 @@ public class AgentWidgetService implements AgentWidgetUseCase {
                 .orElseThrow(() -> new NotFoundException(ErrorCode.AGENT_WIDGET_NOT_FOUND, widgetId));
         AiAgent agent = aiAgentUseCase.requireAgent(companyId, widget.agentId());
         return toRow(widget, agent.name());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WidgetRow> findWidgets(long companyId) {
+        List<AgentWidget> widgets = repository.findByCompanyId(companyId);
+        Map<Long, String> agentNames = aiAgentUseCase.findNamesByIds(
+                widgets.stream().map(AgentWidget::agentId).collect(Collectors.toSet()));
+        return widgets.stream().map(w -> toRow(w, agentNames.get(w.agentId()))).toList();
     }
 
     @Override

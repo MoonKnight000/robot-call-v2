@@ -5,7 +5,9 @@ import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowFilter;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowGraph;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface CallFlowRepository {
 
@@ -23,4 +25,6 @@ public interface CallFlowRepository {
     List<CallFlow> findAll(long companyId, CallFlowFilter filter);
 
     long count(long companyId);
+
+    Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids);
 }

@@ -77,7 +77,7 @@
                   data:
                     type: array
                     items:
-                      $ref: ../schemas/integration.yaml#/CrmCatalogEntry
+                      $ref: ../schemas/integration.yaml#/IntegrationCatalogEntry
       '401':
         $ref: ../common.yaml#/responses/Unauthorized
       '403':

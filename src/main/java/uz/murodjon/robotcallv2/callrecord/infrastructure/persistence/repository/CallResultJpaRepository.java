@@ -68,6 +68,8 @@ public interface CallResultJpaRepository extends JpaRepository<CallResultEntity,
     @Query(value = "SELECT CAST(outcome AS text) FROM call_result WHERE call_id = :callId", nativeQuery = true)
     Optional<String> findOutcomeJsonByCallId(@Param("callId") long callId);
 
+    Optional<CallResultEntity> findByCall_Id(long callId);
+
     @Modifying @Transactional
     @Query(value = "UPDATE call_result SET outcome = CAST(:outcome AS jsonb) WHERE call_id = :callId",
             nativeQuery = true)

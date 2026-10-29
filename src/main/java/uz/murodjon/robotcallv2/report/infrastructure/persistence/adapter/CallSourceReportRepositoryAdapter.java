@@ -4,7 +4,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignEntity;
+import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignJpaRepository;
+import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.entity.InboundRouteEntity;
+import uz.murodjon.robotcallv2.inbound.infrastructure.persistence.repository.InboundRouteJpaRepository;
 import uz.murodjon.robotcallv2.report.application.port.output.CallSourceReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.CampaignStats;
 import uz.murodjon.robotcallv2.report.domain.entity.InboundRouteStats;
@@ -22,12 +25,14 @@ import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.
 public class CallSourceReportRepositoryAdapter implements CallSourceReportRepository {
 
     private final JdbcClient jdbc;
+    private final CampaignJpaRepository campaignJpaRepository;
+    private final InboundRouteJpaRepository inboundRouteJpaRepository;
 
-    public CallSourceReportRepositoryAdapter(JdbcTemplate jdbcTemplate) {
+    public CallSourceReportRepositoryAdapter(JdbcTemplate jdbcTemplate, CampaignJpaRepository campaignJpaRepository,
+                                             InboundRouteJpaRepository inboundRouteJpaRepository) {
         this.jdbc = JdbcClient.create(jdbcTemplate);
-    }
-
-    private record CampaignHead(String name, String status) {
+        this.campaignJpaRepository = campaignJpaRepository;
+        this.inboundRouteJpaRepository = inboundRouteJpaRepository;
     }
 
     private record CampaignReach(long connected, long targetsReached, long targetsAttempted) {
@@ -40,13 +45,7 @@ public class CallSourceReportRepositoryAdapter implements CallSourceReportReposi
     @Override
     @Transactional(readOnly = true)
     public CampaignStats findCampaignStats(long companyId, long campaignId) {
-        CampaignHead campaign = jdbc.sql(
-                        "SELECT name, status FROM campaign WHERE id = :campaignId AND company_id = :companyId")
-                .param("campaignId", campaignId)
-                .param("companyId", companyId)
-                .query((rs, n) -> new CampaignHead(rs.getString("name"), rs.getString("status")))
-                .optional()
-                .orElse(null);
+        CampaignEntity campaign = campaignJpaRepository.findByIdAndCompanyId(campaignId, companyId).orElse(null);
         if (campaign == null) {
             return null;
         }
@@ -116,8 +115,8 @@ public class CallSourceReportRepositoryAdapter implements CallSourceReportReposi
         long connected = reach.connected();
         return new CampaignStats(
                 campaignId,
-                campaign.name(),
-                enumOrNull(CampaignStatus.class, campaign.status()),
+                campaign.getName(),
+                campaign.getStatus(),
                 targets,
                 dispositions,
                 finished,
@@ -137,13 +136,8 @@ public class CallSourceReportRepositoryAdapter implements CallSourceReportReposi
     @Override
     @Transactional(readOnly = true)
     public InboundRouteStats findInboundRouteStats(long companyId, long inboundRouteId) {
-        String didNumber = jdbc.sql(
-                        "SELECT did_number FROM inbound_route WHERE id = :routeId AND company_id = :companyId")
-                .param("routeId", inboundRouteId)
-                .param("companyId", companyId)
-                .query((rs, n) -> rs.getString("did_number"))
-                .optional()
-                .orElse(null);
+        String didNumber = inboundRouteJpaRepository.findByIdAndCompanyId(inboundRouteId, companyId)
+                .map(InboundRouteEntity::getDidNumber).orElse(null);
         if (didNumber == null) {
             return null;
         }

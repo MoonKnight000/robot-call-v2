@@ -34,3 +34,27 @@ Authorization: Bearer {{auth_token}}
 ### Unblock User
 PUT http://localhost:8080/api/users/1/unblock
 Authorization: Bearer {{auth_token}}
+
+### Platform: List a company's users (SUPERADMIN)
+GET http://localhost:8080/api/companies/2/users
+Authorization: Bearer {{auth_token}}
+
+### Platform: List a company's roles (find the ADMIN roleId)
+GET http://localhost:8080/api/companies/2/roles
+Authorization: Bearer {{auth_token}}
+
+### Platform: Invite the first admin of a company
+POST http://localhost:8080/api/companies/2/users/invite
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Company Owner",
+  "username": "owner2",
+  "email": "owner@example.com",
+  "roleId": 5
+}
+
+### Platform: Block a company's user
+PUT http://localhost:8080/api/companies/2/users/7/block
+Authorization: Bearer {{auth_token}}

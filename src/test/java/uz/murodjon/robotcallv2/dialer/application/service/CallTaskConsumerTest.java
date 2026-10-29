@@ -27,7 +27,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
@@ -90,7 +90,7 @@ class CallTaskConsumerTest {
                 audit, dialerState, doNotCallUseCase, callRecordService,
                 new OutboundCallPreparer(crmClient, clientMemoryService, mock(FactWebhookUseCase.class), aiAgents,
                         new ObjectMapper()),
-                mock(CallBillingUseCase.class), dialerService, mock(CompanyUseCase.class), portAllocator
+                mock(CallBillingUseCase.class), dialerService, CompanyFixtures.openCompanyUseCase(), portAllocator
         );
     }
 

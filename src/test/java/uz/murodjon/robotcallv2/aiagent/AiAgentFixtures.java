@@ -22,6 +22,8 @@ public final class AiAgentFixtures {
                 "Test agent",
                 null,
                 language,
+                AiAgentChannel.OMNICHANNEL,
+                AiAgentMode.SINGLE_PROMPT,
                 AgentPersona.AI_ASSISTANT,
                 new AiAgentScript(null, scenarioId, ScenarioMode.PROMPT, null, null, null),
                 new AiAgentSpeechEngine(PipelineMode.CASCADE, null, null, null, null,
@@ -55,23 +57,11 @@ public final class AiAgentFixtures {
 
     /** {@code agent} allowed to dial out over {@code sipTrunkIds} only. */
     public static AiAgent withSipTrunkIds(AiAgent agent, Set<Long> sipTrunkIds) {
-        return new AiAgent(agent.id(), agent.companyId(), agent.name(), agent.description(), agent.language(),
-                agent.persona(), agent.script(), agent.speechEngine(), agent.voice(), agent.ambience(),
-                agent.callBehaviour(), agent.limits(), agent.dataPolicy(), agent.llmModel(), agent.fastLlmModel(),
-                agent.temperature(), agent.maxOutputTokens(), agent.useRag(), agent.dataNeeded(),
-                agent.dataEvaluation(), agent.initiationWebhook(), agent.postCallWebhook(), agent.pronunciationRules(),
-                agent.postCallActions(), sipTrunkIds, agent.enabled(), agent.createdAt(), agent.createdBy(),
-                agent.publishedVersion(), agent.version());
+        return agent.toBuilder().sipTrunkIds(sipTrunkIds).build();
     }
 
     /** {@code agent} speaking as {@code persona}. */
     public static AiAgent withPersona(AiAgent agent, AgentPersona persona) {
-        return new AiAgent(agent.id(), agent.companyId(), agent.name(), agent.description(), agent.language(),
-                persona, agent.script(), agent.speechEngine(), agent.voice(), agent.ambience(),
-                agent.callBehaviour(), agent.limits(), agent.dataPolicy(), agent.llmModel(), agent.fastLlmModel(),
-                agent.temperature(), agent.maxOutputTokens(), agent.useRag(), agent.dataNeeded(),
-                agent.dataEvaluation(), agent.initiationWebhook(), agent.postCallWebhook(), agent.pronunciationRules(),
-                agent.postCallActions(), agent.sipTrunkIds(), agent.enabled(), agent.createdAt(), agent.createdBy(),
-                agent.publishedVersion(), agent.version());
+        return agent.toBuilder().persona(persona).build();
     }
 }

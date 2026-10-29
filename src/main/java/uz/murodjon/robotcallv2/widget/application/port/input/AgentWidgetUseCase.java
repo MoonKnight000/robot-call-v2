@@ -13,6 +13,9 @@ public interface AgentWidgetUseCase {
 
     WidgetRow findWidget(long companyId, long widgetId);
 
+    /** Every widget of the company, newest first, across all its agents. */
+    List<WidgetRow> findWidgets(long companyId);
+
     List<WidgetRow> findWidgetsByAgentId(long companyId, long agentId);
 
     void deleteWidget(long companyId, long widgetId);

@@ -14,6 +14,7 @@ import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -213,6 +214,8 @@ public class TurnRunner {
             if (fromClient) {
                 clientText = bargeInRecovery.stitchUnansweredUtterance(s, clientText);
             }
+            // A turn asked for by the flow itself (scheduleStageAction), not by anything said.
+            boolean stageActionTurn = !fromClient && s.stageActionStep() > 0;
             s.history().add(new UserMessage(clientText));
             int dropped = s.trimHistory(dialogProperties.historyMaxMessages(), HISTORY_TRIM_BLOCK);
             if (dropped > 0) {
@@ -307,7 +310,9 @@ public class TurnRunner {
                 // check clears it if it turns out nobody was speaking and the reply resumes.
                 s.setUnansweredClientText(clientText);
             }
-            if (result.toolNote() != null && (result.toolNote().contains("ERROR")
+            // A flow stage's tool ran for its result: the next stage is chosen by what it
+            // answered, and this note is the only way the model gets to read it.
+            if (result.toolNote() != null && (stageActionTurn || result.toolNote().contains("ERROR")
                     || result.toolNote().contains(ToolConfirmation.CONFIRMATION_REQUIRED))) {
                 // The model spoke and called a tool in the same breath, and the tool
                 // refused it (§4.4 — a promise dated in the past, say). There was no
@@ -326,7 +331,9 @@ public class TurnRunner {
                 // The whole reply was a figure the caller must not be told. Correct it
                 // once, then hand over to a person — never guess a sum aloud (§4.4).
                 factBlockRecovery.recover(s, system, messages);
-            } else if (!result.spoken() && !s.isEnded() && !s.isWaitingForCaller()) {
+            } else if (!result.spoken() && !s.isEnded() && !s.isWaitingForCaller() && !stageActionTurn) {
+                // A flow stage's step may be silent by design — the tool call alone — and the
+                // next step speaks; a neutral line in between would be heard as a stall.
                 // Nothing reached the caller and the call is not over: speak a neutral
                 // line rather than hand them silence.
                 if (!haveText) {
@@ -358,6 +365,8 @@ public class TurnRunner {
             String deferred = s.takeDeferredInput();
             if (deferred != null && !deferred.isBlank() && !s.isEnded()) {
                 executors.submit(() -> advance(s, deferred, true));
+            } else if (!interrupted && !s.isEnded() && scheduleStageAction(s)) {
+                log.debug("[{}] stage {} job asked for in a turn of its own", s.channelId(), s.state());
             } else if (interrupted && !s.isEnded()) {
                 // Silenced, but nothing came back to show for it. Give the words a moment
                 // to arrive before deciding the interruption was real.
@@ -374,6 +383,27 @@ public class TurnRunner {
     /** See {@link BargeInRecovery#scheduleFalseInterruptionCheck}. */
     public void scheduleFalseInterruptionCheck(DialogSession s, int turn, Runnable onFalseInterruption) {
         bargeInRecovery.scheduleFalseInterruptionCheck(s, turn, onFalseInterruption);
+    }
+
+    /**
+     * Asks the model for the current flow stage's job in a turn of its own, when the stage has
+     * one it has not been asked for yet ({@link StageEntry#needsModelAction}): call its tool,
+     * then — a turn later, with the result in the history — move on. The cascade pipeline
+     * runs tools itself and never hands their results back within a turn, so without this
+     * the call would sit in the stage until the caller said something.
+     *
+     * @return whether a turn was scheduled
+     */
+    private boolean scheduleStageAction(DialogSession s) {
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        if (!StageEntry.needsModelAction(stage) || s.stageActionStep() >= StageEntry.countModelSteps(stage)) {
+            return false;
+        }
+        int step = s.stageActionStep() + 1;
+        s.setStageActionStep(step);
+        String note = "[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, step, StageEntry.variables(s)) + "]";
+        executors.submit(() -> advance(s, note, false));
+        return true;
     }
 
     private void closeOnLimit(DialogSession s, String reason) {

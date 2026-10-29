@@ -22,7 +22,10 @@ import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.stream.EventSink;
+import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -56,6 +59,7 @@ class CopilotServiceTest {
         callBillingUseCase = mock(CallBillingUseCase.class);
         currentUser = mock(CurrentUser.class);
         when(currentUser.id()).thenReturn(Optional.of(USER_ID));
+        when(currentUser.wrap(any())).thenAnswer(call -> call.getArgument(0));
         when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(true);
         when(repository.createSession(eq(COMPANY_ID), any())).thenAnswer(call -> {
             CopilotSession started = call.getArgument(1);
@@ -98,6 +102,7 @@ class CopilotServiceTest {
                 .satisfies(tool -> {
                     assertThat(tool.role()).isEqualTo(CopilotMessageRole.TOOL);
                     assertThat(tool.toolName()).isEqualTo("list_calls");
+                    assertThat(tool.content()).isEqualTo("[]");
                     assertThat(tool.toolError()).isFalse();
                 });
         ArgumentCaptor<CallUsage> usage = ArgumentCaptor.forClass(CallUsage.class);
@@ -109,32 +114,46 @@ class CopilotServiceTest {
     }
 
     @Test
-    void aRefusedToolIsAnErrorTheModelReadsNotAFailure() {
-        givenModelCalls("update_agent_draft");
-        when(mcpServerUseCase.callServerToolAsDraftOnly(COMPANY_ID, "update_agent_draft", "{}"))
-                .thenThrow(new ForbiddenException(ErrorCode.MCP_TOOL_FORBIDDEN, "update_agent_draft"));
+    void aQuestionStreamEmitsSessionToolAndDoneEvents() throws Exception {
+        givenModelCalls("list_calls");
+        when(mcpServerUseCase.callServerToolAsDraftOnly(COMPANY_ID, "list_calls", "{}")).thenReturn("[]");
+        when(callBillingUseCase.chargeCopilotReply(eq(COMPANY_ID), anyLong(), any())).thenReturn(45L);
+        EventSink sink = mock(EventSink.class);
+
+        EventSubscription sub = service.askStream(COMPANY_ID, new AskCopilotRequest(null, "Stream savol"), sink);
+        assertThat(sub).isNotNull();
+
+        // Give virtual thread a moment to run
+        Thread.sleep(150);
+
+        verify(sink).send(eq("session"), any());
+        verify(sink).send(eq("tool_call"), any());
+        verify(sink).send(eq("tool_result"), any());
+        verify(sink, atLeastOnce()).send(eq("done"), any());
+    }
+
+    @Test
+    void toolCallsStopPastTheBudget() {
+        givenModelCalls("a", "b", "c");
+        when(mcpServerUseCase.callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString())).thenReturn("ok");
 
         CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir"));
 
-        assertThat(response.toolCalls()).singleElement().satisfies(tool -> {
-            assertThat(tool.toolError()).isTrue();
-            assertThat(tool.content()).startsWith("MCP_TOOL_FORBIDDEN");
-        });
-    }
-
-    @Test
-    void pastTheBudgetNoMoreToolsRun() {
-        givenModelCalls("list_calls", "get_call", "get_call");
-        when(mcpServerUseCase.callServerToolAsDraftOnly(anyLong(), anyString(), anyString())).thenReturn("{}");
-
-        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "?"));
-
         assertThat(response.toolCalls()).hasSize(2);
-        verify(mcpServerUseCase, times(2)).callServerToolAsDraftOnly(anyLong(), anyString(), anyString());
+        verify(mcpServerUseCase, times(2)).callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString());
     }
 
     @Test
-    void anotherUsersConversationIsNotFound() {
+    void anApiKeyCannotAskTheCopilot() {
+        when(currentUser.id()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?")))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(modelPort);
+    }
+
+    @Test
+    void anotherUsersSessionCannotBeReused() {
         when(repository.findSessionByCompanyIdAndUserIdAndId(COMPANY_ID, USER_ID, 77L)).thenReturn(null);
 
         assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(77L, "?")))

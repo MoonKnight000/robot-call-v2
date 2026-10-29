@@ -19,14 +19,14 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 @RequestMapping("/api/chats")
 public interface ChatHistoryController {
 
-    @PreAuthorize("hasAuthority('REPORT_READ')")
+    @PreAuthorize("hasAuthority('CHAT_AGENT_READ')")
     @PostMapping("/list")
     ResponseEntity<ResponseData<PageableData<ChatRow>>> list(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody ChatFilter filter);
 
     /** One conversation with what its tools recorded and the whole transcript. */
-    @PreAuthorize("hasAuthority('REPORT_READ')")
+    @PreAuthorize("hasAuthority('CHAT_AGENT_READ')")
     @GetMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<ChatDetail>> get(
             @CurrentCompanyId long companyId,

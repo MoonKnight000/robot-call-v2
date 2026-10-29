@@ -50,3 +50,25 @@ Authorization: Bearer {{auth_token}}
 ### Delete SIP Trunk
 DELETE http://localhost:8080/api/sip-trunks/1
 Authorization: Bearer {{auth_token}}
+
+### Platform: list a company's trunks (SUPERADMIN)
+POST http://localhost:8080/api/companies/2/sip-trunks/list
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "page": 0,
+  "size": 20
+}
+
+### Platform: create a trunk for a company (SUPERADMIN)
+POST http://localhost:8080/api/companies/2/sip-trunks
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Main trunk",
+  "host": "sip.provider.example",
+  "sipUsername": "user",
+  "sipPassword": "secret"
+}

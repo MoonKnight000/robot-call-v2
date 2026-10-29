@@ -149,6 +149,55 @@ Lokal muhitda webhook'larni ngrok/tunnel ochmasdan to'g'ridan-to'g'ri kuzatish y
     ```
   - Har 20 soniyada `:ping` heartbeat yuboriladi. Aloqa uzilganda abonent avtomatik o'chiriladi.
 
+### 1.4. Kiruvchi LiveKit SIP Gateway Webhook — `POST /api/webhooks/livekit/sip`
+
+LiveKit SIP Gateway'dan kiruvchi qo'ng'iroq dispatch qilinganda backendga murojaat qiladi:
+
+- **Auth:** Ochiq (`SecurityConfig` da `permitAll`), LiveKit Gateway tomonidan to'g'ridan-to'g'ri chaqiriladi.
+- **Request (`LiveKitSipWebhookRequest`):**
+  ```json
+  {
+    "callId": "lk-sip-call-001",
+    "caller": "+998901234567",
+    "called": "+998712000000",
+    "roomName": "optional-room-name",
+    "sipTrunkId": "trunk-livekit-main"
+  }
+  ```
+- **Response (`LiveKitSipWebhookResponse`):**
+  - Muvaffaqiyatli qabul qilinganda (`ACCEPT`):
+    ```json
+    {
+      "success": true,
+      "data": {
+        "action": "ACCEPT",
+        "roomName": "inbound-lk-sip-call-001",
+        "routeId": 12,
+        "agentId": 5,
+        "callFlowId": null,
+        "language": "uz-UZ",
+        "message": null,
+        "vip": false
+      }
+    }
+    ```
+  - Rad etilganda yoki raqam topilmaganda (`REJECT`):
+    ```json
+    {
+      "success": true,
+      "data": {
+        "action": "REJECT",
+        "roomName": null,
+        "routeId": null,
+        "agentId": null,
+        "callFlowId": null,
+        "language": "uz-UZ",
+        "message": "No route found for number: +998712000000",
+        "vip": false
+      }
+    }
+    ```
+
 ---
 
 ## 2. SMS: AI tool'lari va Eskiz

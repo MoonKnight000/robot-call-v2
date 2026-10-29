@@ -469,5 +469,15 @@ public class HttpToolExecutor {
         public boolean triggerMidCallSms(String text) {
             return false;
         }
+
+        @Override
+        public boolean handOffToAgent(long agentId) {
+            return false;
+        }
+
+        @Override
+        public boolean isEnded() {
+            return false;
+        }
     }
 }

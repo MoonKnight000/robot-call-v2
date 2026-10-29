@@ -23,7 +23,7 @@ import java.util.Map;
 @RequestMapping("/api")
 public interface TelegramController {
 
-    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @PreAuthorize("hasAuthority('CHAT_AGENT_READ')")
     @GetMapping("/telegram-bots")
     ResponseEntity<ResponseData<List<TelegramBotRow>>> list(@CurrentCompanyId long companyId);
 
@@ -31,7 +31,7 @@ public interface TelegramController {
      * Registers a bot this company owns. The token is not sent here — it is stored once as a
      * company secret and named by {@code tokenSecretKey} ([secrets.md]).
      */
-    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PreAuthorize("hasAuthority('CHAT_AGENT_EDIT')")
     @PostMapping("/telegram-bots")
     ResponseEntity<ResponseData<TelegramBotRow>> create(
             @CurrentCompanyId long companyId,
@@ -42,14 +42,14 @@ public interface TelegramController {
      * it is the one their deployment answers on, which this application cannot know from the
      * inside.
      */
-    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PreAuthorize("hasAuthority('CHAT_AGENT_EDIT')")
     @PostMapping("/telegram-bots/{botId:\\d+}/webhook")
     ResponseEntity<ResponseData<TelegramBotRow>> registerWebhook(
             @CurrentCompanyId long companyId,
             @PathVariable long botId,
             @Valid @RequestBody RegisterWebhookRequest request);
 
-    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PreAuthorize("hasAuthority('CHAT_AGENT_EDIT')")
     @DeleteMapping("/telegram-bots/{botId:\\d+}")
     ResponseEntity<ResponseData<Void>> delete(
             @CurrentCompanyId long companyId,

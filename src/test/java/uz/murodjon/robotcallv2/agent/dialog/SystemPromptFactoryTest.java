@@ -111,6 +111,31 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void injectsPreferredLanguageIntoMemoryBlockWhenPresent() {
+        ClientMemory memory = new ClientMemory(1L, 1L, "+998901234567", "Ivan", "ru",
+                null, List.of(), Map.of(), null);
+        CallContext contextWithMemory = new CallContext(Map.of(), "Goal", memory);
+
+        String prompt = factory.stablePrefix(session(contextWithMemory, "ru-RU"));
+
+        assertThat(prompt)
+                .contains("MULTI-CALL MEMORY")
+                .contains("- Preferred language: ru")
+                .contains("Ivan");
+    }
+
+    @Test
+    void fallsBackToMemoryPreferredNameWhenClientNameFactAbsent() {
+        ClientMemory memory = new ClientMemory(1L, 1L, "+998901234567", "Sardor", null,
+                null, List.of(), Map.of(), null);
+        CallContext contextWithMemory = new CallContext(Map.of(), "Goal", memory);
+
+        String prompt = factory.stablePrefix(session(contextWithMemory, "uz-UZ"));
+
+        assertThat(prompt).contains("Sardor aka, yaxshimisiz?");
+    }
+
+    @Test
     void firstConversationCarriesNoMemoryBlock() {
         String prompt = factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ"));
 

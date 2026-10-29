@@ -68,5 +68,6 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
         entity.setHumanLikePersonaAllowed(config.humanLikePersonaAllowed());
         entity.setHolidays(CompanyConfigEntityMapper.formatHolidays(config.holidays()));
         entity.setScorecardReviewThreshold(config.scorecardReviewThreshold());
+        entity.setTelephonyEngine(config.telephonyEngine());
     }
 }

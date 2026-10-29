@@ -219,3 +219,22 @@ Body yo'q. `id`ni kompaniyaning default trunkiga aylantiradi, avvalgi default tr
 ## `DELETE /api/sip-trunks/{id}` — o'chirish
 
 Default trunk o'chirilmaydi — avval boshqa trunkni default qilib belgilang, keyin o'chiring.
+
+---
+
+## Platforma: istalgan kompaniya trunklari — `/api/companies/{companyId}/sip-trunks`
+
+**Faqat `PLATFORM_ADMIN` (SUPERADMIN).** Yuqoridagi endpointlarning aynan o'zi (xuddi shu request/response
+shakllari), faqat kompaniya tokendan emas, URL'dagi `{companyId}` dan olinadi. Kompaniya yo'q bo'lsa —
+`404 COMPANY_NOT_FOUND`; kompaniya `SUSPENDED`/`DELETED`/`EXPIRED` bo'lsa ham ishlaydi.
+
+| Endpoint | Izoh |
+|---|---|
+| `POST /api/companies/{companyId}/sip-trunks` | trunk yaratish (`CreateSipTrunkRequest`) |
+| `POST /api/companies/{companyId}/sip-trunks/list` | ro'yxat (`SipTrunkFilter`) |
+| `GET /api/companies/{companyId}/sip-trunks/status` | barcha trunklarning ulanish holati |
+| `GET` / `PUT` / `DELETE /api/companies/{companyId}/sip-trunks/{id}` | bitta trunk |
+| `POST /api/companies/{companyId}/sip-trunks/{id}/default` | default qilish |
+
+Platforma kompaniya adminidan farqli ravishda trunkni qo'lda yozilgan PJSIP endpoint'ga (`pjsipEndpoint`)
+yo'naltira oladi.

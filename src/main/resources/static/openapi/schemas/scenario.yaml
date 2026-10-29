@@ -144,6 +144,13 @@ ScenarioDefinition:
     callPurpose:
       type: string
       description: what the call is about, in a sentence; stated to the model first, `{{fact}}` templates allowed
+    startStageId:
+      type: string
+      description: the stage a call opens on; null = the first of `stages`
+    transitionMode:
+      type: string
+      enum: [RIGID, FLEX]
+      description: RIGID (default) — only the stage's own transitions; FLEX — any conversation stage, the drawn edges first
 ScenarioFilter:
   type: object
   description: Pagination + filter + sort for POST /api/scenarios/list (§10.7).
@@ -320,6 +327,64 @@ StageDef:
       description: outcome names of which at least one must be recorded before the call may leave the stage
       items:
         type: string
+    type:
+      type: string
+      enum: [CONVERSATION, FUNCTION, CALL_TRANSFER, PRESS_DIGIT, LOGIC_SPLIT, AGENT_TRANSFER, SMS, EXTRACT_VARIABLE, CODE, MCP, ENDING, NOTE]
+      description: what the stage does; null = CONVERSATION
+    position:
+      $ref: '#/StagePosition'
+    globalCondition:
+      type: string
+      description: when set, the model may move the call into this stage from any stage once the condition holds
+    action:
+      $ref: '#/StageAction'
+StageAction:
+  type: object
+  description: settings of a non-conversation stage; each type reads only its own fields
+  properties:
+    toolName:
+      type: string
+      description: FUNCTION — a scenario `tools` name or a company tool attached to the agent (as the model sees it); MCP — a tool of the connection
+    transferTo:
+      type: string
+      description: CALL_TRANSFER — phone number, digits with an optional leading +
+    transferMode:
+      type: string
+      enum: [COLD, WARM]
+      description: CALL_TRANSFER — null = COLD
+    digits:
+      type: string
+      description: PRESS_DIGIT — 0-9, *, # and w (half-second pause), up to 32
+    targetAgentId:
+      type: integer
+      format: int64
+      description: AGENT_TRANSFER — the AI agent the conversation is handed to
+    smsText:
+      type: string
+      description: SMS — the message, `{{fact}}` templates allowed, up to 1600 characters
+    extractFields:
+      type: array
+      description: EXTRACT_VARIABLE — names from `outcomeSchema`
+      items:
+        type: string
+    code:
+      type: string
+      description: CODE — the script to run, up to 20000 characters
+    mcpConnectionId:
+      type: integer
+      format: int64
+      description: MCP — the company MCP connection `toolName` belongs to
+StagePosition:
+  type: object
+  description: where a stage sits on the editor canvas; not read by a call
+  properties:
+    x:
+      type: number
+    y:
+      type: number
+  required:
+  - x
+  - y
 StyleExample:
   type: object
   description: One ✗ → ✓ pair of phrasing a scenario teaches its agent by — the domain's own examples, so the platform prompt stops carrying one domain's sentences into every scenario's calls (UNIVERSAL-OPERATOR-PLAN A.2).

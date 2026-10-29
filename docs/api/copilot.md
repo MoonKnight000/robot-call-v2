@@ -25,7 +25,7 @@ agentlar va eval natijalarini o'qib javob beradi.
   keyin model bor ma'lumot bilan javob berishga majbur qilinadi. Tool javobi 12 000 belgidan uzun
   bo'lsa kesiladi.
 
-Sozlamalar (`voice-agent.copilot.*`): `model` (standart `gemini-3.8-pro`), `max-tokens` (4096),
+Sozlamalar (`voice-agent.copilot.*`): `model` (standart `gemini-3.8-flash`), `max-tokens` (4096),
 `max-tool-calls` (15), `max-history` (20 — yangi savol bilan birga yuboriladigan oldingi savol-javoblar).
 
 ---

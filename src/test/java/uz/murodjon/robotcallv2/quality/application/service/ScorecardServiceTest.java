@@ -7,6 +7,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.quality.application.dto.ReviewScorecardRequest;
@@ -63,7 +64,7 @@ class ScorecardServiceTest {
         when(currentUser.id()).thenReturn(Optional.of(SUPERVISOR_ID));
         when(scorecards.upsert(anyLong(), any())).thenAnswer(invocation -> invocation.getArgument(1));
         when(scorecards.updateReview(anyLong(), any())).thenAnswer(invocation -> invocation.getArgument(1));
-        service = new ScorecardService(criteria, scorecards, judge, mock(AuditUseCase.class), companyConfig,
+        service = new ScorecardService(criteria, scorecards, judge, mock(AuditUseCase.class), companyConfig, CompanyFixtures.openCompanyUseCase(),
                 notifications, currentUser);
     }
 
@@ -205,7 +206,7 @@ class ScorecardServiceTest {
         when(provider.getIfAvailable()).thenReturn(callMetrics);
 
         ScorecardService serviceWithMetrics = new ScorecardService(criteria, scorecards, judge,
-                mock(AuditUseCase.class), companyConfig, notifications, mock(CurrentUser.class), provider);
+                mock(AuditUseCase.class), companyConfig, CompanyFixtures.openCompanyUseCase(), notifications, mock(CurrentUser.class), provider);
 
         judgeSays(Sentiment.NEUTRAL, CriterionAnswer.NO, CriterionAnswer.YES);
 

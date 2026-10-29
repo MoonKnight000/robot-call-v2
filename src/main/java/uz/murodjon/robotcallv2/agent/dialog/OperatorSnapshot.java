@@ -15,6 +15,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
  * @param transferReason why the model handed the call over, in its own words; null when it
  *                       gave none or the transfer came from elsewhere (a supervisor, a flow)
  * @param transcript     conversation so far ({@code ROLE: text} lines)
+ * @param transferTo     the number the flow's CALL_TRANSFER stage the call is in hands it to; null
+ *                       when the transfer goes where the agent sends its transfers
  */
 public record OperatorSnapshot(
         String channelId,
@@ -25,6 +27,7 @@ public record OperatorSnapshot(
         String contractNumber,
         String dialogState,
         String transferReason,
-        String transcript
+        String transcript,
+        String transferTo
 ) {
 }

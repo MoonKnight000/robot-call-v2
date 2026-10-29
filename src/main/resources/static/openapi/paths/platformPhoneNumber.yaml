@@ -1,0 +1,133 @@
+# Platform phone numbers — PLATFORM_ADMIN manages platform inventory pool numbers (PlatformPhoneNumberController).
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/platform/phone-numbers:
+  post:
+    tags:
+    - Platform Phone Numbers
+    summary: Hovuzga yangi telefon raqami qo'shish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformPhoneNumber_addPoolNumber
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/AddPoolNumberRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
+/api/platform/phone-numbers/batch:
+  post:
+    tags:
+    - Platform Phone Numbers
+    summary: Hovuzga bir nechta telefon raqamlarini ommaviy qo'shish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformPhoneNumber_addBatchPoolNumbers
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schemas/phoneNumber.yaml#/AddPoolNumberRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: integer
+                    format: int32
+                    description: Muvaffaqiyatli qo'shilgan raqamlar soni
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/platform/phone-numbers/list:
+  post:
+    tags:
+    - Platform Phone Numbers
+    summary: Platforma hovuzidagi barcha raqamlar ro'yxati
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformPhoneNumber_findAllPoolNumbers
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/PhoneNumberFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/platform/phone-numbers/{id}:
+  delete:
+    tags:
+    - Platform Phone Numbers
+    summary: Hovuzdan telefon raqamini o'chirish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformPhoneNumber_removePoolNumber
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+      '409':
+        $ref: ../common.yaml#/responses/Conflict

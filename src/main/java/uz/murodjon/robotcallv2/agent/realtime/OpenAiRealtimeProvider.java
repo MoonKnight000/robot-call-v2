@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
@@ -23,6 +24,7 @@ import java.nio.ByteOrder;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -540,6 +542,23 @@ public class OpenAiRealtimeProvider implements RealtimeProvider {
             root.put("content_index", 0);
             root.put("audio_end_ms", Math.max(0, heardMs));
             send(root.toString());
+        }
+
+        /** A second {@code session.update} carrying only what changes; the audio settings stay as opened. */
+        @Override
+        public boolean updateConfiguration(String systemPrompt, List<ToolCallback> tools) {
+            if (closed || !alive.get()) {
+                return false;
+            }
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("type", "session.update");
+            ObjectNode session = root.putObject("session");
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                session.put("instructions", systemPrompt);
+            }
+            RealtimeFunctionTools.putFunctionTools(objectMapper, session, tools);
+            send(root.toString());
+            return true;
         }
 
         private synchronized void send(String json) {

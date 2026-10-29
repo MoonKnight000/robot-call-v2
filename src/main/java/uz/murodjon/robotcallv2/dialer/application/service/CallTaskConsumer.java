@@ -15,8 +15,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
-import uz.murodjon.robotcallv2.company.domain.entity.Company;
-import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.dialer.application.dto.CallTask;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.application.port.output.PhoneNumberScrubberPort;
@@ -150,11 +149,10 @@ public class CallTaskConsumer {
                 return;
             }
 
-            // The dialer only claims for active companies, but a task queued before a suspension
+            // The dialer only claims for active companies with the voice agent, but a task queued before a suspension
             // would still be dialled without this.
-            Company company = companyUseCase.findById(task.companyId());
-            if (company != null && company.status() == CompanyStatus.SUSPENDED) {
-                log.info("Target {} ({}) not dialled: company {} is suspended", task.targetId(),
+            if (!companyUseCase.isFeatureAvailable(task.companyId(), Feature.VOICE_AGENT)) {
+                log.info("Target {} ({}) not dialled: company {} is suspended or has no voice agent", task.targetId(),
                         PhoneMasker.mask(task.phone()), task.companyId());
                 state.release(task.companyId(), task.campaignId());
                 state.releaseTrunk(task.sipTrunkId());

@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
@@ -8,7 +10,13 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * An AI agent: the voice, persona, model, speech engine and limits a call is run with.
+ * An AI agent: the voice, persona, model, speech engine and limits a call or chat is run with.
+ *
+ * <p>Supports Retell-style paradigms:
+ * <ul>
+ *   <li>{@link AiAgentMode#SINGLE_PROMPT} or {@link AiAgentMode#CONVERSATIONAL_FLOW}</li>
+ *   <li>{@link AiAgentChannel#VOICE}, {@link AiAgentChannel#CHAT}, or {@link AiAgentChannel#OMNICHANNEL}</li>
+ * </ul>
  *
  * <p>Most of what an agent is arrives in groups — {@link AiAgentVoice}, {@link
  * AiAgentSpeechEngine}, {@link AiAgentAmbience}, {@link AiAgentCallBehaviour}, {@link
@@ -30,6 +38,8 @@ public record AiAgent(
         String name,
         String description,
         String language,
+        AiAgentChannel channel,
+        AiAgentMode mode,
         AgentPersona persona,
         AiAgentScript script,
         AiAgentSpeechEngine speechEngine,
@@ -62,6 +72,14 @@ public record AiAgent(
         if (language == null || language.isBlank()) {
             language = "uz-UZ";
         }
+        if (channel == null) {
+            channel = AiAgentChannel.OMNICHANNEL;
+        }
+        if (mode == null) {
+            mode = (script != null && script.mode() != null)
+                    ? AiAgentMode.fromScenarioMode(script.mode())
+                    : AiAgentMode.SINGLE_PROMPT;
+        }
         if (persona == null) {
             persona = AgentPersona.AI_ASSISTANT;
         }
@@ -74,7 +92,7 @@ public record AiAgent(
         // A group is never null: every reader reaches through one, and making them prove
         // it first would put the same null check in every caller instead of here once.
         if (script == null) {
-            script = new AiAgentScript(null, null, null, null, null, null);
+            script = new AiAgentScript(null, null, mode.toScenarioMode(), null, null, null);
         }
         if (speechEngine == null) {
             speechEngine = new AiAgentSpeechEngine(null, null, null, null, null, null, null, null, null);
@@ -128,6 +146,17 @@ public record AiAgent(
 
     public AiAgent withScenario(AiAgentScript newScript) {
         return withScript(newScript);
+    }
+
+    public AiAgent withChannel(AiAgentChannel newChannel) {
+        return toBuilder().channel(newChannel).build();
+    }
+
+    public AiAgent withMode(AiAgentMode newMode) {
+        return toBuilder()
+                .mode(newMode)
+                .script(script != null ? new AiAgentScript(script.templateId(), script.scenarioId(), newMode.toScenarioMode(), script.definition(), script.firstMessage(), script.systemPrompt()) : null)
+                .build();
     }
 
     public AiAgent withAnalysis(List<DataExtractionField> newDataNeeded,
@@ -195,5 +224,4 @@ public record AiAgent(
     private AiAgent withScript(AiAgentScript newScript) {
         return toBuilder().script(newScript).build();
     }
-
 }

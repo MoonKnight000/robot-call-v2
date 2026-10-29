@@ -2,6 +2,9 @@ package uz.murodjon.robotcallv2.scenario.domain.service;
 
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
+import uz.murodjon.robotcallv2.scenario.domain.enums.BranchOperator;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
+import uz.murodjon.robotcallv2.scenario.domain.enums.TransferMode;
 
 import java.util.List;
 import java.util.Map;
@@ -258,7 +261,7 @@ class ScenarioValidatorTest {
                 "Prompt", List.of(), null);
 
         assertThat(ScenarioValidator.validate(def)).contains(
-                "the first stage GREETING cannot have a staticLine — the agent's firstMessage opens the call");
+                "the start stage GREETING cannot have a staticLine — the agent's firstMessage opens the call");
     }
 
     @Test
@@ -302,5 +305,160 @@ class ScenarioValidatorTest {
                 "Prompt", List.of(), null);
 
         assertThat(ScenarioValidator.validate(def)).isEmpty();
+    }
+
+    @Test
+    void aFlowOfEveryNodeTypeIsValid() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("SPLIT"), List.of()),
+                StageDef.builder().id("SPLIT").type(StageType.LOGIC_SPLIT)
+                        .branches(List.of(
+                                new StageBranch("debtAmount", BranchOperator.GREATER, "0", "LOOKUP"),
+                                new StageBranch(null, BranchOperator.ALWAYS, null, "BYE")))
+                        .allowedTransitions(List.of("LOOKUP", "BYE")).build(),
+                action("LOOKUP", StageType.FUNCTION, "IVR", new StageAction("lookupDebt", null, null, null, null, null, null, null, null)),
+                action("IVR", StageType.PRESS_DIGIT, "SMS", new StageAction(null, null, null, "1w2#", null, null, null, null, null)),
+                action("SMS", StageType.SMS, "EXTRACT", new StageAction(null, null, null, null, null, "Karta: {{card}}", null, null, null)),
+                action("EXTRACT", StageType.EXTRACT_VARIABLE, "CODE", new StageAction(null, null, null, null, null, null, List.of("res"), null, null)),
+                action("CODE", StageType.CODE, "MCP", new StageAction(null, null, null, null, null, null, null, "return 1;", null)),
+                action("MCP", StageType.MCP, "BYE", new StageAction("crm.lookup", null, null, null, null, null, null, null, 7L)),
+                StageDef.builder().id("HUMAN").type(StageType.CALL_TRANSFER).globalCondition("Mijoz operator so'raydi")
+                        .action(new StageAction(null, "+998901234567", TransferMode.WARM, null, null, null, null, null, null))
+                        .allowedTransitions(List.of("BYE")).build(),
+                StageDef.builder().id("SALES").type(StageType.AGENT_TRANSFER)
+                        .action(new StageAction(null, null, null, null, 42L, null, null, null, null)).build(),
+                StageDef.builder().id("BYE").type(StageType.ENDING).staticLine("Xayr!").build(),
+                StageDef.builder().id("TODO").type(StageType.NOTE).purpose("Keyin FAQ qo'shamiz").build());
+
+        assertThat(ScenarioValidator.validate(def)).isEmpty();
+    }
+
+    @Test
+    void anActionStageWithoutATransitionReturnsError() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("SMS", "END"), List.of()),
+                StageDef.builder().id("SMS").type(StageType.SMS)
+                        .action(new StageAction(null, null, null, null, null, "Salom", null, null, null)).build(),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(ScenarioValidator.validate(def)).contains("SMS stage SMS needs a transition to pass the call on");
+    }
+
+    @Test
+    void anActionStageWithoutItsSettingsReturnsError() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("XFER", "IVR", "LOOKUP"), List.of()),
+                StageDef.builder().id("XFER").type(StageType.CALL_TRANSFER)
+                        .action(new StageAction(null, "operator", null, null, null, null, null, null, null)).build(),
+                action("IVR", StageType.PRESS_DIGIT, "END", new StageAction(null, null, null, "1-2", null, null, null, null, null)),
+                action("LOOKUP", StageType.FUNCTION, "END", new StageAction(" ", null, null, null, null, null, null, null, null)),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "CALL_TRANSFER stage XFER needs action.transferTo as a phone number",
+                "PRESS_DIGIT stage IVR needs action.digits of 0-9, *, # and w",
+                "FUNCTION stage LOOKUP needs action.toolName");
+    }
+
+    @Test
+    void aFunctionStageMayCallACompanyToolTheScenarioDoesNotDeclare() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("LOOKUP"), List.of()),
+                action("LOOKUP", StageType.FUNCTION, "END", new StageAction("crm_find_client", null, null, null, null, null, null, null, null)),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(ScenarioValidator.validate(def)).isEmpty();
+    }
+
+    @Test
+    void theStartStageMustBeAConversation() {
+        ScenarioDefinition def = flow(
+                        new StageDef("GREETING", "Salom", List.of("END"), List.of()),
+                        action("IVR", StageType.PRESS_DIGIT, "GREETING", new StageAction(null, null, null, "1", null, null, null, null, null)),
+                        new StageDef("END", "Yakunla", List.of(), List.of()))
+                .toBuilder().startStageId("IVR").build();
+
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "the start stage IVR must be a CONVERSATION stage, not PRESS_DIGIT");
+    }
+
+    @Test
+    void aLogicSplitWithoutAnElseBranchReturnsError() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("SPLIT"), List.of()),
+                StageDef.builder().id("SPLIT").type(StageType.LOGIC_SPLIT)
+                        .branches(List.of(new StageBranch("debtAmount", BranchOperator.GREATER, "0", "END")))
+                        .allowedTransitions(List.of("END")).build(),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "LOGIC_SPLIT stage SPLIT needs branches ending with an ALWAYS branch");
+    }
+
+    @Test
+    void anAlwaysBranchBeforeAnotherReturnsError() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("SPLIT"), List.of()),
+                StageDef.builder().id("SPLIT").type(StageType.LOGIC_SPLIT)
+                        .branches(List.of(
+                                new StageBranch(null, BranchOperator.ALWAYS, null, "END"),
+                                new StageBranch(null, BranchOperator.ALWAYS, null, "END")))
+                        .allowedTransitions(List.of("END")).build(),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(ScenarioValidator.validate(def)).contains("the ALWAYS branch of stage SPLIT must be its last");
+    }
+
+    @Test
+    void endingsAndNotesCannotBeLeftOrEntered() {
+        ScenarioDefinition def = flow(
+                new StageDef("GREETING", "Salom", List.of("BYE", "TODO"), List.of()),
+                StageDef.builder().id("BYE").type(StageType.ENDING).allowedTransitions(List.of("GREETING")).build(),
+                StageDef.builder().id("TODO").type(StageType.NOTE).purpose("Eslatma").build(),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "ENDING stage BYE cannot have transitions",
+                "stage GREETING transitions to NOTE TODO");
+    }
+
+    @Test
+    void theStartStageIsTheOneStartStageIdNames() {
+        ScenarioDefinition def = flow(
+                        new StageDef("END", "Yakunla", List.of(), List.of()),
+                        StageDef.builder().id("GREETING").purpose("Salom").allowedTransitions(List.of("END"))
+                                .staticLine("Salom!").build())
+                .toBuilder().startStageId("GREETING").build();
+
+        assertThat(def.findStartStage().id()).isEqualTo("GREETING");
+        assertThat(ScenarioValidator.validate(def)).contains(
+                "the start stage GREETING cannot have a staticLine — the agent's firstMessage opens the call");
+    }
+
+    @Test
+    void anUnknownOrGlobalStartStageReturnsError() {
+        ScenarioDefinition unknown = flow(new StageDef("END", "Yakunla", List.of(), List.of()))
+                .toBuilder().startStageId("NOPE").build();
+        ScenarioDefinition global = flow(
+                        StageDef.builder().id("HUMAN").purpose("Operator").globalCondition("Operator so'raydi")
+                                .allowedTransitions(List.of("END")).build(),
+                        new StageDef("END", "Yakunla", List.of(), List.of()))
+                .toBuilder().startStageId("HUMAN").build();
+
+        assertThat(ScenarioValidator.validate(unknown)).contains("startStageId NOPE is not a stage");
+        assertThat(ScenarioValidator.validate(global)).contains("the start stage HUMAN cannot be global");
+    }
+
+    private static ScenarioDefinition flow(StageDef... stages) {
+        return ScenarioDefinition.builder()
+                .stages(List.of(stages))
+                .tools(List.of(new ToolDef("lookupDebt", "Qarzni topadi", List.of())))
+                .outcomeSchema(List.of(new OutcomeField("res", "string", "Desc")))
+                .rolePrompt("Prompt")
+                .build();
+    }
+
+    private static StageDef action(String id, StageType type, String next, StageAction action) {
+        return StageDef.builder().id(id).type(type).action(action).allowedTransitions(List.of(next)).build();
     }
 }

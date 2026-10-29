@@ -119,6 +119,7 @@ public class RealtimeDialogEngine implements CallDialog {
     private final DialogPolicy dialogPolicy;
     private final RealtimeToolRunner toolRunner;
     private final RealtimeTranscriptRecorder transcriptRecorder;
+    private final AgentHandoffResolver agentHandoffResolver;
 
     private final Map<String, RealtimeDialogSession> sessions = new ConcurrentHashMap<>();
     /**
@@ -136,7 +137,8 @@ public class RealtimeDialogEngine implements CallDialog {
                                 TtsVoiceUseCase ttsVoiceUseCase,
                                 RealtimeWatchdogRunner watchdogRunner, LanguageDetector languageDetector,
                                 MidCallSmsSender midCallSmsSender, DialogPolicy dialogPolicy,
-                                RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder) {
+                                RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder,
+                                AgentHandoffResolver agentHandoffResolver) {
         this.registry = registry;
         this.promptFactory = promptFactory;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -153,6 +155,7 @@ public class RealtimeDialogEngine implements CallDialog {
         this.dialogPolicy = dialogPolicy;
         this.toolRunner = toolRunner;
         this.transcriptRecorder = transcriptRecorder;
+        this.agentHandoffResolver = agentHandoffResolver;
     }
 
     @Override
@@ -207,7 +210,7 @@ public class RealtimeDialogEngine implements CallDialog {
         session.setSttDriven(halfCascade);
         session.setDtmfSender(dtmf);
         session.setInbound(callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null);
-        if (agent != null && agent.callBehaviour().midCallSmsEnabled()) {
+        if (agent != null && (agent.callBehaviour().midCallSmsEnabled() || StageEntry.sendsSms(scenario))) {
             session.setMidCallSmsSender(text -> midCallSmsSender.send(companyId, callAttemptId, channelId, context, text));
         }
         Company company = companyUseCase.findById(companyId);
@@ -231,6 +234,10 @@ public class RealtimeDialogEngine implements CallDialog {
         boolean factsInPrompt = factsInPrompt(agent);
         String prompt = promptFactory.build(session, companyName, disclosureText, voice, agentPersona, factsInPrompt);
         session.setTools(toolRunner.buildTools(session, factsInPrompt));
+        String spokenDisclosure = disclosureText;
+        session.setAgentHandoff(agentId -> handOff(session, companyId, agentId,
+                next -> promptFactory.build(session, companyName, spokenDisclosure, voice, agentPersona, factsInPrompt),
+                factsInPrompt));
         if (provider.lacksToolCalling() && !session.tools().isEmpty()) {
             // Saving an agent on such an engine is refused, but an older agent or the
             // configured default can still land here. Nothing has been said yet, so the
@@ -283,6 +290,34 @@ public class RealtimeDialogEngine implements CallDialog {
             realtimeMetrics.realtimeFallback(provider.name());
             return false;
         }
+    }
+
+    /**
+     * An AGENT_TRANSFER stage on a realtime call: switch the session to the target agent's
+     * flow, then hand the engine the prompt and tools rebuilt for it. An engine that only
+     * takes its configuration at setup refuses, and the session goes back to the flow it
+     * was in, so the stage takes its own fallback transition.
+     */
+    private boolean handOff(RealtimeDialogSession session, long companyId, long agentId,
+                            Function<ScenarioDefinition, String> promptFor, boolean factsInPrompt) {
+        RealtimeSession engine = session.engine();
+        ScenarioDefinition next = agentHandoffResolver.findPublishedScenario(companyId, agentId);
+        if (engine == null || next == null || next.stages() == null || next.stages().isEmpty()) {
+            return false;
+        }
+        ScenarioDefinition previous = session.scenario();
+        String previousState = session.state();
+        session.switchScenario(next);
+        List<ToolCallback> tools = toolRunner.buildTools(session, factsInPrompt);
+        if (!engine.updateConfiguration(promptFor.apply(next), tools)) {
+            session.switchScenario(previous);
+            session.setState(previousState);
+            log.info("[{}] realtime engine {} cannot change its script mid-call — agent handoff skipped",
+                    session.channelId(), session.engineName());
+            return false;
+        }
+        session.setTools(tools);
+        return true;
     }
 
     /**
@@ -609,7 +644,8 @@ public class RealtimeDialogEngine implements CallDialog {
         return new OperatorSnapshot(channelId,
                 factText(c, "clientName"), factText(c, "debtAmount"), factText(c, "currency"),
                 factText(c, "dueDate"), factText(c, "contractNumber"),
-                s.state(), s.transferReason(), s.transcriptText());
+                s.state(), s.transferReason(), s.transcriptText(),
+                StageEntry.findTransferTarget(s.scenario(), s.state()));
     }
 
     private static String factText(CallContext c, String factName) {

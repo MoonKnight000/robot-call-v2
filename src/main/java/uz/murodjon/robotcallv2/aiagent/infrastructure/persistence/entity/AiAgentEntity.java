@@ -6,6 +6,8 @@ import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
@@ -65,6 +67,14 @@ public class AiAgentEntity {
 
     @Column(name = "use_rag", nullable = false)
     private boolean useRag;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "channel", nullable = false)
+    private AiAgentChannel channel = AiAgentChannel.OMNICHANNEL;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "agent_mode", nullable = false)
+    private AiAgentMode agentMode = AiAgentMode.SINGLE_PROMPT;
 
     @Column(nullable = false)
     private String language;
@@ -474,5 +484,21 @@ public class AiAgentEntity {
 
     public void setDataPolicy(AiAgentDataPolicyEntity dataPolicy) {
         this.dataPolicy = dataPolicy;
+    }
+
+    public AiAgentChannel getChannel() {
+        return channel;
+    }
+
+    public void setChannel(AiAgentChannel channel) {
+        this.channel = channel != null ? channel : AiAgentChannel.OMNICHANNEL;
+    }
+
+    public AiAgentMode getAgentMode() {
+        return agentMode;
+    }
+
+    public void setAgentMode(AiAgentMode agentMode) {
+        this.agentMode = agentMode != null ? agentMode : AiAgentMode.SINGLE_PROMPT;
     }
 }

@@ -12,8 +12,6 @@ import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase
 import uz.murodjon.robotcallv2.callflow.application.port.input.CallFlowUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
-import uz.murodjon.robotcallv2.company.domain.entity.Company;
-import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleUseCase;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
@@ -60,7 +58,7 @@ class InboundCallGateTest {
                 businessScheduleUseCase, companyConfigService, companyUseCase,
                 callBillingUseCase, clock
         );
-        when(companyUseCase.findById(anyLong())).thenReturn(new Company(1L, "Test Co", CompanyStatus.ACTIVE, Instant.now(), null, null, null));
+        when(companyUseCase.isFeatureAvailable(anyLong(), any())).thenReturn(true);
         when(callBillingUseCase.hasBalanceForCall(anyLong())).thenReturn(true);
         when(companyConfigService.resolveLanguage(anyLong(), any())).thenReturn("uz-UZ");
         when(businessScheduleUseCase.findZone(anyLong(), any())).thenReturn(ZoneId.of("Asia/Tashkent"));

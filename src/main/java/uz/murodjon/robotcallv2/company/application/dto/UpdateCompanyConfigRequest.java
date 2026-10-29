@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import uz.murodjon.robotcallv2.company.domain.enums.Language;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.LocalDate;
@@ -11,8 +12,8 @@ import java.time.LocalTime;
 import java.util.List;
 
 /**
- * The contact-policy fields, {@code humanLikePersonaAllowed}, {@code holidays} and
- * {@code scorecardReviewThreshold} are optional: null keeps
+ * The contact-policy fields, {@code humanLikePersonaAllowed}, {@code holidays},
+ * {@code scorecardReviewThreshold} and {@code telephonyEngine} are optional: null keeps
  * what the company already has, so a client written before they existed does not reset
  * them by omission.
  */
@@ -32,6 +33,7 @@ public record UpdateCompanyConfigRequest(
         Boolean respectPromisedDate,
         Boolean humanLikePersonaAllowed,
         @Size(max = 366) List<LocalDate> holidays,
-        @Min(0) @Max(100) Integer scorecardReviewThreshold
+        @Min(0) @Max(100) Integer scorecardReviewThreshold,
+        TelephonyEngine telephonyEngine
 ) {
 }

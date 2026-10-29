@@ -28,7 +28,7 @@ class ScenarioCanvasConverterTest {
                 List.of(new StageBranch("debtAmount", BranchOperator.LESS_OR_EQUAL, "0", "OFFER")),
                 Map.of("OFFER", "Mijoz ha dedi", "WRONG_PERSON", "Mijoz adashibsiz dedi"),
                 "Assalomu alaykum {{clientName}}, siz bilan gaplashyapmanmi?",
-                List.of("identified")
+                List.of("identified"), null, null, null, null
         );
 
         StageDef offer = new StageDef(
@@ -41,7 +41,7 @@ class ScenarioCanvasConverterTest {
                 null,
                 Map.of("END", "Rozilik bildirdi"),
                 "Siz uchun 15% chegirma mavjud!",
-                null
+                null, null, null, null, null
         );
 
         StageDef end = new StageDef("END", "Yakunlash", List.of(), List.of());
@@ -63,7 +63,7 @@ class ScenarioCanvasConverterTest {
                 null,
                 null,
                 globals,
-                "Mijozga maxsus taklifni yetkazish"
+                "Mijozga maxsus taklifni yetkazish", null, null
         );
 
         // 1. Convert to Canvas

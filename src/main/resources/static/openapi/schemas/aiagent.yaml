@@ -326,11 +326,17 @@ AgentScenarioDto:
 AgentTemplate:
   type: string
   enum:
+  - APPOINTMENT_BOOKING
   - BUSINESS
   - SUPPORT
+  - LEAD_QUALIFICATION
+  - DEBT_REMINDER
+  - INBOUND_RECEPTIONIST
+  - SURVEY
   - MEDICAL
+  - ORDER_TRACKING
   - BLANK
-  description: Presets a new agent can be started from, so the first screen is not empty.
+  description: Presets a new agent can be seeded from, so the first screen is not empty. Stored with the agent, one name per preset.
 AgentTestCase:
   type: object
   description: One scripted caller an agent is evaluated against (NEXT-PLAN A.2).

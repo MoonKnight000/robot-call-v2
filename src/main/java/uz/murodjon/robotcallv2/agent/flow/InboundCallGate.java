@@ -8,8 +8,7 @@ import uz.murodjon.robotcallv2.callflow.application.port.input.CallFlowUseCase;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowGraph;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
-import uz.murodjon.robotcallv2.company.domain.entity.Company;
-import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleUseCase;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundCallerRule;
@@ -69,9 +68,8 @@ public class InboundCallGate {
         long companyId = route.companyId();
         String language = companyLanguage(companyId);
 
-        Company company = companyUseCase.findById(companyId);
-        if (company != null && company.status() == CompanyStatus.SUSPENDED) {
-            log.info("Inbound call to DID {} rejected: company {} is suspended", did, companyId);
+        if (!companyUseCase.isFeatureAvailable(companyId, Feature.VOICE_AGENT)) {
+            log.info("Inbound call to DID {} rejected: company {} is suspended or has no voice agent", did, companyId);
             return InboundDecision.closed(route, PbxPhrases.companyUnavailable(language), language, false, false);
         }
         if (!callBillingUseCase.hasBalanceForCall(companyId)) {

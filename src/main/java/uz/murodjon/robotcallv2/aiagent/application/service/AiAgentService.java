@@ -3,11 +3,17 @@ package uz.murodjon.robotcallv2.aiagent.application.service;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentAmbienceDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentScriptDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentSpeechEngineDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentVoiceDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.dto.CreateSinglePromptAgentRequest;
+import uz.murodjon.robotcallv2.aiagent.application.dto.CreateConversationFlowAgentRequest;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.mapper.AiAgentSettingsMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentCatalogUseCase;
@@ -104,6 +110,40 @@ public class AiAgentService implements AiAgentUseCase {
     }
 
     @Override
+    public AiAgentRow createSinglePromptAgent(long companyId, CreateSinglePromptAgentRequest request) {
+        return createAgent(companyId, toCreateRequest(AiAgentMode.SINGLE_PROMPT, null, request.systemPrompt(),
+                request.name(), request.description(), request.language(), request.channel(), request.firstMessage(),
+                request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
+                request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
+                request.sipTrunkIds()));
+    }
+
+    @Override
+    public AiAgentRow createConversationFlowAgent(long companyId, CreateConversationFlowAgentRequest request) {
+        return createAgent(companyId, toCreateRequest(AiAgentMode.CONVERSATIONAL_FLOW, request.flowDefinition(), null,
+                request.name(), request.description(), request.language(), request.channel(), request.firstMessage(),
+                request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
+                request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
+                request.sipTrunkIds()));
+    }
+
+    /** The two preset endpoints as the general create request: an AI-assistant persona, not yet published elsewhere. */
+    private static CreateAiAgentRequest toCreateRequest(AiAgentMode mode, ScenarioDefinition flowDefinition,
+                                                        String systemPrompt, String name, String description,
+                                                        String language, AiAgentChannel channel, String firstMessage,
+                                                        AgentVoiceDto voice, AgentSpeechEngineDto speechEngine,
+                                                        String llmModel, Double temperature, Integer maxOutputTokens,
+                                                        AgentAmbienceDto ambience, List<DataExtractionField> dataNeeded,
+                                                        List<DataEvaluationCriterion> dataEvaluation,
+                                                        Set<Long> sipTrunkIds) {
+        return new CreateAiAgentRequest(name, description, language,
+                channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, null,
+                new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
+                speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
+                null, null, null, false, dataNeeded, dataEvaluation, null, null, sipTrunkIds, true);
+    }
+
+    @Override
     public AiAgentRow createAgent(long companyId, CreateAiAgentRequest request) {
         AgentScriptDto scriptRequest = request.script() != null ? request.script() : NO_SCRIPT;
         AgentSpeechEngineDto engineRequest = request.speechEngine() != null ? request.speechEngine() : NO_SPEECH_ENGINE;
@@ -171,6 +211,8 @@ public class AiAgentService implements AiAgentUseCase {
                 .name(request.name().trim())
                 .description(request.description() != null ? request.description().trim() : null)
                 .language(language)
+                .channel(request.channel() != null ? request.channel() : AiAgentChannel.OMNICHANNEL)
+                .mode(request.mode() != null ? request.mode() : (scriptRequest.mode() != null ? AiAgentMode.fromScenarioMode(scriptRequest.mode()) : AiAgentMode.SINGLE_PROMPT))
                 .persona(request.persona())
                 .script(new AiAgentScript(
                         scriptRequest.templateId(),
@@ -298,6 +340,8 @@ public class AiAgentService implements AiAgentUseCase {
         // stay the existing agent's: this request does not carry them.
         AiAgent updated = existing.toBuilder()
                 .name(request.name() != null ? request.name().trim() : existing.name())
+                .channel(request.channel() != null ? request.channel() : existing.channel())
+                .mode(request.mode() != null ? request.mode() : (scriptRequest.mode() != null ? AiAgentMode.fromScenarioMode(scriptRequest.mode()) : existing.mode()))
                 .description(request.description() != null ? request.description().trim() : existing.description())
                 .language(language)
                 .persona(request.persona() != null ? request.persona() : existing.persona())

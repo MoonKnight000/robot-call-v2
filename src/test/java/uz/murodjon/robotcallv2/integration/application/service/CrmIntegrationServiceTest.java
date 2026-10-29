@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmGrant;
@@ -67,7 +68,7 @@ class CrmIntegrationServiceTest {
         when(cipher.available()).thenReturn(true);
         when(cipher.encrypt(anyString())).thenAnswer(invocation -> "enc:" + invocation.getArgument(0));
         when(cipher.decrypt(anyString())).thenAnswer(invocation -> invocation.<String>getArgument(0).substring(4));
-        service = new CrmIntegrationService(repository, cipher, UYSOT_OAUTH, stateStore, audit, uysotOAuthPort, new ObjectMapper());
+        service = new CrmIntegrationService(repository, cipher, UYSOT_OAUTH, stateStore, audit, mock(CompanyUseCase.class), uysotOAuthPort, new ObjectMapper());
     }
 
     @Test

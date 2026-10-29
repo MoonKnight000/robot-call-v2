@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.security.CompanyAccessGuard;
 import uz.murodjon.robotcallv2.security.CurrentUser;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
@@ -92,18 +93,21 @@ public class CompanyConfigService implements CompanyConfigUseCase {
         List<LocalDate> holidays = request.holidays() != null ? request.holidays() : existing.holidays();
         int reviewThreshold = request.scorecardReviewThreshold() != null
                 ? request.scorecardReviewThreshold() : existing.scorecardReviewThreshold();
+        TelephonyEngine telephonyEngine = request.telephonyEngine() != null
+                ? request.telephonyEngine() : existing.telephonyEngine();
 
         companyConfigRepository.update(companyId, CompanyConfig.settings(
                 request.dialWindowStart(), request.dialWindowEnd(), request.timezone(),
                 request.defaultLanguage(), request.supportedLanguages(), request.disclosureText(),
-                maxAttempts, quietDays, respectPromise, humanLike, holidays, reviewThreshold));
+                maxAttempts, quietDays, respectPromise, humanLike, holidays, reviewThreshold, telephonyEngine));
         // Who allowed the company's agents to pass as a person is the one line in this
         // record a regulator would ask for, so it is written out whenever it changes.
         String persona = humanLike != existing.humanLikePersonaAllowed()
                 ? " humanLikePersonaAllowed=" + humanLike : "";
         audit.record(companyId, "COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
                 codesOf(request.supportedLanguages()) + " contactPolicy=" + maxAttempts + "/7d,quiet="
-                        + quietDays + "d,promise=" + respectPromise + ",holidays=" + holidays.size() + persona);
+                        + quietDays + "d,promise=" + respectPromise + ",holidays=" + holidays.size() + persona
+                        + " engine=" + telephonyEngine);
         return requireConfig(companyId);
     }
 

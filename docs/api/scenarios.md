@@ -287,7 +287,7 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 
 | Maydon | Turi | Izoh |
 |---|---|---|
-| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`; ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi), `transitionConditions` (ixtiyoriy, LLM qaror qiladigan o'tish sharti: `{ "<keyingi bosqich id>": "<tabiiy tildagi shart>" }` — pastga qarang), `staticLine` (ixtiyoriy, bosqichga kirgandagi tayyor gap, `{{fact}}` bilan), `requiredOutcomes` (ixtiyoriy, bosqichdan chiqish uchun kamida bittasi yozilishi kerak bo'lgan natija nomlari) — ikkalasi "Tayyor gap va chiqish sharti" bo'limida |
+| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`, `ALWAYS` (fakt va qiymat o'qilmaydi, doim rost — `LOGIC_SPLIT` ning "else" i, faqat oxirgi branch bo'la oladi); ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi), `transitionConditions` (ixtiyoriy, LLM qaror qiladigan o'tish sharti: `{ "<keyingi bosqich id>": "<tabiiy tildagi shart>" }` — pastga qarang), `staticLine` (ixtiyoriy, bosqichga kirgandagi tayyor gap, `{{fact}}` bilan), `requiredOutcomes` (ixtiyoriy, bosqichdan chiqish uchun kamida bittasi yozilishi kerak bo'lgan natija nomlari) — ikkalasi "Tayyor gap va chiqish sharti" bo'limida. Flow muharriri uchun: `type`, `position`, `globalCondition`, `action` — pastdagi "Flow tugun turlari" bo'limida |
 | `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required", "description" }` |
 | `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params` (`{ "name", "type", "required", "constraint" }[]`), `preToolSpeech` (tool ishlayotganda aytiladigan gap). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang |
 | `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description", "goal" }`. `goal: true` (ixtiyoriy, standart `false`) — ssenariy shu maydonni yozish uchun mavjud: qo'ng'iroq uni yozsa `GOAL_REACHED`, yozmasa `GOAL_NOT_REACHED` ([calls.md](calls.md)). Qiymat ssenariy tool'ining shu nomli argumentidan yoki kompaniya tool'ining `responseMapping` dagi shu nomli maydonidan keladi ([tools.md](tools.md)). Ko'pi bilan bitta maydon — aks holda `only one outcome field may be the goal` |
@@ -298,6 +298,8 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 | `disclosureText` | string | Shu ssenariy uchun §11.1 ochiqlik matni — kompaniya matnidan ustun turadi |
 | `globalNodes` | `GlobalNode[]` | Ixtiyoriy. Istalgan bosqichda beriladigan savollar: `{ "question", "answer" }` ("Siz kimsiz?", "Raqamimni qayerdan oldingiz?"). Bot javob beradi va bosqich **o'zgarmaydi** — suhbat qolgan joyidan davom etadi. Ikkala pipeline'da promptga qo'shiladi. Bo'sh maydon — `a global node needs both 'question' and 'answer'` |
 | `factWebhook` | `FactWebhook` | Qo'ng'iroqdan oldin faktlarni yangilash — pastga qarang |
+| `startStageId` | string | Ixtiyoriy. Qo'ng'iroq qaysi bosqichdan boshlanadi; `null` — `stages` ning birinchisi. Faqat `CONVERSATION` turidagi va global bo'lmagan bosqich bo'la oladi |
+| `transitionMode` | `RIGID` / `FLEX` | Ixtiyoriy, standart `RIGID`. `RIGID` — faqat bosqichning o'z o'tishlari (chizilgan edge'lar); `FLEX` — model istalgan CONVERSATION bosqichiga o'ta oladi, chizilganlari birinchi. |
 | — | — | Ovoz, persona va AI model sozlamalari ssenariyda **emas** — ular [AI agent](ai-agents.md)da. Bitta senariyni bir nechta agent turli ovoz va personada gapirishi mumkin |
 
 Ssenariy yozuvida (`GET /api/scenarios/{id}`, `CreateScenarioRequest`, `UpdateScenarioRequest`) bu obyekt
@@ -318,19 +320,112 @@ buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `
 | Kamida bitta yakuniy bosqich (`allowedTransitions` bo'sh) | `no terminal stage (…)` |
 | Har bosqichdan yakuniy bosqichga yo'l bor | `stage X cannot reach any terminal stage (deadlock)` |
 | `allowedTools` dagi nom — `tools` dan yoki universal tool'lardan biri | `stage X allows unknown tool Y` |
-| Birinchi bosqichda `branches` yo'q | `the first stage X cannot have branches` |
+| Start bosqichida (`startStageId` yoki birinchi) `branches` yo'q | `the start stage X cannot have branches` |
+| `ALWAYS` branch faqat oxirgisi; boshqa operatorlarda `fact` majburiy | `the ALWAYS branch of stage X must be its last` |
 | Branch'da `fact` va `operator` bor; `EXISTS`/`MISSING` dan boshqasida `value` bor | `a branch of stage X needs 'fact' and 'operator'`, `branch on F in stage X needs a 'value' for OP` |
 | Branch `goTo` — shu bosqichning `allowedTransitions` ichida | `branch of stage X goes to Y, which is not in its allowedTransitions` |
-| Birinchi bosqichda `staticLine` yo'q (qo'ng'iroqni agentning `firstMessage` i ochadi) | `the first stage X cannot have a staticLine — …` |
+| Start bosqichida `staticLine` yo'q (qo'ng'iroqni agentning `firstMessage` i ochadi) | `the start stage X cannot have a staticLine — …` |
+| `startStageId` mavjud bosqich; start bosqich `CONVERSATION` va global emas | `startStageId X is not a stage`, `the start stage X must be a CONVERSATION stage, not T`, `the start stage X cannot be global` |
+| Tugun turi qoidalari — "Flow tugun turlari" jadvali | `<TYPE> stage X needs …`, `ENDING stage X cannot have transitions`, `stage X transitions to NOTE Y`, … |
 | `requiredOutcomes` yakuniy bosqichda yo'q, nomlari bo'sh emas | `terminal stage X cannot have requiredOutcomes — …`, `stage X has a blank required outcome` |
 | `transitionConditions` kaliti — mavjud bosqich (kalit avtomatik `allowedTransitions` ga qo'shiladi), qiymati bo'sh emas | `stage X transitions to unknown stage Y`, `transition condition of stage X for Y must not be empty` |
-| `tools[].name` universal nomlardan biri bo'lmaydi: `transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall` | `tool name 'X' is reserved …` |
+| `tools[].name` universal nomlardan biri bo'lmaydi: `transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall`, `extractVariables` | `tool name 'X' is reserved …` |
 | Fakt / tool / tool parametri / outcome nomlari bo'sh emas va takrorlanmaydi | `a fact has a blank name`, `duplicate tool name: X`, … |
 | `outcomeSchema` kamida bitta maydon | `outcomeSchema must not be empty — …` |
 | `goal: true` ko'pi bilan bitta maydonda | `only one outcome field may be the goal — …` |
 | `styleExamples[]` da `wrong` va `right` ikkalasi ham bor | `a style example needs both 'wrong' and 'right'` |
 | `disclosureText` berilsa — avtomatik qo'ng'iroq va yozib olinishini aytadi (yoki bo'sh qoldiring) | `disclosureText must state …` |
 | `factWebhook`: `url` `http(s)://` bilan, `method` `GET`/`POST`, `timeoutMs` ≤ 2000, `factSchema` bo'sh emas | `factWebhook.url must …`, `factWebhook.method must be GET or POST`, … |
+
+---
+
+## 🧩 Flow tugun turlari (`StageDef.type`, `action`, `position`, `globalCondition`)
+
+Retell uslubidagi flow muharriri (canvas) uchun. Har bir bosqich — canvas'dagi bitta tugun. Maydonlarning
+hammasi ixtiyoriy, shuning uchun eski ssenariylar o'zgarishsiz ishlaydi (`type` yo'q bo'lsa `CONVERSATION`).
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `type` | enum | Tugun turi, pastdagi jadval. `null` — `CONVERSATION` |
+| `position` | `{ "x": number, "y": number }` | Canvas'dagi joyi. Qo'ng'iroq uni o'qimaydi; `null` — frontend o'zi joylashtiradi |
+| `globalCondition` | string | Berilsa, bosqich **global** bo'ladi: shart bajarilganda ("mijoz operator so'raydi") model qo'ng'iroqni istalgan bosqichdan shu yerga o'tkaza oladi, edge chizish shart emas. Bo'sh satr bo'lishi mumkin emas, NOTE global bo'lmaydi |
+| `action` | `StageAction` | CONVERSATION'dan boshqa turlarning sozlamalari. Har tur faqat o'z maydonini o'qiydi |
+
+`StageAction`: `{ "toolName", "transferTo", "transferMode", "digits", "targetAgentId", "smsText", "extractFields", "code", "mcpConnectionId" }`.
+
+| `type` | Nima qiladi | Majburiy | O'tishlar (`allowedTransitions`) |
+|---|---|---|---|
+| `CONVERSATION` | Model mijoz bilan `purpose` bo'yicha gaplashadi (hozirgi oddiy bosqich) | — | Ixtiyoriy; yo'q bo'lsa yakuniy |
+| `FUNCTION` | Bitta tool'ni chaqiradi va natija bilan davom etadi | `action.toolName` — ssenariy `tools` idagi nom yoki agentga ulangan kompaniya tool'i (model ko'radigan nom); saqlashda tekshirilmaydi | Kamida bitta |
+| `MCP` | Kompaniya MCP ulanishidagi bitta tool'ni chaqiradi | `action.mcpConnectionId`, `action.toolName` | Kamida bitta |
+| `CALL_TRANSFER` | Qo'ng'iroqni telefon raqamiga o'tkazadi | `action.transferTo` — `+?[0-9]{3,15}`; `action.transferMode` `COLD` (standart) / `WARM` | Ixtiyoriy — o'tkazish muvaffaqiyatsiz bo'lsa |
+| `PRESS_DIGIT` | DTMF tugmalarini bosadi (IVR menyu) | `action.digits` — `0-9`, `*`, `#`, `w` (yarim soniya pauza), ko'pi bilan 32 | Kamida bitta |
+| `LOGIC_SPLIT` | Faktlarga qarab LLM'siz tanlaydi | `branches`, oxirgisi `ALWAYS` ("else"); `transitionConditions` bo'lmaydi | Kamida bitta (branch'larning `goTo` lari) |
+| `AGENT_TRANSFER` | Suhbatni boshqa AI agentga beradi | `action.targetAgentId` | Ixtiyoriy — o'tkazish muvaffaqiyatsiz bo'lsa |
+| `SMS` | Qo'ng'iroq davomida SMS yuboradi | `action.smsText` (`{{fact}}` bilan, ≤ 1600 belgi) | Kamida bitta |
+| `EXTRACT_VARIABLE` | Suhbatdan natija qiymatlarini ajratib oladi | `action.extractFields` — `outcomeSchema` dagi nomlar | Kamida bitta |
+| `CODE` | Qisqa skriptni faktlar ustida ishga tushiradi | `action.code` (≤ 20 000 belgi) | Kamida bitta |
+| `ENDING` | `staticLine` ni aytadi va go'shakni qo'yadi | — | **Bo'lmaydi** |
+| `NOTE` | Canvas'dagi izoh; qo'ng'iroq unga hech qachon kirmaydi | — | Bo'lmaydi; hech bir bosqich NOTE'ga o'tolmaydi |
+
+#### Qo'ng'iroqda qanday ishlaydi
+
+Model `transitionTo` bilan bosqichga o'tganda, quyidagi turlar **kodda, modelsiz** darhol bajariladi va
+qo'ng'iroq keyingi bosqichga o'tadi. Keyingi bosqich `branches` dan (birinchi rost shart), u bo'lmasa birinchi
+`allowedTransitions` dan olinadi. Zanjir gaplashadigan yoki modelni kutadigan bosqichda to'xtaydi:
+
+| Tur | Kodda nima bo'ladi |
+|---|---|
+| `LOGIC_SPLIT` | `branches` tekshiriladi |
+| `PRESS_DIGIT` | DTMF yuboriladi, `w` — 500 ms pauza. Faqat chiquvchi qo'ng'iroqda ishlaydi |
+| `SMS` | `smsText` faktlar bilan to'ldirilib yuboriladi. Agentda mid-call SMS o'chiq bo'lsa ham ishlaydi; modelning `sendMidCallSms` tool'i esa avvalgidek agent sozlamasiga bog'liq |
+| `CODE` | JavaScript GraalJS sandbox'da ishga tushadi (Java, fayl, tarmoq yo'q; 1 soniya va 1 mln statement limiti). Skript funksiya tanasi: `vars` (faktlar + yozilgan natijalar) ni o'qiydi va obyekt qaytaradi, masalan `return { segment: vars.debtAmount > 1000000 ? 'katta' : 'kichik' };`. Qaytgan maydonlar natijaga (`outcome`) yoziladi va keyingi `branches` ularni ko'radi. Xato yoki timeout bo'lsa hech narsa yozilmaydi va qo'ng'iroq davom etadi |
+| `AGENT_TRANSFER` | Qo'ng'iroq `targetAgentId` agentining nashr qilingan ssenariysi bilan, uning start bosqichidan davom etadi. Ovoz o'zgarmaydi. O'tkazib bo'lmasa (agent boshqa kompaniyaniki, nashr qilinmagan yoki realtime qo'ng'iroq) birinchi `allowedTransitions` ga o'tadi |
+| `ENDING`, `CALL_TRANSFER` | Model to'g'ridan-to'g'ri o'tgan bo'lsa (uning `staticLine` i oldingi bosqich promptida berilgan va aytilgan), qo'ng'iroq darhol yopiladi yoki o'tkaziladi. Boshqa tugun orqali kelingan bo'lsa, model `staticLine` ni aytib `endCall` / `requestHumanTransfer` ni chaqiradi. `CALL_TRANSFER` raqami agentning transfer raqami va navbatidan ustun turadi |
+
+`FUNCTION`, `MCP` va `EXTRACT_VARIABLE` ning ishi modelniki, chunki argumentlarni suhbatdan oladi. Cascade'da bu ikki
+avtomatik turn'da bajariladi, mijoz gapirishini kutmasdan: (1) tool chaqiriladi (`EXTRACT_VARIABLE` uchun —
+`extractVariables`, `extractFields` dagi har bir maydon uchun bitta parametr), (2) natijaga qarab keyingi
+bosqichga o'tiladi. Realtime'da bu vazifa `transitionTo` natijasida aytiladi; `extractVariables` tool'i va bosqich
+almashganda instructions'ni yangilash realtime uchun keyingi bosqichda (3) ulanadi.
+
+`globalCondition` li bosqichlar har bir bosqichning "keyingi bosqichlar" ro'yxatida turadi va ularga
+`requiredOutcomes` bajarilmagan bo'lsa ham o'tish mumkin. `transitionMode: FLEX` da ro'yxatga barcha CONVERSATION
+bosqichlari (maqsadi bilan) qo'shiladi. Faktlar va natijalar `branches` da bitta lug'at sifatida o'qiladi, nomi
+bir xil bo'lsa natija ustun turadi.
+
+Xatolar (`SCENARIO_DEFINITION_INVALID`, `errors` ichida): `<TYPE> stage X needs a transition to pass the call on`,
+`ENDING stage X cannot have transitions`, `NOTE stage X cannot have transitions`, `stage X transitions to NOTE Y`,
+`global stage X needs a non-empty globalCondition and cannot be a NOTE`,
+`LOGIC_SPLIT stage X needs branches ending with an ALWAYS branch`,
+`LOGIC_SPLIT stage X decides by branches only, not transitionConditions`, `FUNCTION stage X needs action.toolName`,
+`MCP stage X needs action.mcpConnectionId and action.toolName`,
+`CALL_TRANSFER stage X needs action.transferTo as a phone number`,
+`PRESS_DIGIT stage X needs action.digits of 0-9, *, # and w`, `AGENT_TRANSFER stage X needs action.targetAgentId`,
+`SMS stage X needs action.smsText`, `SMS stage X text must not exceed 1600 characters`,
+`EXTRACT_VARIABLE stage X needs action.extractFields`,
+`EXTRACT_VARIABLE stage X extracts Y, which is not in outcomeSchema`, `CODE stage X needs action.code`,
+`CODE stage X code must not exceed 20000 characters`.
+
+```json
+{
+  "startStageId": "GREETING",
+  "transitionMode": "RIGID",
+  "stages": [
+    { "id": "GREETING", "purpose": "Salomlashing va mijozni tasdiqlang",
+      "position": { "x": 120, "y": 80 }, "transitionConditions": { "SPLIT": "Mijoz o'zi ekanini tasdiqladi" } },
+    { "id": "SPLIT", "type": "LOGIC_SPLIT", "position": { "x": 480, "y": 80 },
+      "allowedTransitions": ["NOTICE", "BYE"],
+      "branches": [
+        { "fact": "debtAmount", "operator": "GREATER", "value": "0", "goTo": "NOTICE" },
+        { "operator": "ALWAYS", "goTo": "BYE" } ] },
+    { "id": "NOTICE", "purpose": "Qarz haqida xabar bering va to'lov sanasini so'rang", "allowedTransitions": ["BYE"] },
+    { "id": "HUMAN", "type": "CALL_TRANSFER", "globalCondition": "Mijoz operator bilan gaplashmoqchi",
+      "action": { "transferTo": "+998712000000", "transferMode": "WARM" } },
+    { "id": "BYE", "type": "ENDING", "staticLine": "Rahmat, xayr!" }
+  ]
+}
+```
 
 ---
 
@@ -399,7 +494,7 @@ model gapni so'zma-so'z aytadi:
 - realtime'da bosqichlar ro'yxatida: `Birinchi gap (AYNAN shu): «…»`.
 
 > ⚠️ Gapni kod emas, model aytadi: pipeline'da bosqich gapi o'tish bilan bir turnda tuziladi.
-> Pul summalarini baribir `FactGuard` tekshiradi. Birinchi bosqichda ruxsat yo'q — uni agentning `firstMessage` i ochadi.
+> Pul summalarini baribir `FactGuard` tekshiradi. Start bosqichida ruxsat yo'q — uni agentning `firstMessage` i ochadi.
 
 **`requiredOutcomes`** — bosqichdan chiqish uchun ro'yxatdagi natijalardan **kamida bittasi**
 (`recordPaymentPromise` → `promisedDate`, `recordRefusalReason` → `reasonCode`, …) shu qo'ng'iroqda yozilgan

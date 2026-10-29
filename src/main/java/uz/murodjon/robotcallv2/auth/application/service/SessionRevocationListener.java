@@ -4,6 +4,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
+import uz.murodjon.robotcallv2.company.domain.event.CompanyFeaturesChangedEvent;
 import uz.murodjon.robotcallv2.company.domain.event.CompanySuspendedEvent;
 import uz.murodjon.robotcallv2.role.domain.event.RoleChangedEvent;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
@@ -26,6 +27,11 @@ public class SessionRevocationListener {
     public SessionRevocationListener(SessionUseCase sessionUseCase, UserUseCase userUseCase) {
         this.sessionUseCase = sessionUseCase;
         this.userUseCase = userUseCase;
+    }
+
+    @EventListener
+    public void revokeOnCompanyFeaturesChanged(CompanyFeaturesChangedEvent event) {
+        userUseCase.list(event.companyId()).forEach(user -> sessionUseCase.revokeAllForUser(user.id()));
     }
 
     /** Login and refresh refuse a suspended company; this ends the sessions already open. */

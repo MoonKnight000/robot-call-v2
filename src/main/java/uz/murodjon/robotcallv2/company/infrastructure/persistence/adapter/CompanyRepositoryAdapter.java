@@ -2,36 +2,41 @@ package uz.murodjon.robotcallv2.company.infrastructure.persistence.adapter;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyFeatureEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyIntegrationAccessEntity;
+import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanySwitchRow;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.mapper.CompanyEntityMapper;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.StoredFileJpaRepository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
 
 @Component
 public class CompanyRepositoryAdapter implements CompanyRepository {
 
     private final CompanyJpaRepository jpaRepository;
-    private final JdbcTemplate jdbcTemplate;
     private final CompanyEntityMapper mapper;
     private final StoredFileJpaRepository storedFileJpaRepository;
 
-    public CompanyRepositoryAdapter(CompanyJpaRepository jpaRepository, JdbcTemplate jdbcTemplate,
+    public CompanyRepositoryAdapter(CompanyJpaRepository jpaRepository,
                                     CompanyEntityMapper mapper,
                                     StoredFileJpaRepository storedFileJpaRepository) {
         this.jpaRepository = jpaRepository;
-        this.jdbcTemplate = jdbcTemplate;
         this.mapper = mapper;
         this.storedFileJpaRepository = storedFileJpaRepository;
     }
@@ -45,16 +50,9 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
         return jpaRepository.save(entity).getId();
     }
 
-    /**
-     * Native SQL rather than JPA: {@code company.id} is {@code GenerationType.IDENTITY},
-     * so a persist would discard the caller's id and let the sequence pick another one.
-     */
     @Override
     public void createWithId(long id, String name) {
-        jdbcTemplate.update(
-                "INSERT INTO company(id, name, status, created_at) VALUES (?, ?, ?, now()) "
-                        + "ON CONFLICT (id) DO NOTHING",
-                id, name, CompanyStatus.ACTIVE.name());
+        jpaRepository.insertWithIdIfAbsent(id, name);
     }
 
     @Override
@@ -93,11 +91,35 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
     }
 
     @Override
-    public void updateMaxConcurrentCalls(long id, Integer maxConcurrentCalls) {
+    public void updatePlatformSettings(long id, Company company) {
         jpaRepository.findById(id).ifPresent(entity -> {
-            entity.setMaxConcurrentCalls(maxConcurrentCalls);
+            Instant now = Instant.now();
+            entity.setName(company.name());
+            entity.setAddress(company.address());
+            entity.setMaxConcurrentCalls(company.maxConcurrentCalls());
+            entity.setExpiresAt(company.expiresAt());
+            syncSwitchRows(Feature.findSwitchable(), company.disabledFeatures(), entity.getFeatures(),
+                    CompanyFeatureEntity::getFeature, feature -> {
+                        CompanyFeatureEntity row = new CompanyFeatureEntity();
+                        row.setCompany(entity);
+                        row.setFeature(feature);
+                        return row;
+                    }, now);
+            syncSwitchRows(List.of(IntegrationProvider.values()), company.disabledIntegrations(),
+                    entity.getIntegrationAccess(), CompanyIntegrationAccessEntity::getProvider, provider -> {
+                        CompanyIntegrationAccessEntity row = new CompanyIntegrationAccessEntity();
+                        row.setCompany(entity);
+                        row.setProvider(provider);
+                        return row;
+                    }, now);
             jpaRepository.save(entity);
         });
+    }
+
+    @Override
+    public List<Company> findActiveExpiredBy(Instant now) {
+        return jpaRepository.findByStatusAndExpiresAtLessThanEqual(CompanyStatus.ACTIVE, now).stream()
+                .map(mapper::toCompany).toList();
     }
 
     @Override
@@ -108,7 +130,8 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
     @Override
     public PageableData<Company> findPage(CompanyFilter filter) {
         // The page carries its total, so no second count query of our own.
-        Page<CompanyEntity> page = jpaRepository.findAll(searchSpecification(filter.search()), filter.pageable());
+        Page<CompanyEntity> page = jpaRepository.findAll(
+                searchSpecification(filter.search()).and(statusSpecification(filter.status())), filter.pageable());
         return PageableData.of(page.getContent().stream().map(mapper::toCompany).toList(),
                 filter.pageOrDefault(), filter.sizeOrDefault(), page.getTotalElements());
     }
@@ -120,6 +143,35 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
                 ? cb.conjunction()
                 : cb.or(cb.like(cb.lower(root.get("name")), pattern, LikePatterns.ESCAPE),
                         cb.like(cb.lower(root.get("address")), pattern, LikePatterns.ESCAPE));
+    }
+
+    /** The given status only; with none, every company that is not soft-deleted. */
+    private static Specification<CompanyEntity> statusSpecification(CompanyStatus status) {
+        return (root, query, cb) -> status == null
+                ? cb.notEqual(root.get("status"), CompanyStatus.DELETED)
+                : cb.equal(root.get("status"), status);
+    }
+
+    /**
+     * One row per key, so the table reads as the company's full switchboard; a row's
+     * {@code updatedAt} moves only when it is new or its value changes.
+     */
+    private static <K, R extends CompanySwitchRow> void syncSwitchRows(Collection<K> keys, Set<K> disabled,
+                                                                      Set<R> rows, Function<R, K> keyOf,
+                                                                      Function<K, R> create, Instant now) {
+        for (K key : keys) {
+            R row = rows.stream().filter(existing -> keyOf.apply(existing) == key).findFirst()
+                    .orElseGet(() -> {
+                        R created = create.apply(key);
+                        rows.add(created);
+                        return created;
+                    });
+            boolean enabled = !disabled.contains(key);
+            if (row.getUpdatedAt() == null || row.isEnabled() != enabled) {
+                row.setEnabled(enabled);
+                row.setUpdatedAt(now);
+            }
+        }
     }
 
     /** Null when the company has no logo. */

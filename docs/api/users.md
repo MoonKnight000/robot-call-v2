@@ -165,3 +165,27 @@ o'zingizni bloklab bo'lmaydi, `USER_EDIT` huquqiga ega yagona faol foydalanuvchi
 bloklab bo'lmaydi — ikkalasi ham `409`.
 
 **Javob** — yangilangan `UserRow`.
+
+---
+
+## Platforma: istalgan kompaniya foydalanuvchilari — `/api/companies/{companyId}/…`
+
+**Faqat `PLATFORM_ADMIN` (SUPERADMIN).** Yuqoridagi `/api/users` endpointlarining aynan o'zi, lekin kompaniya
+tokendan emas, URL'dagi `{companyId}` dan olinadi. Kompaniya yo'q bo'lsa — `404 COMPANY_NOT_FOUND`.
+Kompaniya `SUSPENDED`/`DELETED` bo'lsa ham ishlaydi.
+
+| Endpoint | Izoh |
+|---|---|
+| `GET /api/companies/{companyId}/users` | `UserRow[]` |
+| `GET /api/companies/{companyId}/users/{id}` | `UserRow` |
+| `GET /api/companies/{companyId}/roles` | kompaniya rollari (`RoleRow[]`) — invite uchun `roleId` tanlash |
+| `POST /api/companies/{companyId}/users/invite` | body — `InviteUserRequest`, javob — `InviteUserResponse` (aktivatsiya tokeni) |
+| `PUT /api/companies/{companyId}/users/{id}/role` | body — `{ "roleId": 5 }` |
+| `PUT /api/companies/{companyId}/users/{id}/block` · `.../unblock` | body yo'q |
+
+**Yangi kompaniyaning birinchi admini:** `POST /api/companies` → `GET .../roles` (kodi `ADMIN` bo'lgan rolning `id`si)
+→ `POST .../users/invite` → javobdagi tokenni egasiga berish (`POST /api/auth/activate`).
+
+Qoidalar oddiy `/api/users` bilan bir xil: o'zingizning rolingizni o'zgartira/o'zingizni bloklay olmaysiz,
+`USER_EDIT` li yagona faol foydalanuvchini bloklab yoki rolini tushirib bo'lmaydi (`409`). Farqi — platforma
+`DEVELOPER`/`SUPERADMIN` rollarini ham bera oladi.

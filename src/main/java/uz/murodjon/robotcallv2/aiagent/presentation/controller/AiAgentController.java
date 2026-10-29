@@ -51,6 +51,18 @@ public interface AiAgentController {
             @CurrentCompanyId long companyId,
             @Valid @RequestBody CreateAiAgentRequest request);
 
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/single-prompt")
+    ResponseEntity<ResponseData<AiAgentRow>> createSinglePrompt(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CreateSinglePromptAgentRequest request);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/conversation-flow")
+    ResponseEntity<ResponseData<AiAgentRow>> createConversationFlow(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CreateConversationFlowAgentRequest request);
+
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @PostMapping({"/filter", "/list"})
     ResponseEntity<ResponseData<PageableData<AiAgentRow>>> filter(

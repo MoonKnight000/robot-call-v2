@@ -1,0 +1,282 @@
+# Platform SIP trunks — PLATFORM_ADMIN sets up any company's trunks (PlatformSipTrunkController).
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/companies/{companyId}/sip-trunks:
+  post:
+    tags:
+    - Companies
+    summary: Trunk yaratish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_create
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/siptrunk.yaml#/CreateSipTrunkRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/siptrunk.yaml#/SipTrunkRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/sip-trunks/list:
+  post:
+    tags:
+    - Companies
+    summary: Ro'yxat
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_list
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/siptrunk.yaml#/SipTrunkFilter
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/siptrunk.yaml#/SipTrunkRowPage
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/sip-trunks/status:
+  get:
+    tags:
+    - Companies
+    summary: Barcha trunklar holati
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_getAllStatuses
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/siptrunk.yaml#/SipTrunkStatus
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/sip-trunks/{id}:
+  get:
+    tags:
+    - Companies
+    summary: Bitta trunk
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_get
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/siptrunk.yaml#/SipTrunkRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Companies
+    summary: Yangilash
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_update
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/siptrunk.yaml#/UpdateSipTrunkRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/siptrunk.yaml#/SipTrunkRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  delete:
+    tags:
+    - Companies
+    summary: O'chirish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_delete
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/siptrunk.yaml#/SipTrunkDeleteResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/companies/{companyId}/sip-trunks/{id}/default:
+  post:
+    tags:
+    - Companies
+    summary: Default qilish
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: platformSipTrunk_makeDefault
+    parameters:
+    - name: companyId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/siptrunk.yaml#/SipTrunkRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

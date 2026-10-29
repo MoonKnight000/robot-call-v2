@@ -53,7 +53,7 @@ public final class ScenarioCanvasSimulator {
             currentStage = definition.findStage(currentStageId);
         }
         if (currentStage == null) {
-            currentStage = definition.stages().get(0);
+            currentStage = definition.findStartStage();
             currentStageId = currentStage.id();
         }
 

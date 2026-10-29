@@ -19,8 +19,8 @@ public class IntegrationControllerImpl implements IntegrationController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<List<CrmCatalogEntry>>> catalog() {
-        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.findCatalog()));
+    public ResponseEntity<ResponseData<List<IntegrationCatalogEntry>>> catalog(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.findCatalog(companyId)));
     }
 
     @Override

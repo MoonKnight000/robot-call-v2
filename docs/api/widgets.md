@@ -84,6 +84,8 @@ The Website Widget module allows embedding real-time AI voice agents directly in
 
 **Response:** List of `WidgetRow` objects.
 
+All widgets of the company (every agent), newest first: `GET /api/widgets` — the same `WidgetRow` list, permission `AI_AGENT_READ`.
+
 ---
 
 ## 3. Get Widget Details

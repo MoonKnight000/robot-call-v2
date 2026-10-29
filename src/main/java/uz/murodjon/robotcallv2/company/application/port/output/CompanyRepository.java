@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.company.domain.entity.CompanyFilter;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface CompanyRepository {
@@ -27,8 +28,14 @@ public interface CompanyRepository {
 
     void updateStatus(long id, CompanyStatus status);
 
-    /** Null clears it back to the platform default. */
-    void updateMaxConcurrentCalls(long id, Integer maxConcurrentCalls);
+    /**
+     * What only the platform administrator sets, in one write: name, address, the concurrency limit
+     * (null = platform default), the end date (null = none) and the switched-off features and integrations.
+     */
+    void updatePlatformSettings(long id, Company company);
+
+    /** The ACTIVE companies whose end date is at or before {@code now}. */
+    List<Company> findActiveExpiredBy(Instant now);
 
     List<Company> findAllCompanies();
 

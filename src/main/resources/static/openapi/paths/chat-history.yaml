@@ -5,7 +5,7 @@
     tags:
     - Chat History
     summary: Suhbatlar ro'yxati (vidjet va Telegram)
-    description: '**Huquq:** `REPORT_READ`'
+    description: '**Huquq:** `CHAT_AGENT_READ`'
     operationId: chatHistory_list
     requestBody:
       required: true
@@ -39,7 +39,7 @@
     description: |-
       One conversation with what its tools recorded and the whole transcript.
 
-      **Huquq:** `REPORT_READ`
+      **Huquq:** `CHAT_AGENT_READ`
     operationId: chatHistory_get
     parameters:
     - name: id

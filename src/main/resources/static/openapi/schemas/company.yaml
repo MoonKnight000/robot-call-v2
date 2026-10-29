@@ -18,6 +18,20 @@ Company:
       format: int64
     address:
       type: string
+    disabledFeatures:
+      type: array
+      description: Switchable products the platform turned off for this company; empty — everything is on.
+      items:
+        $ref: ./role.yaml#/Feature
+    disabledIntegrations:
+      type: array
+      description: Integration providers the platform turned off for this company; empty — all are on.
+      items:
+        $ref: ./integration.yaml#/IntegrationProvider
+    expiresAt:
+      type: string
+      format: date-time
+      description: When the platform-set subscription ends; null — no end date.
   required:
   - id
 CompanyConfig:
@@ -83,6 +97,8 @@ CompanyFilter:
   properties:
     search:
       type: string
+    status:
+      $ref: '#/CompanyStatus'
     page:
       type: integer
       format: int32
@@ -131,6 +147,8 @@ CompanyStatus:
   enum:
   - ACTIVE
   - SUSPENDED
+  - DELETED
+  - EXPIRED
   description: company.status (ROADMAP B.1).
 CreateCompanyRequest:
   type: object
@@ -211,10 +229,40 @@ UpdateCompanyRequest:
       maxLength: 255
   required:
   - name
-UpdateCompanyStatusRequest:
+UpdateCompanyByPlatformRequest:
   type: object
+  description: Every field is replaced. ACTIVE and EXPIRED both mean not closed by the platform — which of the two follows expiresAt.
   properties:
+    name:
+      type: string
+      maxLength: 120
+    address:
+      type: string
+      maxLength: 255
     status:
       $ref: '#/CompanyStatus'
+    expiresAt:
+      type: string
+      format: date-time
+      description: null — no end date.
+    maxConcurrentCalls:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 10000
+      description: null — the platform default.
+    disabledFeatures:
+      type: array
+      description: Switchable products to turn off (never CORE). An empty array turns everything on.
+      items:
+        $ref: ./role.yaml#/Feature
+    disabledIntegrations:
+      type: array
+      description: Integration providers the platform turned off for this company; empty — all are on.
+      items:
+        $ref: ./integration.yaml#/IntegrationProvider
   required:
+  - name
   - status
+  - disabledFeatures
+  - disabledIntegrations

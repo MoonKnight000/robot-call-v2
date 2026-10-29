@@ -102,6 +102,9 @@ public class SystemPromptFactory {
         if (memory.preferredName() != null) {
             sb.append("- Preferred form of address: ").append(memory.preferredName()).append('\n');
         }
+        if (memory.preferredLanguage() != null && !memory.preferredLanguage().isBlank()) {
+            sb.append("- Preferred language: ").append(memory.preferredLanguage()).append('\n');
+        }
         if (memory.operatorNotes() != null) {
             sb.append("- Operator note: ").append(memory.operatorNotes()).append('\n');
         }
@@ -273,6 +276,9 @@ public class SystemPromptFactory {
         appendMemory(sb, c.memory());
 
         Object nameObj = c != null ? c.fact("clientName") : null;
+        if ((nameObj == null || nameObj.toString().isBlank()) && c != null && c.memory() != null && c.memory().preferredName() != null && !c.memory().preferredName().isBlank()) {
+            nameObj = c.memory().preferredName();
+        }
         String clientName = nameObj != null && !nameObj.toString().isBlank() ? nameObj.toString().trim() : null;
         String sampleIdentityUz = (clientName != null ? clientName : "Murodjon") + " aka, yaxshimisiz?";
 
@@ -639,7 +645,7 @@ public class SystemPromptFactory {
         StringBuilder sb = new StringBuilder();
         sb.append("[SYSTEM: CURRENT STAGE: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
-        sb.append("Allowed next stages: ").append(allowedNext(stage)).append('\n');
+        sb.append("Allowed next stages: ").append(allowedNext(s.scenario(), stage)).append('\n');
         appendStaticLines(sb, s.scenario(), stage, s.context() != null ? s.context().facts() : Map.of());
         appendRecorded(sb, s.outcome());
         // The FSM refuses an edge that is not in `allowedNext`, and a model that spoke a
@@ -840,8 +846,8 @@ public class SystemPromptFactory {
         return question.isEmpty() ? null : question;
     }
 
-    private static String allowedNext(StageDef stage) {
-        String next = describeTransitions(stage);
+    private static String allowedNext(ScenarioDefinition scenario, StageDef stage) {
+        String next = describeReachableStages(scenario, stage);
         return next.isEmpty() ? "(final state)" : next;
     }
 
@@ -853,10 +859,7 @@ public class SystemPromptFactory {
      */
     private static void appendStaticLines(StringBuilder sb, ScenarioDefinition scenario, StageDef stage,
                                           Map<String, Object> facts) {
-        if (scenario == null || stage == null || stage.allowedTransitions() == null) {
-            return;
-        }
-        for (String target : stage.allowedTransitions()) {
+        for (String target : StageEntry.findReachableStages(scenario, stage)) {
             String line = renderStaticLine(scenario.findStage(target), facts);
             if (line != null) {
                 sb.append("- If you move to ").append(target).append(", say EXACTLY this: «")
@@ -908,6 +911,32 @@ public class SystemPromptFactory {
             String condition = stage.transitionConditions() == null ? null : stage.transitionConditions().get(target);
             if (condition != null && !condition.isBlank()) {
                 sb.append(" (if: ").append(condition.trim()).append(')');
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * {@link #describeTransitions}, followed by the stages the model may also move to without a
+     * drawn edge ({@link StageEntry#findReachableStages}): each global stage with its condition
+     * and, in a FLEX flow, each other conversation stage with its purpose.
+     */
+    static String describeReachableStages(ScenarioDefinition scenario, StageDef stage) {
+        StringBuilder sb = new StringBuilder(describeTransitions(stage));
+        List<String> drawn = stage == null || stage.allowedTransitions() == null ? List.of() : stage.allowedTransitions();
+        for (String target : StageEntry.findReachableStages(scenario, stage)) {
+            if (drawn.contains(target)) {
+                continue;
+            }
+            StageDef other = scenario.findStage(target);
+            if (!sb.isEmpty()) {
+                sb.append(", ");
+            }
+            sb.append(target);
+            if (other.globalCondition() != null && !other.globalCondition().isBlank()) {
+                sb.append(" (at any time, if: ").append(other.globalCondition().trim()).append(')');
+            } else if (other.purpose() != null && !other.purpose().isBlank()) {
+                sb.append(" (if the conversation is already there: ").append(other.purpose().trim()).append(')');
             }
         }
         return sb.toString();

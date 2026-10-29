@@ -5,6 +5,7 @@ import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.company.domain.enums.Language;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 
 import java.time.Instant;
 import java.time.LocalTime;
@@ -71,6 +72,10 @@ public class CompanyConfigEntity {
     @Column(name = "scorecard_review_threshold", nullable = false)
     private int scorecardReviewThreshold = CompanyConfig.DEFAULT_SCORECARD_REVIEW_THRESHOLD;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "telephony_engine", nullable = false, length = 32)
+    private TelephonyEngine telephonyEngine = TelephonyEngine.ASTERISK;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -130,18 +135,8 @@ public class CompanyConfigEntity {
         return supportedLanguages;
     }
 
-    /**
-     * Replaces the contents, never the list itself — a collection table whose instance is
-     * swapped is re-inserted whole, and the rows it already has collide with their own copies.
-     */
     public void setSupportedLanguages(List<Language> supportedLanguages) {
-        if (supportedLanguages == this.supportedLanguages) {
-            return;
-        }
-        this.supportedLanguages.clear();
-        if (supportedLanguages != null) {
-            this.supportedLanguages.addAll(supportedLanguages);
-        }
+        this.supportedLanguages = supportedLanguages;
     }
 
     public String getDisclosureText() {
@@ -198,6 +193,14 @@ public class CompanyConfigEntity {
 
     public void setScorecardReviewThreshold(int scorecardReviewThreshold) {
         this.scorecardReviewThreshold = scorecardReviewThreshold;
+    }
+
+    public TelephonyEngine getTelephonyEngine() {
+        return telephonyEngine != null ? telephonyEngine : TelephonyEngine.ASTERISK;
+    }
+
+    public void setTelephonyEngine(TelephonyEngine telephonyEngine) {
+        this.telephonyEngine = telephonyEngine != null ? telephonyEngine : TelephonyEngine.ASTERISK;
     }
 
     public Instant getCreatedAt() {

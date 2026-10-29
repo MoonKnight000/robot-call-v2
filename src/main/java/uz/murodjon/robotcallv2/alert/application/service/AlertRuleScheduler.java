@@ -17,7 +17,7 @@ import java.time.Clock;
 import java.time.Instant;
 
 /**
- * Evaluates every enabled alert rule every few minutes, on one instance at a time. A breached
+ * Evaluates every enabled alert rule of a company that has alerting switched on, every few minutes, on one instance at a time. A breached
  * rule notifies its company ({@code ALERT_TRIGGERED}: the panel bell plus whichever channels
  * the company's notification settings send that type to), then stays quiet for its cooldown.
  * One rule failing to evaluate does not stop the others.

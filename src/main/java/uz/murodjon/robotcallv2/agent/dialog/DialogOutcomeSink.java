@@ -61,6 +61,9 @@ public interface DialogOutcomeSink {
     /** Settle the disposition and end the conversation. */
     void end(Disposition disposition);
 
+    /** Whether the call has been closed — by a tool, a limit or a closing stage. */
+    boolean isEnded();
+
     /** Why the client asked never to be called again (§11.4) — recorded against the number at teardown. */
     void setDoNotCallReason(String reason);
 
@@ -141,4 +144,13 @@ public interface DialogOutcomeSink {
      *         send failed, which the tool reports back instead of claiming the SMS went
      */
     boolean triggerMidCallSms(String text);
+
+    /**
+     * Continues this call under the published scenario of the company's agent {@code agentId}
+     * — an {@code AGENT_TRANSFER} stage. The voice stays this call's; what is said changes.
+     *
+     * @return whether the call moved — {@code false} when the agent is not the company's, is
+     *         not published, or this pipeline cannot swap scenarios mid-call
+     */
+    boolean handOffToAgent(long agentId);
 }

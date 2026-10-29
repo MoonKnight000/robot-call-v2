@@ -31,6 +31,13 @@ public interface McpController {
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     ResponseEntity<ResponseData<List<McpConnectionRow>>> connections(@CurrentCompanyId long companyId);
 
+    /** Connections the agent may call; attached and detached with the two endpoints at the bottom. */
+    @GetMapping("/agents/{agentId}/connections")
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    ResponseEntity<ResponseData<List<McpConnectionRow>>> agentConnections(
+            @CurrentCompanyId long companyId,
+            @PathVariable long agentId);
+
     @PostMapping("/connections")
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     ResponseEntity<ResponseData<McpConnectionRow>> createConnection(

@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.chat.application.dto.RegisterWebhookRequest;
 import uz.murodjon.robotcallv2.chat.application.dto.SaveTelegramBotRequest;
 import uz.murodjon.robotcallv2.chat.application.dto.TelegramBotRow;
@@ -63,10 +65,12 @@ public class TelegramService implements TelegramUseCase {
     private final SecretUseCase secretUseCase;
     private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase auditUseCase;
+    private final CompanyUseCase companyUseCase;
 
     public TelegramService(ChatConversations conversations, ChatSessionRepository chatRepository,
                            TelegramBotRepository botRepository, TelegramApiPort telegramApi,
-                           SecretUseCase secretUseCase, AiAgentUseCase aiAgentUseCase, AuditUseCase auditUseCase) {
+                           SecretUseCase secretUseCase, AiAgentUseCase aiAgentUseCase, AuditUseCase auditUseCase,
+                           CompanyUseCase companyUseCase) {
         this.conversations = conversations;
         this.chatRepository = chatRepository;
         this.botRepository = botRepository;
@@ -74,6 +78,7 @@ public class TelegramService implements TelegramUseCase {
         this.secretUseCase = secretUseCase;
         this.aiAgentUseCase = aiAgentUseCase;
         this.auditUseCase = auditUseCase;
+        this.companyUseCase = companyUseCase;
     }
 
     @Override
@@ -134,6 +139,11 @@ public class TelegramService implements TelegramUseCase {
         if (!MessageDigest.isEqual(bot.webhookSecret().getBytes(StandardCharsets.UTF_8),
                 (secretToken == null ? "" : secretToken).getBytes(StandardCharsets.UTF_8))) {
             throw new ForbiddenException(ErrorCode.TELEGRAM_SECRET_MISMATCH);
+        }
+        // Acknowledged and dropped, not refused: Telegram resends anything it does not get a 2xx for.
+        if (!companyUseCase.isFeatureAvailable(bot.companyId(), Feature.CHAT_AGENT)) {
+            log.info("[telegram bot {}] update ignored: company {} is closed or has the chat agent switched off", botId, bot.companyId());
+            return;
         }
         TelegramUpdate message = TelegramUpdates.read(update);
         if (message == null) {

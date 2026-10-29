@@ -7,6 +7,9 @@ import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowFilter;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowGraph;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
+import java.util.Collection;
+import java.util.Map;
+
 public interface CallFlowUseCase {
 
     CallFlow create(long companyId, SaveCallFlowRequest request);
@@ -30,4 +33,7 @@ public interface CallFlowUseCase {
 
     /** What a live call runs; null when the flow is gone or was never published. */
     CallFlowGraph findPublishedGraph(long companyId, long id);
+
+    /** Names of the company's flows among {@code ids}; ids of other companies or deleted flows are absent. */
+    Map<Long, String> findNamesByIds(long companyId, Collection<Long> ids);
 }

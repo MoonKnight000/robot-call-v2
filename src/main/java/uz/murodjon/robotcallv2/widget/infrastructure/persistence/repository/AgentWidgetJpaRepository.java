@@ -8,6 +8,8 @@ import java.util.Optional;
 
 public interface AgentWidgetJpaRepository extends JpaRepository<AgentWidgetEntity, Long> {
 
+    List<AgentWidgetEntity> findByCompanyIdOrderByCreatedAtDesc(long companyId);
+
     List<AgentWidgetEntity> findByCompanyIdAndAgentIdOrderByCreatedAtDesc(long companyId, long agentId);
 
     Optional<AgentWidgetEntity> findByCompanyIdAndId(long companyId, long id);

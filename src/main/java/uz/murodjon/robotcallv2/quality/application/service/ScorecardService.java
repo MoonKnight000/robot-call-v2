@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
@@ -24,6 +25,7 @@ import uz.murodjon.robotcallv2.quality.domain.enums.CriterionAnswer;
 import uz.murodjon.robotcallv2.quality.domain.enums.ScorecardReviewStatus;
 import uz.murodjon.robotcallv2.quality.domain.service.ScoreCalculator;
 import uz.murodjon.robotcallv2.security.CurrentUser;
+import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -50,22 +52,23 @@ public class ScorecardService implements ScorecardUseCase {
     private final ScorecardJudgePort scorecardJudgePort;
     private final AuditUseCase auditUseCase;
     private final CompanyConfigUseCase companyConfigUseCase;
+    private final CompanyUseCase companyUseCase;
     private final NotificationUseCase notificationUseCase;
     private final CurrentUser currentUser;
     private final ObjectProvider<CallMetrics> callMetricsProvider;
 
     public ScorecardService(ScorecardCriterionRepository scorecardCriterionRepository,
                             CallScorecardRepository callScorecardRepository, ScorecardJudgePort scorecardJudgePort,
-                            AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase,
+                            AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase, CompanyUseCase companyUseCase,
                             NotificationUseCase notificationUseCase, CurrentUser currentUser) {
         this(scorecardCriterionRepository, callScorecardRepository, scorecardJudgePort, auditUseCase,
-                companyConfigUseCase, notificationUseCase, currentUser, null);
+                companyConfigUseCase, companyUseCase, notificationUseCase, currentUser, null);
     }
 
     @Autowired
     public ScorecardService(ScorecardCriterionRepository scorecardCriterionRepository,
                             CallScorecardRepository callScorecardRepository, ScorecardJudgePort scorecardJudgePort,
-                            AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase,
+                            AuditUseCase auditUseCase, CompanyConfigUseCase companyConfigUseCase, CompanyUseCase companyUseCase,
                             NotificationUseCase notificationUseCase, CurrentUser currentUser,
                             ObjectProvider<CallMetrics> callMetricsProvider) {
         this.scorecardCriterionRepository = scorecardCriterionRepository;
@@ -73,6 +76,7 @@ public class ScorecardService implements ScorecardUseCase {
         this.scorecardJudgePort = scorecardJudgePort;
         this.auditUseCase = auditUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
+        this.companyUseCase = companyUseCase;
         this.notificationUseCase = notificationUseCase;
         this.currentUser = currentUser;
         this.callMetricsProvider = callMetricsProvider;
@@ -168,6 +172,9 @@ public class ScorecardService implements ScorecardUseCase {
 
     @Override
     public CallScorecard recordCallScorecard(long companyId, long callId, Long operatorUserId, String transcript) {
+        if (!companyUseCase.isFeatureAvailable(companyId, Feature.QUALITY_ASSURANCE)) {
+            return null;
+        }
         if (transcript == null || transcript.isBlank()) {
             return null;
         }

@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
+import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
+
 import java.util.List;
 
 /**
@@ -94,8 +96,18 @@ public class ScenarioDefinitionBuilder {
         return this;
     }
 
+    public ScenarioDefinitionBuilder startStageId(String startStageId) {
+        this.startStageId = startStageId;
+        return this;
+    }
+
+    public ScenarioDefinitionBuilder transitionMode(TransitionMode transitionMode) {
+        this.transitionMode = transitionMode;
+        return this;
+    }
+
     public ScenarioDefinition build() {
         return new ScenarioDefinition(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails,
-                disclosureText, factWebhook, styleExamples, globalNodes, callPurpose);
+                disclosureText, factWebhook, styleExamples, globalNodes, callPurpose, startStageId, transitionMode);
     }
 }

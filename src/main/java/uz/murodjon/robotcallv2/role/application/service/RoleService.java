@@ -107,7 +107,7 @@ public class RoleService implements RoleUseCase {
                     .filter(permission -> permission.group() == group)
                     .toList();
             if (!permissions.isEmpty()) {
-                groups.add(new PermissionGroupRow(group, permissions));
+                groups.add(new PermissionGroupRow(group, group.feature(), permissions));
             }
         }
         return groups;
