@@ -6,6 +6,13 @@ va natijani CRM ga yozadi.
 **Stack:** Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Asterisk 20 (ari4java) ·
 PostgreSQL + Flyway · RabbitMQ · Redis · MinIO · Netty (RTP) · ONNX Runtime (VAD, turn)
 **Base paket:** `uz.murodjon.robotcallv2` · bitta Gradle moduli
+**Frontend:** alohida repo `../robot-call-front` (React + Vite + TypeScript, o'z `CLAUDE.md`/`GEMINI.md` qoidalari bilan).
+Sessiya `--add-dir ../robot-call-front` bilan ochilgan bo'lsa, frontend o'qiladi, lekin **foydalanuvchi aytmaguncha
+o'zgartirilmaydi**.
+**API o'zgarganda (endpoint, maydon, status kod, rol):** backend va `docs/api/` (§7) o'zgartirilgach, javob oxirida
+"Frontend'ga ta'siri" ro'yxati beriladi — frontend'da shu o'zgarishga tegishli fayllar va nima moslashishi kerak
+(faqat o'qib topiladi, tahrir qilinmaydi). Frontend'ni moslashtirish alohida so'rov. Frontend backend javobini
+taxmin qilmaydi; `docs/api/` da yo'q maydon — avval backendga.
 Bosqichlar tarixi: `docs/claude/CLAUDE.md`
 
 ---
