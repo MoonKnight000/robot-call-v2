@@ -167,7 +167,8 @@ public class CartesiaTtsProvider implements TtsProvider {
                     String language = voice.path("language").asText("");
                     if (!id.isBlank() && !language.isBlank()) {
                         voices.add(new ProviderVoice(id, voiceLabel(voice, id),
-                                Set.of(language.split("-")[0].toLowerCase(Locale.ROOT))));
+                                Set.of(language.split("-")[0].toLowerCase(Locale.ROOT)),
+                                voice.path("gender").asText(null), null));
                     }
                 }
                 after = !root.isArray() && root.path("has_more").asBoolean(false)

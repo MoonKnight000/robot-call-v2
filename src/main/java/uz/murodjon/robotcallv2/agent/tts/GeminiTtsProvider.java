@@ -252,7 +252,8 @@ public class GeminiTtsProvider implements TtsProvider {
                     for (JsonNode voice : root.path("voices")) {
                         String id = voice.path("id").asText("");
                         if (!id.isBlank()) {
-                            voices.add(new ProviderVoice(id, voiceLabel(voice, id), voiceLanguages(voice)));
+                            voices.add(new ProviderVoice(id, voiceLabel(voice, id), voiceLanguages(voice),
+                                    voice.path("gender").asText(null), null));
                         }
                     }
                     // REST spells the fields in camelCase; the SDK docs show snake_case. Accept either.

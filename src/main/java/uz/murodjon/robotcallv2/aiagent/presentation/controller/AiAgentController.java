@@ -149,6 +149,29 @@ public interface AiAgentController {
             @CurrentCompanyId long companyId,
             @PathVariable long id);
 
+    /**
+     * What a minute of the agent's talk costs (UZS), its turn latency and tokens per turn —
+     * measured on its last calls, estimated from its prompt and the rates before it has any
+     * (docs/api/ai-agents.md §14.3).
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/estimate")
+    ResponseEntity<ResponseData<AiAgentEstimateResponse>> estimate(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /**
+     * One turn of the studio's "LLM test" with the agent's draft, through the same text turn a
+     * call runs (docs/api/ai-agents.md §14.4). Nothing is stored; the page sends the conversation
+     * back every turn. Costs model tokens, so it needs the right to change the agent.
+     */
+    @PreAuthorize("hasAnyAuthority('AI_AGENT_EDIT', 'AGENT_EVAL_RUN')")
+    @PostMapping("/{id:\\d+}/test-chat")
+    ResponseEntity<ResponseData<AgentTestChatResponse>> testChat(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentTestChatRequest request);
+
     /** The candidate goes live for every caller. */
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping("/{id:\\d+}/rollout/promote")

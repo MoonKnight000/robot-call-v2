@@ -19,10 +19,12 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentCatalogUseC
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVersion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.TemplateDefaults;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentClearableField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVersionStatus;
 import uz.murodjon.robotcallv2.aiagent.domain.event.AiAgentClonedEvent;
@@ -47,6 +49,7 @@ import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -173,6 +176,39 @@ class AiAgentServiceTest {
         assertThat(written.getValue().name()).isEqualTo("Yangi nom");
         assertThat(written.getValue().script()).isEqualTo(agent().script());
         verify(auditUseCase).record(COMPANY_ID, "AI_AGENT_UPDATE", "ai_agent", String.valueOf(AGENT_ID), "Yangi nom");
+    }
+
+    /** A null field keeps the value, so clearFields is the way to empty one; the others stay. */
+    @Test
+    void updateAgentClearsTheListedFieldsAndKeepsTheRest() {
+        AgentWebhookConfig startHook = new AgentWebhookConfig("https://crm.example.uz/start", "POST", null, null, null, null);
+        AgentWebhookConfig endHook = new AgentWebhookConfig("https://crm.example.uz/end", "POST", null, null, null, null);
+        when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(agent().toBuilder()
+                .initiationWebhook(startHook)
+                .postCallWebhook(endHook)
+                .fastLlmModel("gemini-3.5-flash-lite")
+                .build());
+        when(repository.update(eq(COMPANY_ID), eq(AGENT_ID), any())).thenReturn(true);
+
+        service.updateAgent(COMPANY_ID, AGENT_ID, updateRequest("Agent", null, null,
+                Set.of(AgentClearableField.POST_CALL_WEBHOOK, AgentClearableField.FAST_LLM_MODEL)));
+
+        ArgumentCaptor<AiAgent> written = ArgumentCaptor.forClass(AiAgent.class);
+        verify(repository).update(eq(COMPANY_ID), eq(AGENT_ID), written.capture());
+        assertThat(written.getValue().postCallWebhook()).isNull();
+        assertThat(written.getValue().fastLlmModel()).isNull();
+        assertThat(written.getValue().initiationWebhook()).isEqualTo(startHook);
+    }
+
+    @Test
+    void updateAgentGivingAValueToAFieldItAlsoClearsIs400() {
+        when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(agent());
+        AgentWebhookConfig endHook = new AgentWebhookConfig("https://crm.example.uz/end", "POST", null, null, null, null);
+
+        assertRefused(() -> service.updateAgent(COMPANY_ID, AGENT_ID,
+                        updateRequest("Agent", null, endHook, Set.of(AgentClearableField.POST_CALL_WEBHOOK))),
+                ValidationException.class, ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT);
+        verify(repository, never()).update(anyLong(), anyLong(), any());
     }
 
     /** The simple form shows the profile the agent's engine choices match, and none once tuned by hand. */
@@ -316,11 +352,17 @@ class AiAgentServiceTest {
                 null,
                 null, null,
                 null, null,
-                null, null);
+                null, null, null, null);
     }
 
     /** Only the name and the lock version; everything else left as the agent has it. */
     private static UpdateAiAgentRequest updateRequest(String name, Long version) {
+        return updateRequest(name, version, null, null);
+    }
+
+    /** The name and lock version, plus a post-call webhook and fields to clear. */
+    private static UpdateAiAgentRequest updateRequest(String name, Long version, AgentWebhookConfig postCallWebhook,
+                                                      Set<AgentClearableField> clearFields) {
         return new UpdateAiAgentRequest(
                 name, null, null, null, null, null, null,
                 null, null, null,
@@ -328,9 +370,10 @@ class AiAgentServiceTest {
                 null, null, null, null,
                 null,
                 null, null,
-                null, null,
-                null, null,
-                version);
+                null, postCallWebhook,
+                null, null, null, null,
+                version,
+                clearFields);
     }
 
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {

@@ -70,6 +70,16 @@ AgentCallBehaviourDto:
     preConversationAudioFileId:
       type: integer
       format: int64
+AgentClearableField:
+  type: string
+  enum:
+  - INITIATION_WEBHOOK
+  - POST_CALL_WEBHOOK
+  - PRE_CONVERSATION_AUDIO_FILE_ID
+  - MID_CALL_SMS_TEMPLATE
+  - VOICEMAIL_MESSAGE
+  - FAST_LLM_MODEL
+  description: Optional agent setting `PUT /api/ai-agents/{id}` can remove through `clearFields`.
 AgentDataPolicyDto:
   type: object
   description: '`AiAgentDataPolicy` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
@@ -1056,6 +1066,12 @@ UpdateAiAgentRequest:
     version:
       type: integer
       format: int64
+    clearFields:
+      type: array
+      description: Optional settings to remove — the one way to empty a value, since a null field keeps it. A field also given a value in the same request is refused with 400 `AI_AGENT_CLEAR_FIELD_CONFLICT`.
+      items:
+        $ref: '#/AgentClearableField'
+      uniqueItems: true
   required:
   - name
 VoicemailAction:

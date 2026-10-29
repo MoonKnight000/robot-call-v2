@@ -151,6 +151,25 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('openai-onyx-ru',    'openai', 'ru-RU', 'onyx',    'Onyx — мужской, низкий', NULL)
 ON CONFLICT (id) DO NOTHING;
 
+-- The gender of the hand-kept voices, for the voice picker's filter (V6). A separate UPDATE
+-- because the insert above skips rows that already exist; a value already set — by the sync
+-- or by hand — is left alone. Their age is unknown, so age_group stays NULL.
+UPDATE tts_voice SET gender = 'FEMALE' WHERE gender IS NULL AND company_id IS NULL AND id IN (
+    'nigora', 'zamira', 'yulduz', 'alena', 'jane', 'omazh', 'dasha', 'julia', 'lera', 'masha', 'marina',
+    'saule_ru', 'zhanar_ru', 'zamira_ru', 'yulduz_ru', 'amira', 'saule', 'zhanar',
+    'gulnoza', 'gulnoza-neutral', 'gulnoza-cheerful', 'gulnoza-happy', 'gulnoza-sad',
+    'gemini-aoede-uz', 'gemini-kore-uz', 'gemini-aoede-ru', 'gemini-kore-ru',
+    'gemini-tts-aoede-uz', 'gemini-tts-kore-uz', 'gemini-tts-aoede-ru', 'gemini-tts-kore-ru',
+    'openai-nova-uz', 'openai-shimmer-uz', 'openai-sage-uz', 'openai-nova-ru', 'openai-shimmer-ru', 'openai-sage-ru');
+UPDATE tts_voice SET gender = 'MALE' WHERE gender IS NULL AND company_id IS NULL AND id IN (
+    'filipp', 'ermil', 'zahar', 'alexander', 'kirill', 'anton', 'madi_ru', 'madi', 'john',
+    'gemini-puck-uz', 'gemini-charon-uz', 'gemini-fenrir-uz', 'gemini-puck-ru', 'gemini-charon-ru', 'gemini-fenrir-ru',
+    'gemini-tts-puck-uz', 'gemini-tts-charon-uz', 'gemini-tts-fenrir-uz',
+    'gemini-tts-puck-ru', 'gemini-tts-charon-ru', 'gemini-tts-fenrir-ru',
+    'openai-echo-uz', 'openai-onyx-uz', 'openai-echo-ru', 'openai-onyx-ru');
+UPDATE tts_voice SET gender = 'NEUTRAL' WHERE gender IS NULL AND company_id IS NULL AND id IN (
+    'openai-alloy-uz', 'openai-alloy-ru');
+
 -- Model catalog: what an operator may pick for the company (§11 settings) or for one agent —
 -- the chat model (kind LLM), and since the speech engine moved onto the agent, the recognizer
 -- and synthesizer models too (kind STT/TTS). The label is refreshed on every reseed, the id is

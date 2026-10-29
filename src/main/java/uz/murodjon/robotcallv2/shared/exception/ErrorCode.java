@@ -110,6 +110,7 @@ public enum ErrorCode {
     ROLE_PERMISSION_NOT_HELD("you cannot grant %s — your own role does not have it"),
     INBOUND_ROUTE_DID_PLATFORM_ONLY("only a platform admin can assign or change a route's DID number"),
     HUMAN_LIKE_PERSONA_PLATFORM_ONLY("only a platform admin can allow or withdraw a human-like agent persona"),
+    TELEPHONY_ENGINE_PLATFORM_ONLY("only a platform admin can switch the telephony engine"),
     ROLE_NOT_ASSIGNABLE("role %s can only be assigned by platform staff"),
     PERMISSION_DENIED("your role does not include this action"),
     ACCOUNT_BLOCKED("this account has been blocked"),
@@ -260,6 +261,10 @@ public enum ErrorCode {
     AI_AGENT_DATA_FIELD_TYPE_INVALID("dataNeeded field '%s' has type '%s'; allowed: string, number, boolean, date, enum"),
     AI_AGENT_TRANSFER_PHONE_INVALID("transferPhoneNumber '%s' is not a valid phone number"),
     AI_AGENT_LIMIT_EXCEEDS_COMPANY_CAP("maxConversationDurationSeconds %s exceeds the company cap of %s seconds"),
+    AI_AGENT_CLEAR_FIELD_CONFLICT("%s is both given a value and listed in clearFields"),
+    AI_AGENT_TIMEZONE_INVALID("timezone '%s' is not an IANA time zone id (e.g. Asia/Tashkent)"),
+    AGENT_TEST_CHAT_TEXT_REQUIRED("clientText is required once the test chat has started"),
+    AGENT_TEST_CHAT_UNAVAILABLE("No LLM is configured on the server (GEMINI_API_KEY or OPENAI_API_KEY) — the test chat cannot answer"),
     CONCURRENCY_LIMIT_OUT_OF_RANGE("Concurrency channels must be between 1 and %s"),
     TARGET_SOURCE_URL_INVALID("target source url must be an http(s) address, got '%s'"),
     /** @deprecated superseded by TARGET_SOURCE_RESPONSE_NOT_JSON / _NOT_ARRAY; kept because the frontend may still translate it. */

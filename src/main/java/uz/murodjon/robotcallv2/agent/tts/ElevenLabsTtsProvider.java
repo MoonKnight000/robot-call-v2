@@ -170,7 +170,9 @@ public class ElevenLabsTtsProvider implements TtsProvider {
                 for (JsonNode voice : root.path("voices")) {
                     String id = voice.path("voice_id").asText("");
                     if (!id.isBlank() && !"cloned".equals(voice.path("category").asText(""))) {
-                        voices.add(new ProviderVoice(id, label(voice), Set.of()));
+                        JsonNode labels = voice.path("labels");
+                        voices.add(new ProviderVoice(id, label(voice), Set.of(),
+                                labels.path("gender").asText(null), labels.path("age").asText(null)));
                     }
                 }
                 pageToken = root.path("has_more").asBoolean(false) ? root.path("next_page_token").asText(null) : null;

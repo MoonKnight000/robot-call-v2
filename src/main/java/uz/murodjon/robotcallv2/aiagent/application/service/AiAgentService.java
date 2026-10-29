@@ -4,10 +4,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentAmbienceDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentCallBehaviourDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentScriptDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentSpeechEngineDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentVoiceDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentClearableField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
@@ -141,7 +143,7 @@ public class AiAgentService implements AiAgentUseCase {
                 channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
                 speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
-                null, null, null, false, dataNeeded, dataEvaluation, null, null, sipTrunkIds, true);
+                null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, sipTrunkIds, true);
     }
 
     @Override
@@ -251,6 +253,8 @@ public class AiAgentService implements AiAgentUseCase {
                 .dataEvaluation(dataEvaluation)
                 .initiationWebhook(request.initiationWebhook())
                 .postCallWebhook(request.postCallWebhook())
+                .handbook(request.handbook())
+                .timezone(request.timezone())
                 .sipTrunkIds(request.sipTrunkIds())
                 .enabled(request.enabled() == null || request.enabled())
                 .createdAt(now)
@@ -265,6 +269,7 @@ public class AiAgentService implements AiAgentUseCase {
     @Override
     public AiAgentRow updateAgent(long companyId, long id, UpdateAiAgentRequest request) {
         AiAgent existing = requireAgent(companyId, id);
+        requireNoClearConflict(request);
         AgentScriptDto scriptRequest = request.script() != null ? request.script() : NO_SCRIPT;
         AgentSpeechEngineDto engineRequest = request.speechEngine() != null ? request.speechEngine() : NO_SPEECH_ENGINE;
         AgentVoiceDto voiceRequest = request.voice() != null ? request.voice() : NO_VOICE;
@@ -384,11 +389,15 @@ public class AiAgentService implements AiAgentUseCase {
                 .dataEvaluation(request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation())
                 .initiationWebhook(request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook())
                 .postCallWebhook(request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook())
+                .handbook(request.handbook() != null ? request.handbook() : existing.handbook())
+                // "" puts the agent back on the platform's zone.
+                .timezone(request.timezone() != null ? request.timezone() : existing.timezone())
                 .sipTrunkIds(request.sipTrunkIds() != null ? request.sipTrunkIds() : existing.sipTrunkIds())
                 .enabled(request.enabled() != null ? request.enabled() : existing.enabled())
                 // Not sent: the version just read, so a client that predates it edits as before.
                 .version(request.version() != null ? request.version() : existing.version())
                 .build();
+        updated = withClearedFields(updated, request);
 
         AiAgentDrafts.requireCompatibleDataPolicy(updated.dataPolicy().zeroPiiRetention(), updated.dataPolicy().storeCallAudio());
         drafts.update(companyId, id, updated);
@@ -653,5 +662,55 @@ public class AiAgentService implements AiAgentUseCase {
     /** A trimmed value, or null — a blank engine name means "the configured default". */
     private static String trimmed(String value) {
         return value != null ? value.trim() : null;
+    }
+
+    /** A field the edit both gives a value and lists in {@code clearFields} contradicts itself. */
+    private static void requireNoClearConflict(UpdateAiAgentRequest request) {
+        if (request.clearFields() == null) {
+            return;
+        }
+        AgentCallBehaviourDto behaviourRequest = request.callBehaviour();
+        for (AgentClearableField field : request.clearFields()) {
+            Object given = switch (field) {
+                case INITIATION_WEBHOOK -> request.initiationWebhook();
+                case POST_CALL_WEBHOOK -> request.postCallWebhook();
+                case PRE_CONVERSATION_AUDIO_FILE_ID ->
+                        behaviourRequest != null ? behaviourRequest.preConversationAudioFileId() : null;
+                case MID_CALL_SMS_TEMPLATE -> behaviourRequest != null ? behaviourRequest.midCallSmsTemplate() : null;
+                case VOICEMAIL_MESSAGE -> behaviourRequest != null ? behaviourRequest.voicemailMessage() : null;
+                case FAST_LLM_MODEL -> request.fastLlmModel();
+            };
+            if (given != null) {
+                throw new ValidationException(ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT, field);
+            }
+        }
+    }
+
+    /** Empties the settings the edit lists in {@code clearFields}; the rest stay as merged. */
+    private static AiAgent withClearedFields(AiAgent agent, UpdateAiAgentRequest request) {
+        Set<AgentClearableField> fields = request.clearFields();
+        if (fields == null || fields.isEmpty()) {
+            return agent;
+        }
+        AiAgentCallBehaviour behaviour = agent.callBehaviour();
+        return agent.toBuilder()
+                .initiationWebhook(fields.contains(AgentClearableField.INITIATION_WEBHOOK) ? null : agent.initiationWebhook())
+                .postCallWebhook(fields.contains(AgentClearableField.POST_CALL_WEBHOOK) ? null : agent.postCallWebhook())
+                .fastLlmModel(fields.contains(AgentClearableField.FAST_LLM_MODEL) ? null : agent.fastLlmModel())
+                .callBehaviour(new AiAgentCallBehaviour(
+                        behaviour.interruptionSensitivity(),
+                        behaviour.dtmfInputEnabled(),
+                        behaviour.voicemailAction(),
+                        fields.contains(AgentClearableField.VOICEMAIL_MESSAGE) ? null : behaviour.voicemailMessage(),
+                        behaviour.midCallSmsEnabled(),
+                        fields.contains(AgentClearableField.MID_CALL_SMS_TEMPLATE) ? null : behaviour.midCallSmsTemplate(),
+                        behaviour.transferPhoneNumber(),
+                        behaviour.transferMessage(),
+                        behaviour.transferQueueId(),
+                        fields.contains(AgentClearableField.PRE_CONVERSATION_AUDIO_FILE_ID)
+                                ? null : behaviour.preConversationAudioFileId(),
+                        behaviour.autoEscalateOnFrustration(),
+                        behaviour.frustrationThreshold()))
+                .build();
     }
 }

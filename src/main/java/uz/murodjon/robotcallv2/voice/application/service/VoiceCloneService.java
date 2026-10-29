@@ -55,7 +55,7 @@ public class VoiceCloneService implements VoiceCloneUseCase {
         String providerVoiceId = voiceClonerPort.createClone(companyId + " · " + request.name().trim(), samples);
         TtsVoice voice = new TtsVoice("clone-" + companyId + "-" + providerVoiceId.toLowerCase(Locale.ROOT),
                 voiceClonerPort.findProviderName(), request.language(), providerVoiceId, request.name().trim(), null,
-                companyId);
+                null, null, companyId);
         ttsVoiceRepository.create(voice);
         auditUseCase.record(companyId, "VOICE_CLONE", "tts_voice", voice.id(),
                 voice.label() + " (" + voice.language() + ", " + samples.size() + " recordings, speaker consent confirmed)");

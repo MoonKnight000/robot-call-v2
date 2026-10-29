@@ -75,7 +75,7 @@ class VoiceCloneServiceTest {
     @Test
     void anotherCompanysCloneCannotBeDeleted() {
         when(repository.findActiveById("clone-8-x")).thenReturn(
-                new TtsVoice("clone-8-x", "elevenlabs", "uz-UZ", "x", "X", null, 8L));
+                new TtsVoice("clone-8-x", "elevenlabs", "uz-UZ", "x", "X", null, null, null, 8L));
         assertRefused(() -> service.deleteClonedVoice(COMPANY_ID, "clone-8-x"), ErrorCode.TTS_VOICE_NOT_FOUND);
         verify(cloner, never()).deleteClone(any());
     }
@@ -83,14 +83,14 @@ class VoiceCloneServiceTest {
     @Test
     void aSharedVoiceCannotBeDeleted() {
         when(repository.findActiveById("nigora")).thenReturn(
-                new TtsVoice("nigora", "yandex", "uz-UZ", "nigora", "Nigora", null, null));
+                new TtsVoice("nigora", "yandex", "uz-UZ", "nigora", "Nigora", null, null, null, null));
         assertRefused(() -> service.deleteClonedVoice(COMPANY_ID, "nigora"), ErrorCode.TTS_VOICE_NOT_FOUND);
     }
 
     @Test
     void deletingAnOwnCloneRemovesItAtTheVendorAndSwitchesItOff() {
         when(repository.findActiveById("clone-7-abc")).thenReturn(
-                new TtsVoice("clone-7-abc", "elevenlabs", "uz-UZ", "AbC", "Dilnoza", null, COMPANY_ID));
+                new TtsVoice("clone-7-abc", "elevenlabs", "uz-UZ", "AbC", "Dilnoza", null, null, null, COMPANY_ID));
 
         service.deleteClonedVoice(COMPANY_ID, "clone-7-abc");
 

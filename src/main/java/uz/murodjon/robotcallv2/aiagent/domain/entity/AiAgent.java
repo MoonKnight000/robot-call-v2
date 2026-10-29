@@ -2,9 +2,12 @@ package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -59,6 +62,8 @@ public record AiAgent(
         AgentWebhookConfig postCallWebhook,
         List<PronunciationRule> pronunciationRules,
         List<PostCallAction> postCallActions,
+        Set<HandbookRule> handbook,
+        String timezone,
         Set<Long> sipTrunkIds,
         boolean enabled,
         Instant createdAt,
@@ -117,6 +122,13 @@ public record AiAgent(
         dataEvaluation = dataEvaluation == null ? List.of() : List.copyOf(dataEvaluation);
         pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
         postCallActions = postCallActions == null ? List.of() : List.copyOf(postCallActions);
+        // Enum order, not Set.copyOf's per-JVM order: the snapshot text and its fingerprint
+        // have to come out the same for the same rules.
+        handbook = handbook == null || handbook.isEmpty()
+                ? Set.of()
+                : Collections.unmodifiableSet(EnumSet.copyOf(handbook));
+        // Blank is "not set": the call then runs on the platform's zone (Asia/Tashkent).
+        timezone = timezone == null || timezone.isBlank() ? null : timezone.trim();
     }
 
     /**

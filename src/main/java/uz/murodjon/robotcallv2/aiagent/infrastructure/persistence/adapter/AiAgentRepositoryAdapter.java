@@ -5,6 +5,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentCallStats;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
@@ -126,6 +127,22 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
     @Override
     public boolean existsCallQueueByCompanyIdAndId(long companyId, long queueId) {
         return jpaRepository.countCallQueuesByCompanyIdAndId(companyId, queueId) > 0;
+    }
+
+    @Override
+    public AgentCallStats findRecentCallStats(long companyId, long agentId, int limit) {
+        List<Object[]> rows = jpaRepository.findRecentCallStats(companyId, agentId, limit);
+        if (rows.isEmpty() || ((Number) rows.getFirst()[0]).intValue() == 0) {
+            return AgentCallStats.NONE;
+        }
+        Object[] row = rows.getFirst();
+        return new AgentCallStats(((Number) row[0]).intValue(), ((Number) row[1]).longValue(),
+                ((Number) row[2]).longValue(), rounded(row[3]), rounded(row[4]), rounded(row[5]), rounded(row[6]));
+    }
+
+    /** A percentile column: null when no call had the value measured. */
+    private static Integer rounded(Object value) {
+        return value == null ? null : (int) Math.round(((Number) value).doubleValue());
     }
 
     /** Null for an agent whose script is inline rather than a stored scenario. */

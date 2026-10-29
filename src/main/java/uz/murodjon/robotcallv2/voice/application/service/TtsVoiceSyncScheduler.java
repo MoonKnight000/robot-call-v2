@@ -11,6 +11,8 @@ import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.voice.application.port.output.TtsVoiceRepository;
 import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
+import uz.murodjon.robotcallv2.voice.domain.enums.VoiceAge;
+import uz.murodjon.robotcallv2.voice.domain.enums.VoiceGender;
 import uz.murodjon.robotcallv2.voice.infrastructure.config.TtsVoiceSyncProperties;
 
 import java.time.Clock;
@@ -103,7 +105,8 @@ public class TtsVoiceSyncScheduler {
                                 providerName, voice.name());
                         continue;
                     }
-                    voices.add(new TtsVoice(id, providerName, language, voice.name(), voice.label(), null, null));
+                    voices.add(new TtsVoice(id, providerName, language, voice.name(), voice.label(), null,
+                            VoiceGender.parse(voice.gender()), VoiceAge.parse(voice.age()), null));
                 }
             }
         }

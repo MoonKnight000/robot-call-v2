@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
@@ -42,6 +43,8 @@ public class AiAgentBuilder {
     private AgentWebhookConfig postCallWebhook;
     private List<PronunciationRule> pronunciationRules;
     private List<PostCallAction> postCallActions;
+    private Set<HandbookRule> handbook;
+    private String timezone;
     private Set<Long> sipTrunkIds;
     private boolean enabled;
     private Instant createdAt;
@@ -79,6 +82,8 @@ public class AiAgentBuilder {
         this.postCallWebhook = source.postCallWebhook();
         this.pronunciationRules = source.pronunciationRules();
         this.postCallActions = source.postCallActions();
+        this.handbook = source.handbook();
+        this.timezone = source.timezone();
         this.sipTrunkIds = source.sipTrunkIds();
         this.enabled = source.enabled();
         this.createdAt = source.createdAt();
@@ -220,6 +225,16 @@ public class AiAgentBuilder {
         return this;
     }
 
+    public AiAgentBuilder handbook(Set<HandbookRule> handbook) {
+        this.handbook = handbook;
+        return this;
+    }
+
+    public AiAgentBuilder timezone(String timezone) {
+        this.timezone = timezone;
+        return this;
+    }
+
     public AiAgentBuilder sipTrunkIds(Set<Long> sipTrunkIds) {
         this.sipTrunkIds = sipTrunkIds;
         return this;
@@ -278,6 +293,8 @@ public class AiAgentBuilder {
                 postCallWebhook,
                 pronunciationRules,
                 postCallActions,
+                handbook,
+                timezone,
                 sipTrunkIds,
                 enabled,
                 createdAt,

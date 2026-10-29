@@ -2,8 +2,12 @@ package uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import uz.murodjon.robotcallv2.voice.domain.enums.VoiceAge;
+import uz.murodjon.robotcallv2.voice.domain.enums.VoiceGender;
 
 import java.time.Instant;
 
@@ -28,6 +32,14 @@ public class TtsVoiceEntity {
 
     @Column(name = "role")
     private String role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender")
+    private VoiceGender gender;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "age_group")
+    private VoiceAge age;
 
     @Column(nullable = false)
     private boolean active = true;
@@ -84,6 +96,22 @@ public class TtsVoiceEntity {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public VoiceGender getGender() {
+        return gender;
+    }
+
+    public void setGender(VoiceGender gender) {
+        this.gender = gender;
+    }
+
+    public VoiceAge getAge() {
+        return age;
+    }
+
+    public void setAge(VoiceAge age) {
+        this.age = age;
     }
 
     public boolean isActive() {

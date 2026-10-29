@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
@@ -31,6 +32,7 @@ public class AiAgentEntityMapper {
     private static final TypeReference<ScenarioDefinition> SCENARIO_DEF_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<PronunciationRule>> PRONUNCIATION_RULES_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<PostCallAction>> POST_CALL_ACTIONS_TYPE = new TypeReference<>() {};
+    private static final TypeReference<Set<HandbookRule>> HANDBOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
 
     public AiAgentEntityMapper(ObjectMapper objectMapper) {
@@ -122,6 +124,8 @@ public class AiAgentEntityMapper {
                 .postCallWebhook(read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null))
                 .pronunciationRules(read(entity.getPronunciationRules(), PRONUNCIATION_RULES_TYPE, List.of()))
                 .postCallActions(read(entity.getPostCallActions(), POST_CALL_ACTIONS_TYPE, List.of()))
+                .handbook(read(entity.getHandbook(), HANDBOOK_TYPE, Set.of()))
+                .timezone(entity.getTimezone())
                 .sipTrunkIds(entity.getSipTrunkIds())
                 .enabled(entity.isEnabled())
                 .createdAt(entity.getCreatedAt())
@@ -158,6 +162,8 @@ public class AiAgentEntityMapper {
         entity.setPostCallWebhook(agent.postCallWebhook() != null ? write(agent.postCallWebhook(), null) : null);
         entity.setPronunciationRules(write(agent.pronunciationRules(), "[]"));
         entity.setPostCallActions(write(agent.postCallActions(), "[]"));
+        entity.setHandbook(write(agent.handbook(), "[]"));
+        entity.setTimezone(agent.timezone());
         entity.setSipTrunks(sipTrunks);
         entity.setEnabled(agent.enabled());
     }

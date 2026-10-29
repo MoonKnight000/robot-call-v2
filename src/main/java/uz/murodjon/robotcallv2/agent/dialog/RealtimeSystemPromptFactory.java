@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -93,14 +94,15 @@ public class RealtimeSystemPromptFactory {
                     .append(" kompaniyasining sun'iy intellekt yordamchisiman\".\n\n");
         }
 
-        ZonedDateTime now = ZonedDateTime.now(SystemPromptFactory.CALLER_ZONE);
+        ZoneId zone = SystemPromptFactory.findCallerZone(s.agent());
+        ZonedDateTime now = ZonedDateTime.now(zone);
         sb.append("TODAY (BUGUNGI SANA): ").append(now.toLocalDate())
                 .append(", CURRENT TIME: ").append(now.toLocalTime().truncatedTo(ChronoUnit.MINUTES))
                 .append(".\n")
                 .append(SystemPromptFactory.TIME_ANCHORS).append('\n');
 
         appendFacts(sb, s, factsInPrompt);
-        SystemPromptFactory.appendMemory(sb, context.memory());
+        SystemPromptFactory.appendMemory(sb, context.memory(), zone);
 
         sb.append("\nCONVERSATION STAGES (you move between them with the transitionTo tool):\n");
         for (StageDef stage : def.stages()) {
@@ -189,6 +191,7 @@ public class RealtimeSystemPromptFactory {
         for (String rule : REALTIME_RULES) {
             sb.append("- ").append(rule).append('\n');
         }
+        HandbookPrompt.append(sb, s.agent());
         SystemPromptFactory.appendGlobalNodes(sb, def);
 
         boolean russian = s.language() != null && s.language().toLowerCase().startsWith("ru");

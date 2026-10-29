@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aiagent.application.dto;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
@@ -43,6 +44,8 @@ public record AiAgentRow(
         AgentWebhookConfig postCallWebhook,
         List<PronunciationRule> pronunciationRules,
         List<PostCallAction> postCallActions,
+        Set<HandbookRule> handbook,
+        String timezone,
         Set<Long> sipTrunkIds,
         boolean enabled,
         Instant createdAt,
@@ -96,6 +99,8 @@ public record AiAgentRow(
                 agent.postCallWebhook(),
                 agent.pronunciationRules(),
                 agent.postCallActions(),
+                agent.handbook(),
+                agent.timezone(),
                 agent.sipTrunkIds(),
                 agent.enabled(),
                 agent.createdAt(),

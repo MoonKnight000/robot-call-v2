@@ -85,6 +85,8 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 | `GET` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_READ` | Rollout holati va ikki versiyaning natijalari |
 | `POST` | `/api/ai-agents/{id}/rollout/promote` | `AI_AGENT_EDIT` | Nomzodni hamma uchun live qilish |
 | `DELETE` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_EDIT` | Rolloutni bekor qilish |
+| `GET` | `/api/ai-agents/{id}/estimate` | `AI_AGENT_READ` | Bir daqiqa suhbat narxi (so'm), kechikish va tokenlar — studiyaning yuqori qatori (§14.3) |
+| `POST` | `/api/ai-agents/{id}/test-chat` | `AI_AGENT_EDIT` yoki `AGENT_EVAL_RUN` | Studiyaning "LLM test"i: agent qoralamasi bilan matnli suhbatning bitta navbati (§14.4) |
 | `POST` | `/api/ai-agents/{id}/clone` | `AI_AGENT_EDIT` | Nusxa olish (sozlamalar + tool bog'lanishlari) |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/ai-agents/{id}/test-cases[/{caseId}]` | `AI_AGENT_READ`/`EDIT` | Eval test holatlari (§15) |
 | `POST` | `/api/ai-agents/{id}/evaluate` | `AI_AGENT_EDIT` | Evalni boshlash (§15) |
@@ -309,9 +311,36 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >
 > Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
 > `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
-> `postCallWebhook`, `sipTrunkIds`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
+> `postCallWebhook`, `handbook`, `timezone`, `sipTrunkIds`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
 > `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`,
 > `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
+
+> **`handbook`** (Agent Handbook, `POST`/`PUT /api/ai-agents` va javob qatorida) — agent yoqqan
+> tayyor qoidalar ro'yxati (`HandbookRule` nomlari). Har biri promptga platformaning o'z qoidalari
+> (`platform-guardrails.txt`) **ustiga** bitta qator qo'shadi — birortasi platforma qoidasini takrorlamaydi
+> yoki yumshatmaydi. Ikkala pipeline'da (`CASCADE` va `REALTIME`) ishlaydi. Standart — `[]`, ya'ni agent
+> avvalgidek gapiradi. `PUT` da `null` — o'zgarmaydi, `[]` — hammasini o'chiradi; ro'yxat to'liq
+> almashtiriladi (qo'shib bo'lmaydi). Noma'lum nom — `400` (buzuq JSON kabi).
+>
+> | Qiymat | Studiya tabi | Agent nima qiladi |
+> |---|---|---|
+> | `HIGH_EMPATHY` | Shaxsiyat va ohang | Mijoz xafa bo'lsa, avval u aytgan aniq narsani bitta qisqa samimiy gap bilan tan oladi, keyin yechimga o'tadi. Sahnaviy hamdardlik baribir taqiqlangan |
+> | `CONFIRM_DETAILS` | Aniqlik va format | Mijoz aytgan ism, telefon, sana, summa yoki manzilni bir marta qaytarib aytib, "ha" olgandan keyingina yozadi |
+> | `SPELL_OUT_CODES` | Aniqlik va format | Kod, buyurtma raqami va telefonni sekin, 2–3 raqamdan guruhlab aytadi |
+> | `KNOWLEDGE_ONLY` | Aniqlik va format | Narx, shart, mavjudlik, muddatni faqat promptdan, bilimlar bazasidan yoki tool natijasidan aytadi; topilmasa tekshirib berishini aytib, operatorga uzatadi |
+> | `PROTECT_INSTRUCTIONS` | Ishonch va xavfsizlik | Ko'rsatmalari, tool'lari yoki skript bo'yicha ishlashini hech qachon oshkor qilmaydi |
+> | `STAY_ON_TOPIC` | Ishonch va xavfsizlik | Mavzudan tashqari so'rovni bir gap bilan rad etib, qo'ng'iroq maqsadiga qaytadi |
+> | `NO_PROFESSIONAL_ADVICE` | Ishonch va xavfsizlik | Kompaniya shartlaridan tashqari tibbiy, yuridik yoki moliyaviy maslahat bermaydi |
+>
+> Ohang — alohida qoida emas, mavjud `voice.warmth` (`RESERVED` / `BALANCED` / `WARM`). Tabiiy
+> to'ldiruvchi so'zlar, jonli operator ohangi, "bilmasa — operatorga" va "jahli chiqsa — operatorga"
+> esa platformada **har doim yoqilgan** (o'chirib bo'lmaydi), shuning uchun handbook'da qoida sifatida yo'q.
+> Agent versiyasi (publish) va klonida `handbook` ham saqlanadi.
+
+> **`timezone`** (studiyadagi soat tugmasi, "Current Time Awareness") — agentning IANA vaqt zonasi
+> (`Asia/Tashkent`, `Europe/Moscow`). Promptdagi "bugun / hozir soat" va eslab qolingan qo'ng'iroqlar
+> sanasi shu zonada hisoblanadi. `null` — platforma zonasi `Asia/Tashkent` (standart). `PUT` da `null` —
+> o'zgarmaydi, `""` — standartga qaytaradi. Noto'g'ri zona — `400 AI_AGENT_TIMEZONE_INVALID`.
 
 > **`voicemailAction`** — avtootvetchik aniqlanganda: `HANGUP` (go'shakni qo'yish),
 > `LEAVE_MESSAGE` (bipdan keyin `voicemailMessage` aytiladi), `LEAVE_MESSAGE_AND_SMS`
@@ -503,6 +532,27 @@ qabul qilmaydi, lekin ikki saqlash aynan bir vaqtga to'g'ri kelsa ikkinchisi `40
 mumkin. `GET /{id}/versions/{version}` javobidagi `version` — doim `0` (snapshot qulf
 hisoblagichini saqlamaydi), uni `PUT` ga yubormang.
 
+**Qiymatni o'chirish (`clearFields`).** `PUT` da `null` maydon "o'zgartirma" degani, shuning uchun
+ixtiyoriy sozlamani bo'shatishning yagona yo'li — uni `clearFields` ro'yxatida yuborish (ixtiyoriy,
+faqat `PUT`):
+
+```json
+{ "name": "Dilnoza", "clearFields": ["POST_CALL_WEBHOOK", "FAST_LLM_MODEL"] }
+```
+
+| Qiymat | Nima bo'shatiladi |
+|---|---|
+| `INITIATION_WEBHOOK` | `initiationWebhook` |
+| `POST_CALL_WEBHOOK` | `postCallWebhook` |
+| `PRE_CONVERSATION_AUDIO_FILE_ID` | `callBehaviour.preConversationAudioFileId` |
+| `MID_CALL_SMS_TEMPLATE` | `callBehaviour.midCallSmsTemplate` |
+| `VOICEMAIL_MESSAGE` | `callBehaviour.voicemailMessage` |
+| `FAST_LLM_MODEL` | `fastLlmModel` |
+
+Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
+`400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek
+birlashtiriladi; `clearFields` yuborilmasa — hech narsa o'zgarmaydi (eski klientlar buzilmaydi).
+
 **Saqlashdagi tekshiruvlar** (`POST`, `PUT` va barcha `PUT /{id}/...` bo'limlarida bir xil, `400`):
 
 | Kod | Sabab |
@@ -515,6 +565,7 @@ hisoblagichini saqlamaydi), uni `PUT` ga yubormang.
 | `AI_AGENT_TRANSFER_PHONE_INVALID` | `transferPhoneNumber` telefon raqami emas |
 | `AI_AGENT_LIMIT_EXCEEDS_COMPANY_CAP` | `maxConversationDurationSeconds` kompaniyaning `maxCallSeconds` tavanidan ([settings.md](settings.md)) katta |
 | `WEBHOOK_URL_INVALID` | webhook manzili xususiy tarmoqqa qaraydi (§4) |
+| `AI_AGENT_CLEAR_FIELD_CONFLICT` | faqat `PUT`: maydon ham qiymat bilan, ham `clearFields` da keldi |
 
 ---
 
@@ -1108,6 +1159,108 @@ qaytarish mumkin. Audit: `AI_AGENT_ROLLOUT_CANCEL`.
 | 404 | `AGENT_ROLLOUT_NOT_FOUND` | Agentda rollout yo'q |
 | 409 | `AGENT_ROLLOUT_ACTIVE` | Rollout ketayotganda yangi rollout, `publish` yoki `rollback` |
 | 409 | `AGENT_ROLLOUT_NOT_PUBLISHED` | Agent hali hech qachon e'lon qilinmagan |
+
+### 14.3. `GET /api/ai-agents/{id}/estimate` — narx, kechikish va tokenlar
+
+Permission: `AI_AGENT_READ`. Agent studiyasining yuqori qatori uchun ("Narx 471 so'm/daq ·
+Kechikish 1280–1610ms · Tokenlar 733–2.9k"). Har bir qiymat **alohida** tanlanadi: agentning
+oxirgi 50 ta tugagan qo'ng'iroqida o'lchangan bo'lsa — o'sha, aks holda agentning prompti va
+joriy narxlardan (`config/billing.yml`) taxmin.
+
+```json
+{
+  "accept": true,
+  "data": {
+    "costPerMinuteUzs": 471,
+    "costEstimated": true,
+    "latencyFromMs": null,
+    "latencyToMs": null,
+    "tokensFrom": 1150,
+    "tokensTo": 2350,
+    "tokensEstimated": true,
+    "sampleCalls": 0
+  }
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `costPerMinuteUzs` | Bir daqiqa suhbat narxi, so'm. O'lchanganda: oxirgi qo'ng'iroqlarning `call_billing` (`SETTLED`) jami summasi ÷ ularning davomiyligi × 60 — summary va tahlil to'lovlari ham ichida |
+| `costEstimated` | `true` — agentning hali birorta qo'ng'irog'i hisoblanmagan, narx bir daqiqalik taxminiy sarfdan billing kalkulyatori bilan hisoblangan (pastda) |
+| `latencyFromMs` / `latencyToMs` | Qo'ng'iroqlarning o'rtacha turn kechikishi (`call_technical.avg_turn_latency_ms`): mediana va 90-persentil. Kechikish taxmin qilinmaydi — o'lchangan qo'ng'iroq bo'lmasa `null` (UI "—" ko'rsatadi) |
+| `tokensFrom` / `tokensTo` | Bir turn'dagi tokenlar (prompt + javob). O'lchanganda: `(prompt_tokens + completion_tokens) / turn_count` ning 10- va 90-persentili |
+| `tokensEstimated` | `true` — token oralig'i qo'ng'iroqlardan emas, promptdan hisoblangan |
+| `sampleCalls` | O'lchangan qiymatlar olingan qo'ng'iroqlar soni (≤ 50) |
+
+**Taxmin qanday hisoblanadi** (`AgentCostEstimator`):
+
+- Prompt tokenlari = 700 (freymvork: qo'ng'iroq ramkasi, guardrail'lar, javob qoidalari) +
+  (`systemPrompt` + `firstMessage` + ssenariyning `rolePrompt` va bosqichlar `purpose` i) belgilari ÷ 3.
+- `tokensFrom` = prompt + 40 (birinchi turn, tarix yo'q); `tokensTo` = prompt + 20 turn tarixi × 60 + 40.
+- Bir daqiqa (`CASCADE`): 6 turn, har biri o'rtacha prompt bilan, 40 token javob, 450 belgi TTS va 60 s liniya.
+  `REALTIME` / `HALF_CASCADE`: 60 s realtime engine + liniya — tokenlar narxlanmaydi.
+- Narx — `CallBillingUseCase.findUsageCostUzs`, ya'ni haqiqiy qo'ng'iroq hisoblanadigan kalkulyatorning o'zi
+  (ustama va platforma to'lovi bilan). Kompaniyaning o'z LLM'i hisobga olinmaydi — taxmin platforma narxida.
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 404 | `AI_AGENT_NOT_FOUND` | Agent yo'q yoki boshqa kompaniyaniki |
+
+### 14.4. `POST /api/ai-agents/{id}/test-chat` — LLM test
+
+Agentning **qoralamasi** (oxirgi saqlangani) bilan matnli suhbatning bitta navbati. Javob qo'ng'iroqdagi
+bilan bir xil yo'ldan o'tadi (`TextTurnEngine`): o'sha prompt, model, `fastLlmModel`, persona,
+`handbook`, `timezone`, ssenariy bosqichlari, tool'lar va fact guard. Server hech narsa saqlamaydi —
+sahifa har navbatda butun suhbatni, oldingi javobdagi `stage` va `outcome` ni qaytarib yuboradi.
+
+- MCP tool'lar (CRM) **ishlamaydi** — test haqiqiy CRM'ga lid yoki izoh yozmasligi uchun.
+- Kompaniyaning REST tool'lari haqiqatan chaqiriladi, agar `toolMocks` berilmagan bo'lsa. `toolMocks`
+  berilsa, hech bir tool chaqirilmaydi: ro'yxatdagisi shu matn bilan javob beradi, ro'yxatda yo'qi
+  "mavjud emas" deydi. Mock chaqiruvlari `toolCalls` da qaytadi.
+- Model tokenlari sarflanadi, qo'ng'iroq billing'iga yozilmaydi.
+
+So'rov:
+
+```json
+{
+  "messages": [
+    { "role": "AGENT", "text": "Assalomu alaykum, Aziz aka! ..." },
+    { "role": "CLIENT", "text": "Ha, eshitaman" }
+  ],
+  "clientText": "Qancha qarzim bor?",
+  "stage": "IDENTIFY",
+  "outcome": {},
+  "variables": { "clientName": "Aziz", "debtAmount": 450000 },
+  "toolMocks": null
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `messages` | Hozirgacha aytilganlar, eskidan yangiga (`role`: `AGENT` / `CLIENT`). Bo'sh — suhbat boshlanmoqda. Ko'pi bilan 200 ta |
+| `clientText` | Mijozning yangi gapi. `null`/bo'sh faqat bo'sh suhbatda ruxsat: agent salomlashadi (`firstMessage` bo'lsa — aynan o'sha, LLM'siz). Aks holda `400 AGENT_TEST_CHAT_TEXT_REQUIRED` |
+| `stage`, `outcome` | Oldingi javobdan qaytariladi; birinchi navbatda `null` |
+| `variables` | Dinamik o'zgaruvchilar — haqiqiy qo'ng'iroqda target'dan keladigan faktlar (`{{clientName}}`) |
+| `toolMocks` | Tool nomi → tayyor javob matni; `null` — haqiqiy tool'lar |
+
+Javob (`ResponseData` ichida):
+
+```json
+{
+  "reply": "Aziz aka, sizda 450 000 so'm qarzdorlik bor. Qachon to'lay olasiz?",
+  "stage": "NEGOTIATE",
+  "outcome": {},
+  "toolCalls": [],
+  "violations": [],
+  "ended": false,
+  "disposition": null,
+  "latencyMs": 1240
+}
+```
+
+`violations` — fact guard ushlagan raqamlar (qo'ng'iroqda ular aytilmasdi). `ended` bo'lsa `disposition` —
+agent suhbatni qanday yakunlagani. Server'da LLM sozlanmagan bo'lsa — `409 AGENT_TEST_CHAT_UNAVAILABLE`;
+model bo'sh javob qaytarsa — `502 CHAT_NO_REPLY`.
 
 ### `POST /api/ai-agents/{id}/clone`
 

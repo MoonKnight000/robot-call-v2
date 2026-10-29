@@ -8,6 +8,8 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.voice.domain.service.VoiceSettingsValidator;
 
+import java.time.DateTimeException;
+import java.time.ZoneId;
 import java.util.Locale;
 import java.util.Set;
 
@@ -34,6 +36,13 @@ public final class AiAgentValidator {
      *                              {@code null} or {@code 0} when it has none
      */
     public static void validate(AiAgent agent, Integer companyMaxCallSeconds) {
+        if (agent.timezone() != null) {
+            try {
+                ZoneId.of(agent.timezone());
+            } catch (DateTimeException e) {
+                throw new ValidationException(ErrorCode.AI_AGENT_TIMEZONE_INVALID, agent.timezone());
+            }
+        }
         Double temperature = agent.temperature();
         if (temperature != null && (temperature < 0 || temperature > MAX_TEMPERATURE)) {
             throw new ValidationException(ErrorCode.AI_AGENT_TEMPERATURE_OUT_OF_RANGE, temperature);

@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.port.output;
 
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentCallStats;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentCallStats;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 
@@ -37,4 +39,7 @@ public interface AiAgentRepository {
 
     /** Whether {@code queueId} is one of the company's call queues — the transfer queue an agent may name. */
     boolean existsCallQueueByCompanyIdAndId(long companyId, long queueId);
+
+    /** Cost, latency and tokens of the agent's last {@code limit} finished calls; {@link AgentCallStats#NONE} when it has none. */
+    AgentCallStats findRecentCallStats(long companyId, long agentId, int limit);
 }

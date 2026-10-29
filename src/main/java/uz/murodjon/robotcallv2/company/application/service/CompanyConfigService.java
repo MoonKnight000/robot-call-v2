@@ -95,6 +95,11 @@ public class CompanyConfigService implements CompanyConfigUseCase {
                 ? request.scorecardReviewThreshold() : existing.scorecardReviewThreshold();
         TelephonyEngine telephonyEngine = request.telephonyEngine() != null
                 ? request.telephonyEngine() : existing.telephonyEngine();
+        // The engine decides which media stack the platform runs the company's calls on;
+        // the company adds its own trunks, but the stack under them is the platform's choice.
+        if (telephonyEngine != existing.telephonyEngine() && !currentUser.hasPermission(Permission.PLATFORM_ADMIN)) {
+            throw new ForbiddenException(ErrorCode.TELEPHONY_ENGINE_PLATFORM_ONLY);
+        }
 
         companyConfigRepository.update(companyId, CompanyConfig.settings(
                 request.dialWindowStart(), request.dialWindowEnd(), request.timezone(),

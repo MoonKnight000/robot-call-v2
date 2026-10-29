@@ -147,6 +147,13 @@ public class AiAgentEntity {
     @Column(name = "post_call_actions", columnDefinition = "jsonb")
     private String postCallActions = "[]";
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "handbook", columnDefinition = "jsonb")
+    private String handbook = "[]";
+
+    @Column(name = "timezone", length = 64)
+    private String timezone;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @Fetch(FetchMode.SUBSELECT)
     @JoinTable(name = "ai_agent_sip_trunk",
@@ -384,6 +391,22 @@ public class AiAgentEntity {
 
     public void setPostCallActions(String postCallActions) {
         this.postCallActions = postCallActions;
+    }
+
+    public String getHandbook() {
+        return handbook;
+    }
+
+    public void setHandbook(String handbook) {
+        this.handbook = handbook;
+    }
+
+    public String getTimezone() {
+        return timezone;
+    }
+
+    public void setTimezone(String timezone) {
+        this.timezone = timezone;
     }
 
     public Set<SipTrunkEntity> getSipTrunks() {

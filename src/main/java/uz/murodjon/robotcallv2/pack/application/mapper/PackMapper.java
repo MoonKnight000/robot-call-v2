@@ -66,6 +66,8 @@ public class PackMapper {
                 agent.useRag(),
                 agent.dataNeeded(), agent.dataEvaluation(),
                 null, null,                                    // initiation and post-call webhooks
+                null,                                          // handbook
+                null,                                          // timezone
                 null, null);                                   // sipTrunkIds, enabled
     }
 

@@ -330,6 +330,7 @@ yaratilganda avtomatik config oladi.
 | `humanLikePersonaAllowed` | ❌ | `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY`. O'zgarishi audit log'ga yoziladi |
 | `holidays` | ❌ | Sanalar (`YYYY-MM-DD`, ko'pi bilan 366 ta). Shu kunlari kampaniyalar umuman termaydi, retry va callback esa keyingi ruxsat etilgan kunga suriladi. Kun kompaniyaning `timezone`ida hisoblanadi. `null` — o'zgarmaydi, `[]` — tozalaydi |
 | `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)). `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
+| `telephonyEngine` | ❌ | `ASTERISK` (standart) yoki `LIVEKIT`; `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 TELEPHONY_ENGINE_PLATFORM_ONLY` (o'zgarmagan qiymatni qayta yuborish mumkin). Kompaniya o'z SIP trunklarini qo'shaveradi, ular qaysi dvigatelda ishlashini platforma tanlaydi |
 
 **Response** — yangilangan `CompanyConfig`.
 

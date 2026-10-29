@@ -83,12 +83,17 @@ public class SystemPromptFactory {
      */
     static final ZoneId CALLER_ZONE = ZoneId.of("Asia/Tashkent");
 
+    /** The agent's own zone (studio "Current Time Awareness"), else the platform's. Validated on save. */
+    static ZoneId findCallerZone(AiAgent agent) {
+        return agent != null && agent.timezone() != null ? ZoneId.of(agent.timezone()) : CALLER_ZONE;
+    }
+
     /**
      * Cross-call memory: what earlier conversations with this phone established, plus the
      * operator's notes. Newest call first, so the model leans on the latest state. Shared
      * with {@link RealtimeSystemPromptFactory} so both pipelines remember the same way.
      */
-    static void appendMemory(StringBuilder sb, ClientMemory memory) {
+    static void appendMemory(StringBuilder sb, ClientMemory memory, ZoneId zone) {
         if (memory == null || memory.isEmpty()) {
             return;
         }
@@ -111,7 +116,7 @@ public class SystemPromptFactory {
         for (RememberedCall call : memory.recentCalls()) {
             sb.append("- Earlier conversation");
             if (call.at() != null) {
-                sb.append(" (").append(LocalDate.ofInstant(call.at(), CALLER_ZONE)).append(')');
+                sb.append(" (").append(LocalDate.ofInstant(call.at(), zone)).append(')');
             }
             if (call.scenarioKey() != null && !call.scenarioKey().isBlank()) {
                 sb.append(", topic: ").append(call.scenarioKey());
@@ -264,7 +269,8 @@ public class SystemPromptFactory {
                     .append(" kompaniyasining sun'iy intellekt yordamchisiman\".\n\n");
         }
 
-        ZonedDateTime now = ZonedDateTime.now(CALLER_ZONE);
+        ZoneId zone = findCallerZone(s.agent());
+        ZonedDateTime now = ZonedDateTime.now(zone);
         LocalDate today = now.toLocalDate();
         sb.append("TODAY (BUGUNGI SANA): ").append(today).append(" (")
                 .append(today.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH))
@@ -280,7 +286,7 @@ public class SystemPromptFactory {
                         .append(orDash(c.fact(f.name()))).append('\n');
             }
         }
-        appendMemory(sb, c.memory());
+        appendMemory(sb, c.memory(), zone);
 
         Object nameObj = c != null ? c.fact("clientName") : null;
         if ((nameObj == null || nameObj.toString().isBlank()) && c != null && c.memory() != null && c.memory().preferredName() != null && !c.memory().preferredName().isBlank()) {
@@ -337,6 +343,7 @@ public class SystemPromptFactory {
         for (String rule : PLATFORM_GUARDRAILS) {
             sb.append("- ").append(rule).append('\n');
         }
+        HandbookPrompt.append(sb, s.agent());
         sb.append('\n');
         appendGlobalNodes(sb, def);
 

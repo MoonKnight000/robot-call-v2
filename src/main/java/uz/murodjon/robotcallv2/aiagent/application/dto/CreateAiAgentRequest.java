@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.util.List;
@@ -41,6 +42,8 @@ public record CreateAiAgentRequest(
         List<DataEvaluationCriterion> dataEvaluation,
         AgentWebhookConfig initiationWebhook,
         AgentWebhookConfig postCallWebhook,
+        Set<HandbookRule> handbook,
+        @Size(max = 64) String timezone,
         Set<Long> sipTrunkIds,
         Boolean enabled
 ) {

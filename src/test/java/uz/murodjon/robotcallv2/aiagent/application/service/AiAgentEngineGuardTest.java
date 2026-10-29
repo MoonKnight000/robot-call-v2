@@ -152,7 +152,7 @@ class AiAgentEngineGuardTest {
     void aVoiceForALanguageItDoesNotSpeakIsRefused() {
         when(companyConfigUseCase.resolveLanguage(COMPANY_ID, "ru")).thenReturn("ru-RU");
         when(ttsVoiceUseCase.isSelectable(COMPANY_ID, PipelineMode.CASCADE, "nigora")).thenReturn(true);
-        when(ttsVoiceUseCase.find("nigora")).thenReturn(new TtsVoice("nigora", "yandex", "uz-UZ", "Nigora", "Nigora", null, null));
+        when(ttsVoiceUseCase.find("nigora")).thenReturn(new TtsVoice("nigora", "yandex", "uz-UZ", "Nigora", "Nigora", null, null, null, null));
 
         assertRefused(() -> guard.requireKnownVoicePerLanguage(COMPANY_ID, PipelineMode.CASCADE, Map.of("ru", "nigora")),
                 ErrorCode.TTS_VOICE_LANGUAGE_MISMATCH);

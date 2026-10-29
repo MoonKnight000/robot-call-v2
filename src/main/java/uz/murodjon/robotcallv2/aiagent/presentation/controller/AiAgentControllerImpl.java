@@ -26,17 +26,23 @@ public class AiAgentControllerImpl implements AiAgentController {
     private final AiAgentCatalogUseCase aiAgentCatalogUseCase;
     private final ToolUseCase toolUseCase;
     private final AgentEvaluationUseCase evaluationUseCase;
+    private final AiAgentEstimateUseCase aiAgentEstimateUseCase;
+    private final AgentTestChatUseCase agentTestChatUseCase;
 
     public AiAgentControllerImpl(AiAgentUseCase aiAgentUseCase, AiAgentVersionUseCase aiAgentVersionUseCase,
                                  AiAgentSettingsUseCase aiAgentSettingsUseCase,
                                  AiAgentCatalogUseCase aiAgentCatalogUseCase, ToolUseCase toolUseCase,
-                                 AgentEvaluationUseCase evaluationUseCase) {
+                                 AgentEvaluationUseCase evaluationUseCase,
+                                 AiAgentEstimateUseCase aiAgentEstimateUseCase,
+                                 AgentTestChatUseCase agentTestChatUseCase) {
         this.aiAgentUseCase = aiAgentUseCase;
         this.aiAgentVersionUseCase = aiAgentVersionUseCase;
         this.aiAgentSettingsUseCase = aiAgentSettingsUseCase;
         this.aiAgentCatalogUseCase = aiAgentCatalogUseCase;
         this.toolUseCase = toolUseCase;
         this.evaluationUseCase = evaluationUseCase;
+        this.aiAgentEstimateUseCase = aiAgentEstimateUseCase;
+        this.agentTestChatUseCase = agentTestChatUseCase;
     }
 
     @Override
@@ -131,6 +137,17 @@ public class AiAgentControllerImpl implements AiAgentController {
     @Override
     public ResponseEntity<ResponseData<AgentRolloutRow>> rollout(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(aiAgentVersionUseCase.findRollout(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AiAgentEstimateResponse>> estimate(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentEstimateUseCase.findEstimate(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentTestChatResponse>> testChat(long companyId, long id,
+                                                                       AgentTestChatRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(agentTestChatUseCase.replyTestChat(companyId, id, request)));
     }
 
     @Override

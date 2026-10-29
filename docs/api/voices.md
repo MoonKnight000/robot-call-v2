@@ -99,6 +99,8 @@ standart ovozida gapiradi (`RealtimeDialogEngine.voiceFor`).
 | `name` | provayder tomonidagi ovoz nomi (sintez so'roviga yuboriladi) |
 | `label` | UI'da ko'rsatiladigan inson-o'qiy oladigan nom |
 | `role` | ovozning boshlang'ich gapirish uslubi / roli |
+| `gender` | `FEMALE` / `MALE` / `NEUTRAL` yoki `null` (noma'lum). ElevenLabs, Cartesia va Gemini ovozlarida sinxron paytida provayder API'sidan olinadi, qo'lda kiritilganlarida seed'dan; klonlangan ovozda `null` |
+| `age` | `YOUNG` / `MIDDLE_AGED` / `OLD` yoki `null`. Hozircha faqat ElevenLabs beradi, qolganlarida `null` |
 | `companyId` | `null` — umumiy katalog ovozi; son — shu kompaniyaning klonlangan ovozi (faqat o'sha kompaniyaga ko'rinadi) |
 
 `REALTIME` rejimidagi kompaniya uchun xuddi shu endpoint engine ovozlarini
