@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.chat.application.port.input;
 
 import uz.murodjon.robotcallv2.chat.application.dto.ChatReplyResponse;
+import uz.murodjon.robotcallv2.chat.application.dto.ChatUpdatesResponse;
 import uz.murodjon.robotcallv2.chat.application.dto.SendChatMessageRequest;
 import uz.murodjon.robotcallv2.chat.application.dto.StartChatResponse;
 
@@ -24,6 +25,12 @@ public interface ChatUseCase {
     /** Answers one message in an open conversation. */
     ChatReplyResponse sendMessage(String widgetKey, String origin, String sessionKey,
                                   SendChatMessageRequest request);
+
+    /**
+     * The company's lines written after {@code afterId} — how a widget shows what an operator
+     * wrote into a conversation they took over. Same origin check as {@link #sendMessage}.
+     */
+    ChatUpdatesResponse findNewMessages(String widgetKey, String origin, String sessionKey, long afterId);
 
     /** Retention: whole conversations started before {@code cutoff} go, transcripts and all. */
     int deleteSessionsCreatedBefore(Instant cutoff, int batchSize);

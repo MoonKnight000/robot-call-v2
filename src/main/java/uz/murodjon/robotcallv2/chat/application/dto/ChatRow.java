@@ -13,6 +13,7 @@ import java.time.Instant;
  * @param disposition how it ended; null while it has not
  * @param ended       set when the agent closed it or it ran out of messages — a conversation
  *                    that simply went quiet stays false
+ * @param operatorUserId the user answering it in person, or null while the agent is
  */
 public record ChatRow(
         long id,
@@ -27,6 +28,7 @@ public record ChatRow(
         boolean ended,
         int messageCount,
         Instant createdAt,
-        Instant lastMessageAt
+        Instant lastMessageAt,
+        Long operatorUserId
 ) {
 }

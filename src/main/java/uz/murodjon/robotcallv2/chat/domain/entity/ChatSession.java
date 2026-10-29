@@ -25,6 +25,8 @@ import java.util.Map;
  * @param stage          the scenario stage the next message will be answered in
  * @param outcome        what the scenario's tools have recorded so far
  * @param disposition    how it ended, once it has; null while it is still going
+ * @param operatorUserId the company user who took the conversation over from the agent; null
+ *                       while the agent is answering
  */
 public record ChatSession(
         Long id,
@@ -41,11 +43,32 @@ public record ChatSession(
         boolean ended,
         int messageCount,
         Instant createdAt,
-        Instant lastMessageAt
+        Instant lastMessageAt,
+        Long operatorUserId
 ) {
 
     public ChatSession {
         outcome = outcome == null ? Map.of() : Map.copyOf(outcome);
+    }
+
+    /** A conversation the agent is answering. */
+    public ChatSession(Long id, String sessionKey, long companyId, long aiAgentId, Long widgetId, Long telegramBotId,
+                       String telegramChatId, String language, String stage, Map<String, Object> outcome,
+                       Disposition disposition, boolean ended, int messageCount, Instant createdAt,
+                       Instant lastMessageAt) {
+        this(id, sessionKey, companyId, aiAgentId, widgetId, telegramBotId, telegramChatId, language, stage, outcome,
+                disposition, ended, messageCount, createdAt, lastMessageAt, null);
+    }
+
+    /** Whether a person from the company is answering instead of the agent. */
+    public boolean isTakenOver() {
+        return operatorUserId != null;
+    }
+
+    /** The same conversation answered by {@code userId}, or handed back to the agent when it is null. */
+    public ChatSession withOperator(Long userId) {
+        return new ChatSession(id, sessionKey, companyId, aiAgentId, widgetId, telegramBotId, telegramChatId,
+                language, stage, outcome, disposition, ended, messageCount, createdAt, lastMessageAt, userId);
     }
 
     /** A widget conversation about to be written: the adapter assigns the id and the timestamps. */
@@ -68,7 +91,7 @@ public record ChatSession(
      */
     public ChatSession withLanguage(String newLanguage) {
         return new ChatSession(id, sessionKey, companyId, aiAgentId, widgetId, telegramBotId, telegramChatId,
-                newLanguage, stage, outcome, disposition, ended, messageCount, createdAt, lastMessageAt);
+                newLanguage, stage, outcome, disposition, ended, messageCount, createdAt, lastMessageAt, operatorUserId);
     }
 
     /** The same conversation after a turn: a new stage, whatever the tools recorded, and more messages. */
@@ -76,6 +99,6 @@ public record ChatSession(
                                  boolean nowEnded, int messagesAdded, Instant at) {
         return new ChatSession(id, sessionKey, companyId, aiAgentId, widgetId, telegramBotId, telegramChatId,
                 language, newStage, newOutcome, newDisposition, nowEnded, messageCount + messagesAdded,
-                createdAt, at);
+                createdAt, at, operatorUserId);
     }
 }

@@ -192,7 +192,19 @@ public class TelegramService implements TelegramUseCase {
             open = conversations.attachPhone(open, message.contactPhone());
         }
         ChatTurn turn = conversations.answer(open, message.text());
-        telegramApi.sendMessage(token(bot), message.chatId(), turn.reply());
+        // Null while a person from the company answers instead: their line goes out when they write it.
+        if (turn.reply() != null) {
+            telegramApi.sendMessage(token(bot), message.chatId(), turn.reply());
+        }
+    }
+
+    /** Delivers a line an operator wrote into a Telegram conversation they took over. */
+    void deliverOperatorMessage(ChatSession session, String text) {
+        TelegramBot bot = botRepository.findById(session.telegramBotId());
+        if (bot == null) {
+            throw new NotFoundException(ErrorCode.TELEGRAM_BOT_NOT_FOUND, session.telegramBotId());
+        }
+        telegramApi.sendMessage(token(bot), session.telegramChatId(), text);
     }
 
     private void trySend(TelegramBot bot, String chatId, String text) {

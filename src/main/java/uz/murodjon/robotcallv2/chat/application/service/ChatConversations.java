@@ -157,8 +157,16 @@ class ChatConversations {
         return new StartedChat(afterGreeting, greeting);
     }
 
-    /** Answers one message in an open conversation and writes both lines down. */
+    /**
+     * Answers one message in an open conversation and writes both lines down. A conversation a
+     * person took over is not answered: the client's line is stored for them and the reply is null.
+     */
     ChatTurn answer(ChatSession session, String text) {
+        if (session.isTakenOver()) {
+            repository.addMessage(ChatMessage.written(session.id(), ChatRole.CLIENT, text));
+            return new ChatTurn(null, repository.save(session.afterTurn(session.stage(), session.outcome(),
+                    session.disposition(), session.ended(), 1, clock.instant())));
+        }
         AiAgent agent = requireAgent(session);
         DialogSession dialog = rebuild(session, agent);
         TextTurn turn = textTurnEngine.reply(dialog, text);
@@ -218,6 +226,13 @@ class ChatConversations {
         }
         return repository.save(session.afterTurn(session.stage(), outcome, session.disposition(), session.ended(), 0,
                 session.lastMessageAt()));
+    }
+
+    /** A line a person from the company wrote into a conversation they took over. */
+    ChatSession writeAsOperator(ChatSession session, String text) {
+        repository.addMessage(ChatMessage.written(session.id(), ChatRole.OPERATOR, text));
+        return repository.save(session.afterTurn(session.stage(), session.outcome(), session.disposition(),
+                session.ended(), 1, clock.instant()));
     }
 
     /** Whether the person behind this conversation is known by number yet. */
@@ -311,7 +326,9 @@ class ChatConversations {
         dialog.setState(session.stage());
         session.outcome().forEach(dialog::recordOutcome);
         for (ChatMessage message : repository.findMessages(session.id())) {
-            if (message.role() == ChatRole.AGENT) {
+            // An operator's line is the company's side of the conversation as much as the agent's:
+            // handed back, the agent carries on from what the person said.
+            if (message.role() == ChatRole.AGENT || message.role() == ChatRole.OPERATOR) {
                 dialog.history().add(new AssistantMessage(message.text()));
                 dialog.setLastAgentText(message.text());
             } else {

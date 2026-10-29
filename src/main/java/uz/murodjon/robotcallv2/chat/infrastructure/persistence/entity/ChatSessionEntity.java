@@ -60,6 +60,13 @@ public class ChatSessionEntity {
     @Column(name = "last_message_at", nullable = false)
     private Instant lastMessageAt;
 
+    @Column(name = "operator_user_id")
+    private Long operatorUserId;
+
+    public Long getOperatorUserId() { return operatorUserId; }
+
+    public void setOperatorUserId(Long operatorUserId) { this.operatorUserId = operatorUserId; }
+
     public Long getId() { return id; }
 
     public void setId(Long id) { this.id = id; }

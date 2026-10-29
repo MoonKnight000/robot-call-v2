@@ -75,6 +75,8 @@ public enum ErrorCode {
     CHAT_SESSION_NOT_FOUND("Chat %s not found"),
     PHONE_NUMBER_NOT_FOUND("Phone number %s not found"),
     CHAT_SESSION_ENDED("Chat %s is over — start a new one"),
+    CHAT_NOT_TAKEN_OVER("Chat %s is answered by the agent — take it over first"),
+    CHAT_OPERATOR_USER_REQUIRED("only a signed-in user can answer a chat in person"),
     CHAT_SESSION_FULL("A chat holds at most %s messages — start a new one"),
     CHAT_SESSION_EXPIRED("The chat was quiet for more than %s minute(s) — start a new one"),
     CHAT_NO_REPLY("The model did not answer"),
