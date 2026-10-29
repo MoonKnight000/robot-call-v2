@@ -198,8 +198,9 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             return false;
         }
         long leadId = entry.leadId();
-        if (crmProperties.callHistoryEmployeeId() == null || crmProperties.callHistoryEmployeeId() <= 0) {
-            log.debug("CRM call history skipped for lead {}: no voice-agent.crm.call-history-employee-id", leadId);
+        Integer employeeId = entry.employeeId() != null ? entry.employeeId() : crmProperties.callHistoryEmployeeId();
+        if (employeeId == null || employeeId <= 0) {
+            log.debug("CRM call history skipped for lead {}: no AI employee id configured", leadId);
             return false;
         }
         try {
@@ -207,7 +208,7 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             body.put("uuid", entry.callUuid());
             body.put("kind", "CALL");
             body.put("leadId", leadId);
-            body.put("employeeId", crmProperties.callHistoryEmployeeId());
+            body.put("employeeId", employeeId);
             body.put("startedAt", entry.startedAt().getEpochSecond());
             // The endpoint rejects a zero length; a call that never connected has no
             // conversation to record anyway.

@@ -1,0 +1,17 @@
+### Get the company's CRM settings
+GET http://localhost:8080/api/settings/crm
+Authorization: Bearer {{auth_token}}
+
+### Save the company's CRM settings (outcome → pipeline stage, AI employee)
+PUT http://localhost:8080/api/settings/crm
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "aiEmployeeId": 252,
+  "meetingBookedStatusId": 15,
+  "promiseToPayStatusId": 22,
+  "notInterestedStatusId": 19,
+  "callbackStatusId": 12,
+  "newLeadStatusId": 11
+}

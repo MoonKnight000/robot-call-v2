@@ -9,6 +9,8 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmSettingsUseCase;
+import uz.murodjon.robotcallv2.crm.domain.entity.CrmSettings;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
@@ -49,13 +51,15 @@ public class CrmService implements CrmUseCase {
     private final CrmIntegrationUseCase crmIntegrationUseCase;
     private final List<CrmConnectorPort> connectors;
     private final CompanyUseCase companyUseCase;
+    private final CrmSettingsUseCase crmSettingsUseCase;
 
     public CrmService(CrmProperties crmProperties, CrmIntegrationUseCase crmIntegrationUseCase, List<CrmConnectorPort> connectors,
-                      CompanyUseCase companyUseCase) {
+                      CompanyUseCase companyUseCase, CrmSettingsUseCase crmSettingsUseCase) {
         this.crmProperties = crmProperties;
         this.crmIntegrationUseCase = crmIntegrationUseCase;
         this.connectors = connectors;
         this.companyUseCase = companyUseCase;
+        this.crmSettingsUseCase = crmSettingsUseCase;
     }
 
     @Override
@@ -72,6 +76,7 @@ public class CrmService implements CrmUseCase {
         }
         Integer targetStatusId = null;
         String reason = null;
+        CrmSettings settings = crmSettingsUseCase.findByCompanyId(companyId);
 
         if (summary != null && summary.outcome() != null) {
             Object explicitStatus = summary.outcome().get("targetStatusId");
@@ -82,16 +87,16 @@ public class CrmService implements CrmUseCase {
         }
 
         if (targetStatusId == null && summary != null && Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
-            targetStatusId = crmProperties.meetingBookedStatusId();
+            targetStatusId = firstSet(settings.meetingBookedStatusId(), crmProperties.meetingBookedStatusId());
             reason = "Sotuv ofisiga uchrashuv belgilandi";
         } else if (targetStatusId == null && (disposition == Disposition.PROMISE_TO_PAY || (summary != null && summary.outcome().containsKey("promisedDate")))) {
-            targetStatusId = crmProperties.promiseToPayStatusId();
+            targetStatusId = firstSet(settings.promiseToPayStatusId(), crmProperties.promiseToPayStatusId());
             reason = "To'lov va'dasi olindi";
         } else if (targetStatusId == null && (disposition == Disposition.REFUSED || disposition == Disposition.DO_NOT_CALL)) {
-            targetStatusId = crmProperties.notInterestedStatusId();
+            targetStatusId = firstSet(settings.notInterestedStatusId(), crmProperties.notInterestedStatusId());
             reason = "Mijoz rad etdi (" + disposition + ")";
         } else if (targetStatusId == null && (disposition == Disposition.NO_ANSWER || disposition == Disposition.CALLBACK_REQUESTED || disposition == Disposition.CARRIER_REJECTED)) {
-            targetStatusId = crmProperties.callbackStatusId();
+            targetStatusId = firstSet(settings.callbackStatusId(), crmProperties.callbackStatusId());
             reason = "Bog'lanib bo'lmadi (" + disposition + ")";
         }
 
@@ -99,6 +104,11 @@ public class CrmService implements CrmUseCase {
             return new UpdateLeadStageRequest(leadId, targetStatusId, reason);
         }
         return null;
+    }
+
+    /** The company's own value when it saved one, the platform's otherwise. */
+    private static Integer firstSet(Integer own, Integer platform) {
+        return own != null ? own : platform;
     }
 
     /**
@@ -200,7 +210,8 @@ public class CrmService implements CrmUseCase {
         }
         Route route = routeFor(companyId);
         return route != null && route.connector().postCallHistory(route.connection(), new CrmCallHistoryEntry(
-                leadId, callUuid, startedAt, durationSeconds, inbound, answered, clientPhone, recordingUrl));
+                leadId, callUuid, startedAt, durationSeconds, inbound, answered, clientPhone, recordingUrl,
+                crmSettingsUseCase.findByCompanyId(companyId).aiEmployeeId()));
     }
 
     @Override
@@ -211,6 +222,13 @@ public class CrmService implements CrmUseCase {
         Route route = routeFor(companyId);
         if (route == null) {
             return null;
+        }
+        if (request.responsibleId() == null) {
+            Integer aiEmployeeId = crmSettingsUseCase.findByCompanyId(companyId).aiEmployeeId();
+            if (aiEmployeeId != null) {
+                request = new CreateCrmTaskRequest(request.leadId(), request.title(), request.description(),
+                        request.dueAt(), aiEmployeeId.longValue());
+            }
         }
         return route.connector().createTask(route.connection(), request);
     }
