@@ -27,9 +27,13 @@
       "factSchema": [
         {"name": "clientName", "type": "string", "description": "Mijozning to'liq ismi", "required": true},
         {"name": "contractNumber", "type": "string", "description": "Uy oldi-berdi shartnomasi raqami", "required": true},
-        {"name": "debtAmount", "type": "number", "description": "To'lanishi kerak bo'lgan oylik to'lov yoki qarz summasi", "required": true},
+        {"name": "debtAmount", "type": "number", "description": "Hozir to'lanishi kerak bo'lgan, muddati o'tgan to'lovlar summasi", "required": true},
         {"name": "currency", "type": "string", "description": "Valyuta (UZS, USD)", "required": false},
-        {"name": "delayDays", "type": "number", "description": "Kechikkan kunlar soni", "required": false}
+        {"name": "delayDays", "type": "number", "description": "Kechikkan kunlar soni", "required": false},
+        {"name": "remainingAmount", "type": "number", "description": "Shartnoma bo'yicha umumiy qolgan summa", "required": false},
+        {"name": "nextPaymentDate", "type": "string", "description": "Navbatdagi to'lov sanasi (yyyy-MM-dd)", "required": false},
+        {"name": "nextPaymentAmount", "type": "number", "description": "Navbatdagi to'lov summasi", "required": false},
+        {"name": "responsibleName", "type": "string", "description": "Shartnoma bo'yicha mas'ul menejer", "required": false}
       ],
       "tools": [],
       "outcomeSchema": [

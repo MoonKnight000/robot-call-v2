@@ -387,9 +387,22 @@ public class CampaignTargetService implements CampaignTargetUseCase {
             facts.put("currency", debtor.currency());
             facts.put("contractNumber", debtor.contractNumber());
             facts.put("delayDays", debtor.delayDays());
+            facts.put("remainingAmount", debtor.remainingAmount());
+            if (debtor.nextPaymentDate() != null) {
+                facts.put("nextPaymentDate", debtor.nextPaymentDate().toString());
+                facts.put("nextPaymentAmount", debtor.nextPaymentAmount());
+            }
+            if (debtor.responsibleName() != null) {
+                facts.put("responsibleName", debtor.responsibleName());
+            }
             parsed.add(new ParsedTarget(line, debtor.leadId(), debtor.phone(), null, facts.toString()));
         }
         return parsed;
+    }
+
+    @Override
+    public List<Debtor> previewUysotDebtors(long companyId, int limit) {
+        return debtorSource.findOverdueDebtors(companyId, Math.max(1, Math.min(limit, 50)));
     }
 
     private String encryptSecret(String plaintext) {

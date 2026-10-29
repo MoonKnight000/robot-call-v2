@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
+import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallResponse;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -121,6 +122,16 @@ public interface CampaignController {
     ResponseEntity<ResponseData<TargetSyncResult>> syncTargets(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
+
+    /**
+     * Who a {@code UYSOT_DEBTORS} campaign would call today: overdue contracts read live from
+     * Uysot, with the overdue amount, next payment and manager (docs/api/campaigns.md).
+     */
+    @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
+    @GetMapping("/campaigns/uysot-debtors/preview")
+    ResponseEntity<ResponseData<List<Debtor>>> previewUysotDebtors(
+            @CurrentCompanyId long companyId,
+            @RequestParam(defaultValue = "20") int limit);
 
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @PostMapping("/campaigns/{id:\\d+}/targets/list")

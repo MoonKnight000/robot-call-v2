@@ -755,9 +755,37 @@ Yuqoridagi `CHAINED` misoli aynan shu zanjirni ifodalaydi. `UYSOT_DEBTORS` alohi
 sababi bitta: u tokenni Integratsiyalar bo'limidagi **Uysot OAuth ulanishidan** oladi,
 formaga qo'lda yozilgan headerdan emas.
 
+**Qarz summasi.** To'rtinchi o'qish — shartnomaning faol to'lov jadvali
+(`voice-agent.crm.catalog.contract-payment-path`). Nishon faktlari:
+
+| Fakt | Ma'nosi |
+|---|---|
+| `debtAmount` | **Muddati o'tgan** to'lanmagan to'lovlar yig'indisi — agent aynan shuni aytadi. Jadval o'qilmasa — shartnoma qoldig'i (`residue`) |
+| `remainingAmount` | Shartnoma bo'yicha umumiy qoldiq (`residue`) |
+| `nextPaymentDate`, `nextPaymentAmount` | Bugundan keyingi birinchi to'lanmagan to'lov |
+| `responsibleName` | Shartnoma bo'yicha mas'ul menejer |
+| `clientName`, `contractNumber`, `currency`, `delayDays` | Avvalgidek |
+
+### `GET /api/campaigns/uysot-debtors/preview?limit=20` — Bugungi qarzdorlarni oldindan ko'rish
+
+`UYSOT_DEBTORS` kampaniyasi bugun kimga qo'ng'iroq qilishini Uysot'dan jonli o'qiydi, hech narsa
+import qilinmaydi. `limit` 1–50 (standart 20). Huquq: `CAMPAIGN_READ`. Uysot ulanmagan bo'lsa — bo'sh ro'yxat.
+Har bir qarzdor 3–4 ta Uysot so'rovi turadi, shuning uchun bir necha soniya ketishi mumkin.
+
+```json
+{
+  "accept": true,
+  "data": [
+    { "leadId": 99436, "phone": "+998901234567", "name": "Ali Valiyev", "contractNumber": "UY-123",
+      "debtAmount": 4000, "currency": "USD", "delayDays": 35, "remainingAmount": 50000,
+      "nextPaymentDate": "2026-11-01", "nextPaymentAmount": 2000, "responsibleName": "Dilshod Karimov" }
+  ]
+}
+```
+
 Nechta qarzdor olinishi `voice-agent.crm.debtor-import.*` bilan cheklanadi
 (`min-delay-days`, `max-debtors`, `page-size`, `max-pages`) — Open API daqiqasiga 60 so'rovga
-ruxsat beradi, bitta qarzdor esa uchta so'rovga tushadi.
+ruxsat beradi, bitta qarzdor esa to'rtta so'rovga tushadi.
 
 **`POST /targets/sync` javobi** (`TargetSyncResult`):
 

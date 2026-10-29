@@ -9,10 +9,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort;
+import uz.murodjon.robotcallv2.crm.application.port.output.UysotCatalogPort;
+import uz.murodjon.robotcallv2.crm.domain.entity.CrmPaymentDue;
 import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.DebtorImportProperties;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -20,6 +24,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -61,21 +67,25 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
     /** Contracts still in force. A cancelled or finished one has nothing to collect on. */
     private static final List<String> ACTIVE_STATUSES = List.of("ACTIVE", "STARTED");
 
+    private static final ZoneId TASHKENT = ZoneId.of("Asia/Tashkent");
+
     private final CrmProperties crmProperties;
     private final DebtorImportProperties debtorImportProperties;
     private final CrmIntegrationUseCase crmIntegrationUseCase;
+    private final UysotCatalogPort catalogPort;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public UysotDebtorSourceAdapter(CrmProperties crmProperties, DebtorImportProperties debtorImportProperties,
-                                    CrmIntegrationUseCase crmIntegrationUseCase,
+                                    CrmIntegrationUseCase crmIntegrationUseCase, UysotCatalogPort catalogPort,
                                     ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.crmProperties = crmProperties;
         this.debtorImportProperties = debtorImportProperties;
         this.crmIntegrationUseCase = crmIntegrationUseCase;
+        this.catalogPort = catalogPort;
     }
 
     @Override
@@ -177,14 +187,59 @@ public class UysotDebtorSourceAdapter implements DebtorSourcePort {
             log.debug("Uysot lead {} has no contact phone — skipped", leadId);
             return null;
         }
+        BigDecimal residue = decimal(contract, "residue");
+        Dues dues = dues(companyId, contractId);
         return new Debtor(
                 leadId,
                 phone,
                 text(contract.path("client"), "name"),
                 text(contract, "number"),
-                decimal(contract, "residue"),
+                dues.overdue() != null && dues.overdue().signum() > 0 ? dues.overdue() : residue,
                 text(contract.path("currency"), "ccy"),
-                contract.path("delay").asInt(0));
+                contract.path("delay").asInt(0),
+                residue,
+                dues.next() != null ? dues.next().date() : null,
+                dues.next() != null ? firstNonNull(dues.next().remaining(), dues.next().amount()) : null,
+                text(contract.path("responsibleBy"), "fullName"));
+    }
+
+    /**
+     * What is due now on the contract and what comes next, off its active payment schedule —
+     * a fourth read per debtor, so the agent states the overdue instalments rather than the
+     * whole contract. Empty when the schedule cannot be read: the caller falls back to the residue.
+     */
+    private Dues dues(long companyId, long contractId) {
+        try {
+            String token = authToken(companyId).orElse(null);
+            List<CrmPaymentDue> schedule = catalogPort.findPaymentSchedule(
+                    new CrmConnection(CrmProvider.UYSOT, crmProperties.baseUrl(), token), contractId);
+            LocalDate today = LocalDate.now(TASHKENT);
+            BigDecimal overdue = BigDecimal.ZERO;
+            CrmPaymentDue next = null;
+            for (CrmPaymentDue due : schedule) {
+                if (due.paid() || due.date() == null) {
+                    continue;
+                }
+                BigDecimal owed = firstNonNull(due.remaining(), due.amount());
+                if (!due.date().isAfter(today)) {
+                    overdue = owed != null ? overdue.add(owed) : overdue;
+                } else if (next == null) {
+                    next = due;
+                }
+            }
+            return new Dues(overdue, next);
+        } catch (RuntimeException e) {
+            log.debug("Uysot schedule of contract {} unreadable: {}", contractId, e.getMessage());
+            return new Dues(null, null);
+        }
+    }
+
+    private static BigDecimal firstNonNull(BigDecimal first, BigDecimal second) {
+        return first != null ? first : second;
+    }
+
+    /** What a contract's schedule says: the sum already due and unpaid, and the next payment after today. */
+    private record Dues(BigDecimal overdue, CrmPaymentDue next) {
     }
 
     /** The first number on the lead's first contact that has one. */
