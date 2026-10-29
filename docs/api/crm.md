@@ -106,7 +106,7 @@ qilinmasligi uchun). Shartnoma va to'lov jadvali keshlanmaydi.
 
 ## `POST /api/crm/uysot/flats/search` — Sotuvdagi xonadonlar
 
-Faqat `SALE` holatidagilar, eng arzonidan boshlab. Hamma maydon ixtiyoriy; `limit` 1–20.
+Faqat `SALE` holatidagilar, eng arzonidan boshlab. Hamma maydon ixtiyoriy; `limit` 1–20 (berilmasa 5).
 
 ```json
 { "rooms": 3, "priceFrom": null, "priceTo": 60000, "houseId": 7, "floorFrom": 2, "floorTo": 9, "limit": 5 }

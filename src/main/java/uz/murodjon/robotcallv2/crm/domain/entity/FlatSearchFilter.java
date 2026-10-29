@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 /**
  * What a caller asked for. Every field optional; only flats on sale are ever searched.
  *
- * @param limit how many flats to return, 1–20
+ * @param limit how many flats to return, at most 20; 0 or less (left out of a request) means 5
  */
 public record FlatSearchFilter(
         Integer rooms,
@@ -17,6 +17,6 @@ public record FlatSearchFilter(
         int limit
 ) {
     public FlatSearchFilter {
-        limit = Math.max(1, Math.min(limit, 20));
+        limit = limit <= 0 ? 5 : Math.min(limit, 20);
     }
 }
