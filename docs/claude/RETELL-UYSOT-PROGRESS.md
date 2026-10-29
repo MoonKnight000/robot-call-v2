@@ -21,9 +21,20 @@ API hujjatlari: `docs/api/crm.md` (yangi), `docs/api/chat.md` (raqam ulashish bo
 - Kontakt kartochkasi: "Uysot CRM profili" (lid + faol shartnomalar, qoldiq, kechikish, mas'ul).
 - `src/api/modules/crm.ts`, `types.ts`, yangi xato kodlari tarjimasi.
 
+## 2-bosqich (foydalanuvchi javoblaridan keyin)
+
+| Ish | Natija |
+|---|---|
+| Uysot Open API hujjati o'qildi | `lead-task/{leadId}/save` (task), `POST lead` (bosqich o'zgartirish va lid yaratish), note ≤500 belgi, `house/all`, `pipe/all`, `flat/filter` `orders`, `dd.MM.yyyy`. Mavjud kod shunga tuzatildi |
+| Qarzdorlar (`contract/filter`) | `debtAmount` = muddati o'tgan to'lanmagan summa (to'lov jadvalidan), `remainingAmount`, navbatdagi to'lov, mas'ul menejer; `GET /api/campaigns/uysot-debtors/preview`; Uysot sahifasida "Bugungi qarzdorlar" |
+| Xonadon/mahsulot xotirasi | `flatSearch`, `offeredFlats`, `interestedFlat` (`rememberFlatInterest` tool), `productInterest`/`productSkus` — mijoz xotirasiga |
+| Operator takeover | `POST /api/chats/{id}/takeover|messages|release`, widget polling, frontend "Suhbatlar (chat)" ekrani |
+| Dizayn | Menyu Retell tartibida: Qurish → Ishga tushirish → Kuzatuv. Diqqat: `src/ds/components/shell/Sidebar.jsx` design-system sync bilan ustiga yozilishi mumkin — dizayn loyihasiga ham ko'chirish kerak |
+| Frontend tekshiruvi | `tsc -b`, `vitest` (26/26), `vite build` — o'tdi |
+
 ## Ochiq savollar (foydalanuvchiga)
 
-1. **Uysot Open API yo'llari tasdiqlanmagan.** `apidoc.app.uysot.uz` sessiyadan ochilmadi. Taxminiy yo'llar
+1. ~~Uysot Open API yo'llari tasdiqlanmagan.~~ Hujjat bo'yicha tuzatildi (2-bosqich). Eski izoh: `apidoc.app.uysot.uz` sessiyadan ochilmadi. Taxminiy yo'llar
    `voice-agent.crm.catalog.*` da (env bilan o'zgartiriladi): `v1/open-api/house`, `flat/filter`,
    `employee/filter`, `pipe`, `contract/{id}/monthly-payment`. Shartnomani telefon bo'yicha qidirish
    `contract/filter` ning `search` maydoniga telefonning oxirgi 9 raqamini beradi — Uysot buni qo'llashini tekshirish kerak.
@@ -32,11 +43,10 @@ API hujjatlari: `docs/api/crm.md` (yangi), `docs/api/chat.md` (raqam ulashish bo
    nomi agentga). Xodim haqida alohida xotira (ish vaqti, qaysi majmua) kerakmi — aniqlash kerak.
 3. **Qarz summasini aytish** — agent `getContractBalance` orqali CRM'dagi aniq qoldiqni aytadi (FactGuard bilan).
    Faqat "muddati o'tgan" deyish kerak bo'lsa, tool'ni cheklash kerak.
-4. **Chatdan yangi lid yaratish** — raqam CRM'da topilmasa lid yaratilmaydi (Open API'da lid yaratish yo'li noma'lum).
-   `newLeadStatusId` sozlamasi shu uchun tayyor turibdi.
-5. **Frontend navigatsiyasini Retell uslubida qayta guruhlash** (Build / Deploy / Monitor) — Sidebar `src/ds`
+4. ~~Chatdan yangi lid yaratish~~ qilindi: `newLeadStatusId` sozlansa, raqam topilmagan chatdan `POST /v1/open-api/lead` bilan lid ochiladi.
+5. ~~Frontend navigatsiyasi~~ qilindi. Eski izoh: **Frontend navigatsiyasini Retell uslubida qayta guruhlash** (Build / Deploy / Monitor) — Sidebar `src/ds`
    (design-system sync) ichida, shuning uchun tegilmadi; dizayn tizimida qilinishi kerak.
-6. **Operator chatni o'z qo'liga olishi (takeover)** — qilinmadi, alohida bosqich.
+6. ~~Operator takeover~~ qilindi.
 
 ## Ma'lum cheklov
 
