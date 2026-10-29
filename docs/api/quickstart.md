@@ -55,6 +55,11 @@ Kontaktlar: `POST /api/campaigns/{id}/targets/csv` (`text/csv`); avval
 
 ## 5. Ishga tushirish — `POST /api/campaigns/{id}/start`
 
+**Yoki 4–5-qadam bitta so'rovda:** `POST /api/campaigns/batch-call` —
+`{ name, type, aiAgentId, csv, schedule?, immediate? }`. Kampaniya yaratiladi, CSV yuklanadi va
+boshlanadi; biror qadam rad etilsa hech narsa saqlanmaydi
+([campaigns.md](campaigns.md#post-apicampaignsbatch-call--bitta-sorovda-agent--csv--boshlash)).
+
 ## Oddiy va Bosqichli ssenariy
 
 Foydalanuvchi ikki variantni ko'radi; `scenarioId` / `definition` farqi UI'da ko'rinmaydi.
@@ -81,11 +86,10 @@ A/B variantlar (`CampaignVariant`) kampaniya sahifasida emas, alohida "Tajriba" 
 `callBehaviour`, `limits`, `dataPolicy` guruhlari; `script.scenarioId`, `script.mode`,
 `script.definition`; `persona`, `llmModel`, `fastLlmModel`, `temperature`,
 `maxOutputTokens` (profil bilan almashadi), `dataNeeded`, `dataEvaluation`, webhook'lar,
-`sipTrunkIds`, `preemptiveGeneration`, `ivrNavigationEnabled`, `useRag`.
+`sipTrunkIds`, `useRag`.
 
 > Ro'yxat `CreateAiAgentRequest` / `CreateCampaignRequest` dan olingan; yangi maydon
 > qo'shilganda bu yerga ham yoziladi.
 
-**Hech qayerda ko'rsatilmasin (qo'ng'iroqqa ta'sir qilmaydi):** `preemptiveGeneration`,
-`ivrNavigationEnabled`, `voice.stability`, `voice.similarityBoost`, `callBehaviour.endpointingDelayMs`,
-`limits.turnTimeoutSeconds` — [ai-agents.md](ai-agents.md#4-post-apiai-agents--agent-yaratish).
+Qo'ng'iroqqa ta'sir qilmaydigan oltita maydon API'dan olib tashlandi — ro'yxati:
+[ai-agents.md](ai-agents.md#4-post-apiai-agents--agent-yaratish) ("O'chirilgan maydonlar").

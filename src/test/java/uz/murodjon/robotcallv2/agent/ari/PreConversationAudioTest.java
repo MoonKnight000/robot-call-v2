@@ -49,12 +49,11 @@ class PreConversationAudioTest {
     private static AiAgent agentWithAudio(Long fileId) {
         AiAgent agent = AiAgentFixtures.agent(1L, 7L, 3L, "uz-UZ", null);
         AiAgentCallBehaviour b = agent.callBehaviour();
-        AiAgentCallBehaviour withAudio = new AiAgentCallBehaviour(b.interruptionSensitivity(), b.endpointingDelayMs(),
+        AiAgentCallBehaviour withAudio = new AiAgentCallBehaviour(b.interruptionSensitivity(),
                 b.dtmfInputEnabled(), b.voicemailAction(), b.voicemailMessage(), b.midCallSmsEnabled(),
                 b.midCallSmsTemplate(), b.transferPhoneNumber(), b.transferMessage(), b.transferQueueId(), fileId);
         return agent.withAdvanced(agent.ambience(), withAudio, agent.dataPolicy(), agent.voice(),
-                agent.preemptiveGeneration(), agent.ivrNavigationEnabled(), agent.useRag(),
-                agent.initiationWebhook(), agent.postCallWebhook());
+                agent.useRag(), agent.initiationWebhook(), agent.postCallWebhook());
     }
 
     @SuppressWarnings("unchecked")

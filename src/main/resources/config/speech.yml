@@ -170,8 +170,10 @@ voice-agent:
   # End of turn from the words (TextTurnProperties, NAMO Turn Detector v1 Multilingual).
   # Used only where Smart Turn is not installed for the call. uz-UZ is not among the
   # model's fine-tuned languages — add it to TEXT_TURN_LANGUAGES only after a replay run.
+  # Off by default: the ~310 MB model is loaded at startup but only ever serves ru-RU calls,
+  # so enable it (TEXT_TURN_DETECTOR=true) only on deployments that take Russian calls.
   text-turn:
-    enabled: ${TEXT_TURN_DETECTOR:true}
+    enabled: ${TEXT_TURN_DETECTOR:false}
     model-path: ${TEXT_TURN_MODEL_PATH:models/namo/model_quant.onnx}
     tokenizer-path: ${TEXT_TURN_TOKENIZER_PATH:models/namo/tokenizer.json}
     languages: ${TEXT_TURN_LANGUAGES:ru-RU}

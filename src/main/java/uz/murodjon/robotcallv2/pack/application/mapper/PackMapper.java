@@ -60,7 +60,7 @@ public class PackMapper {
                 // All four together or none: a pack that answers "what is kept" answers it whole
                 // (E.3), and one that stays silent leaves every part to the agent's defaults.
                 policy == null ? null : AgentDataPolicyDto.of(policy),
-                null, null, agent.useRag(),                    // preemptiveGeneration, ivrNavigationEnabled
+                agent.useRag(),
                 agent.dataNeeded(), agent.dataEvaluation(),
                 null, null,                                    // initiation and post-call webhooks
                 null, null);                                   // sipTrunkIds, enabled

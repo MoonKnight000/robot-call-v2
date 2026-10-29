@@ -1273,7 +1273,7 @@ BEGIN
                           pipeline_mode, stt_provider, stt_model, tts_provider, tts_model, tts_voice,
                           llm_model, fast_llm_model, temperature, max_output_tokens,
                           ambient_sound, ambient_sound_volume, thinking_sound, thinking_sound_volume,
-                          interruption_sensitivity, endpointing_delay_ms, voicemail_action, voicemail_message,
+                          interruption_sensitivity, voicemail_action, voicemail_message,
                           transfer_message, pronunciation_rules, post_call_actions, data_needed, data_evaluation,
                           max_conversation_duration_seconds, concurrent_calls_limit, daily_calls_limit, created_by)
     VALUES (1, 'Sotuv menejeri', 'Chiquvchi sotuv: qiziqish, byudjet va uchrashuv vaqtini aniqlaydi (Gemini STT/LLM/TTS).',
@@ -1282,7 +1282,7 @@ BEGIN
             'CASCADE', 'gemini', 'gemini-3.5-transcribe-live', 'gemini', 'gemini-3.8-flash-tts', 'gemini-tts-kore-uz',
             'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.4, 250,
             'CALL_CENTER', 0.8, 'KEYBOARD_TYPING', 0.6,
-            'HIGH', 600, 'LEAVE_MESSAGE',
+            'HIGH', 'LEAVE_MESSAGE',
             'Assalomu alaykum. Siz qiziqqan xizmat bo''yicha qo''ng''iroq qildik. Qulay vaqtda qayta bog''laning.',
             'Sizni sotuv bo''limi mutaxassisiga ulayman.',
             $j$[{"word": "MChJ", "replacement": "mas'uliyati cheklangan jamiyat", "caseSensitive": false, "language": "uz-UZ"},
@@ -1362,13 +1362,13 @@ BEGIN
     -- PROMPT mode: no scenario at all, the system prompt is the whole script. Engines left
     -- NULL run on whatever speech.yml / the company settings say; RAG is on.
     INSERT INTO ai_agent (company_id, name, description, scenario_mode, template_id, language,
-                          system_prompt, first_message, preemptive_generation, use_rag, pipeline_mode, created_by)
+                          system_prompt, first_message, use_rag, pipeline_mode, created_by)
     VALUES (1, 'Erkin suhbat (PROMPT rejimi)', 'Ssenariysiz, faqat system prompt bilan ishlaydigan yordamchi; bilim bazasidan qidiradi.',
             'PROMPT', 'SUPPORT', 'uz-UZ',
             'Siz Uysot kompaniyasining qo''llab-quvvatlash yordamchisisiz. Qisqa va aniq javob bering, bir javobda ikki gapdan oshmang. '
             || 'Bilmagan savolingizga javob to''qimang — bilim bazasidan qidiring, topilmasa operatorga ulashni taklif qiling. '
             || 'Narx, chegirma yoki qarz summasi haqida o''zingizdan hech narsa aytmang.',
-            'Assalomu alaykum! Savolingizni bering.', true, true, 'CASCADE', v_sup)
+            'Assalomu alaykum! Savolingizni bering.', true, 'CASCADE', v_sup)
     RETURNING id INTO v_prompt;
 
     -- STRUCTURED_STEPS with the definition embedded in the agent instead of a scenario row.
@@ -1397,7 +1397,7 @@ $j${"stages": [
                           pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
                           dtmf_input_enabled, mid_call_sms_enabled, mid_call_sms_template,
                           zero_pii_retention, store_call_audio, conversation_retention_days,
-                          silence_end_call_timeout_seconds, turn_timeout_seconds,
+                          silence_end_call_timeout_seconds,
                           initiation_webhook, post_call_webhook, post_call_actions, enabled, created_by)
     VALUES (1, 'Onboarding (o''chirilgan)', 'Yangi mijozni tabriklaydi va demo taklif qiladi. O''chirilgan: webhook va post-call amallar namunasi.',
             (SELECT id FROM scenario WHERE scenario_key = 'welcome-onboarding' AND is_active),
@@ -1405,7 +1405,7 @@ $j${"stages": [
             'CASCADE', 'yandex', 'yandex', 'zamira', 'gemini-3.6-flash',
             false, true, 'Video qo''llanma: https://uysot.uz/guide — {{client_name}}, savollaringiz bo''lsa yozing.',
             true, false, 7,
-            20, 8,
+            20,
             $j${"webhookUrl": "https://crm.example.uz/voice/initiate", "method": "POST", "headers": {},
                 "dynamicVariables": {"source": "voice-agent"}, "transcript": null, "audioUrl": null}$j$::jsonb,
             $j${"webhookUrl": "https://hooks.example.uz/call-finished", "method": "POST",

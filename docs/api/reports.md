@@ -958,6 +958,39 @@ qaytaradi: call flow tugunlari, navbat, operatorga taklif, hold, uzatish, monito
 | `CALLBACK_REQUESTED` | Mijoz qayta qo'ng'iroq so'radi | Navbatdan — `queueId`; flow tugunidan — `{}` |
 | `SURVEY_SCORE` | So'rovnoma bahosi qo'yildi | `score`, `userId` |
 | `MONITOR` | Supervayzer qo'shildi (telefoni jiringlagan payt) | `userId`, `mode` (`LISTEN` / `WHISPER` / `BARGE`) |
+| `TURN` | AI agent mijozga javob berdi — bitta turn bosqichma-bosqich (Audio Inspector). `at` — javobning birinchi audiosi chiqqan payt | Pastdagi jadval |
+
+#### `TURN` — Audio Inspector uchun turn vaqtlari
+
+AI agent (CASCADE pipeline) javob bergan har bir turn uchun bitta hodisa. Hodisalar qo'ng'iroq paytida
+emas, **qo'ng'iroq tugagach** yoziladi, shuning uchun jonli qo'ng'iroqda ular hali ko'rinmaydi.
+Realtime (`REALTIME`/`HALF_CASCADE`) va operator qo'ng'iroqlarida `TURN` hodisasi yo'q. Salomlashuv
+(`firstMessage`) turn hisoblanmaydi — uni hech kim kutmagan.
+
+Hamma `...Ms` maydon — **dialog boshlanganidan o'tgan millisekund**: `AGENT` transkript
+qatorlarining `tsOffsetMs` i bilan aynan bir soat, shuning uchun yozuv pleyerida ikkalasi bir
+shkalaga tushadi. (`CLIENT` qatorlari qo'ng'iroq ulangan paytdan sanaladi — farq odatda bir necha
+yuz ms.) Maydon o'lchanmagan bo'lsa payload'da **umuman bo'lmaydi** (`null` emas).
+
+| `payload` maydoni | Nima |
+|---|---|
+| `utteranceEndMs` | Speech gate yopildi — mijoz gapini tugatdi deb qaror qilindi (VAD). STT o'zi endpointing qilsa (standart sozlama) bo'lmaydi |
+| `eouWaitMs` | Gate yopilishidan oldin kutilgan sukunat; mijoz aslida `utteranceEndMs - eouWaitMs` da jim bo'lgan |
+| `sttFinalMs` | STT yakuniy matnni berdi |
+| `llmRequestMs` | LLM ga so'rov ketdi |
+| `llmFirstTokenMs` | LLM birinchi tokenni qaytardi |
+| `ttsRequestMs` | Birinchi gap TTS ga berildi |
+| `firstAudioMs` | Javobning birinchi audiosi liniyaga chiqdi (doim bor) |
+| `speculated` | `true` — javob STT final'dan oldin, sukunat paytida yozib qo'yilgan; LLM maydonlari bo'lmasligi mumkin |
+
+Kutish (mijoz nuqtai nazaridan) = `firstAudioMs - utteranceEndMs` (yoki gate bo'lmasa
+`firstAudioMs - sttFinalMs`). Misol:
+
+```json
+{ "id": 1210, "companyId": 1, "callAttemptId": 1052, "at": "2026-10-28T10:15:14.012Z", "type": "TURN",
+  "payload": { "utteranceEndMs": 10400, "eouWaitMs": 600, "sttFinalMs": 10700, "llmRequestMs": 10710,
+               "llmFirstTokenMs": 11050, "ttsRequestMs": 11300, "firstAudioMs": 12000, "speculated": false } }
+```
 
 ---
 

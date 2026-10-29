@@ -17,9 +17,6 @@ public class AiAgentLimitsEntity {
     @Column(name = "silence_end_call_timeout_seconds")
     private Integer silenceEndCallTimeoutSeconds;
 
-    @Column(name = "turn_timeout_seconds")
-    private Integer turnTimeoutSeconds;
-
     @Column(name = "concurrent_calls_limit")
     private Integer concurrentCallsLimit;
 
@@ -30,10 +27,9 @@ public class AiAgentLimitsEntity {
     }
 
     public AiAgentLimitsEntity(Integer maxConversationDurationSeconds, Integer silenceEndCallTimeoutSeconds,
-                               Integer turnTimeoutSeconds, Integer concurrentCallsLimit, Integer dailyCallsLimit) {
+                               Integer concurrentCallsLimit, Integer dailyCallsLimit) {
         this.maxConversationDurationSeconds = maxConversationDurationSeconds;
         this.silenceEndCallTimeoutSeconds = silenceEndCallTimeoutSeconds;
-        this.turnTimeoutSeconds = turnTimeoutSeconds;
         this.concurrentCallsLimit = concurrentCallsLimit;
         this.dailyCallsLimit = dailyCallsLimit;
     }
@@ -44,10 +40,6 @@ public class AiAgentLimitsEntity {
 
     public Integer getSilenceEndCallTimeoutSeconds() {
         return silenceEndCallTimeoutSeconds;
-    }
-
-    public Integer getTurnTimeoutSeconds() {
-        return turnTimeoutSeconds;
     }
 
     public Integer getConcurrentCallsLimit() {

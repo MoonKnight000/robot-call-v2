@@ -274,6 +274,65 @@ yaratadi. Javob — yangi `CampaignRow`.
 
 ---
 
+### `POST /api/campaigns/batch-call` — Bitta so'rovda: agent + CSV + boshlash
+
+"Agentni tanlang → CSV tashlang → Boshlash" oqimi uchun. Ichida aynan uchta mavjud qadam
+ketma-ket bajariladi: `POST /api/campaigns` → `POST /api/campaigns/{id}/targets/csv` →
+`POST /api/campaigns/{id}/start`. Ruxsat — `CAMPAIGN_EDIT`.
+
+**Request** (`BatchCallRequest`, `application/json`):
+
+```json
+{
+  "name": "Oktabr qarzdorlari",
+  "type": "DEBT_COLLECTION",
+  "aiAgentId": 3,
+  "csv": "clientId,phone,clientName,debtAmount\n1001,+998901234567,Aziz Karimov,1500000\n",
+  "schedule": { "dialWindowStart": "09:00", "dialWindowEnd": "18:00", "dialDays": ["MONDAY", "TUESDAY"] },
+  "immediate": false
+}
+```
+
+| Maydon | Majburiy | Izoh |
+|---|---|---|
+| `name` | ha | Kampaniya nomi |
+| `type` | ha | `DEBT_COLLECTION` \| `SURVEY` |
+| `aiAgentId` | ha | Qo'ng'iroq qiladigan agent (`dialing.mode` doim `AI`) |
+| `csv` | ha | CSV fayl matni — `targets/csv` bilan bir xil format, JSON satr sifatida (`\n` bilan); ko'pi bilan 5 000 000 belgi |
+| `schedule` | yo'q | `POST /api/campaigns` dagi `schedule` guruhi; berilmasa kompaniya oynasi, har kuni |
+| `immediate` | yo'q | `start?immediate=` bilan bir xil; standart `false` |
+
+Qolgan hamma sozlama `POST /api/campaigns` standartida: 3 urinish, 20 parallel qo'ng'iroq,
+`priority` 3, `recurrence` `ONCE`. Ularni keyin `PUT /api/campaigns/{id}` bilan o'zgartirish mumkin.
+
+**Response** (`BatchCallResponse`):
+
+```json
+{
+  "accept": true,
+  "data": {
+    "campaignId": 12,
+    "imported": {
+      "campaignId": 12, "added": 45, "targetIds": [501, 502], "skippedDuplicates": 3,
+      "skippedDoNotCall": 1, "errors": [ { "line": 8, "message": "phone is empty" } ],
+      "unknownColumns": []
+    },
+    "status": "ACTIVE"
+  },
+  "errors": null
+}
+```
+
+`status` — `ACTIVE`, yoki `schedule.startAt` kelajakda bo'lsa (`immediate=false`) `SCHEDULED`.
+
+**Xatolar — hammasi yoki hech narsa:** biror qadam rad etilsa, hech narsa saqlanmaydi (kampaniya
+ham, nishonlar ham). Kodlar uchala endpoint'nikidek: agent topilmasa `404 AI_AGENT_NOT_FOUND`,
+CSV'da `phone` ustuni yo'q — `400 CSV_PHONE_COLUMN_MISSING`, bo'sh — `400 CSV_EMPTY`, birorta
+ham yaroqli qator bo'lmasa — `409 CAMPAIGN_HAS_NO_TARGETS`, agent o'chirilgan — `409 AI_AGENT_DISABLED`.
+Ayrim qatorlar xato bo'lsa, qolganlari bilan kampaniya boshlanadi va xato qatorlar `imported.errors` da qaytadi.
+
+---
+
 ### PROGRESSIVE kampaniya qanday teriladi
 
 Alohida endpoint yo'q — kampaniya `ACTIVE` bo'lsa, dialer har tick'da (`voice-agent.dialer.tick-seconds`)

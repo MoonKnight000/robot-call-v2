@@ -173,11 +173,10 @@ class DialogToolsSmsGuardTest {
     private static DialogSession sessionWithTemplate(String template, Map<String, Object> facts,
                                                      Predicate<String> smsSender) {
         AiAgent base = AiAgentFixtures.agent(3L, 1L, 10L, "uz-UZ", "nigora");
-        AiAgentCallBehaviour behaviour = new AiAgentCallBehaviour(InterruptionSensitivity.MEDIUM, 700, false,
+        AiAgentCallBehaviour behaviour = new AiAgentCallBehaviour(InterruptionSensitivity.MEDIUM, false,
                 VoicemailAction.LEAVE_MESSAGE, null, true, template, null, null, null);
         AiAgent agent = base.withAdvanced(base.ambience(), behaviour, base.dataPolicy(), base.voice(),
-                base.preemptiveGeneration(), base.ivrNavigationEnabled(), base.useRag(),
-                base.initiationWebhook(), base.postCallWebhook());
+                base.useRag(), base.initiationWebhook(), base.postCallWebhook());
         DialogSession session = baseSession(facts).agent(agent).build();
         session.setMidCallSmsSender(smsSender);
         return session;

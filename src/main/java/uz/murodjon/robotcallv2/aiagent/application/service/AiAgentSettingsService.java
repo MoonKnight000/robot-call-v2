@@ -132,8 +132,6 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
         AiAgent agent = drafts.requireAgent(companyId, agentId);
         return new AgentAdvancedDto(
                 agent.useRag(),
-                agent.preemptiveGeneration(),
-                agent.ivrNavigationEnabled(),
                 agent.initiationWebhook(),
                 agent.postCallWebhook(),
                 agent.voice().emotionAdaptive(),
@@ -162,8 +160,6 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                 voice.withEmotionAdaptive(
                         request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive())
                         .withWarmth(request.speakingWarmth() != null ? request.speakingWarmth() : voice.warmth()),
-                request.preemptiveGeneration() != null ? request.preemptiveGeneration() : existing.preemptiveGeneration(),
-                request.ivrNavigationEnabled() != null ? request.ivrNavigationEnabled() : existing.ivrNavigationEnabled(),
                 request.useRag() != null ? request.useRag() : existing.useRag(),
                 request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook(),
                 request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook()

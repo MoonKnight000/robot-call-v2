@@ -15,7 +15,7 @@ GTCRN uchun yo'l compose'da tayyor (`/app/models/gtcrn_simple.onnx`), `.env` da 
 | Silero VAD v5 | Nutq/sukunat — barge-in, STT gating, endpointing, AMD | `models/silero_vad.onnx` | ~2 MB | Standart yoqiq (`VAD_MODEL_PATH`) |
 | GTCRN | Mijoz liniyasidagi neyron shovqin filtri (VOICE-PIPELINE-PLAN Bosqich 6) | `models/gtcrn_simple.onnx` | ~0.5 MB | `DENOISER_ENABLED=true` |
 | Smart Turn v3 | Audio bo'yicha "gap tugadimi" (turn detection) | `models/smart_turn_v3.onnx` | ~8.8 MB | `TURN_DETECTOR=true` |
-| NAMO Turn Detector v1 | Matn bo'yicha "gap tugadimi" (Bosqich 1) | `models/namo/model_quant.onnx` + `models/namo/tokenizer.json` | ~310 MB | `TEXT_TURN_DETECTOR=true` |
+| NAMO Turn Detector v1 | Matn bo'yicha "gap tugadimi" (Bosqich 1) | `models/namo/model_quant.onnx` + `models/namo/tokenizer.json` | ~310 MB | Standart o'chiq; `TEXT_TURN_DETECTOR=true` |
 
 ---
 
@@ -112,7 +112,9 @@ curl -fsSL -o models/namo/tokenizer.json \
   2. Fine-tune — repo tashqarisida (loyihada Python yo'q, CLAUDE.md §8.1).
   3. `TextTurnReplayTool` bilan yangi model baholanadi; o'tsa, `models/` ga qo'yilib
      `TEXT_TURN_LANGUAGES=uz-UZ,ru-RU` qilinadi.
-- Yoqish:
+- **Standart o'chiq** (2026-10-28, `PROJECT-AUDIT.md` 2-bosqich): model startup'da ~310 MB xotira
+  oladi, lekin faqat `ru-RU` qo'ng'iroqlarga xizmat qiladi. Rus tilida qo'ng'iroq qiladigan
+  o'rnatmada yoqing:
   ```
   TEXT_TURN_DETECTOR=true
   TEXT_TURN_MODEL_PATH=models/namo/model_quant.onnx

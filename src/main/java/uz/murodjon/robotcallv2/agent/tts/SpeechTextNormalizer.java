@@ -26,10 +26,22 @@ public final class SpeechTextNormalizer {
     /** Percentage like {@code 15%}, {@code 20 %}. */
     private static final Pattern PERCENTAGE = Pattern.compile("(\\d+)\\s*%");
 
+    /**
+     * One written number: groups of exactly three digits after a single separator
+     * ({@code 1 500 000}, {@code 1.500.000}) or a plain digit run, either with an optional
+     * one- or two-digit fraction. A separator only groups when three digits follow it, so
+     * {@code "15 000, 20 000"}, {@code "500 000. 3 kun"} and {@code "2 3 kun"} stay separate
+     * numbers instead of being glued into one that no longer parses — or parses as a
+     * different figure ("2 3" read as twenty-three).
+     */
+    private static final String AMOUNT =
+            "(?<!\\d)(\\d{1,3}(?:[\\s\\u00A0.,']\\d{3}(?!\\d))+(?:[.,]\\d{1,2}(?!\\d))?|\\d+(?:[.,]\\d{1,2}(?!\\d))?)";
+
     /** Currency like {@code $1500}, {@code 1500 USD}, {@code 1 500 000 so'm}. */
-    private static final Pattern UZ_SUM = Pattern.compile("(?i)(\\d[\\d\\s.,\\u00A0']*\\d|\\d+)\\s*(so['`’‘]m|som|сўм|сум|uzs)\\b");
-    private static final Pattern RU_RUBLE = Pattern.compile("(?i)(\\d[\\d\\s.,\\u00A0']*\\d|\\d+)\\s*(руб(?:ля|лей|\\.)?|rub)\\b");
-    private static final Pattern USD_AMOUNT = Pattern.compile("(?i)(?:\\$\\s*(\\d[\\d\\s.,\\u00A0']*\\d|\\d+)|(\\d[\\d\\s.,\\u00A0']*\\d|\\d+)\\s*(?:usd|dollar[s]?|доллар(?:ов|а)?))");
+    private static final Pattern UZ_SUM = Pattern.compile("(?i)" + AMOUNT + "\\s*(so['`’‘]m|som|сўм|сум|uzs)\\b");
+    private static final Pattern RU_RUBLE = Pattern.compile("(?i)" + AMOUNT + "\\s*(руб(?:ля|лей|\\.)?|rub)\\b");
+    private static final Pattern USD_AMOUNT = Pattern.compile(
+            "(?i)(?:\\$\\s*" + AMOUNT + "|" + AMOUNT + "\\s*(?:usd|dollar[s]?|доллар(?:ов|а)?))");
 
     /**
      * A reference or contract number: hyphen-joined parts or letter prefix on digits.
@@ -40,8 +52,11 @@ public final class SpeechTextNormalizer {
     /** {@code 2026-yil}, {@code 1-iyul}, {@code 7-avgustga} \u2014 Uzbek ordinal. */
     private static final Pattern UZ_ORDINAL = Pattern.compile("(\\d+)-(\\p{L}+)");
 
-    /** A quantity with grouping separators: {@code 1 500 000}, {@code 1.500.000}. */
-    private static final Pattern QUANTITY = Pattern.compile("\\d[\\d\\s.,\\u00A0']*\\d|\\d");
+    /** A quantity with grouping separators: {@code 1 500 000}, {@code 1.500.000}, {@code 12.75}. */
+    private static final Pattern QUANTITY = Pattern.compile(AMOUNT);
+
+    /** What a decimal quantity looks like once grouping is gone: {@code 12.75}, {@code 2,3}. */
+    private static final Pattern DECIMAL = Pattern.compile("(\\d+)[.,](\\d{1,2})");
 
     /**
      * A phone number, either with its country code ({@code +998 90 123 45 67},
@@ -233,6 +248,14 @@ public final class SpeechTextNormalizer {
 
     private static String uzbekQuantity(String written) {
         String cleaned = cleanNumber(written);
+        Matcher decimal = DECIMAL.matcher(cleaned);
+        if (decimal.matches() && decimal.group(1).length() <= MAX_QUANTITY_DIGITS) {
+            // "12.75" -> "o'n ikki butun yuzdan yetmish besh", "2.3" -> "ikki butun o'ndan uch"
+            String fraction = decimal.group(2);
+            return UzbekNumberWords.cardinal(Long.parseLong(decimal.group(1))) + " butun "
+                    + (fraction.length() == 1 ? "o'ndan " : "yuzdan ")
+                    + UzbekNumberWords.cardinal(Long.parseLong(fraction));
+        }
         if (!cleaned.matches("\\d+")) {
             return written;
         }
@@ -374,7 +397,7 @@ public final class SpeechTextNormalizer {
 
     /**
      * A phone number the way a person reads one back: group by group
-     * ("to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti"), never as the single
+     * ("to'qson, yuz yigirma uch, qirq besh, oltmish yetti"), never as the single
      * enormous figure the quantity rule would otherwise make of it — a twelve-digit number
      * is inside {@link #MAX_QUANTITY_DIGITS}, so a readback of the caller's own number was
      * coming out as "to'qqiz yuz to'qson sakkiz milliard..." and verified nothing

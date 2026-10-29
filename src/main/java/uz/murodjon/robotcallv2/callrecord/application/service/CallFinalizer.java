@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
 import uz.murodjon.robotcallv2.agent.rtp.RtpQuality;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.summary.SummarizedCall;
@@ -18,12 +19,14 @@ import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizationUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.RecordingStoragePort;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.AnsweredCall;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTalkMetrics;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
@@ -84,6 +87,8 @@ public class CallFinalizer implements CallFinalizationUseCase {
     /** Whose clock a "call me back at five" is read in. */
     private final CompanyConfigUseCase companyConfigUseCase;
     private final ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider;
+    /** Where each answered turn's stage timings go (Audio Inspector). */
+    private final CallEventUseCase callEventUseCase;
     private final String llmModel;
 
     @Autowired
@@ -98,7 +103,9 @@ public class CallFinalizer implements CallFinalizationUseCase {
                          PostCallActionExecutor postCallActionExecutor, CallBillingUseCase callBilling,
                          InboundRouteUseCase inboundRouteUseCase, CompanyConfigUseCase companyConfigUseCase,
                          ObjectProvider<CampaignVariantUseCase> campaignVariantUseCaseProvider,
+                         CallEventUseCase callEventUseCase,
                          @Value("${spring.ai.google.genai.chat.options.model:}") String llmModel) {
+        this.callEventUseCase = callEventUseCase;
         this.inboundRouteUseCase = inboundRouteUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
         this.callRecordService = callRecordService;
@@ -132,11 +139,12 @@ public class CallFinalizer implements CallFinalizationUseCase {
                          TtsVoiceUseCase ttsVoiceUseCase, VadProperties vadProperties, CallMemoryWriter memoryWriter,
                          PostCallActionExecutor postCallActionExecutor, CallBillingUseCase callBilling,
                          InboundRouteUseCase inboundRouteUseCase, CompanyConfigUseCase companyConfigUseCase,
-                         String llmModel) {
+                         CallEventUseCase callEventUseCase, String llmModel) {
         this(callRecordService, summaryService, callQualityUseCase, scorecardUseCase, recordingStoragePort,
                 outboxDeliveryService, scenarioUseCase, campaignTargetUseCase, notificationUseCase, metrics,
                 sttProperties, ttsProperties, ttsVoiceUseCase, vadProperties, memoryWriter,
-                postCallActionExecutor, callBilling, inboundRouteUseCase, companyConfigUseCase, null, llmModel);
+                postCallActionExecutor, callBilling, inboundRouteUseCase, companyConfigUseCase, null,
+                callEventUseCase, llmModel);
     }
 
     /**
@@ -267,6 +275,7 @@ public class CallFinalizer implements CallFinalizationUseCase {
             } catch (Exception e) {
                 log.warn("[{}] writeTechnicalDetail failed: {}", callAttemptId, e.getMessage());
             }
+            recordTurnTimeline(companyId, callAttemptId, technical);
 
             settle(callAttemptId, companyId, durationSec, technical);
             if (disposition != null && disposition.isConversion()) {
@@ -456,6 +465,24 @@ public class CallFinalizer implements CallFinalizationUseCase {
                 .map(AnsweredCall::callAttemptId)
                 .filter(id -> id != callAttemptId)
                 .toList();
+    }
+
+    /**
+     * Each answered turn onto the call's timeline, so the recording can be read stage by
+     * stage (Audio Inspector). Collected in memory during the call and written only now, off
+     * the call path; {@code recordAt} never throws.
+     */
+    private void recordTurnTimeline(long companyId, long callAttemptId, DialogTechnicalSnapshot technical) {
+        if (technical == null || companyId == 0) {
+            return;
+        }
+        for (TurnTiming turn : technical.turnTimings()) {
+            callEventUseCase.recordAt(companyId, callAttemptId, CallEventType.TURN, turn.at(),
+                    "utteranceEndMs", turn.utteranceEndMs(), "eouWaitMs", turn.eouWaitMs(),
+                    "sttFinalMs", turn.sttFinalMs(), "llmRequestMs", turn.llmRequestMs(),
+                    "llmFirstTokenMs", turn.llmFirstTokenMs(), "ttsRequestMs", turn.ttsRequestMs(),
+                    "firstAudioMs", turn.firstAudioMs(), "speculated", turn.speculated());
+        }
     }
 
     /**

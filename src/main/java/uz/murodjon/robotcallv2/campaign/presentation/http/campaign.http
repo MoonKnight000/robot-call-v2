@@ -28,6 +28,19 @@ Authorization: Bearer {{auth_token}}
   "schedule": { "dialWindowStart": "09:00:00", "dialWindowEnd": "19:00:00" }
 }
 
+### Batch Call (create + CSV + start in one request; nothing saved if any step is refused)
+POST http://localhost:8080/api/campaigns/batch-call
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Tezkor eslatma",
+  "type": "DEBT_COLLECTION",
+  "aiAgentId": 1,
+  "csv": "clientId,phone,clientName,debtAmount\n1001,+998901234567,Aziz Karimov,1500000\n1002,+998907654321,Dilnoza Yusupova,800000\n",
+  "immediate": true
+}
+
 ### Filter Campaigns
 POST http://localhost:8080/api/campaigns/filter
 Content-Type: application/json

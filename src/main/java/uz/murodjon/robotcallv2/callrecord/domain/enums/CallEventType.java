@@ -38,5 +38,11 @@ public enum CallEventType {
     /** payload: score. */
     SURVEY_SCORE,
     /** A supervisor joined; payload: userId, mode. */
-    MONITOR
+    MONITOR,
+    /**
+     * One answered agent turn, stage by stage (Audio Inspector); at = its first audio. payload,
+     * in ms from the call's start: utteranceEndMs, eouWaitMs, sttFinalMs, llmRequestMs,
+     * llmFirstTokenMs, ttsRequestMs, firstAudioMs; and speculated.
+     */
+    TURN
 }

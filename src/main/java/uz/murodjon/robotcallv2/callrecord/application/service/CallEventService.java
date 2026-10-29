@@ -32,6 +32,11 @@ public class CallEventService implements CallEventUseCase {
     /** Records one event; {@code keyValues} alternate key, value ("queueId", 3, "position", 2). */
     @Override
     public void record(long companyId, long callAttemptId, CallEventType type, Object... keyValues) {
+        recordAt(companyId, callAttemptId, type, Instant.now(), keyValues);
+    }
+
+    @Override
+    public void recordAt(long companyId, long callAttemptId, CallEventType type, Instant at, Object... keyValues) {
         if (callAttemptId == 0) {
             return;
         }
@@ -42,7 +47,7 @@ public class CallEventService implements CallEventUseCase {
             }
         }
         try {
-            repository.create(new CallEvent(0, companyId, callAttemptId, Instant.now(), type, payload));
+            repository.create(new CallEvent(0, companyId, callAttemptId, at, type, payload));
         } catch (Exception e) {
             log.warn("Could not record {} for call {}: {}", type, callAttemptId, e.getMessage());
         }

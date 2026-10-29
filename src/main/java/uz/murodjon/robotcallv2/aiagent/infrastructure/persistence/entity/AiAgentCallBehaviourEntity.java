@@ -15,9 +15,6 @@ public class AiAgentCallBehaviourEntity {
     @Column(name = "interruption_sensitivity", nullable = false, length = 32)
     private InterruptionSensitivity interruptionSensitivity = InterruptionSensitivity.MEDIUM;
 
-    @Column(name = "endpointing_delay_ms", nullable = false)
-    private int endpointingDelayMs = 700;
-
     @Column(name = "dtmf_input_enabled", nullable = false)
     private boolean dtmfInputEnabled = true;
 
@@ -49,7 +46,7 @@ public class AiAgentCallBehaviourEntity {
     protected AiAgentCallBehaviourEntity() {
     }
 
-    public AiAgentCallBehaviourEntity(InterruptionSensitivity interruptionSensitivity, int endpointingDelayMs,
+    public AiAgentCallBehaviourEntity(InterruptionSensitivity interruptionSensitivity,
                                       boolean dtmfInputEnabled, VoicemailAction voicemailAction,
                                       String voicemailMessage, boolean midCallSmsEnabled,
                                       String midCallSmsTemplate, String transferPhoneNumber,
@@ -57,7 +54,6 @@ public class AiAgentCallBehaviourEntity {
                                       Long preConversationAudioFileId) {
         this.interruptionSensitivity = interruptionSensitivity != null
                 ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
-        this.endpointingDelayMs = endpointingDelayMs > 0 ? endpointingDelayMs : 700;
         this.dtmfInputEnabled = dtmfInputEnabled;
         this.voicemailAction = voicemailAction != null ? voicemailAction : VoicemailAction.LEAVE_MESSAGE;
         this.voicemailMessage = voicemailMessage;
@@ -71,10 +67,6 @@ public class AiAgentCallBehaviourEntity {
 
     public InterruptionSensitivity getInterruptionSensitivity() {
         return interruptionSensitivity;
-    }
-
-    public int getEndpointingDelayMs() {
-        return endpointingDelayMs;
     }
 
     public boolean isDtmfInputEnabled() {

@@ -248,6 +248,7 @@ public class DialogEngine implements CallDialog {
         session.latency().providers(
                 agentSttProvider != null && !agentSttProvider.isBlank() ? agentSttProvider.trim() : sttProperties.provider(),
                 voiceSettings.provider() != null ? voiceSettings.provider() : ttsProperties.provider());
+        session.latency().callStartedAt(session.startedAt());
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
@@ -439,7 +440,8 @@ public class DialogEngine implements CallDialog {
                 null, llmModelOf(session),
                 session.bargeIns(), session.watchdog() != null ? session.watchdog().prompts() : 0,
                 session.lowConfidenceInputs(),
-                session.ownChatClient() != null);
+                session.ownChatClient() != null,
+                session.turnTimings());
     }
 
     /** The model the call ran on — the company's own endpoint's when it has one. */

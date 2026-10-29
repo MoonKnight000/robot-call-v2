@@ -21,8 +21,6 @@ import java.util.Set;
  * since is answered 409 instead of being overwritten. Optional, so an older client that
  * does not send it keeps working.
  *
- * <p>The same six fields as {@link CreateAiAgentRequest} are saved but not read by a call yet.
- *
  * <p>{@code engineProfileId} replaces the agent's recognizer, models, temperature and reply cap
  * with that profile's ({@code GET /api/ai-agents/engine-profiles}); any of those fields sent
  * alongside it still wins.
@@ -44,8 +42,6 @@ public record UpdateAiAgentRequest(
         @Valid AgentCallBehaviourDto callBehaviour,
         AgentLimitsDto limits,
         AgentDataPolicyDto dataPolicy,
-        Boolean preemptiveGeneration,
-        Boolean ivrNavigationEnabled,
         Boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,

@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.agent.metrics;
 
+import java.time.Instant;
+
 /**
  * Where one turn's wait actually went, stage by stage.
  *
@@ -62,6 +64,10 @@ public class TurnLatency {
     /** The providers the call was set up with, so stages can be compared across vendors. */
     private volatile String sttProvider = UNKNOWN_PROVIDER;
     private volatile String ttsProvider = UNKNOWN_PROVIDER;
+    /** The call's start, the zero of {@link TurnTiming}'s offsets; 0 = no timing kept. */
+    private volatile long callStartedAtMillis;
+    /** The last finished turn's timing, until {@link #takeTiming()} collects it. */
+    private volatile TurnTiming lastTiming;
 
     /**
      * The STT and TTS providers chosen for this call. The choice, not necessarily the one
@@ -71,6 +77,18 @@ public class TurnLatency {
     public void providers(String stt, String tts) {
         this.sttProvider = stt == null || stt.isBlank() ? UNKNOWN_PROVIDER : stt;
         this.ttsProvider = tts == null || tts.isBlank() ? UNKNOWN_PROVIDER : tts;
+    }
+
+    /** The start of the call, which every {@link TurnTiming} offset is counted from. */
+    public void callStartedAt(Instant startedAt) {
+        this.callStartedAtMillis = startedAt != null ? startedAt.toEpochMilli() : 0;
+    }
+
+    /** The timing {@link #finish} took for the turn it closed, once; null when there is none. */
+    public TurnTiming takeTiming() {
+        TurnTiming timing = lastTiming;
+        lastTiming = null;
+        return timing;
     }
 
     /**
@@ -162,6 +180,7 @@ public class TurnLatency {
         if (speculated) {
             line.append(" (reply written ahead of the final)");
         }
+        lastTiming = timing();
         // Consume the stamp: it belongs to the utterance this turn answered, and the next
         // turn's utterance gets its own or none at all. Left standing, it made eou report
         // the same frozen number every turn and stt_final grow by the whole gap between
@@ -170,6 +189,34 @@ public class TurnLatency {
         utteranceEndedAt = 0;
         eouWaitMs = -1;
         return line.toString();
+    }
+
+    /**
+     * The stamps as points on the call's clock. Taken in nanoTime, which has no epoch, so
+     * each is placed by how long before the first audio it was — and the first audio by the
+     * wall clock, now.
+     */
+    private TurnTiming timing() {
+        if (callStartedAtMillis == 0) {
+            return null;
+        }
+        Instant now = Instant.now();
+        int firstAudioMs = (int) Math.max(0, now.toEpochMilli() - callStartedAtMillis);
+        return new TurnTiming(now,
+                offset(utteranceEndedAt, firstAudioMs),
+                eouWaitMs >= 0 ? eouWaitMs : null,
+                offset(finalAt, firstAudioMs),
+                offset(llmRequestedAt, firstAudioMs),
+                offset(llmFirstTokenAt, firstAudioMs),
+                offset(ttsRequestedAt, firstAudioMs),
+                firstAudioMs,
+                speculated);
+    }
+
+    /** Where {@code stampNanos} falls on the call's clock; null when unstamped or stale. */
+    private Integer offset(long stampNanos, int firstAudioMs) {
+        long before = millis(stampNanos, firstAudioAt);
+        return before < 0 || before > firstAudioMs ? null : (int) (firstAudioMs - before);
     }
 
     private static long millis(long fromNanos, long toNanos) {

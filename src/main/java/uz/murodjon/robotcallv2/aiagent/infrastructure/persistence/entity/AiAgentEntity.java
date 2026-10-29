@@ -63,12 +63,6 @@ public class AiAgentEntity {
     @Column(name = "scenario_definition", columnDefinition = "jsonb")
     private String scenarioDefinition;
 
-    @Column(name = "preemptive_generation", nullable = false)
-    private boolean preemptiveGeneration;
-
-    @Column(name = "ivr_navigation_enabled", nullable = false)
-    private boolean ivrNavigationEnabled = true;
-
     @Column(name = "use_rag", nullable = false)
     private boolean useRag;
 
@@ -250,22 +244,6 @@ public class AiAgentEntity {
 
     public void setScenarioDefinition(String scenarioDefinition) {
         this.scenarioDefinition = scenarioDefinition;
-    }
-
-    public boolean isPreemptiveGeneration() {
-        return preemptiveGeneration;
-    }
-
-    public void setPreemptiveGeneration(boolean preemptiveGeneration) {
-        this.preemptiveGeneration = preemptiveGeneration;
-    }
-
-    public boolean isIvrNavigationEnabled() {
-        return ivrNavigationEnabled;
-    }
-
-    public void setIvrNavigationEnabled(boolean ivrNavigationEnabled) {
-        this.ivrNavigationEnabled = ivrNavigationEnabled;
     }
 
     public boolean isUseRag() {

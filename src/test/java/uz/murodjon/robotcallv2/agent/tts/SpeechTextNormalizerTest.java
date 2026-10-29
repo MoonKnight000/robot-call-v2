@@ -33,8 +33,8 @@ class SpeechTextNormalizerTest {
             "8600123456789012|sakkiz olti nol nol bir ikki uch to'rt besh olti yetti sakkiz to'qqiz nol bir ikki",
             // a phone number is twelve digits, i.e. inside the sum rule: read in the groups
             // it is said in, so the caller can check it against the number they know
-            "+998901234567|to'qqiz yuz to'qson sakkiz, to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti",
-            "90 123 45 67|to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti",
+            "+998901234567|to'qqiz yuz to'qson sakkiz, to'qson, yuz yigirma uch, qirq besh, oltmish yetti",
+            "90 123 45 67|to'qson, yuz yigirma uch, qirq besh, oltmish yetti",
             // sums with trailing .00 and tiyin
             "1 500 000.00 so'm|bir million besh yuz ming so'm",
             "15000.50 so'm|o'n besh ming so'm ellik tiyin",
@@ -47,7 +47,15 @@ class SpeechTextNormalizerTest {
             "0.5 soat|yarim soat",
             // the hour a slot is booked for, not two figures either side of a colon
             "soat 14:30 da|soat o'n to'rt o'ttiz da",
-            "9:00|to'qqiz"
+            "9:00|to'qqiz",
+            // separate numbers next to each other stay separate, not glued into one figure
+            "15 000, 20 000 so'm|o'n besh ming, yigirma ming so'm",
+            "500 000. 3 kun qoldi|besh yuz ming. uch kun qoldi",
+            "3, 6 yoki 12 oy|uch, olti yoki o'n ikki oy",
+            "2 3 kun|ikki uch kun",
+            // decimals other than a half
+            "12.75%|o'n ikki butun yuzdan yetmish besh foiz",
+            "2.3 kun|ikki butun o'ndan uch kun"
     })
     void writesDigitsOutInUzbek(String written, String spoken) {
         assertThat(SpeechTextNormalizer.normalize(written, "uz-UZ")).isEqualTo(spoken);

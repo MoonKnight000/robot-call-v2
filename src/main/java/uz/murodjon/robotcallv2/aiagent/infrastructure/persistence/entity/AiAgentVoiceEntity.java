@@ -21,12 +21,6 @@ public class AiAgentVoiceEntity {
     @Column(name = "voice_speed")
     private Double voiceSpeed = 1.0;
 
-    @Column(name = "voice_stability")
-    private Double voiceStability = 0.5;
-
-    @Column(name = "voice_similarity_boost")
-    private Double voiceSimilarityBoost = 0.75;
-
     /** Language code → speed as JSON (NEXT-PLAN A.7); null when every language uses voice_speed. */
     @Column(name = "voice_speed_per_language")
     @JdbcTypeCode(SqlTypes.JSON)
@@ -42,13 +36,10 @@ public class AiAgentVoiceEntity {
     protected AiAgentVoiceEntity() {
     }
 
-    public AiAgentVoiceEntity(String ttsVoice, Double voiceSpeed, Double voiceStability,
-                              Double voiceSimilarityBoost, String voiceSpeedPerLanguage,
+    public AiAgentVoiceEntity(String ttsVoice, Double voiceSpeed, String voiceSpeedPerLanguage,
                               boolean emotionAdaptiveVoice, SpeakingWarmth speakingWarmth) {
         this.ttsVoice = ttsVoice;
         this.voiceSpeed = voiceSpeed;
-        this.voiceStability = voiceStability;
-        this.voiceSimilarityBoost = voiceSimilarityBoost;
         this.voiceSpeedPerLanguage = voiceSpeedPerLanguage;
         this.emotionAdaptiveVoice = emotionAdaptiveVoice;
         this.speakingWarmth = speakingWarmth;
@@ -60,14 +51,6 @@ public class AiAgentVoiceEntity {
 
     public Double getVoiceSpeed() {
         return voiceSpeed;
-    }
-
-    public Double getVoiceStability() {
-        return voiceStability;
-    }
-
-    public Double getVoiceSimilarityBoost() {
-        return voiceSimilarityBoost;
     }
 
     public String getVoiceSpeedPerLanguage() {

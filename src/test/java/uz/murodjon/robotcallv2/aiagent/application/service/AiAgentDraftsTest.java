@@ -118,7 +118,7 @@ class AiAgentDraftsTest {
 
     @Test
     void aCompanyWithoutACallCapAcceptsTheAgentsOwnDuration() {
-        AiAgent agent = agent().withLimits(new AiAgentLimits(7200, null, null, null, null));
+        AiAgent agent = agent().withLimits(new AiAgentLimits(7200, null, null, null));
 
         assertThat(drafts.validate(COMPANY_ID, agent)).isSameAs(agent);
     }

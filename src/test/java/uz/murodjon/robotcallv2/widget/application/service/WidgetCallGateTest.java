@@ -109,6 +109,6 @@ class WidgetCallGateTest {
 
     private static AiAgent agentWith(Integer concurrent, Integer daily) {
         return AiAgentFixtures.agent(7L, 1L, 3L, "uz-UZ", "nigora")
-                .withLimits(new AiAgentLimits(null, null, null, concurrent, daily));
+                .withLimits(new AiAgentLimits(null, null, concurrent, daily));
     }
 }

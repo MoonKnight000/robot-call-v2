@@ -97,6 +97,46 @@ AddTargetsResponse:
   - added
   - skippedDuplicates
   - skippedDoNotCall
+BatchCallRequest:
+  type: object
+  description: Agent + numbers + go, in one request (`POST /api/campaigns/batch-call`) — the same as `POST /api/campaigns`, then `.../targets/csv`, then `.../start`. Everything left out takes its `POST /api/campaigns` default.
+  properties:
+    name:
+      type: string
+      minLength: 1
+    type:
+      $ref: '#/CampaignType'
+    aiAgentId:
+      type: integer
+      format: int64
+    csv:
+      type: string
+      minLength: 1
+      maxLength: 5000000
+      description: the target file, as `POST /api/campaigns/{id}/targets/csv` takes it
+    schedule:
+      $ref: '#/CampaignScheduleDto'
+    immediate:
+      type: boolean
+      description: as `start?immediate=true` — a future `schedule.startAt` is ignored
+  required:
+  - name
+  - type
+  - aiAgentId
+  - csv
+BatchCallResponse:
+  type: object
+  description: '`POST /api/campaigns/batch-call` response.'
+  properties:
+    campaignId:
+      type: integer
+      format: int64
+    imported:
+      $ref: '#/TargetImportResult'
+    status:
+      $ref: '#/CampaignStatus'
+  required:
+  - campaignId
 CampaignDialingDto:
   type: object
   description: '`CampaignDialing` as the campaign endpoints read and write it.'

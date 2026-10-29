@@ -74,8 +74,6 @@ public class AiAgentEntityMapper {
                 .voice(new AiAgentVoice(
                         voice.getTtsVoice(),
                         voice.getVoiceSpeed(),
-                        voice.getVoiceStability(),
-                        voice.getVoiceSimilarityBoost(),
                         entity.getLanguageVoiceIds(),
                         read(voice.getVoiceSpeedPerLanguage(), SPEED_PER_LANGUAGE_TYPE, Map.of()),
                         voice.isEmotionAdaptiveVoice(),
@@ -90,7 +88,6 @@ public class AiAgentEntityMapper {
                         ambience.getNoiseCancellationMode()))
                 .callBehaviour(new AiAgentCallBehaviour(
                         callBehaviour.getInterruptionSensitivity(),
-                        callBehaviour.getEndpointingDelayMs(),
                         callBehaviour.isDtmfInputEnabled(),
                         callBehaviour.getVoicemailAction(),
                         callBehaviour.getVoicemailMessage(),
@@ -103,7 +100,6 @@ public class AiAgentEntityMapper {
                 .limits(new AiAgentLimits(
                         limits.getMaxConversationDurationSeconds(),
                         limits.getSilenceEndCallTimeoutSeconds(),
-                        limits.getTurnTimeoutSeconds(),
                         limits.getConcurrentCallsLimit(),
                         limits.getDailyCallsLimit()))
                 .dataPolicy(new AiAgentDataPolicy(
@@ -115,8 +111,6 @@ public class AiAgentEntityMapper {
                 .fastLlmModel(entity.getFastLlmModel())
                 .temperature(entity.getTemperature())
                 .maxOutputTokens(entity.getMaxOutputTokens())
-                .preemptiveGeneration(entity.isPreemptiveGeneration())
-                .ivrNavigationEnabled(entity.isIvrNavigationEnabled())
                 .useRag(entity.isUseRag())
                 .dataNeeded(read(entity.getDataNeeded(), DATA_NEEDED_TYPE, List.of()))
                 .dataEvaluation(read(entity.getDataEvaluation(), DATA_EVALUATION_TYPE, List.of()))
@@ -151,8 +145,6 @@ public class AiAgentEntityMapper {
         entity.setFastLlmModel(agent.fastLlmModel());
         entity.setTemperature(agent.temperature());
         entity.setMaxOutputTokens(agent.maxOutputTokens());
-        entity.setPreemptiveGeneration(agent.preemptiveGeneration());
-        entity.setIvrNavigationEnabled(agent.ivrNavigationEnabled());
         entity.setUseRag(agent.useRag());
         entity.setDataNeeded(write(agent.dataNeeded(), "[]"));
         entity.setDataEvaluation(write(agent.dataEvaluation(), "[]"));
@@ -190,8 +182,6 @@ public class AiAgentEntityMapper {
         return new AiAgentVoiceEntity(
                 voice.defaultVoice(),
                 voice.speed(),
-                voice.stability(),
-                voice.similarityBoost(),
                 voice.perLanguageSpeed().isEmpty() ? null : write(voice.perLanguageSpeed(), null),
                 voice.emotionAdaptive(),
                 voice.warmth());
@@ -211,7 +201,6 @@ public class AiAgentEntityMapper {
     private static AiAgentCallBehaviourEntity toCallBehaviourEntity(AiAgentCallBehaviour behaviour) {
         return new AiAgentCallBehaviourEntity(
                 behaviour.interruptionSensitivity(),
-                behaviour.endpointingDelayMs(),
                 behaviour.dtmfInputEnabled(),
                 behaviour.voicemailAction(),
                 behaviour.voicemailMessage(),
@@ -227,7 +216,6 @@ public class AiAgentEntityMapper {
         return new AiAgentLimitsEntity(
                 limits.maxConversationDurationSeconds(),
                 limits.silenceEndCallTimeoutSeconds(),
-                limits.turnTimeoutSeconds(),
                 limits.concurrentCallsLimit(),
                 limits.dailyCallsLimit());
     }

@@ -53,11 +53,11 @@ public class AiAgentService implements AiAgentUseCase {
     private static final AgentScriptDto NO_SCRIPT = new AgentScriptDto(null, null, null, null, null, null);
     private static final AgentSpeechEngineDto NO_SPEECH_ENGINE =
             new AgentSpeechEngineDto(null, null, null, null, null, null, null, null, null);
-    private static final AgentVoiceDto NO_VOICE = new AgentVoiceDto(null, null, null, null, null, null, null, null);
+    private static final AgentVoiceDto NO_VOICE = new AgentVoiceDto(null, null, null, null, null, null);
     /** What a new agent starts with where its request is silent: noise cancellation and keypad input on, data kept. */
     private static final AiAgentAmbience NEW_AMBIENCE = new AiAgentAmbience(null, null, null, null, null, true, null);
     private static final AiAgentCallBehaviour NEW_CALL_BEHAVIOUR =
-            new AiAgentCallBehaviour(null, 0, true, null, null, false, null, null, null, null, null);
+            new AiAgentCallBehaviour(null, true, null, null, false, null, null, null, null, null);
     private static final AiAgentDataPolicy NEW_DATA_POLICY = new AiAgentDataPolicy(false, true, null, null);
 
     private final AiAgentRepository repository;
@@ -192,8 +192,6 @@ public class AiAgentService implements AiAgentUseCase {
                 .voice(new AiAgentVoice(
                         ttsVoice,
                         voiceRequest.speed(),
-                        voiceRequest.stability(),
-                        voiceRequest.similarityBoost(),
                         checkedLanguageVoices,
                         voiceRequest.perLanguageSpeed(),
                         voiceRequest.emotionAdaptive() != null && voiceRequest.emotionAdaptive(),
@@ -206,8 +204,6 @@ public class AiAgentService implements AiAgentUseCase {
                 .fastLlmModel(fastLlmModel)
                 .temperature(request.temperature() != null ? request.temperature() : profile.temperature())
                 .maxOutputTokens(request.maxOutputTokens() != null ? request.maxOutputTokens() : profile.maxOutputTokens())
-                .preemptiveGeneration(request.preemptiveGeneration() != null && request.preemptiveGeneration())
-                .ivrNavigationEnabled(request.ivrNavigationEnabled() == null || request.ivrNavigationEnabled())
                 .useRag(request.useRag() != null && request.useRag())
                 .dataNeeded(dataNeeded)
                 .dataEvaluation(dataEvaluation)
@@ -327,8 +323,6 @@ public class AiAgentService implements AiAgentUseCase {
                 .voice(new AiAgentVoice(
                         ttsVoice,
                         voiceRequest.speed() != null ? voiceRequest.speed() : voice.speed(),
-                        voiceRequest.stability() != null ? voiceRequest.stability() : voice.stability(),
-                        voiceRequest.similarityBoost() != null ? voiceRequest.similarityBoost() : voice.similarityBoost(),
                         languageVoices,
                         voiceRequest.perLanguageSpeed() != null ? voiceRequest.perLanguageSpeed() : voice.perLanguageSpeed(),
                         voiceRequest.emotionAdaptive() != null ? voiceRequest.emotionAdaptive() : voice.emotionAdaptive(),
@@ -341,8 +335,6 @@ public class AiAgentService implements AiAgentUseCase {
                 .fastLlmModel(fastLlmModel)
                 .temperature(temperature != null ? temperature : existing.temperature())
                 .maxOutputTokens(maxOutputTokens != null ? maxOutputTokens : existing.maxOutputTokens())
-                .preemptiveGeneration(request.preemptiveGeneration() != null ? request.preemptiveGeneration() : existing.preemptiveGeneration())
-                .ivrNavigationEnabled(request.ivrNavigationEnabled() != null ? request.ivrNavigationEnabled() : existing.ivrNavigationEnabled())
                 .useRag(request.useRag() != null ? request.useRag() : existing.useRag())
                 .dataNeeded(request.dataNeeded() != null ? request.dataNeeded() : existing.dataNeeded())
                 .dataEvaluation(request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation())

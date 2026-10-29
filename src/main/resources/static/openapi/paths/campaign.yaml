@@ -31,6 +31,37 @@
         $ref: ../common.yaml#/responses/Unauthorized
       '403':
         $ref: ../common.yaml#/responses/Forbidden
+/api/campaigns/batch-call:
+  post:
+    tags:
+    - Campaigns
+    summary: Bitta so'rovda kampaniya yaratish, CSV yuklash va boshlash
+    description: '**Huquq:** `CAMPAIGN_EDIT`. Biror qadam rad etilsa hech narsa saqlanmaydi.'
+    operationId: campaign_batchCall
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/campaign.yaml#/BatchCallRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/BatchCallResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
 /api/campaigns/filter:
   post:
     tags:

@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.campaign.presentation.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
+import uz.murodjon.robotcallv2.campaign.application.port.input.BatchCallUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
@@ -19,15 +20,23 @@ public class CampaignControllerImpl implements CampaignController {
 
     private final CampaignUseCase campaignUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
+    private final BatchCallUseCase batchCallUseCase;
 
-    public CampaignControllerImpl(CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase) {
+    public CampaignControllerImpl(CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
+                                  BatchCallUseCase batchCallUseCase) {
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
+        this.batchCallUseCase = batchCallUseCase;
     }
 
     @Override
     public ResponseEntity<ResponseData<CreateCampaignResponse>> create(long companyId, CreateCampaignRequest request) {
         return ResponseEntity.ok(ResponseData.ok(campaignUseCase.createCampaign(companyId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<BatchCallResponse>> batchCall(long companyId, BatchCallRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(batchCallUseCase.startBatchCall(companyId, request)));
     }
 
     @Override

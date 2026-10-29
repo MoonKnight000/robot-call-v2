@@ -5,10 +5,6 @@ AgentAdvancedDto:
   properties:
     useRag:
       type: boolean
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
     initiationWebhook:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
@@ -52,9 +48,6 @@ AgentCallBehaviourDto:
   properties:
     interruptionSensitivity:
       $ref: '#/InterruptionSensitivity'
-    endpointingDelayMs:
-      type: integer
-      format: int32
     dtmfInputEnabled:
       type: boolean
     voicemailAction:
@@ -137,12 +130,6 @@ AgentVoiceDto:
       type: string
       description: a tts_voice id; `GET /api/ai-agents/voices` lists them
     speed:
-      type: number
-      format: double
-    stability:
-      type: number
-      format: double
-    similarityBoost:
       type: number
       format: double
     perLanguage:
@@ -291,9 +278,6 @@ AgentLimitsDto:
       type: integer
       format: int32
     silenceEndCallTimeoutSeconds:
-      type: integer
-      format: int32
-    turnTimeoutSeconds:
       type: integer
       format: int32
 AgentPostCallActionsDto:
@@ -539,10 +523,6 @@ AiAgentRow:
       $ref: '#/AgentLimitsDto'
     dataPolicy:
       $ref: '#/AgentDataPolicyDto'
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
     useRag:
       type: boolean
     dataNeeded:
@@ -600,8 +580,6 @@ AiAgentRow:
   - callBehaviour
   - limits
   - dataPolicy
-  - preemptiveGeneration
-  - ivrNavigationEnabled
   - useRag
   - enabled
   - hasDraftChanges
@@ -714,10 +692,6 @@ CreateAiAgentRequest:
       $ref: '#/AgentLimitsDto'
     dataPolicy:
       $ref: '#/AgentDataPolicyDto'
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
     useRag:
       type: boolean
     dataNeeded:
@@ -1051,10 +1025,6 @@ UpdateAiAgentRequest:
       $ref: '#/AgentLimitsDto'
     dataPolicy:
       $ref: '#/AgentDataPolicyDto'
-    preemptiveGeneration:
-      type: boolean
-    ivrNavigationEnabled:
-      type: boolean
     useRag:
       type: boolean
     dataNeeded:

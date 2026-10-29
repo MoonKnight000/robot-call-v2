@@ -16,7 +16,7 @@ public final class SpokenNumbers {
     private SpokenNumbers() {
     }
 
-    /** {@code 129} → "bir yuz yigirma to'qqiz" / "сто двадцать девять". */
+    /** {@code 129} → "yuz yigirma to'qqiz" / "сто двадцать девять". */
     public static String cardinal(long n, String language) {
         if (isRussian(language)) {
             return RussianNumberWords.cardinal(n);
@@ -27,7 +27,7 @@ public final class SpokenNumbers {
         return UzbekNumberWords.cardinal(n);
     }
 
-    /** {@code 129} → "bir yuz yigirma to'qqizinchi" / "сто двадцать девятый". */
+    /** {@code 129} → "yuz yigirma to'qqizinchi" / "сто двадцать девятый". */
     public static String ordinal(long n, String language) {
         if (isRussian(language)) {
             return RussianNumberWords.ordinal(n);

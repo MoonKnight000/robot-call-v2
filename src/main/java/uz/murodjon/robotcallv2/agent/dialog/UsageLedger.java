@@ -1,5 +1,10 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -50,6 +55,11 @@ class UsageLedger {
     private final AtomicLong llmLatencySumMs = new AtomicLong();
     private final AtomicInteger llmLatencyCount = new AtomicInteger();
     private final AtomicLong llmLatencyMaxMs = new AtomicLong();
+    /** Per-turn stage timings for the Audio Inspector, oldest first, at most {@link #MAX_TURN_TIMINGS}. */
+    private final List<TurnTiming> turnTimings = Collections.synchronizedList(new ArrayList<>());
+
+    /** Far beyond any real call; a call stuck in a loop must not grow this without bound. */
+    private static final int MAX_TURN_TIMINGS = 500;
 
     /** Add a turn's token usage to the call total and return the new total. */
     long addTokens(long tokens) {
@@ -110,6 +120,18 @@ class UsageLedger {
 
     Integer maxTurnLatencyMs() {
         return turnLatencyCount.get() == 0 ? null : (int) turnLatencyMaxMs.get();
+    }
+
+    void recordTurnTiming(TurnTiming timing) {
+        if (turnTimings.size() < MAX_TURN_TIMINGS) {
+            turnTimings.add(timing);
+        }
+    }
+
+    List<TurnTiming> turnTimings() {
+        synchronized (turnTimings) {
+            return List.copyOf(turnTimings);
+        }
     }
 
     /** Record one turn's LLM-only wall time. */

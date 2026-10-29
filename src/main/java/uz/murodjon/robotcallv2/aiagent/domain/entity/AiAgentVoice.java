@@ -14,9 +14,7 @@ import java.util.Map;
  *
  * @param defaultVoice    the tts_voice id used when the call's language has no voice of its own
  * @param speed           1.0 is the voice's own pace
- * @param stability       how little the delivery varies between renderings
- * @param similarityBoost how closely the synthesis is held to the reference voice
- * @param perLanguage     language code → tts_voice id; never null
+ * @param perLanguage    language code → tts_voice id; never null
  * @param perLanguageSpeed language code → speed for calls in that language; never null.
  *                        A language without an entry speaks at {@code speed}
  * @param emotionAdaptive whether the delivery follows the detected sentiment of the call
@@ -26,8 +24,6 @@ import java.util.Map;
 public record AiAgentVoice(
         String defaultVoice,
         Double speed,
-        Double stability,
-        Double similarityBoost,
         Map<String, String> perLanguage,
         Map<String, Double> perLanguageSpeed,
         boolean emotionAdaptive,
@@ -37,12 +33,6 @@ public record AiAgentVoice(
         if (speed == null) {
             speed = 1.0;
         }
-        if (stability == null) {
-            stability = 0.5;
-        }
-        if (similarityBoost == null) {
-            similarityBoost = 0.75;
-        }
         perLanguage = perLanguage == null ? Map.of() : Map.copyOf(perLanguage);
         perLanguageSpeed = perLanguageSpeed == null ? Map.of() : Map.copyOf(perLanguageSpeed);
         if (warmth == null) {
@@ -50,22 +40,20 @@ public record AiAgentVoice(
         }
     }
 
-    public AiAgentVoice(String defaultVoice, Double speed, Double stability, Double similarityBoost,
+    public AiAgentVoice(String defaultVoice, Double speed,
                         Map<String, String> perLanguage, Map<String, Double> perLanguageSpeed,
                         boolean emotionAdaptive) {
-        this(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed, emotionAdaptive, null);
+        this(defaultVoice, speed, perLanguage, perLanguageSpeed, emotionAdaptive, null);
     }
 
     /** The same voice, following the call's sentiment or not. */
     public AiAgentVoice withEmotionAdaptive(boolean newEmotionAdaptive) {
-        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed,
-                newEmotionAdaptive, warmth);
+        return new AiAgentVoice(defaultVoice, speed, perLanguage, perLanguageSpeed, newEmotionAdaptive, warmth);
     }
 
     /** The same voice, its wording as warm as {@code newWarmth}. */
     public AiAgentVoice withWarmth(SpeakingWarmth newWarmth) {
-        return new AiAgentVoice(defaultVoice, speed, stability, similarityBoost, perLanguage, perLanguageSpeed,
-                emotionAdaptive, newWarmth);
+        return new AiAgentVoice(defaultVoice, speed, perLanguage, perLanguageSpeed, emotionAdaptive, newWarmth);
     }
 
     /** The voice a call in {@code language} speaks with; the agent's default otherwise. */

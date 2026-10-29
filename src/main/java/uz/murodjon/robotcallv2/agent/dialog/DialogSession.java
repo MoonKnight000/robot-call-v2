@@ -5,6 +5,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.tool.ToolCallback;
 import uz.murodjon.robotcallv2.agent.metrics.TurnLatency;
+import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
@@ -1065,6 +1066,15 @@ public class DialogSession implements DialogOutcomeSink {
 
     public Integer maxTurnLatencyMs() {
         return usageLedger.maxTurnLatencyMs();
+    }
+
+    /** One turn's stage timings, kept for the call's timeline (written at teardown). */
+    public void recordTurnTiming(TurnTiming timing) {
+        usageLedger.recordTurnTiming(timing);
+    }
+
+    public List<TurnTiming> turnTimings() {
+        return usageLedger.turnTimings();
     }
 
     /** Record one turn's LLM-only wall time. */

@@ -28,8 +28,6 @@ Authorization: Bearer {{auth_token}}
   "voice": {
     "defaultVoice": "nigora",
     "speed": 1.0,
-    "stability": 0.75,
-    "similarityBoost": 0.85,
     "perLanguage": {
       "uz-UZ": "nigora",
       "ru-RU": "alena"
@@ -37,8 +35,6 @@ Authorization: Bearer {{auth_token}}
     "emotionAdaptive": true,
     "warmth": "BALANCED"
   },
-  "preemptiveGeneration": true,
-  "ivrNavigationEnabled": true,
   "useRag": false,
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite",
@@ -81,7 +77,6 @@ Authorization: Bearer {{auth_token}}
   "limits": {
     "maxConversationDurationSeconds": 600,
     "silenceEndCallTimeoutSeconds": 25,
-    "turnTimeoutSeconds": 15,
     "concurrentCallsLimit": 10,
     "dailyCallsLimit": 1000
   },
@@ -144,7 +139,6 @@ Authorization: Bearer {{auth_token}}
     "firstMessage": "Xayrli kun! Sizga qanday yordam bera olaman?",
     "systemPrompt": "Siz kompaniyaning eng tajribali xodimlaridansiz."
   },
-  "preemptiveGeneration": true,
   "language": "uz-UZ",
   "voice": { "defaultVoice": "nigora" },
   "persona": "HUMAN_LIKE",
@@ -257,8 +251,7 @@ Authorization: Bearer {{auth_token}}
   "concurrentCallsLimit": 15,
   "dailyCallsLimit": 500,
   "maxConversationDurationSeconds": 600,
-  "silenceEndCallTimeoutSeconds": 25,
-  "turnTimeoutSeconds": 10
+  "silenceEndCallTimeoutSeconds": 25
 }
 
 ### 14. Get Agent Advanced Settings
@@ -272,8 +265,6 @@ Authorization: Bearer {{auth_token}}
 
 {
   "useRag": true,
-  "preemptiveGeneration": true,
-  "ivrNavigationEnabled": false,
   "initiationWebhook": {
     "url": "https://api.example.com/webhooks/call-started",
     "headers": { "Authorization": "Bearer secret_token" },

@@ -122,10 +122,9 @@ Har bosqichni foydalanuvchi o'zi tekshiradi (CLAUDE.md §8.6).
   va `CompanyIsolationTest` da — integration testlar, §8.8 bo'yicha tegilmadi; ularni `builder()`
   ga o'tkazgach konstruktor o'chiriladi. (4) Agentda 6 ta sozlama qo'ng'iroqqa ta'sir qilmaydi
   (`preemptiveGeneration`, `ivrNavigationEnabled`, `voiceStability`, `voiceSimilarityBoost`,
-  `endpointingDelayMs`, `turnTimeoutSeconds`) — API/DB o'zgarmadi, `ai-agents.md` va
-  `quickstart.md` da belgilandi, request DTO'larga Javadoc qo'shildi. `@Deprecated`
-  qo'yilmadi: record komponentiga qo'yilsa servislar va mapperlardagi har bir ishlatishda
-  ogohlantirish chiqadi.
+  `endpointingDelayMs`, `turnTimeoutSeconds`) — avval faqat hujjatda belgilangan edi;
+  `PROJECT-AUDIT.md` 1-bosqichi bo'yicha API, domain va bazadan to'liq olib tashlandi
+  (`V23__drop_ai_agent_phantom_settings.sql`).
 
 ### 6-bosqich — Bosqichlar va kunlik sozlamalar
 

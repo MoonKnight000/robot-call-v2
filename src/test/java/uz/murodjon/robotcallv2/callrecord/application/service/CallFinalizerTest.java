@@ -8,6 +8,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.summary.SummarizedCall;
 import uz.murodjon.robotcallv2.agent.summary.SummaryService;
@@ -18,9 +19,11 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentDataPolicy;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.RecordingStoragePort;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.OutboxMessage;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.OutboxMessageKind;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
@@ -77,6 +80,7 @@ class CallFinalizerTest {
     private PostCallActionExecutor postCallActionExecutor;
     private CallBillingUseCase callBilling;
     private CompanyConfigUseCase companyConfigUseCase;
+    private CallEventUseCase callEventUseCase;
     private Scenario scenario;
     private OutboxMessage crmNote;
     private Instant startedAt;
@@ -95,6 +99,7 @@ class CallFinalizerTest {
         postCallActionExecutor = mock(PostCallActionExecutor.class);
         callBilling = mock(CallBillingUseCase.class);
         companyConfigUseCase = mock(CompanyConfigUseCase.class);
+        callEventUseCase = mock(CallEventUseCase.class);
         scenario = new Scenario(SCENARIO_ID, "debt", 1, "Qarz", null, false, true, mock(ScenarioDefinition.class),
                 Instant.now(), null);
         crmNote = OutboxMessage.pending(OutboxMessageKind.CRM_NOTE, CALL_ID,
@@ -115,7 +120,8 @@ class CallFinalizerTest {
                 recordingStoragePort, outboxDeliveryService, scenarioUseCase, campaignTargetUseCase,
                 notificationUseCase, mock(CallMetrics.class), mock(SttProperties.class), mock(TtsProperties.class),
                 mock(TtsVoiceUseCase.class), mock(VadProperties.class), memoryWriter, postCallActionExecutor,
-                callBilling, mock(InboundRouteUseCase.class), companyConfigUseCase, "gemini-2.5-flash");
+                callBilling, mock(InboundRouteUseCase.class), companyConfigUseCase, callEventUseCase,
+                "gemini-2.5-flash");
     }
 
     // --- the summary and what it sets off
@@ -312,7 +318,7 @@ class CallFinalizerTest {
         when(summaryService.summarize(anyLong(), eq(TRANSCRIPT), any(), any()))
                 .thenReturn(new SummarizedCall(SUMMARY, 1200, 300, 100, true));
         DialogTechnicalSnapshot ownLlm = new DialogTechnicalSnapshot(4, 1000, 200, 50, 300,
-                null, null, null, null, null, "uz-UZ", null, "qwen3-32b", 0, 0, 0, true);
+                null, null, null, null, null, "uz-UZ", null, "qwen3-32b", 0, 0, 0, true, List.of());
 
         finalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, Disposition.REFUSED, CHANNEL, "trunk",
                 ownLlm, agent(), PHONE, null);
@@ -323,6 +329,21 @@ class CallFinalizerTest {
         assertEquals(0, usage.getValue().promptTokens());
         assertEquals(0, usage.getValue().completionTokens());
         assertEquals(300, usage.getValue().ttsChars());
+    }
+
+    @Test
+    void eachAnsweredTurnGoesOntoTheTimelineAtItsFirstAudio() {
+        Instant firstAudio = startedAt.plusSeconds(12);
+        TurnTiming turn = new TurnTiming(firstAudio, 10_400, 600, 10_700, 10_710, 11_050, 11_300, 12_000, false);
+        DialogTechnicalSnapshot withTurn = new DialogTechnicalSnapshot(1, 1000, 200, 50, 300,
+                null, null, null, null, null, "uz-UZ", null, null, 0, 0, 0, false, List.of(turn));
+
+        finalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, Disposition.REFUSED, CHANNEL, "trunk",
+                withTurn, agent(), PHONE, null);
+
+        verify(callEventUseCase).recordAt(COMPANY_ID, CALL_ID, CallEventType.TURN, firstAudio,
+                "utteranceEndMs", 10_400, "eouWaitMs", 600, "sttFinalMs", 10_700, "llmRequestMs", 10_710,
+                "llmFirstTokenMs", 11_050, "ttsRequestMs", 11_300, "firstAudioMs", 12_000, "speculated", false);
     }
 
     private Disposition finalizeCall(Disposition disposition, AiAgent agent) {
@@ -342,16 +363,16 @@ class CallFinalizerTest {
                 recordingStoragePort, outboxDeliveryService, scenarioUseCase, campaignTargetUseCase,
                 notificationUseCase, mock(CallMetrics.class), mock(SttProperties.class), mock(TtsProperties.class),
                 mock(TtsVoiceUseCase.class), mock(VadProperties.class), memoryWriter, postCallActionExecutor,
-                callBilling, mock(InboundRouteUseCase.class), companyConfigUseCase, provider, "gemini-2.5-flash");
+                callBilling, mock(InboundRouteUseCase.class), companyConfigUseCase, provider, callEventUseCase,
+                "gemini-2.5-flash");
 
         CallAttempt attemptWithVariant = new CallAttempt(CALL_ID, COMPANY_ID, TARGET_ID, PHONE, null, "PJSIP/trunk-1",
                 "uz", startedAt, startedAt.plusSeconds(50), startedAt.plusSeconds(95), 45, Disposition.PROMISE_TO_PAY,
                 null, null, null, startedAt, 1, null, null, 777L);
         when(callRecordService.findAttemptByCompanyIdAndId(COMPANY_ID, CALL_ID)).thenReturn(attemptWithVariant);
 
-        customFinalizer.finalizeCall(CALL_ID, "PJSIP/trunk-1", "trunk", WAV,
-                new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, 0, 0, null, null),
-                Disposition.PROMISE_TO_PAY, SCENARIO_ID, agent(), LEAD_ID, PHONE, startedAt, 0, null);
+        customFinalizer.finalizeCall(CALL_ID, LEAD_ID, SCENARIO_ID, WAV, startedAt, Disposition.PROMISE_TO_PAY,
+                "PJSIP/trunk-1", "trunk", DialogTechnicalSnapshot.NONE, agent(), PHONE, null);
 
         verify(variantUseCase).recordConversion(777L);
     }
@@ -374,7 +395,7 @@ class CallFinalizerTest {
     private static AiAgent zeroPiiAgent() {
         AiAgent agent = agent();
         return agent.withAdvanced(agent.ambience(), agent.callBehaviour(), new AiAgentDataPolicy(true, false, null, null),
-                agent.voice(), agent.preemptiveGeneration(), agent.ivrNavigationEnabled(), agent.useRag(),
+                agent.voice(), agent.useRag(),
                 agent.initiationWebhook(), agent.postCallWebhook());
     }
 }

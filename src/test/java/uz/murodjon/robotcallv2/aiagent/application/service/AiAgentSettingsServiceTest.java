@@ -63,17 +63,17 @@ class AiAgentSettingsServiceTest {
     @Test
     void aSectionOfAnotherCompanysAgentIsNotFound() {
         assertRefused(() -> service.findLimits(2L, AGENT_ID), NotFoundException.class, ErrorCode.AI_AGENT_NOT_FOUND);
-        assertRefused(() -> service.updateLimits(2L, AGENT_ID, new AgentLimitsDto(20, null, null, null, null)),
+        assertRefused(() -> service.updateLimits(2L, AGENT_ID, new AgentLimitsDto(20, null, null, null)),
                 NotFoundException.class, ErrorCode.AI_AGENT_NOT_FOUND);
         verify(repository, never()).update(anyLong(), anyLong(), any());
     }
 
     @Test
     void updateLimitsKeepsWhatTheRequestLeftOut() {
-        AgentLimitsDto result = service.updateLimits(COMPANY_ID, AGENT_ID, new AgentLimitsDto(20, null, null, null, null));
+        AgentLimitsDto result = service.updateLimits(COMPANY_ID, AGENT_ID, new AgentLimitsDto(20, null, null, null));
 
         AiAgent written = written();
-        assertThat(written.limits()).isEqualTo(new AiAgentLimits(600, 30, 15, 20, 1000));
+        assertThat(written.limits()).isEqualTo(new AiAgentLimits(600, 30, 20, 1000));
         assertThat(written.version()).isEqualTo(4L);
         assertThat(result.concurrentCallsLimit()).isEqualTo(20);
         assertThat(result.dailyCallsLimit()).isEqualTo(1000);
@@ -86,7 +86,7 @@ class AiAgentSettingsServiceTest {
         when(aiModelConfigUseCase.findByCompanyId(COMPANY_ID))
                 .thenReturn(AiModelConfig.overrides(null, null, null, 900, null));
 
-        assertRefused(() -> service.updateLimits(COMPANY_ID, AGENT_ID, new AgentLimitsDto(null, null, 1200, null, null)),
+        assertRefused(() -> service.updateLimits(COMPANY_ID, AGENT_ID, new AgentLimitsDto(null, null, 1200, null)),
                 ValidationException.class, ErrorCode.AI_AGENT_LIMIT_EXCEEDS_COMPANY_CAP);
         verify(repository, never()).update(anyLong(), anyLong(), any());
     }
@@ -95,7 +95,7 @@ class AiAgentSettingsServiceTest {
     void aSectionSavedOverAnotherEditIs409() {
         when(repository.update(eq(COMPANY_ID), eq(AGENT_ID), any())).thenReturn(false);
 
-        assertRefused(() -> service.updateLimits(COMPANY_ID, AGENT_ID, new AgentLimitsDto(20, null, null, null, null)),
+        assertRefused(() -> service.updateLimits(COMPANY_ID, AGENT_ID, new AgentLimitsDto(20, null, null, null)),
                 ConflictException.class, ErrorCode.ENTITY_VERSION_CONFLICT);
         assertThat(written().version()).isEqualTo(4L);
         verifyNoInteractions(auditUseCase);
@@ -138,7 +138,6 @@ class AiAgentSettingsServiceTest {
         assertThat(written.callBehaviour().transferQueueId()).isEqualTo(5L);
         assertThat(written.callBehaviour().voicemailAction()).isEqualTo(VoicemailAction.LEAVE_MESSAGE);
         assertThat(written.callBehaviour().interruptionSensitivity()).isEqualTo(InterruptionSensitivity.MEDIUM);
-        assertThat(written.callBehaviour().endpointingDelayMs()).isEqualTo(700);
         assertThat(written.dataPolicy()).isEqualTo(AGENT.dataPolicy());
         verify(auditUseCase).record(COMPANY_ID, "AI_AGENT_ADVANCED_UPDATE", "ai_agent", String.valueOf(AGENT_ID), "Test agent");
     }
@@ -219,11 +218,11 @@ class AiAgentSettingsServiceTest {
     /** Only the data-policy pair and the transfer queue; every other field left as the agent has it. */
     private static AgentAdvancedDto advanced(Boolean zeroPiiRetention, Boolean storeCallAudio, Long transferQueueId) {
         return new AgentAdvancedDto(
-                null, null, null,
+                null,
                 null, null,
                 null, null,
                 null,
-                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, null, transferQueueId, null),
+                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null),
                 new AgentDataPolicyDto(zeroPiiRetention, storeCallAudio, null, null));
     }
 

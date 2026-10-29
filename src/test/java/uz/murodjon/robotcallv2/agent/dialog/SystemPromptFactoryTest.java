@@ -136,8 +136,7 @@ class SystemPromptFactoryTest {
     private static DialogSession sessionWithWarmth(SpeakingWarmth warmth) {
         AiAgent base = AiAgentFixtures.agent(3L, 1L, 10L, "uz-UZ", "nigora");
         AiAgent agent = base.withAdvanced(base.ambience(), base.callBehaviour(), base.dataPolicy(),
-                base.voice().withWarmth(warmth), base.preemptiveGeneration(), base.ivrNavigationEnabled(),
-                base.useRag(), base.initiationWebhook(), base.postCallWebhook());
+                base.voice().withWarmth(warmth), base.useRag(), base.initiationWebhook(), base.postCallWebhook());
         return DialogSession.builder("chan-1", "uz-UZ")
                 .context(ScenarioFixtures.fullContext())
                 .scenario(ScenarioFixtures.debtCollection())

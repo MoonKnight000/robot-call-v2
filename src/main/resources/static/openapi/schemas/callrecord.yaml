@@ -49,6 +49,7 @@ CallEventType:
   - CALLBACK_REQUESTED
   - SURVEY_SCORE
   - MONITOR
+  - TURN
   description: |-
     One step on a call's timeline (call_event.type, docs/INBOUND-PBX-PLAN.md §11.1).
 
@@ -91,6 +92,8 @@ CallEventType:
     - `SURVEY_SCORE` — payload: score.
 
     - `MONITOR` — A supervisor joined; payload: userId, mode.
+
+    - `TURN` — One answered agent turn, stage by stage (Audio Inspector); at = its first audio. payload, in ms from the call's start: utteranceEndMs, eouWaitMs, sttFinalMs, llmRequestMs, llmFirstTokenMs, ttsRequestMs, firstAudioMs; and speculated. Written when the call ends.
 CallOriginateResponse:
   type: object
   properties:

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
+import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
 import uz.murodjon.robotcallv2.agent.tts.PcmChunkListener;
 import uz.murodjon.robotcallv2.agent.tts.TtsProperties;
 import uz.murodjon.robotcallv2.agent.tts.TtsRouter;
@@ -248,6 +249,12 @@ public class SpeechOutput {
         String stages = s.latency().finish(metrics);
         if (stages != null) {
             log.info("[{}] {}", s.channelId(), stages);
+        }
+        // Kept in memory and written with the rest of the call at teardown: a database
+        // write here would sit on the turn's own thread, right after the caller hears it.
+        TurnTiming timing = s.latency().takeTiming();
+        if (timing != null) {
+            s.recordTurnTiming(timing);
         }
     }
 

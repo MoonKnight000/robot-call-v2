@@ -1,5 +1,9 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
+
+import java.util.List;
+
 /**
  * What a conversation accumulated for the "Texnik" tab (§10.5), read once at teardown
  * before the dialog session is dropped — same reason as {@link DialogOutcome}: by the
@@ -33,6 +37,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
  * @param lowConfidenceCount caller utterances the recognizer was unsure of; 0 on a realtime call
  * @param ownLlm            whether the call ran on the company's own LLM, which the company pays its
  *                          provider for — its tokens are recorded but not billed
+ * @param turnTimings       each answered turn's stage timings, oldest first, for the call's
+ *                          timeline (Audio Inspector); empty on a realtime call, never null
  */
 public record DialogTechnicalSnapshot(
         int turnCount,
@@ -43,10 +49,15 @@ public record DialogTechnicalSnapshot(
         String ttsVoice, String language,
         String engine, String llmModel,
         int bargeInCount, int noInputPromptCount, int lowConfidenceCount,
-        boolean ownLlm) {
+        boolean ownLlm,
+        List<TurnTiming> turnTimings) {
 
     public static final DialogTechnicalSnapshot NONE =
             new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, null, null, 0, 0, 0);
+
+    public DialogTechnicalSnapshot {
+        turnTimings = turnTimings == null ? List.of() : List.copyOf(turnTimings);
+    }
 
     /** On the platform's model — always so for a realtime call. */
     public DialogTechnicalSnapshot(int turnCount, long promptTokens, long completionTokens, long cachedTokens,
@@ -56,6 +67,6 @@ public record DialogTechnicalSnapshot(
                                    int lowConfidenceCount) {
         this(turnCount, promptTokens, completionTokens, cachedTokens, ttsChars, avgTurnLatencyMs, maxTurnLatencyMs,
                 avgLlmLatencyMs, maxLlmLatencyMs, ttsVoice, language, engine, llmModel, bargeInCount,
-                noInputPromptCount, lowConfidenceCount, false);
+                noInputPromptCount, lowConfidenceCount, false, List.of());
     }
 }

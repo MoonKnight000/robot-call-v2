@@ -18,13 +18,13 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 │     • firstMessage: 0ms kechikish bilan ochilish salomi     │
 │     • systemPrompt: agentning roli, skripti va qoidalari    │
 │     • scenarioId: ixtiyoriy (tashqi FSM senariy yoki null)  │
-│     • preemptiveGeneration / ivrNavigation / useRag         │
+│     • useRag                                                │
 │                                                             │
 │  2. SPEECH & VOICE (Agent darajasida)                       │
 │     • sttProvider, sttModel (yandex/gemini/aisha/           │
 │       deepgram/openai)                                      │
 │     • ttsProvider, ttsModel, ttsVoice                       │
-│     • voiceSpeed, voiceStability, voiceSimilarityBoost      │
+│     • voiceSpeed                                            │
 │     • languageVoices (ko'p tilli moslashuv)                 │
 │                                                             │
 │  3. ANALYSIS & DATA EXTRACTION                              │
@@ -212,8 +212,6 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
   "voice": {
     "defaultVoice": "gemini-tts-aoede-uz",
     "speed": 1.05,
-    "stability": 0.8,
-    "similarityBoost": 0.8,
     "perLanguage": {
       "uz-UZ": "gemini-tts-aoede-uz",
       "ru-RU": "gemini-tts-aoede-ru"
@@ -237,7 +235,6 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
   },
   "callBehaviour": {
     "interruptionSensitivity": "MEDIUM",
-    "endpointingDelayMs": 700,
     "dtmfInputEnabled": true,
     "voicemailAction": "LEAVE_MESSAGE",
     "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",
@@ -252,8 +249,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "concurrentCallsLimit": 15,
     "dailyCallsLimit": 500,
     "maxConversationDurationSeconds": 600,
-    "silenceEndCallTimeoutSeconds": 25,
-    "turnTimeoutSeconds": 10
+    "silenceEndCallTimeoutSeconds": 25
   },
   "dataPolicy": {
     "zeroPiiRetention": false,
@@ -261,8 +257,6 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "conversationRetentionDays": 60,
     "realtimeFactsDelivery": null
   },
-  "preemptiveGeneration": true,
-  "ivrNavigationEnabled": true,
   "useRag": true,
   "dataNeeded": [
     { "id": "client_name", "type": "string", "name": "Mijoz ismi", "description": "Mijozning to'liq ismi" },
@@ -301,19 +295,18 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | `pipelineMode` | `speechEngine.mode` |
 > | `realtimeProvider`, `pipecatStt/Llm/Tts`, `sttProvider`, `sttModel`, `ttsProvider`, `ttsModel` | `speechEngine.<o'sha nom>` |
 > | `ttsVoice` | `voice.defaultVoice` |
-> | `voiceSpeed`, `voiceStability`, `voiceSimilarityBoost` | `voice.speed`, `voice.stability`, `voice.similarityBoost` |
+> | `voiceSpeed` | `voice.speed` |
 > | `languageVoices`, `languageVoiceSpeeds` | `voice.perLanguage`, `voice.perLanguageSpeed` |
 > | `emotionAdaptiveVoice`, `speakingWarmth` | `voice.emotionAdaptive`, `voice.warmth` |
 > | `ambientSound`, `ambientSoundVolume`, `ambientSoundFadeInSeconds` | `ambience.background`, `ambience.backgroundVolume`, `ambience.backgroundFadeInSeconds` |
 > | `thinkingSound`, `thinkingSoundVolume` | `ambience.thinking`, `ambience.thinkingVolume` |
 > | `noiseCancellationEnabled`, `noiseCancellationMode` | `ambience.<o'sha nom>` |
-> | `dtmfInputEnabled`, `voicemail*`, `midCallSms*`, `transfer*`, `interruptionSensitivity`, `endpointingDelayMs`, `preConversationAudioFileId` | `callBehaviour.<o'sha nom>` |
-> | `maxConversationDurationSeconds`, `silenceEndCallTimeoutSeconds`, `turnTimeoutSeconds`, `concurrentCallsLimit`, `dailyCallsLimit` | `limits.<o'sha nom>` |
+> | `dtmfInputEnabled`, `voicemail*`, `midCallSms*`, `transfer*`, `interruptionSensitivity`, `preConversationAudioFileId` | `callBehaviour.<o'sha nom>` |
+> | `maxConversationDurationSeconds`, `silenceEndCallTimeoutSeconds`, `concurrentCallsLimit`, `dailyCallsLimit` | `limits.<o'sha nom>` |
 > | `zeroPiiRetention`, `storeCallAudio`, `conversationRetentionDays`, `realtimeFactsDelivery` | `dataPolicy.<o'sha nom>` |
 >
 > Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
-> `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `preemptiveGeneration`,
-> `ivrNavigationEnabled`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
+> `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
 > `postCallWebhook`, `sipTrunkIds`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
 > `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`,
 > `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
@@ -449,19 +442,18 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > so'ralmaydi.
 > - Javobda (`AiAgentRow`, `GET .../advanced`) ham qaytadi.
 
-> **Hozircha qo'ng'iroqqa ta'sir qilmaydigan maydonlar.** Quyidagilar saqlanadi, tahrirlanadi va
-> javobda qaytadi, lekin qo'ng'iroq jarayoni ularni **o'qimaydi** (2026-10-28 da kod bo'yicha tekshirilgan):
+> **O'chirilgan maydonlar (breaking change).** Qo'ng'iroq hech qachon o'qimagan oltita maydon
+> API'dan va bazadan olib tashlandi (`V23__drop_ai_agent_phantom_settings.sql`). Ular endi javobda
+> (`AiAgentRow`, `GET .../limits`, `GET .../advanced`) qaytmaydi; so'rovda yuborilsa e'tiborsiz
+> qoldiriladi (xato bermaydi):
 >
-> | Maydon | Izoh |
+> | Maydon | O'rniga |
 > |---|---|
-> | `preemptiveGeneration` | Oldindan generatsiyani umumiy `voice-agent.dialog.preemptive` boshqaradi, agent flagi emas |
-> | `ivrNavigationEnabled` | IVR'da tugma bosish ssenariydagi `ToolDef` orqali; bu flag o'qilmaydi |
-> | `voiceStability`, `voiceSimilarityBoost` | Hech bir TTS provayder ularni olmaydi |
-> | `endpointingDelayMs` | Gap tugashini umumiy `voice-agent.stt.endpointing` aniqlaydi |
-> | `turnTimeoutSeconds` | Navbat vaqt chegarasi agent bo'yicha qo'llanmaydi |
->
-> Frontend ularni oddiy formada ko'rsatmasin va "Qo'shimcha"da ham o'zgartirish ta'sir qiladi deb va'da
-> bermasin. Maydonlar API'dan olib tashlanmagan (mavjud klientlar buzilmasin).
+> | `preemptiveGeneration` | Oldindan generatsiyani umumiy `voice-agent.dialog.preemptive` boshqaradi |
+> | `ivrNavigationEnabled` | IVR'da tugma bosish ssenariydagi `ToolDef` orqali |
+> | `voice.stability`, `voice.similarityBoost` | Hech bir TTS provayder ularni olmasdi |
+> | `callBehaviour.endpointingDelayMs` | Gap tugashini umumiy `voice-agent.stt.endpointing` aniqlaydi |
+> | `limits.turnTimeoutSeconds` | Navbat vaqt chegarasi agent bo'yicha qo'llanmasdi |
 
 ---
 
@@ -693,8 +685,7 @@ Agent darajasidagi xavfsizlik va qo'ng'iroq cheklovlari (QuickVoice Limits bo'li
     "concurrentCallsLimit": 15,
     "dailyCallsLimit": 500,
     "maxConversationDurationSeconds": 600,
-    "silenceEndCallTimeoutSeconds": 25,
-    "turnTimeoutSeconds": 10
+    "silenceEndCallTimeoutSeconds": 25
   },
   "message": null,
   "messageCode": null,
@@ -724,8 +715,6 @@ qo'shimcha so'rov ketmaydi.
   "accept": true,
   "data": {
     "useRag": true,
-    "preemptiveGeneration": true,
-    "ivrNavigationEnabled": false,
     "initiationWebhook": {
       "url": "https://api.example.com/webhooks/call-started",
       "headers": { "Authorization": "Bearer secret_token" },
@@ -749,7 +738,6 @@ qo'shimcha so'rov ketmaydi.
     },
     "callBehaviour": {
       "interruptionSensitivity": "MEDIUM",
-      "endpointingDelayMs": 700,
       "dtmfInputEnabled": true,
       "voicemailAction": "LEAVE_MESSAGE",
       "voicemailMessage": "Assalomu alaykum, siz bilan bog'lana olmadik. Iltimos qaytib qo'ng'iroq qiling.",

@@ -10,7 +10,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  * a call can leave the agent: an SMS mid-call, or a transfer to a human.
  *
  * @param interruptionSensitivity how readily the agent stops talking when the caller starts; never null
- * @param endpointingDelayMs      silence before the caller's turn is treated as finished; always positive
  * @param dtmfInputEnabled        whether keypad digits are accepted as input
  * @param voicemailAction         what to do when the call is answered by voicemail; never null,
  *                                {@link VoicemailAction#LEAVE_MESSAGE} unless said otherwise —
@@ -27,7 +26,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  */
 public record AiAgentCallBehaviour(
         InterruptionSensitivity interruptionSensitivity,
-        int endpointingDelayMs,
         boolean dtmfInputEnabled,
         VoicemailAction voicemailAction,
         String voicemailMessage,
@@ -38,9 +36,6 @@ public record AiAgentCallBehaviour(
         Long transferQueueId,
         Long preConversationAudioFileId
 ) {
-    /** Long enough that a pause for breath is not an end of turn, short enough not to feel dead. */
-    private static final int DEFAULT_ENDPOINTING_DELAY_MS = 700;
-
     public AiAgentCallBehaviour {
         if (interruptionSensitivity == null) {
             interruptionSensitivity = InterruptionSensitivity.MEDIUM;
@@ -48,16 +43,13 @@ public record AiAgentCallBehaviour(
         if (voicemailAction == null) {
             voicemailAction = VoicemailAction.LEAVE_MESSAGE;
         }
-        if (endpointingDelayMs <= 0) {
-            endpointingDelayMs = DEFAULT_ENDPOINTING_DELAY_MS;
-        }
     }
 
-    public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity, int endpointingDelayMs,
+    public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity,
                                 boolean dtmfInputEnabled, VoicemailAction voicemailAction, String voicemailMessage,
                                 boolean midCallSmsEnabled, String midCallSmsTemplate, String transferPhoneNumber,
                                 String transferMessage, Long transferQueueId) {
-        this(interruptionSensitivity, endpointingDelayMs, dtmfInputEnabled, voicemailAction, voicemailMessage,
+        this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage,
                 midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, null);
     }
 

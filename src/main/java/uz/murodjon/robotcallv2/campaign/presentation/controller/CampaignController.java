@@ -35,6 +35,16 @@ public interface CampaignController {
             @CurrentCompanyId long companyId,
             @Valid @RequestBody CreateCampaignRequest request);
 
+    /**
+     * Agent + CSV + start in one request — the same as {@code POST /campaigns}, then
+     * {@code .../targets/csv}, then {@code .../start}. Nothing is saved when any step is refused.
+     */
+    @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
+    @PostMapping("/campaigns/batch-call")
+    ResponseEntity<ResponseData<BatchCallResponse>> batchCall(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody BatchCallRequest request);
+
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @PostMapping({"/campaigns/filter", "/campaigns/list"})
     ResponseEntity<ResponseData<PageableData<CampaignRow>>> filter(

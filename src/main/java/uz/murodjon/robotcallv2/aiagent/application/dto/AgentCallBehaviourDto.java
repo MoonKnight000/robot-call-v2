@@ -11,7 +11,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  */
 public record AgentCallBehaviourDto(
         InterruptionSensitivity interruptionSensitivity,
-        Integer endpointingDelayMs,
         Boolean dtmfInputEnabled,
         VoicemailAction voicemailAction,
         @Size(max = 500) String voicemailMessage,
@@ -24,8 +23,7 @@ public record AgentCallBehaviourDto(
 ) {
 
     public static AgentCallBehaviourDto of(AiAgentCallBehaviour behaviour) {
-        return new AgentCallBehaviourDto(behaviour.interruptionSensitivity(), behaviour.endpointingDelayMs(),
-                behaviour.dtmfInputEnabled(), behaviour.voicemailAction(), behaviour.voicemailMessage(),
+        return new AgentCallBehaviourDto(behaviour.interruptionSensitivity(), behaviour.dtmfInputEnabled(), behaviour.voicemailAction(), behaviour.voicemailMessage(),
                 behaviour.midCallSmsEnabled(), behaviour.midCallSmsTemplate(), behaviour.transferPhoneNumber(),
                 behaviour.transferMessage(), behaviour.transferQueueId(), behaviour.preConversationAudioFileId());
     }

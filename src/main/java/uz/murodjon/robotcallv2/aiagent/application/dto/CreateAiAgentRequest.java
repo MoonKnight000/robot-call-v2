@@ -14,11 +14,6 @@ import java.util.Set;
 /**
  * A new AI agent ({@code POST /api/ai-agents}). Each group may be left out as a whole; the
  * agent then takes that group's defaults.
- *
- * <p>Saved and returned but not read by a call yet: {@code preemptiveGeneration},
- * {@code ivrNavigationEnabled}, {@code voice.stability}, {@code voice.similarityBoost},
- * {@code callBehaviour.endpointingDelayMs}, {@code limits.turnTimeoutSeconds}. The
- * deployment-wide {@code voice-agent.dialog.preemptive} is what speculation follows.
  */
 public record CreateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
@@ -37,8 +32,6 @@ public record CreateAiAgentRequest(
         @Valid AgentCallBehaviourDto callBehaviour,
         AgentLimitsDto limits,
         AgentDataPolicyDto dataPolicy,
-        Boolean preemptiveGeneration,
-        Boolean ivrNavigationEnabled,
         Boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,

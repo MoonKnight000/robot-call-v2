@@ -11,7 +11,7 @@ import java.time.ZonedDateTime;
  * What the PBX side of a call says — queue announcements, menu retries, voicemail, the
  * survey, and "we are closed, we open tomorrow at nine" (docs/INBOUND-PBX-PLAN.md §5.3,
  * §6, §7.3). Numbers are written out in words here, because a prompt read by TTS must
- * say "bir yuz yigirma to'qqizinchi", not spell "129". Uzbek unless the call is Russian
+ * say "yuz yigirma to'qqizinchi", not spell "129". Uzbek unless the call is Russian
  * or English.
  */
 public final class PbxPhrases {

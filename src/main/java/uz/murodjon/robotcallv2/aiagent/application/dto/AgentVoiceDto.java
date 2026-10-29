@@ -14,8 +14,6 @@ import java.util.Map;
 public record AgentVoiceDto(
         String defaultVoice,
         Double speed,
-        Double stability,
-        Double similarityBoost,
         Map<String, String> perLanguage,
         Map<String, Double> perLanguageSpeed,
         Boolean emotionAdaptive,
@@ -23,7 +21,6 @@ public record AgentVoiceDto(
 ) {
 
     public static AgentVoiceDto of(AiAgentVoice voice) {
-        return new AgentVoiceDto(voice.defaultVoice(), voice.speed(), voice.stability(), voice.similarityBoost(),
-                voice.perLanguage(), voice.perLanguageSpeed(), voice.emotionAdaptive(), voice.warmth());
+        return new AgentVoiceDto(voice.defaultVoice(), voice.speed(), voice.perLanguage(), voice.perLanguageSpeed(), voice.emotionAdaptive(), voice.warmth());
     }
 }

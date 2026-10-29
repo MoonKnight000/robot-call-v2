@@ -300,6 +300,8 @@ paths:
     $ref: paths/call.yaml#/~1api~1calls~1%7BchannelId%7D~1unhold
   /api/campaigns:
     $ref: paths/campaign.yaml#/~1api~1campaigns
+  /api/campaigns/batch-call:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1batch-call
   /api/campaigns/filter:
     $ref: paths/campaign.yaml#/~1api~1campaigns~1filter
   /api/campaigns/list:

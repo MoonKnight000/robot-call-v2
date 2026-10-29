@@ -42,8 +42,6 @@ public record AiAgent(
         String fastLlmModel,
         Double temperature,
         Integer maxOutputTokens,
-        boolean preemptiveGeneration,
-        boolean ivrNavigationEnabled,
         boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,
@@ -82,13 +80,13 @@ public record AiAgent(
             speechEngine = new AiAgentSpeechEngine(null, null, null, null, null, null, null, null, null);
         }
         if (voice == null) {
-            voice = new AiAgentVoice(null, null, null, null, null, null, true);
+            voice = new AiAgentVoice(null, null, null, null, true);
         }
         if (ambience == null) {
             ambience = new AiAgentAmbience(null, null, null, null, null, true, null);
         }
         if (callBehaviour == null) {
-            callBehaviour = new AiAgentCallBehaviour(null, 0, false, null, null, false, null, null, null, null);
+            callBehaviour = new AiAgentCallBehaviour(null, false, null, null, false, null, null, null, null);
         }
         if (limits == null) {
             limits = AiAgentLimits.NONE;
@@ -146,8 +144,6 @@ public record AiAgent(
                                 AiAgentCallBehaviour newCallBehaviour,
                                 AiAgentDataPolicy newDataPolicy,
                                 AiAgentVoice newVoice,
-                                boolean newPreemptiveGeneration,
-                                boolean newIvrNavigationEnabled,
                                 boolean newUseRag,
                                 AgentWebhookConfig newInitiationWebhook,
                                 AgentWebhookConfig newPostCallWebhook) {
@@ -156,8 +152,6 @@ public record AiAgent(
                 .callBehaviour(newCallBehaviour)
                 .dataPolicy(newDataPolicy)
                 .voice(newVoice)
-                .preemptiveGeneration(newPreemptiveGeneration)
-                .ivrNavigationEnabled(newIvrNavigationEnabled)
                 .useRag(newUseRag)
                 .initiationWebhook(newInitiationWebhook)
                 .postCallWebhook(newPostCallWebhook)

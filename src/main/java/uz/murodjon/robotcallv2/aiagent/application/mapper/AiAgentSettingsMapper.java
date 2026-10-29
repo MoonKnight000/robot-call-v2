@@ -39,7 +39,6 @@ public final class AiAgentSettingsMapper {
         }
         return new AiAgentCallBehaviour(
                 dto.interruptionSensitivity() != null ? dto.interruptionSensitivity() : base.interruptionSensitivity(),
-                dto.endpointingDelayMs() != null ? dto.endpointingDelayMs() : base.endpointingDelayMs(),
                 dto.dtmfInputEnabled() != null ? dto.dtmfInputEnabled() : base.dtmfInputEnabled(),
                 dto.voicemailAction() != null ? dto.voicemailAction() : base.voicemailAction(),
                 dto.voicemailMessage() != null ? dto.voicemailMessage() : base.voicemailMessage(),
@@ -59,7 +58,6 @@ public final class AiAgentSettingsMapper {
         return new AiAgentLimits(
                 dto.maxConversationDurationSeconds() != null ? dto.maxConversationDurationSeconds() : base.maxConversationDurationSeconds(),
                 dto.silenceEndCallTimeoutSeconds() != null ? dto.silenceEndCallTimeoutSeconds() : base.silenceEndCallTimeoutSeconds(),
-                dto.turnTimeoutSeconds() != null ? dto.turnTimeoutSeconds() : base.turnTimeoutSeconds(),
                 dto.concurrentCallsLimit() != null ? dto.concurrentCallsLimit() : base.concurrentCallsLimit(),
                 dto.dailyCallsLimit() != null ? dto.dailyCallsLimit() : base.dailyCallsLimit());
     }

@@ -31,8 +31,6 @@ public class AiAgentBuilder {
     private String fastLlmModel;
     private Double temperature;
     private Integer maxOutputTokens;
-    private boolean preemptiveGeneration;
-    private boolean ivrNavigationEnabled;
     private boolean useRag;
     private List<DataExtractionField> dataNeeded;
     private List<DataEvaluationCriterion> dataEvaluation;
@@ -68,8 +66,6 @@ public class AiAgentBuilder {
         this.fastLlmModel = source.fastLlmModel();
         this.temperature = source.temperature();
         this.maxOutputTokens = source.maxOutputTokens();
-        this.preemptiveGeneration = source.preemptiveGeneration();
-        this.ivrNavigationEnabled = source.ivrNavigationEnabled();
         this.useRag = source.useRag();
         this.dataNeeded = source.dataNeeded();
         this.dataEvaluation = source.dataEvaluation();
@@ -170,16 +166,6 @@ public class AiAgentBuilder {
         return this;
     }
 
-    public AiAgentBuilder preemptiveGeneration(boolean preemptiveGeneration) {
-        this.preemptiveGeneration = preemptiveGeneration;
-        return this;
-    }
-
-    public AiAgentBuilder ivrNavigationEnabled(boolean ivrNavigationEnabled) {
-        this.ivrNavigationEnabled = ivrNavigationEnabled;
-        return this;
-    }
-
     public AiAgentBuilder useRag(boolean useRag) {
         this.useRag = useRag;
         return this;
@@ -248,7 +234,7 @@ public class AiAgentBuilder {
     public AiAgent build() {
         return new AiAgent(id, companyId, name, description, language, persona, script, speechEngine, voice,
                 ambience, callBehaviour, limits, dataPolicy, llmModel, fastLlmModel, temperature, maxOutputTokens,
-                preemptiveGeneration, ivrNavigationEnabled, useRag, dataNeeded, dataEvaluation, initiationWebhook,
+                useRag, dataNeeded, dataEvaluation, initiationWebhook,
                 postCallWebhook, pronunciationRules, postCallActions, sipTrunkIds, enabled, createdAt, createdBy,
                 publishedVersion, version);
     }

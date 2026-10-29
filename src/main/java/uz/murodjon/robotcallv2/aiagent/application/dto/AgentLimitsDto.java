@@ -6,13 +6,11 @@ public record AgentLimitsDto(
         Integer concurrentCallsLimit,
         Integer dailyCallsLimit,
         Integer maxConversationDurationSeconds,
-        Integer silenceEndCallTimeoutSeconds,
-        Integer turnTimeoutSeconds
+        Integer silenceEndCallTimeoutSeconds
 ) {
 
     public static AgentLimitsDto of(AiAgentLimits limits) {
         return new AgentLimitsDto(limits.concurrentCallsLimit(), limits.dailyCallsLimit(),
-                limits.maxConversationDurationSeconds(), limits.silenceEndCallTimeoutSeconds(),
-                limits.turnTimeoutSeconds());
+                limits.maxConversationDurationSeconds(), limits.silenceEndCallTimeoutSeconds());
     }
 }

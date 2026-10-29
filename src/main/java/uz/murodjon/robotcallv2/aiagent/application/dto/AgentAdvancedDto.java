@@ -10,8 +10,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
  */
 public record AgentAdvancedDto(
         Boolean useRag,
-        Boolean preemptiveGeneration,
-        Boolean ivrNavigationEnabled,
         AgentWebhookConfig initiationWebhook,
         AgentWebhookConfig postCallWebhook,
         Boolean emotionAdaptiveVoice,
