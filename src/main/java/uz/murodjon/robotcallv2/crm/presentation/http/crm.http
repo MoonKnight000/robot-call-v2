@@ -15,3 +15,26 @@ Authorization: Bearer {{auth_token}}
   "callbackStatusId": 12,
   "newLeadStatusId": 11
 }
+
+### Uysot pipelines and their statuses (for the outcome → stage mapping)
+GET http://localhost:8080/api/crm/uysot/pipes
+Authorization: Bearer {{auth_token}}
+
+### Uysot employees (for aiEmployeeId and manager transfers)
+GET http://localhost:8080/api/crm/uysot/employees
+Authorization: Bearer {{auth_token}}
+
+### Uysot residential complexes
+GET http://localhost:8080/api/crm/uysot/houses
+Authorization: Bearer {{auth_token}}
+
+### Flats on sale — what the agent's searchFlats tool sees
+POST http://localhost:8080/api/crm/uysot/flats/search
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "rooms": 3,
+  "priceTo": 60000,
+  "limit": 5
+}

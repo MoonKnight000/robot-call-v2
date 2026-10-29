@@ -58,3 +58,67 @@ Har bir ID musbat butun son bo'lishi shart (aks holda `400 VALIDATION_FAILED`).
 ```
 
 Javob — `GET` bilan bir xil.
+
+---
+
+# Uysot ma'lumotnomasi (`/api/crm/uysot`)
+
+Kompaniyaning Uysot'dagi ma'lumoti, **jonli** o'qiladi (qisqa kesh bilan). Sozlamalar ekrani
+voronka bosqichlari va xodimlarni shu yerdan tanlaydi; agentning ko'chmas mulk tool'lari ham
+xuddi shu ma'lumotni ko'radi.
+
+Huquq: `INTEGRATION_READ`.
+
+| Holat | Javob |
+|---|---|
+| Kompaniyada Uysot ulanishi yo'q | `409 CRM_NOT_CONNECTED` |
+| Uysot javob bermadi / xato qaytardi | `502 UYSOT_REQUEST_FAILED` |
+| Server konfiguratsiyasida yo'l bo'sh (`voice-agent.crm.catalog.*`) | `502 UYSOT_ENDPOINT_NOT_CONFIGURED` |
+
+Kesh: voronka, xodim va uylar — 15 daqiqa; xonadon qidiruvi — 3 daqiqa (sotilgan xonadon taklif
+qilinmasligi uchun). Shartnoma va to'lov jadvali keshlanmaydi.
+
+## `GET /api/crm/uysot/pipes` — Voronkalar va bosqichlar
+
+```json
+{
+  "accept": true,
+  "data": [
+    { "id": 4, "name": "Sotuv", "statuses": [
+        { "id": 11, "name": "Yangi lid" },
+        { "id": 15, "name": "Uchrashuv belgilandi" },
+        { "id": 19, "name": "Rad etdi" } ] }
+  ]
+}
+```
+
+## `GET /api/crm/uysot/employees` — Xodimlar
+
+```json
+{ "accept": true, "data": [ { "id": 252, "fullName": "Dilshod Karimov", "phone": "+998901112233", "departmentName": "Sotuv" } ] }
+```
+
+## `GET /api/crm/uysot/houses` — Turar-joy majmualari
+
+```json
+{ "accept": true, "data": [ { "id": 7, "name": "Yunusobod Residence", "onSale": true, "branchName": "Toshkent", "currency": "USD" } ] }
+```
+
+## `POST /api/crm/uysot/flats/search` — Sotuvdagi xonadonlar
+
+Faqat `SALE` holatidagilar, eng arzonidan boshlab. Hamma maydon ixtiyoriy; `limit` 1–20.
+
+```json
+{ "rooms": 3, "priceFrom": null, "priceTo": 60000, "houseId": 7, "floorFrom": 2, "floorTo": 9, "limit": 5 }
+```
+
+```json
+{
+  "accept": true,
+  "data": [
+    { "id": 1201, "houseName": "Yunusobod Residence", "buildingName": "A blok", "number": "45",
+      "rooms": 3, "area": 78.5, "floor": 5, "price": 58900, "priceRepaired": 64000,
+      "pricePerArea": 750, "currency": "USD", "status": "SALE" }
+  ]
+}
+```

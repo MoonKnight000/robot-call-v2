@@ -47,6 +47,16 @@ voice-agent:
       page-size: ${CRM_DEBTOR_PAGE_SIZE:100}
       max-pages: ${CRM_DEBTOR_MAX_PAGES:20}
     call-history-employee-id: ${CRM_CALL_HISTORY_EMPLOYEE_ID:}
+    # Reads the agent's real-estate tools and the settings screen browse — UysotCatalogProperties.
+    # Blank path = that read is off. Verify each against https://apidoc.app.uysot.uz.
+    catalog:
+      houses-path: ${CRM_HOUSES_PATH:v1/open-api/house}
+      flat-filter-path: ${CRM_FLAT_FILTER_PATH:v1/open-api/flat/filter}
+      employee-filter-path: ${CRM_EMPLOYEE_FILTER_PATH:v1/open-api/employee/filter}
+      pipe-path: ${CRM_PIPE_PATH:v1/open-api/pipe}
+      contract-payment-path: ${CRM_CONTRACT_PAYMENT_PATH:v1/open-api/contract/{id}/monthly-payment}
+      directory-ttl: ${CRM_DIRECTORY_TTL:15m}
+      flat-ttl: ${CRM_FLAT_TTL:3m}
 
   # Per-company OAuth connection to the same CRM — UysotOAuthProperties.
   # Takes precedence over the static crm.api-token above.

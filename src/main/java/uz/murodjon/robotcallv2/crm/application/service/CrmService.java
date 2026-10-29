@@ -17,13 +17,10 @@ import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * The call pipeline's CRM: reads the lead a call is about and writes back what the call
@@ -48,18 +45,16 @@ public class CrmService implements CrmUseCase {
     private static final int MAX_NOTE_CHARS = 4000;
 
     private final CrmProperties crmProperties;
-    private final CrmIntegrationUseCase crmIntegrationUseCase;
     private final List<CrmConnectorPort> connectors;
-    private final CompanyUseCase companyUseCase;
     private final CrmSettingsUseCase crmSettingsUseCase;
+    private final CrmConnectionResolver connectionResolver;
 
     public CrmService(CrmProperties crmProperties, CrmIntegrationUseCase crmIntegrationUseCase, List<CrmConnectorPort> connectors,
                       CompanyUseCase companyUseCase, CrmSettingsUseCase crmSettingsUseCase) {
         this.crmProperties = crmProperties;
-        this.crmIntegrationUseCase = crmIntegrationUseCase;
         this.connectors = connectors;
-        this.companyUseCase = companyUseCase;
         this.crmSettingsUseCase = crmSettingsUseCase;
+        this.connectionResolver = new CrmConnectionResolver(crmProperties, crmIntegrationUseCase, companyUseCase);
     }
 
     @Override
@@ -109,14 +104,6 @@ public class CrmService implements CrmUseCase {
     /** The company's own value when it saved one, the platform's otherwise. */
     private static Integer firstSet(Integer own, Integer platform) {
         return own != null ? own : platform;
-    }
-
-    /**
-     * Whether the platform's Uysot connection is configured. A company's own amoCRM, Kommo
-     * or Bitrix24 connection does not depend on it.
-     */
-    private boolean isPlatformUysotConfigured() {
-        return crmProperties.enabled() && crmProperties.baseUrl() != null && !crmProperties.baseUrl().isBlank();
     }
 
     @Override
@@ -245,25 +232,10 @@ public class CrmService implements CrmUseCase {
         return route.connector().updateLeadStage(route.connection(), request);
     }
 
-    /**
-     * Where this company's CRM traffic goes, or {@code null} when there is nowhere to send
-     * it. A connection that cannot be read — a stored secret that no longer decrypts —
-     * counts as nowhere: the call goes ahead without the CRM. So does a company the platform has
-     * switched integrations off for.
-     */
+    /** Where this company's CRM traffic goes, or {@code null} when there is nowhere to send it. */
     private Route routeFor(long companyId) {
-        CrmConnection connection;
-        try {
-            connection = connectionFor(companyId);
-        } catch (RuntimeException e) {
-            log.warn("CRM connection of company {} could not be read: {}", companyId, e.getMessage());
-            return null;
-        }
+        CrmConnection connection = connectionResolver.findConnection(companyId);
         if (connection == null) {
-            return null;
-        }
-        // A provider the platform switched off for this company is nowhere to send to, even if it is connected.
-        if (!companyUseCase.isIntegrationAvailable(companyId, IntegrationProvider.valueOf(connection.provider().name()))) {
             return null;
         }
         for (CrmConnectorPort connector : connectors) {
@@ -273,23 +245,6 @@ public class CrmService implements CrmUseCase {
         }
         log.warn("No CRM connector for provider {}", connection.provider());
         return null;
-    }
-
-    private CrmConnection connectionFor(long companyId) {
-        Optional<CrmConnection> own = crmIntegrationUseCase.findConnection(companyId);
-        if (own.isPresent() && own.get().provider() != CrmProvider.UYSOT) {
-            // Chosen but not (or no longer) connected: nothing to call. Falling back to
-            // Uysot would write this company's calls into an account that is not theirs.
-            return own.get().baseUrl() != null ? own.get() : null;
-        }
-        if (!isPlatformUysotConfigured()) {
-            return null;
-        }
-        String token = own.map(CrmConnection::accessToken).orElse(null);
-        if (token == null && crmProperties.apiToken() != null && !crmProperties.apiToken().isBlank()) {
-            token = crmProperties.apiToken();
-        }
-        return new CrmConnection(CrmProvider.UYSOT, crmProperties.baseUrl(), token);
     }
 
     /**
