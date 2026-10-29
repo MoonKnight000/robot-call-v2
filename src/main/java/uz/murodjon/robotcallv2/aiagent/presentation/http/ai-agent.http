@@ -437,3 +437,25 @@ Authorization: Bearer {{auth_token}}
   "speechEngine": { "mode": "CASCADE" },
   "fastLlmModel": "gemini-1.0-nano"
 }
+
+
+### 28. LLM test: the agent greets (empty chat), then answers one client line (docs/api/ai-agents.md §14.4).
+POST http://localhost:8080/api/ai-agents/1/test-chat
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "messages": [],
+  "variables": { "clientName": "Aziz", "debtAmount": 450000 }
+}
+
+###
+POST http://localhost:8080/api/ai-agents/1/test-chat
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "messages": [ { "role": "AGENT", "text": "Assalomu alaykum, Aziz aka!" } ],
+  "clientText": "Ha, eshitaman",
+  "variables": { "clientName": "Aziz", "debtAmount": 450000 }
+}
